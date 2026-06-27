@@ -35,9 +35,12 @@ class BannerController extends Controller
                 'name'                => 'nullable|string|max:100',
                 'headline'            => 'nullable|string|max:255',
                 'headlineAccent'      => 'nullable|string|max:255',
-                'headlineAccentColor' => 'nullable|in:gold,red,white',
+                'headlineAccentColor' => 'nullable|string|max:40',
                 'headlineAccent2'     => 'nullable|string|max:255',
-                'headlineAccent2Color'=> 'nullable|in:gold,red,white',
+                'headlineAccent2Color'=> 'nullable|string|max:40',
+                'headlineBreak1'      => 'nullable|boolean',
+                'headlineBreak2'      => 'nullable|boolean',
+                'titleParts'          => 'nullable|array',
                 'tag'                 => 'nullable|string|max:80',
                 'subtext'             => 'nullable|string',
                 'ctaLabel'            => 'nullable|string',
@@ -56,7 +59,7 @@ class BannerController extends Controller
                 'scheduleStart'       => 'nullable|date',
                 'scheduleEnd'         => 'nullable|date',
                 'showOn'              => 'nullable|in:both,shop,landing',
-                'heroRole'            => 'nullable|in:tagline,image',
+                'heroRole'            => 'nullable|in:tagline,image,gallery',
             ]);
 
             $banner = Banner::create([
@@ -66,6 +69,9 @@ class BannerController extends Controller
                 'headlineAccentColor' => $validated['headlineAccentColor'] ?? 'gold',
                 'headlineAccent2'     => $validated['headlineAccent2'] ?? null,
                 'headlineAccent2Color'=> $validated['headlineAccent2Color'] ?? 'gold',
+                'headlineBreak1'      => $validated['headlineBreak1'] ?? false,
+                'headlineBreak2'      => $validated['headlineBreak2'] ?? false,
+                'titleParts'          => $validated['titleParts'] ?? null,
                 'tag'                 => $validated['tag'] ?? null,
                 'subtext'             => $validated['subtext'] ?? '',
                 'ctaLabel'            => $validated['ctaLabel'] ?? '',
@@ -113,9 +119,12 @@ class BannerController extends Controller
                 'name'                => 'nullable|string|max:100',
                 'headline'            => 'nullable|string|max:255',
                 'headlineAccent'      => 'nullable|string|max:255',
-                'headlineAccentColor' => 'nullable|in:gold,red,white',
+                'headlineAccentColor' => 'nullable|string|max:40',
                 'headlineAccent2'     => 'nullable|string|max:255',
-                'headlineAccent2Color'=> 'nullable|in:gold,red,white',
+                'headlineAccent2Color'=> 'nullable|string|max:40',
+                'headlineBreak1'      => 'nullable|boolean',
+                'headlineBreak2'      => 'nullable|boolean',
+                'titleParts'          => 'nullable|array',
                 'tag'                 => 'nullable|string|max:80',
                 'subtext'             => 'nullable|string',
                 'ctaLabel'            => 'nullable|string',
@@ -134,7 +143,7 @@ class BannerController extends Controller
                 'scheduleStart'       => 'nullable|date',
                 'scheduleEnd'         => 'nullable|date',
                 'showOn'              => 'nullable|in:both,shop,landing',
-                'heroRole'            => 'nullable|in:tagline,image',
+                'heroRole'            => 'nullable|in:tagline,image,gallery',
             ]);
 
             $banner->update($validated);

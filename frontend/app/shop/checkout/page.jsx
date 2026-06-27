@@ -99,6 +99,8 @@ export default function CheckoutPage() {
   const [failedModal,        setFailedModal]        = useState(false);
   const [pendingVerifyId,    setPendingVerifyId]    = useState(null);
   const [verifyingPayment,   setVerifyingPayment]   = useState(false);
+  // Owner-controlled method availability (Homepage CMS → Payment Methods). Missing key = enabled.
+  const [payEnabled, setPayEnabled] = useState({});
 
   // Voucher
   const [voucherInput, setVoucherInput]       = useState('');
@@ -126,6 +128,14 @@ export default function CheckoutPage() {
     fetch(`${API_URL}/api/public/settings`)
       .then(r => r.json())
       .then(d => setStoreSettings(d.data ?? d))
+      .catch(() => {});
+  }, []);
+
+  // ── EFFECT: Load owner-controlled payment method availability ──
+  useEffect(() => {
+    fetch(`${API_URL}/api/storefront/content/payment_methods`)
+      .then(r => r.json())
+      .then(d => { if (d?.data?.enabled && typeof d.data.enabled === 'object') setPayEnabled(d.data.enabled); })
       .catch(() => {});
   }, []);
 
@@ -305,12 +315,21 @@ export default function CheckoutPage() {
 
   const cartAllowsCOD = items.every(i => (i.product?.allowCOD ?? true) !== false);
 
-  // Auto-switch away from COD when not allowed or downpayment required
+  // A method is offered only if the owner hasn't disabled it (and COD also obeys cart/DP rules).
+  const methodAvailable = (id) => {
+    if (payEnabled[id] === false) return false;
+    if (id === 'cod') return cartAllowsCOD && !downpaymentRequired;
+    return true;
+  };
+  const availableMethods = ['cod', 'gcash', 'paymaya', 'card'].filter(methodAvailable);
+
+  // Keep the selection valid: if the chosen method becomes unavailable (owner turned it off,
+  // COD disallowed, downpayment), fall back to the first available method.
   useEffect(() => {
-    if (paymentMethod === 'cod' && (!cartAllowsCOD || downpaymentRequired)) {
-      setPaymentMethod('gcash');
+    if (availableMethods.length && !availableMethods.includes(paymentMethod)) {
+      setPaymentMethod(availableMethods[0]);
     }
-  }, [cartAllowsCOD, downpaymentRequired, paymentMethod]);
+  }, [availableMethods.join(','), paymentMethod]);
 
   async function handleApplyVoucher() {
     if (!voucherInput.trim()) return;
@@ -1305,7 +1324,7 @@ export default function CheckoutPage() {
             filterImg: true,
             icon: null,
           },
-        ].filter(opt => opt.id !== 'cod' || (cartAllowsCOD && !downpaymentRequired))).map(opt => {
+        ].filter(opt => methodAvailable(opt.id))).map(opt => {
           const isSelected = paymentMethod === opt.id;
           const isEWallet = opt.id === 'gcash' || opt.id === 'paymaya';
           const showPanel = isEWallet && isSelected;

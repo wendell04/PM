@@ -699,9 +699,15 @@ function RegisterForm({ onSuccess, onSwitchToLogin }) {
 export default function ShopLayout({ children }) {
   const router = useRouter();
   const pathname = usePathname();
+  // Product search only makes sense on browsing pages — hide it on cart/orders/account/checkout.
+  const SEARCH_HIDDEN_ROUTES = ['/shop/cart', '/shop/orders-history', '/shop/profile', '/shop/checkout', '/shop/payment-success', '/shop/payment-failed'];
+  const showSearch = !SEARCH_HIDDEN_ROUTES.some(r => pathname === r || pathname.startsWith(r + '/'));
   const { theme, toggleTheme } = useTheme();
   const { setCartItems, cartItems: globalCartItems, cartCount: globalCartCount, addToCart: globalAddToCart, removeFromCart: globalRemoveFromCart } = useGlobalCart();
   const [user, setUser]       = useState(null);
+  // Owner-controlled payment availability (Homepage CMS) — drives footer badges. Missing key = on.
+  const [payEnabled, setPayEnabled] = useState({});
+  const hasPay = (id) => payEnabled[id] !== false;
   const [cart, setCart]       = useState([]);
   const [cartInitialized, setCartInitialized] = useState(false);
   const pendingCartAdds = useRef([]);
@@ -1008,6 +1014,14 @@ export default function ShopLayout({ children }) {
       sessionStorage.setItem('shop_cart', JSON.stringify(cart));
     }
   }, [cart, mounted]);
+
+  // Load owner-controlled payment availability for the footer badges
+  useEffect(() => {
+    fetch(`${API_URL}/api/storefront/content/payment_methods`)
+      .then(r => r.json())
+      .then(d => { if (d?.data?.enabled && typeof d.data.enabled === 'object') setPayEnabled(d.data.enabled); })
+      .catch(() => {});
+  }, []);
 
   // Scroll effect
   useEffect(() => {
@@ -1584,8 +1598,8 @@ export default function ShopLayout({ children }) {
               </Link>
             </div>
 
-            {/* Center — Search bar — B-01 */}
-            {pathname !== '/shop/cart' && (
+            {/* Center — Search bar — B-01 (only on product browsing pages) */}
+            {showSearch && (
               <div className={`shop-navbar-search${searchFocused ? ' focused' : ''}`}>
                 <svg
                   className="shop-navbar-search-icon"
@@ -1721,6 +1735,14 @@ export default function ShopLayout({ children }) {
                               {user?.firstName} {user?.lastName}
                             </div>
                           </div>
+                          {user?.role && user.role !== 'customer' && (
+                            <Link href="/dashboard/business/dashboardoverview" className="shop-navbar-menu-item" onClick={() => setMenuOpen(false)}>
+                              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
+                              </svg>
+                              Dashboard
+                            </Link>
+                          )}
                           <Link href="/shop/profile" className="shop-navbar-menu-item" onClick={() => setMenuOpen(false)}>
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                               <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
@@ -1804,18 +1826,22 @@ export default function ShopLayout({ children }) {
                 <svg className="shop-footer-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
               </summary>
               <div className="shop-footer-pay-grid">
-                <img src="/logos/Gcash-Logo-1024x1024.png" alt="GCash" className="shop-footer-pay-badge" />
-                <img src="/logos/maya logo.png" alt="Maya" className="shop-footer-pay-badge" />
-                <svg viewBox="0 0 780 500" xmlns="http://www.w3.org/2000/svg" className="shop-footer-pay-visa">
-                  <rect width="780" height="500" rx="40" fill="#1a1f71"/>
-                  <text x="390" y="340" textAnchor="middle" fontFamily="Arial" fontSize="240" fontWeight="bold" fill="#fff" fontStyle="italic">VISA</text>
-                </svg>
-                <svg viewBox="0 0 60 38" xmlns="http://www.w3.org/2000/svg" className="shop-footer-pay-mc">
-                  <rect width="60" height="38" rx="4" fill="#252525"/>
-                  <circle cx="23" cy="19" r="13" fill="#EB001B"/>
-                  <circle cx="37" cy="19" r="13" fill="#F79E1B"/>
-                  <path d="M30 8.8a13 13 0 0 1 0 20.4A13 13 0 0 1 30 8.8z" fill="#FF5F00"/>
-                </svg>
+                {hasPay('gcash') && <img src="/logos/Gcash-Logo-1024x1024.png" alt="GCash" className="shop-footer-pay-badge" />}
+                {hasPay('paymaya') && <img src="/logos/maya logo.png" alt="Maya" className="shop-footer-pay-badge" />}
+                {hasPay('card') && (
+                  <>
+                    <svg viewBox="0 0 780 500" xmlns="http://www.w3.org/2000/svg" className="shop-footer-pay-visa">
+                      <rect width="780" height="500" rx="40" fill="#1a1f71"/>
+                      <text x="390" y="340" textAnchor="middle" fontFamily="Arial" fontSize="240" fontWeight="bold" fill="#fff" fontStyle="italic">VISA</text>
+                    </svg>
+                    <svg viewBox="0 0 60 38" xmlns="http://www.w3.org/2000/svg" className="shop-footer-pay-mc">
+                      <rect width="60" height="38" rx="4" fill="#252525"/>
+                      <circle cx="23" cy="19" r="13" fill="#EB001B"/>
+                      <circle cx="37" cy="19" r="13" fill="#F79E1B"/>
+                      <path d="M30 8.8a13 13 0 0 1 0 20.4A13 13 0 0 1 30 8.8z" fill="#FF5F00"/>
+                    </svg>
+                  </>
+                )}
               </div>
             </details>
             <details className="shop-footer-col">
@@ -1823,6 +1849,7 @@ export default function ShopLayout({ children }) {
                 <h4>Account</h4>
                 <svg className="shop-footer-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
               </summary>
+              {user?.role && user.role !== 'customer' && <Link href="/dashboard/business/dashboardoverview">Dashboard</Link>}
               <Link href="/shop/orders-history">My Orders</Link>
               <Link href="/shop/profile">My Profile</Link>
               <Link href="/shop/cart">Cart</Link>

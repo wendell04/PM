@@ -162,6 +162,27 @@ class ReviewController extends Controller
         }
     }
 
+    // ─── Public: GET /api/storefront/stats ────────────────────────────────────
+    // Real landing-page stats (replaces hardcoded numbers).
+    public function storefrontStats(Request $request)
+    {
+        try {
+            $orders    = Order::count();
+            $customers = Order::pluck('userId')->filter()->unique()->count();
+            $avgRating = Review::where('is_visible', true)->avg('rating');
+            $reviews   = Review::where('is_visible', true)->count();
+
+            return $this->successResponse('Stats fetched', [
+                'orders'       => (int) $orders,
+                'customers'    => (int) $customers,
+                'avgRating'    => $avgRating ? round((float) $avgRating, 1) : null,
+                'reviewsCount' => (int) $reviews,
+            ]);
+        } catch (\Exception $e) {
+            return $this->serverErrorResponse($e);
+        }
+    }
+
     // ─── Public: GET /api/products/{productId}/reviews ────────────────────────
 
     public function productReviews(Request $request, $productId)

@@ -37,6 +37,7 @@ use App\Http\Controllers\ChatController;
 use App\Http\Controllers\CollectionController;
 use App\Http\Controllers\HealthController;
 use App\Http\Controllers\AnalyticsDataController;
+use App\Http\Controllers\SiteContentController;
 
 // ─── Health Check ─────────────────────────────────────────────────────────────
 Route::get('/health', [HealthController::class, 'check']);
@@ -76,6 +77,8 @@ Route::middleware('throttle:60,1')->group(function () {
     Route::get('/products/{id}',          [ProductController::class, 'show']);
     Route::get('/products/{id}/reviews',  [ReviewController::class, 'productReviews']);
     Route::get('/storefront/reviews',     [ReviewController::class, 'storefrontReviews']);
+    Route::get('/storefront/stats',       [ReviewController::class, 'storefrontStats']);
+    Route::get('/storefront/content/{key}', [SiteContentController::class, 'show']);
     Route::get('/storefront/collections',          [CollectionController::class, 'storefrontIndex']);
     Route::get('/storefront/collections/{slug}',   [CollectionController::class, 'storefrontShow']);
 });
@@ -321,6 +324,9 @@ Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
     Route::get('/admin/reviews',                        [ReviewController::class, 'adminIndex']);
     Route::patch('/admin/reviews/{id}/visibility',      [ReviewController::class, 'toggleVisibility']);
     Route::delete('/admin/reviews/{id}',                [ReviewController::class, 'destroy']);
+
+    // ─── Site content (editable landing sections) ────────────────────────────
+    Route::put('/admin/content/{key}',                  [SiteContentController::class, 'update']);
 });
 
 // ─── Order Requests (Customer) ───────────────────────────────────────────────

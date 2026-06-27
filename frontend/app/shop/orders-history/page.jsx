@@ -12,7 +12,20 @@ import { useCart } from '@/app/shop/layout';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
-const TABS = ['All', 'Custom', 'Pending', 'In Production', 'For QC', 'For Delivery', 'Delivered', 'Cancelled'];
+const TABS = ['All', 'To Pay', 'In Progress', 'To Receive', 'Completed', 'Cancelled', 'Custom'];
+
+// Map any granular order status into a customer-facing phase bucket so EVERY order is
+// filterable (Shopee/Lazada style). The wizard inside still shows the exact status.
+function orderBucket(o) {
+  const s = o.orderStatus;
+  if (s === 'Cancelled' || s === 'Returned') return 'Cancelled';
+  if (s === 'Delivered' || s === 'delivered' || s === 'Paid') return 'Completed';
+  if (s === 'For Delivery' || s === 'for_delivery' || s === 'shipped' || s === 'ready_for_pickup') return 'To Receive';
+  if (s === 'awaiting_payment') return 'To Pay';
+  // Unpaid online order still at Pending → needs payment first
+  if (s === 'Pending' && o.paymentStatus !== 'paid' && o.paymentMethod && o.paymentMethod !== 'cod') return 'To Pay';
+  return 'In Progress';
+}
 
 const UPLOAD_STEPS = [
   { key: 'pending_review',      label: 'Review',     icon: <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> },
@@ -427,6 +440,15 @@ export default function OrdersHistoryPage() {
     return () => clearInterval(pollRef.current);
   }, [token, modalOpen, loadOrders]);
 
+  // Lock background scroll while any modal/overlay is open (fixes mobile bg-scroll)
+  useEffect(() => {
+    const anyOpen = modalOpen || !!cancelTarget || payNowFailedModal;
+    if (!anyOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, [modalOpen, cancelTarget, payNowFailedModal]);
+
   useEffect(() => {
     if (!token || orders.length === 0) return;
     echoChannelsRef.current.forEach(ch => { try { ch.stopListening('.order.status.updated'); } catch {} });
@@ -702,30 +724,33 @@ export default function OrdersHistoryPage() {
   const filteredOrders = (() => {
     if (activeTab === 'All') return visibleOrders;
     if (activeTab === 'Custom') return visibleOrders.filter(o => o.isCustomOrder);
-    if (activeTab === 'Delivered') return visibleOrders.filter(o => o.orderStatus === 'Delivered' || o.orderStatus === 'delivered');
-    return visibleOrders.filter(o => o.orderStatus === activeTab);
+    return visibleOrders.filter(o => orderBucket(o) === activeTab);
   })();
 
   // ── Render ──────────────────────────────────────────
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--dark)' }}>
+    <div style={{ minHeight: '100vh' }}>
 
-      <div style={{ maxWidth: '900px', margin: '0 auto', padding: '28px 16px 48px' }}>
+      <div style={{ maxWidth: '1040px', margin: '0 auto', padding: '28px 16px 48px' }}>
 
         {/* Page header */}
-        <div style={{ marginBottom: '24px' }}>
+        <div style={{ marginBottom: '20px', display: 'flex', alignItems: 'baseline', gap: '12px', flexWrap: 'wrap' }}>
           <h1 style={{ margin: 0, fontSize: '1.65rem', fontWeight: 800, color: 'var(--white)', letterSpacing: '-0.3px' }}>My Orders</h1>
+          {!loading && !error && visibleOrders.length > 0 && (
+            <span style={{ fontSize: '0.85rem', color: 'var(--gray)', fontWeight: 500 }}>{visibleOrders.length} {visibleOrders.length === 1 ? 'order' : 'orders'}</span>
+          )}
         </div>
 
         {/* Filter tabs */}
         {!loading && !error && orders.length > 0 && (
-          <div style={{ display: 'flex', gap: '6px', marginBottom: '20px', overflowX: 'auto', paddingBottom: '2px', scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+          <div style={{ display: 'flex', gap: '6px', marginBottom: '20px', overflowX: 'auto', paddingBottom: '2px', scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitMaskImage: 'linear-gradient(to right, #000 92%, transparent)', maskImage: 'linear-gradient(to right, #000 92%, transparent)' }}>
             {TABS.map(tab => {
               const count = tab === 'All' ? visibleOrders.length
                 : tab === 'Custom' ? visibleOrders.filter(o => o.isCustomOrder).length
-                : tab === 'Delivered' ? visibleOrders.filter(o => o.orderStatus === 'Delivered' || o.orderStatus === 'delivered').length
-                : visibleOrders.filter(o => o.orderStatus === tab).length;
+                : visibleOrders.filter(o => orderBucket(o) === tab).length;
               const isActive = activeTab === tab;
+              // Hide empty filters to cut clutter — keep "All" and whatever is currently selected.
+              if (count === 0 && tab !== 'All' && !isActive) return null;
               return (
                 <button
                   key={tab}
@@ -889,7 +914,10 @@ export default function OrdersHistoryPage() {
           .oh-modal-outer { display:flex; flex:1; overflow:hidden; min-height:0; }
           .oh-modal-columns { display:flex; flex:1; overflow:hidden; min-height:0; }
           .oh-modal-right { width:265px; flex-shrink:0; overflow-y:auto; border-left:1px solid var(--border); display:flex; flex-direction:column; background:var(--dark); scrollbar-width:none; -ms-overflow-style:none; }
-          @media(max-width:640px){
+          /* Light mode: white panel + explicit light-grey inset cards (var(--dark) is near-white in light) */
+          html.light .oh-modal-panel { --dark2:#ffffff; --dark:#eef1f4; }
+          .oh-modal-outer, .oh-modal-left-col, .oh-modal-right { overscroll-behavior: contain; }
+          @media(max-width:860px){
             .oh-modal-outer { overflow-y:auto; }
             .oh-modal-columns { flex-direction:column; overflow:visible; height:auto; flex:none; min-height:unset; }
             .oh-modal-left-col { overflow-y:visible !important; }
@@ -897,7 +925,7 @@ export default function OrdersHistoryPage() {
           }
         `}</style>
         <div onClick={closeModal} style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
-          <div onClick={e => e.stopPropagation()} style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '16px', width: '100%', maxWidth: '820px', maxHeight: '92vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <div className="oh-modal-panel" onClick={e => e.stopPropagation()} style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '16px', width: '100%', maxWidth: '820px', maxHeight: '92vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
             {/* Modal header */}
             <div style={{ padding: '16px 22px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', background: 'var(--dark2)', flexShrink: 0 }}>
@@ -908,11 +936,19 @@ export default function OrdersHistoryPage() {
                     <span style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--white)', fontFamily: 'monospace', letterSpacing: '0.5px' }}>
                       #{(selectedOrder.id ?? selectedOrder._id)?.slice(-8).toUpperCase()}
                     </span>
-                    {selectedOrder.isCustomOrder && (
+                    {selectedOrder.isCustomOrder ? (
                       <span style={{ fontSize: '0.62rem', fontWeight: 700, padding: '2px 8px', borderRadius: '4px', background: 'rgba(212,168,67,0.08)', color: '#d4a843', border: '1px solid rgba(212,168,67,0.2)' }}>
                         CUSTOM · {selectedOrder.designType === 'upload' ? 'UPLOAD DESIGN' : 'DESIGN REQUEST'}
                       </span>
+                    ) : (
+                      <span style={{ fontSize: '0.62rem', fontWeight: 700, padding: '2px 8px', borderRadius: '4px', background: 'rgba(34,197,94,0.08)', color: '#16a34a', border: '1px solid rgba(34,197,94,0.25)' }}>
+                        READY-MADE
+                      </span>
                     )}
+                    <StatusBadge status={selectedOrder.orderStatus} />
+                    {selectedOrder.paymentStatus === 'paid'
+                      ? <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '2px 8px', borderRadius: '999px', background: 'rgba(34,197,94,0.1)', color: '#16a34a', border: '1px solid rgba(34,197,94,0.25)' }}>Paid</span>
+                      : <PaymentStatusBadge status={selectedOrder.paymentStatus} />}
                   </div>
                 )}
               </div>
@@ -953,7 +989,7 @@ export default function OrdersHistoryPage() {
                   <div className="oh-modal-left-col" style={{ flex: 1, overflowY: 'auto', padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: '20px', minWidth: 0, scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
 
                     {/* Tracker */}
-                    <div style={{ padding: '18px', background: 'var(--dark2)', borderRadius: '12px', border: '1px solid var(--border)' }}>
+                    <div style={{ paddingBottom: '4px' }}>
                       {selectedOrder.isCustomOrder ? (
                         <CustomOrderTracker orderStatus={selectedOrder.orderStatus} designType={selectedOrder.designType} designStatus={selectedOrder.designStatus} />
                       ) : (
@@ -962,28 +998,24 @@ export default function OrdersHistoryPage() {
                     </div>
 
                     {/* Order Info */}
-                    <div>
-                      <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#d4a843', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '10px' }}>Order Info</div>
-                      <div style={{ background: 'var(--dark)', borderRadius: '10px', border: '1px solid var(--border)', overflow: 'hidden' }}>
+                    <div style={{ borderTop: '1px solid var(--border)', paddingTop: '16px' }}>
+                      <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#d4a843', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '6px' }}>Order Info</div>
+                      <div>
                         {[
                           ['Placed', formatDate(selectedOrder.createdAt)],
                           (selectedOrder.paymentMethod && !(selectedOrder.paymentStatus === 'unpaid' && selectedOrder.orderStatus === 'awaiting_payment'))
                             ? ['Method', { cod: 'Cash on Delivery', gcash: 'GCash', paymaya: 'Maya', card: 'Credit / Debit Card' }[selectedOrder.paymentMethod] ?? selectedOrder.paymentMethod]
                             : null,
-                          ['Status', <StatusBadge key="s" status={selectedOrder.orderStatus} />],
-                          ['Payment', selectedOrder.paymentStatus === 'paid'
-                            ? <span key="p" style={{ fontSize: '0.8rem', color: '#22c55e', fontWeight: 600 }}>Paid</span>
-                            : selectedOrder.designFeePaid && selectedOrder.paymentStatus !== 'paid'
-                            ? <span key="p" style={{ fontSize: '0.8rem', color: '#f59e0b', fontWeight: 600 }}>Design Fee Paid · Order Unpaid</span>
-                            : <PaymentStatusBadge key="p" status={selectedOrder.paymentStatus} />
-                          ],
+                          (selectedOrder.designFeePaid && selectedOrder.paymentStatus !== 'paid')
+                            ? ['Payment', <span key="p" style={{ fontSize: '0.8rem', color: '#f59e0b', fontWeight: 600 }}>Design Fee Paid · Order Unpaid</span>]
+                            : null,
                           selectedOrder.designStatus
                             ? ['Design', <span key="d" style={{ padding: '2px 8px', borderRadius: '999px', fontSize: '0.68rem', fontWeight: 600, background: selectedOrder.designStatus === 'approved' ? '#d4a843' : selectedOrder.designStatus === 'rejected' ? 'rgba(239,68,68,0.1)' : 'rgba(234,179,8,0.1)', color: selectedOrder.designStatus === 'approved' ? '#000000' : selectedOrder.designStatus === 'rejected' ? '#ef4444' : '#d4a843' }}>
                                 {selectedOrder.designStatus === 'pending_review' ? 'Under Review' : selectedOrder.designStatus === 'approved' ? 'Approved' : selectedOrder.designStatus === 'rejected' ? 'Rejected' : selectedOrder.designStatus === 'draft_ready' ? 'Draft Ready' : selectedOrder.designStatus === 'revision_requested' ? 'Revision Requested' : selectedOrder.designStatus}
                               </span>]
                             : null,
-                        ].filter(Boolean).map(([label, value], i, arr) => (
-                          <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 14px', borderBottom: i < arr.length - 1 ? '1px solid var(--border)' : 'none' }}>
+                        ].filter(Boolean).map(([label, value]) => (
+                          <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0' }}>
                             <span style={{ fontSize: '0.8rem', color: 'var(--gray)' }}>{label}</span>
                             {typeof value === 'string'
                               ? <span style={{ fontSize: '0.82rem', color: 'var(--white)', fontWeight: 600 }}>{value}</span>
@@ -1012,7 +1044,7 @@ export default function OrdersHistoryPage() {
                             Re-upload Design
                           </button>
                         ) : (
-                          <div style={{ padding: '14px', background: 'var(--dark2)', borderRadius: '10px', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                          <div style={{ padding: '14px', background: 'var(--dark)', borderRadius: '10px', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
                             <div style={{ fontSize: '0.8rem', color: 'var(--gray)', fontWeight: 600 }}>Re-upload Design</div>
                             <div>
                               <div style={{ fontSize: '0.72rem', color: 'var(--gray)', marginBottom: '6px' }}>File (JPG, PNG, PDF, AI, PSD, SVG — max 10MB)</div>
@@ -1099,9 +1131,9 @@ export default function OrdersHistoryPage() {
 
                     {/* Delivery Address */}
                     {selectedOrder.deliveryAddress && Object.keys(selectedOrder.deliveryAddress).length > 0 && (
-                      <div>
-                        <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#d4a843', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '10px' }}>Delivery Address</div>
-                        <div style={{ padding: '12px 14px', background: 'var(--dark)', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '0.875rem', color: 'var(--white)', lineHeight: 1.6 }}>
+                      <div style={{ borderTop: '1px solid var(--border)', paddingTop: '16px' }}>
+                        <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#d4a843', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '6px' }}>Delivery Address</div>
+                        <div style={{ fontSize: '0.875rem', color: 'var(--white)', lineHeight: 1.6 }}>
                           {[selectedOrder.deliveryAddress.house_number, selectedOrder.deliveryAddress.street, selectedOrder.deliveryAddress.subdivision, selectedOrder.deliveryAddress.barangay, selectedOrder.deliveryAddress.city, selectedOrder.deliveryAddress.province, selectedOrder.deliveryAddress.zip].filter(Boolean).join(', ')}
                           {selectedOrder.deliveryAddress.phone && <div style={{ marginTop: '4px', fontSize: '0.8rem', color: 'var(--gray)' }}>{selectedOrder.deliveryAddress.phone}</div>}
                         </div>
@@ -1210,6 +1242,14 @@ export default function OrdersHistoryPage() {
                   {/* RIGHT column */}
                   <div className="oh-modal-right" style={{ display: 'flex', flexDirection: 'column', background: 'var(--dark)' }}>
 
+                    {/* Balance-due banner (downpayment orders) */}
+                    {selectedOrder.balance > 0 && (
+                      <div style={{ margin: '14px 18px 0', padding: '10px 12px', borderRadius: '9px', background: 'rgba(239,68,68,0.07)', border: '1px solid rgba(239,68,68,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
+                        <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#ef4444', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Balance Due</span>
+                        <span style={{ fontSize: '0.95rem', fontWeight: 800, color: '#ef4444' }}>{formatPeso(selectedOrder.balance)}</span>
+                      </div>
+                    )}
+
                     {/* Items */}
                     {selectedOrder.items?.length > 0 && (
                       <div style={{ padding: '18px 18px 14px' }}>
@@ -1305,13 +1345,11 @@ export default function OrdersHistoryPage() {
 
                         {/* Breakdown for awaiting_payment */}
                         {selectedOrder.orderStatus === 'awaiting_payment' && (
-                          <div style={{ padding: '10px 12px', background: 'var(--dark2)', borderRadius: '8px', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '5px', marginBottom: '4px' }}>
-                            {(selectedOrder.items || []).map((item, i) => (
-                              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem' }}>
-                                <span style={{ color: 'var(--gray)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '130px' }}>{item.productName} ×{item.qty || 1}</span>
-                                <span style={{ color: 'var(--white)', flexShrink: 0 }}>{formatPeso(item.lineTotal || (item.unitPrice || 0) * (item.qty || 1))}</span>
-                              </div>
-                            ))}
+                          <div style={{ padding: '10px 12px', background: 'var(--dark)', borderRadius: '8px', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '5px', marginBottom: '4px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem' }}>
+                              <span style={{ color: 'var(--gray)' }}>Items subtotal</span>
+                              <span style={{ color: 'var(--white)' }}>{formatPeso((selectedOrder.items || []).reduce((s, it) => s + (it.lineTotal || (it.unitPrice || 0) * (it.qty || 1)), 0))}</span>
+                            </div>
                             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem' }}>
                               <span style={{ color: 'var(--gray)' }}>Shipping</span>
                               <span style={{ color: 'var(--white)' }}>{formatPeso(selectedOrder.shippingFee ?? 0)}</span>

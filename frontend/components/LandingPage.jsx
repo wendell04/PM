@@ -151,6 +151,18 @@ const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=
   // Customer reviews
   const [landingReviews, setLandingReviews] = useState(initialReviews);
   const [reviewsIdx, setReviewsIdx] = useState(0);
+  // Real landing stats (orders / customers / avg rating)
+  const [landingStats, setLandingStats] = useState(null);
+  // FAQ accordion
+  const [openFaq, setOpenFaq] = useState(null);
+  // CMS-editable pricing (falls back to hardcoded publicPricing)
+  const [pricingContent, setPricingContent] = useState(null);
+  // CMS-editable Why-Us features / How-It-Works steps / Contact info (fallbacks below)
+  const [whyusContent, setWhyusContent]     = useState(null);
+  const [hiwContent, setHiwContent]         = useState(null);
+  const [contactContent, setContactContent] = useState(null);
+  // CMS-editable accepted payment methods (single source of truth; falls back to defaults)
+  const [paymentContent, setPaymentContent] = useState(null);
 
   // Forgot password
   const [forgotModal, setForgotModal]     = useState(false);
@@ -310,6 +322,31 @@ const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=
         if (d?.data?.reviews?.length) setLandingReviews(d.data.reviews);
       })
       .catch(console.error);
+  }, []);
+
+  // Fetch real landing stats (replaces hardcoded numbers)
+  useEffect(() => {
+    fetch(`${API_URL}/api/storefront/stats`)
+      .then(r => r.json())
+      .then(d => { if (d?.data) setLandingStats(d.data); })
+      .catch(() => {});
+  }, []);
+
+  // Fetch CMS pricing (falls back to hardcoded if not set)
+  useEffect(() => {
+    fetch(`${API_URL}/api/storefront/content/pricing`)
+      .then(r => r.json())
+      .then(d => { if (d?.data) setPricingContent(d.data); })
+      .catch(() => {});
+  }, []);
+
+  // Fetch CMS content for Why-Us / How-It-Works / Contact (each falls back to hardcoded)
+  useEffect(() => {
+    const get = (key, setter) => fetch(`${API_URL}/api/storefront/content/${key}`).then(r => r.json()).then(d => { if (d?.data) setter(d.data); }).catch(() => {});
+    get('why_us', setWhyusContent);
+    get('how_it_works', setHiwContent);
+    get('contact', setContactContent);
+    get('payment_methods', setPaymentContent);
   }, []);
 
   useEffect(() => {
@@ -874,6 +911,9 @@ const handleForgotResetPassword = async () => {
     setNavProductsLoading(false);
   };
 
+  // Preload products on mount so the Featured Products section populates (no-ops if already loaded)
+  useEffect(() => { fetchNavProducts(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+
   const handleNavEnter = (which) => {
     clearTimeout(navLeaveTimer.current);
     setHoveredNav(which);
@@ -934,6 +974,69 @@ const handleForgotResetPassword = async () => {
     { category: 'Ref Magnet',            startingAt: '₱15',  note: 'Maximum size 3".' },
     { category: 'Magnetic Bookmark',     startingAt: '₱15',  note: 'Maximum size 2.5".' },
     { category: 'Stickers & Labels',     startingAt: '₱25',  note: 'Kisscut / Diecut. Vinyl, Specialty, Photopaper, Regular & Kraft.' },
+  ];
+
+  // CMS pricing cards override the hardcoded defaults when set in the Homepage editor.
+  const pricingCards = (pricingContent?.cards?.length) ? pricingContent.cards : publicPricing;
+
+  // Why-Us features + How-It-Works steps + Contact info — CMS override w/ hardcoded fallback.
+  const DEFAULT_WHYUS = [
+    { title: 'Affordable Pricing',   desc: 'Premium prints at prices that make sense. No hidden fees, no overpricing.' },
+    { title: 'Fast Turnaround',      desc: 'Most orders ready within 24–48 hours. Rush orders? We can make it work.' },
+    { title: 'Design Assistance',    desc: 'No designer? No problem. Request a design and our team will create it for you.' },
+    { title: 'Approval Before Print', desc: 'You see and approve the final design before we print — 100% satisfaction guaranteed.' },
+  ];
+  const whyusFeatures = whyusContent?.features?.length ? whyusContent.features : DEFAULT_WHYUS;
+
+  const DEFAULT_HIW = [
+    { title: 'Browse Products',  desc: 'Explore our full catalogue of personalizable items — shirts, mugs, bags, stickers, and more.' },
+    { title: 'Personalize It',   desc: 'Add your name, message, or upload a design. We handle every detail to make it uniquely yours.' },
+    { title: 'Place Your Order', desc: 'Review your item and check out. We confirm every order and send a proof before production.' },
+    { title: 'Receive & Enjoy',  desc: 'Your personalized item is crafted with care and delivered straight to your door.' },
+  ];
+  const hiwSteps = hiwContent?.steps?.length ? hiwContent.steps : DEFAULT_HIW;
+  const HIW_ICONS = [
+    <svg key="0" className="hiw-new-step-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>,
+    <svg key="1" className="hiw-new-step-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>,
+    <svg key="2" className="hiw-new-step-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>,
+    <svg key="3" className="hiw-new-step-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>,
+  ];
+
+  // Owner-editable socials/email (?? default => null keeps default, '' hides that icon).
+  const SOCIAL_DEFAULTS = { facebook: 'https://www.facebook.com/share/1Mks4kwnhZ/?mibextid=wwXIfr', instagram: 'https://www.instagram.com/personalizemeprints', tiktok: 'https://www.tiktok.com/@personalizemeprints', shopee: 'https://shopee.ph/personalizemeprints' };
+  const socials = {
+    facebook:  contactContent?.facebook  ?? SOCIAL_DEFAULTS.facebook,
+    instagram: contactContent?.instagram ?? SOCIAL_DEFAULTS.instagram,
+    tiktok:    contactContent?.tiktok    ?? SOCIAL_DEFAULTS.tiktok,
+    shopee:    contactContent?.shopeeUrl ?? SOCIAL_DEFAULTS.shopee,
+    email:     contactContent?.email     ?? '',
+  };
+
+  // Accepted payment methods — single source of truth (footer badges + checkout read this).
+  // Shape: { enabled: { cod, gcash, paymaya, card } }. Missing key = enabled (default-on).
+  const payEnabled = (paymentContent?.enabled && typeof paymentContent.enabled === 'object') ? paymentContent.enabled : {};
+  const hasPay = (id) => payEnabled[id] !== false;
+
+  // Link a pricing card to its matching shop collection (keyword match; search fallback).
+  const PRICING_STOP = new Set(['printing', 'print', 'custom', 'personalized']);
+  const pricingLink = (category) => {
+    const norm = s => (s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+    const words = norm(category).split(' ').filter(w => w.length > 2 && !PRICING_STOP.has(w));
+    const match = landingCollections.find(c => {
+      const cn = norm(c.name);
+      return cn && words.some(w => cn.includes(w));
+    });
+    if (match) return `/shop?collection=${match.slug ?? match.id ?? match._id}`;
+    return `/shop?search=${encodeURIComponent(category.replace(/\s*\(.*?\)\s*/g, '').trim())}`;
+  };
+
+  const FAQS = [
+    { q: 'How long does an order take?', a: 'Most orders are ready within 24–48 hours after you approve the design. Need it sooner? We accept rush orders — just message us and we’ll do our best to make it work.' },
+    { q: 'I don’t have a design. Can you make one?', a: 'Yes! Pick “Request a Design” when you order and our team will create it for you. You’ll review and approve the proof before we print anything.' },
+    { q: 'What files do you accept for custom uploads?', a: 'PNG, JPG, or PDF work best. For the sharpest print, send high-resolution files (around 300 DPI). If your file isn’t print-ready, we’ll let you know.' },
+    { q: 'How do I pay?', a: 'We accept GCash, Maya, and credit/debit cards (Visa & Mastercard). For bulk orders, a downpayment option is available at checkout.' },
+    { q: 'Do you deliver?', a: 'Yes — we ship nationwide via courier. The delivery fee depends on your location and is shown at checkout or arranged with the rider for booked couriers.' },
+    { q: 'Do you offer bulk or wholesale pricing?', a: 'Definitely. Prices drop as quantity goes up. Log in or register to view the complete pricelist with bulk breakdowns for every product.' },
   ];
 
   const fullPricelist = [
@@ -1048,14 +1151,45 @@ const handleForgotResetPassword = async () => {
   // CMS-driven when both published lists exist (heroRole); else hardcoded fallback. ──
   const cmsTaglines = heroBanners.filter(b => b.heroRole === 'tagline');
   const cmsImages   = heroBanners.filter(b => b.heroRole === 'image' && b.image);
+  const cmsGallery  = heroBanners.filter(b => b.heroRole === 'gallery' && b.image);
   const useCmsHero  = cmsTaglines.length > 0 && cmsImages.length > 0;
+
+  const PRESET_ACCENTS = ['gold', 'red', 'white'];
+  const accentStyle = (color) => {
+    const c = color || 'gold';
+    return PRESET_ACCENTS.includes(c) ? { className: `${c}-text` } : { color: c };
+  };
+  // titleParts model: white = normal text (plain), gold/red = preset class, anything else = inline hex.
+  const partStyle = (color) => {
+    const c = color || 'white';
+    if (c === 'gold' || c === 'red') return { className: `${c}-text` };
+    if (c === 'white') return {};
+    return { color: c };
+  };
 
   const effectiveSlides = useCmsHero
     ? cmsTaglines.map(b => {
         const parts = [];
-        if (b.headline) parts.push({ text: b.headline, plain: true });
-        if (b.headlineAccent) parts.push({ text: b.headlineAccent, className: `${b.headlineAccentColor || 'gold'}-text` });
-        if (b.headlineAccent2) parts.push({ text: b.headlineAccent2, className: `${b.headlineAccent2Color || 'gold'}-text` });
+        if (Array.isArray(b.titleParts) && b.titleParts.length) {
+          // New parts-based composer (positional segments; spaces auto-inserted between same-line parts).
+          b.titleParts.forEach((p, idx) => {
+            if (p.newLine && idx !== 0) parts.push({ break: true });
+            const text = (idx === 0 || p.newLine) ? (p.text || '') : ' ' + (p.text || '');
+            parts.push({ text, ...partStyle(p.color) });
+          });
+        } else {
+          if (b.headline) parts.push({ text: b.headline, plain: true });
+          if (b.headlineAccent) {
+            const s = accentStyle(b.headlineAccentColor);
+            if (b.headlineBreak1) parts.push({ break: true }, { text: b.headlineAccent, ...s });
+            else parts.push({ text: ' ' + b.headlineAccent, ...s });
+          }
+          if (b.headlineAccent2) {
+            const s = accentStyle(b.headlineAccent2Color);
+            if (b.headlineBreak2) parts.push({ break: true }, { text: b.headlineAccent2, ...s });
+            else parts.push({ text: ' ' + b.headlineAccent2, ...s });
+          }
+        }
         return {
           tag:        b.tag || null,
           titleParts: parts.length > 0 ? parts : [{ text: '', plain: true }],
@@ -1201,6 +1335,12 @@ const handleForgotResetPassword = async () => {
                             <div className="lp-nav-user-label">Signed in as</div>
                             <div className="lp-nav-user-name-full">{user?.firstName} {user?.lastName}</div>
                           </div>
+                          {user?.role && user.role !== 'customer' && (
+                            <a href="/dashboard/business/dashboardoverview" className="lp-nav-menu-item" onClick={() => setUserMenuOpen(false)}>
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+                              Dashboard
+                            </a>
+                          )}
                           <a href="/shop/profile" className="lp-nav-menu-item" onClick={() => setUserMenuOpen(false)}>
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
                             My Profile
@@ -1594,7 +1734,7 @@ const handleForgotResetPassword = async () => {
                       ? <br key={j}/>
                       : part.plain
                         ? <span key={j}>{part.text}</span>
-                        : <span key={j} className={part.className}>{part.text}</span>
+                        : <span key={j} className={part.className} style={part.color ? { color: part.color } : undefined}>{part.text}</span>
                   )}
                 </h1>
                 {slide.subtitle && <p className="hero-subtitle">{slide.subtitle}</p>}
@@ -1756,6 +1896,55 @@ const handleForgotResetPassword = async () => {
         </section>
       )}
 
+      {/* FEATURED PRODUCTS */}
+      {navProducts.length > 0 && (() => {
+        const featuredList = navProducts.filter(p => p.isFeatured);
+        const featured = (featuredList.length ? featuredList : navProducts).slice(0, 8);
+        const slugOf  = p => p.slug || (p.name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+        const priceOf = p => p.flatPrice ?? p.price ?? p.basePrice ?? null;
+        const imgOf   = p => p.thumbnail || (Array.isArray(p.images) ? p.images[0] : null) || p.image || null;
+        return (
+          <section style={{ padding: '64px 0' }}>
+            <div className="container">
+              <div className="section-header center">
+                <span className="section-tag">Shop Best-Sellers</span>
+                <h2 className="section-title">Featured <span className="gold-text">Products</span></h2>
+                <p className="section-subtitle">Ready-made favorites our customers love — tap any item to customize and order.</p>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '18px', marginTop: '8px' }}>
+                {featured.map((p, i) => {
+                  const price = priceOf(p);
+                  const img = imgOf(p);
+                  const href = `/shop/products/${slugOf(p)}`;
+                  return (
+                    <a key={p._id || p.id || i} href={href}
+                      onClick={e => { e.preventDefault(); router.push(href); }}
+                      style={{ display: 'flex', flexDirection: 'column', background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '14px', overflow: 'hidden', textDecoration: 'none', cursor: 'pointer', transition: 'transform 0.15s, box-shadow 0.15s, border-color 0.15s' }}
+                      onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.boxShadow = '0 10px 30px rgba(0,0,0,0.18)'; e.currentTarget.style.borderColor = 'rgba(212,168,67,0.4)'; }}
+                      onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.borderColor = 'var(--border)'; }}
+                    >
+                      <div style={{ aspectRatio: '1 / 1', background: 'var(--dark)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                        {img
+                          ? <img src={img} alt={p.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                          : <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="rgba(212,168,67,0.35)" strokeWidth="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>}
+                      </div>
+                      <div style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: '4px', flex: 1 }}>
+                        <div style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--white)', lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</div>
+                        {p.category && <div style={{ fontSize: '0.72rem', color: 'var(--gray)' }}>{p.category}</div>}
+                        {price != null && <div style={{ marginTop: 'auto', paddingTop: '4px', fontSize: '1rem', fontWeight: 800, color: 'var(--gold)' }}>₱{Number(price).toLocaleString()}</div>}
+                      </div>
+                    </a>
+                  );
+                })}
+              </div>
+              <div style={{ textAlign: 'center', marginTop: '28px' }}>
+                <button className="btn-primary" onClick={() => router.push('/shop')}>View all products →</button>
+              </div>
+            </div>
+          </section>
+        );
+      })()}
+
       {/* SERVICE CAROUSEL — hidden
       <section id="services">
         <div className="container">
@@ -1818,60 +2007,18 @@ const handleForgotResetPassword = async () => {
 
           {/* Right steps column */}
           <div className="hiw-new-steps">
-
-            <div className="hiw-new-step">
-              <div className="hiw-new-step-num">
-                <span className="hiw-new-step-n">01</span>
-                <svg className="hiw-new-step-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-                </svg>
+            {hiwSteps.slice(0, 4).map((s, i) => (
+              <div className="hiw-new-step" key={i}>
+                <div className="hiw-new-step-num">
+                  <span className="hiw-new-step-n">{String(i + 1).padStart(2, '0')}</span>
+                  {HIW_ICONS[i] || HIW_ICONS[0]}
+                </div>
+                <div>
+                  <p className="hiw-new-step-title">{s.title}</p>
+                  <p className="hiw-new-step-desc">{s.desc}</p>
+                </div>
               </div>
-              <div>
-                <p className="hiw-new-step-title">Browse Products</p>
-                <p className="hiw-new-step-desc">Explore our full catalogue of personalizable items — shirts, mugs, bags, stickers, and more.</p>
-              </div>
-            </div>
-
-            <div className="hiw-new-step">
-              <div className="hiw-new-step-num">
-                <span className="hiw-new-step-n">02</span>
-                <svg className="hiw-new-step-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
-                </svg>
-              </div>
-              <div>
-                <p className="hiw-new-step-title">Personalize It</p>
-                <p className="hiw-new-step-desc">Add your name, message, or upload a design. We handle every detail to make it uniquely yours.</p>
-              </div>
-            </div>
-
-            <div className="hiw-new-step">
-              <div className="hiw-new-step-num">
-                <span className="hiw-new-step-n">03</span>
-                <svg className="hiw-new-step-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/>
-                  <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
-                </svg>
-              </div>
-              <div>
-                <p className="hiw-new-step-title">Place Your Order</p>
-                <p className="hiw-new-step-desc">Review your item and check out. We confirm every order and send a proof before production.</p>
-              </div>
-            </div>
-
-            <div className="hiw-new-step">
-              <div className="hiw-new-step-num">
-                <span className="hiw-new-step-n">04</span>
-                <svg className="hiw-new-step-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
-                </svg>
-              </div>
-              <div>
-                <p className="hiw-new-step-title">Receive &amp; Enjoy</p>
-                <p className="hiw-new-step-desc">Your personalized item is crafted with care and delivered straight to your door.</p>
-              </div>
-            </div>
-
+            ))}
           </div>
         </div>
       </section>
@@ -1887,12 +2034,7 @@ const handleForgotResetPassword = async () => {
                 <p className="section-subtitle">We're not just a print shop — we're your creative partner. Every order is handled with care, precision, and pride.</p>
               </div>
               <div className="feature-list">
-                {[
-                  {title:'Affordable Pricing',    desc:'Premium prints at prices that make sense. No hidden fees, no overpricing.'},
-                  {title:'Fast Turnaround',        desc:'Most orders ready within 24–48 hours. Rush orders? We can make it work.'},
-                  {title:'Design Assistance',      desc:'No designer? No problem. Request a design and our team will create it for you.'},
-                  {title:'Approval Before Print',  desc:'You see and approve the final design before we print — 100% satisfaction guaranteed.'},
-                ].map((f, i) => (
+                {whyusFeatures.map((f, i) => (
                   <div className="feature-item fade-up" key={i}>
                     <div className="feature-check">✓</div>
                     <div><h4>{f.title}</h4><p>{f.desc}</p></div>
@@ -1904,18 +2046,18 @@ const handleForgotResetPassword = async () => {
               <div className="feature-card-stack">
                 <div className="fcard"><div className="fcard-inner">
                   <div className="fcard-label">Total Orders</div>
-                  <div className="fcard-value gold-text">1,240+</div>
+                  <div className="fcard-value gold-text">{landingStats ? landingStats.orders.toLocaleString() : '—'}</div>
                   <div className="fcard-bar"><div className="fcard-bar-fill" style={{width:'82%',background:'linear-gradient(90deg,var(--gold-dark),var(--gold))'}}/></div>
                 </div></div>
                 <div className="fcard"><div className="fcard-inner">
                   <div className="fcard-label">Satisfaction Rate</div>
-                  <div className="fcard-value red-text">98.5%</div>
-                  <div className="fcard-bar"><div className="fcard-bar-fill" style={{width:'98%',background:'linear-gradient(90deg,var(--red-dark),var(--red))'}}/></div>
+                  <div className="fcard-value red-text">{landingStats?.avgRating ? `${Math.round(landingStats.avgRating / 5 * 100)}%` : '—'}</div>
+                  <div className="fcard-bar"><div className="fcard-bar-fill" style={{width: landingStats?.avgRating ? `${Math.round(landingStats.avgRating / 5 * 100)}%` : '0%',background:'linear-gradient(90deg,var(--red-dark),var(--red))'}}/></div>
                 </div></div>
                 <div className="fcard"><div className="fcard-inner">
-                  <div className="fcard-label">Avg. Delivery</div>
-                  <div className="fcard-value gold-text">24 hrs</div>
-                  <div style={{fontSize:'.75rem',color:'var(--gray)',marginTop:'.5rem'}}>Rush orders available</div>
+                  <div className="fcard-label">Happy Customers</div>
+                  <div className="fcard-value gold-text">{landingStats ? landingStats.customers.toLocaleString() : '—'}</div>
+                  <div style={{fontSize:'.75rem',color:'var(--gray)',marginTop:'.5rem'}}>{landingStats?.reviewsCount ? `${landingStats.reviewsCount} verified review${landingStats.reviewsCount === 1 ? '' : 's'}` : 'and counting'}</div>
                 </div></div>
               </div>
             </div>
@@ -1985,6 +2127,27 @@ const handleForgotResetPassword = async () => {
         </section>
       )}
 
+      {/* OUR WORK GALLERY */}
+      {cmsGallery.length > 0 && (
+        <section style={{ padding: '64px 0' }}>
+          <div className="container">
+            <div className="section-header center">
+              <span className="section-tag">Our Work</span>
+              <h2 className="section-title">Recent <span className="gold-text">Prints</span></h2>
+              <p className="section-subtitle">A peek at real orders we&apos;ve printed and delivered.</p>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '12px', marginTop: '8px' }}>
+              {cmsGallery.map((g, i) => (
+                <div key={g._id || g.id || i} style={{ aspectRatio: '1 / 1', borderRadius: '12px', overflow: 'hidden', background: 'var(--dark2)', border: '1px solid var(--border)' }}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={g.image} alt={g.name || 'Our work'} loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
+
       {/* PRICING */}
       <section id="pricing" className="pricing-bg">
         <div className="container">
@@ -2010,8 +2173,13 @@ const handleForgotResetPassword = async () => {
 
             {/* Right — pricing grid */}
             <div className="pub-pricing-grid">
-              {publicPricing.map((item, i) => (
-                <div className="pub-pricing-card fade-up" key={i}>
+              {pricingCards.map((item, i) => (
+                <div className="pub-pricing-card fade-up" key={i}
+                  onClick={() => router.push(pricingLink(item.category))}
+                  role="link" tabIndex={0}
+                  onKeyDown={e => { if (e.key === 'Enter') router.push(pricingLink(item.category)); }}
+                  style={{ cursor: 'pointer' }}
+                >
                   <div className="pub-pricing-top">
                     <h4 className="pub-pricing-name">{item.category}</h4>
                     <div className="pub-pricing-starts">
@@ -2020,9 +2188,41 @@ const handleForgotResetPassword = async () => {
                     </div>
                   </div>
                   <p className="pub-pricing-note">{item.note}</p>
+                  <span style={{ marginTop: '10px', fontSize: '0.78rem', fontWeight: 700, color: 'var(--gold)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Shop now →</span>
                 </div>
               ))}
             </div>
+          </div>
+        </div>
+      </section>
+
+      {/* FAQ */}
+      <section style={{ padding: '64px 0' }}>
+        <div className="container" style={{ maxWidth: '780px' }}>
+          <div className="section-header center">
+            <span className="section-tag">Got Questions?</span>
+            <h2 className="section-title">Frequently Asked <span className="gold-text">Questions</span></h2>
+            <p className="section-subtitle">Everything you need to know before you order.</p>
+          </div>
+          <div style={{ marginTop: '8px', borderTop: '1px solid var(--border)' }}>
+            {FAQS.map((item, i) => {
+              const open = openFaq === i;
+              return (
+                <div key={i} style={{ borderBottom: '1px solid var(--border)' }}>
+                  <button
+                    onClick={() => setOpenFaq(open ? null : i)}
+                    aria-expanded={open}
+                    style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '14px', padding: '18px 4px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', color: 'var(--white)', fontSize: '1.02rem', fontWeight: 700, lineHeight: 1.4 }}
+                  >
+                    <span>{item.q}</span>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}><polyline points="6 9 12 15 18 9"/></svg>
+                  </button>
+                  {open && (
+                    <div style={{ padding: '0 4px 20px', color: 'var(--gray)', fontSize: '0.95rem', lineHeight: 1.7 }}>{item.a}</div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
       </section>
@@ -2042,7 +2242,7 @@ const handleForgotResetPassword = async () => {
                     <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
                   </svg>
                 </div>
-                <div><h4>Message Us</h4><p>Facebook, Instagram, TikTok</p><p style={{fontSize:'.78rem',color:'var(--gray)',marginTop:'.2rem'}}>@personalizemeprints</p></div>
+                <div><h4>Message Us</h4><p>Facebook, Instagram, TikTok</p><p style={{fontSize:'.78rem',color:'var(--gray)',marginTop:'.2rem'}}>{contactContent?.handle || '@personalizemeprints'}</p>{socials.email && <p style={{fontSize:'.78rem',marginTop:'.3rem'}}><a href={`mailto:${socials.email}`} className="auth-link">{socials.email}</a></p>}</div>
               </div>
               <div className="contact-info-card">
                 <div className="contact-info-icon" style={{color:'var(--gold)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
@@ -2050,7 +2250,7 @@ const handleForgotResetPassword = async () => {
                     <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
                   </svg>
                 </div>
-                <div><h4>Business Hours</h4><p>Mon - Sat: 9:00 AM - 6:00 PM</p><p style={{fontSize:'.78rem',color:'var(--gray)',marginTop:'.2rem'}}>Sunday: By Appointment</p></div>
+                <div><h4>Business Hours</h4><p>{contactContent?.hours1 || 'Mon - Sat: 9:00 AM - 6:00 PM'}</p><p style={{fontSize:'.78rem',color:'var(--gray)',marginTop:'.2rem'}}>{contactContent?.hours2 || 'Sunday: By Appointment'}</p></div>
               </div>
               <div className="contact-info-card">
                 <div className="contact-info-icon" style={{color:'var(--gold)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
@@ -2059,21 +2259,27 @@ const handleForgotResetPassword = async () => {
                     <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
                   </svg>
                 </div>
-                <div><h4>Shop Online</h4><a href="https://shopee.ph/personalizemeprints" target="_blank" rel="noopener noreferrer" className="auth-link">Shopee: personalizemeprints</a></div>
+                <div><h4>Shop Online</h4><a href={contactContent?.shopeeUrl || 'https://shopee.ph/personalizemeprints'} target="_blank" rel="noopener noreferrer" className="auth-link">{contactContent?.shopeeText || 'Shopee: personalizemeprints'}</a></div>
               </div>
               <div className="contact-socials">
-                <a href="https://www.facebook.com/share/1Mks4kwnhZ/?mibextid=wwXIfr" className="contact-social-btn" target="_blank" rel="noopener noreferrer">
+                {socials.facebook && (
+                <a href={socials.facebook} className="contact-social-btn" target="_blank" rel="noopener noreferrer">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M24 12.073C24 5.404 18.627 0 12 0S0 5.404 0 12.073C0 18.1 4.388 23.094 10.125 24v-8.437H7.078v-3.49h3.047V9.41c0-3.025 1.792-4.697 4.533-4.697 1.312 0 2.686.236 2.686.236v2.97h-1.513c-1.491 0-1.956.93-1.956 1.886v2.267h3.328l-.532 3.49h-2.796V24C19.612 23.094 24 18.1 24 12.073z"/></svg>
                   Facebook
                 </a>
-                <a href="https://www.instagram.com/personalizemeprints" className="contact-social-btn" target="_blank" rel="noopener noreferrer">
+                )}
+                {socials.instagram && (
+                <a href={socials.instagram} className="contact-social-btn" target="_blank" rel="noopener noreferrer">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 1 0 0 12.324 6.162 6.162 0 0 0 0-12.324zM12 16a4 4 0 1 1 0-8 4 4 0 0 1 0 8zm6.406-11.845a1.44 1.44 0 1 0 0 2.881 1.44 1.44 0 0 0 0-2.881z"/></svg>
                   Instagram
                 </a>
-                <a href="https://www.tiktok.com/@personalizemeprints" className="contact-social-btn" target="_blank" rel="noopener noreferrer">
+                )}
+                {socials.tiktok && (
+                <a href={socials.tiktok} className="contact-social-btn" target="_blank" rel="noopener noreferrer">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-2.88 2.5 2.89 2.89 0 0 1-2.89-2.89 2.89 2.89 0 0 1 2.89-2.89c.28 0 .54.04.79.1V9.01a6.33 6.33 0 0 0-.79-.05 6.34 6.34 0 0 0-6.34 6.34 6.34 6.34 0 0 0 6.34 6.34 6.34 6.34 0 0 0 6.33-6.34V8.69a8.18 8.18 0 0 0 4.78 1.52V6.75a4.85 4.85 0 0 1-1.01-.06z"/></svg>
                   TikTok
                 </a>
+                )}
               </div>
             </div>
             <div className="contact-form-wrap">
@@ -2151,18 +2357,18 @@ const handleForgotResetPassword = async () => {
             <p className="lp-footer-tagline">Your creative partner for custom print products. Quality printing for every occasion.</p>
             <div className="lp-footer-socials">
               <img src="/logos/PersonalizeMe logo.png" alt="Logo" className="lp-footer-logo" />
-              <a href="https://www.facebook.com/share/1Mks4kwnhZ/?mibextid=wwXIfr" target="_blank" rel="noopener noreferrer" className="lp-footer-social-btn" aria-label="Facebook">
+              {socials.facebook && <a href={socials.facebook} target="_blank" rel="noopener noreferrer" className="lp-footer-social-btn" aria-label="Facebook">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M24 12.073C24 5.404 18.627 0 12 0S0 5.404 0 12.073C0 18.1 4.388 23.094 10.125 24v-8.437H7.078v-3.49h3.047V9.41c0-3.025 1.792-4.697 4.533-4.697 1.312 0 2.686.236 2.686.236v2.97h-1.513c-1.491 0-1.956.93-1.956 1.886v2.267h3.328l-.532 3.49h-2.796V24C19.612 23.094 24 18.1 24 12.073z"/></svg>
-              </a>
-              <a href="https://www.instagram.com/personalizemeprints" target="_blank" rel="noopener noreferrer" className="lp-footer-social-btn" aria-label="Instagram">
+              </a>}
+              {socials.instagram && <a href={socials.instagram} target="_blank" rel="noopener noreferrer" className="lp-footer-social-btn" aria-label="Instagram">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 1 0 0 12.324 6.162 6.162 0 0 0 0-12.324zM12 16a4 4 0 1 1 0-8 4 4 0 0 1 0 8zm6.406-11.845a1.44 1.44 0 1 0 0 2.881 1.44 1.44 0 0 0 0-2.881z"/></svg>
-              </a>
-              <a href="https://www.tiktok.com/@personalizemeprints" target="_blank" rel="noopener noreferrer" className="lp-footer-social-btn" aria-label="TikTok">
+              </a>}
+              {socials.tiktok && <a href={socials.tiktok} target="_blank" rel="noopener noreferrer" className="lp-footer-social-btn" aria-label="TikTok">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-2.88 2.5 2.89 2.89 0 0 1-2.89-2.89 2.89 2.89 0 0 1 2.89-2.89c.28 0 .54.04.79.1V9.01a6.33 6.33 0 0 0-.79-.05 6.34 6.34 0 0 0-6.34 6.34 6.34 6.34 0 0 0 6.34 6.34 6.34 6.34 0 0 0 6.33-6.34V8.69a8.18 8.18 0 0 0 4.78 1.52V6.75a4.85 4.85 0 0 1-1.01-.06z"/></svg>
-              </a>
-              <a href="https://shopee.ph/personalizemeprints" target="_blank" rel="noopener noreferrer" className="lp-footer-social-btn" aria-label="Shopee">
+              </a>}
+              {socials.shopee && <a href={socials.shopee} target="_blank" rel="noopener noreferrer" className="lp-footer-social-btn" aria-label="Shopee">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4H6zm3 9a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5z"/></svg>
-              </a>
+              </a>}
             </div>
           </div>
           <details className="lp-footer-col">
@@ -2190,18 +2396,22 @@ const handleForgotResetPassword = async () => {
               <svg className="lp-footer-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
             </summary>
             <div className="lp-footer-pay-grid">
-              <img src="/logos/Gcash-Logo-1024x1024.png" alt="GCash" className="lp-footer-pay-badge" />
-              <img src="/logos/maya logo.png" alt="Maya" className="lp-footer-pay-badge" />
-              <svg viewBox="0 0 780 500" xmlns="http://www.w3.org/2000/svg" className="lp-footer-pay-visa">
-                <rect width="780" height="500" rx="40" fill="#1a1f71"/>
-                <text x="390" y="340" textAnchor="middle" fontFamily="Arial" fontSize="240" fontWeight="bold" fill="#fff" fontStyle="italic">VISA</text>
-              </svg>
-              <svg viewBox="0 0 60 38" xmlns="http://www.w3.org/2000/svg" className="lp-footer-pay-mc">
-                <rect width="60" height="38" rx="4" fill="#252525"/>
-                <circle cx="23" cy="19" r="13" fill="#EB001B"/>
-                <circle cx="37" cy="19" r="13" fill="#F79E1B"/>
-                <path d="M30 8.8a13 13 0 0 1 0 20.4A13 13 0 0 1 30 8.8z" fill="#FF5F00"/>
-              </svg>
+              {hasPay('gcash') && <img src="/logos/Gcash-Logo-1024x1024.png" alt="GCash" className="lp-footer-pay-badge" />}
+              {hasPay('paymaya') && <img src="/logos/maya logo.png" alt="Maya" className="lp-footer-pay-badge" />}
+              {hasPay('card') && (
+                <>
+                  <svg viewBox="0 0 780 500" xmlns="http://www.w3.org/2000/svg" className="lp-footer-pay-visa">
+                    <rect width="780" height="500" rx="40" fill="#1a1f71"/>
+                    <text x="390" y="340" textAnchor="middle" fontFamily="Arial" fontSize="240" fontWeight="bold" fill="#fff" fontStyle="italic">VISA</text>
+                  </svg>
+                  <svg viewBox="0 0 60 38" xmlns="http://www.w3.org/2000/svg" className="lp-footer-pay-mc">
+                    <rect width="60" height="38" rx="4" fill="#252525"/>
+                    <circle cx="23" cy="19" r="13" fill="#EB001B"/>
+                    <circle cx="37" cy="19" r="13" fill="#F79E1B"/>
+                    <path d="M30 8.8a13 13 0 0 1 0 20.4A13 13 0 0 1 30 8.8z" fill="#FF5F00"/>
+                  </svg>
+                </>
+              )}
             </div>
           </details>
         </div>

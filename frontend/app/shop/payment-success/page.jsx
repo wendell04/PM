@@ -21,7 +21,8 @@ export default function PaymentSuccessPage() {
   useEffect(() => {
     sessionStorage.removeItem('checkout_payload');
     sessionStorage.removeItem('pending_payment_order_id');
-    if (orderId) clearCart();
+    // Cart is cleared only once the order is confirmed settled (see fetchOrder), not on mount —
+    // otherwise a payment that fails verification would have already emptied the cart.
   }, [orderId]);
 
   const [order,        setOrder]        = useState(null);
@@ -80,6 +81,7 @@ export default function PaymentSuccessPage() {
           }
           router.replace(`/shop/payment-failed?id=${orderId}`);
         } else {
+          clearCart();
           setVerifying(false);
           setLoading(false);
         }
@@ -96,7 +98,6 @@ export default function PaymentSuccessPage() {
   return (
     <div style={{
       minHeight: '100vh',
-      background: 'var(--dark)',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
@@ -124,11 +125,20 @@ export default function PaymentSuccessPage() {
           justifyContent: 'center',
           margin: '0 auto 24px',
         }}>
-          <svg width="36" height="36" viewBox="0 0 24 24" fill="none"
-            stroke="var(--gold)" strokeWidth="2.5" strokeLinecap="round"
-            strokeLinejoin="round">
-            <polyline points="20 6 9 17 4 12"/>
-          </svg>
+          {verifying ? (
+            <svg width="36" height="36" viewBox="0 0 24 24" fill="none"
+              stroke="var(--gold)" strokeWidth="2.5" strokeLinecap="round">
+              <path d="M21 12a9 9 0 1 1-6.219-8.56">
+                <animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" dur="0.8s" repeatCount="indefinite"/>
+              </path>
+            </svg>
+          ) : (
+            <svg width="36" height="36" viewBox="0 0 24 24" fill="none"
+              stroke="var(--gold)" strokeWidth="2.5" strokeLinecap="round"
+              strokeLinejoin="round">
+              <polyline points="20 6 9 17 4 12"/>
+            </svg>
+          )}
         </div>
 
         <h1 style={{
@@ -137,7 +147,7 @@ export default function PaymentSuccessPage() {
           color: 'var(--white)',
           marginBottom: '8px',
         }}>
-          {isCod ? 'Order Placed!' : order?.paymentStatus === 'partial' ? 'Downpayment Received!' : (order?.designFeePaid && order?.paymentStatus !== 'paid') ? 'Design Fee Paid!' : 'Payment Successful'}
+          {verifying ? 'Confirming your payment…' : isCod ? 'Order Placed!' : order?.paymentStatus === 'partial' ? 'Downpayment Received!' : (order?.designFeePaid && order?.paymentStatus !== 'paid') ? 'Design Fee Paid!' : 'Payment Successful'}
         </h1>
 
         <p style={{
@@ -146,7 +156,9 @@ export default function PaymentSuccessPage() {
           marginBottom: '32px',
           lineHeight: 1.6,
         }}>
-          {isCod
+          {verifying
+            ? "Please wait a moment while we confirm your payment with the provider. Don't close this page."
+            : isCod
             ? "Thank you for your order. Our team will contact you to confirm delivery and payment details."
             : order?.paymentStatus === 'partial'
               ? `Your downpayment of ₱${Number(order?.downPayment ?? 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })} has been received. The remaining balance of ₱${Number(order?.balance ?? 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })} is due before delivery.`
@@ -155,11 +167,6 @@ export default function PaymentSuccessPage() {
                 : "Thank you for your order. We've received your payment and will begin processing shortly."}
         </p>
 
-        {verifying && (
-          <p style={{ color: 'var(--gold)', fontSize: '0.875rem', marginBottom: '8px' }}>
-            Verifying payment...
-          </p>
-        )}
         {loading && !verifying && (
           <p style={{ color: 'var(--gray)', fontSize: '0.875rem' }}>
             Loading order details...
@@ -301,43 +308,45 @@ export default function PaymentSuccessPage() {
           </div>
         )}
 
-        <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
-          <Link
-            href="/shop/orders-history"
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '10px 20px',
-              background: 'var(--gold)',
-              color: 'var(--black)',
-              borderRadius: '8px',
-              fontWeight: 600,
-              fontSize: '0.9rem',
-              textDecoration: 'none',
-            }}
-          >
-            View Orders
-          </Link>
-          <Link
-            href="/shop"
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '10px 20px',
-              background: 'transparent',
-              color: 'var(--white)',
-              border: '1px solid rgba(255,255,255,0.15)',
-              borderRadius: '8px',
-              fontWeight: 500,
-              fontSize: '0.9rem',
-              textDecoration: 'none',
-            }}
-          >
-            Continue Shopping
-          </Link>
-        </div>
+        {!verifying && (
+          <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
+            <Link
+              href="/shop/orders-history"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '10px 20px',
+                background: 'var(--gold)',
+                color: 'var(--black)',
+                borderRadius: '8px',
+                fontWeight: 600,
+                fontSize: '0.9rem',
+                textDecoration: 'none',
+              }}
+            >
+              View Orders
+            </Link>
+            <Link
+              href="/shop"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '10px 20px',
+                background: 'transparent',
+                color: 'var(--white)',
+                border: '1px solid rgba(255,255,255,0.15)',
+                borderRadius: '8px',
+                fontWeight: 500,
+                fontSize: '0.9rem',
+                textDecoration: 'none',
+              }}
+            >
+              Continue Shopping
+            </Link>
+          </div>
+        )}
 
       </div>
     </div>

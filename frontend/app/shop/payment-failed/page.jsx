@@ -15,7 +15,6 @@ export default function PaymentFailedPage() {
   return (
     <div style={{
       minHeight: '100vh',
-      background: 'var(--dark)',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
