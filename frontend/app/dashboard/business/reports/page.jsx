@@ -260,7 +260,7 @@ const TABS = [
 export default function ReportsPage() {
   const { token } = useAuth();
   const [activeTab, setActiveTab] = useState('sales');
-  const [salesTrendCollapsed, setSalesTrendCollapsed] = useState(false);
+  const [salesTrendCollapsed, setSalesTrendCollapsed] = useState(true);
   const [inventoryCollapsed, setInventoryCollapsed] = useState(false);
 
   const stateRef = useRef({});
@@ -720,8 +720,8 @@ export default function ReportsPage() {
                         Online: {fmtPeso(salesData.onlineSales)}
                       </span>
                     </div>
-                    <SectionHeader title="Sales Trend" onExport={exportSales} exporting={salesExporting} collapsed={salesTrendCollapsed} onToggle={() => setSalesTrendCollapsed(p => !p)} />
-                    {!salesTrendCollapsed && salesGrouped && salesGrouped.length > 0 && (
+                    <SectionHeader title="Sales Trend" onExport={exportSales} exporting={salesExporting} />
+                    {salesGrouped && salesGrouped.length > 0 && (
                       <div style={{ width: '100%', height: 280, marginBottom: '1rem' }}>
                         <ResponsiveContainer width="100%" height="100%">
                           <LineChart
@@ -753,6 +753,20 @@ export default function ReportsPage() {
                             <Line type="monotone" dataKey="Profit" stroke="var(--green)" strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
                           </LineChart>
                         </ResponsiveContainer>
+                      </div>
+                    )}
+                    {salesGrouped && salesGrouped.length > 0 && (
+                      <div
+                        onClick={() => setSalesTrendCollapsed(p => !p)}
+                        style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer', userSelect: 'none', margin: '0.25rem 0 0.75rem' }}
+                      >
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--gray)" strokeWidth="2.5"
+                          style={{ transform: salesTrendCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)', transition: 'transform 0.2s', flexShrink: 0 }}>
+                          <path d="M6 9l6 6 6-6" />
+                        </svg>
+                        <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--gray)' }}>
+                          {salesTrendCollapsed ? 'Show' : 'Hide'} period breakdown
+                        </span>
                       </div>
                     )}
                     {!salesTrendCollapsed && salesGrouped && salesGrouped.length > 0 ? (
