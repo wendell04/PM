@@ -770,77 +770,55 @@ export default function ReportsPage() {
                       </div>
                     )}
                     {!salesTrendCollapsed && salesGrouped && salesGrouped.length > 0 ? (
-                      <div style={{ overflowX: 'auto' }}>
-                        <div style={{ width: '100%', display: 'table' }}>
-                          <div style={{ display: 'table-row', background: 'var(--dark2)' }}>
-                            {['Period', 'Revenue', 'Cost', 'Profit'].map((h) => (
-                              <div
-                                key={h}
-                                style={{
-                                  display: 'table-cell',
-                                  color: 'var(--gray)',
-                                  fontSize: '0.75rem',
-                                  padding: '0.6rem 1rem',
-                                  textAlign: 'left',
-                                  borderBottom: '1px solid var(--border)',
-                                }}
-                              >
-                                {h}
-                              </div>
-                            ))}
-                          </div>
-                          {salesGrouped.map((row) => {
-                            const prof = Number(row.profit ?? 0);
-                            const profitColor = prof >= 0 ? '#10b981' : '#ef4444';
-                            return (
-                              <div key={row.period} style={{ display: 'table-row' }}>
-                                <div
-                                  style={{
-                                    display: 'table-cell',
-                                    borderBottom: '1px solid var(--border)',
-                                    padding: '0.75rem 1rem',
-                                    color: 'var(--white)',
-                                    fontSize: '0.85rem',
-                                  }}
-                                >
-                                  {row.period}
-                                </div>
-                                <div
-                                  style={{
-                                    display: 'table-cell',
-                                    borderBottom: '1px solid var(--border)',
-                                    padding: '0.75rem 1rem',
-                                    color: 'var(--white)',
-                                    fontSize: '0.85rem',
-                                  }}
-                                >
-                                  {fmtPeso(row.revenue)}
-                                </div>
-                                <div
-                                  style={{
-                                    display: 'table-cell',
-                                    borderBottom: '1px solid var(--border)',
-                                    padding: '0.75rem 1rem',
-                                    color: 'var(--white)',
-                                    fontSize: '0.85rem',
-                                  }}
-                                >
-                                  {fmtPeso(row.cost)}
-                                </div>
-                                <div
-                                  style={{
-                                    display: 'table-cell',
-                                    borderBottom: '1px solid var(--border)',
-                                    padding: '0.75rem 1rem',
-                                    fontSize: '0.85rem',
-                                    color: profitColor,
-                                  }}
-                                >
-                                  {fmtPeso(row.profit)}
-                                </div>
-                              </div>
-                            );
-                          })}
+                      <div style={{ border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden' }}>
+                        <style>{`.rpt-tr:hover td { background: var(--dark2); }`}</style>
+                        <div style={{ overflowX: 'auto' }}>
+                          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                            <thead>
+                              <tr style={{ background: 'var(--dark2)' }}>
+                                {[
+                                  { label: 'Period', align: 'left' },
+                                  { label: 'Revenue', align: 'right' },
+                                  { label: 'Cost', align: 'right' },
+                                  { label: 'Profit', align: 'right' },
+                                ].map((h) => (
+                                  <th
+                                    key={h.label}
+                                    style={{
+                                      textAlign: h.align,
+                                      padding: '0.85rem 1.25rem',
+                                      fontSize: '0.72rem',
+                                      fontWeight: 700,
+                                      letterSpacing: '0.05em',
+                                      textTransform: 'uppercase',
+                                      color: 'var(--gold)',
+                                      borderBottom: '1px solid var(--border)',
+                                      whiteSpace: 'nowrap',
+                                    }}
+                                  >
+                                    {h.label}
+                                  </th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {salesGrouped.map((row, idx) => {
+                                const prof = Number(row.profit ?? 0);
+                                const profitColor = prof >= 0 ? 'var(--green)' : 'var(--red)';
+                                const last = idx === salesGrouped.length - 1;
+                                const cell = { padding: '0.8rem 1.25rem', borderBottom: last ? 'none' : '1px solid var(--border)', transition: 'background 0.12s' };
+                                const num = { ...cell, textAlign: 'right', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' };
+                                return (
+                                  <tr key={row.period} className="rpt-tr">
+                                    <td style={{ ...cell, color: 'var(--white)', fontWeight: 600 }}>{row.period}</td>
+                                    <td style={{ ...num, color: 'var(--gold)', fontWeight: 600 }}>{fmtPeso(row.revenue)}</td>
+                                    <td style={{ ...num, color: 'var(--gray)' }}>{fmtPeso(row.cost)}</td>
+                                    <td style={{ ...num, color: profitColor, fontWeight: 600 }}>{fmtPeso(row.profit)}</td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
                         </div>
                       </div>
                     ) : (!salesTrendCollapsed && (
