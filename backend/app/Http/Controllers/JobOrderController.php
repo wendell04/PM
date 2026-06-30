@@ -4,11 +4,57 @@ namespace App\Http\Controllers;
 
 use App\Models\JobOrder;
 use App\Models\Order;
+use App\Models\Product;
+use App\Models\BillOfMaterial;
+use App\Models\Inventory;
+use App\Support\OrderStatus;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
 class JobOrderController extends Controller
 {
+    /**
+     * Resolve a product+variant's BOM into a flat material list for the given quantity.
+     * Display-only snapshot stored on the JO (no inventory change). Returns [] if no BOM.
+     */
+    private function computeBomSnapshot($productId, $variantId, int $qty): array
+    {
+        if (!$productId) return [];
+        $prod = Product::find($productId);
+        if (!$prod) return [];
+
+        $bom = null;
+        if (!empty($prod->bomGroupName) && $variantId) {
+            $bom = BillOfMaterial::find($variantId);
+        } elseif (!empty($prod->bomId)) {
+            $bom = BillOfMaterial::find($prod->bomId);
+        }
+        if (!$bom && $variantId && !empty($prod->combinations)) {
+            foreach ($prod->combinations as $combo) {
+                if ((string) ($combo['id'] ?? $combo['_id'] ?? '') === (string) $variantId && !empty($combo['bomId'])) {
+                    $bom = BillOfMaterial::find($combo['bomId']);
+                    break;
+                }
+            }
+        }
+        if (!$bom || empty($bom->components)) return [];
+
+        $snapshot = [];
+        foreach ($bom->components as $c) {
+            $invId = $c['inventoryId'] ?? null;
+            $inv   = $invId ? Inventory::find($invId) : null;
+            $per   = (float) ($c['qty'] ?? 0);
+            $snapshot[] = [
+                'inventoryId' => $invId ? (string) $invId : null,
+                'name'        => $inv->name ?? ($c['name'] ?? 'Material'),
+                'unit'        => $inv->uom ?? ($c['unit'] ?? ''),
+                'qtyPerUnit'  => $per,
+                'totalQty'    => $per * max(1, $qty),
+            ];
+        }
+        return $snapshot;
+    }
+
     /**
      * GET /api/admin/job-orders
      * Returns all job orders with optional filters
@@ -16,7 +62,7 @@ class JobOrderController extends Controller
     public function index(Request $request)
     {
         try {
-            if (!$this->hasPermission($request, 'jobOrders')) {
+            if (!$this->hasAnyPermission($request, ['jobOrders', 'production'])) {
                 return $this->unauthorizedResponse();
             }
 
@@ -45,7 +91,7 @@ class JobOrderController extends Controller
     public function show(Request $request, $id)
     {
         try {
-            if (!$this->hasPermission($request, 'jobOrders')) {
+            if (!$this->hasAnyPermission($request, ['jobOrders', 'production'])) {
                 return $this->unauthorizedResponse();
             }
 
@@ -64,7 +110,7 @@ class JobOrderController extends Controller
     public function store(Request $request)
     {
         try {
-            if (!$this->hasPermission($request, 'jobOrders')) {
+            if (!$this->hasAnyPermission($request, ['jobOrders', 'production'])) {
                 return $this->unauthorizedResponse();
             }
 
@@ -74,6 +120,8 @@ class JobOrderController extends Controller
                 'product.name'     => 'required|string',
                 'product.variant'  => 'nullable|string',
                 'product.quantity' => 'required|integer|min:1',
+                'product.productId'=> 'nullable|string',
+                'product.variantId'=> 'nullable|string',
                 'targetCompletion' => 'required|date',
                 'isRush'           => 'boolean',
                 'assignedTo'       => 'nullable|string',
@@ -87,6 +135,25 @@ class JobOrderController extends Controller
 
             // Pull design context from the linked order so the printer operator can see it
             $linkedOrder = Order::find($validated['orderId']);
+
+            if (!$linkedOrder) {
+                return $this->errorResponse('Linked order not found.', 404);
+            }
+
+            // Gate 1 — payment: a downpayment (or COD) is required before production. Mirrors the
+            // gate in OrderController@updateStatus so creating a JO can't bypass it.
+            $payMethod  = strtolower((string) ($linkedOrder->paymentMethod ?? ''));
+            $hasPayment = ($linkedOrder->downPayment ?? 0) > 0
+                || count($linkedOrder->paymentHistory ?? []) > 0
+                || in_array($linkedOrder->paymentStatus ?? '', ['partial', 'paid'], true);
+            if ($payMethod !== 'cod' && !$hasPayment) {
+                return $this->errorResponse('A downpayment is required before this order can go into production.', 422);
+            }
+
+            // Gate 2 — design: a custom order must have an approved design before production.
+            if (($linkedOrder->isCustomOrder ?? false) && ($linkedOrder->designStatus ?? null) !== 'approved') {
+                return $this->errorResponse('The customer must approve the design before this order can go into production.', 422);
+            }
 
             $jobOrder = JobOrder::create([
                 'joId'             => $newJoId,
@@ -103,6 +170,22 @@ class JobOrderController extends Controller
                 'createdAt'        => now(),
                 'updatedAt'        => now(),
             ]);
+
+            // Snapshot the product's BOM raw materials onto the JO so Production/QC can see what it
+            // needs to make (e.g. DTF film, white mug, mug box). Display only — no stock change here.
+            $snap = $this->computeBomSnapshot(
+                $validated['product']['productId'] ?? null,
+                $validated['product']['variantId'] ?? null,
+                (int) ($validated['product']['quantity'] ?? 1)
+            );
+            $jobOrder->bomSnapshot = $snap;
+            // Per-unit components that QC will consume on pass (submitQC multiplies by the JO quantity,
+            // releasing the reservation made at order time).
+            $jobOrder->materialsConsumed = array_values(array_filter(array_map(
+                fn ($m) => $m['inventoryId'] ? ['inventoryId' => $m['inventoryId'], 'qty' => $m['qtyPerUnit'], 'name' => $m['name']] : null,
+                $snap
+            )));
+            $jobOrder->save();
 
             // Update order with JO ID and status
             Order::where('_id', $validated['orderId'])->update([
@@ -123,7 +206,7 @@ class JobOrderController extends Controller
     public function update(Request $request, $id)
     {
         try {
-            if (!$this->hasPermission($request, 'jobOrders')) {
+            if (!$this->hasAnyPermission($request, ['jobOrders', 'production'])) {
                 return $this->unauthorizedResponse();
             }
 
@@ -149,16 +232,18 @@ class JobOrderController extends Controller
             $jobOrder->updatedAt = now();
             $jobOrder->save();
 
-            // If JO is completed, update linked Order — only if not already For Delivery
+            // JO completed → order is Ready for Delivery (balance + courier gates apply before it can
+            // move on to For Delivery). Don't overwrite if it's already past that point.
             if (isset($validated['joStatus']) && $validated['joStatus'] === 'Completed') {
                 $linkedOrder = Order::where('_id', $jobOrder->orderId)->first();
-                if ($linkedOrder && $linkedOrder->orderStatus !== 'For Delivery') {
+                $alreadyPast = $linkedOrder && in_array(OrderStatus::normalize($linkedOrder->orderStatus), [OrderStatus::READY_FOR_DELIVERY, OrderStatus::FOR_DELIVERY, OrderStatus::DELIVERED], true);
+                if ($linkedOrder && !$alreadyPast) {
                     $linkedOrder->joStatus     = 'Completed';
-                    $linkedOrder->orderStatus  = 'For Delivery';
+                    $linkedOrder->orderStatus  = OrderStatus::READY_FOR_DELIVERY;
                     $linkedOrder->updatedAt    = now();
                     $linkedOrder->save();
                 } elseif ($linkedOrder) {
-                    // Order already at For Delivery — only sync joStatus field, no orderStatus overwrite
+                    // Already at/past Ready for Delivery — only sync joStatus, no orderStatus overwrite.
                     $linkedOrder->joStatus  = 'Completed';
                     $linkedOrder->updatedAt = now();
                     $linkedOrder->save();
@@ -183,7 +268,7 @@ class JobOrderController extends Controller
     public function submitQC(Request $request, string $id)
     {
         try {
-            if (!$this->hasPermission($request, 'jobOrders')) {
+            if (!$this->hasAnyPermission($request, ['jobOrders', 'qc'])) {
                 return $this->unauthorizedResponse();
             }
 
@@ -277,10 +362,12 @@ class JobOrderController extends Controller
                     }
                 }
 
-                // 3. Move linked order to For Delivery
+                // 3. QC passed → order is Ready for Delivery (packed, awaiting balance + courier).
+                //    The balance-before-delivery and courier gates apply when the owner moves it on
+                //    to For Delivery (OrderController@adminUpdate) — QC must NOT skip them.
                 $linkedOrder = Order::where('_id', $jobOrder->orderId)->first();
-                if ($linkedOrder && !in_array($linkedOrder->orderStatus, ['For Delivery', 'Delivered', 'Cancelled'])) {
-                    $linkedOrder->orderStatus = 'For Delivery';
+                if ($linkedOrder && !in_array(OrderStatus::normalize($linkedOrder->orderStatus), [OrderStatus::READY_FOR_DELIVERY, OrderStatus::FOR_DELIVERY, OrderStatus::DELIVERED, OrderStatus::CANCELLED], true)) {
+                    $linkedOrder->orderStatus = OrderStatus::READY_FOR_DELIVERY;
                     $linkedOrder->updatedAt   = now();
                     $linkedOrder->save();
                 }
@@ -304,7 +391,7 @@ class JobOrderController extends Controller
             }
 
             return $this->successResponse(
-                $passed ? 'QC passed. Inventory consumed and order moved to For Delivery.' : 'QC failed. Order flagged for reprint.',
+                $passed ? 'QC passed. Materials consumed; order is Ready for Delivery (collect balance + book courier to dispatch).' : 'QC failed. Order flagged for reprint.',
                 $jobOrder
             );
 
@@ -318,7 +405,7 @@ class JobOrderController extends Controller
     public function schedule(Request $request)
     {
         try {
-            if (!$this->hasPermission($request, 'jobOrders')) {
+            if (!$this->hasAnyPermission($request, ['jobOrders', 'production'])) {
                 return $this->unauthorizedResponse();
             }
 

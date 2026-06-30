@@ -196,7 +196,14 @@ class AuthController extends Controller
             $user->login_locked_until    = null;
 
             $deviceName   = $this->parseDeviceName($request->userAgent() ?? 'Unknown Device');
-            $sanctumToken = $user->createToken($deviceName)->plainTextToken;
+            // Session policy by role (overrides the global SANCTUM_TOKEN_EXPIRATION so the two don't
+            // share one 24h lifetime): staff/admin get SHORT-lived tokens (high-value access);
+            // customers get long, convenient sessions, extended further by "remember me".
+            $isStaff   = ($user->role ?? 'customer') !== 'customer';
+            $expiresAt = $isStaff
+                ? now()->addHours(12)
+                : ($request->boolean('rememberMe') ? now()->addDays(90) : now()->addDays(30));
+            $sanctumToken = $user->createToken($deviceName, ['*'], $expiresAt)->plainTextToken;
             $user->lastLogin     = now()->toDateTimeString();
             $user->last_login_at = now();
             $user->save();

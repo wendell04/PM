@@ -140,7 +140,7 @@ export function Note({ type = 'warn', children }) {
 }
 
 // ── CustomSelect — styled dropdown, max 8 visible rows then scroll ────────────
-export function CustomSelect({ value, onChange, options = [], placeholder = 'Select…', style, error, disabled }) {
+export function CustomSelect({ value, onChange, options = [], placeholder = 'Select…', style, error, disabled, emptyLabel }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
 
@@ -210,6 +210,11 @@ export function CustomSelect({ value, onChange, options = [], placeholder = 'Sel
               </button>
             );
           })}
+          {normalized.length === 0 && (
+            <div style={{ padding: '12px 14px', fontSize: '12px', color: '#9ca3af', textAlign: 'center', lineHeight: 1.5 }}>
+              {emptyLabel || 'No options'}
+            </div>
+          )}
         </div>
       )}
     </div>

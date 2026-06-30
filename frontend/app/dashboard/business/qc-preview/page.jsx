@@ -1,356 +1,165 @@
-"use client";
+'use client';
 
-/**
- * QC DASHBOARD PREVIEW
- * 
- * ACCESS: /dashboard/business/qc-preview
- * 
- * What QC team sees:
- * - Only JOs marked "QC Pending"
- * - Can inspect, upload photos, pass/fail
- * - If fail: must provide defect details
- * 
- * This is a PREVIEW with mock data.
- */
-
-import { useCallback, useEffect, useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { fetchJobOrders } from '@/lib/jobOrderApi';
 import ErrorBoundary from '@/components/ErrorBoundary';
+import { fetchJobOrders } from '@/lib/jobOrderApi';
+import { submitJobOrderQC } from '@/lib/ordersApi';
+import { S, ICONS, SearchBar, SummaryCard, PaginationBar, EmptyState, usePagination } from '../inventory-v2/shared';
 
-function normalizeJobForQC(jo) {
-  const prod = jo.product || {};
-  const items = Array.isArray(jo.items) && jo.items.length > 0
-    ? jo.items.map(i => ({ name: i.product_name || i.productName || i.name || '', qty: Number(i.qty || i.quantity || 1) }))
-    : prod.name
-      ? [{ name: prod.name + (prod.variant ? ` (${prod.variant})` : ''), qty: Number(prod.quantity || 1) }]
-      : [];
-  const fp = jo.designFilePath || jo.design_file_path || null;
-  return {
-    _id:             String(jo.id ?? jo._id),
-    id:              jo.joId || String(jo.id ?? jo._id),
-    orderId:         jo.orderId || '',
-    customer:        jo.order?.userSnapshot?.name || jo.order?.customer?.name || jo.customerName || '—',
-    items,
-    designFile:      fp ? fp.split('/').pop() : null,
-    targetDate:      jo.targetCompletion || null,
-    isRush:          !!jo.isRush,
-    submittedBy:     jo.assignedTo || '',
-    submittedAt:     jo.updatedAt || jo.completedAt || null,
-    productionPhotos: jo.productionPhotos || [],
-    notes:           jo.notes || '',
-  };
+// QC staff worklist — Job Orders at the For QC stage. Pass -> order moves to Ready for Delivery
+// and materials are consumed. Fail -> back to production for reprint (materials stay reserved).
+
+const JO_BADGE = {
+  'QC_Pending': { bg: '#f5f3ff', color: '#5b21b6', border: '#ddd6fe', label: 'For QC' },
+  'QC_Failed':  { bg: '#fef2f2', color: '#991b1b', border: '#fecaca', label: 'Rework' },
+  'QC_Passed':  { bg: '#f0fdf4', color: '#166534', border: '#bbf7d0', label: 'Passed' },
+};
+
+function StatusBadge({ status }) {
+  const c = JO_BADGE[status] || { bg: '#f3f4f6', color: '#6b7280', border: '#e1e3e5', label: status };
+  return <span style={{ ...S.badge, background: c.bg, color: c.color, border: `1px solid ${c.border}`, fontSize: '11px' }}>{c.label}</span>;
 }
 
-const QC_STATUSES = new Set(['qc_pending', 'qc pending', 'qc-pending', 'pending qc', 'quality_check', 'quality check']);
-
-function formatDate(d) {
-  if (!d) return '—';
-  return new Date(d).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' });
+function fmtDate(s) {
+  if (!s) return '—';
+  return new Date(s).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-function formatTime(d) {
-  if (!d) return '—';
-  return new Date(d).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' });
-}
-
-export default function QCPreviewPage() {
-  const { token } = useAuth();
+export default function QualityControlPage() {
+  const { token, currentUser } = useAuth();
   const [jobs, setJobs] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [selectedJob, setSelectedJob] = useState(null);
-  const [qcResult, setQcResult] = useState('');
-  const [defectNotes, setDefectNotes] = useState('');
-  const [qcNotes, setQcNotes] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [search, setSearch] = useState('');
+  const [busyId, setBusyId] = useState(null);
+  const [failJob, setFailJob] = useState(null);
+  const [defects, setDefects] = useState('');
 
-  const loadJobs = useCallback(async () => {
+  const checkedBy = (`${currentUser?.firstName ?? ''} ${currentUser?.lastName ?? ''}`.trim()) || currentUser?.email || 'QC';
+
+  const load = useCallback(async () => {
     if (!token) return;
-    setIsLoading(true);
-    setError(null);
+    setLoading(true); setError('');
     try {
       const data = await fetchJobOrders(token);
-      const all = Array.isArray(data) ? data : (data?.data ?? []);
-      const qcJobs = all.filter(jo => {
-        const s = (jo.joStatus || jo.status || '').toLowerCase();
-        return QC_STATUSES.has(s) || s.includes('qc') || s.includes('quality');
-      });
-      setJobs(qcJobs.map(normalizeJobForQC));
-    } catch (err) {
-      setError(err.message || 'Failed to load job orders');
-    } finally {
-      setIsLoading(false);
-    }
+      setJobs(Array.isArray(data) ? data : []);
+    } catch (e) { setError(e.message || 'Failed to load job orders'); }
+    finally { setLoading(false); }
   }, [token]);
 
-  useEffect(() => { loadJobs(); }, [loadJobs]);
+  useEffect(() => { load(); }, [load]);
 
-  if (isLoading) {
-    return (
-      <div style={{ padding: '1.5rem', maxWidth: '1200px', margin: '0 auto' }}>
-        <style>{`@keyframes qcPageSkel { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }`}</style>
-        {[...Array(5)].map((_, i) => (
-          <div
-            key={i}
-            style={{
-              height: '56px',
-              background: 'var(--dark2)',
-              borderRadius: '8px',
-              marginBottom: '0.5rem',
-              animation: 'qcPageSkel 1.5s ease-in-out infinite',
-            }}
-          />
-        ))}
-      </div>
-    );
-  }
+  const idOf = (j) => j._id ?? j.id;
+  const prodName = (j) => {
+    const p = j.product || {};
+    return `${p.name ?? 'Item'}${p.variant ? ` — ${p.variant}` : ''}`;
+  };
 
-  if (error) {
-    return (
-      <div style={{ padding: '1.5rem', maxWidth: '1200px', margin: '0 auto' }}>
-        <div
-          style={{
-            background: 'rgba(239,68,68,0.12)',
-            border: '1px solid rgba(239,68,68,0.25)',
-            borderRadius: '8px',
-            padding: '1rem',
-            color: 'var(--white)',
-          }}
-        >
-          <p style={{ margin: 0 }}>{error}</p>
-          <button
-            type="button"
-            className="btn-primary"
-            style={{ marginTop: '0.75rem' }}
-            onClick={() => window.location.reload()}
-          >
-            Retry
-          </button>
-        </div>
-      </div>
-    );
-  }
+  const queue = jobs.filter(j => ['QC_Pending', 'QC_Failed'].includes(j.joStatus));
+  const counts = {
+    pending: jobs.filter(j => j.joStatus === 'QC_Pending').length,
+    rework:  jobs.filter(j => j.joStatus === 'QC_Failed').length,
+    passed:  jobs.filter(j => j.joStatus === 'QC_Passed').length,
+  };
+
+  const pass = async (j) => {
+    setBusyId(idOf(j)); setError('');
+    try {
+      await submitJobOrderQC(idOf(j), { passed: true, checkedBy }, token);
+      await load();
+    } catch (e) { setError(e.message || 'Failed to submit QC'); }
+    finally { setBusyId(null); }
+  };
+
+  const confirmFail = async () => {
+    if (!failJob) return;
+    setBusyId(idOf(failJob)); setError('');
+    try {
+      await submitJobOrderQC(idOf(failJob), { passed: false, defects: defects.trim() || null, checkedBy }, token);
+      setFailJob(null); setDefects('');
+      await load();
+    } catch (e) { setError(e.message || 'Failed to submit QC'); }
+    finally { setBusyId(null); }
+  };
+
+  const filtered = queue.filter(j => {
+    const q = search.toLowerCase();
+    return !q || prodName(j).toLowerCase().includes(q) || (j.joId || '').toLowerCase().includes(q) || (j.orderId || '').toLowerCase().includes(q);
+  });
+
+  const { slice, page, perPage, total, setPage, setPerPage } = usePagination(filtered);
 
   return (
     <ErrorBoundary>
-    <div style={{ padding: '1.5rem', maxWidth: '1200px', margin: '0 auto' }}>
-      {/* Stats */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.75rem', marginBottom: '1.5rem' }}>
-        <div style={{ background: 'rgba(6,182,212,0.08)', borderRadius: '12px', padding: '1rem', border: '1px solid rgba(6,182,212,0.2)', textAlign: 'center' }}>
-          <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--cyan)' }}>{jobs.length}</div>
-          <div style={{ fontSize: '0.7rem', color: 'var(--gray)', marginTop: '0.25rem' }}>Pending QC</div>
+      <div style={S.page}>
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '16px' }}>
+          <SummaryCard label="Pending QC" value={counts.pending} accent />
+          <SummaryCard label="Rework (Failed)" value={counts.rework} color="#991b1b" />
+          <SummaryCard label="Passed" value={counts.passed} color="#166534" />
         </div>
-        <div style={{ background: 'rgba(139,92,246,0.08)', borderRadius: '12px', padding: '1rem', border: '1px solid rgba(139,92,246,0.2)', textAlign: 'center' }}>
-          <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--purple)' }}>—</div>
-          <div style={{ fontSize: '0.7rem', color: 'var(--gray)', marginTop: '0.25rem' }}>Completed Today</div>
-        </div>
-      </div>
 
-      {/* QC Job Cards */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-        {jobs.map((job) => (
-          <div
-            key={job.id}
-            onClick={() => { setSelectedJob(job); setQcResult(''); setDefectNotes(''); setQcNotes(''); }}
-            style={{
-              background: 'rgba(255,255,255,0.04)',
-              borderRadius: '12px',
-              border: '1px solid rgba(255,255,255,0.06)',
-              padding: '1.25rem',
-              cursor: 'pointer',
-              transition: 'all 0.2s',
-            }}
-            onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'rgba(6,182,212,0.3)'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.06)'; }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.25rem' }}>
-                  <span style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--white)', fontSize: '1rem' }}>{job.id}</span>
-                  <span style={{ fontSize: '0.7rem', fontWeight: 700, padding: '0.2rem 0.6rem', borderRadius: '999px', background: 'rgba(6,182,212,0.15)', color: 'var(--cyan)', border: '1px solid rgba(6,182,212,0.3)' }}>
-                    QC Pending
-                  </span>
-                  {job.isRush && (
-                    <span style={{ fontSize: '0.65rem', fontWeight: 700, padding: '0.15rem 0.5rem', borderRadius: '4px', background: 'rgba(239,68,68,0.15)', color: 'var(--red)', border: '1px solid rgba(239,68,68,0.3)' }}>
-                      RUSH
-                    </span>
-                  )}
-                </div>
-                <div style={{ fontSize: '0.8rem', color: 'var(--gray)' }}>{job.customer} | Order #{job.orderId}</div>
-              </div>
-              <div style={{ textAlign: 'right' }}>
-                <div style={{ fontSize: '0.7rem', color: 'var(--gray)' }}>Submitted</div>
-                <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--white)' }}>{formatDate(job.submittedAt)}</div>
-                <div style={{ fontSize: '0.7rem', color: 'var(--gray)' }}>by {job.submittedBy}</div>
-              </div>
-            </div>
-
-            {/* Items */}
-            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
-              {job.items.map((item, idx) => (
-                <span key={idx} style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem', background: 'rgba(255,255,255,0.04)', borderRadius: '6px', color: 'var(--white)' }}>
-                  {item.name} × {item.qty}
-                </span>
-              ))}
-            </div>
-
-            {/* Production Photos + Inspect Button */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                {job.productionPhotos.length > 0 && (
-                  <span style={{ fontSize: '0.7rem', color: 'var(--gray)', display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2" /><circle cx="8.5" cy="8.5" r="1.5" /><polyline points="21 15 16 10 5 21" /></svg>
-                    {job.productionPhotos.length} photo{job.productionPhotos.length > 1 ? 's' : ''}
-                  </span>
-                )}
-              </div>
-              <button onClick={(e) => { e.stopPropagation(); setSelectedJob(job); setQcResult(''); setDefectNotes(''); setQcNotes(''); }} style={{ padding: '0.375rem 0.75rem', background: 'rgba(6,182,212,0.15)', border: '1px solid rgba(6,182,212,0.3)', borderRadius: '6px', color: 'var(--cyan)', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer' }}>
-                Inspect
-              </button>
-            </div>
+        <div style={{ ...S.card, ...S.rowBetween, marginBottom: '10px', padding: '12px 16px' }}>
+          <div style={{ ...S.row, gap: '8px', flex: 1 }}>
+            <SearchBar value={search} onChange={v => { setSearch(v); setPage(1); }} placeholder="Search JO, product, order…" style={{ width: '260px' }} />
           </div>
-        ))}
-      </div>
+          <button onClick={load} style={S.btnGhost}>{ICONS.reload} Refresh</button>
+        </div>
 
-      {/* QC Inspection Panel */}
-      {selectedJob && (
-        <>
-          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 999 }} onClick={() => setSelectedJob(null)} />
-          <div style={{ position: 'fixed', top: 0, right: 0, width: '480px', height: '100vh', background: 'var(--dark)', borderLeft: '1px solid rgba(255,255,255,0.08)', overflowY: 'auto', zIndex: 1000 }}>
-            <div style={{ padding: '1.25rem', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <div>
-                  <div style={{ fontSize: '0.7rem', color: 'var(--gray)', marginBottom: '0.25rem' }}>{selectedJob.id}</div>
-                  <h2 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 700, color: 'var(--white)' }}>QC Inspection</h2>
-                </div>
-                <button onClick={() => setSelectedJob(null)} style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', width: '32px', height: '32px', cursor: 'pointer', color: 'var(--gray)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12" /></svg>
-                </button>
-              </div>
-            </div>
+        {error && <div style={{ ...S.note, background: '#fef2f2', borderColor: '#fecaca', color: '#991b1b', marginBottom: '10px' }}>{error}</div>}
 
-            <div style={{ padding: '1.25rem' }}>
-              {/* Job Info */}
-              <div style={{ marginBottom: '1.25rem' }}>
-                <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--white)' }}>{selectedJob.customer}</div>
-                <div style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>Order #{selectedJob.orderId} | Target: {formatDate(selectedJob.targetDate)}</div>
-              </div>
+        <div style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead><tr>
+              <th style={S.th}>JO</th><th style={S.th}>Product</th><th style={S.th}>Qty</th>
+              <th style={S.th}>Order</th><th style={S.th}>Status</th><th style={S.th}>Last Defect</th>
+              <th style={{ ...S.th, textAlign: 'right' }}>QC Action</th>
+            </tr></thead>
+            <tbody>
+              {loading ? (
+                <tr><td colSpan={7} style={{ ...S.td, textAlign: 'center', color: '#9ca3af' }}>Loading…</td></tr>
+              ) : slice.length === 0 ? (
+                <tr><td colSpan={7} style={{ padding: 0 }}><EmptyState message="Nothing to inspect" sub="Job orders appear here once production sends them For QC." /></td></tr>
+              ) : slice.map(j => {
+                const id = idOf(j); const busy = busyId === id;
+                return (
+                  <tr key={id} style={S.tr}>
+                    <td style={{ ...S.td, fontFamily: 'monospace', fontWeight: 600 }}>
+                      {j.joId || '—'}
+                      {j.isRush && <span style={{ ...S.badge, background: '#fef2f2', color: '#991b1b', border: '1px solid #fecaca', marginLeft: 6, fontSize: '10px' }}>RUSH</span>}
+                    </td>
+                    <td style={S.td}>{prodName(j)}</td>
+                    <td style={S.td}>{j.product?.quantity ?? '—'}</td>
+                    <td style={{ ...S.td, fontFamily: 'monospace' }}>{(j.orderId || '').slice(-8).toUpperCase() || '—'}</td>
+                    <td style={S.td}><StatusBadge status={j.joStatus} /></td>
+                    <td style={{ ...S.td, color: '#6b7280', maxWidth: 220 }}>{j.qcResult?.defects || '—'}</td>
+                    <td style={{ ...S.td, textAlign: 'right', whiteSpace: 'nowrap' }}>
+                      <button disabled={busy} onClick={() => pass(j)} style={{ ...S.btnSm, background: '#16a34a' }}>{busy ? '…' : 'Pass'}</button>
+                      <button disabled={busy} onClick={() => { setFailJob(j); setDefects(''); }} style={{ ...S.btnSmDanger, marginLeft: 6 }}>Fail</button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        <PaginationBar total={total} page={page} perPage={perPage} onPage={setPage} onPerPage={setPerPage} />
 
-              {/* Items */}
-              <div style={{ marginBottom: '1.25rem' }}>
-                <h4 style={{ margin: '0 0 0.5rem 0', fontSize: '0.7rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase' }}>Items to Inspect</h4>
-                {selectedJob.items.map((item, idx) => (
-                  <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0.75rem', background: 'rgba(255,255,255,0.03)', borderRadius: '6px', marginBottom: idx < selectedJob.items.length - 1 ? '0.375rem' : 0 }}>
-                    <span style={{ fontSize: '0.8rem', color: 'var(--white)' }}>{item.name}</span>
-                    <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--gold)', fontFamily: 'monospace' }}>× {item.qty}</span>
-                  </div>
-                ))}
-              </div>
-
-              {/* Production Photos */}
-              {selectedJob.productionPhotos.length > 0 && (
-                <div style={{ marginBottom: '1.25rem' }}>
-                  <h4 style={{ margin: '0 0 0.5rem 0', fontSize: '0.7rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase' }}>Production Photos</h4>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
-                    {selectedJob.productionPhotos.map((photo, idx) => (
-                      <div key={idx} style={{ height: '100px', background: 'rgba(255,255,255,0.04)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <span style={{ fontSize: '0.7rem', color: 'var(--gray)' }}>{photo}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* QC Decision */}
-              <div style={{ marginBottom: '1.25rem' }}>
-                <h4 style={{ margin: '0 0 0.75rem 0', fontSize: '0.7rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase' }}>QC Decision</h4>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-                  <button
-                    onClick={() => setQcResult('passed')}
-                    style={{
-                      padding: '1rem',
-                      background: qcResult === 'passed' ? 'rgba(34,197,94,0.15)' : 'rgba(255,255,255,0.03)',
-                      border: qcResult === 'passed' ? '2px solid var(--green)' : '2px solid rgba(255,255,255,0.08)',
-                      borderRadius: '10px',
-                      cursor: 'pointer',
-                      textAlign: 'center',
-                    }}
-                  >
-                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke={qcResult === 'passed' ? 'var(--green)' : 'var(--gray)'} strokeWidth="2" style={{ marginBottom: '0.5rem' }}>
-                      <circle cx="12" cy="12" r="10" /><path d="M8 12l3 3 5-5" />
-                    </svg>
-                    <div style={{ fontSize: '0.85rem', fontWeight: 700, color: qcResult === 'passed' ? 'var(--green)' : 'var(--white)' }}>Pass</div>
-                  </button>
-                  <button
-                    onClick={() => setQcResult('failed')}
-                    style={{
-                      padding: '1rem',
-                      background: qcResult === 'failed' ? 'rgba(239,68,68,0.15)' : 'rgba(255,255,255,0.03)',
-                      border: qcResult === 'failed' ? '2px solid var(--red)' : '2px solid rgba(255,255,255,0.08)',
-                      borderRadius: '10px',
-                      cursor: 'pointer',
-                      textAlign: 'center',
-                    }}
-                  >
-                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke={qcResult === 'failed' ? 'var(--red)' : 'var(--gray)'} strokeWidth="2" style={{ marginBottom: '0.5rem' }}>
-                      <circle cx="12" cy="12" r="10" /><line x1="15" y1="9" x2="9" y2="15" /><line x1="9" y1="9" x2="15" y2="15" />
-                    </svg>
-                    <div style={{ fontSize: '0.85rem', fontWeight: 700, color: qcResult === 'failed' ? 'var(--red)' : 'var(--white)' }}>Fail</div>
-                  </button>
-                </div>
-              </div>
-
-              {/* Defect Details (shown if failed) */}
-              {qcResult === 'failed' && (
-                <div style={{ marginBottom: '1.25rem' }}>
-                  <h4 style={{ margin: '0 0 0.5rem 0', fontSize: '0.7rem', fontWeight: 700, color: 'var(--red)', textTransform: 'uppercase' }}>Defect Details *</h4>
-                  <textarea
-                    value={defectNotes}
-                    onChange={(e) => setDefectNotes(e.target.value)}
-                    placeholder="Describe the defects found..."
-                    rows={3}
-                    style={{ width: '100%', padding: '0.625rem 0.75rem', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: 'var(--white)', fontSize: '0.85rem', outline: 'none', resize: 'vertical' }}
-                  />
-                </div>
-              )}
-
-              {/* QC Notes */}
-              <div style={{ marginBottom: '1.25rem' }}>
-                <h4 style={{ margin: '0 0 0.5rem 0', fontSize: '0.7rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase' }}>QC Notes</h4>
-                <textarea
-                  value={qcNotes}
-                  onChange={(e) => setQcNotes(e.target.value)}
-                  placeholder="Additional notes (optional)..."
-                  rows={2}
-                  style={{ width: '100%', padding: '0.625rem 0.75rem', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: 'var(--white)', fontSize: '0.85rem', outline: 'none', resize: 'vertical' }}
-                />
-              </div>
-
-              {/* Submit */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                <button
-                  disabled={!qcResult || (qcResult === 'failed' && !defectNotes)}
-                  style={{
-                    padding: '0.625rem',
-                    background: qcResult && !(qcResult === 'failed' && !defectNotes)
-                      ? qcResult === 'passed' ? 'var(--green)' : 'var(--red)'
-                      : 'rgba(255,255,255,0.06)',
-                    border: 'none',
-                    borderRadius: '8px',
-                    color: qcResult && !(qcResult === 'failed' && !defectNotes) ? 'var(--white)' : 'var(--gray)',
-                    fontSize: '0.85rem',
-                    fontWeight: 700,
-                    cursor: qcResult && !(qcResult === 'failed' && !defectNotes) ? 'pointer' : 'not-allowed',
-                  }}
-                >
-                  Submit QC Result
-                </button>
+        {failJob && (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: 16 }} onClick={() => !busyId && setFailJob(null)}>
+            <div style={{ ...S.card, width: 440, maxWidth: '100%' }} onClick={e => e.stopPropagation()}>
+              <h3 style={{ margin: '0 0 4px', fontSize: '15px', fontWeight: 700, color: '#1a1a2e' }}>Fail QC — {failJob.joId}</h3>
+              <p style={{ margin: '0 0 12px', fontSize: '12px', color: '#6b7280' }}>{prodName(failJob)} · x{failJob.product?.quantity ?? 1}. The job returns to production for reprint; materials stay reserved.</p>
+              <label style={S.label}>Defect details</label>
+              <textarea style={{ ...S.textarea }} value={defects} onChange={e => setDefects(e.target.value.slice(0, 1000))} placeholder="What went wrong? (misprint, color, alignment, smudge…)" />
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
+                <button onClick={() => setFailJob(null)} disabled={!!busyId} style={S.btnGhost}>Cancel</button>
+                <button onClick={confirmFail} disabled={!!busyId} style={S.btnDanger}>{busyId ? 'Submitting…' : 'Confirm Fail'}</button>
               </div>
             </div>
           </div>
-        </>
-      )}
-    </div>
+        )}
+      </div>
     </ErrorBoundary>
   );
 }

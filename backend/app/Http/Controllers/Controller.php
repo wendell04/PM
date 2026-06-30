@@ -39,6 +39,19 @@ abstract class Controller
     }
 
     /**
+     * Passes if the user has ANY of the given permission keys (admin/owner always pass).
+     * Used where one screen serves multiple roles (e.g. production OR legacy jobOrders).
+     */
+    protected function hasAnyPermission(\Illuminate\Http\Request $request, array $permKeys): mixed
+    {
+        foreach ($permKeys as $key) {
+            $res = $this->hasPermission($request, $key);
+            if ($res !== false) return $res;
+        }
+        return false;
+    }
+
+    /**
      * Checks if the authenticated user has one of the given roles.
      * Admin and owner always pass — they have full access.
      *

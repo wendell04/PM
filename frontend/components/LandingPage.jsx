@@ -630,6 +630,7 @@ const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=
           email: loginForm.email,
           password: loginForm.password,
           device_token: localStorage.getItem('device_token') || null,
+          rememberMe: rememberMe,
         }),
       });
       const data = await response.json();

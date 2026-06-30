@@ -1408,8 +1408,17 @@ export default function ShopLayout({ children }) {
     } catch {}
     localStorage.removeItem('auth_token');
     localStorage.removeItem('auth_user');
+    localStorage.removeItem('auth_validated_at');
+    localStorage.removeItem('auth_checked_at');
     sessionStorage.removeItem('shop_cart');
     setUser(null);
+    // Sync the shared AuthContext (and other tabs) so pages outside /shop (e.g. the landing) reflect
+    // the logout immediately instead of showing a stale logged-in state until a reload.
+    try {
+      const bc = new BroadcastChannel('pmp_auth');
+      bc.postMessage({ type: 'AUTH_LOGOUT' });
+      bc.close();
+    } catch {}
     sessionStorage.setItem('justLoggedOut', 'true');
     router.replace('/shop');
   }

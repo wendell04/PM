@@ -143,6 +143,7 @@ class PaymentController extends Controller
                     'productId'   => (string) $product->_id,
                     'productName' => $product->name,
                     'isCustom'    => (bool) $product->isCustom,
+                    'isMadeToOrder' => (bool) ($product->isMadeToOrder ?? false),
                     'thumbnail'   => $thumb,
                     'variantId'   => $variantId,
                     'variantName' => $item['variantName'] ?? null,
@@ -271,7 +272,7 @@ class PaymentController extends Controller
                     if (!$rawInv || $rawInv->isOnDemand) continue;
                     $qpu = (float) ($component['qty'] ?? 0);
                     if ($qpu <= 0) continue;
-                    $canProduce = min($canProduce, (int) floor(($rawInv->stockQty ?? 0) / $qpu));
+                    $canProduce = min($canProduce, (int) floor(max(0, (int) ($rawInv->stockQty ?? 0) - (int) ($rawInv->reservedQty ?? 0)) / $qpu));
                 }
                 if ($canProduce !== PHP_INT_MAX && $itemQty > $canProduce)
                     return $this->errorResponse("\"{$bomProd->name}\" can only produce {$canProduce} unit(s) with current materials.", 422);
@@ -625,6 +626,7 @@ class PaymentController extends Controller
                     'productId'       => (string) $product->_id,
                     'productName'     => $product->name,
                     'isCustom'        => (bool) $product->isCustom,
+                    'isMadeToOrder'   => (bool) ($product->isMadeToOrder ?? false),
                     'thumbnail'       => $thumb,
                     'variantId'       => $variantId,
                     'variantName'     => $item['variantName'] ?? null,
@@ -705,7 +707,7 @@ class PaymentController extends Controller
                     if (!$rawInv || $rawInv->isOnDemand) continue;
                     $qpu = (float) ($component['qty'] ?? 0);
                     if ($qpu <= 0) continue;
-                    $canProduce = min($canProduce, (int) floor(($rawInv->stockQty ?? 0) / $qpu));
+                    $canProduce = min($canProduce, (int) floor(max(0, (int) ($rawInv->stockQty ?? 0) - (int) ($rawInv->reservedQty ?? 0)) / $qpu));
                 }
                 if ($canProduce !== PHP_INT_MAX && $itemQty > $canProduce)
                     return $this->errorResponse("\"{$bomProd->name}\" can only produce {$canProduce} unit(s) with current materials.", 422);
@@ -802,11 +804,35 @@ class PaymentController extends Controller
                         }
                     }
                     if (!$bom || empty($bom->components)) continue;
+                    // Made-to-order / custom items RESERVE now (consumed at QC pass via the JO);
+                    // stocked ready-made items DEDUCT now.
+                    $producedItem = (bool) ($bomProd->isMadeToOrder ?? false) || (bool) ($bomProd->isCustom ?? false);
                     foreach ($bom->components as $component) {
                         $rawInv = Inventory::find($component['inventoryId'] ?? null);
                         if (!$rawInv || $rawInv->isOnDemand) continue;
                         $deductQty = (int) round(($component['qty'] ?? 0) * ($item['qty'] ?? 1));
                         if ($deductQty <= 0) continue;
+                        if ($producedItem) {
+                            $rawInv->reservedQty = (int) ($rawInv->reservedQty ?? 0) + $deductQty;
+                            $rawInv->save();
+                            StockHistory::create([
+                                'inventoryId'  => (string) $rawInv->_id,
+                                'quantity'     => $deductQty,
+                                'remainingQty' => (int) ($rawInv->stockQty ?? 0),
+                                'unitCost'     => $rawInv->averageCost ?? 0,
+                                'totalCost'    => 0,
+                                'reason'       => 'production_reserved',
+                                'type'         => 'reservation',
+                                'orderId'      => (string) $order->_id,
+                                'productId'    => $item['productId'] ?? null,
+                                'productName'  => $bomProd->name ?? '',
+                                'customerName' => trim(($user->firstName ?? '') . ' ' . ($user->lastName ?? '')),
+                                'performedBy'  => 'system',
+                                'remarks'      => 'Reserved for production: ' . (string) $order->_id,
+                                'createdAt'    => now(),
+                            ]);
+                            continue;
+                        }
                         $updatedRaw = DB::connection('mongodb')->getCollection('inventories')
                             ->findOneAndUpdate(
                                 ['_id' => new \MongoDB\BSON\ObjectId((string) $rawInv->_id)],

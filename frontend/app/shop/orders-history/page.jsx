@@ -9,6 +9,7 @@ import { StatusBadge, formatDate, formatPeso } from '@/lib/shopUtils';
 import { getEcho } from '@/lib/echo';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import { useCart } from '@/app/shop/layout';
+import { normalizeStatus } from '@/lib/orderStatus';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
@@ -17,13 +18,14 @@ const TABS = ['All', 'To Pay', 'In Progress', 'To Receive', 'Completed', 'Cancel
 // Map any granular order status into a customer-facing phase bucket so EVERY order is
 // filterable (Shopee/Lazada style). The wizard inside still shows the exact status.
 function orderBucket(o) {
-  const s = o.orderStatus;
-  if (s === 'Cancelled' || s === 'Returned') return 'Cancelled';
-  if (s === 'Delivered' || s === 'delivered' || s === 'Paid') return 'Completed';
-  if (s === 'For Delivery' || s === 'for_delivery' || s === 'shipped' || s === 'ready_for_pickup') return 'To Receive';
-  if (s === 'awaiting_payment') return 'To Pay';
+  const raw = o.orderStatus;
+  const s = normalizeStatus(raw);            // tolerant of legacy + canonical casing
+  if (s === 'cancelled' || s === 'returned') return 'Cancelled';
+  if (s === 'delivered' || raw === 'Paid') return 'Completed';
+  if (s === 'for_delivery' || raw === 'shipped' || raw === 'ready_for_pickup') return 'To Receive';
+  if (raw === 'awaiting_payment') return 'To Pay';
   // Unpaid online order still at Pending → needs payment first
-  if (s === 'Pending' && o.paymentStatus !== 'paid' && o.paymentMethod && o.paymentMethod !== 'cod') return 'To Pay';
+  if (s === 'pending' && o.paymentStatus !== 'paid' && o.paymentMethod && o.paymentMethod !== 'cod') return 'To Pay';
   return 'In Progress';
 }
 
