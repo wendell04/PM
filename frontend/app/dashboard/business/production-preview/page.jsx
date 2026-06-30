@@ -1,355 +1,154 @@
-"use client";
+'use client';
 
-/**
- * PRODUCTION DASHBOARD PREVIEW
- * 
- * ACCESS: /dashboard/business/production-preview
- * 
- * What production team sees:
- * - Only their assigned Job Orders
- * - Can start, update progress, upload photos/notes
- * - Can mark as complete (triggers QC)
- * 
- * This is a PREVIEW with mock data.
- */
-
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { fetchJobOrders } from '@/lib/jobOrderApi';
 import ErrorBoundary from '@/components/ErrorBoundary';
+import { fetchJobOrders, updateJobOrder } from '@/lib/jobOrderApi';
+import { S, ICONS, SearchBar, SummaryCard, PaginationBar, EmptyState, usePagination, CustomSelect } from '../inventory-v2/shared';
 
-function normalizeJobForProduction(jo) {
-  const raw = jo.joStatus || jo.status || 'Queued';
-  const status = raw === 'In Progress' ? 'in_progress'
-               : raw === 'Queued'      ? 'queued'
-               : raw.toLowerCase().startsWith('qc') ? 'completed'
-               : raw.toLowerCase().replace(/\s+/g, '_');
-  const prod = jo.product || {};
-  const items = Array.isArray(jo.items) && jo.items.length > 0
-    ? jo.items.map(i => ({ name: i.product_name || i.productName || i.name || '', qty: Number(i.qty || i.quantity || 1) }))
-    : prod.name
-      ? [{ name: prod.name + (prod.variant ? ` (${prod.variant})` : ''), qty: Number(prod.quantity || 1) }]
-      : [];
-  const fp = jo.designFilePath || jo.design_file_path || null;
-  return {
-    _id:        String(jo.id ?? jo._id),
-    id:         jo.joId || String(jo.id ?? jo._id),
-    orderId:    jo.orderId || '',
-    customer:   jo.order?.userSnapshot?.name || jo.order?.customer?.name || jo.customerName || '—',
-    items,
-    designFile: fp ? fp.split('/').pop() : null,
-    targetDate: jo.targetCompletion || null,
-    isRush:     !!jo.isRush,
-    status,
-    assignedTo: jo.assignedTo || '',
-    notes:      jo.notes || '',
-    timeline:   (jo.statusHistory || jo.timeline || []).map(t => ({
-      action: t.action || t.status || t.event || '',
-      date:   t.date || t.createdAt || '',
-      by:     t.by || t.updatedBy || t.user || '',
-      note:   t.note || t.notes || '',
-    })),
-  };
-}
+// Production staff worklist — the Queued / In Progress / For QC stages of a Job Order.
+// One Job Order moves: Queued -> In Progress -> For QC (then QC staff inspect it).
 
-const STATUS_CONFIG = {
-  queued: { label: 'Queued', color: 'var(--color-text-warning)', bg: 'rgba(245,158,11,0.12)', border: 'rgba(245,158,11,0.3)' },
-  in_progress: { label: 'In Progress', color: 'var(--blue)', bg: 'rgba(59,130,246,0.12)', border: 'rgba(59,130,246,0.3)' },
-  completed: { label: 'Completed', color: 'var(--gray)', bg: 'rgba(107,114,128,0.12)', border: 'rgba(107,114,128,0.3)' },
+const STATUS_TABS = [
+  { value: 'all',         label: 'All Active' },
+  { value: 'Queued',      label: 'Queued' },
+  { value: 'In Progress', label: 'In Progress' },
+  { value: 'QC_Pending',  label: 'For QC' },
+];
+
+const JO_BADGE = {
+  'Queued':      { bg: '#eef2ff', color: '#3730a3', border: '#c7d2fe', label: 'Queued' },
+  'In Progress': { bg: '#fffbe8', color: '#7a5c00', border: '#f3d88a', label: 'In Progress' },
+  'QC_Pending':  { bg: '#f5f3ff', color: '#5b21b6', border: '#ddd6fe', label: 'For QC' },
+  'QC_Passed':   { bg: '#f0fdf4', color: '#166534', border: '#bbf7d0', label: 'QC Passed' },
+  'QC_Failed':   { bg: '#fef2f2', color: '#991b1b', border: '#fecaca', label: 'QC Failed' },
+  'Completed':   { bg: '#f0fdf4', color: '#166534', border: '#bbf7d0', label: 'Completed' },
+  'Cancelled':   { bg: '#fef2f2', color: '#991b1b', border: '#fecaca', label: 'Cancelled' },
 };
 
-function formatDate(d) {
-  if (!d) return '—';
-  return new Date(d).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' });
+function StatusBadge({ status }) {
+  const c = JO_BADGE[status] || { bg: '#f3f4f6', color: '#6b7280', border: '#e1e3e5', label: status };
+  return <span style={{ ...S.badge, background: c.bg, color: c.color, border: `1px solid ${c.border}`, fontSize: '11px' }}>{c.label}</span>;
 }
 
-function formatTime(d) {
-  if (!d) return '—';
-  return new Date(d).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' });
+function fmtDate(s) {
+  if (!s) return '—';
+  return new Date(s).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-export default function ProductionPreviewPage() {
+export default function ProductionPage() {
   const { token } = useAuth();
   const [jobs, setJobs] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [selectedJob, setSelectedJob] = useState(null);
-  const [filterStatus, setFilterStatus] = useState('all');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [search, setSearch] = useState('');
+  const [busyId, setBusyId] = useState(null);
 
-  const loadJobs = useCallback(async () => {
+  const load = useCallback(async () => {
     if (!token) return;
-    setIsLoading(true);
-    setError(null);
+    setLoading(true); setError('');
     try {
       const data = await fetchJobOrders(token);
-      const all = Array.isArray(data) ? data : (data?.data ?? []);
-      setJobs(all.map(normalizeJobForProduction));
-    } catch (err) {
-      setError(err.message || 'Failed to load job orders');
-    } finally {
-      setIsLoading(false);
-    }
+      setJobs(Array.isArray(data) ? data : []);
+    } catch (e) { setError(e.message || 'Failed to load job orders'); }
+    finally { setLoading(false); }
   }, [token]);
 
-  useEffect(() => { loadJobs(); }, [loadJobs]);
+  useEffect(() => { load(); }, [load]);
 
-  const filtered = useMemo(() => {
-    if (filterStatus === 'all') return jobs;
-    return jobs.filter((j) => j.status === filterStatus);
-  }, [jobs, filterStatus]);
+  const idOf = (j) => j._id ?? j.id;
+  const prodName = (j) => {
+    const p = j.product || {};
+    return `${p.name ?? 'Item'}${p.variant ? ` — ${p.variant}` : ''}`;
+  };
 
-  const stats = useMemo(() => ({
-    queued: jobs.filter((j) => j.status === 'queued').length,
-    inProgress: jobs.filter((j) => j.status === 'in_progress').length,
-    completed: jobs.filter((j) => j.status === 'completed').length,
-  }), [jobs]);
+  const advance = async (j, joStatus) => {
+    setBusyId(idOf(j)); setError('');
+    try {
+      await updateJobOrder(token, idOf(j), { joStatus });
+      await load();
+    } catch (e) { setError(e.message || 'Update failed'); }
+    finally { setBusyId(null); }
+  };
 
-  if (isLoading) {
-    return (
-      <div style={{ padding: '1.5rem', maxWidth: '1200px', margin: '0 auto' }}>
-        <style>{`@keyframes ppPageSkel { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }`}</style>
-        {[...Array(5)].map((_, i) => (
-          <div
-            key={i}
-            style={{
-              height: '56px',
-              background: 'var(--dark2)',
-              borderRadius: '8px',
-              marginBottom: '0.5rem',
-              animation: 'ppPageSkel 1.5s ease-in-out infinite',
-            }}
-          />
-        ))}
-      </div>
-    );
-  }
+  const active = jobs.filter(j => !['Completed', 'Cancelled', 'QC_Passed'].includes(j.joStatus));
+  const counts = {
+    queued:     jobs.filter(j => j.joStatus === 'Queued').length,
+    inProgress: jobs.filter(j => j.joStatus === 'In Progress').length,
+    forQc:      jobs.filter(j => j.joStatus === 'QC_Pending').length,
+  };
 
-  if (error) {
-    return (
-      <div style={{ padding: '1.5rem', maxWidth: '1200px', margin: '0 auto' }}>
-        <div
-          style={{
-            background: 'rgba(239,68,68,0.12)',
-            border: '1px solid rgba(239,68,68,0.25)',
-            borderRadius: '8px',
-            padding: '1rem',
-            color: 'var(--white)',
-          }}
-        >
-          <p style={{ margin: 0 }}>{error}</p>
-          <button
-            type="button"
-            className="btn-primary"
-            style={{ marginTop: '0.75rem' }}
-            onClick={() => window.location.reload()}
-          >
-            Retry
-          </button>
-        </div>
-      </div>
-    );
-  }
+  const filtered = active.filter(j => {
+    const mS = statusFilter === 'all' || j.joStatus === statusFilter;
+    const q = search.toLowerCase();
+    const mQ = !q || prodName(j).toLowerCase().includes(q) || (j.joId || '').toLowerCase().includes(q) || (j.orderId || '').toLowerCase().includes(q);
+    return mS && mQ;
+  });
+
+  const { slice, page, perPage, total, setPage, setPerPage } = usePagination(filtered);
 
   return (
     <ErrorBoundary>
-    <div style={{ padding: '1.5rem', maxWidth: '1200px', margin: '0 auto' }}>
-      {/* Stats */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.75rem', marginBottom: '1.5rem' }}>
-        {[
-          { label: 'Queued', value: stats.queued, color: 'var(--color-text-warning)' },
-          { label: 'In Progress', value: stats.inProgress, color: 'var(--blue)' },
-          { label: 'Completed', value: stats.completed, color: 'var(--gray)' },
-        ].map((s) => (
-          <div key={s.label} style={{ background: 'rgba(255,255,255,0.04)', borderRadius: '12px', padding: '1rem', border: '1px solid rgba(255,255,255,0.06)', textAlign: 'center' }}>
-            <div style={{ fontSize: '2rem', fontWeight: 800, color: s.color }}>{s.value}</div>
-            <div style={{ fontSize: '0.7rem', color: 'var(--gray)', marginTop: '0.25rem' }}>{s.label}</div>
+      <div style={S.page}>
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '16px' }}>
+          <SummaryCard label="Queued" value={counts.queued} accent />
+          <SummaryCard label="In Progress" value={counts.inProgress} color="#c9973f" />
+          <SummaryCard label="For QC" value={counts.forQc} color="#5b21b6" />
+        </div>
+
+        <div style={{ ...S.card, ...S.rowBetween, marginBottom: '10px', padding: '12px 16px' }}>
+          <div style={{ ...S.row, gap: '8px', flex: 1 }}>
+            <SearchBar value={search} onChange={v => { setSearch(v); setPage(1); }} placeholder="Search JO, product, order…" style={{ width: '260px' }} />
+            <CustomSelect value={statusFilter} onChange={v => { setStatusFilter(v); setPage(1); }} options={STATUS_TABS} style={{ width: '160px' }} />
           </div>
-        ))}
+          <button onClick={load} style={S.btnGhost}>{ICONS.reload} Refresh</button>
+        </div>
+
+        {error && <div style={{ ...S.note, background: '#fef2f2', borderColor: '#fecaca', color: '#991b1b', marginBottom: '10px' }}>{error}</div>}
+
+        <div style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead><tr>
+              <th style={S.th}>JO</th><th style={S.th}>Product</th><th style={S.th}>Qty</th>
+              <th style={S.th}>Order</th><th style={S.th}>Target</th><th style={S.th}>Status</th>
+              <th style={{ ...S.th, textAlign: 'right' }}>Action</th>
+            </tr></thead>
+            <tbody>
+              {loading ? (
+                <tr><td colSpan={7} style={{ ...S.td, textAlign: 'center', color: '#9ca3af' }}>Loading…</td></tr>
+              ) : slice.length === 0 ? (
+                <tr><td colSpan={7} style={{ padding: 0 }}><EmptyState message="No active job orders" sub="Create one from a paid, design-approved order in Job Orders." /></td></tr>
+              ) : slice.map(j => {
+                const id = idOf(j); const busy = busyId === id;
+                return (
+                  <tr key={id} style={S.tr}>
+                    <td style={{ ...S.td, fontFamily: 'monospace', fontWeight: 600 }}>
+                      {j.joId || '—'}
+                      {j.isRush && <span style={{ ...S.badge, background: '#fef2f2', color: '#991b1b', border: '1px solid #fecaca', marginLeft: 6, fontSize: '10px' }}>RUSH</span>}
+                    </td>
+                    <td style={S.td}>
+                      {prodName(j)}
+                      {j.bomSnapshot?.length > 0 && <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>Materials: {j.bomSnapshot.map(m => `${m.name} ×${m.totalQty}${m.unit ? ' ' + m.unit : ''}`).join(', ')}</div>}
+                    </td>
+                    <td style={S.td}>{j.product?.quantity ?? '—'}</td>
+                    <td style={{ ...S.td, fontFamily: 'monospace' }}>{(j.orderId || '').slice(-8).toUpperCase() || '—'}</td>
+                    <td style={S.td}>{fmtDate(j.targetCompletion)}</td>
+                    <td style={S.td}><StatusBadge status={j.joStatus} /></td>
+                    <td style={{ ...S.td, textAlign: 'right' }}>
+                      {j.joStatus === 'Queued' && <button disabled={busy} onClick={() => advance(j, 'In Progress')} style={S.btnSm}>{busy ? '…' : 'Start'}</button>}
+                      {j.joStatus === 'In Progress' && <button disabled={busy} onClick={() => advance(j, 'QC_Pending')} style={S.btnSm}>{busy ? '…' : 'Send to QC'}</button>}
+                      {j.joStatus === 'QC_Pending' && <span style={{ fontSize: '12px', color: '#6b7280' }}>Awaiting QC</span>}
+                      {j.joStatus === 'QC_Failed' && <button disabled={busy} onClick={() => advance(j, 'In Progress')} style={S.btnSm}>{busy ? '…' : 'Redo'}</button>}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        <PaginationBar total={total} page={page} perPage={perPage} onPage={setPage} onPerPage={setPerPage} />
       </div>
-
-      {/* Filter */}
-      <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1rem', alignItems: 'center' }}>
-        <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} style={{ padding: '0.5rem 0.75rem', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: 'var(--white)', fontSize: '0.85rem', outline: 'none' }}>
-          <option value="all" style={{ background: 'var(--dark)' }}>All Jobs</option>
-          <option value="queued" style={{ background: 'var(--dark)' }}>Queued</option>
-          <option value="in_progress" style={{ background: 'var(--dark)' }}>In Progress</option>
-          <option value="completed" style={{ background: 'var(--dark)' }}>Completed</option>
-        </select>
-      </div>
-
-      {/* Job Cards */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-        {filtered.map((job) => {
-          const config = STATUS_CONFIG[job.status];
-          return (
-            <div
-              key={job.id}
-              onClick={() => setSelectedJob(job)}
-              style={{
-                background: 'rgba(255,255,255,0.04)',
-                borderRadius: '12px',
-                border: '1px solid rgba(255,255,255,0.06)',
-                padding: '1.25rem',
-                cursor: 'pointer',
-                transition: 'all 0.2s',
-              }}
-              onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'rgba(212,168,67,0.3)'; }}
-              onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.06)'; }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.25rem' }}>
-                    <span style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--white)', fontSize: '1rem' }}>{job.id}</span>
-                    <span style={{ fontSize: '0.7rem', fontWeight: 700, padding: '0.2rem 0.6rem', borderRadius: '999px', background: config.bg, color: config.color, border: `1px solid ${config.border}` }}>
-                      {config.label}
-                    </span>
-                    {job.isRush && (
-                      <span style={{ fontSize: '0.65rem', fontWeight: 700, padding: '0.15rem 0.5rem', borderRadius: '4px', background: 'rgba(239,68,68,0.15)', color: 'var(--red)', border: '1px solid rgba(239,68,68,0.3)' }}>
-                        RUSH
-                      </span>
-                    )}
-                  </div>
-                  <div style={{ fontSize: '0.8rem', color: 'var(--gray)' }}>
-                    {job.customer} | Order #{job.orderId}
-                  </div>
-                </div>
-                <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontSize: '0.7rem', color: 'var(--gray)' }}>Target</div>
-                  <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--white)' }}>{formatDate(job.targetDate)}</div>
-                </div>
-              </div>
-
-              {/* Items */}
-              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
-                {job.items.map((item, idx) => (
-                  <span key={idx} style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem', background: 'rgba(255,255,255,0.04)', borderRadius: '6px', color: 'var(--white)' }}>
-                    {item.name} × {item.qty}
-                  </span>
-                ))}
-              </div>
-
-              {/* Design + Actions */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  {job.designFile && (
-                    <span style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', fontSize: '0.7rem', color: 'var(--indigo)', fontWeight: 600 }}>
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2" /><circle cx="8.5" cy="8.5" r="1.5" /><polyline points="21 15 16 10 5 21" /></svg>
-                      {job.designFile}
-                    </span>
-                  )}
-                </div>
-                <div style={{ display: 'flex', gap: '0.5rem' }}>
-                  {job.status === 'queued' && (
-                    <button onClick={(e) => { e.stopPropagation(); }} style={{ padding: '0.375rem 0.75rem', background: 'rgba(59,130,246,0.15)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '6px', color: 'var(--blue)', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer' }}>
-                      Start
-                    </button>
-                  )}
-                  {job.status === 'in_progress' && (
-                    <button onClick={(e) => { e.stopPropagation(); }} style={{ padding: '0.375rem 0.75rem', background: 'rgba(6,182,212,0.15)', border: '1px solid rgba(6,182,212,0.3)', borderRadius: '6px', color: 'var(--cyan)', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer' }}>
-                      Submit for QC
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Job Detail Panel */}
-      {selectedJob && (
-        <>
-          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 999 }} onClick={() => setSelectedJob(null)} />
-          <div style={{ position: 'fixed', top: 0, right: 0, width: '460px', height: '100vh', background: 'var(--dark)', borderLeft: '1px solid rgba(255,255,255,0.08)', overflowY: 'auto', zIndex: 1000 }}>
-            <div style={{ padding: '1.25rem', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <div>
-                  <div style={{ fontSize: '0.7rem', color: 'var(--gray)', marginBottom: '0.25rem' }}>{selectedJob.id}</div>
-                  <h2 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 700, color: 'var(--white)' }}>{selectedJob.customer}</h2>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--gray)', marginTop: '0.25rem' }}>Order #{selectedJob.orderId}</div>
-                </div>
-                <button onClick={() => setSelectedJob(null)} style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', width: '32px', height: '32px', cursor: 'pointer', color: 'var(--gray)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12" /></svg>
-                </button>
-              </div>
-            </div>
-            <div style={{ padding: '1.25rem' }}>
-              {/* Items */}
-              <div style={{ marginBottom: '1.25rem' }}>
-                <h4 style={{ margin: '0 0 0.5rem 0', fontSize: '0.7rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase' }}>Items to Produce</h4>
-                {selectedJob.items.map((item, idx) => (
-                  <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0.75rem', background: 'rgba(255,255,255,0.03)', borderRadius: '6px', marginBottom: idx < selectedJob.items.length - 1 ? '0.375rem' : 0 }}>
-                    <span style={{ fontSize: '0.8rem', color: 'var(--white)' }}>{item.name}</span>
-                    <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--gold)', fontFamily: 'monospace' }}>× {item.qty}</span>
-                  </div>
-                ))}
-              </div>
-
-              {/* Design */}
-              {selectedJob.designFile && (
-                <div style={{ marginBottom: '1.25rem' }}>
-                  <h4 style={{ margin: '0 0 0.5rem 0', fontSize: '0.7rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase' }}>Design File</h4>
-                  <div style={{ padding: '0.75rem', background: 'rgba(99,102,241,0.08)', borderRadius: '8px', border: '1px solid rgba(99,102,241,0.2)', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--indigo)" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2" /><circle cx="8.5" cy="8.5" r="1.5" /><polyline points="21 15 16 10 5 21" /></svg>
-                    <div>
-                      <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--indigo)' }}>{selectedJob.designFile}</div>
-                      <div style={{ fontSize: '0.7rem', color: 'var(--gray)' }}>Click to view full design</div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Notes */}
-              {selectedJob.notes && (
-                <div style={{ marginBottom: '1.25rem' }}>
-                  <h4 style={{ margin: '0 0 0.5rem 0', fontSize: '0.7rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase' }}>Notes</h4>
-                  <div style={{ padding: '0.75rem', background: 'rgba(255,255,255,0.03)', borderRadius: '8px', fontSize: '0.8rem', color: 'var(--white)', lineHeight: 1.5 }}>{selectedJob.notes}</div>
-                </div>
-              )}
-
-              {/* Timeline */}
-              <div>
-                <h4 style={{ margin: '0 0 0.75rem 0', fontSize: '0.7rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase' }}>Activity Log</h4>
-                {selectedJob.timeline.map((event, idx) => (
-                  <div key={idx} style={{ display: 'flex', gap: '0.75rem', marginBottom: '0.75rem' }}>
-                    <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--gold)', marginTop: '0.375rem', flexShrink: 0 }} />
-                    <div>
-                      <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--white)' }}>{event.action}</div>
-                      <div style={{ fontSize: '0.7rem', color: 'var(--gray)' }}>{formatDate(event.date)} at {formatTime(event.date)} — {event.by}</div>
-                      {event.note && <div style={{ fontSize: '0.7rem', color: 'var(--gray)', fontStyle: 'italic', marginTop: '0.15rem' }}>{event.note}</div>}
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Actions */}
-              <div style={{ marginTop: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                {selectedJob.status === 'queued' && (
-                  <button type="button" style={{ padding: '0.625rem 0.75rem', background: 'var(--gold)', border: 'none', borderRadius: '8px', color: 'var(--black)', fontSize: '0.85rem', fontWeight: 700, cursor: 'pointer' }}>Start Production</button>
-                )}
-                {selectedJob.status === 'in_progress' && (
-                  <>
-                    <button style={{ padding: '0.625rem', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: 'var(--white)', fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></svg>
-                      Upload Photo/Note
-                    </button>
-                    <button style={{ padding: '0.625rem', background: 'rgba(6,182,212,0.15)', border: '1px solid rgba(6,182,212,0.3)', borderRadius: '8px', color: 'var(--cyan)', fontSize: '0.85rem', fontWeight: 700, cursor: 'pointer' }}>Submit for QC</button>
-                  </>
-                )}
-                {selectedJob.status === 'completed' && (
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', textAlign: 'center', padding: '0.75rem', background: 'var(--color-background-success)', border: '1px solid var(--color-border-success)', borderRadius: '8px', fontSize: '0.8rem', color: 'var(--color-text-success)', fontWeight: 600 }}>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                      <path d="M20 6L9 17l-5-5" />
-                    </svg>
-                    Submitted for Quality Check
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </>
-      )}
-    </div>
     </ErrorBoundary>
   );
 }

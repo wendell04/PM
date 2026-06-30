@@ -7,6 +7,7 @@ import { fetchAllOrdersNew, updateJobOrderStatus, deleteOrder as deleteOrderApi 
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import { S, ICONS, SearchBar, SummaryCard, PaginationBar, EmptyState, usePagination, CustomSelect } from '../inventory-v2/shared';
 import { getStatusBadge } from '@/lib/utils/orderHelpers';
+import { normalizeStatus, statusLabel, ORDER_STATUS_ORDER } from '@/lib/orderStatus';
 
 const API_URL    = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 const POLL_MS    = 30000;
@@ -15,7 +16,7 @@ const EXPIRY_DAYS = 7;
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
-const STATUS_TABS = ['All','Pending','In Production','For Delivery','Delivered','Returned','Cancelled'];
+const STATUS_TABS = ['all', ...ORDER_STATUS_ORDER];
 
 const STATUS_CFG = {
   // Active / in-progress → gold
@@ -504,14 +505,18 @@ function getAvailableStatuses(o) {
       design_approved:     ['awaiting_payment'],
       awaiting_production: ['In Production'],
       'In Production':     ['for_qc'],
-      for_qc:              o.paymentStatus === 'paid' ? ['For Delivery'] : ['ready_for_delivery'],
+      for_qc:              ['ready_for_delivery'],
+      ready_for_delivery:  ['For Delivery'],
       'For Delivery':      ['Delivered'],
     })[s] ?? [];
   }
   if (isCOD) {
     return ({
       Pending:        ['Processing', 'Cancelled'],
-      Processing:     ['For Delivery', 'Cancelled'],
+      Processing:     ['In Production', 'For Delivery', 'Cancelled'],
+      'In Production': ['for_qc', 'Cancelled'],
+      for_qc:         ['ready_for_delivery'],
+      ready_for_delivery: ['For Delivery'],
       'For Delivery': ['Delivered'],
       Delivered:      o.paymentStatus === 'paid' ? [] : ['Returned'],
     })[s] ?? [];
@@ -985,7 +990,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
         {canExpire && (
           <button onClick={handleExpire} disabled={expiring}
             style={{ ...S.btnSmDanger, background:'#fff7ed', color:'#c2410c', borderColor:'#fdba74', opacity: expiring ? 0.6 : 1 }}>
-            ⏰ {expiring ? 'Expiring…' : 'Mark Expired'}
+            {expiring ? 'Expiring…' : 'Mark Expired'}
           </button>
         )}
         {canDelete && (
@@ -1004,7 +1009,7 @@ export default function OrdersPage() {
 
   const [orders,       setOrders]       = useState([]);
   const [search,       setSearch]       = useState('');
-  const [statusFilter, setStatusFilter] = useState('All');
+  const [statusFilter, setStatusFilter] = useState('all');
   const [payFilter,    setPayFilter]    = useState('all');
   const [dateFilter,   setDateFilter]   = useState('this-month');
   const [customFrom,   setCustomFrom]   = useState('');
@@ -1059,7 +1064,7 @@ export default function OrdersPage() {
       (o.id || '').toLowerCase().includes(q) ||
       (o.productName || '').toLowerCase().includes(q);
 
-    const matchStatus = statusFilter === 'All' || o.orderStatus === statusFilter;
+    const matchStatus = statusFilter === 'all' || normalizeStatus(o.orderStatus) === statusFilter;
     const matchPay    = payFilter === 'all' || o.paymentStatus === payFilter;
 
     let matchDate = true;
@@ -1082,13 +1087,14 @@ export default function OrdersPage() {
 
   // ── Summary counts ──────────────────────────────────────────────────────────
 
+  const countBy = (code) => orders.filter(o => normalizeStatus(o.orderStatus) === code).length;
   const counts = {
     all:          orders.length,
-    pending:      orders.filter(o => o.orderStatus === 'Pending').length,
-    inProduction: orders.filter(o => o.orderStatus === 'In Production').length,
-    forDelivery:  orders.filter(o => o.orderStatus === 'For Delivery').length,
-    delivered:    orders.filter(o => o.orderStatus === 'Delivered').length,
-    cancelled:    orders.filter(o => o.orderStatus === 'Cancelled').length,
+    pending:      countBy('pending'),
+    inProduction: countBy('in_production'),
+    forDelivery:  countBy('for_delivery'),
+    delivered:    countBy('delivered'),
+    cancelled:    countBy('cancelled'),
   };
 
   const { slice, page, perPage, total, setPage, setPerPage } = usePagination(filtered);
@@ -1104,12 +1110,12 @@ export default function OrdersPage() {
         {/* Summary cards — click to filter */}
         <div style={{ display:'flex', gap:'10px', flexWrap:'wrap', marginBottom:'16px' }}>
           {[
-            { label:'Total Orders',   value:counts.all,          id:'All'           },
-            { label:'Pending',        value:counts.pending,       id:'Pending'       },
-            { label:'In Production',  value:counts.inProduction,  id:'In Production' },
-            { label:'For Delivery',   value:counts.forDelivery,   id:'For Delivery'  },
-            { label:'Delivered',      value:counts.delivered,     id:'Delivered'     },
-            { label:'Cancelled',      value:counts.cancelled,     id:'Cancelled'     },
+            { label:'Total Orders',   value:counts.all,          id:'all'           },
+            { label:'Pending',        value:counts.pending,       id:'pending'       },
+            { label:'In Production',  value:counts.inProduction,  id:'in_production' },
+            { label:'For Delivery',   value:counts.forDelivery,   id:'for_delivery'  },
+            { label:'Delivered',      value:counts.delivered,     id:'delivered'     },
+            { label:'Cancelled',      value:counts.cancelled,     id:'cancelled'     },
           ].map(c => (
             <div key={c.id} onClick={() => { setStatusFilter(c.id); setPage(1); }}
               style={{ cursor:'pointer', flex:'1', minWidth:'100px' }}>
@@ -1130,7 +1136,7 @@ export default function OrdersPage() {
                 color:      statusFilter === s ? '#1a1a2e' : '#6b7280',
                 boxShadow:  statusFilter === s ? '0 1px 3px rgba(0,0,0,.1)' : 'none',
                 transition:'all .15s', whiteSpace:'nowrap',
-              }}>{s}</button>
+              }}>{s === 'all' ? 'All' : statusLabel(s)}</button>
           ))}
         </div>
 
@@ -1243,7 +1249,7 @@ export default function OrdersPage() {
                         <td style={{ ...S.td, textAlign:'center' }}>
                           <StatusBadge status={o.orderStatus} />
                           {isArch && <span style={{ ...S.badge, fontSize:'10px', background:'#f3f4f6', color:'#6b7280', border:'1px solid #e5e7eb', marginLeft:'4px' }}>Archived</span>}
-                          {isExpired(o) && <span style={{ ...S.badge, fontSize:'10px', background:'#fff7ed', color:'#c2410c', border:'1px solid #fdba74', marginLeft:'4px' }}>⏰ Expired</span>}
+                          {isExpired(o) && <span style={{ ...S.badge, fontSize:'10px', background:'#fff7ed', color:'#c2410c', border:'1px solid #fdba74', marginLeft:'4px' }}>Expired</span>}
                         </td>
                         <td style={{ ...S.td, textAlign:'center' }}>
                           <PayBadge status={o.paymentStatus} />

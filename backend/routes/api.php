@@ -44,10 +44,10 @@ Route::get('/health', [HealthController::class, 'check']);
 
 // ─── Auth (Public) ────────────────────────────────────────────────────────────
 Route::post('/register',        [AuthController::class, 'register'])->middleware('throttle:10,1');
-Route::post('/login',           [AuthController::class, 'login'])->middleware('throttle:10,1');
+Route::post('/login',           [AuthController::class, 'login'])->middleware('throttle:login');
 Route::post('/logout',          [AuthController::class, 'logout'])->middleware('auth:sanctum');
 // Aliases (tooling / documentation compatibility)
-Route::post('/auth/login',      [AuthController::class, 'login'])->middleware('throttle:10,1');
+Route::post('/auth/login',      [AuthController::class, 'login'])->middleware('throttle:login');
 Route::post('/auth/logout',     [AuthController::class, 'logout'])->middleware('auth:sanctum');
 Route::get('/auth/me', function (Request $request) {
     return response()->json($request->user());

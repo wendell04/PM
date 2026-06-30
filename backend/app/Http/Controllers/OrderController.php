@@ -26,6 +26,7 @@ use Illuminate\Support\Facades\Http;
 use App\Models\StockHistory;
 use App\Models\AuditLog;
 use App\Services\PriceResolver;
+use App\Support\OrderStatus;
 
 class OrderController extends Controller
 {
@@ -174,6 +175,7 @@ class OrderController extends Controller
                     'productId'   => (string) $product->_id,
                     'productName' => $product->name,
                     'isCustom'    => (bool) $product->isCustom,
+                    'isMadeToOrder' => (bool) ($product->isMadeToOrder ?? false),
                     'thumbnail'   => $thumb,
                     'variantId'   => $variantId,
                     'variantName' => $item['variantName'] ?? null,
@@ -336,7 +338,9 @@ class OrderController extends Controller
                     if (!$rawInv || $rawInv->isOnDemand) continue;
                     $qpu = (float) ($component['qty'] ?? 0);
                     if ($qpu <= 0) continue;
-                    $canProduce = min($canProduce, (int) floor(($rawInv->stockQty ?? 0) / $qpu));
+                    // Available for new orders = physical stock minus what's already reserved for production.
+                    $available = max(0, (int) ($rawInv->stockQty ?? 0) - (int) ($rawInv->reservedQty ?? 0));
+                    $canProduce = min($canProduce, (int) floor($available / $qpu));
                 }
                 if ($canProduce !== PHP_INT_MAX && $itemQty > $canProduce) {
                     return $this->errorResponse(
@@ -478,21 +482,45 @@ class OrderController extends Controller
                         }
                     }
                     if (!$bom || empty($bom->components)) continue;
+                    // Made-to-order / custom items RESERVE materials now (consumed at QC pass via the
+                    // Job Order). Stocked ready-made items DEDUCT now (no production step).
+                    $producedItem = (bool) ($prod->isMadeToOrder ?? false) || (bool) ($prod->isCustom ?? false);
                     foreach ($bom->components as $component) {
                         $rawInv = Inventory::find($component['inventoryId'] ?? null);
                         if (!$rawInv || $rawInv->isOnDemand) continue;
                         $deductQty = (int) round(($component['qty'] ?? 0) * ($item['qty'] ?? 1));
                         if ($deductQty <= 0) continue;
-                        $this->deductInventoryFIFO(
-                            inventory:    $rawInv,
-                            qty:          $deductQty,
-                            reason:       'sale_reserved',
-                            unitPrice:    0.0,
-                            orderId:      (string) $order->_id,
-                            productId:    (string) $prod->_id,
-                            productName:  $prod->name ?? '',
-                            customerName: $order->userSnapshot['name'] ?? '',
-                        );
+                        if ($producedItem) {
+                            $rawInv->reservedQty = (int) ($rawInv->reservedQty ?? 0) + $deductQty;
+                            $rawInv->save();
+                            StockHistory::create([
+                                'inventoryId'  => (string) $rawInv->_id,
+                                'quantity'     => $deductQty,
+                                'remainingQty' => (int) ($rawInv->stockQty ?? 0),
+                                'unitCost'     => $rawInv->averageCost ?? 0,
+                                'totalCost'    => 0,
+                                'reason'       => 'production_reserved',
+                                'type'         => 'reservation',
+                                'performedBy'  => 'system',
+                                'orderId'      => (string) $order->_id,
+                                'productId'    => (string) $prod->_id,
+                                'productName'  => $prod->name ?? '',
+                                'customerName' => $order->userSnapshot['name'] ?? '',
+                                'remarks'      => 'Reserved for production: ' . (string) $order->_id,
+                                'createdAt'    => now(),
+                            ]);
+                        } else {
+                            $this->deductInventoryFIFO(
+                                inventory:    $rawInv,
+                                qty:          $deductQty,
+                                reason:       'sale_reserved',
+                                unitPrice:    0.0,
+                                orderId:      (string) $order->_id,
+                                productId:    (string) $prod->_id,
+                                productName:  $prod->name ?? '',
+                                customerName: $order->userSnapshot['name'] ?? '',
+                            );
+                        }
                     }
                 } catch (\Exception $bomErr) {
                     Log::warning('store: BOM deduction failed', [
@@ -740,17 +768,22 @@ class OrderController extends Controller
                 'courierFee'    => 'sometimes|numeric|min:0|max:50000',
             ]);
 
-            // Block for_delivery if DP custom order hasn't been fully paid
-            if (isset($validated['orderStatus']) && $validated['orderStatus'] === 'for_delivery') {
-                if ($order->isCustomOrder && $order->paymentStatus !== 'paid') {
-                    return response()->json(['message' => 'Customer must complete balance payment before the order can be moved to For Delivery.'], 422);
+            // Balance gate — a non-COD order must be fully paid before it can be released for
+            // delivery/marked delivered (COD collects on delivery, so it's exempt). Casing-tolerant.
+            if (isset($validated['orderStatus'])) {
+                $targetNorm = OrderStatus::normalize($validated['orderStatus']);
+                if (in_array($targetNorm, [OrderStatus::FOR_DELIVERY, OrderStatus::DELIVERED], true)) {
+                    $isCOD = strtolower((string) ($order->paymentMethod ?? '')) === 'cod';
+                    if (!$isCOD && ($order->paymentStatus ?? '') !== 'paid') {
+                        return response()->json(['message' => 'The remaining balance must be fully paid before this order can be released for delivery.'], 422);
+                    }
                 }
             }
 
             $oldStatus = $order->orderStatus;
 
-            // Store courier info when moving to For Delivery
-            if (isset($validated['orderStatus']) && $validated['orderStatus'] === 'For Delivery') {
+            // Store courier info when moving to (Out for) Delivery — casing-tolerant.
+            if (isset($validated['orderStatus']) && OrderStatus::normalize($validated['orderStatus']) === OrderStatus::FOR_DELIVERY) {
                 $order->courierName    = $request->input('courierName') ?: null;
                 $order->trackingNumber = $request->input('trackingNumber') ?: null;
             }
@@ -1269,7 +1302,7 @@ class OrderController extends Controller
             }
 
             $validated = $request->validate([
-                'orderStatus' => 'required|in:Pending,In Production,For QC,For Delivery,Delivered,Returned,Cancelled',
+                'orderStatus' => 'required|string',
             ]);
 
             $order = Order::find($id);
@@ -1278,31 +1311,29 @@ class OrderController extends Controller
                 return response()->json(['error' => 'Order not found'], 404);
             }
 
-            $oldStatus = $order->orderStatus;
-            $newStatus = $validated['orderStatus'];
+            // Phase 1: validate transitions canonically (casing-tolerant) but STORE the raw value
+            // unchanged — the admin Orders UI still reads the legacy casing until its focused rewire.
+            $newRaw    = $validated['orderStatus'];
+            $oldStatus = OrderStatus::normalize($order->orderStatus);
+            $newStatus = OrderStatus::normalize($newRaw);
 
-            // Enforce valid status transitions
-            $allowedTransitions = [
-                'Pending'       => ['In Production', 'Cancelled'],
-                'In Production' => ['For QC', 'Cancelled'],
-                'For QC'        => ['For Delivery', 'In Production'],
-                'For Delivery'  => ['Delivered', 'Returned'],
-                'Delivered'     => [],
-                'Returned'      => [],
-                'Cancelled'     => [],
-            ];
-
-            $allowed = $allowedTransitions[$oldStatus] ?? [];
-            if (!in_array($newStatus, $allowed)) {
+            if (!in_array($newStatus, OrderStatus::all(), true)) {
                 return response()->json([
-                    'error' => "Invalid transition: cannot move from '{$oldStatus}' to '{$newStatus}'.",
+                    'error' => "Unknown order status: '{$validated['orderStatus']}'.",
+                ], 422);
+            }
+
+            // Enforce valid status transitions (canonical machine)
+            if ($oldStatus !== $newStatus && !OrderStatus::canTransition($oldStatus, $newStatus)) {
+                return response()->json([
+                    'error' => "Invalid transition: cannot move from '" . OrderStatus::label($oldStatus) . "' to '" . OrderStatus::label($newStatus) . "'.",
                 ], 422);
             }
 
             // Payment gate — downpayment required before entering production
             // COD orders are exempt from this gate if paymentMethod is 'cod'
             // or if at least one payment has been recorded via paymentHistory.
-            if ($newStatus === 'In Production') {
+            if ($newStatus === OrderStatus::IN_PRODUCTION) {
                 $downPayment    = $order->downPayment ?? 0;
                 $paymentMethod  = $order->paymentMethod ?? '';
                 $paymentHistory = $order->paymentHistory ?? [];
@@ -1318,8 +1349,8 @@ class OrderController extends Controller
                 }
             }
 
-            // Courier required when moving to For Delivery
-            if ($newStatus === 'For Delivery') {
+            // Courier required when moving to Out for Delivery
+            if ($newStatus === OrderStatus::FOR_DELIVERY) {
                 $validated2 = $request->validate([
                     'courierName'    => 'required|string|max:100',
                     'trackingNumber' => 'nullable|string|max:200',
@@ -1328,10 +1359,10 @@ class OrderController extends Controller
                 $order->trackingNumber = $validated2['trackingNumber'] ?? null;
             }
 
-            $order->orderStatus    = $newStatus;
+            $order->orderStatus    = $newRaw;
             $order->updatedAt      = now();
             $history               = $order->statusHistory ?? [];
-            $history[]             = ['status' => $newStatus, 'at' => now()->toISOString()];
+            $history[]             = ['status' => $newRaw, 'at' => now()->toISOString()];
             $order->statusHistory  = $history;
             $order->save();
 
@@ -1347,18 +1378,18 @@ class OrderController extends Controller
             }
 
             // Handle completion: create sales records and deduct inventory
-            if ($order->orderStatus === 'Delivered' && $oldStatus !== 'Delivered') {
+            if ($newStatus === OrderStatus::DELIVERED && $oldStatus !== OrderStatus::DELIVERED) {
                 $this->completeOrder($order);
             }
 
             // Handle cancellation: cancel linked JobOrder and restore inventory
-            if ($order->orderStatus === 'Cancelled') {
+            if ($newStatus === OrderStatus::CANCELLED) {
                 $this->cancelLinkedJobOrder($order);
-                if ($oldStatus !== 'Cancelled') $this->restoreStockOnCancel($order);
+                if ($oldStatus !== OrderStatus::CANCELLED) $this->restoreStockOnCancel($order);
             }
 
             // Handle return: restore inventory
-            if ($order->orderStatus === 'Returned' && $oldStatus !== 'Returned') {
+            if ($newStatus === OrderStatus::RETURNED && $oldStatus !== OrderStatus::RETURNED) {
                 $this->restoreInventoryOnReturn($order);
             }
 
@@ -1500,12 +1531,35 @@ class OrderController extends Controller
                 }
 
                 if (!$bom || empty($bom->components)) continue;
+                $producedItem = (bool) ($bomProduct->isMadeToOrder ?? false) || (bool) ($bomProduct->isCustom ?? false);
                 try {
                     foreach ($bom->components as $component) {
                         $rawInv = Inventory::find($component['inventoryId'] ?? null);
                         if (!$rawInv || $rawInv->isOnDemand) continue;
                         $qty = (int) round(($component['qty'] ?? 0) * ($item['qty'] ?? 0));
                         if ($qty <= 0) continue;
+                        if ($producedItem) {
+                            // Materials were RESERVED (consumed only at QC) → release the reservation.
+                            $rawInv->reservedQty = max(0, (int) ($rawInv->reservedQty ?? 0) - $qty);
+                            $rawInv->save();
+                            StockHistory::create([
+                                'inventoryId'  => (string) $rawInv->_id,
+                                'quantity'     => $qty,
+                                'remainingQty' => (int) ($rawInv->stockQty ?? 0),
+                                'unitCost'     => $rawInv->averageCost ?? 0,
+                                'totalCost'    => 0,
+                                'reason'       => 'reservation_released',
+                                'type'         => 'reservation',
+                                'performedBy'  => 'system',
+                                'orderId'      => (string) $order->_id,
+                                'productId'    => (string) ($bomProduct->_id ?? ''),
+                                'productName'  => $bomProduct->name ?? '',
+                                'customerName' => $order->userSnapshot['name'] ?? '',
+                                'remarks'      => 'Order cancelled (reservation released): ' . (string) $order->_id,
+                                'createdAt'    => now(),
+                            ]);
+                            continue;
+                        }
                         $updated = DB::connection('mongodb')
                             ->getCollection('inventories')
                             ->findOneAndUpdate(

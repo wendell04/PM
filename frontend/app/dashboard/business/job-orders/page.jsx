@@ -11,68 +11,40 @@ import {
   updateJobOrder,
 } from '@/lib/jobOrderApi';
 import { fetchAllOrders } from '@/lib/ordersApi';
-import CustomDropdown from '@/app/components/CustomDropdown';
+import { normalizeStatus } from '@/lib/orderStatus';
+import { S, ICONS, SearchBar, SummaryCard, PaginationBar, EmptyState, usePagination, CustomSelect } from '../inventory-v2/shared';
 
-// ─── Constants ────────────────────────────────────────────
-const JO_STATUSES = ['Queued', 'In Progress', 'Completed'];
+// Manager hub for Job Orders — create (from a paid + design-approved order), schedule, oversee.
+// Production staff work them in Production; QC staff inspect them in Quality Control.
+const JO_STATUSES = ['Queued', 'In Progress', 'QC_Pending', 'QC_Passed', 'QC_Failed', 'Completed', 'Cancelled'];
 
-const STATUS_COLORS = {
-  'Queued':      { bg: 'rgba(234,179,8,0.12)',  color: 'var(--gold)' },
-  'In Progress': { bg: 'rgba(59,130,246,0.12)', color: 'var(--blue)' },
-  'Completed':   { bg: 'rgba(34,197,94,0.12)',  color: 'var(--green)' },
+const JO_BADGE = {
+  'Queued':      { bg: '#eef2ff', color: '#3730a3', border: '#c7d2fe', label: 'Queued' },
+  'In Progress': { bg: '#fffbe8', color: '#7a5c00', border: '#f3d88a', label: 'In Progress' },
+  'QC_Pending':  { bg: '#f5f3ff', color: '#5b21b6', border: '#ddd6fe', label: 'For QC' },
+  'QC_Passed':   { bg: '#f0fdf4', color: '#166534', border: '#bbf7d0', label: 'QC Passed' },
+  'QC_Failed':   { bg: '#fef2f2', color: '#991b1b', border: '#fecaca', label: 'QC Failed' },
+  'Completed':   { bg: '#f0fdf4', color: '#166534', border: '#bbf7d0', label: 'Completed' },
+  'Cancelled':   { bg: '#fef2f2', color: '#991b1b', border: '#fecaca', label: 'Cancelled' },
 };
 
 const EMPTY_FORM = {
-  orderId: '',
-  productName: '',
-  productVariant: '',
-  productQuantity: '',
-  targetCompletion: '',
-  isRush: false,
-  assignedTo: '',
-  notes: '',
-  designNotes: '',
-  designFilePath: '',
-  adminComment: '',
+  orderId: '', itemIdx: 0,
+  targetCompletion: '', isRush: false, assignedTo: '', notes: '',
 };
 
-// ─── Helpers ──────────────────────────────────────────────
-function formatDate(str) {
-  if (!str) return '—';
-  return new Date(str).toLocaleDateString('en-PH', {
-    month: 'short', day: 'numeric', year: 'numeric',
-  });
-}
-
 function StatusBadge({ status }) {
-  const s = STATUS_COLORS[status] || { bg: 'rgba(107,114,128,0.15)', color: 'var(--gray)' };
-  return (
-    <span style={{
-      display: 'inline-block',
-      padding: '3px 10px',
-      borderRadius: '999px',
-      fontSize: '0.75rem',
-      fontWeight: 700,
-      background: s.bg,
-      color: s.color,
-      letterSpacing: '0.3px',
-    }}>
-      {status}
-    </span>
-  );
+  const c = JO_BADGE[status] || { bg: '#f3f4f6', color: '#6b7280', border: '#e1e3e5', label: status };
+  return <span style={{ ...S.badge, background: c.bg, color: c.color, border: `1px solid ${c.border}`, fontSize: '11px' }}>{c.label}</span>;
 }
 
-// ─── JobOrderForm ─────────────────────────────────────────
-function JobOrderForm({
-  initial = EMPTY_FORM,
-  isEdit = false,
-  orders = [],
-  ordersLoading = false,
-  onSubmit,
-  onCancel,
-  isSubmitting,
-  submitError,
-}) {
+function fmtDate(s) {
+  if (!s) return '—';
+  return new Date(s).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+// ─── Create / Edit form ───────────────────────────────────
+function JobOrderForm({ initial = EMPTY_FORM, isEdit = false, orders = [], ordersLoading = false, onSubmit, onCancel, isSubmitting, submitError }) {
   const [form, setForm] = useState(initial);
   const [errors, setErrors] = useState({});
 
@@ -83,12 +55,18 @@ function JobOrderForm({
     setErrors(prev => ({ ...prev, [field]: '' }));
   };
 
+  // Product / variant / qty come straight from the chosen order item — never typed by hand.
+  const selectedOrder = orders.find(o => String(o.id ?? o._id) === String(form.orderId));
+  const orderItems = selectedOrder?.items ?? [];
+  const chosenItem = orderItems[form.itemIdx ?? 0];
+  const itemName = (it) => it?.productName ?? it?.product_name ?? it?.name ?? 'Item';
+  const itemVariant = (it) => it?.variantName ?? it?.variant ?? null;
+  const itemQty = (it) => Number(it?.qty ?? it?.quantity ?? 1);
+
   const validate = () => {
     const e = {};
     if (!isEdit && !form.orderId) e.orderId = 'Please select an order.';
-    if (!form.productName.trim()) e.productName = 'Product name is required.';
-    if (!form.productQuantity || Number(form.productQuantity) < 1)
-      e.productQuantity = 'Quantity must be at least 1.';
+    if (!isEdit && form.orderId && !chosenItem) e.orderId = 'This order has no items to produce.';
     if (!form.targetCompletion) e.targetCompletion = 'Target completion date is required.';
     if (isEdit && !form.joStatus) e.joStatus = 'Status is required.';
     return e;
@@ -98,848 +76,330 @@ function JobOrderForm({
     const e = validate();
     if (Object.keys(e).length > 0) { setErrors(e); return; }
     const payload = isEdit
-      ? {
-          joStatus:         form.joStatus,
-          targetCompletion: form.targetCompletion,
-          isRush:           form.isRush,
-          assignedTo:       form.assignedTo || null,
-          notes:            form.notes || '',
-        }
-      : {
-          orderId:          form.orderId,
-          product: {
-            name:     form.productName.trim(),
-            variant:  form.productVariant.trim() || null,
-            quantity: Number(form.productQuantity),
-          },
-          targetCompletion: form.targetCompletion,
-          isRush:           form.isRush,
-          assignedTo:       form.assignedTo || null,
-          notes:            form.notes || '',
-        };
+      ? { joStatus: form.joStatus, targetCompletion: form.targetCompletion, isRush: form.isRush, assignedTo: form.assignedTo || null, notes: form.notes || '' }
+      : { orderId: form.orderId, product: { name: itemName(chosenItem), variant: itemVariant(chosenItem), quantity: itemQty(chosenItem), productId: chosenItem?.productId ?? null, variantId: chosenItem?.variantId ?? null }, targetCompletion: form.targetCompletion, isRush: form.isRush, assignedTo: form.assignedTo || null, notes: form.notes || '' };
     onSubmit(payload);
   };
 
-  const inputStyle = (hasErr) => ({
-    width: '100%',
-    padding: '10px 12px',
-    background: 'var(--dark)',
-    border: `1px solid ${hasErr ? 'var(--red)' : 'var(--border)'}`,
-    borderRadius: '8px',
-    color: 'var(--white)',
-    fontSize: '14px',
-    outline: 'none',
-    boxSizing: 'border-box',
-  });
-
-  const labelStyle = {
-    display: 'block',
-    fontSize: '12px',
-    fontWeight: 600,
-    color: 'var(--gray)',
-    marginBottom: '6px',
-    textTransform: 'uppercase',
-    letterSpacing: '0.5px',
-  };
-
-  const errStyle = {
-    fontSize: '12px',
-    color: 'var(--red)',
-    marginTop: '4px',
-    display: 'block',
-  };
-
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-
-      {/* Order selector — create only */}
+    <div style={{ display: 'grid', gap: '14px' }}>
       {!isEdit && (
         <div>
-          <label style={labelStyle}>Order *</label>
-          <select
+          <label style={S.label}>Order *</label>
+          <CustomSelect
             value={form.orderId}
-            onChange={e => set('orderId', e.target.value)}
+            onChange={v => { set('orderId', v); set('itemIdx', 0); }}
             disabled={isSubmitting || ordersLoading}
-            style={inputStyle(!!errors.orderId)}
-          >
-            <option value="">
-              {ordersLoading ? 'Loading orders...' : '— Select an order —'}
-            </option>
-            {orders.map(o => (
-              <option key={o.id ?? o._id} value={o.id ?? o._id}>
-                {o.orderNumber || o.orderId || (o.id ?? o._id)?.slice(-8).toUpperCase()}
-                {o.customerName ? ` — ${o.customerName}` : ''}
-              </option>
-            ))}
-          </select>
-          {errors.orderId && <span style={errStyle}>{errors.orderId}</span>}
+            error={!!errors.orderId}
+            placeholder={ordersLoading ? 'Loading orders…' : '— Select a paid, approved order —'}
+            style={{ width: '100%' }}
+            emptyLabel={ordersLoading ? 'Loading orders…' : 'No paid, design-approved orders are waiting for production yet.'}
+            options={orders.map(o => ({ value: o.id ?? o._id, label: `${o.orderNumber || o.orderId || (o.id ?? o._id)?.slice(-8).toUpperCase()}${o.customerName ? ` — ${o.customerName}` : ''}` }))}
+          />
+          {errors.orderId && <span style={S.errText}>{errors.orderId}</span>}
         </div>
       )}
 
-      {/* Status — edit only */}
       {isEdit && (
         <div>
-          <label style={labelStyle}>Status *</label>
-          <select
+          <label style={S.label}>Status *</label>
+          <CustomSelect
             value={form.joStatus || ''}
-            onChange={e => set('joStatus', e.target.value)}
+            onChange={v => set('joStatus', v)}
             disabled={isSubmitting}
-            style={inputStyle(!!errors.joStatus)}
-          >
-            <option value="">— Select status —</option>
-            {JO_STATUSES.map(s => (
-              <option key={s} value={s}>{s}</option>
-            ))}
-          </select>
-          {errors.joStatus && <span style={errStyle}>{errors.joStatus}</span>}
-        </div>
-      )}
-
-      {/* Product name — create only */}
-      {!isEdit && (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-          <div>
-            <label style={labelStyle}>Product Name *</label>
-            <input
-              type="text"
-              value={form.productName}
-              onChange={e => set('productName', e.target.value)}
-              placeholder="e.g. Custom Mug"
-              disabled={isSubmitting}
-              style={inputStyle(!!errors.productName)}
-            />
-            {errors.productName && <span style={errStyle}>{errors.productName}</span>}
-          </div>
-          <div>
-            <label style={labelStyle}>Variant</label>
-            <input
-              type="text"
-              value={form.productVariant}
-              onChange={e => set('productVariant', e.target.value)}
-              placeholder="e.g. White / 11oz"
-              disabled={isSubmitting}
-              style={inputStyle(false)}
-            />
-          </div>
-        </div>
-      )}
-
-      {/* Quantity — create only */}
-      {!isEdit && (
-        <div>
-          <label style={labelStyle}>Quantity *</label>
-          <input
-            type="number"
-            min="1"
-            value={form.productQuantity}
-            onChange={e => set('productQuantity', e.target.value)}
-            placeholder="1"
-            disabled={isSubmitting}
-            style={inputStyle(!!errors.productQuantity)}
+            error={!!errors.joStatus}
+            style={{ width: '100%' }}
+            options={JO_STATUSES.map(s => ({ value: s, label: JO_BADGE[s]?.label ?? s }))}
           />
-          {errors.productQuantity && <span style={errStyle}>{errors.productQuantity}</span>}
+          {errors.joStatus && <span style={S.errText}>{errors.joStatus}</span>}
         </div>
       )}
 
-      {/* Target completion */}
-      <div>
-        <label style={labelStyle}>Target Completion *</label>
-        <input
-          type="date"
-          value={form.targetCompletion
-            ? form.targetCompletion.split('T')[0]
-            : ''}
-          onChange={e => set('targetCompletion', e.target.value)}
-          disabled={isSubmitting}
-          style={inputStyle(!!errors.targetCompletion)}
-        />
-        {errors.targetCompletion && <span style={errStyle}>{errors.targetCompletion}</span>}
-      </div>
-
-      {/* Rush + Assigned row */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+      {!isEdit && orderItems.length > 1 && (
         <div>
-          <label style={labelStyle}>Assigned To</label>
-          <input
-            type="text"
-            value={form.assignedTo}
-            onChange={e => set('assignedTo', e.target.value)}
-            placeholder="Staff name"
-            disabled={isSubmitting}
-            style={inputStyle(false)}
-          />
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
-          <label style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '10px',
-            cursor: isSubmitting ? 'not-allowed' : 'pointer',
-            padding: '10px 12px',
-            background: 'var(--dark)',
-            border: '1px solid var(--border)',
-            borderRadius: '8px',
-          }}>
-            <input
-              type="checkbox"
-              checked={form.isRush}
-              onChange={e => set('isRush', e.target.checked)}
-              disabled={isSubmitting}
-              style={{ width: '16px', height: '16px', accentColor: 'var(--gold)' }}
-            />
-            <span style={{ fontSize: '14px', color: 'var(--white)', fontWeight: 600 }}>
-              Rush Order
-            </span>
-            {form.isRush && (
-              <span style={{
-                fontSize: '11px',
-                fontWeight: 700,
-                color: 'var(--red)',
-                background: 'rgba(239,68,68,0.1)',
-                padding: '2px 8px',
-                borderRadius: '999px',
-              }}>
-                RUSH
-              </span>
-            )}
-          </label>
-        </div>
-      </div>
-
-      {/* Notes */}
-      <div>
-        <label style={labelStyle}>Notes</label>
-        <textarea
-          value={form.notes}
-          onChange={e => set('notes', e.target.value)}
-          placeholder="Production notes..."
-          rows={3}
-          disabled={isSubmitting}
-          style={{ ...inputStyle(false), resize: 'vertical', fontFamily: 'inherit' }}
-        />
-      </div>
-
-      {/* Submit error */}
-      {submitError && (
-        <div style={{
-          padding: '10px 14px',
-          borderRadius: '8px',
-          background: 'rgba(239,68,68,0.08)',
-          border: '1px solid var(--red)',
-          fontSize: '13px',
-          color: 'var(--red)',
-        }}>
-          {submitError}
+          <label style={S.label}>Item to produce *</label>
+          <CustomSelect value={String(form.itemIdx ?? 0)} onChange={v => set('itemIdx', Number(v))} disabled={isSubmitting} style={{ width: '100%' }}
+            options={orderItems.map((it, i) => ({ value: String(i), label: `${itemName(it)}${itemVariant(it) ? ` — ${itemVariant(it)}` : ''} × ${itemQty(it)}` }))} />
         </div>
       )}
 
-      {/* Actions */}
-      <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
-        <button
-          onClick={onCancel}
-          disabled={isSubmitting}
-          style={{
-            padding: '10px 20px', borderRadius: '8px',
-            border: '1px solid var(--border)', background: 'var(--dark2)',
-            color: 'var(--gray)', fontSize: '14px',
-            cursor: isSubmitting ? 'not-allowed' : 'pointer',
-            opacity: isSubmitting ? 0.6 : 1,
-          }}
-        >
-          Cancel
-        </button>
-        <button
-          onClick={handleSubmit}
-          disabled={isSubmitting}
-          className="btn-primary"
-          style={{ padding: '10px 24px', opacity: isSubmitting ? 0.6 : 1 }}
-        >
-          {isSubmitting ? 'Saving...' : isEdit ? 'Update' : 'Create Job Order'}
-        </button>
+      {!isEdit && chosenItem && (
+        <div style={{ ...S.cardSm, background: '#f8f9fa' }}>
+          <div style={{ ...S.label, marginBottom: 4 }}>Producing (from the order)</div>
+          <div style={{ fontSize: 14, fontWeight: 600, color: '#1a1a2e' }}>{itemName(chosenItem)}{itemVariant(chosenItem) ? ` — ${itemVariant(chosenItem)}` : ''}</div>
+          <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>Quantity: {itemQty(chosenItem)} · raw materials are taken from this product&apos;s recipe.</div>
+        </div>
+      )}
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }} className="hp-2col">
+        <div>
+          <label style={S.label}>Target completion *</label>
+          <input style={errors.targetCompletion ? S.inputErr : S.input} type="date" value={form.targetCompletion} onChange={e => set('targetCompletion', e.target.value)} disabled={isSubmitting} />
+          {errors.targetCompletion && <span style={S.errText}>{errors.targetCompletion}</span>}
+        </div>
+        <div>
+          <label style={S.label}>Assigned to</label>
+          <input style={S.input} value={form.assignedTo} onChange={e => set('assignedTo', e.target.value)} placeholder="Staff name" disabled={isSubmitting} />
+        </div>
+      </div>
+
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '13px', fontWeight: 600, color: '#1a1a2e', cursor: 'pointer' }}>
+        <input type="checkbox" checked={form.isRush} onChange={e => set('isRush', e.target.checked)} disabled={isSubmitting} style={{ width: 16, height: 16, accentColor: '#d4a843' }} />
+        Rush order
+        {form.isRush && <span style={{ ...S.badge, background: '#fef2f2', color: '#991b1b', border: '1px solid #fecaca', fontSize: '10px' }}>RUSH</span>}
+      </label>
+
+      <div>
+        <label style={S.label}>Notes</label>
+        <textarea style={S.textarea} value={form.notes} onChange={e => set('notes', e.target.value)} placeholder="Production notes…" disabled={isSubmitting} />
+      </div>
+
+      {submitError && <div style={{ ...S.note, background: '#fef2f2', borderColor: '#fecaca', color: '#991b1b' }}>{submitError}</div>}
+
+      <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+        <button onClick={onCancel} disabled={isSubmitting} style={S.btnGhost}>Cancel</button>
+        <button onClick={handleSubmit} disabled={isSubmitting} style={S.btnPrimary}>{isSubmitting ? 'Saving…' : isEdit ? 'Update' : 'Create Job Order'}</button>
       </div>
     </div>
   );
 }
 
-// ─── Main Page ────────────────────────────────────────────
+// ─── Main page ────────────────────────────────────────────
 export default function JobOrdersPage() {
   const { token } = useAuth();
   const router = useRouter();
 
-  // List tab state
-  const [jobOrders, setJobOrders]       = useState([]);
-  const [isLoading, setIsLoading]       = useState(true);
-  const [error, setError]               = useState(null);
-  const [filters, setFilters]           = useState({ status: '', isRush: '' });
+  const [jobOrders, setJobOrders] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [statusFilter, setStatusFilter] = useState('');
+  const [rushFilter, setRushFilter] = useState('');
+  const [search, setSearch] = useState('');
 
-  // Modal state
-  const [modal, setModal]               = useState(null); // null | 'create' | 'edit'
-  const [selected, setSelected]         = useState(null);
+  const [modal, setModal] = useState(null);
+  const [selected, setSelected] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [submitError, setSubmitError]   = useState('');
+  const [submitError, setSubmitError] = useState('');
 
-  // Orders for selector
-  const [orders, setOrders]             = useState([]);
+  const [orders, setOrders] = useState([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
 
-  // Schedule tab state
-  const [activeTab, setActiveTab]       = useState('list');
+  const [activeTab, setActiveTab] = useState('list');
   const [scheduleRange, setScheduleRange] = useState({ startDate: '', endDate: '' });
-  const [scheduleJOs, setScheduleJOs]   = useState([]);
+  const [scheduleJOs, setScheduleJOs] = useState([]);
   const [scheduleLoading, setScheduleLoading] = useState(false);
   const [scheduleError, setScheduleError] = useState(null);
 
-  // ── Load job orders ───────────────────────────────────
   const loadJobOrders = useCallback(async () => {
     if (!token) { setIsLoading(false); return; }
-    setIsLoading(true);
-    setError(null);
+    setIsLoading(true); setError(null);
     try {
       const f = {};
-      if (filters.status)  f.status  = filters.status;
-      if (filters.isRush !== '') f.isRush = filters.isRush === 'true';
+      if (statusFilter) f.status = statusFilter;
+      if (rushFilter !== '') f.isRush = rushFilter === 'true';
       const data = await fetchJobOrders(token, f);
       setJobOrders(Array.isArray(data) ? data : []);
     } catch (err) {
       if (err.message === 'Unauthorized') { router.push('/'); return; }
       setError(err.message || 'Failed to load job orders.');
-    } finally {
-      setIsLoading(false);
-    }
-  }, [token, filters, router]);
+    } finally { setIsLoading(false); }
+  }, [token, statusFilter, rushFilter, router]);
 
   useEffect(() => { loadJobOrders(); }, [loadJobOrders]);
 
-  // ── Load orders for selector ──────────────────────────
   const loadOrders = useCallback(async () => {
     if (!token) return;
     setOrdersLoading(true);
     try {
-      const data = await fetchAllOrders({}, token);
-      const raw = data?.data ?? data?.orders ?? (Array.isArray(data) ? data : []);
+      const data = await fetchAllOrders(token, { limit: 200 });
+      const raw = Array.isArray(data) ? data : (data?.data ?? data?.orders ?? []);
       setOrders(raw);
-    } catch {
-      setOrders([]);
-    } finally {
-      setOrdersLoading(false);
-    }
+    } catch { setOrders([]); }
+    finally { setOrdersLoading(false); }
   }, [token]);
 
-  // ── Load schedule ─────────────────────────────────────
   const loadSchedule = useCallback(async () => {
     if (!token) return;
-    setScheduleLoading(true);
-    setScheduleError(null);
+    setScheduleLoading(true); setScheduleError(null);
     try {
       const data = await fetchJobOrderSchedule(token, scheduleRange);
       setScheduleJOs(Array.isArray(data) ? data : []);
     } catch (err) {
       if (err.message === 'Unauthorized') { router.push('/'); return; }
       setScheduleError(err.message || 'Failed to load schedule.');
-    } finally {
-      setScheduleLoading(false);
-    }
+    } finally { setScheduleLoading(false); }
   }, [token, scheduleRange, router]);
 
-  useEffect(() => {
-    if (activeTab === 'schedule') loadSchedule();
-  }, [activeTab, loadSchedule]);
+  useEffect(() => { if (activeTab === 'schedule') loadSchedule(); }, [activeTab, loadSchedule]);
 
-  // ── Handlers ──────────────────────────────────────────
-  const openCreate = () => {
-    setSelected(null);
-    setSubmitError('');
-    loadOrders();
-    setModal('create');
-  };
-
-  const openEdit = (jo) => {
-    setSelected(jo);
-    setSubmitError('');
-    setModal('edit');
-  };
-
-  const closeModal = () => {
-    setModal(null);
-    setSelected(null);
-    setSubmitError('');
-  };
+  const openCreate = () => { setSelected(null); setSubmitError(''); loadOrders(); setModal('create'); };
+  const openEdit = (jo) => { setSelected(jo); setSubmitError(''); setModal('edit'); };
+  const closeModal = () => { setModal(null); setSelected(null); setSubmitError(''); };
 
   const handleCreate = async (payload) => {
-    setIsSubmitting(true);
-    setSubmitError('');
-    try {
-      await createJobOrder(token, payload);
-      await loadJobOrders();
-      closeModal();
-    } catch (err) {
-      setSubmitError(err.message || 'Failed to create job order.');
-    } finally {
-      setIsSubmitting(false);
-    }
+    setIsSubmitting(true); setSubmitError('');
+    try { await createJobOrder(token, payload); await loadJobOrders(); closeModal(); }
+    catch (err) { setSubmitError(err.message || 'Failed to create job order.'); }
+    finally { setIsSubmitting(false); }
   };
 
   const handleUpdate = async (payload) => {
     if (!selected) return;
-    setIsSubmitting(true);
-    setSubmitError('');
-    try {
-      await updateJobOrder(token, selected.id ?? selected._id, payload);
-      await loadJobOrders();
-      closeModal();
-    } catch (err) {
-      setSubmitError(err.message || 'Failed to update job order.');
-    } finally {
-      setIsSubmitting(false);
-    }
+    setIsSubmitting(true); setSubmitError('');
+    try { await updateJobOrder(token, selected.id ?? selected._id, payload); await loadJobOrders(); closeModal(); }
+    catch (err) { setSubmitError(err.message || 'Failed to update job order.'); }
+    finally { setIsSubmitting(false); }
   };
 
-  // ── Group schedule by date ────────────────────────────
+  const prodName = (jo) => `${jo.product?.name ?? 'Item'}${jo.product?.variant ? ` — ${jo.product.variant}` : ''}`;
+
+  // Only orders that can actually be produced: not already job-ordered, not finished/cancelled,
+  // paid (DP/partial/paid or COD), and — for custom — past the design-approval stage.
+  // (Custom orders carry their design state in orderStatus until Phase 1b separates it.)
+  const PRE_APPROVAL = ['pending_review', 'pending_design', 'proof_sent', 'revision_requested', 'rejected'];
+  const eligibleOrders = orders.filter(o => {
+    if (o.joId) return false;
+    const st = normalizeStatus(o.orderStatus);
+    if (['delivered', 'cancelled', 'returned'].includes(st)) return false;
+    const isCOD = (o.paymentMethod || '').toLowerCase() === 'cod';
+    const paid = isCOD || ['partial', 'paid'].includes(o.paymentStatus) || Number(o.downPayment) > 0;
+    if (!paid) return false;
+    const isCustom = o.isCustomOrder ?? o.isCustom;
+    const rawStatus = String(o.orderStatus || '').toLowerCase().replace(/[\s-]+/g, '_');
+    if (isCustom && PRE_APPROVAL.includes(rawStatus)) return false;
+    // Must need a production run: customizable or made-to-order. Ready-made stocked items (e.g. a
+    // plain Scrunchie) ship from stock — no Job Order. Material is still deducted at order time.
+    if (!(o.items || []).some(it => it.isCustom || it.isMadeToOrder)) return false;
+    return true;
+  });
+
+  const counts = {
+    total:      jobOrders.length,
+    queued:     jobOrders.filter(j => j.joStatus === 'Queued').length,
+    inProgress: jobOrders.filter(j => j.joStatus === 'In Progress').length,
+    forQc:      jobOrders.filter(j => j.joStatus === 'QC_Pending').length,
+    completed:  jobOrders.filter(j => ['Completed', 'QC_Passed'].includes(j.joStatus)).length,
+  };
+
+  const filtered = jobOrders.filter(jo => {
+    const q = search.toLowerCase();
+    return !q || prodName(jo).toLowerCase().includes(q) || (jo.joId || '').toLowerCase().includes(q) || (jo.orderId || '').toLowerCase().includes(q);
+  });
+  const { slice, page, perPage, total, setPage, setPerPage } = usePagination(filtered);
+
   const scheduleGrouped = scheduleJOs.reduce((acc, jo) => {
-    const day = jo.targetCompletion
-      ? new Date(jo.targetCompletion).toLocaleDateString('en-PH', {
-          weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
-        })
-      : 'No Date';
-    if (!acc[day]) acc[day] = [];
-    acc[day].push(jo);
+    const day = jo.targetCompletion ? new Date(jo.targetCompletion).toLocaleDateString('en-PH', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }) : 'No Date';
+    (acc[day] = acc[day] || []).push(jo);
     return acc;
   }, {});
 
-  // ── Shared styles ─────────────────────────────────────
-  const cardStyle = {
-    background: 'var(--dark2)',
-    border: '1px solid var(--border)',
-    borderRadius: '12px',
-    padding: '20px',
-  };
-
-  // ── Render ────────────────────────────────────────────
   return (
     <ErrorBoundary>
-      <div style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto' }}>
-
-        {/* Header */}
-        <div style={{
-          display: 'flex', justifyContent: 'space-between',
-          alignItems: 'center', marginBottom: '24px',
-          flexWrap: 'wrap', gap: '16px',
-        }}>
-          <button
-            onClick={openCreate}
-            className="btn-primary"
-            style={{ padding: '10px 20px' }}
-          >
-            + Create Job Order
-          </button>
+      <div style={S.page}>
+        <div style={{ ...S.rowBetween, marginBottom: '16px' }}>
+          <button onClick={openCreate} style={S.btnPrimary}>{ICONS.plus} Create Job Order</button>
         </div>
 
-        {/* Tabs */}
-        <div style={{
-          display: 'flex', gap: '4px',
-          borderBottom: '1px solid var(--border)',
-          marginBottom: '24px',
-        }}>
-          {[
-            { key: 'list',     label: 'Job Orders' },
-            { key: 'schedule', label: 'Schedule'   },
-          ].map(t => (
-            <button
-              key={t.key}
-              onClick={() => setActiveTab(t.key)}
-              style={{
-                padding: '10px 20px',
-                background: 'none',
-                border: 'none',
-                borderBottom: activeTab === t.key
-                  ? '2px solid var(--gold)'
-                  : '2px solid transparent',
-                color: activeTab === t.key ? 'var(--gold)' : 'var(--gray)',
-                fontSize: '14px',
-                fontWeight: activeTab === t.key ? 700 : 400,
-                cursor: 'pointer',
-                marginBottom: '-1px',
-              }}
-            >
-              {t.label}
-            </button>
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '16px' }}>
+          <SummaryCard label="Total" value={counts.total} accent />
+          <SummaryCard label="Queued" value={counts.queued} />
+          <SummaryCard label="In Progress" value={counts.inProgress} color="#c9973f" />
+          <SummaryCard label="For QC" value={counts.forQc} color="#5b21b6" />
+          <SummaryCard label="Completed" value={counts.completed} color="#166534" />
+        </div>
+
+        <div style={{ display: 'flex', gap: '4px', background: '#f3f4f6', borderRadius: '8px', padding: '3px', alignSelf: 'flex-start', marginBottom: '14px', width: 'fit-content' }}>
+          {[{ key: 'list', label: 'Job Orders' }, { key: 'schedule', label: 'Schedule' }].map(t => (
+            <button key={t.key} onClick={() => setActiveTab(t.key)} style={{ padding: '6px 16px', borderRadius: '6px', border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: '12px', background: activeTab === t.key ? '#fff' : 'transparent', color: activeTab === t.key ? '#1a1a2e' : '#6b7280', boxShadow: activeTab === t.key ? '0 1px 3px rgba(0,0,0,.1)' : 'none' }}>{t.label}</button>
           ))}
         </div>
 
-        {/* ── TAB: Job Orders list ─────────────────────── */}
         {activeTab === 'list' && (
           <>
-            {/* Filters */}
-            <div style={{ display: 'flex', gap: '12px', marginBottom: '20px', flexWrap: 'wrap' }}>
-              <CustomDropdown
-                value={filters.status}
-                onChange={v => setFilters(p => ({ ...p, status: v }))}
-                placeholder="All Statuses"
-                options={[
-                  { value: '', label: 'All Statuses' },
-                  ...JO_STATUSES.map(s => ({ value: s, label: s })),
-                ]}
-                style={{ minWidth: '150px' }}
-              />
-              <CustomDropdown
-                value={filters.isRush}
-                onChange={v => setFilters(p => ({ ...p, isRush: v }))}
-                placeholder="All Types"
-                options={[
-                  { value: '', label: 'All Types' },
-                  { value: 'true', label: 'Rush Only' },
-                  { value: 'false', label: 'Standard Only' },
-                ]}
-                style={{ minWidth: '140px' }}
-              />
-              <button
-                onClick={loadJobOrders}
-                style={{
-                  padding: '8px 16px', background: 'var(--dark2)',
-                  border: '1px solid var(--border)', borderRadius: '8px',
-                  color: 'var(--gray)', fontSize: '14px', cursor: 'pointer',
-                }}
-              >
-                Refresh
-              </button>
+            <div style={{ ...S.card, ...S.rowBetween, marginBottom: '10px', padding: '12px 16px' }}>
+              <div style={{ ...S.row, gap: '8px', flex: 1 }}>
+                <SearchBar value={search} onChange={v => { setSearch(v); setPage(1); }} placeholder="Search JO, product, order…" style={{ width: '240px' }} />
+                <CustomSelect value={statusFilter} onChange={setStatusFilter} style={{ width: '150px' }}
+                  options={[{ value: '', label: 'All Statuses' }, ...JO_STATUSES.map(s => ({ value: s, label: JO_BADGE[s]?.label ?? s }))]} />
+                <CustomSelect value={rushFilter} onChange={setRushFilter} style={{ width: '140px' }}
+                  options={[{ value: '', label: 'All Types' }, { value: 'true', label: 'Rush Only' }, { value: 'false', label: 'Standard Only' }]} />
+              </div>
+              <button onClick={loadJobOrders} style={S.btnGhost}>{ICONS.reload} Refresh</button>
             </div>
 
-            {/* Loading */}
-            {isLoading && (
-              <>
-                <style>{`
-                  @keyframes joPageSkel { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
-                `}</style>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '0 0 1rem' }}>
-                  {[...Array(5)].map((_, i) => (
-                    <div
-                      key={i}
-                      style={{
-                        height: '56px',
-                        borderRadius: '8px',
-                        background: 'var(--dark2)',
-                        animation: 'joPageSkel 1.5s ease-in-out infinite',
-                      }}
-                    />
+            {error && <div style={{ ...S.note, background: '#fef2f2', borderColor: '#fecaca', color: '#991b1b', marginBottom: '10px' }}>{error}</div>}
+
+            <div style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead><tr>
+                  <th style={S.th}>JO</th><th style={S.th}>Product</th><th style={S.th}>Qty</th>
+                  <th style={S.th}>Order</th><th style={S.th}>Assigned</th><th style={S.th}>Due</th>
+                  <th style={S.th}>Status</th><th style={{ ...S.th, textAlign: 'right' }}>Action</th>
+                </tr></thead>
+                <tbody>
+                  {isLoading ? (
+                    <tr><td colSpan={8} style={{ ...S.td, textAlign: 'center', color: '#9ca3af' }}>Loading…</td></tr>
+                  ) : slice.length === 0 ? (
+                    <tr><td colSpan={8} style={{ padding: 0 }}><EmptyState message="No job orders found" sub="Create one from a paid, design-approved order." /></td></tr>
+                  ) : slice.map(jo => (
+                    <tr key={jo.id ?? jo._id} style={S.tr}>
+                      <td style={{ ...S.td, fontFamily: 'monospace', fontWeight: 600 }}>
+                        {jo.joId || (jo.id ?? jo._id)?.slice(-8).toUpperCase()}
+                        {jo.isRush && <span style={{ ...S.badge, background: '#fef2f2', color: '#991b1b', border: '1px solid #fecaca', marginLeft: 6, fontSize: '10px' }}>RUSH</span>}
+                      </td>
+                      <td style={S.td}>
+                        {prodName(jo)}{jo.designFilePath && <a href={jo.designFilePath} target="_blank" rel="noopener noreferrer" style={{ marginLeft: 8, fontSize: 11, color: '#d4a843', fontWeight: 600, textDecoration: 'none' }}>Design</a>}
+                        {jo.bomSnapshot?.length > 0 && <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>Materials: {jo.bomSnapshot.map(m => `${m.name} ×${m.totalQty}${m.unit ? ' ' + m.unit : ''}`).join(', ')}</div>}
+                      </td>
+                      <td style={S.td}>{jo.product?.quantity ?? '—'}</td>
+                      <td style={{ ...S.td, fontFamily: 'monospace' }}>{(jo.orderId || '').slice(-8).toUpperCase() || '—'}</td>
+                      <td style={S.td}>{jo.assignedTo || '—'}</td>
+                      <td style={S.td}>{fmtDate(jo.targetCompletion)}</td>
+                      <td style={S.td}><StatusBadge status={jo.joStatus} /></td>
+                      <td style={{ ...S.td, textAlign: 'right' }}>
+                        <button onClick={() => openEdit(jo)} style={S.btnSmGhost}>{ICONS.edit} Edit</button>
+                      </td>
+                    </tr>
                   ))}
-                </div>
-              </>
-            )}
-
-            {/* Error */}
-            {!isLoading && error && (
-              <div style={{
-                padding: '16px', borderRadius: '8px',
-                background: 'rgba(239,68,68,0.08)',
-                border: '1px solid var(--red)',
-                color: 'var(--red)',
-                display: 'flex', justifyContent: 'space-between',
-                alignItems: 'center', gap: '16px', marginBottom: '16px',
-              }}>
-                <span>{error}</span>
-                <button
-                  onClick={loadJobOrders}
-                  style={{
-                    background: 'none',
-                    border: '1px solid var(--red)',
-                    borderRadius: '6px',
-                    color: 'var(--red)',
-                    padding: '4px 12px', fontSize: '13px', cursor: 'pointer',
-                  }}
-                >
-                  Retry
-                </button>
-              </div>
-            )}
-
-            {/* Empty */}
-            {!isLoading && !error && jobOrders.length === 0 && (
-              <div style={{ textAlign: 'center', padding: '4rem 1rem', color: 'var(--gray)' }}>
-                No job orders found.
-              </div>
-            )}
-
-            {/* Job order cards */}
-            {!isLoading && !error && jobOrders.length > 0 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                {jobOrders.map(jo => (
-                  <div
-                    key={jo.id ?? jo._id}
-                    style={{
-                      ...cardStyle,
-                      borderLeft: jo.isRush
-                        ? '3px solid var(--red)'
-                        : '3px solid transparent',
-                    }}
-                  >
-                    <div style={{
-                      display: 'flex', justifyContent: 'space-between',
-                      alignItems: 'flex-start', gap: '16px', flexWrap: 'wrap',
-                    }}>
-                      {/* Left: JO info */}
-                      <div style={{ flex: 1, minWidth: '200px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-                          <span style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--white)' }}>
-                            {jo.joId || (jo.id ?? jo._id)?.slice(-8).toUpperCase()}
-                          </span>
-                          {jo.isRush && (
-                            <span style={{
-                              fontSize: '10px', fontWeight: 700,
-                              color: 'var(--red)',
-                              background: 'rgba(239,68,68,0.1)',
-                              padding: '2px 7px', borderRadius: '999px',
-                            }}>
-                              RUSH
-                            </span>
-                          )}
-                          <StatusBadge status={jo.joStatus} />
-                        </div>
-                        <div style={{ fontSize: '0.85rem', color: 'var(--gray)', marginBottom: '4px' }}>
-                          {jo.product?.name}
-                          {jo.product?.variant ? ` — ${jo.product.variant}` : ''}
-                          {jo.product?.quantity ? ` × ${jo.product.quantity}` : ''}
-                        </div>
-                        <div style={{ fontSize: '0.8rem', color: 'var(--gray)' }}>
-                          Order: <span style={{ color: 'var(--white)' }}>
-                            {jo.orderId?.slice(-8).toUpperCase() || '—'}
-                          </span>
-                          {jo.assignedTo && (
-                            <span style={{ marginLeft: '12px' }}>
-                              Assigned: <span style={{ color: 'var(--white)' }}>{jo.assignedTo}</span>
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Right: date + actions */}
-                      <div style={{
-                        display: 'flex', flexDirection: 'column',
-                        alignItems: 'flex-end', gap: '8px', flexShrink: 0,
-                      }}>
-                        <div style={{ fontSize: '0.8rem', color: 'var(--gray)', textAlign: 'right' }}>
-                          Due: <span style={{ color: 'var(--white)', fontWeight: 600 }}>
-                            {formatDate(jo.targetCompletion)}
-                          </span>
-                        </div>
-                        <button
-                          onClick={() => openEdit(jo)}
-                          style={{
-                            background: 'none',
-                            border: '1px solid var(--border)',
-                            borderRadius: '6px',
-                            color: 'var(--gold)',
-                            padding: '4px 12px',
-                            fontSize: '12px',
-                            cursor: 'pointer',
-                          }}
-                        >
-                          Edit
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Notes */}
-                    {jo.notes && (
-                      <div style={{
-                        marginTop: '12px',
-                        paddingTop: '12px',
-                        borderTop: '1px solid var(--border)',
-                        fontSize: '0.8rem',
-                        color: 'var(--gray)',
-                        fontStyle: 'italic',
-                      }}>
-                        {jo.notes}
-                      </div>
-                    )}
-
-                    {/* Design File */}
-                    {jo.designFilePath && (
-                      <div style={{ marginTop: '0.75rem' }}>
-                        <div style={{ fontSize: '0.72rem', color: 'var(--gray)', marginBottom: '0.25rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Design File</div>
-                        <a
-                          href={jo.designFilePath}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          style={{ display: 'inline-flex', alignItems: 'center', gap: '0.375rem', fontSize: '0.82rem', color: 'var(--gold)', fontWeight: 600, textDecoration: 'none' }}
-                        >
-                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
-                            <polyline points="15 3 21 3 21 9"/>
-                            <line x1="10" y1="14" x2="21" y2="3"/>
-                          </svg>
-                          View Design File
-                        </a>
-                      </div>
-                    )}
-
-                    {/* Design Notes */}
-                    {jo.designNotes && (
-                      <div style={{ marginTop: '0.75rem' }}>
-                        <div style={{ fontSize: '0.72rem', color: 'var(--gray)', marginBottom: '0.25rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Customer Design Notes</div>
-                        <div style={{ fontSize: '0.82rem', color: 'var(--white)', lineHeight: 1.5 }}>{jo.designNotes}</div>
-                      </div>
-                    )}
-
-                    {/* Admin Comment */}
-                    {jo.adminComment && (
-                      <div style={{ marginTop: '0.75rem' }}>
-                        <div style={{ fontSize: '0.72rem', color: 'var(--gray)', marginBottom: '0.25rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Admin Notes</div>
-                        <div style={{ fontSize: '0.82rem', color: 'var(--white)', background: 'rgba(212,168,67,0.08)', border: '1px solid rgba(212,168,67,0.2)', borderRadius: '6px', padding: '0.5rem 0.75rem', lineHeight: 1.5 }}>{jo.adminComment}</div>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
+                </tbody>
+              </table>
+            </div>
+            <PaginationBar total={total} page={page} perPage={perPage} onPage={setPage} onPerPage={setPerPage} />
           </>
         )}
 
-        {/* ── TAB: Schedule ────────────────────────────── */}
         {activeTab === 'schedule' && (
           <>
-            {/* Date range filters */}
-            <div style={{ display: 'flex', gap: '12px', marginBottom: '20px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '12px', color: 'var(--gray)', marginBottom: '4px' }}>
-                  From
-                </label>
-                <input
-                  type="date"
-                  value={scheduleRange.startDate}
-                  onChange={e => setScheduleRange(p => ({ ...p, startDate: e.target.value }))}
-                  style={{
-                    padding: '8px 12px', background: 'var(--dark2)',
-                    border: '1px solid var(--border)', borderRadius: '8px',
-                    color: 'var(--white)', fontSize: '14px', outline: 'none',
-                  }}
-                />
-              </div>
-              <div>
-                <label style={{ display: 'block', fontSize: '12px', color: 'var(--gray)', marginBottom: '4px' }}>
-                  To
-                </label>
-                <input
-                  type="date"
-                  value={scheduleRange.endDate}
-                  onChange={e => setScheduleRange(p => ({ ...p, endDate: e.target.value }))}
-                  style={{
-                    padding: '8px 12px', background: 'var(--dark2)',
-                    border: '1px solid var(--border)', borderRadius: '8px',
-                    color: 'var(--white)', fontSize: '14px', outline: 'none',
-                  }}
-                />
-              </div>
-              <button
-                onClick={loadSchedule}
-                className="btn-primary"
-                style={{ padding: '8px 20px' }}
-              >
-                Apply
-              </button>
+            <div style={{ ...S.card, ...S.row, gap: '12px', marginBottom: '10px', padding: '12px 16px', alignItems: 'flex-end' }}>
+              <div><label style={S.label}>From</label><input type="date" style={{ ...S.input, width: 'auto' }} value={scheduleRange.startDate} onChange={e => setScheduleRange(p => ({ ...p, startDate: e.target.value }))} /></div>
+              <div><label style={S.label}>To</label><input type="date" style={{ ...S.input, width: 'auto' }} value={scheduleRange.endDate} onChange={e => setScheduleRange(p => ({ ...p, endDate: e.target.value }))} /></div>
+              <button onClick={loadSchedule} style={S.btnPrimary}>Apply</button>
             </div>
 
-            {/* Schedule loading */}
-            {scheduleLoading && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <style>{`@keyframes joSkel{0%,100%{background-position:-400px 0}100%{background-position:400px 0}}.jo-skel{background:linear-gradient(90deg,var(--dark2) 25%,var(--dark3,#2a2a2a) 50%,var(--dark2) 75%);background-size:400px 100%;animation:joSkel 1.4s ease-in-out infinite;border-radius:8px;}`}</style>
-                {[...Array(3)].map((_, i) => (
-                  <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    <div className="jo-skel" style={{ height: '14px', width: '120px' }} />
-                    <div className="jo-skel" style={{ height: '60px', borderRadius: '10px' }} />
-                  </div>
-                ))}
-              </div>
-            )}
+            {scheduleError && <div style={{ ...S.note, background: '#fef2f2', borderColor: '#fecaca', color: '#991b1b', marginBottom: '10px' }}>{scheduleError}</div>}
 
-            {/* Schedule error */}
-            {!scheduleLoading && scheduleError && (
-              <div style={{
-                padding: '16px', borderRadius: '8px',
-                background: 'rgba(239,68,68,0.08)',
-                border: '1px solid var(--red)',
-                color: 'var(--red)',
-                display: 'flex', justifyContent: 'space-between',
-                alignItems: 'center', gap: '16px',
-              }}>
-                <span>{scheduleError}</span>
-                <button
-                  onClick={loadSchedule}
-                  style={{
-                    background: 'none',
-                    border: '1px solid var(--red)',
-                    borderRadius: '6px',
-                    color: 'var(--red)',
-                    padding: '4px 12px', fontSize: '13px', cursor: 'pointer',
-                  }}
-                >
-                  Retry
-                </button>
-              </div>
-            )}
-
-            {/* Schedule empty */}
-            {!scheduleLoading && !scheduleError && scheduleJOs.length === 0 && (
-              <div style={{ textAlign: 'center', padding: '4rem 1rem', color: 'var(--gray)' }}>
-                No job orders in this date range.
-              </div>
-            )}
-
-            {/* Schedule grouped */}
-            {!scheduleLoading && !scheduleError && scheduleJOs.length > 0 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+            {scheduleLoading ? (
+              <div style={{ ...S.card, textAlign: 'center', color: '#9ca3af' }}>Loading…</div>
+            ) : scheduleJOs.length === 0 ? (
+              <div style={{ ...S.card }}><EmptyState message="No job orders in this range" /></div>
+            ) : (
+              <div style={{ display: 'grid', gap: '18px' }}>
                 {Object.entries(scheduleGrouped).map(([day, jos]) => (
                   <div key={day}>
-                    <div style={{
-                      fontSize: '0.8rem', fontWeight: 700,
-                      color: 'var(--gold)',
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.5px',
-                      marginBottom: '10px',
-                    }}>
-                      {day}
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                      {jos.map(jo => (
-                        <div key={jo.id ?? jo._id} style={{
-                          ...cardStyle,
-                          padding: '14px 20px',
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'center',
-                          gap: '16px',
-                          flexWrap: 'wrap',
-                          borderLeft: jo.isRush
-                            ? '3px solid var(--red)'
-                            : '3px solid transparent',
-                        }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1, flexWrap: 'wrap' }}>
-                            <span style={{ fontWeight: 700, color: 'var(--white)', fontSize: '0.9rem' }}>
-                              {jo.joId || (jo.id ?? jo._id)?.slice(-8).toUpperCase()}
-                            </span>
-                            <StatusBadge status={jo.joStatus} />
-                            {jo.isRush && (
-                              <span style={{
-                                fontSize: '10px', fontWeight: 700,
-                                color: 'var(--red)',
-                                background: 'rgba(239,68,68,0.1)',
-                                padding: '2px 7px', borderRadius: '999px',
-                              }}>
-                                RUSH
-                              </span>
-                            )}
-                            <span style={{ fontSize: '0.85rem', color: 'var(--gray)' }}>
-                              {jo.product?.name}
-                              {jo.product?.variant ? ` — ${jo.product.variant}` : ''}
-                              {jo.product?.quantity ? ` × ${jo.product.quantity}` : ''}
-                            </span>
-                          </div>
-                          {jo.assignedTo && (
-                            <span style={{ fontSize: '0.8rem', color: 'var(--gray)', flexShrink: 0 }}>
-                              {jo.assignedTo}
-                            </span>
-                          )}
-                        </div>
-                      ))}
+                    <div style={{ fontSize: '12px', fontWeight: 700, color: '#d4a843', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: '8px' }}>{day}</div>
+                    <div style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                        <tbody>
+                          {jos.map(jo => (
+                            <tr key={jo.id ?? jo._id} style={S.tr}>
+                              <td style={{ ...S.td, fontFamily: 'monospace', fontWeight: 600, width: 120 }}>{jo.joId || (jo.id ?? jo._id)?.slice(-8).toUpperCase()}{jo.isRush && <span style={{ ...S.badge, background: '#fef2f2', color: '#991b1b', border: '1px solid #fecaca', marginLeft: 6, fontSize: '10px' }}>RUSH</span>}</td>
+                              <td style={S.td}>{prodName(jo)} {jo.product?.quantity ? `× ${jo.product.quantity}` : ''}</td>
+                              <td style={S.td}>{jo.assignedTo || '—'}</td>
+                              <td style={{ ...S.td, textAlign: 'right' }}><StatusBadge status={jo.joStatus} /></td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
                     </div>
                   </div>
                 ))}
@@ -949,81 +409,24 @@ export default function JobOrdersPage() {
         )}
       </div>
 
-      {/* ── Create Modal ──────────────────────────────────── */}
-      {modal === 'create' && (
-        <div
-          onClick={closeModal}
-          style={{
-            position: 'fixed', inset: 0, zIndex: 1000,
-            background: 'rgba(0,0,0,0.6)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            padding: '24px',
-          }}
-        >
-          <div
-            onClick={e => e.stopPropagation()}
-            style={{
-              background: 'var(--dark2)', border: '1px solid var(--border)',
-              borderRadius: '16px', padding: '32px',
-              width: '100%', maxWidth: '600px',
-              maxHeight: '90vh', overflowY: 'auto',
-            }}
-          >
-            <h2 style={{ margin: '0 0 24px', fontSize: '1.25rem', fontWeight: 700, color: 'var(--white)' }}>
-              Create Job Order
+      {(modal === 'create' || (modal === 'edit' && selected)) && (
+        <div onClick={closeModal} style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+          <div onClick={e => e.stopPropagation()} style={{ ...S.card, width: '100%', maxWidth: modal === 'create' ? 600 : 520, maxHeight: '90vh', overflowY: 'auto' }}>
+            <h2 style={{ margin: '0 0 16px', fontSize: '1.05rem', fontWeight: 700, color: '#1a1a2e' }}>
+              {modal === 'create' ? 'Create Job Order' : `Edit Job Order — ${selected.joId || ''}`}
             </h2>
             <JobOrderForm
-              initial={EMPTY_FORM}
-              isEdit={false}
-              orders={orders}
-              ordersLoading={ordersLoading}
-              onSubmit={handleCreate}
-              onCancel={closeModal}
-              isSubmitting={isSubmitting}
-              submitError={submitError}
-            />
-          </div>
-        </div>
-      )}
-
-      {/* ── Edit Modal ────────────────────────────────────── */}
-      {modal === 'edit' && selected && (
-        <div
-          onClick={closeModal}
-          style={{
-            position: 'fixed', inset: 0, zIndex: 1000,
-            background: 'rgba(0,0,0,0.6)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            padding: '24px',
-          }}
-        >
-          <div
-            onClick={e => e.stopPropagation()}
-            style={{
-              background: 'var(--dark2)', border: '1px solid var(--border)',
-              borderRadius: '16px', padding: '32px',
-              width: '100%', maxWidth: '520px',
-              maxHeight: '90vh', overflowY: 'auto',
-            }}
-          >
-            <h2 style={{ margin: '0 0 24px', fontSize: '1.25rem', fontWeight: 700, color: 'var(--white)' }}>
-              Edit Job Order — {selected.joId}
-            </h2>
-            <JobOrderForm
-              initial={{
-                joStatus:         selected.joStatus || 'Queued',
-                targetCompletion: selected.targetCompletion
-                  ? selected.targetCompletion.split('T')[0]
-                  : '',
-                isRush:    selected.isRush   || false,
+              initial={modal === 'create' ? EMPTY_FORM : {
+                joStatus: selected.joStatus || 'Queued',
+                targetCompletion: selected.targetCompletion ? String(selected.targetCompletion).split('T')[0] : '',
+                isRush: selected.isRush || false,
                 assignedTo: selected.assignedTo || '',
-                notes:         selected.notes         || '',
-                designNotes:   selected.designNotes   || '',
-                designFilePath: selected.designFilePath || '',
-                adminComment:  selected.adminComment  || '',
+                notes: selected.notes || '',
               }}
-              isEdit={true}
-              onSubmit={handleUpdate}
+              isEdit={modal === 'edit'}
+              orders={eligibleOrders}
+              ordersLoading={ordersLoading}
+              onSubmit={modal === 'create' ? handleCreate : handleUpdate}
               onCancel={closeModal}
               isSubmitting={isSubmitting}
               submitError={submitError}

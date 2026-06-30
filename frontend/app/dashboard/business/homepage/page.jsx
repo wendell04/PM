@@ -310,8 +310,7 @@ export default function HomepageCmsPage() {
     <ErrorBoundary>
       <div style={{ padding: '2rem', maxWidth: 1400, margin: '0 auto' }}>
         <div style={{ marginBottom: '1.5rem' }}>
-          <h1 style={{ margin: 0, fontSize: '1.4rem', fontWeight: 800, color: 'var(--white)' }}>Homepage</h1>
-          <p style={{ margin: '0.25rem 0 0', fontSize: '0.82rem', color: 'var(--gray)' }}>Hero = taglines that loop, paired with images that cycle through all of them. Shop strips are in <Link href="/dashboard/business/banners" style={{ color: 'var(--gold)' }}>Banners</Link>.</p>
+          <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--gray)' }}>Hero = taglines that loop, paired with images that cycle through all of them. Shop strips are in <Link href="/dashboard/business/banners" style={{ color: 'var(--gold)' }}>Banners</Link>.</p>
         </div>
 
         {empty && (
@@ -366,7 +365,7 @@ export default function HomepageCmsPage() {
                           </div>
                           <label title="Start this part on a new line" style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.72rem', color: 'var(--gray)', cursor: i === 0 ? 'not-allowed' : 'pointer' }}>
                             <input type="checkbox" checked={!!p.newLine} disabled={i === 0} onChange={e => setPart(i, 'newLine', e.target.checked)} style={{ accentColor: 'var(--gold)' }} />
-                            ⏎ line
+                            New line
                           </label>
                           <button type="button" onClick={() => setParts(parts.filter((_, idx) => idx !== i))} disabled={parts.length === 1} title="Remove part" style={{ padding: '0.35rem 0.55rem', borderRadius: 6, border: '1px solid rgba(239,68,68,0.3)', background: 'rgba(239,68,68,0.08)', color: '#ef4444', fontSize: '0.75rem', cursor: parts.length === 1 ? 'not-allowed' : 'pointer', opacity: parts.length === 1 ? 0.4 : 1 }}>✕</button>
                         </div>
@@ -377,7 +376,7 @@ export default function HomepageCmsPage() {
                       <span style={{ fontSize: '0.72rem', color: 'var(--gray)' }}>Each part is one color. White = normal text. Toggle ⏎ to start a new line. Same word twice in different colors = just two parts.</span>
                     </div>
                     {dupIdx > -1 && <div style={{ marginTop: 6, fontSize: '0.72rem', color: 'var(--gold)' }}>Note: parts {dupIdx} &amp; {dupIdx + 1} are the same word in the same color — fine if intentional, but you may have meant different colors.</div>}
-                    {darkParts.length > 0 && <div style={{ marginTop: 6, fontSize: '0.72rem', color: '#f59e0b' }}>⚠ Part{darkParts.length > 1 ? 's' : ''} {darkParts.join(', ')} use a dark color that may be hard to read on the hero — pick a lighter shade.</div>}
+                    {darkParts.length > 0 && <div style={{ marginTop: 6, fontSize: '0.72rem', color: '#f59e0b' }}>Low contrast: part{darkParts.length > 1 ? 's' : ''} {darkParts.join(', ')} use a dark color that may be hard to read on the hero — pick a lighter shade.</div>}
                     <div style={{ marginTop: 10 }}>
                       <label style={lbl}>Preview</label>
                       <div style={{ background: 'linear-gradient(135deg,#0f0f0f,#1f1f1f)', borderRadius: 8, padding: '0.9rem 1rem', fontSize: '1.4rem', fontWeight: 800, lineHeight: 1.25 }}>

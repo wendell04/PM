@@ -41,7 +41,7 @@ class ProductController extends Controller
                         if (!$inv || $inv->isOnDemand) continue;
                         $qpu = (float) ($component['qty'] ?? 0);
                         if ($qpu <= 0) continue;
-                        $min = min($min, (int) floor(($inv->stockQty ?? 0) / $qpu));
+                        $min = min($min, (int) floor(max(0, (int) ($inv->stockQty ?? 0) - (int) ($inv->reservedQty ?? 0)) / $qpu));
                     }
                     $cp = $min === PHP_INT_MAX ? 0 : $min;
                     $variantCanProduce[$bomId] = $cp;
@@ -84,7 +84,7 @@ class ProductController extends Controller
                             if (!$inv || $inv->isOnDemand) continue;
                             $qpu = (float) ($component['qty'] ?? 0);
                             if ($qpu <= 0) continue;
-                            $min = min($min, (int) floor(($inv->stockQty ?? 0) / $qpu));
+                            $min = min($min, (int) floor(max(0, (int) ($inv->stockQty ?? 0) - (int) ($inv->reservedQty ?? 0)) / $qpu));
                         }
                         $cp = $min === PHP_INT_MAX ? 0 : $min;
                         $variantCanProduce[$comboId] = $cp;
@@ -115,7 +115,7 @@ class ProductController extends Controller
                         if (!$inv || $inv->isOnDemand) continue;
                         $qpu = (float) ($component['qty'] ?? 0);
                         if ($qpu <= 0) continue;
-                        $min = min($min, (int) floor(($inv->stockQty ?? 0) / $qpu));
+                        $min = min($min, (int) floor(max(0, (int) ($inv->stockQty ?? 0) - (int) ($inv->reservedQty ?? 0)) / $qpu));
                     }
                     $canProduce = $min === PHP_INT_MAX ? 0 : $min;
                 }
@@ -159,7 +159,7 @@ class ProductController extends Controller
                 if (!$inv || $inv->isOnDemand) continue;
                 $qpu = (float) ($component['qty'] ?? 0);
                 if ($qpu <= 0) continue;
-                $min = min($min, (int) floor(($inv->stockQty ?? 0) / $qpu));
+                $min = min($min, (int) floor(max(0, (int) ($inv->stockQty ?? 0) - (int) ($inv->reservedQty ?? 0)) / $qpu));
             }
             return $min === PHP_INT_MAX ? 0 : $min;
         };

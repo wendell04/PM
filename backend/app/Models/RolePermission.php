@@ -33,6 +33,8 @@ class RolePermission extends Model
             'orderRequests'   => false,
             'orders'            => false,
             'jobOrders'         => false,
+            'production'        => false,
+            'qc'                => false,
             'pos'               => false,
             'inventory'         => false,
             'vendors'           => false,
