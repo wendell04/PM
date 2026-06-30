@@ -13,6 +13,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import CustomDropdown from "@/app/components/CustomDropdown";
 import {
   Area,
   AreaChart,
@@ -288,24 +289,17 @@ export default function DashboardOverview({ orderStats, salesSummary, inventory 
           </h2>
         </div>
         <div style={{ display: "flex", gap: "0.75rem", alignItems: "center" }}>
-          <select
+          <CustomDropdown
             value={chartPeriod}
-            onChange={(e) => setChartPeriod(e.target.value)}
-            style={{
-              background: "rgba(255,255,255,0.06)",
-              border: "1px solid rgba(255,255,255,0.1)",
-              borderRadius: "8px",
-              color: "var(--white)",
-              padding: "0.5rem 0.75rem",
-              fontSize: "0.85rem",
-              outline: "none",
-            }}
-          >
-            <option value="daily">Daily</option>
-            <option value="weekly">Weekly</option>
-            <option value="monthly">Monthly</option>
-            <option value="yearly">Yearly</option>
-          </select>
+            onChange={setChartPeriod}
+            options={[
+              { value: "daily", label: "Daily" },
+              { value: "weekly", label: "Weekly" },
+              { value: "monthly", label: "Monthly" },
+              { value: "yearly", label: "Yearly" },
+            ]}
+            style={{ width: "130px" }}
+          />
           <button
             onClick={() => router.push("/dashboard/business/reports")}
             style={{
