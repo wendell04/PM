@@ -213,7 +213,7 @@ export default function RolePermissionsPage() {
 
   return (
     <ErrorBoundary>
-      <div style={{ maxWidth: '1000px', margin: '0 auto', padding: '2rem 1rem' }}>
+      <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '2rem 1.5rem' }}>
 
         {/* Admin/Owner notice */}
         <div style={{

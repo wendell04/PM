@@ -136,7 +136,7 @@ export default function PaymentsPage() {
 
   return (
     <ErrorBoundary>
-      <div style={{ maxWidth: '1080px', margin: '0 auto', padding: '2rem 1rem' }}>
+      <div style={{ maxWidth: '1320px', margin: '0 auto', padding: '2rem 1.5rem' }}>
 
         {/* Summary cards */}
         {!loading && !error && (

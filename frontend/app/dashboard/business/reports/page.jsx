@@ -613,7 +613,7 @@ export default function ReportsPage() {
           50% { opacity: 0.4; }
         }
       `}</style>
-      <div style={{ maxWidth: '960px', margin: '0 auto', padding: '2rem 1rem' }}>
+      <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '2rem 1.5rem' }}>
         {!token && (
           <p style={{ color: 'var(--gray)', fontSize: '0.9rem' }}>Sign in to load reports.</p>
         )}
