@@ -658,6 +658,7 @@ const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=
       // No 2FA required — write to storage now
       localStorage.setItem('auth_token', data.data.token);
       localStorage.setItem('auth_user', JSON.stringify(data.data.user));
+      if (data.data.expires_at) localStorage.setItem('auth_expires_at', data.data.expires_at);
       try {
         const bc = new BroadcastChannel('pmp_auth');
         bc.postMessage({ type: 'AUTH_UPDATE', token: data.data.token, user: data.data.user });

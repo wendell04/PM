@@ -196,12 +196,13 @@ class AuthController extends Controller
             $user->login_locked_until    = null;
 
             $deviceName   = $this->parseDeviceName($request->userAgent() ?? 'Unknown Device');
-            // Session policy by role (overrides the global SANCTUM_TOKEN_EXPIRATION so the two don't
-            // share one 24h lifetime): staff/admin get SHORT-lived tokens (high-value access);
-            // customers get long, convenient sessions, extended further by "remember me".
+            // Session policy by role. Per-token expiry governs (the global
+            // SANCTUM_TOKEN_EXPIRATION cap is disabled so it can't shorten these):
+            // staff/admin get a long, convenient 30-day session; customers get
+            // 30 days, extended to 90 by "remember me".
             $isStaff   = ($user->role ?? 'customer') !== 'customer';
             $expiresAt = $isStaff
-                ? now()->addHours(12)
+                ? now()->addDays(30)
                 : ($request->boolean('rememberMe') ? now()->addDays(90) : now()->addDays(30));
             $sanctumToken = $user->createToken($deviceName, ['*'], $expiresAt)->plainTextToken;
             $user->lastLogin     = now()->toDateTimeString();
@@ -241,6 +242,7 @@ class AuthController extends Controller
                 'Login successful!',
                 [
                     'token'        => $sanctumToken,
+                    'expires_at'   => $expiresAt->toIso8601String(),
                     'requires_2fa' => $requires2fa,
                     'user' => [
                         'id'                 => (string)$user->_id,
@@ -263,6 +265,41 @@ class AuthController extends Controller
             return $this->validationErrorResponse($e);
         } catch (\Exception $e) {
             return $this->serverErrorResponse($e, 'An unexpected error occurred during login.');
+        }
+    }
+
+    /**
+     * Re-issue the caller's token with a fresh role-based expiry. Lets an active
+     * session be extended ("Stay logged in") without forcing a full re-login.
+     */
+    public function refresh(Request $request)
+    {
+        try {
+            $user = $request->user();
+            if (! $user) {
+                return $this->unauthorizedResponse('Not authenticated.');
+            }
+
+            $isStaff   = ($user->role ?? 'customer') !== 'customer';
+            $expiresAt = $isStaff
+                ? now()->addDays(30)
+                : ($request->boolean('rememberMe') ? now()->addDays(90) : now()->addDays(30));
+
+            $deviceName = $this->parseDeviceName($request->userAgent() ?? 'Unknown Device');
+
+            // Revoke the current token and issue a fresh one with the new expiry.
+            $current = $user->currentAccessToken();
+            if ($current) {
+                $current->delete();
+            }
+            $newToken = $user->createToken($deviceName, ['*'], $expiresAt)->plainTextToken;
+
+            return $this->successResponse('Session extended.', [
+                'token'      => $newToken,
+                'expires_at' => $expiresAt->toIso8601String(),
+            ]);
+        } catch (\Exception $e) {
+            return $this->serverErrorResponse($e, 'Could not refresh session.');
         }
     }
 

@@ -17,6 +17,7 @@ export function AuthProvider({children}) {
     const [currentUser, setCurrentUser] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
     const [token, setToken] = useState(null);
+    const [expiresAt, setExpiresAt] = useState(null);
 
     useEffect(() => {
         const checkAuth = async () => {
@@ -27,6 +28,7 @@ export function AuthProvider({children}) {
                 try {
                     setCurrentUser(JSON.parse(storedUser));
                     setToken(storedToken);
+                    setExpiresAt(localStorage.getItem('auth_expires_at'));
                     setIsLoading(false);
                 } catch { /* ignore parse error */ }
             }
@@ -55,10 +57,12 @@ export function AuthProvider({children}) {
                     sessionStorage.setItem('sessionExpired', 'true');
                     localStorage.removeItem('auth_token');
                     localStorage.removeItem('auth_user');
+                    localStorage.removeItem('auth_expires_at');
                     localStorage.removeItem('auth_validated_at');
                     localStorage.removeItem('auth_checked_at');
                     setCurrentUser(null);
                     setToken(null);
+                    setExpiresAt(null);
                     window.location.href = '/';
                     return;
                 }
@@ -66,8 +70,14 @@ export function AuthProvider({children}) {
                 if (!res.ok) return;
 
                 const userData = await res.json();
-                setCurrentUser(userData.user ?? userData);
+                const u = userData.user ?? userData;
+                setCurrentUser(u);
                 setToken(storedToken);
+                const exp = u?.token_expires_at;
+                if (exp) {
+                    try { localStorage.setItem('auth_expires_at', exp); } catch {}
+                    setExpiresAt(exp);
+                }
                 const stamp = String(Date.now());
                 try {
                     localStorage.setItem('auth_validated_at', stamp);
@@ -159,10 +169,12 @@ export function AuthProvider({children}) {
         } finally {
             localStorage.removeItem('auth_token');
             localStorage.removeItem('auth_user');
+            localStorage.removeItem('auth_expires_at');
             localStorage.removeItem('auth_validated_at');
             localStorage.removeItem('auth_checked_at');
             setCurrentUser(null);
             setToken(null);
+            setExpiresAt(null);
             try {
                 const bc = new BroadcastChannel('pmp_auth');
                 bc.postMessage({ type: 'AUTH_LOGOUT' });
@@ -170,6 +182,40 @@ export function AuthProvider({children}) {
             } catch {}
             sessionStorage.setItem('justLoggedOut', 'true');
             window.location.href = '/';
+        }
+    };
+
+    // Re-issue the token with a fresh expiry so an active user can "Stay logged in".
+    const refreshSession = async () => {
+        const t = token || localStorage.getItem('auth_token');
+        if (!t) return false;
+        try {
+            const res = await fetchWithTimeout(`${API_URL}/api/auth/refresh`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${t}`,
+                },
+            }, 10000);
+            if (!res.ok) return false;
+            const data = await res.json();
+            const payload = data.data ?? data;
+            if (payload.token) {
+                localStorage.setItem('auth_token', payload.token);
+                setToken(payload.token);
+            }
+            if (payload.expires_at) {
+                localStorage.setItem('auth_expires_at', payload.expires_at);
+                setExpiresAt(payload.expires_at);
+            }
+            try {
+                const bc = new BroadcastChannel('pmp_auth');
+                bc.postMessage({ type: 'AUTH_UPDATE', token: payload.token, user: currentUser });
+                bc.close();
+            } catch {}
+            return true;
+        } catch {
+            return false;
         }
     };
 
@@ -182,7 +228,7 @@ export function AuthProvider({children}) {
     };
 
     return (
-        <AuthContext.Provider value={{currentUser, setCurrentUser, updateUser, logout, isLoading, token}}>
+        <AuthContext.Provider value={{currentUser, setCurrentUser, updateUser, logout, isLoading, token, expiresAt, refreshSession}}>
             {isLoading ? null : children}
         </AuthContext.Provider>
     );

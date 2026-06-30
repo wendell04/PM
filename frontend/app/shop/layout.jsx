@@ -8,6 +8,7 @@ import Link from 'next/link';
 import { useCart as useGlobalCart } from '../../context/CartContext';
 import { syncCart, mergeCart } from '@/lib/cartApi';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
+import SessionExpiryWarning from '@/components/SessionExpiryWarning';
 import { forgotPassword, sendResetCode, verifyResetCode, resetPassword, getCurrentUser } from '@/lib/authApi';
 import {
   fetchUnreadCount,
@@ -1427,6 +1428,8 @@ export default function ShopLayout({ children }) {
 
   return (
     <>
+      {/* Proactive session-expiry warning for active customers */}
+      <SessionExpiryWarning />
       {/* Notification Detail Modal */}
       {selectedNotif && (
         <div
