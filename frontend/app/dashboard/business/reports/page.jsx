@@ -6,6 +6,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import CustomDropdown from '@/app/components/CustomDropdown';
 import { ResponsiveContainer, LineChart, Line, BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
+import { PaginationBar } from '@/app/dashboard/business/inventory-v2/shared';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
@@ -261,6 +262,10 @@ export default function ReportsPage() {
   const { token } = useAuth();
   const [activeTab, setActiveTab] = useState('sales');
   const [salesTrendCollapsed, setSalesTrendCollapsed] = useState(true);
+  const [salesPage, setSalesPage] = useState(1);
+  const [salesPerPage, setSalesPerPage] = useState(10);
+  const [invPage, setInvPage] = useState(1);
+  const [invPerPage, setInvPerPage] = useState(10);
   const [inventoryCollapsed, setInventoryCollapsed] = useState(false);
 
   const stateRef = useRef({});
@@ -495,6 +500,7 @@ export default function ReportsPage() {
   const invTotal = inventoryRaw.length;
   const invLow = inventoryRaw.filter((i) => getInventoryStatus(i).key === 'low-stock').length;
   const invOut = inventoryRaw.filter((i) => getInventoryStatus(i).key === 'out-of-stock').length;
+  const invPaged = inventoryFiltered.slice((invPage - 1) * invPerPage, invPage * invPerPage);
 
   const exportSales = () => {
     const g = salesData?.grouped;
@@ -604,6 +610,10 @@ export default function ReportsPage() {
   };
 
   const salesGrouped = salesData?.grouped;
+  const salesGroupedLen = salesGrouped?.length ?? 0;
+  const salesPaged = salesGrouped ? salesGrouped.slice((salesPage - 1) * salesPerPage, salesPage * salesPerPage) : [];
+  useEffect(() => { setSalesPage(1); }, [salesData, salesPerPage]);
+  useEffect(() => { setInvPage(1); }, [statusFilter, inventoryRaw, invPerPage]);
   const tpProducts = tpData?.products;
 
   return (
@@ -770,6 +780,7 @@ export default function ReportsPage() {
                       </div>
                     )}
                     {!salesTrendCollapsed && salesGrouped && salesGrouped.length > 0 ? (
+                      <>
                       <div style={{ border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden' }}>
                         <style>{`.rpt-tr:hover td { background: var(--dark2); }`}</style>
                         <div style={{ overflowX: 'auto' }}>
@@ -802,10 +813,10 @@ export default function ReportsPage() {
                               </tr>
                             </thead>
                             <tbody>
-                              {salesGrouped.map((row, idx) => {
+                              {salesPaged.map((row, idx) => {
                                 const prof = Number(row.profit ?? 0);
                                 const profitColor = prof >= 0 ? 'var(--green)' : 'var(--red)';
-                                const last = idx === salesGrouped.length - 1;
+                                const last = idx === salesPaged.length - 1;
                                 const cell = { padding: '0.8rem 1.25rem', borderBottom: last ? 'none' : '1px solid var(--border)', transition: 'background 0.12s' };
                                 const num = { ...cell, textAlign: 'right', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' };
                                 return (
@@ -821,6 +832,8 @@ export default function ReportsPage() {
                           </table>
                         </div>
                       </div>
+                      <PaginationBar total={salesGroupedLen} page={salesPage} perPage={salesPerPage} onPage={setSalesPage} onPerPage={setSalesPerPage} />
+                      </>
                     ) : (!salesTrendCollapsed && (
                       <p style={{ textAlign: 'center', color: 'var(--gray)', fontSize: '0.9rem' }}>
                         No period data. Apply date range and grouping.
@@ -931,99 +944,65 @@ export default function ReportsPage() {
                       inventoryFiltered.length === 0 ? (
                       <p style={{ color: 'var(--gray)', fontSize: '0.9rem' }}>No items match this filter.</p>
                     ) : (
-                      <div style={{ overflowX: 'auto' }}>
-                        <div style={{ display: 'table', width: '100%', borderCollapse: 'collapse' }}>
-                          <div style={{ display: 'table-row', background: 'var(--dark2)' }}>
-                            {['Item Name', 'Category', 'Stock Qty', 'Min Level', 'Status'].map((h) => (
-                              <div
-                                key={h}
-                                style={{
-                                  display: 'table-cell',
-                                  color: 'var(--gray)',
-                                  fontSize: '0.75rem',
-                                  padding: '0.6rem 1rem',
-                                  textAlign: 'left',
-                                  borderBottom: '1px solid var(--border)',
-                                }}
-                              >
-                                {h}
-                              </div>
-                            ))}
-                          </div>
-                          {inventoryFiltered.map((item) => {
-                            const st = getInventoryStatus(item);
-                            return (
-                              <div key={String(item._id ?? item.id ?? item.name)} style={{ display: 'table-row' }}>
-                                <div
-                                  style={{
-                                    display: 'table-cell',
-                                    borderBottom: '1px solid var(--border)',
-                                    padding: '0.75rem 1rem',
-                                    color: 'var(--white)',
-                                    fontSize: '0.85rem',
-                                  }}
-                                >
-                                  {item.name}
-                                </div>
-                                <div
-                                  style={{
-                                    display: 'table-cell',
-                                    borderBottom: '1px solid var(--border)',
-                                    padding: '0.75rem 1rem',
-                                    color: 'var(--white)',
-                                    fontSize: '0.85rem',
-                                  }}
-                                >
-                                  {item.category ?? '—'}
-                                </div>
-                                <div
-                                  style={{
-                                    display: 'table-cell',
-                                    borderBottom: '1px solid var(--border)',
-                                    padding: '0.75rem 1rem',
-                                    color: 'var(--white)',
-                                    fontSize: '0.85rem',
-                                  }}
-                                >
-                                  {item.stockQty ?? 0}
-                                </div>
-                                <div
-                                  style={{
-                                    display: 'table-cell',
-                                    borderBottom: '1px solid var(--border)',
-                                    padding: '0.75rem 1rem',
-                                    color: 'var(--white)',
-                                    fontSize: '0.85rem',
-                                  }}
-                                >
-                                  {item.minStockLevel ?? 0}
-                                </div>
-                                <div
-                                  style={{
-                                    display: 'table-cell',
-                                    borderBottom: '1px solid var(--border)',
-                                    padding: '0.75rem 1rem',
-                                  }}
-                                >
-                                  <span
+                      <>
+                      <div style={{ border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden' }}>
+                        <style>{`.rpt-tr:hover td { background: var(--dark2); }`}</style>
+                        <div style={{ overflowX: 'auto' }}>
+                          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                            <thead>
+                              <tr style={{ background: 'var(--dark2)' }}>
+                                {[
+                                  { label: 'Item Name', align: 'left' },
+                                  { label: 'Category', align: 'left' },
+                                  { label: 'Stock Qty', align: 'right' },
+                                  { label: 'Min Level', align: 'right' },
+                                  { label: 'Status', align: 'left' },
+                                ].map((h) => (
+                                  <th
+                                    key={h.label}
                                     style={{
-                                      display: 'inline-block',
-                                      padding: '0.2rem 0.5rem',
-                                      borderRadius: '6px',
+                                      textAlign: h.align,
+                                      padding: '0.85rem 1.25rem',
                                       fontSize: '0.72rem',
                                       fontWeight: 700,
-                                      background: st.bg,
-                                      color: st.fg,
+                                      letterSpacing: '0.05em',
+                                      textTransform: 'uppercase',
+                                      color: 'var(--gold)',
+                                      borderBottom: '1px solid var(--border)',
+                                      whiteSpace: 'nowrap',
                                     }}
                                   >
-                                    {st.label}
-                                  </span>
-                                </div>
-                              </div>
-                            );
-                          })}
+                                    {h.label}
+                                  </th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {invPaged.map((item, idx) => {
+                                const st = getInventoryStatus(item);
+                                const last = idx === invPaged.length - 1;
+                                const cell = { padding: '0.8rem 1.25rem', borderBottom: last ? 'none' : '1px solid var(--border)', transition: 'background 0.12s' };
+                                const num = { ...cell, textAlign: 'right', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' };
+                                return (
+                                  <tr key={String(item._id ?? item.id ?? item.name)} className="rpt-tr">
+                                    <td style={{ ...cell, color: 'var(--white)', fontWeight: 600 }}>{item.name}</td>
+                                    <td style={{ ...cell, color: 'var(--gray)' }}>{item.category ?? '—'}</td>
+                                    <td style={{ ...num, color: 'var(--white)' }}>{item.stockQty ?? 0}</td>
+                                    <td style={{ ...num, color: 'var(--gray)' }}>{item.minStockLevel ?? 0}</td>
+                                    <td style={cell}>
+                                      <span style={{ display: 'inline-block', padding: '0.2rem 0.55rem', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 700, background: st.bg, color: st.fg }}>
+                                        {st.label}
+                                      </span>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
                         </div>
                       </div>
+                      <PaginationBar total={inventoryFiltered.length} page={invPage} perPage={invPerPage} onPage={setInvPage} onPerPage={setInvPerPage} />
+                      </>
                     ))}
                   </>
                 )}
