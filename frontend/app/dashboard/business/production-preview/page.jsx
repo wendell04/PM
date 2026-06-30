@@ -17,17 +17,17 @@ const STATUS_TABS = [
 ];
 
 const JO_BADGE = {
-  'Queued':      { bg: '#eef2ff', color: '#3730a3', border: '#c7d2fe', label: 'Queued' },
-  'In Progress': { bg: '#fffbe8', color: '#7a5c00', border: '#f3d88a', label: 'In Progress' },
-  'QC_Pending':  { bg: '#f5f3ff', color: '#5b21b6', border: '#ddd6fe', label: 'For QC' },
-  'QC_Passed':   { bg: '#f0fdf4', color: '#166534', border: '#bbf7d0', label: 'QC Passed' },
-  'QC_Failed':   { bg: '#fef2f2', color: '#991b1b', border: '#fecaca', label: 'QC Failed' },
-  'Completed':   { bg: '#f0fdf4', color: '#166534', border: '#bbf7d0', label: 'Completed' },
-  'Cancelled':   { bg: '#fef2f2', color: '#991b1b', border: '#fecaca', label: 'Cancelled' },
+  'Queued':      { bg: 'var(--st-blue-bg)', color: 'var(--st-blue-fg)', border: 'rgba(96,165,250,0.35)', label: 'Queued' },
+  'In Progress': { bg: 'var(--gold-subtle)', color: 'var(--gold)', border: 'rgba(212,168,67,0.35)', label: 'In Progress' },
+  'QC_Pending':  { bg: 'var(--st-purple-bg)', color: 'var(--st-purple-fg)', border: 'rgba(168,85,247,0.35)', label: 'For QC' },
+  'QC_Passed':   { bg: 'var(--st-green-bg)', color: 'var(--st-green-fg)', border: 'rgba(34,197,94,0.35)', label: 'QC Passed' },
+  'QC_Failed':   { bg: 'var(--st-red-bg)', color: 'var(--st-red-fg)', border: 'rgba(239,68,68,0.35)', label: 'QC Failed' },
+  'Completed':   { bg: 'var(--st-green-bg)', color: 'var(--st-green-fg)', border: 'rgba(34,197,94,0.35)', label: 'Completed' },
+  'Cancelled':   { bg: 'var(--st-red-bg)', color: 'var(--st-red-fg)', border: 'rgba(239,68,68,0.35)', label: 'Cancelled' },
 };
 
 function StatusBadge({ status }) {
-  const c = JO_BADGE[status] || { bg: '#f3f4f6', color: '#6b7280', border: '#e1e3e5', label: status };
+  const c = JO_BADGE[status] || { bg: 'var(--dark2)', color: 'var(--gray)', border: 'var(--border)', label: status };
   return <span style={{ ...S.badge, background: c.bg, color: c.color, border: `1px solid ${c.border}`, fontSize: '11px' }}>{c.label}</span>;
 }
 
@@ -93,8 +93,8 @@ export default function ProductionPage() {
       <div style={S.page}>
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '16px' }}>
           <SummaryCard label="Queued" value={counts.queued} accent />
-          <SummaryCard label="In Progress" value={counts.inProgress} color="#c9973f" />
-          <SummaryCard label="For QC" value={counts.forQc} color="#5b21b6" />
+          <SummaryCard label="In Progress" value={counts.inProgress} color="var(--gold)" />
+          <SummaryCard label="For QC" value={counts.forQc} color="var(--st-purple-fg)" />
         </div>
 
         <div style={{ ...S.card, ...S.rowBetween, marginBottom: '10px', padding: '12px 16px' }}>
@@ -105,7 +105,7 @@ export default function ProductionPage() {
           <button onClick={load} style={S.btnGhost}>{ICONS.reload} Refresh</button>
         </div>
 
-        {error && <div style={{ ...S.note, background: '#fef2f2', borderColor: '#fecaca', color: '#991b1b', marginBottom: '10px' }}>{error}</div>}
+        {error && <div style={{ ...S.note, background: 'var(--st-red-bg)', borderColor: 'rgba(239,68,68,0.35)', color: 'var(--st-red-fg)', marginBottom: '10px' }}>{error}</div>}
 
         <div style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -116,7 +116,7 @@ export default function ProductionPage() {
             </tr></thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={7} style={{ ...S.td, textAlign: 'center', color: '#9ca3af' }}>Loading…</td></tr>
+                <tr><td colSpan={7} style={{ ...S.td, textAlign: 'center', color: 'var(--gray)' }}>Loading…</td></tr>
               ) : slice.length === 0 ? (
                 <tr><td colSpan={7} style={{ padding: 0 }}><EmptyState message="No active job orders" sub="Create one from a paid, design-approved order in Job Orders." /></td></tr>
               ) : slice.map(j => {
@@ -125,11 +125,11 @@ export default function ProductionPage() {
                   <tr key={id} style={S.tr}>
                     <td style={{ ...S.td, fontFamily: 'monospace', fontWeight: 600 }}>
                       {j.joId || '—'}
-                      {j.isRush && <span style={{ ...S.badge, background: '#fef2f2', color: '#991b1b', border: '1px solid #fecaca', marginLeft: 6, fontSize: '10px' }}>RUSH</span>}
+                      {j.isRush && <span style={{ ...S.badge, background: 'var(--st-red-bg)', color: 'var(--st-red-fg)', border: '1px solid #fecaca', marginLeft: 6, fontSize: '10px' }}>RUSH</span>}
                     </td>
                     <td style={S.td}>
                       {prodName(j)}
-                      {j.bomSnapshot?.length > 0 && <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>Materials: {j.bomSnapshot.map(m => `${m.name} ×${m.totalQty}${m.unit ? ' ' + m.unit : ''}`).join(', ')}</div>}
+                      {j.bomSnapshot?.length > 0 && <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 2 }}>Materials: {j.bomSnapshot.map(m => `${m.name} ×${m.totalQty}${m.unit ? ' ' + m.unit : ''}`).join(', ')}</div>}
                     </td>
                     <td style={S.td}>{j.product?.quantity ?? '—'}</td>
                     <td style={{ ...S.td, fontFamily: 'monospace' }}>{(j.orderId || '').slice(-8).toUpperCase() || '—'}</td>
@@ -138,7 +138,7 @@ export default function ProductionPage() {
                     <td style={{ ...S.td, textAlign: 'right' }}>
                       {j.joStatus === 'Queued' && <button disabled={busy} onClick={() => advance(j, 'In Progress')} style={S.btnSm}>{busy ? '…' : 'Start'}</button>}
                       {j.joStatus === 'In Progress' && <button disabled={busy} onClick={() => advance(j, 'QC_Pending')} style={S.btnSm}>{busy ? '…' : 'Send to QC'}</button>}
-                      {j.joStatus === 'QC_Pending' && <span style={{ fontSize: '12px', color: '#6b7280' }}>Awaiting QC</span>}
+                      {j.joStatus === 'QC_Pending' && <span style={{ fontSize: '12px', color: 'var(--gray)' }}>Awaiting QC</span>}
                       {j.joStatus === 'QC_Failed' && <button disabled={busy} onClick={() => advance(j, 'In Progress')} style={S.btnSm}>{busy ? '…' : 'Redo'}</button>}
                     </td>
                   </tr>

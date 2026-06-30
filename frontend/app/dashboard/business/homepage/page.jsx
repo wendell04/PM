@@ -19,7 +19,7 @@ import ErrorBoundary from '@/components/ErrorBoundary';
 import HeroImagePositioner from '@/components/cms/HeroImagePositioner';
 
 const ACCENTS = ['gold', 'red', 'white'];
-const accentBg = (c) => (c === 'gold' ? 'var(--gold)' : c === 'red' ? '#dc2626' : '#f5f5f5');
+const accentBg = (c) => (c === 'gold' ? 'var(--gold)' : c === 'red' ? '#dc2626' : 'var(--dark2)');
 // titleParts = ordered colored segments. Falls back to legacy headline+accent1+accent2 for old taglines.
 const partsOf = (t) => {
   if (Array.isArray(t?.titleParts) && t.titleParts.length) return t.titleParts;
@@ -29,7 +29,7 @@ const partsOf = (t) => {
   if (t?.headlineAccent2) arr.push({ text: t.headlineAccent2, color: t.headlineAccent2Color || 'gold', newLine: !!t.headlineBreak2 });
   return arr.length ? arr : [{ text: '', color: 'white', newLine: false }];
 };
-const partColorStyle = (c) => ({ color: c === 'gold' ? 'var(--gold)' : c === 'red' ? '#dc2626' : c === 'white' || !c ? '#f5f5f5' : c });
+const partColorStyle = (c) => ({ color: c === 'gold' ? 'var(--gold)' : c === 'red' ? '#dc2626' : c === 'white' || !c ? 'var(--dark2)' : c });
 // Perceived luminance (0..1) of a #rrggbb color; null if not a hex. Used to flag colors too dark for the dark hero.
 const hexLum = (hex) => { const m = /^#?([0-9a-f]{6})$/i.exec(hex || ''); if (!m) return null; const n = parseInt(m[1], 16); return (0.299 * ((n >> 16) & 255) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) / 255; };
 const lowContrast = (color) => { if (!color || ACCENTS.includes(color)) return false; const l = hexLum(color); return l !== null && l < 0.32; };

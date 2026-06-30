@@ -19,13 +19,13 @@ import { S, ICONS, SearchBar, SummaryCard, PaginationBar, EmptyState, usePaginat
 const JO_STATUSES = ['Queued', 'In Progress', 'QC_Pending', 'QC_Passed', 'QC_Failed', 'Completed', 'Cancelled'];
 
 const JO_BADGE = {
-  'Queued':      { bg: '#eef2ff', color: '#3730a3', border: '#c7d2fe', label: 'Queued' },
-  'In Progress': { bg: '#fffbe8', color: '#7a5c00', border: '#f3d88a', label: 'In Progress' },
-  'QC_Pending':  { bg: '#f5f3ff', color: '#5b21b6', border: '#ddd6fe', label: 'For QC' },
-  'QC_Passed':   { bg: '#f0fdf4', color: '#166534', border: '#bbf7d0', label: 'QC Passed' },
-  'QC_Failed':   { bg: '#fef2f2', color: '#991b1b', border: '#fecaca', label: 'QC Failed' },
-  'Completed':   { bg: '#f0fdf4', color: '#166534', border: '#bbf7d0', label: 'Completed' },
-  'Cancelled':   { bg: '#fef2f2', color: '#991b1b', border: '#fecaca', label: 'Cancelled' },
+  'Queued':      { bg: 'var(--st-blue-bg)', color: 'var(--st-blue-fg)', border: 'rgba(96,165,250,0.35)', label: 'Queued' },
+  'In Progress': { bg: 'var(--gold-subtle)', color: 'var(--gold)', border: 'rgba(212,168,67,0.35)', label: 'In Progress' },
+  'QC_Pending':  { bg: 'var(--st-purple-bg)', color: 'var(--st-purple-fg)', border: 'rgba(168,85,247,0.35)', label: 'For QC' },
+  'QC_Passed':   { bg: 'var(--st-green-bg)', color: 'var(--st-green-fg)', border: 'rgba(34,197,94,0.35)', label: 'QC Passed' },
+  'QC_Failed':   { bg: 'var(--st-red-bg)', color: 'var(--st-red-fg)', border: 'rgba(239,68,68,0.35)', label: 'QC Failed' },
+  'Completed':   { bg: 'var(--st-green-bg)', color: 'var(--st-green-fg)', border: 'rgba(34,197,94,0.35)', label: 'Completed' },
+  'Cancelled':   { bg: 'var(--st-red-bg)', color: 'var(--st-red-fg)', border: 'rgba(239,68,68,0.35)', label: 'Cancelled' },
 };
 
 const EMPTY_FORM = {
@@ -34,7 +34,7 @@ const EMPTY_FORM = {
 };
 
 function StatusBadge({ status }) {
-  const c = JO_BADGE[status] || { bg: '#f3f4f6', color: '#6b7280', border: '#e1e3e5', label: status };
+  const c = JO_BADGE[status] || { bg: 'var(--dark2)', color: 'var(--gray)', border: 'var(--border)', label: status };
   return <span style={{ ...S.badge, background: c.bg, color: c.color, border: `1px solid ${c.border}`, fontSize: '11px' }}>{c.label}</span>;
 }
 
@@ -124,10 +124,10 @@ function JobOrderForm({ initial = EMPTY_FORM, isEdit = false, orders = [], order
       )}
 
       {!isEdit && chosenItem && (
-        <div style={{ ...S.cardSm, background: '#f8f9fa' }}>
+        <div style={{ ...S.cardSm, background: 'var(--dark2)' }}>
           <div style={{ ...S.label, marginBottom: 4 }}>Producing (from the order)</div>
-          <div style={{ fontSize: 14, fontWeight: 600, color: '#1a1a2e' }}>{itemName(chosenItem)}{itemVariant(chosenItem) ? ` — ${itemVariant(chosenItem)}` : ''}</div>
-          <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>Quantity: {itemQty(chosenItem)} · raw materials are taken from this product&apos;s recipe.</div>
+          <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--white)' }}>{itemName(chosenItem)}{itemVariant(chosenItem) ? ` — ${itemVariant(chosenItem)}` : ''}</div>
+          <div style={{ fontSize: 12, color: 'var(--gray)', marginTop: 2 }}>Quantity: {itemQty(chosenItem)} · raw materials are taken from this product&apos;s recipe.</div>
         </div>
       )}
 
@@ -143,10 +143,10 @@ function JobOrderForm({ initial = EMPTY_FORM, isEdit = false, orders = [], order
         </div>
       </div>
 
-      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '13px', fontWeight: 600, color: '#1a1a2e', cursor: 'pointer' }}>
-        <input type="checkbox" checked={form.isRush} onChange={e => set('isRush', e.target.checked)} disabled={isSubmitting} style={{ width: 16, height: 16, accentColor: '#d4a843' }} />
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '13px', fontWeight: 600, color: 'var(--white)', cursor: 'pointer' }}>
+        <input type="checkbox" checked={form.isRush} onChange={e => set('isRush', e.target.checked)} disabled={isSubmitting} style={{ width: 16, height: 16, accentColor: 'var(--gold)' }} />
         Rush order
-        {form.isRush && <span style={{ ...S.badge, background: '#fef2f2', color: '#991b1b', border: '1px solid #fecaca', fontSize: '10px' }}>RUSH</span>}
+        {form.isRush && <span style={{ ...S.badge, background: 'var(--st-red-bg)', color: 'var(--st-red-fg)', border: '1px solid #fecaca', fontSize: '10px' }}>RUSH</span>}
       </label>
 
       <div>
@@ -154,7 +154,7 @@ function JobOrderForm({ initial = EMPTY_FORM, isEdit = false, orders = [], order
         <textarea style={S.textarea} value={form.notes} onChange={e => set('notes', e.target.value)} placeholder="Production notes…" disabled={isSubmitting} />
       </div>
 
-      {submitError && <div style={{ ...S.note, background: '#fef2f2', borderColor: '#fecaca', color: '#991b1b' }}>{submitError}</div>}
+      {submitError && <div style={{ ...S.note, background: 'var(--st-red-bg)', borderColor: 'rgba(239,68,68,0.35)', color: 'var(--st-red-fg)' }}>{submitError}</div>}
 
       <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
         <button onClick={onCancel} disabled={isSubmitting} style={S.btnGhost}>Cancel</button>
@@ -303,14 +303,14 @@ export default function JobOrdersPage() {
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '16px' }}>
           <SummaryCard label="Total" value={counts.total} accent />
           <SummaryCard label="Queued" value={counts.queued} />
-          <SummaryCard label="In Progress" value={counts.inProgress} color="#c9973f" />
-          <SummaryCard label="For QC" value={counts.forQc} color="#5b21b6" />
-          <SummaryCard label="Completed" value={counts.completed} color="#166534" />
+          <SummaryCard label="In Progress" value={counts.inProgress} color="var(--gold)" />
+          <SummaryCard label="For QC" value={counts.forQc} color="var(--st-purple-fg)" />
+          <SummaryCard label="Completed" value={counts.completed} color="var(--st-green-fg)" />
         </div>
 
-        <div style={{ display: 'flex', gap: '4px', background: '#f3f4f6', borderRadius: '8px', padding: '3px', alignSelf: 'flex-start', marginBottom: '14px', width: 'fit-content' }}>
+        <div style={{ display: 'flex', gap: '4px', background: 'var(--dark2)', borderRadius: '8px', padding: '3px', alignSelf: 'flex-start', marginBottom: '14px', width: 'fit-content' }}>
           {[{ key: 'list', label: 'Job Orders' }, { key: 'schedule', label: 'Schedule' }].map(t => (
-            <button key={t.key} onClick={() => setActiveTab(t.key)} style={{ padding: '6px 16px', borderRadius: '6px', border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: '12px', background: activeTab === t.key ? '#fff' : 'transparent', color: activeTab === t.key ? '#1a1a2e' : '#6b7280', boxShadow: activeTab === t.key ? '0 1px 3px rgba(0,0,0,.1)' : 'none' }}>{t.label}</button>
+            <button key={t.key} onClick={() => setActiveTab(t.key)} style={{ padding: '6px 16px', borderRadius: '6px', border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: '12px', background: activeTab === t.key ? 'var(--dark)' : 'transparent', color: activeTab === t.key ? 'var(--white)' : 'var(--gray)', boxShadow: activeTab === t.key ? '0 1px 3px rgba(0,0,0,.1)' : 'none' }}>{t.label}</button>
           ))}
         </div>
 
@@ -327,7 +327,7 @@ export default function JobOrdersPage() {
               <button onClick={loadJobOrders} style={S.btnGhost}>{ICONS.reload} Refresh</button>
             </div>
 
-            {error && <div style={{ ...S.note, background: '#fef2f2', borderColor: '#fecaca', color: '#991b1b', marginBottom: '10px' }}>{error}</div>}
+            {error && <div style={{ ...S.note, background: 'var(--st-red-bg)', borderColor: 'rgba(239,68,68,0.35)', color: 'var(--st-red-fg)', marginBottom: '10px' }}>{error}</div>}
 
             <div style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -338,18 +338,18 @@ export default function JobOrdersPage() {
                 </tr></thead>
                 <tbody>
                   {isLoading ? (
-                    <tr><td colSpan={8} style={{ ...S.td, textAlign: 'center', color: '#9ca3af' }}>Loading…</td></tr>
+                    <tr><td colSpan={8} style={{ ...S.td, textAlign: 'center', color: 'var(--gray)' }}>Loading…</td></tr>
                   ) : slice.length === 0 ? (
                     <tr><td colSpan={8} style={{ padding: 0 }}><EmptyState message="No job orders found" sub="Create one from a paid, design-approved order." /></td></tr>
                   ) : slice.map(jo => (
                     <tr key={jo.id ?? jo._id} style={S.tr}>
                       <td style={{ ...S.td, fontFamily: 'monospace', fontWeight: 600 }}>
                         {jo.joId || (jo.id ?? jo._id)?.slice(-8).toUpperCase()}
-                        {jo.isRush && <span style={{ ...S.badge, background: '#fef2f2', color: '#991b1b', border: '1px solid #fecaca', marginLeft: 6, fontSize: '10px' }}>RUSH</span>}
+                        {jo.isRush && <span style={{ ...S.badge, background: 'var(--st-red-bg)', color: 'var(--st-red-fg)', border: '1px solid #fecaca', marginLeft: 6, fontSize: '10px' }}>RUSH</span>}
                       </td>
                       <td style={S.td}>
-                        {prodName(jo)}{jo.designFilePath && <a href={jo.designFilePath} target="_blank" rel="noopener noreferrer" style={{ marginLeft: 8, fontSize: 11, color: '#d4a843', fontWeight: 600, textDecoration: 'none' }}>Design</a>}
-                        {jo.bomSnapshot?.length > 0 && <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>Materials: {jo.bomSnapshot.map(m => `${m.name} ×${m.totalQty}${m.unit ? ' ' + m.unit : ''}`).join(', ')}</div>}
+                        {prodName(jo)}{jo.designFilePath && <a href={jo.designFilePath} target="_blank" rel="noopener noreferrer" style={{ marginLeft: 8, fontSize: 11, color: 'var(--gold)', fontWeight: 600, textDecoration: 'none' }}>Design</a>}
+                        {jo.bomSnapshot?.length > 0 && <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 2 }}>Materials: {jo.bomSnapshot.map(m => `${m.name} ×${m.totalQty}${m.unit ? ' ' + m.unit : ''}`).join(', ')}</div>}
                       </td>
                       <td style={S.td}>{jo.product?.quantity ?? '—'}</td>
                       <td style={{ ...S.td, fontFamily: 'monospace' }}>{(jo.orderId || '').slice(-8).toUpperCase() || '—'}</td>
@@ -376,23 +376,23 @@ export default function JobOrdersPage() {
               <button onClick={loadSchedule} style={S.btnPrimary}>Apply</button>
             </div>
 
-            {scheduleError && <div style={{ ...S.note, background: '#fef2f2', borderColor: '#fecaca', color: '#991b1b', marginBottom: '10px' }}>{scheduleError}</div>}
+            {scheduleError && <div style={{ ...S.note, background: 'var(--st-red-bg)', borderColor: 'rgba(239,68,68,0.35)', color: 'var(--st-red-fg)', marginBottom: '10px' }}>{scheduleError}</div>}
 
             {scheduleLoading ? (
-              <div style={{ ...S.card, textAlign: 'center', color: '#9ca3af' }}>Loading…</div>
+              <div style={{ ...S.card, textAlign: 'center', color: 'var(--gray)' }}>Loading…</div>
             ) : scheduleJOs.length === 0 ? (
               <div style={{ ...S.card }}><EmptyState message="No job orders in this range" /></div>
             ) : (
               <div style={{ display: 'grid', gap: '18px' }}>
                 {Object.entries(scheduleGrouped).map(([day, jos]) => (
                   <div key={day}>
-                    <div style={{ fontSize: '12px', fontWeight: 700, color: '#d4a843', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: '8px' }}>{day}</div>
+                    <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: '8px' }}>{day}</div>
                     <div style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
                       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                         <tbody>
                           {jos.map(jo => (
                             <tr key={jo.id ?? jo._id} style={S.tr}>
-                              <td style={{ ...S.td, fontFamily: 'monospace', fontWeight: 600, width: 120 }}>{jo.joId || (jo.id ?? jo._id)?.slice(-8).toUpperCase()}{jo.isRush && <span style={{ ...S.badge, background: '#fef2f2', color: '#991b1b', border: '1px solid #fecaca', marginLeft: 6, fontSize: '10px' }}>RUSH</span>}</td>
+                              <td style={{ ...S.td, fontFamily: 'monospace', fontWeight: 600, width: 120 }}>{jo.joId || (jo.id ?? jo._id)?.slice(-8).toUpperCase()}{jo.isRush && <span style={{ ...S.badge, background: 'var(--st-red-bg)', color: 'var(--st-red-fg)', border: '1px solid #fecaca', marginLeft: 6, fontSize: '10px' }}>RUSH</span>}</td>
                               <td style={S.td}>{prodName(jo)} {jo.product?.quantity ? `× ${jo.product.quantity}` : ''}</td>
                               <td style={S.td}>{jo.assignedTo || '—'}</td>
                               <td style={{ ...S.td, textAlign: 'right' }}><StatusBadge status={jo.joStatus} /></td>
@@ -412,7 +412,7 @@ export default function JobOrdersPage() {
       {(modal === 'create' || (modal === 'edit' && selected)) && (
         <div onClick={closeModal} style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
           <div onClick={e => e.stopPropagation()} style={{ ...S.card, width: '100%', maxWidth: modal === 'create' ? 600 : 520, maxHeight: '90vh', overflowY: 'auto' }}>
-            <h2 style={{ margin: '0 0 16px', fontSize: '1.05rem', fontWeight: 700, color: '#1a1a2e' }}>
+            <h2 style={{ margin: '0 0 16px', fontSize: '1.05rem', fontWeight: 700, color: 'var(--white)' }}>
               {modal === 'create' ? 'Create Job Order' : `Edit Job Order — ${selected.joId || ''}`}
             </h2>
             <JobOrderForm

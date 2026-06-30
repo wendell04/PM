@@ -1248,8 +1248,8 @@ export default function OrdersPage() {
                         </td>
                         <td style={{ ...S.td, textAlign:'center' }}>
                           <StatusBadge status={o.orderStatus} />
-                          {isArch && <span style={{ ...S.badge, fontSize:'10px', background:'#f3f4f6', color:'#6b7280', border:'1px solid #e5e7eb', marginLeft:'4px' }}>Archived</span>}
-                          {isExpired(o) && <span style={{ ...S.badge, fontSize:'10px', background:'#fff7ed', color:'#c2410c', border:'1px solid #fdba74', marginLeft:'4px' }}>Expired</span>}
+                          {isArch && <span style={{ ...S.badge, fontSize:'10px', background:'var(--st-gray-bg)', color:'var(--st-gray-fg)', border:'1px solid var(--border)', marginLeft:'4px' }}>Archived</span>}
+                          {isExpired(o) && <span style={{ ...S.badge, fontSize:'10px', background:'var(--st-orange-bg)', color:'var(--st-orange-fg)', border:'1px solid rgba(251,146,60,0.35)', marginLeft:'4px' }}>Expired</span>}
                         </td>
                         <td style={{ ...S.td, textAlign:'center' }}>
                           <PayBadge status={o.paymentStatus} />
