@@ -5,6 +5,7 @@ import ErrorBoundary from '../../../../components/ErrorBoundary';
 import { useAuth } from '@/contexts/AuthContext';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import CustomDropdown from '@/app/components/CustomDropdown';
+import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
@@ -720,6 +721,40 @@ export default function ReportsPage() {
                       </span>
                     </div>
                     <SectionHeader title="Sales Trend" onExport={exportSales} exporting={salesExporting} collapsed={salesTrendCollapsed} onToggle={() => setSalesTrendCollapsed(p => !p)} />
+                    {!salesTrendCollapsed && salesGrouped && salesGrouped.length > 0 && (
+                      <div style={{ width: '100%', height: 280, marginBottom: '1rem' }}>
+                        <ResponsiveContainer width="100%" height="100%">
+                          <LineChart
+                            data={salesGrouped.map((r) => ({
+                              period: r.period,
+                              Revenue: Number(r.revenue) || 0,
+                              Cost: Number(r.cost) || 0,
+                              Profit: Number(r.profit) || 0,
+                            }))}
+                            margin={{ top: 8, right: 16, bottom: 4, left: 8 }}
+                          >
+                            <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+                            <XAxis dataKey="period" tick={{ fill: 'var(--gray)', fontSize: 11 }} tickLine={false} axisLine={{ stroke: 'var(--border)' }} />
+                            <YAxis
+                              tick={{ fill: 'var(--gray)', fontSize: 11 }}
+                              tickLine={false}
+                              axisLine={false}
+                              width={58}
+                              tickFormatter={(v) => (Math.abs(v) >= 1000 ? `₱${(v / 1000).toFixed(0)}k` : `₱${v}`)}
+                            />
+                            <Tooltip
+                              contentStyle={{ background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }}
+                              labelStyle={{ color: 'var(--white)', fontWeight: 600 }}
+                              formatter={(v, n) => [fmtPeso(v), n]}
+                            />
+                            <Legend wrapperStyle={{ fontSize: 12 }} />
+                            <Line type="monotone" dataKey="Revenue" stroke="var(--gold)" strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
+                            <Line type="monotone" dataKey="Cost" stroke="var(--gray)" strokeWidth={2} dot={false} />
+                            <Line type="monotone" dataKey="Profit" stroke="var(--green)" strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </div>
+                    )}
                     {!salesTrendCollapsed && salesGrouped && salesGrouped.length > 0 ? (
                       <div style={{ overflowX: 'auto' }}>
                         <div style={{ width: '100%', display: 'table' }}>
