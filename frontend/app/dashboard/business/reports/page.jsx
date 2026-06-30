@@ -261,6 +261,8 @@ const TABS = [
 export default function ReportsPage() {
   const { token } = useAuth();
   const [activeTab, setActiveTab] = useState('sales');
+  const [salesPage, setSalesPage] = useState(1);
+  const [salesPerPage, setSalesPerPage] = useState(10);
   const [invPage, setInvPage] = useState(1);
   const [invPerPage, setInvPerPage] = useState(10);
   const [inventoryCollapsed, setInventoryCollapsed] = useState(false);
@@ -607,6 +609,9 @@ export default function ReportsPage() {
   };
 
   const salesGrouped = salesData?.grouped;
+  const salesGroupedLen = salesGrouped?.length ?? 0;
+  const salesPaged = salesGrouped ? salesGrouped.slice((salesPage - 1) * salesPerPage, salesPage * salesPerPage) : [];
+  useEffect(() => { setSalesPage(1); }, [salesData, salesPerPage]);
   useEffect(() => { setInvPage(1); }, [statusFilter, inventoryRaw, invPerPage]);
   const tpProducts = tpData?.products;
 
@@ -758,6 +763,62 @@ export default function ReportsPage() {
                           </LineChart>
                         </ResponsiveContainer>
                       </div>
+                    )}
+                    {salesGrouped && salesGrouped.length > 0 && (
+                      <>
+                      <div style={{ border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden' }}>
+                        <style>{`.rpt-tr:hover td { background: var(--dark2); }`}</style>
+                        <div style={{ overflowX: 'auto' }}>
+                          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                            <thead>
+                              <tr style={{ background: 'var(--dark2)' }}>
+                                {[
+                                  { label: 'Period', align: 'left' },
+                                  { label: 'Revenue', align: 'right' },
+                                  { label: 'Cost', align: 'right' },
+                                  { label: 'Profit', align: 'right' },
+                                ].map((h) => (
+                                  <th
+                                    key={h.label}
+                                    style={{
+                                      textAlign: h.align,
+                                      padding: '0.85rem 1.25rem',
+                                      fontSize: '0.72rem',
+                                      fontWeight: 700,
+                                      letterSpacing: '0.05em',
+                                      textTransform: 'uppercase',
+                                      color: 'var(--gold)',
+                                      borderBottom: '1px solid var(--border)',
+                                      whiteSpace: 'nowrap',
+                                    }}
+                                  >
+                                    {h.label}
+                                  </th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {salesPaged.map((row, idx) => {
+                                const prof = Number(row.profit ?? 0);
+                                const profitColor = prof >= 0 ? 'var(--green)' : 'var(--red)';
+                                const last = idx === salesPaged.length - 1;
+                                const cell = { padding: '0.8rem 1.25rem', borderBottom: last ? 'none' : '1px solid var(--border)', transition: 'background 0.12s' };
+                                const num = { ...cell, textAlign: 'right', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' };
+                                return (
+                                  <tr key={row.period} className="rpt-tr">
+                                    <td style={{ ...cell, color: 'var(--white)', fontWeight: 600 }}>{row.period}</td>
+                                    <td style={{ ...num, color: 'var(--gold)', fontWeight: 600 }}>{fmtPeso(row.revenue)}</td>
+                                    <td style={{ ...num, color: 'var(--gray)' }}>{fmtPeso(row.cost)}</td>
+                                    <td style={{ ...num, color: profitColor, fontWeight: 600 }}>{fmtPeso(row.profit)}</td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                      <PaginationBar total={salesGroupedLen} page={salesPage} perPage={salesPerPage} onPage={setSalesPage} onPerPage={setSalesPerPage} />
+                      </>
                     )}
                   </>
                 )}
