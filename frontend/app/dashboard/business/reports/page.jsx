@@ -5,7 +5,7 @@ import ErrorBoundary from '../../../../components/ErrorBoundary';
 import { useAuth } from '@/contexts/AuthContext';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import CustomDropdown from '@/app/components/CustomDropdown';
-import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
+import { ResponsiveContainer, LineChart, Line, BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
@@ -880,6 +880,34 @@ export default function ReportsPage() {
                       <StatCard label="Revenue"           value={fmtPeso(ordersData.totalRevenue)} />
                       <StatCard label="Cancellation Rate" value={ordersData.cancellationRate != null ? `${ordersData.cancellationRate}%` : '—'} />
                     </div>
+                    <div style={{ marginBottom: '1.5rem' }}>
+                      <span style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--white)', display: 'block', marginBottom: '1rem' }}>Orders by Status</span>
+                      <div style={{ width: '100%', height: 260 }}>
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart
+                            data={[
+                              { status: 'Completed', value: Number(ordersData.completedOrders) || 0, fill: 'var(--green)' },
+                              { status: 'Pending',   value: Number(ordersData.pendingOrders)   || 0, fill: 'var(--gold)'  },
+                              { status: 'Cancelled', value: Number(ordersData.cancelledOrders) || 0, fill: 'var(--red)'   },
+                            ]}
+                            margin={{ top: 8, right: 16, bottom: 4, left: 8 }}
+                          >
+                            <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+                            <XAxis dataKey="status" tick={{ fill: 'var(--gray)', fontSize: 12 }} tickLine={false} axisLine={{ stroke: 'var(--border)' }} />
+                            <YAxis allowDecimals={false} tick={{ fill: 'var(--gray)', fontSize: 11 }} tickLine={false} axisLine={false} width={40} />
+                            <Tooltip
+                              cursor={{ fill: 'var(--dark2)' }}
+                              contentStyle={{ background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }}
+                              labelStyle={{ color: 'var(--white)', fontWeight: 600 }}
+                              formatter={(v) => [v, 'Orders']}
+                            />
+                            <Bar dataKey="value" radius={[6, 6, 0, 0]} maxBarSize={90}>
+                              {['var(--green)', 'var(--gold)', 'var(--red)'].map((c, i) => <Cell key={i} fill={c} />)}
+                            </Bar>
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
                     <SectionHeader title="Export" onExport={exportOrders} exporting={ordersExporting} />
                   </>
                 )}
@@ -1053,6 +1081,28 @@ export default function ReportsPage() {
                 {tpLoading && <LoadingRows />}
                 {!tpLoading && (
                   <>
+                    {tpProducts && tpProducts.length > 0 && (
+                      <div style={{ width: '100%', height: Math.max(220, tpProducts.length * 38), marginBottom: '1.25rem' }}>
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart
+                            layout="vertical"
+                            data={tpProducts.map((p) => ({ name: p.productName, Revenue: Number(p.totalRevenue) || 0 }))}
+                            margin={{ top: 4, right: 24, bottom: 4, left: 8 }}
+                          >
+                            <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
+                            <XAxis type="number" tick={{ fill: 'var(--gray)', fontSize: 11 }} tickLine={false} axisLine={{ stroke: 'var(--border)' }} tickFormatter={(v) => (Math.abs(v) >= 1000 ? `₱${(v / 1000).toFixed(0)}k` : `₱${v}`)} />
+                            <YAxis type="category" dataKey="name" width={140} tick={{ fill: 'var(--gray)', fontSize: 11 }} tickLine={false} axisLine={false} />
+                            <Tooltip
+                              cursor={{ fill: 'var(--dark2)' }}
+                              contentStyle={{ background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }}
+                              labelStyle={{ color: 'var(--white)', fontWeight: 600 }}
+                              formatter={(v) => [fmtPeso(v), 'Revenue']}
+                            />
+                            <Bar dataKey="Revenue" fill="var(--gold)" radius={[0, 4, 4, 0]} maxBarSize={26} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    )}
                     {tpProducts && tpProducts.length > 0 ? (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                         {tpProducts.map((p, idx) => {
