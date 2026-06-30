@@ -67,7 +67,7 @@ class InventoryController extends Controller
                                ->orderBy('name', 'asc')
                                ->get([
                                    '_id', 'name', 'sku', 'uom', 'category',
-                                   'stockQty', 'minStockLevel', 'baseCost',
+                                   'stockQty', 'minStockLevel', 'leadTimeDays', 'baseCost',
                                    'averageCost', 'lastUnitCost', 'procurementType',
                                    'hasVariants', 'parentId', 'isActive', 'batches',
                                    'isOnDemand', 'supplierId', 'supplierName',
@@ -265,6 +265,7 @@ class InventoryController extends Controller
                 'category'         => 'required|string|max:100',
                 'stockQty'         => 'required|integer|min:0',
                 'minStockLevel'    => 'required|integer|min:0',
+                'leadTimeDays'     => 'nullable|integer|min:0|max:365',
                 'isOnDemand'       => 'boolean',
                 'supplierId'       => 'nullable|string',
                 'supplierName'     => 'nullable|string',
@@ -309,6 +310,7 @@ class InventoryController extends Controller
                 'category'         => $validated['category'],
                 'stockQty'         => $validated['stockQty'],
                 'minStockLevel'    => $validated['minStockLevel'],
+                'leadTimeDays'     => isset($validated['leadTimeDays']) ? (int) $validated['leadTimeDays'] : 7,
                 'isOnDemand'       => $validated['isOnDemand'] ?? false,
                 'isActive'         => true,
                 'supplierId'       => $validated['supplierId'] ?? null,
@@ -366,6 +368,7 @@ class InventoryController extends Controller
                 'category'         => 'sometimes|required|string|max:100',
                 'stockQty'         => 'sometimes|required|integer|min:0',
                 'minStockLevel'    => 'sometimes|required|integer|min:0',
+                'leadTimeDays'     => 'sometimes|nullable|integer|min:0|max:365',
                 'isOnDemand'       => 'sometimes|boolean',
                 'isActive'         => 'sometimes|boolean',
                 'supplierId'       => 'nullable|string',

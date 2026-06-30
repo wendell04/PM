@@ -39,9 +39,9 @@ function Toggle({ on, onChange }) {
   return (
     <button type="button" onClick={() => onChange(!on)}
       style={{ position:'relative', width:'40px', height:'22px', borderRadius:'11px', border:'none', cursor:'pointer',
-        background: on ? '#c9973f' : '#e1e3e5', flexShrink:0, transition:'background .15s' }}>
+        background: on ? 'var(--gold)' : 'var(--border)', flexShrink:0, transition:'background .15s' }}>
       <span style={{ position:'absolute', top:'3px', left: on ? '21px' : '3px', width:'16px', height:'16px',
-        borderRadius:'50%', background:'#fff', transition:'left .15s', boxShadow:'0 1px 3px rgba(0,0,0,.2)' }} />
+        borderRadius:'50%', background:'var(--dark)', transition:'left .15s', boxShadow:'0 1px 3px rgba(0,0,0,.2)' }} />
     </button>
   );
 }
@@ -142,7 +142,7 @@ export default function ProductFormModal({ open, onClose, onSave, product, boms 
               <IntegerInput value={form.downpaymentPct} onChange={v => setF('downpaymentPct', v)}
                 max={100} placeholder="0"
                 style={{ ...(errors.downpaymentPct ? S.inputErr : S.input), width:'80px' }} />
-              <span style={{ fontSize:'12px', color:'#6b7280' }}>
+              <span style={{ fontSize:'12px', color:'var(--gray)' }}>
                 {Number(form.downpaymentPct) === 0 ? 'No DP required' : `${form.downpaymentPct}% upon approval`}
               </span>
             </div>
@@ -153,7 +153,7 @@ export default function ProductFormModal({ open, onClose, onSave, product, boms 
         <Field label="Description" error={errors.description}>
           <textarea value={form.description} onChange={e => setF('description', e.target.value)}
             maxLength={500} placeholder="Optional product description…" style={S.textarea} />
-          <span style={{ fontSize:'11px', color:'#9ca3af', textAlign:'right' }}>{form.description.length}/500</span>
+          <span style={{ fontSize:'11px', color:'var(--gray)', textAlign:'right' }}>{form.description.length}/500</span>
         </Field>
 
         {/* Cover Image */}
@@ -170,12 +170,12 @@ export default function ProductFormModal({ open, onClose, onSave, product, boms 
           <div style={{ display:'flex', gap:'8px' }}>
             {[{val:'standalone', label:'Standalone', desc:'Single product, one BOM'},
               {val:'multi-variant', label:'Multi-Variant', desc:'Multiple options (e.g. sizes, types)'}].map(o => (
-              <label key={o.val} style={{ flex:1, display:'flex', flexDirection:'column', gap:'4px', padding:'12px', border:`1px solid ${form.type===o.val ? '#c9973f' : '#e1e3e5'}`, borderRadius:'8px', cursor:'pointer', background: form.type===o.val ? '#fffbe8' : '#fff', transition:'all .12s' }}>
+              <label key={o.val} style={{ flex:1, display:'flex', flexDirection:'column', gap:'4px', padding:'12px', border:`1px solid ${form.type===o.val ? 'var(--gold)' : 'var(--border)'}`, borderRadius:'8px', cursor:'pointer', background: form.type===o.val ? 'var(--gold-subtle)' : 'var(--dark)', transition:'all .12s' }}>
                 <div style={{ display:'flex', alignItems:'center', gap:'8px' }}>
-                  <input type="radio" name="ptype" value={o.val} checked={form.type===o.val} onChange={() => setF('type', o.val)} style={{ accentColor:'#c9973f' }} />
+                  <input type="radio" name="ptype" value={o.val} checked={form.type===o.val} onChange={() => setF('type', o.val)} style={{ accentColor:'var(--gold)' }} />
                   <span style={{ fontWeight:600, fontSize:'13px' }}>{o.label}</span>
                 </div>
-                <span style={{ fontSize:'11px', color:'#9ca3af', paddingLeft:'20px' }}>{o.desc}</span>
+                <span style={{ fontSize:'11px', color:'var(--gray)', paddingLeft:'20px' }}>{o.desc}</span>
               </label>
             ))}
           </div>
@@ -202,14 +202,14 @@ export default function ProductFormModal({ open, onClose, onSave, product, boms 
         {form.type === 'multi-variant' && (
           <div style={{ display:'flex', flexDirection:'column', gap:'10px' }}>
             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-              <span style={{ fontSize:'13px', fontWeight:600, color:'#374151' }}>Variants</span>
+              <span style={{ fontSize:'13px', fontWeight:600, color:'var(--gray-light)' }}>Variants</span>
               <button onClick={addVariant} style={S.btnSm}>{ICONS.plus} Add Variant</button>
             </div>
             {errors.variants && <span style={S.errText}>{errors.variants}</span>}
             {form.variants.map((v, i) => (
-              <div key={v.id} style={{ border:'1px solid #e1e3e5', borderRadius:'8px', padding:'12px', background:'#fafbfc' }}>
+              <div key={v.id} style={{ border:'1px solid var(--border)', borderRadius:'8px', padding:'12px', background:'var(--dark2)' }}>
                 <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'10px' }}>
-                  <span style={{ fontSize:'12px', fontWeight:600, color:'#6b7280' }}>Variant {i + 1}</span>
+                  <span style={{ fontSize:'12px', fontWeight:600, color:'var(--gray)' }}>Variant {i + 1}</span>
                   {form.variants.length > 1 && (
                     <button onClick={() => removeVariant(i)} style={{ background:'none', border:'none', cursor:'pointer', color:'#e05252', display:'flex' }}>{ICONS.trash}</button>
                   )}
@@ -243,16 +243,16 @@ export default function ProductFormModal({ open, onClose, onSave, product, boms 
         <div style={{ display:'flex', flexDirection:'column', gap:'12px' }}>
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
             <div>
-              <div style={{ fontSize:'13px', fontWeight:600, color:'#374151' }}>Hide when out of stock</div>
-              <div style={{ fontSize:'11px', color:'#9ca3af' }}>Product won't appear in shop when stock is 0</div>
+              <div style={{ fontSize:'13px', fontWeight:600, color:'var(--gray-light)' }}>Hide when out of stock</div>
+              <div style={{ fontSize:'11px', color:'var(--gray)' }}>Product won't appear in shop when stock is 0</div>
             </div>
             <Toggle on={form.hideWhenOutOfStock} onChange={v => setF('hideWhenOutOfStock', v)} />
           </div>
 
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
             <div>
-              <div style={{ fontSize:'13px', fontWeight:600, color:'#374151' }}>Published</div>
-              <div style={{ fontSize:'11px', color:'#9ca3af' }}>Visible in the shop storefront</div>
+              <div style={{ fontSize:'13px', fontWeight:600, color:'var(--gray-light)' }}>Published</div>
+              <div style={{ fontSize:'11px', color:'var(--gray)' }}>Visible in the shop storefront</div>
             </div>
             <Toggle on={form.isPublished} onChange={v => setF('isPublished', v)} />
           </div>

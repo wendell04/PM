@@ -80,7 +80,32 @@
       "PowerShell(Invoke-WebRequest -Uri \"http://localhost:3001/dashboard/business/reports\" -UseBasicParsing -TimeoutSec 8)",
       "PowerShell(Invoke-WebRequest -Uri \"http://localhost:3000\" -UseBasicParsing -TimeoutSec 5)",
       "Bash(git fetch *)",
-      "Bash(git stash *)"
+      "Bash(git stash *)",
+      "Bash(cd /d D:\\\\PM)",
+      "Bash(Get-ChildItem -Path . -Directory)",
+      "Bash(dir \"D:\\\\PM\\\\ssa-service\" /b /ad)",
+      "PowerShell(git -C d:\\\\PM log --oneline --since=\"2026-06-18\" --all)",
+      "PowerShell(git -C d:\\\\PM status)",
+      "PowerShell(git -C d:\\\\PM log --oneline -10)",
+      "PowerShell(git -C d:\\\\PM remote -v)",
+      "Bash(node -e ' *)",
+      "Bash(cd /d/PM/frontend && grep -rn \"overflow\" app/dashboard/business/admin-dashboard.css | grep -iE \"page-content|main-content|wrapper|body|html\" ; echo \"---globals body/html---\"; grep -nE \"html|body|overflow\" app/globals.css | head -30)",
+      "Read(//d/d/PM/frontend/app/dashboard/business/**)",
+      "Bash(grep -nA12 \"^\\\\.admin-page-content\" app/dashboard/business/admin-dashboard.css)",
+      "Bash(grep -nA3 \"^\\\\.page-content-wrapper\" app/dashboard/business/admin-dashboard.css)",
+      "Bash(grep -iE \"^\\(playwright|puppeteer|@playwright\\)$\")",
+      "Bash(echo \"exit:$?\")",
+      "Bash(grep -nA8 \"^\\\\.admin-dashboard-wrapper\" app/dashboard/business/admin-dashboard.css)",
+      "Bash(python -m py_compile ssa-service/main.py)",
+      "Bash(grep -nE 'protected \\\\$fillable|protected \\\\$guarded|'\\\\''role'\\\\''|\"role\"' backend/app/Models/User.php)",
+      "Bash(grep -nE \"background|color|border|#[0-9a-fA-F]{3,6}\" shared.jsx)",
+      "Bash(node -e \"require\\('@babel/parser'\\).parse\\(require\\('fs'\\).readFileSync\\('app/dashboard/business/inventory-v2/shared.jsx','utf8'\\),{sourceType:'module',plugins:['jsx']}\\);console.log\\('PARSE_OK'\\)\")",
+      "Bash(grep -rln \"#c9973f\" app/dashboard/business)",
+      "Bash(cd /d/PM/frontend && grep -n \"BADGE_COLORS\" -A 20 app/dashboard/business/inventory-v2/shared.jsx | head -25)",
+      "Read(//d/d/PM/frontend/**)",
+      "Bash(node -e \"require\\('@babel/parser'\\).parse\\(require\\('fs'\\).readFileSync\\('app/dashboard/business/inventory-v2/shared.jsx','utf8'\\),{sourceType:'module',plugins:['jsx']}\\);console.log\\('shared.jsx PARSE_OK'\\)\")",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)"
     ]
   }
 }

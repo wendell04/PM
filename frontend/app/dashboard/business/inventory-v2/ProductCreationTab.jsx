@@ -37,17 +37,17 @@ function BomCostBreakdown({ items, materials, batches }) {
   const bomTotal = rows.reduce((s, r) => s + r.total, 0);
 
   return (
-    <div style={{ background:'#f8f9fa', borderRadius:'8px', padding:'12px', marginTop:'6px' }}>
-      <div style={{ fontSize:'12px', fontWeight:600, color:'#6b7280', marginBottom:'8px', textTransform:'uppercase', letterSpacing:'.4px' }}>BOM Cost Estimate (FIFO)</div>
+    <div style={{ background:'var(--dark2)', borderRadius:'8px', padding:'12px', marginTop:'6px' }}>
+      <div style={{ fontSize:'12px', fontWeight:600, color:'var(--gray)', marginBottom:'8px', textTransform:'uppercase', letterSpacing:'.4px' }}>BOM Cost Estimate (FIFO)</div>
       {rows.map((r, i) => (
-        <div key={i} style={{ display:'flex', justifyContent:'space-between', fontSize:'12px', padding:'3px 0', borderBottom: i < rows.length - 1 ? '1px solid #e9eaeb' : 'none' }}>
-          <span style={{ color:'#374151' }}>{r.mat?.name || '?'} × {r.qty} {r.mat?.unit}</span>
-          <span style={{ color:'#6b7280' }}>{formatCurrency(r.total)}</span>
+        <div key={i} style={{ display:'flex', justifyContent:'space-between', fontSize:'12px', padding:'3px 0', borderBottom: i < rows.length - 1 ? '1px solid var(--border)' : 'none' }}>
+          <span style={{ color:'var(--gray-light)' }}>{r.mat?.name || '?'} × {r.qty} {r.mat?.unit}</span>
+          <span style={{ color:'var(--gray)' }}>{formatCurrency(r.total)}</span>
         </div>
       ))}
-      <div style={{ display:'flex', justifyContent:'space-between', fontWeight:700, fontSize:'13px', marginTop:'8px', paddingTop:'8px', borderTop:'2px solid #e1e3e5' }}>
+      <div style={{ display:'flex', justifyContent:'space-between', fontWeight:700, fontSize:'13px', marginTop:'8px', paddingTop:'8px', borderTop:'2px solid var(--border)' }}>
         <span>Est. Production Cost</span>
-        <span style={{ color:'#c9973f' }}>{formatCurrency(bomTotal)}</span>
+        <span style={{ color:'var(--gold)' }}>{formatCurrency(bomTotal)}</span>
       </div>
     </div>
   );
@@ -175,7 +175,7 @@ export default function ProductCreationTab({ boms, setBoms, materials, batches, 
                   return s + uc * it.qty;
                 }, 0);
                 return (
-                  <tr key={bom.id} style={S.tr} onMouseEnter={e => e.currentTarget.style.background='#fafbfc'} onMouseLeave={e => e.currentTarget.style.background=''}>
+                  <tr key={bom.id} style={S.tr} onMouseEnter={e => e.currentTarget.style.background='var(--dark2)'} onMouseLeave={e => e.currentTarget.style.background=''}>
                     <td style={{ ...S.td, fontWeight:600 }}>{bom.productName}</td>
                     <td style={S.td}>
                       <div style={{ display:'flex', flexWrap:'wrap', gap:'4px' }}>
@@ -192,7 +192,7 @@ export default function ProductCreationTab({ boms, setBoms, materials, batches, 
                         })}
                       </div>
                     </td>
-                    <td style={{ ...S.td, fontWeight:600, color:'#c9973f', textAlign:'right' }}>{formatCurrency(cost)}</td>
+                    <td style={{ ...S.td, fontWeight:600, color:'var(--gold)', textAlign:'right' }}>{formatCurrency(cost)}</td>
                     <td style={{ ...S.td, textAlign:'right' }}>
                       <div style={{ display:'flex', gap:'6px', justifyContent:'flex-end' }}>
                         <button onClick={() => openEdit(bom)} style={S.btnSmGhost}>{ICONS.edit}</button>
@@ -205,7 +205,7 @@ export default function ProductCreationTab({ boms, setBoms, materials, batches, 
             </tbody>
           </table>
         </div>
-        <div style={{ padding:'12px 16px', borderTop:'1px solid #f0f1f2' }}>
+        <div style={{ padding:'12px 16px', borderTop:'1px solid var(--border)' }}>
           <PaginationBar total={total} page={page} perPage={perPage} onPage={setPage} onPerPage={setPerPage} />
         </div>
       </div>
@@ -254,7 +254,7 @@ export default function ProductCreationTab({ boms, setBoms, materials, batches, 
 
           {/* BOM items */}
           {form.items.length > 0 && (
-            <div style={{ border:'1px solid #e1e3e5', borderRadius:'8px', overflow:'hidden' }}>
+            <div style={{ border:'1px solid var(--border)', borderRadius:'8px', overflow:'hidden' }}>
               <table style={{ width:'100%', borderCollapse:'collapse' }}>
                 <thead>
                   <tr>

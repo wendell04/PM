@@ -19,11 +19,11 @@ const STATUS_TABS = ['All','Pending','In Production','For Delivery','Delivered',
 
 const STATUS_CFG = {
   // Active / in-progress → gold
-  'Pending':            { bg:'rgba(212,168,67,0.08)', color:'#c9973f', border:'rgba(212,168,67,0.3)' },
-  'Processing':         { bg:'rgba(212,168,67,0.08)', color:'#c9973f', border:'rgba(212,168,67,0.3)' },
-  'In Production':      { bg:'rgba(212,168,67,0.08)', color:'#c9973f', border:'rgba(212,168,67,0.3)' },
-  'For QC':             { bg:'rgba(212,168,67,0.08)', color:'#c9973f', border:'rgba(212,168,67,0.3)' },
-  'For Delivery':       { bg:'rgba(212,168,67,0.08)', color:'#c9973f', border:'rgba(212,168,67,0.3)' },
+  'Pending':            { bg:'rgba(212,168,67,0.08)', color:'var(--gold)', border:'rgba(212,168,67,0.3)' },
+  'Processing':         { bg:'rgba(212,168,67,0.08)', color:'var(--gold)', border:'rgba(212,168,67,0.3)' },
+  'In Production':      { bg:'rgba(212,168,67,0.08)', color:'var(--gold)', border:'rgba(212,168,67,0.3)' },
+  'For QC':             { bg:'rgba(212,168,67,0.08)', color:'var(--gold)', border:'rgba(212,168,67,0.3)' },
+  'For Delivery':       { bg:'rgba(212,168,67,0.08)', color:'var(--gold)', border:'rgba(212,168,67,0.3)' },
   // Success → green
   'Delivered':          { bg:'rgba(34,197,94,0.08)',  color:'#166534', border:'rgba(34,197,94,0.3)'  },
   // Negative → red
@@ -59,13 +59,13 @@ function PayBadge({ status }) {
 
 function TypeBadge({ isCustom }) {
   return isCustom
-    ? <span style={{ ...S.badge, background:'#ede9fe', color:'#5b21b6', border:'1px solid #ddd6fe', fontSize:'10px' }}>Custom</span>
+    ? <span style={{ ...S.badge, background:'#ede9fe', color:'#5b21b6', border:'1px solid var(--border)6fe', fontSize:'10px' }}>Custom</span>
     : <span style={{ ...S.badge, background:'#f0fdf4', color:'#166534', border:'1px solid #bbf7d0', fontSize:'10px' }}>Ready Made</span>;
 }
 
 function Chevron({ open }) {
   return (
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2.5"
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--gray)" strokeWidth="2.5"
       style={{ transform:open ? 'rotate(180deg)' : 'none', transition:'transform .2s', flexShrink:0 }}>
       <polyline points="6 9 12 15 18 9" />
     </svg>
@@ -76,8 +76,8 @@ function InfoRow({ label, value, mono }) {
   if (!value && value !== 0) return null;
   return (
     <div style={{ display:'flex', justifyContent:'space-between', fontSize:'12px', padding:'3px 0' }}>
-      <span style={{ color:'#6b7280' }}>{label}</span>
-      <span style={{ color:'#1a1a2e', fontWeight:600, fontFamily: mono ? 'monospace' : undefined }}>{value}</span>
+      <span style={{ color:'var(--gray)' }}>{label}</span>
+      <span style={{ color:'var(--white)', fontWeight:600, fontFamily: mono ? 'monospace' : undefined }}>{value}</span>
     </div>
   );
 }
@@ -100,9 +100,9 @@ function Modal({ children, onClose, maxWidth = 480 }) {
 
 function ModalHeader({ title, onClose }) {
   return (
-    <div style={{ ...S.rowBetween, marginBottom:'20px', paddingBottom:'14px', borderBottom:'1px solid #e1e3e5' }}>
-      <div style={{ fontWeight:700, fontSize:'15px', color:'#1a1a2e' }}>{title}</div>
-      <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:'#6b7280', display:'flex', padding:'4px' }}>
+    <div style={{ ...S.rowBetween, marginBottom:'20px', paddingBottom:'14px', borderBottom:'1px solid var(--border)' }}>
+      <div style={{ fontWeight:700, fontSize:'15px', color:'var(--white)' }}>{title}</div>
+      <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:'var(--gray)', display:'flex', padding:'4px' }}>
         {ICONS.x}
       </button>
     </div>
@@ -112,7 +112,7 @@ function ModalHeader({ title, onClose }) {
 function ModalFooter({ children }) {
   return (
     <div style={{ display:'flex', justifyContent:'flex-end', gap:'8px', marginTop:'24px',
-      paddingTop:'16px', borderTop:'1px solid #e1e3e5' }}>
+      paddingTop:'16px', borderTop:'1px solid var(--border)' }}>
       {children}
     </div>
   );
@@ -192,7 +192,7 @@ function PaymentModal({ order, onClose, onSuccess }) {
           </div>
         </div>
         <div>
-          <div style={S.label}>Note <span style={{ fontWeight:400, textTransform:'none', color:'#9ca3af' }}>(optional)</span></div>
+          <div style={S.label}>Note <span style={{ fontWeight:400, textTransform:'none', color:'var(--gray)' }}>(optional)</span></div>
           <input type="text" value={note} onChange={e => setNote(e.target.value)}
             placeholder="e.g. Downpayment, ref #12345"
             style={{ ...S.input, marginTop:'4px' }} />
@@ -230,7 +230,7 @@ function ArchiveModal({ orderId, onClose, onArchived }) {
   return (
     <Modal onClose={onClose} maxWidth={400}>
       <ModalHeader title="Archive Order" onClose={onClose} />
-      <p style={{ fontSize:'13px', color:'#374151', lineHeight:1.6 }}>
+      <p style={{ fontSize:'13px', color:'var(--gray-light)', lineHeight:1.6 }}>
         Archive order{' '}
         <span style={{ fontFamily:'monospace', fontWeight:700, color:'#c2410c' }}>
           #{String(orderId).slice(-8).toUpperCase()}
@@ -275,9 +275,9 @@ function JOQueueModal({ orders, token, onClose, onJOUpdated, onPrintJO }) {
         {[
           { color:'#991b1b', bg:'#fef2f2', label:'Delayed'       },
           { color:'#c2410c', bg:'#fff7ed', label:'Rush Order'     },
-          { color:'#c9973f', bg:'#fefce8', label:'Near Deadline'  },
+          { color:'var(--gold)', bg:'#fefce8', label:'Near Deadline'  },
         ].map(p => (
-          <div key={p.label} style={{ display:'flex', alignItems:'center', gap:'6px', fontSize:'12px', color:'#6b7280' }}>
+          <div key={p.label} style={{ display:'flex', alignItems:'center', gap:'6px', fontSize:'12px', color:'var(--gray)' }}>
             <div style={{ width:'10px', height:'10px', borderRadius:'2px', background:p.color }} />
             {p.label}
           </div>
@@ -293,15 +293,15 @@ function JOQueueModal({ orders, token, onClose, onJOUpdated, onPrintJO }) {
               const daysLeft = target ? Math.ceil((target - today)/86400000) : null;
               const isLate   = target && target < today;
               const isUrgent = !isLate && daysLeft !== null && daysLeft <= 2;
-              const border   = isLate ? '#fca5a5' : o.isRush ? '#fdba74' : isUrgent ? '#fde68a' : '#e1e3e5';
+              const border   = isLate ? '#fca5a5' : o.isRush ? '#fdba74' : isUrgent ? '#fde68a' : 'var(--border)';
 
               return (
                 <div key={o.id} style={{ ...S.card, border:`2px solid ${border}`, padding:'14px 18px',
                   display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:'16px', alignItems:'center' }}>
                   <div>
-                    <div style={{ fontSize:'11px', color:'#9ca3af', fontFamily:'monospace', marginBottom:'3px' }}>{o.joId || 'No JO assigned'}</div>
-                    <div style={{ fontWeight:700, fontSize:'13px', color:'#1a1a2e' }}>{o.customerName}</div>
-                    <div style={{ fontSize:'12px', color:'#6b7280', marginTop:'2px' }}>{o.productName} × {o.quantity}</div>
+                    <div style={{ fontSize:'11px', color:'var(--gray)', fontFamily:'monospace', marginBottom:'3px' }}>{o.joId || 'No JO assigned'}</div>
+                    <div style={{ fontWeight:700, fontSize:'13px', color:'var(--white)' }}>{o.customerName}</div>
+                    <div style={{ fontSize:'12px', color:'var(--gray)', marginTop:'2px' }}>{o.productName} × {o.quantity}</div>
                   </div>
                   <div style={{ textAlign:'center' }}>
                     {isLate
@@ -310,10 +310,10 @@ function JOQueueModal({ orders, token, onClose, onJOUpdated, onPrintJO }) {
                         </span>
                       : o.isRush
                         ? <span style={{ ...S.badge, background:'#fff7ed', color:'#c2410c', border:'1px solid #fdba74' }}>RUSH</span>
-                        : <span style={{ ...S.badge, background:'#f3f4f6', color:'#374151', border:'1px solid #e5e7eb' }}>Standard</span>
+                        : <span style={{ ...S.badge, background:'var(--dark2)', color:'var(--gray-light)', border:'1px solid var(--border)' }}>Standard</span>
                     }
                     {target && (
-                      <div style={{ fontSize:'11px', color: isLate ? '#991b1b' : '#6b7280', marginTop:'4px' }}>
+                      <div style={{ fontSize:'11px', color: isLate ? '#991b1b' : 'var(--gray)', marginTop:'4px' }}>
                         Due {target.toLocaleDateString('en-PH', { month:'short', day:'numeric' })}
                         {daysLeft !== null && !isLate && ` · ${daysLeft}d left`}
                       </div>
@@ -363,7 +363,7 @@ function PrintJOModal({ order, onClose }) {
       ? `<div style="margin:20px 0;padding:15px;border:2px solid #333;border-radius:8px">
           <h3 style="margin:0 0 12px;font-size:13px;text-transform:uppercase;border-bottom:2px solid #000;padding-bottom:5px">Design References (${designImages.length})</h3>
           <div style="display:flex;flex-wrap:wrap;gap:10px">
-            ${designImages.map(img => `<img src="${img}" style="width:calc(33.333% - 10px);min-width:120px;max-width:220px;height:auto;border:1px solid #ddd;border-radius:4px"/>`).join('')}
+            ${designImages.map(img => `<img src="${img}" style="width:calc(33.333% - 10px);min-width:120px;max-width:220px;height:auto;border:1px solid var(--border);border-radius:4px"/>`).join('')}
           </div></div>`
       : '';
     const descHtml = description.trim()
@@ -417,15 +417,15 @@ function PrintJOModal({ order, onClose }) {
       <ModalHeader title={`Print Job Order — ${order.joId || 'PENDING'}`} onClose={onClose} />
 
       <div style={{ ...S.col, gap:'16px' }}>
-        <div style={{ ...S.card, background:'#f8f9fa', padding:'12px 16px' }}>
+        <div style={{ ...S.card, background:'var(--dark2)', padding:'12px 16px' }}>
           <div style={{ fontWeight:700, fontSize:'13px', marginBottom:'6px' }}>{order.customerName}</div>
-          <div style={{ fontSize:'12px', color:'#6b7280' }}>{order.productName} × {order.quantity} pcs</div>
+          <div style={{ fontSize:'12px', color:'var(--gray)' }}>{order.productName} × {order.quantity} pcs</div>
         </div>
 
         <div>
-          <div style={{ ...S.label, marginBottom:'6px' }}>Design Images <span style={{ fontWeight:400, textTransform:'none', color:'#9ca3af' }}>(optional)</span></div>
-          <div style={{ border:'2px dashed #d1d5db', borderRadius:'8px', padding:'16px', textAlign:'center',
-            background: designImages.length ? '#f8f9fa' : '#fafbfc', cursor:'pointer' }}
+          <div style={{ ...S.label, marginBottom:'6px' }}>Design Images <span style={{ fontWeight:400, textTransform:'none', color:'var(--gray)' }}>(optional)</span></div>
+          <div style={{ border:'2px dashed var(--border)', borderRadius:'8px', padding:'16px', textAlign:'center',
+            background: designImages.length ? 'var(--dark2)' : 'var(--dark2)', cursor:'pointer' }}
             onClick={() => document.getElementById('_joDesignInput').click()}>
             {designImages.length > 0
               ? (
@@ -434,21 +434,21 @@ function PrintJOModal({ order, onClose }) {
                     {designImages.map((img, i) => (
                       <div key={i} style={{ position:'relative' }}>
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={img} alt="" style={{ width:'100%', aspectRatio:'1/1', objectFit:'cover', borderRadius:'6px', border:'1px solid #e1e3e5' }} />
+                        <img src={img} alt="" style={{ width:'100%', aspectRatio:'1/1', objectFit:'cover', borderRadius:'6px', border:'1px solid var(--border)' }} />
                         <button type="button" onClick={e => { e.stopPropagation(); setDesignImages(p => p.filter((_,j)=>j!==i)); }}
                           style={{ position:'absolute', top:'-6px', right:'-6px', width:'18px', height:'18px',
-                            background:'#e05252', border:'2px solid #fff', borderRadius:'50%', color:'#fff',
+                            background:'#e05252', border:'2px solid var(--border)', borderRadius:'50%', color:'var(--dark)',
                             fontSize:'10px', display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', padding:0 }}>×</button>
                       </div>
                     ))}
                   </div>
-                  <div style={{ fontSize:'11px', color:'#6b7280' }}>Click to add more</div>
+                  <div style={{ fontSize:'11px', color:'var(--gray)' }}>Click to add more</div>
                 </div>
               )
               : (
                 <div>
-                  <div style={{ fontSize:'13px', color:'#374151', marginBottom:'4px' }}>Click to upload design images</div>
-                  <div style={{ fontSize:'11px', color:'#9ca3af' }}>PNG, JPG — multiple supported</div>
+                  <div style={{ fontSize:'13px', color:'var(--gray-light)', marginBottom:'4px' }}>Click to upload design images</div>
+                  <div style={{ fontSize:'11px', color:'var(--gray)' }}>PNG, JPG — multiple supported</div>
                 </div>
               )
             }
@@ -458,7 +458,7 @@ function PrintJOModal({ order, onClose }) {
         </div>
 
         <div>
-          <div style={{ ...S.label, marginBottom:'6px' }}>Print Instructions <span style={{ fontWeight:400, textTransform:'none', color:'#9ca3af' }}>(optional)</span></div>
+          <div style={{ ...S.label, marginBottom:'6px' }}>Print Instructions <span style={{ fontWeight:400, textTransform:'none', color:'var(--gray)' }}>(optional)</span></div>
           <textarea value={description} onChange={e => setDescription(e.target.value)}
             placeholder="Special instructions for production…"
             rows={3} style={S.textarea} />
@@ -477,7 +477,7 @@ function PrintJOModal({ order, onClose }) {
 
 function SectionLabel({ children }) {
   return (
-    <div style={{ fontSize:'11px', fontWeight:700, color:'#6b7280', textTransform:'uppercase',
+    <div style={{ fontSize:'11px', fontWeight:700, color:'var(--gray)', textTransform:'uppercase',
       letterSpacing:'.5px', marginBottom:'8px' }}>
       {children}
     </div>
@@ -655,22 +655,22 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
   const hasDesignWork = lo.isCustom || lo.items?.some(i => i.designRequested);
 
   return (
-    <div style={{ padding:'16px 20px', background:'#f8f9fa', borderBottom:'1px solid #e1e3e5' }}>
+    <div style={{ padding:'16px 20px', background:'var(--dark2)', borderBottom:'1px solid var(--border)' }}>
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'16px' }}>
 
         {/* LEFT — customer + design (if custom) + status */}
         <div style={{ ...S.card, padding:'14px 16px', display:'flex', flexDirection:'column' }}>
 
           <SectionLabel>Customer</SectionLabel>
-          <div style={{ fontWeight:700, fontSize:'14px', color:'#1a1a2e', marginBottom:'3px' }}>{lo.customerName}</div>
-          {lo.customerContact && <div style={{ fontSize:'12px', color:'#6b7280' }}>{lo.customerContact}</div>}
-          {lo.customerEmail   && <div style={{ fontSize:'12px', color:'#6b7280', marginBottom:'4px' }}>{lo.customerEmail}</div>}
+          <div style={{ fontWeight:700, fontSize:'14px', color:'var(--white)', marginBottom:'3px' }}>{lo.customerName}</div>
+          {lo.customerContact && <div style={{ fontSize:'12px', color:'var(--gray)' }}>{lo.customerContact}</div>}
+          {lo.customerEmail   && <div style={{ fontSize:'12px', color:'var(--gray)', marginBottom:'4px' }}>{lo.customerEmail}</div>}
 
           {lo.deliveryAddress && (
             <>
               <div style={S.divider} />
               <SectionLabel>Delivery Address</SectionLabel>
-              <div style={{ fontSize:'12px', color:'#374151', lineHeight:1.6 }}>
+              <div style={{ fontSize:'12px', color:'var(--gray-light)', lineHeight:1.6 }}>
                 {typeof lo.deliveryAddress === 'object'
                   ? [lo.deliveryAddress.house_number, lo.deliveryAddress.street,
                      lo.deliveryAddress.subdivision,
@@ -679,27 +679,27 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                   : lo.deliveryAddress}
               </div>
               {typeof lo.deliveryAddress === 'object' && lo.deliveryAddress.phone && (
-                <div style={{ fontSize:'12px', color:'#6b7280', marginTop:'2px' }}>☎ {lo.deliveryAddress.phone}</div>
+                <div style={{ fontSize:'12px', color:'var(--gray)', marginTop:'2px' }}>☎ {lo.deliveryAddress.phone}</div>
               )}
               {typeof lo.deliveryAddress === 'object' && lo.deliveryAddress.lat && lo.deliveryAddress.lng && (
                 <div style={{ marginTop:'8px' }}>
-                  <div style={{ fontSize:'11px', color:'#6b7280', marginBottom:'5px' }}>
+                  <div style={{ fontSize:'11px', color:'var(--gray)', marginBottom:'5px' }}>
                     Pinned drop-off — open this exact spot to book your courier (Lalamove / Grab / etc.):
                   </div>
                   <div style={{ display:'flex', gap:'6px', flexWrap:'wrap', alignItems:'center' }}>
                     <a href={`https://www.google.com/maps/search/?api=1&query=${lo.deliveryAddress.lat},${lo.deliveryAddress.lng}`}
                        target="_blank" rel="noopener noreferrer"
-                       style={{ display:'inline-flex', alignItems:'center', gap:'4px', padding:'5px 10px', fontSize:'11px', fontWeight:600, borderRadius:'6px', border:'1px solid #d1d5db', background:'#fff', color:'#1a1a2e', textDecoration:'none', cursor:'pointer' }}>
+                       style={{ display:'inline-flex', alignItems:'center', gap:'4px', padding:'5px 10px', fontSize:'11px', fontWeight:600, borderRadius:'6px', border:'1px solid var(--border)', background:'var(--dark)', color:'var(--white)', textDecoration:'none', cursor:'pointer' }}>
                       📍 Google Maps
                     </a>
                     <a href={`https://waze.com/ul?ll=${lo.deliveryAddress.lat},${lo.deliveryAddress.lng}&navigate=yes`}
                        target="_blank" rel="noopener noreferrer"
-                       style={{ display:'inline-flex', alignItems:'center', gap:'4px', padding:'5px 10px', fontSize:'11px', fontWeight:600, borderRadius:'6px', border:'1px solid #d1d5db', background:'#fff', color:'#1a1a2e', textDecoration:'none', cursor:'pointer' }}>
+                       style={{ display:'inline-flex', alignItems:'center', gap:'4px', padding:'5px 10px', fontSize:'11px', fontWeight:600, borderRadius:'6px', border:'1px solid var(--border)', background:'var(--dark)', color:'var(--white)', textDecoration:'none', cursor:'pointer' }}>
                       Waze
                     </a>
                     <button type="button"
                        onClick={() => { navigator.clipboard?.writeText(`${lo.deliveryAddress.lat}, ${lo.deliveryAddress.lng}`); }}
-                       style={{ display:'inline-flex', alignItems:'center', gap:'4px', padding:'5px 10px', fontSize:'11px', fontWeight:600, borderRadius:'6px', border:'1px solid #d1d5db', background:'#fff', color:'#1a1a2e', cursor:'pointer' }}>
+                       style={{ display:'inline-flex', alignItems:'center', gap:'4px', padding:'5px 10px', fontSize:'11px', fontWeight:600, borderRadius:'6px', border:'1px solid var(--border)', background:'var(--dark)', color:'var(--white)', cursor:'pointer' }}>
                       ⧉ Copy coordinates
                     </button>
                   </div>
@@ -708,23 +708,23 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
 
               {/* Courier-booked delivery fee — paid by customer to the rider on delivery */}
               {!(Number(lo.shippingFee) > 0) && (
-                <div style={{ marginTop:'10px', padding:'10px 12px', background:'#fafafa', border:'1px solid #e5e7eb', borderRadius:'8px' }}>
-                  <div style={{ fontSize:'11px', fontWeight:600, color:'#374151', marginBottom:'2px' }}>Delivery fee (paid by customer to rider)</div>
-                  <div style={{ fontSize:'10.5px', color:'#9ca3af', marginBottom:'6px' }}>
+                <div style={{ marginTop:'10px', padding:'10px 12px', background:'var(--dark2)', border:'1px solid var(--border)', borderRadius:'8px' }}>
+                  <div style={{ fontSize:'11px', fontWeight:600, color:'var(--gray-light)', marginBottom:'2px' }}>Delivery fee (paid by customer to rider)</div>
+                  <div style={{ fontSize:'10.5px', color:'var(--gray)', marginBottom:'6px' }}>
                     After you book the courier, enter the fee. The customer is notified to pay this in cash on delivery.
                   </div>
                   <div style={{ display:'flex', gap:'6px', alignItems:'center', flexWrap:'wrap' }}>
-                    <div style={{ display:'flex', alignItems:'center', border:'1px solid #d1d5db', borderRadius:'6px', overflow:'hidden', background:'#fff' }}>
-                      <span style={{ padding:'0 8px', fontSize:'12px', color:'#6b7280' }}>₱</span>
+                    <div style={{ display:'flex', alignItems:'center', border:'1px solid var(--border)', borderRadius:'6px', overflow:'hidden', background:'var(--dark)' }}>
+                      <span style={{ padding:'0 8px', fontSize:'12px', color:'var(--gray)' }}>₱</span>
                       <input
                         type="text" inputMode="decimal" value={feeInput}
                         onChange={e => { setFeeInput(e.target.value.replace(/[^\d.]/g, '')); if (feeErr) setFeeErr(''); }}
                         placeholder="0.00"
-                        style={{ width:'90px', border:'none', outline:'none', padding:'6px 8px 6px 0', fontSize:'12px', color:'#1a1a2e' }}
+                        style={{ width:'90px', border:'none', outline:'none', padding:'6px 8px 6px 0', fontSize:'12px', color:'var(--white)' }}
                       />
                     </div>
                     <button type="button" onClick={handleSaveCourierFee} disabled={savingFee}
-                      style={{ padding:'6px 12px', fontSize:'11px', fontWeight:600, borderRadius:'6px', border:'none', background: savingFee ? '#d1d5db' : '#c9973f', color:'#fff', cursor: savingFee ? 'not-allowed' : 'pointer' }}>
+                      style={{ padding:'6px 12px', fontSize:'11px', fontWeight:600, borderRadius:'6px', border:'none', background: savingFee ? 'var(--border)' : 'var(--gold)', color:'var(--dark)', cursor: savingFee ? 'not-allowed' : 'pointer' }}>
                       {savingFee ? 'Saving…' : (Number(lo.courierFee) > 0 ? 'Update fee' : 'Set fee')}
                     </button>
                     {Number(lo.courierFee) > 0 && (
@@ -753,12 +753,12 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
               <div style={S.divider} />
               <SectionLabel>Job Order</SectionLabel>
               <div style={{ display:'flex', alignItems:'center', gap:'8px', flexWrap:'wrap', marginBottom:'4px' }}>
-                <span style={{ fontFamily:'monospace', fontWeight:700, fontSize:'13px', color:'#1a1a2e' }}>{lo.joId}</span>
+                <span style={{ fontFamily:'monospace', fontWeight:700, fontSize:'13px', color:'var(--white)' }}>{lo.joId}</span>
                 <StatusBadge status={lo.joStatus || 'Queued'} />
                 {lo.isRush && <span style={{ ...S.badge, background:'#fff7ed', color:'#c2410c', border:'1px solid #fdba74', fontSize:'10px' }}>RUSH</span>}
               </div>
               {target && (
-                <div style={{ fontSize:'12px', color: isLate ? '#991b1b' : '#6b7280' }}>
+                <div style={{ fontSize:'12px', color: isLate ? '#991b1b' : 'var(--gray)' }}>
                   Due {target.toLocaleDateString('en-PH', { month:'short', day:'numeric', year:'numeric' })}
                   {daysLeft !== null && (
                     <span style={{ fontWeight:600, marginLeft:'6px' }}>
@@ -821,29 +821,29 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
               {lo.items?.some(i => i.designRequested) && (
                 <div>
                   {lo.adminDesignUrl && !draftFiles.length && (
-                    <div style={{ fontSize:'11px', color:'#6b7280', marginBottom:'6px' }}>
+                    <div style={{ fontSize:'11px', color:'var(--gray)', marginBottom:'6px' }}>
                       <a href={lo.adminDesignUrl} target="_blank" rel="noopener noreferrer"
-                        style={{ color:'#c9973f', fontWeight:600, textDecoration:'none' }}>View Sent Draft ↗</a>
+                        style={{ color:'var(--gold)', fontWeight:600, textDecoration:'none' }}>View Sent Draft ↗</a>
                       <span style={{ marginLeft:'6px' }}>— Awaiting review</span>
                     </div>
                   )}
                   {draftFiles.length > 0 ? (
                     <div style={{ display:'flex', flexDirection:'column', gap:'4px' }}>
-                      <div style={{ fontSize:'11px', color:'#6b7280' }}>{draftFiles.length} file{draftFiles.length>1?'s':''} ready</div>
+                      <div style={{ fontSize:'11px', color:'var(--gray)' }}>{draftFiles.length} file{draftFiles.length>1?'s':''} ready</div>
                       <div style={{ display:'flex', gap:'6px' }}>
                         <button onClick={() => handleUploadDesign(draftFiles)} disabled={uploading}
-                          style={{ flex:1, padding:'5px 0', background:'#c9973f', border:'none', borderRadius:'6px', color:'#fff', fontSize:'12px', fontWeight:700, cursor:uploading?'not-allowed':'pointer', opacity:uploading?.6:1 }}>
+                          style={{ flex:1, padding:'5px 0', background:'var(--gold)', border:'none', borderRadius:'6px', color:'var(--dark)', fontSize:'12px', fontWeight:700, cursor:uploading?'not-allowed':'pointer', opacity:uploading?.6:1 }}>
                           {uploading ? 'Sending…' : `Send ${draftFiles.length} File${draftFiles.length>1?'s':''}`}
                         </button>
                         <button onClick={() => setDraftFiles([])} disabled={uploading}
-                          style={{ padding:'5px 10px', background:'transparent', border:'1px solid #e1e3e5', borderRadius:'6px', color:'#6b7280', fontSize:'12px', cursor:'pointer' }}>
+                          style={{ padding:'5px 10px', background:'transparent', border:'1px solid var(--border)', borderRadius:'6px', color:'var(--gray)', fontSize:'12px', cursor:'pointer' }}>
                           Cancel
                         </button>
                       </div>
                     </div>
                   ) : (
                     <label style={{ cursor:'pointer', display:'inline-block' }}>
-                      <div style={{ display:'inline-flex', alignItems:'center', gap:'4px', padding:'4px 10px', border:'1px solid #c9973f', borderRadius:'6px', color:'#c9973f', fontSize:'12px', fontWeight:700, cursor:'pointer' }}>
+                      <div style={{ display:'inline-flex', alignItems:'center', gap:'4px', padding:'4px 10px', border:'1px solid var(--gold)', borderRadius:'6px', color:'var(--gold)', fontSize:'12px', fontWeight:700, cursor:'pointer' }}>
                         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>
                         Upload Draft
                       </div>
@@ -861,9 +861,9 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
           <div style={S.divider} />
           <SectionLabel>Update Status</SectionLabel>
           {['pending_design','revision_requested'].includes(lo.orderStatus) ? (
-            <span style={{ fontSize:'11px', color:'#9ca3af', fontStyle:'italic' }}>Managed via design upload above</span>
+            <span style={{ fontSize:'11px', color:'var(--gray)', fontStyle:'italic' }}>Managed via design upload above</span>
           ) : ['awaiting_payment','ready_for_delivery'].includes(lo.orderStatus) ? (
-            <span style={{ fontSize:'11px', color:'#9ca3af', fontStyle:'italic' }}>Waiting for customer payment</span>
+            <span style={{ fontSize:'11px', color:'var(--gray)', fontStyle:'italic' }}>Waiting for customer payment</span>
           ) : available.length > 0 ? (
             <div style={{ display:'flex', flexDirection:'column', gap:'6px' }}>
               <CustomSelect
@@ -883,11 +883,11 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
               ) : (
                 <div style={{ display:'flex', gap:'6px' }}>
                   <button onClick={handleUpdateStatus} disabled={isUpdating}
-                    style={{ flex:1, padding:'6px 0', background:'#c9973f', border:'none', borderRadius:'6px', color:'#fff', fontSize:'12px', fontWeight:700, cursor:isUpdating?'not-allowed':'pointer' }}>
+                    style={{ flex:1, padding:'6px 0', background:'var(--gold)', border:'none', borderRadius:'6px', color:'var(--dark)', fontSize:'12px', fontWeight:700, cursor:isUpdating?'not-allowed':'pointer' }}>
                     {isUpdating ? 'Updating…' : `→ ${selStatus}`}
                   </button>
                   <button onClick={() => { setConfirmSt(false); setSelStatus(lo.orderStatus); }}
-                    style={{ padding:'6px 10px', background:'transparent', border:'1px solid #e1e3e5', borderRadius:'6px', color:'#6b7280', fontSize:'12px', cursor:'pointer' }}>
+                    style={{ padding:'6px 10px', background:'transparent', border:'1px solid var(--border)', borderRadius:'6px', color:'var(--gray)', fontSize:'12px', cursor:'pointer' }}>
                     Cancel
                   </button>
                 </div>
@@ -895,7 +895,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
               {updateErr && <div style={{ fontSize:'11px', color:'#991b1b' }}>{updateErr}</div>}
             </div>
           ) : (
-            <span style={{ fontSize:'11px', color:'#9ca3af', fontStyle:'italic' }}>
+            <span style={{ fontSize:'11px', color:'var(--gray)', fontStyle:'italic' }}>
               {['Cancelled','Returned','Delivered'].includes(lo.orderStatus) ? 'No further updates' : 'No available transitions'}
             </span>
           )}
@@ -905,7 +905,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
         <div style={{ ...S.card, padding:'14px 16px' }}>
           <SectionLabel>Order</SectionLabel>
 
-          <div style={{ display:'flex', flexDirection:'column', gap:'8px', marginBottom:'12px', paddingBottom:'12px', borderBottom:'1px solid #e1e3e5' }}>
+          <div style={{ display:'flex', flexDirection:'column', gap:'8px', marginBottom:'12px', paddingBottom:'12px', borderBottom:'1px solid var(--border)' }}>
             {(Array.isArray(lo.items) && lo.items.length > 0 ? lo.items : []).map((item, i) => {
               const name    = item.productName || item.product_name || '—';
               const variant = item.variantName || item.variant_name || null;
@@ -913,7 +913,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
               const qty     = Number(item.qty ?? item.quantity ?? 1);
               const line    = Number(item.lineTotal ?? unit * qty);
               return (
-                <div key={i} style={{ display:'flex', gap:'10px', alignItems:'flex-start', padding:'8px', background:'#f8f9fa', borderRadius:'6px', border:'1px solid #f0f1f2' }}>
+                <div key={i} style={{ display:'flex', gap:'10px', alignItems:'flex-start', padding:'8px', background:'var(--dark2)', borderRadius:'6px', border:'1px solid var(--border)' }}>
                   <div style={{ width:'38px', height:'38px', borderRadius:'6px', background:item.thumbnail?'transparent':'#e9ecef', flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center', overflow:'hidden' }}>
                     {item.thumbnail
                       ? <img src={item.thumbnail} alt={name} style={{ objectFit:'cover', width:'38px', height:'38px', borderRadius:'6px' }} />
@@ -921,15 +921,15 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                     }
                   </div>
                   <div style={{ flex:1, minWidth:0 }}>
-                    <div style={{ fontSize:'13px', fontWeight:600, color:'#1a1a2e' }}>{name}</div>
-                    {variant && <div style={{ fontSize:'11px', color:'#6b7280' }}>{variant}</div>}
+                    <div style={{ fontSize:'13px', fontWeight:600, color:'var(--white)' }}>{name}</div>
+                    {variant && <div style={{ fontSize:'11px', color:'var(--gray)' }}>{variant}</div>}
                     {item.designRequested && (
-                      <span style={{ fontSize:'10px', fontWeight:700, color:'#c9973f', background:'#fff7ed', padding:'1px 5px', borderRadius:'3px', border:'1px solid #fdba74', marginTop:'2px', display:'inline-block' }}>Design Service</span>
+                      <span style={{ fontSize:'10px', fontWeight:700, color:'var(--gold)', background:'#fff7ed', padding:'1px 5px', borderRadius:'3px', border:'1px solid #fdba74', marginTop:'2px', display:'inline-block' }}>Design Service</span>
                     )}
                   </div>
                   <div style={{ textAlign:'right', flexShrink:0 }}>
-                    <div style={{ fontSize:'11px', color:'#9ca3af' }}>₱{fmt(unit)} ×{qty}</div>
-                    <div style={{ fontSize:'13px', fontWeight:700, color:'#1a1a2e' }}>₱{fmt(line)}</div>
+                    <div style={{ fontSize:'11px', color:'var(--gray)' }}>₱{fmt(unit)} ×{qty}</div>
+                    <div style={{ fontSize:'13px', fontWeight:700, color:'var(--white)' }}>₱{fmt(line)}</div>
                   </div>
                 </div>
               );
@@ -946,19 +946,19 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
           {Number(lo.shippingFee) > 0 && (
             <InfoRow label="Shipping" value={`₱${fmt(lo.shippingFee)}`} />
           )}
-          <div style={{ display:'flex', justifyContent:'space-between', fontSize:'13px', fontWeight:700, padding:'4px 0', borderTop:'1px solid #e1e3e5', marginTop:'4px' }}>
-            <span style={{ color:'#1a1a2e' }}>Total</span>
-            <span style={{ color:'#c9973f' }}>₱{fmt(lo.totalAmount ?? lo.totalPrice)}</span>
+          <div style={{ display:'flex', justifyContent:'space-between', fontSize:'13px', fontWeight:700, padding:'4px 0', borderTop:'1px solid var(--border)', marginTop:'4px' }}>
+            <span style={{ color:'var(--white)' }}>Total</span>
+            <span style={{ color:'var(--gold)' }}>₱{fmt(lo.totalAmount ?? lo.totalPrice)}</span>
           </div>
           {Number(lo.courierFee) > 0 && (
-            <div style={{ display:'flex', justifyContent:'space-between', fontSize:'11px', padding:'3px 0', color:'#6b7280' }}>
+            <div style={{ display:'flex', justifyContent:'space-between', fontSize:'11px', padding:'3px 0', color:'var(--gray)' }}>
               <span>Delivery fee (customer → rider)</span>
               <span style={{ fontWeight:600 }}>₱{fmt(lo.courierFee)}</span>
             </div>
           )}
           <InfoRow label="Paid" value={`₱${fmt(lo.downPayment)}`} />
           <div style={{ display:'flex', justifyContent:'space-between', fontSize:'12px', padding:'3px 0' }}>
-            <span style={{ color:'#6b7280' }}>Balance</span>
+            <span style={{ color:'var(--gray)' }}>Balance</span>
             <span style={{ fontWeight:700, color: Number(lo.balance??0) <= 0 ? '#166534' : '#c2410c' }}>₱{fmt(lo.balance)}</span>
           </div>
 
@@ -968,7 +968,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
               <SectionLabel>Payment History</SectionLabel>
               {lo.paymentHistory.map((p, i) => (
                 <div key={i} style={{ display:'flex', justifyContent:'space-between', fontSize:'11px', padding:'2px 0' }}>
-                  <span style={{ color:'#6b7280' }}>{p.method}{p.note ? ` — ${p.note}` : ''}</span>
+                  <span style={{ color:'var(--gray)' }}>{p.method}{p.note ? ` — ${p.note}` : ''}</span>
                   <span style={{ color:'#166534', fontWeight:600 }}>+₱{fmt(p.amount)}</span>
                 </div>
               ))}
@@ -1115,19 +1115,19 @@ export default function OrdersPage() {
               style={{ cursor:'pointer', flex:'1', minWidth:'100px' }}>
               <SummaryCard label={c.label} value={c.value}
                 accent={statusFilter === c.id}
-                color={statusFilter === c.id ? '#c9973f' : undefined} />
+                color={statusFilter === c.id ? 'var(--gold)' : undefined} />
             </div>
           ))}
         </div>
 
         {/* Status pill tabs */}
-        <div style={{ display:'flex', gap:'4px', background:'#f3f4f6', borderRadius:'8px', padding:'3px', alignSelf:'flex-start', marginBottom:'14px', flexWrap:'wrap' }}>
+        <div style={{ display:'flex', gap:'4px', background:'var(--dark2)', borderRadius:'8px', padding:'3px', alignSelf:'flex-start', marginBottom:'14px', flexWrap:'wrap' }}>
           {STATUS_TABS.map(s => (
             <button key={s} onClick={() => { setStatusFilter(s); setPage(1); }}
               style={{ padding:'6px 14px', borderRadius:'6px', border:'none', cursor:'pointer',
                 fontWeight:600, fontSize:'12px',
-                background: statusFilter === s ? '#fff' : 'transparent',
-                color:      statusFilter === s ? '#1a1a2e' : '#6b7280',
+                background: statusFilter === s ? 'var(--dark)' : 'transparent',
+                color:      statusFilter === s ? 'var(--white)' : 'var(--gray)',
                 boxShadow:  statusFilter === s ? '0 1px 3px rgba(0,0,0,.1)' : 'none',
                 transition:'all .15s', whiteSpace:'nowrap',
               }}>{s}</button>
@@ -1174,7 +1174,7 @@ export default function OrdersPage() {
           </div>
 
           <div style={S.row}>
-            {refreshing && <span style={{ fontSize:'12px', color:'#9ca3af' }}>Refreshing…</span>}
+            {refreshing && <span style={{ fontSize:'12px', color:'var(--gray)' }}>Refreshing…</span>}
             <button onClick={() => setShowJOQueue(true)} style={S.btnSmGhost}>{ICONS.pkg} JO Queue</button>
             <button
               onClick={() => setShowArchived(v => !v)}
@@ -1182,7 +1182,7 @@ export default function OrdersPage() {
               {showArchived ? 'Hide Archived' : 'Show Archived'}
             </button>
             <button onClick={() => fetchOrders()} style={S.btnSmGhost}>{ICONS.reload}</button>
-            <span style={{ fontSize:'12px', color:'#6b7280', whiteSpace:'nowrap' }}>{total} order{total !== 1 ? 's' : ''}</span>
+            <span style={{ fontSize:'12px', color:'var(--gray)', whiteSpace:'nowrap' }}>{total} order{total !== 1 ? 's' : ''}</span>
           </div>
         </div>
 
@@ -1201,7 +1201,7 @@ export default function OrdersPage() {
               </thead>
               <tbody>
                 {loading ? (
-                  <tr><td colSpan={10} style={{ padding:'40px', textAlign:'center', color:'#9ca3af', fontSize:'13px' }}>Loading orders…</td></tr>
+                  <tr><td colSpan={10} style={{ padding:'40px', textAlign:'center', color:'var(--gray)', fontSize:'13px' }}>Loading orders…</td></tr>
                 ) : total === 0 ? (
                   <tr><td colSpan={10}>
                     <EmptyState message="No orders found" sub="Try adjusting your search or filter." />
@@ -1212,17 +1212,17 @@ export default function OrdersPage() {
                   return (
                     <React.Fragment key={o.id}>
                       <tr style={{ ...S.tr, cursor:'pointer',
-                        background: isOpen ? '#fafbfc' : isArch ? '#f9fafb' : undefined,
+                        background: isOpen ? 'var(--dark2)' : isArch ? 'var(--dark2)' : undefined,
                         opacity: isArch ? 0.65 : 1,
                         borderBottom: isOpen ? 'none' : undefined }}
                         onClick={() => setExpandedId(isOpen ? null : o.id)}
-                        onMouseEnter={e => !isOpen && (e.currentTarget.style.background='#fafbfc')}
-                        onMouseLeave={e => !isOpen && (e.currentTarget.style.background= isArch ? '#f9fafb' : '')}>
+                        onMouseEnter={e => !isOpen && (e.currentTarget.style.background='var(--dark2)')}
+                        onMouseLeave={e => !isOpen && (e.currentTarget.style.background= isArch ? 'var(--dark2)' : '')}>
 
                         <td style={{ ...S.td, textAlign:'center', width:'36px' }}>
                           <Chevron open={isOpen} />
                         </td>
-                        <td style={{ ...S.td, fontFamily:'monospace', fontWeight:700, fontSize:'12px', color:'#c9973f', whiteSpace:'nowrap' }}>
+                        <td style={{ ...S.td, fontFamily:'monospace', fontWeight:700, fontSize:'12px', color:'var(--gold)', whiteSpace:'nowrap' }}>
                           #{String(o.id ?? '').slice(-8).toUpperCase()}
                         </td>
                         <td style={{ ...S.td }}>
@@ -1230,25 +1230,25 @@ export default function OrdersPage() {
                         </td>
                         <td style={{ ...S.td }}>
                           <div style={{ fontWeight:600, fontSize:'13px' }}>{o.customerName}</div>
-                          {o.customerContact && <div style={{ fontSize:'11px', color:'#9ca3af' }}>{o.customerContact}</div>}
+                          {o.customerContact && <div style={{ fontSize:'11px', color:'var(--gray)' }}>{o.customerContact}</div>}
                         </td>
                         <td style={{ ...S.td }}>
                           <div style={{ fontSize:'13px' }}>{o.productName}</div>
-                          {o.category && <div style={{ fontSize:'11px', color:'#9ca3af' }}>{o.category}</div>}
+                          {o.category && <div style={{ fontSize:'11px', color:'var(--gray)' }}>{o.category}</div>}
                         </td>
-                        <td style={{ ...S.td, textAlign:'center', color:'#6b7280', fontSize:'12px' }}>{o.quantity}</td>
-                        <td style={{ ...S.td, textAlign:'center', fontWeight:700, fontFamily:'monospace', fontSize:'12px', color:'#c9973f', whiteSpace:'nowrap' }}>
+                        <td style={{ ...S.td, textAlign:'center', color:'var(--gray)', fontSize:'12px' }}>{o.quantity}</td>
+                        <td style={{ ...S.td, textAlign:'center', fontWeight:700, fontFamily:'monospace', fontSize:'12px', color:'var(--gold)', whiteSpace:'nowrap' }}>
                           ₱{fmt(o.totalAmount ?? o.totalPrice)}
                         </td>
                         <td style={{ ...S.td, textAlign:'center' }}>
                           <StatusBadge status={o.orderStatus} />
-                          {isArch && <span style={{ ...S.badge, fontSize:'10px', background:'#f3f4f6', color:'#6b7280', border:'1px solid #e5e7eb', marginLeft:'4px' }}>Archived</span>}
+                          {isArch && <span style={{ ...S.badge, fontSize:'10px', background:'var(--dark2)', color:'var(--gray)', border:'1px solid var(--border)', marginLeft:'4px' }}>Archived</span>}
                           {isExpired(o) && <span style={{ ...S.badge, fontSize:'10px', background:'#fff7ed', color:'#c2410c', border:'1px solid #fdba74', marginLeft:'4px' }}>⏰ Expired</span>}
                         </td>
                         <td style={{ ...S.td, textAlign:'center' }}>
                           <PayBadge status={o.paymentStatus} />
                         </td>
-                        <td style={{ ...S.td, fontSize:'11px', color:'#9ca3af', whiteSpace:'nowrap' }}>
+                        <td style={{ ...S.td, fontSize:'11px', color:'var(--gray)', whiteSpace:'nowrap' }}>
                           {o.createdAt ? new Date(o.createdAt).toLocaleDateString('en-PH', { month:'short', day:'numeric', year:'numeric' }) : '—'}
                         </td>
                       </tr>
@@ -1277,7 +1277,7 @@ export default function OrdersPage() {
           </div>
 
           {total > 0 && (
-            <div style={{ padding:'12px 16px', borderTop:'1px solid #f0f1f2' }}>
+            <div style={{ padding:'12px 16px', borderTop:'1px solid var(--border)' }}>
               <PaginationBar total={total} page={page} perPage={perPage} onPage={setPage} onPerPage={setPerPage} />
             </div>
           )}

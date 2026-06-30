@@ -3,39 +3,43 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 // ── shared.jsx — inventory-v2 shared components ───────────────────────────────
 
 // ── Styles ────────────────────────────────────────────────────────────────────
+// Theme-aware shared styles. Colors use the global CSS variables so these
+// pages now follow the dashboard light/dark theme; radii use one standard
+// scale (card 8 · controls 6 · pill). Danger keeps a fixed mid-red (readable
+// on both themes).
 export const S = {
-  page:      { minHeight:'100vh', fontFamily:'Inter,system-ui,sans-serif', color:'#1a1a2e' },
-  card:      { background:'#fff', border:'1px solid #e1e3e5', borderRadius:'10px', padding:'20px' },
-  cardSm:    { background:'#fff', border:'1px solid #e1e3e5', borderRadius:'10px', padding:'14px 18px' },
+  page:      { minHeight:'100vh', fontFamily:'Inter,system-ui,sans-serif', color:'var(--white)' },
+  card:      { background:'var(--dark)', border:'1px solid var(--border)', borderRadius:'8px', padding:'20px' },
+  cardSm:    { background:'var(--dark)', border:'1px solid var(--border)', borderRadius:'8px', padding:'14px 18px' },
   row:       { display:'flex', alignItems:'center', gap:'12px', flexWrap:'wrap' },
   rowBetween:{ display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:'10px' },
   col:       { display:'flex', flexDirection:'column', gap:'8px' },
-  label:     { fontSize:'12px', fontWeight:600, color:'#6b7280', textTransform:'uppercase', letterSpacing:'.5px' },
-  val:       { fontSize:'14px', color:'#1a1a2e', fontWeight:500 },
+  label:     { fontSize:'12px', fontWeight:600, color:'var(--gray)', textTransform:'uppercase', letterSpacing:'.5px' },
+  val:       { fontSize:'14px', color:'var(--white)', fontWeight:500 },
   // inputs
-  input:     { border:'1px solid #e1e3e5', borderRadius:'7px', padding:'8px 11px', fontSize:'14px', width:'100%', outline:'none', background:'#fff', color:'#1a1a2e', boxSizing:'border-box' },
-  inputErr:  { border:'1px solid #e05252', borderRadius:'7px', padding:'8px 11px', fontSize:'14px', width:'100%', outline:'none', background:'#fff', color:'#1a1a2e', boxSizing:'border-box' },
-  select:    { border:'1px solid #e1e3e5', borderRadius:'7px', padding:'8px 11px', fontSize:'14px', width:'100%', outline:'none', background:'#fff', color:'#1a1a2e', cursor:'pointer', boxSizing:'border-box' },
-  selectErr: { border:'1px solid #e05252', borderRadius:'7px', padding:'8px 11px', fontSize:'14px', width:'100%', outline:'none', background:'#fff', color:'#1a1a2e', cursor:'pointer', boxSizing:'border-box' },
-  textarea:  { border:'1px solid #e1e3e5', borderRadius:'7px', padding:'8px 11px', fontSize:'13px', width:'100%', outline:'none', background:'#fff', color:'#1a1a2e', resize:'vertical', minHeight:'70px', boxSizing:'border-box' },
+  input:     { border:'1px solid var(--border)', borderRadius:'6px', padding:'8px 11px', fontSize:'14px', width:'100%', outline:'none', background:'var(--dark)', color:'var(--white)', boxSizing:'border-box' },
+  inputErr:  { border:'1px solid #e05252', borderRadius:'6px', padding:'8px 11px', fontSize:'14px', width:'100%', outline:'none', background:'var(--dark)', color:'var(--white)', boxSizing:'border-box' },
+  select:    { border:'1px solid var(--border)', borderRadius:'6px', padding:'8px 11px', fontSize:'14px', width:'100%', outline:'none', background:'var(--dark)', color:'var(--white)', cursor:'pointer', boxSizing:'border-box' },
+  selectErr: { border:'1px solid #e05252', borderRadius:'6px', padding:'8px 11px', fontSize:'14px', width:'100%', outline:'none', background:'var(--dark)', color:'var(--white)', cursor:'pointer', boxSizing:'border-box' },
+  textarea:  { border:'1px solid var(--border)', borderRadius:'6px', padding:'8px 11px', fontSize:'13px', width:'100%', outline:'none', background:'var(--dark)', color:'var(--white)', resize:'vertical', minHeight:'70px', boxSizing:'border-box' },
   errText:   { fontSize:'11px', color:'#e05252', marginTop:'3px' },
   // buttons
-  btnPrimary:{ background:'#d4a843', color:'#fff', border:'none', borderRadius:'7px', padding:'8px 18px', fontWeight:600, fontSize:'13px', cursor:'pointer', display:'inline-flex', alignItems:'center', gap:'6px' },
-  btnOutline:{ background:'transparent', color:'#d4a843', border:'1px solid #d4a843', borderRadius:'7px', padding:'8px 18px', fontWeight:600, fontSize:'13px', cursor:'pointer', display:'inline-flex', alignItems:'center', gap:'6px' },
-  btnDanger: { background:'#e05252', color:'#fff', border:'none', borderRadius:'7px', padding:'8px 18px', fontWeight:600, fontSize:'13px', cursor:'pointer', display:'inline-flex', alignItems:'center', gap:'6px' },
-  btnGhost:  { background:'transparent', color:'#6b7280', border:'1px solid #e1e3e5', borderRadius:'7px', padding:'8px 18px', fontWeight:500, fontSize:'13px', cursor:'pointer', display:'inline-flex', alignItems:'center', gap:'6px' },
-  btnSm:     { background:'#d4a843', color:'#fff', border:'none', borderRadius:'6px', padding:'5px 12px', fontWeight:600, fontSize:'12px', cursor:'pointer', display:'inline-flex', alignItems:'center', gap:'5px' },
-  btnSmGhost:{ background:'transparent', color:'#6b7280', border:'1px solid #e1e3e5', borderRadius:'6px', padding:'5px 12px', fontWeight:500, fontSize:'12px', cursor:'pointer', display:'inline-flex', alignItems:'center', gap:'5px' },
+  btnPrimary:{ background:'var(--gold)', color:'#1a1a1a', border:'none', borderRadius:'6px', padding:'8px 18px', fontWeight:600, fontSize:'13px', cursor:'pointer', display:'inline-flex', alignItems:'center', gap:'6px' },
+  btnOutline:{ background:'transparent', color:'var(--gold)', border:'1px solid var(--gold)', borderRadius:'6px', padding:'8px 18px', fontWeight:600, fontSize:'13px', cursor:'pointer', display:'inline-flex', alignItems:'center', gap:'6px' },
+  btnDanger: { background:'#e05252', color:'#fff', border:'none', borderRadius:'6px', padding:'8px 18px', fontWeight:600, fontSize:'13px', cursor:'pointer', display:'inline-flex', alignItems:'center', gap:'6px' },
+  btnGhost:  { background:'transparent', color:'var(--gray)', border:'1px solid var(--border)', borderRadius:'6px', padding:'8px 18px', fontWeight:500, fontSize:'13px', cursor:'pointer', display:'inline-flex', alignItems:'center', gap:'6px' },
+  btnSm:     { background:'var(--gold)', color:'#1a1a1a', border:'none', borderRadius:'6px', padding:'5px 12px', fontWeight:600, fontSize:'12px', cursor:'pointer', display:'inline-flex', alignItems:'center', gap:'5px' },
+  btnSmGhost:{ background:'transparent', color:'var(--gray)', border:'1px solid var(--border)', borderRadius:'6px', padding:'5px 12px', fontWeight:500, fontSize:'12px', cursor:'pointer', display:'inline-flex', alignItems:'center', gap:'5px' },
   btnSmDanger:{ background:'transparent', color:'#e05252', border:'1px solid #e05252', borderRadius:'6px', padding:'5px 12px', fontWeight:500, fontSize:'12px', cursor:'pointer', display:'inline-flex', alignItems:'center', gap:'5px' },
   // table
-  th:        { padding:'10px 14px', fontSize:'11px', fontWeight:700, color:'#6b7280', textTransform:'uppercase', letterSpacing:'.5px', textAlign:'left', background:'#f8f9fa', borderBottom:'1px solid #e1e3e5', whiteSpace:'nowrap' },
-  td:        { padding:'11px 14px', fontSize:'13px', borderBottom:'1px solid #f0f1f2', verticalAlign:'middle' },
+  th:        { padding:'10px 14px', fontSize:'11px', fontWeight:700, color:'var(--gray)', textTransform:'uppercase', letterSpacing:'.5px', textAlign:'left', background:'var(--dark2)', borderBottom:'1px solid var(--border)', whiteSpace:'nowrap' },
+  td:        { padding:'11px 14px', fontSize:'13px', borderBottom:'1px solid var(--border)', verticalAlign:'middle' },
   tr:        { transition:'background .12s' },
   // misc
-  badge:     { display:'inline-block', borderRadius:'20px', padding:'3px 10px', fontSize:'11px', fontWeight:600, whiteSpace:'nowrap' },
-  divider:   { borderTop:'1px solid #e1e3e5', margin:'14px 0' },
-  note:      { background:'#fffbe8', border:'1px solid #f3d88a', borderRadius:'7px', padding:'10px 14px', fontSize:'12px', color:'#7a5c00' },
-  noteInfo:  { background:'#eef4ff', border:'1px solid #bfcfee', borderRadius:'7px', padding:'10px 14px', fontSize:'12px', color:'#2c4a8c' },
+  badge:     { display:'inline-block', borderRadius:'999px', padding:'3px 10px', fontSize:'11px', fontWeight:600, whiteSpace:'nowrap' },
+  divider:   { borderTop:'1px solid var(--border)', margin:'14px 0' },
+  note:      { background:'var(--gold-subtle)', border:'1px solid rgba(212,168,67,0.3)', borderRadius:'6px', padding:'10px 14px', fontSize:'12px', color:'var(--gold-dark)' },
+  noteInfo:  { background:'rgba(59,130,246,0.1)', border:'1px solid rgba(59,130,246,0.3)', borderRadius:'6px', padding:'10px 14px', fontSize:'12px', color:'var(--blue)' },
 };
 
 // ── Icons ─────────────────────────────────────────────────────────────────────
@@ -114,7 +118,7 @@ export function Field({ label, error, required, children, style }) {
   return (
     <div style={{ display:'flex', flexDirection:'column', gap:'4px', ...style }}>
       {label && (
-        <label style={{ fontSize:'12px', fontWeight:600, color:'#374151' }}>
+        <label style={{ fontSize:'12px', fontWeight:600, color:'var(--gray-light)' }}>
           {label}{required && <span style={{ color:'#e05252', marginLeft:'2px' }}>*</span>}
         </label>
       )}
@@ -157,10 +161,10 @@ export function CustomSelect({ value, onChange, options = [], placeholder = 'Sel
         onClick={() => !disabled && setOpen(p => !p)}
         style={{
           width: '100%', textAlign: 'left',
-          background: disabled ? '#f9fafb' : '#fff',
-          border: `1px solid ${error ? '#e05252' : open ? '#c9973f' : '#e1e3e5'}`,
-          borderRadius: '7px', padding: '7px 30px 7px 10px',
-          fontSize: '13px', color: (hasValue && selected) ? '#1a1a2e' : '#9ca3af',
+          background: disabled ? 'var(--dark2)' : 'var(--dark)',
+          border: `1px solid ${error ? '#e05252' : open ? 'var(--gold)' : 'var(--border)'}`,
+          borderRadius: '6px', padding: '7px 30px 7px 10px',
+          fontSize: '13px', color: (hasValue && selected) ? 'var(--white)' : 'var(--gray)',
           cursor: disabled ? 'not-allowed' : 'pointer',
           outline: 'none', lineHeight: '1.5',
           boxSizing: 'border-box', whiteSpace: 'nowrap',
@@ -168,7 +172,7 @@ export function CustomSelect({ value, onChange, options = [], placeholder = 'Sel
         }}>
         {(hasValue && selected) ? selected.label : placeholder}
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
-          stroke={open ? '#c9973f' : '#9ca3af'} strokeWidth="2.5"
+          stroke={open ? 'var(--gold)' : 'var(--gray)'} strokeWidth="2.5"
           style={{ position: 'absolute', right: '9px', top: '50%',
             transform: `translateY(-50%) rotate(${open ? 180 : 0}deg)`,
             transition: 'transform .15s', pointerEvents: 'none', flexShrink: 0 }}>
@@ -178,8 +182,8 @@ export function CustomSelect({ value, onChange, options = [], placeholder = 'Sel
       {open && (
         <div style={{
           position: 'absolute', top: 'calc(100% + 3px)', left: 0, right: 0, zIndex: 500,
-          background: '#fff', border: '1px solid #e1e3e5', borderRadius: '8px',
-          boxShadow: '0 8px 24px rgba(0,0,0,0.13)',
+          background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '8px',
+          boxShadow: '0 8px 24px rgba(0,0,0,0.25)',
           maxHeight: '288px', overflowY: 'auto',
         }}>
           {normalized.map((o, i) => {
@@ -188,17 +192,17 @@ export function CustomSelect({ value, onChange, options = [], placeholder = 'Sel
               <button key={String(o.value ?? i)} type="button"
                 onClick={() => { onChange(o.value); setOpen(false); }}
                 style={{
-                  width: '100%', textAlign: 'left', background: isSel ? '#fffbe8' : 'none',
-                  border: 'none', borderBottom: i < normalized.length - 1 ? '1px solid #f3f4f6' : 'none',
+                  width: '100%', textAlign: 'left', background: isSel ? 'var(--gold-subtle)' : 'none',
+                  border: 'none', borderBottom: i < normalized.length - 1 ? '1px solid var(--border)' : 'none',
                   padding: '9px 34px 9px 12px', fontSize: '13px',
-                  color: isSel ? '#c9973f' : '#374151',
+                  color: isSel ? 'var(--gold)' : 'var(--gray-light)',
                   fontWeight: isSel ? 600 : 400, cursor: 'pointer', position: 'relative',
                 }}
-                onMouseEnter={e => { if (!isSel) e.currentTarget.style.background = '#f9fafb'; }}
-                onMouseLeave={e => { e.currentTarget.style.background = isSel ? '#fffbe8' : 'none'; }}>
+                onMouseEnter={e => { if (!isSel) e.currentTarget.style.background = 'var(--dark2)'; }}
+                onMouseLeave={e => { e.currentTarget.style.background = isSel ? 'var(--gold-subtle)' : 'none'; }}>
                 {o.label}
                 {isSel && (
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#c9973f" strokeWidth="2.5"
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="2.5"
                     style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)' }}>
                     <polyline points="20 6 9 17 4 12" />
                   </svg>
@@ -213,28 +217,24 @@ export function CustomSelect({ value, onChange, options = [], placeholder = 'Sel
 }
 
 // ── StatusBadge ───────────────────────────────────────────────────────────────
+// Status chips reference theme-aware CSS vars (defined in custom-styles.css),
+// so they read correctly in both light and dark mode.
+const G = { bg:'var(--st-green-bg)',  color:'var(--st-green-fg)' };
+const A = { bg:'var(--st-amber-bg)',  color:'var(--st-amber-fg)' };
+const R = { bg:'var(--st-red-bg)',    color:'var(--st-red-fg)' };
+const O = { bg:'var(--st-orange-bg)', color:'var(--st-orange-fg)' };
+const B = { bg:'var(--st-blue-bg)',   color:'var(--st-blue-fg)' };
+const P = { bg:'var(--st-purple-bg)', color:'var(--st-purple-fg)' };
+const GR= { bg:'var(--st-gray-bg)',   color:'var(--st-gray-fg)' };
 const BADGE_COLORS = {
-  in_stock:    { bg:'#e9f5ea', color:'#2e7d32' },
-  low_stock:   { bg:'#fff8e1', color:'#b45309' },
-  out_of_stock:{ bg:'#fde8e8', color:'#c62828' },
-  pending:     { bg:'#fff3e0', color:'#e65100' },
-  replaced:    { bg:'#e8f5e9', color:'#2e7d32' },
-  written_off: { bg:'#f3f4f6', color:'#6b7280' },
-  completed:   { bg:'#e8f5e9', color:'#2e7d32' },
-  active:      { bg:'#e9f5ea', color:'#2e7d32' },
-  inactive:    { bg:'#f3f4f6', color:'#6b7280' },
-  damaged:     { bg:'#fde8e8', color:'#c62828' },
-  defective:   { bg:'#fde8e8', color:'#c62828' },
-  shortage:    { bg:'#fff8e1', color:'#b45309' },
-  wrong_item:  { bg:'#fde8e8', color:'#c62828' },
-  expired:     { bg:'#f3e8ff', color:'#7e22ce' },
-  credit:      { bg:'#e8f5e9', color:'#2e7d32' },
-  replacement: { bg:'#eef4ff', color:'#1e40af' },
-  refunded:    { bg:'#e8f5e9', color:'#2e7d32' },
+  in_stock: G, low_stock: A, out_of_stock: R, pending: O, replaced: G,
+  written_off: GR, completed: G, active: G, inactive: GR, damaged: R,
+  defective: R, shortage: A, wrong_item: R, expired: P, credit: G,
+  replacement: B, refunded: G,
 };
 export function StatusBadge({ status, label }) {
   const key = (status || '').toLowerCase().replace(/\s+/g, '_');
-  const c = BADGE_COLORS[key] || { bg:'#f3f4f6', color:'#6b7280' };
+  const c = BADGE_COLORS[key] || GR;
   const text = label || status?.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) || '';
   return <span style={{ ...S.badge, background:c.bg, color:c.color }}>{text}</span>;
 }
@@ -249,18 +249,18 @@ export function Modal({ open, onClose, title, width = 520, children, footer }) {
     >
       <div
         onClick={e => e.stopPropagation()}
-        style={{ background:'#fff', borderRadius:'12px', width:'100%', maxWidth:width, maxHeight:'90vh', display:'flex', flexDirection:'column', boxShadow:'0 8px 40px rgba(0,0,0,.18)' }}
+        style={{ background:'var(--dark)', borderRadius:'10px', width:'100%', maxWidth:width, maxHeight:'90vh', display:'flex', flexDirection:'column', boxShadow:'0 8px 40px rgba(0,0,0,.35)' }}
       >
         {/* header */}
-        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'18px 20px 14px', borderBottom:'1px solid #e1e3e5', flexShrink:0 }}>
-          <span style={{ fontWeight:700, fontSize:'16px', color:'#1a1a2e' }}>{title}</span>
-          <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:'#6b7280', padding:'4px', borderRadius:'5px', display:'flex' }}>{ICONS.x}</button>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'18px 20px 14px', borderBottom:'1px solid var(--border)', flexShrink:0 }}>
+          <span style={{ fontWeight:700, fontSize:'16px', color:'var(--white)' }}>{title}</span>
+          <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:'var(--gray)', padding:'4px', borderRadius:'5px', display:'flex' }}>{ICONS.x}</button>
         </div>
         {/* body */}
         <div style={{ overflowY:'auto', flex:1, padding:'18px 20px' }}>{children}</div>
         {/* footer */}
         {footer && (
-          <div style={{ padding:'14px 20px', borderTop:'1px solid #e1e3e5', display:'flex', justifyContent:'flex-end', gap:'8px', flexShrink:0 }}>
+          <div style={{ padding:'14px 20px', borderTop:'1px solid var(--border)', display:'flex', justifyContent:'flex-end', gap:'8px', flexShrink:0 }}>
             {footer}
           </div>
         )}
@@ -284,7 +284,7 @@ export function ConfirmModal({ open, onClose, onConfirm, title, message, confirm
         </>
       }
     >
-      <p style={{ margin:0, fontSize:'14px', color:'#374151', lineHeight:1.6 }}>{message}</p>
+      <p style={{ margin:0, fontSize:'14px', color:'var(--gray-light)', lineHeight:1.6 }}>{message}</p>
     </Modal>
   );
 }
@@ -303,7 +303,7 @@ export function WarnModal({ open, onClose, onProceed, title, message, proceedLab
     >
       <div style={{ display:'flex', gap:'12px', alignItems:'flex-start' }}>
         <span style={{ color:'#b45309', marginTop:'2px', flexShrink:0 }}>{ICONS.warn}</span>
-        <p style={{ margin:0, fontSize:'14px', color:'#374151', lineHeight:1.6 }}>{message}</p>
+        <p style={{ margin:0, fontSize:'14px', color:'var(--gray-light)', lineHeight:1.6 }}>{message}</p>
       </div>
     </Modal>
   );
@@ -360,8 +360,8 @@ export function PaginationBar({ total, page, perPage, onPage, onPerPage }) {
       onClick={onClick}
       disabled={disabled}
       style={{
-        border:'1px solid #e1e3e5', borderRadius:'6px', background: active ? '#d4a843' : '#fff',
-        color: active ? '#fff' : (disabled ? '#c0c0c0' : '#374151'),
+        border:'1px solid var(--border)', borderRadius:'6px', background: active ? 'var(--gold)' : 'var(--dark)',
+        color: active ? '#1a1a1a' : (disabled ? 'var(--gray)' : 'var(--gray-light)'),
         padding:'5px 10px', fontSize:'12px', cursor: disabled ? 'default' : 'pointer',
         fontWeight: active ? 600 : 400, minWidth:'30px',
       }}
@@ -382,15 +382,15 @@ export function PaginationBar({ total, page, perPage, onPage, onPerPage }) {
 
   return (
     <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:'10px', marginTop:'14px' }}>
-      <span style={{ fontSize:'12px', color:'#6b7280' }}>
+      <span style={{ fontSize:'12px', color:'var(--gray)' }}>
         {total === 0 ? 'No items' : `Showing ${from}–${to} of ${total}`}
       </span>
       <div style={{ display:'flex', alignItems:'center', gap:'6px' }}>
-        <span style={{ fontSize:'12px', color:'#6b7280', marginRight:'4px' }}>Rows per page:</span>
+        <span style={{ fontSize:'12px', color:'var(--gray)', marginRight:'4px' }}>Rows per page:</span>
         {[10, 25, 50].map(n => (
           <button key={n} onClick={() => { onPerPage(n); onPage(1); }}
-            style={{ border:'1px solid #e1e3e5', borderRadius:'6px', background: perPage === n ? '#d4a843' : '#fff',
-              color: perPage === n ? '#fff' : '#374151', padding:'4px 9px', fontSize:'12px', cursor:'pointer',
+            style={{ border:'1px solid var(--border)', borderRadius:'6px', background: perPage === n ? 'var(--gold)' : 'var(--dark)',
+              color: perPage === n ? '#1a1a1a' : 'var(--gray-light)', padding:'4px 9px', fontSize:'12px', cursor:'pointer',
               fontWeight: perPage === n ? 600 : 400 }}>
             {n}
           </button>
@@ -399,10 +399,10 @@ export function PaginationBar({ total, page, perPage, onPage, onPerPage }) {
           {btn(ICONS.chevL, page === 1,          () => onPage(page - 1))}
           {pageButtons().map((p, i) =>
             p === '…'
-              ? <span key={`e${i}`} style={{ padding:'5px 6px', fontSize:'12px', color:'#9ca3af' }}>…</span>
+              ? <span key={`e${i}`} style={{ padding:'5px 6px', fontSize:'12px', color:'var(--gray)' }}>…</span>
               : <button key={p} onClick={() => onPage(p)}
-                  style={{ border:'1px solid #e1e3e5', borderRadius:'6px', background: p === page ? '#d4a843' : '#fff',
-                    color: p === page ? '#fff' : '#374151', padding:'5px 10px', fontSize:'12px',
+                  style={{ border:'1px solid var(--border)', borderRadius:'6px', background: p === page ? 'var(--gold)' : 'var(--dark)',
+                    color: p === page ? '#1a1a1a' : 'var(--gray-light)', padding:'5px 10px', fontSize:'12px',
                     cursor:'pointer', fontWeight: p === page ? 600 : 400, minWidth:'30px' }}>
                   {p}
                 </button>
@@ -418,7 +418,7 @@ export function PaginationBar({ total, page, perPage, onPage, onPerPage }) {
 export function SearchBar({ value, onChange, placeholder = 'Search…', style }) {
   return (
     <div style={{ position:'relative', ...style }}>
-      <span style={{ position:'absolute', left:'10px', top:'50%', transform:'translateY(-50%)', color:'#9ca3af', pointerEvents:'none', display:'flex' }}>{ICONS.search}</span>
+      <span style={{ position:'absolute', left:'10px', top:'50%', transform:'translateY(-50%)', color:'var(--gray)', pointerEvents:'none', display:'flex' }}>{ICONS.search}</span>
       <input
         type="text"
         value={value}
@@ -433,21 +433,21 @@ export function SearchBar({ value, onChange, placeholder = 'Search…', style })
 // ── EmptyState ────────────────────────────────────────────────────────────────
 export function EmptyState({ icon, message, sub }) {
   return (
-    <div style={{ textAlign:'center', padding:'40px 20px', color:'#9ca3af' }}>
+    <div style={{ textAlign:'center', padding:'40px 20px', color:'var(--gray)' }}>
       {icon && <div style={{ fontSize:'32px', marginBottom:'10px' }}>{icon}</div>}
-      <div style={{ fontWeight:600, fontSize:'14px', color:'#6b7280' }}>{message}</div>
+      <div style={{ fontWeight:600, fontSize:'14px', color:'var(--gray)' }}>{message}</div>
       {sub && <div style={{ fontSize:'12px', marginTop:'4px' }}>{sub}</div>}
     </div>
   );
 }
 
 // ── SummaryCard ───────────────────────────────────────────────────────────────
-export function SummaryCard({ label, value, sub, color = '#1a1a2e', accent = false }) {
+export function SummaryCard({ label, value, sub, color = 'var(--white)', accent = false }) {
   return (
-    <div style={{ ...S.cardSm, flex:1, minWidth:'140px', borderTop: accent ? '3px solid #d4a843' : undefined }}>
-      <div style={{ fontSize:'11px', fontWeight:600, color:'#6b7280', textTransform:'uppercase', letterSpacing:'.5px', marginBottom:'6px' }}>{label}</div>
+    <div style={{ ...S.cardSm, flex:1, minWidth:'140px', borderTop: accent ? '3px solid var(--gold)' : undefined }}>
+      <div style={{ fontSize:'11px', fontWeight:600, color:'var(--gray)', textTransform:'uppercase', letterSpacing:'.5px', marginBottom:'6px' }}>{label}</div>
       <div style={{ fontSize:'22px', fontWeight:700, color }}>{value}</div>
-      {sub && <div style={{ fontSize:'11px', color:'#9ca3af', marginTop:'3px' }}>{sub}</div>}
+      {sub && <div style={{ fontSize:'11px', color:'var(--gray)', marginTop:'3px' }}>{sub}</div>}
     </div>
   );
 }
@@ -455,22 +455,22 @@ export function SummaryCard({ label, value, sub, color = '#1a1a2e', accent = fal
 // ── TabBar ────────────────────────────────────────────────────────────────────
 export function TabBar({ tabs, active, onChange }) {
   return (
-    <div style={{ display:'flex', gap:'4px', background:'#f4f6f8', borderRadius:'9px', padding:'4px', flexWrap:'wrap' }}>
+    <div style={{ display:'flex', gap:'4px', background:'var(--dark2)', borderRadius:'8px', padding:'4px', flexWrap:'wrap' }}>
       {tabs.map(t => (
         <button
           key={t.id}
           onClick={() => onChange(t.id)}
           style={{
-            border:'none', borderRadius:'7px', padding:'8px 18px', fontSize:'13px', fontWeight:600, cursor:'pointer',
-            background: active === t.id ? '#fff' : 'transparent',
-            color:      active === t.id ? '#d4a843' : '#6b7280',
-            boxShadow:  active === t.id ? '0 1px 4px rgba(0,0,0,.1)' : 'none',
+            border:'none', borderRadius:'6px', padding:'8px 18px', fontSize:'13px', fontWeight:600, cursor:'pointer',
+            background: active === t.id ? 'var(--dark)' : 'transparent',
+            color:      active === t.id ? 'var(--gold)' : 'var(--gray)',
+            boxShadow:  active === t.id ? '0 1px 4px rgba(0,0,0,.18)' : 'none',
             transition: 'all .15s',
           }}
         >
           {t.label}
           {t.count != null && (
-            <span style={{ marginLeft:'6px', background: active === t.id ? '#d4a843' : '#e1e3e5', color: active === t.id ? '#fff' : '#6b7280', borderRadius:'10px', padding:'1px 7px', fontSize:'11px' }}>
+            <span style={{ marginLeft:'6px', background: active === t.id ? 'var(--gold)' : 'var(--border)', color: active === t.id ? '#1a1a1a' : 'var(--gray)', borderRadius:'999px', padding:'1px 7px', fontSize:'11px' }}>
               {t.count}
             </span>
           )}

@@ -474,12 +474,12 @@ export default function ReportsPage() {
   };
 
   const getInventoryStatus = (item) => {
-    if (item.isOnDemand) return { key: 'upon-order', label: 'Upon Order', bg: '#3b82f6', fg: '#fff' };
+    if (item.isOnDemand) return { key: 'upon-order', label: 'Upon Order', bg: '#3b82f6', fg: 'var(--dark)' };
     const q = Number(item.stockQty ?? 0);
     const min = Number(item.minStockLevel ?? 0);
-    if (q === 0) return { key: 'out-of-stock', label: 'Out of Stock', bg: '#ef4444', fg: '#fff' };
-    if (q <= min) return { key: 'low-stock', label: 'Low Stock', bg: '#f97316', fg: '#fff' };
-    return { key: 'ok', label: 'OK', bg: '#10b981', fg: '#fff' };
+    if (q === 0) return { key: 'out-of-stock', label: 'Out of Stock', bg: '#ef4444', fg: 'var(--dark)' };
+    if (q <= min) return { key: 'low-stock', label: 'Low Stock', bg: '#f97316', fg: 'var(--dark)' };
+    return { key: 'ok', label: 'OK', bg: '#10b981', fg: 'var(--dark)' };
   };
 
   const inventoryFiltered = inventoryRaw.filter((item) => {
@@ -1014,11 +1014,11 @@ export default function ReportsPage() {
                             badgeBg = '#D4A843';
                             badgeFg = '#000';
                           } else if (rank === 2) {
-                            badgeBg = '#9ca3af';
-                            badgeFg = '#fff';
+                            badgeBg = 'var(--gray)';
+                            badgeFg = 'var(--dark)';
                           } else if (rank === 3) {
                             badgeBg = '#b45309';
-                            badgeFg = '#fff';
+                            badgeFg = 'var(--dark)';
                           }
                           return (
                             <div

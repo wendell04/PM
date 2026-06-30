@@ -214,7 +214,7 @@ export default function CustomersPage() {
                     onClick={() => handleUnlock(c.id)}
                     style={{
                       padding: '7px 16px', borderRadius: '8px', border: 'none',
-                      background: '#16a34a', color: '#fff', fontWeight: 600, fontSize: '0.8rem',
+                      background: '#16a34a', color: 'var(--dark)', fontWeight: 600, fontSize: '0.8rem',
                       cursor: unlockActing[c.id] ? 'not-allowed' : 'pointer',
                       opacity: unlockActing[c.id] ? 0.6 : 1,
                       display: 'flex', alignItems: 'center', gap: '5px',

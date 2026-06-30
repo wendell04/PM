@@ -84,7 +84,7 @@ function ToggleSwitch({ checked, disabled, onChange }) {
         left: checked ? '16px' : '2px',
         width: '14px', height: '14px',
         borderRadius: '50%',
-        background: disabled ? 'var(--gray)' : '#fff',
+        background: disabled ? 'var(--gray)' : 'var(--dark)',
         transition: 'left 0.18s',
         boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
       }} />

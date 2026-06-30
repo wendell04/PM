@@ -9,7 +9,7 @@ class Inventory extends Model
     protected $collection = 'inventory';  
   
     protected $fillable = [
-        'name', 'sku', 'uom', 'category', 'stockQty', 'minStockLevel', 'isOnDemand',
+        'name', 'sku', 'uom', 'category', 'stockQty', 'minStockLevel', 'leadTimeDays', 'isOnDemand',
         'isActive', 'deletedAt', 'supplierId', 'supplierName',
         'lastUnitCost', 'averageCost', 'baseCost',
         'reservedQty', 'consumedQty', 'badOrderQty',
@@ -17,11 +17,11 @@ class Inventory extends Model
         'parentId', 'hasVariants', 'variantTypes', 'variantCombo',
         'procurementType', 'allowBackorder',
         'createdAt', 'updatedAt',
-    ]; 
+    ];
   
     protected $casts = [
         'sku'      => 'string',  'uom' => 'string',
-        'stockQty' => 'integer', 'minStockLevel' => 'integer',
+        'stockQty' => 'integer', 'minStockLevel' => 'integer', 'leadTimeDays' => 'integer',
         'isOnDemand' => 'boolean', 'isActive' => 'boolean',
         'hasVariants' => 'boolean', 'allowBackorder' => 'boolean',
         'deletedAt' => 'datetime', 'lastUnitCost' => 'float',
@@ -42,7 +42,7 @@ class Inventory extends Model
 
     protected $attributes = [
         'isActive' => true, 'deletedAt' => null,  
-        'stockQty' => 0, 'minStockLevel' => 10, 'isOnDemand' => false,
+        'stockQty' => 0, 'minStockLevel' => 10, 'leadTimeDays' => 7, 'isOnDemand' => false,
         'reservedQty' => 0, 'consumedQty' => 0, 'badOrderQty' => 0,
     ];  
  

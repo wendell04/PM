@@ -154,11 +154,11 @@ export default function VendorsTab({ vendors, setVendors, materials, categories,
               {slice.length === 0 ? (
                 <tr><td colSpan={7}><EmptyState message="No vendors found" sub="Add a vendor to get started." /></td></tr>
               ) : slice.map(v => (
-                <tr key={v.id} style={S.tr} onMouseEnter={e => e.currentTarget.style.background='#fafbfc'} onMouseLeave={e => e.currentTarget.style.background=''}>
+                <tr key={v.id} style={S.tr} onMouseEnter={e => e.currentTarget.style.background='var(--dark2)'} onMouseLeave={e => e.currentTarget.style.background=''}>
                   <td style={{ ...S.td, fontWeight:600 }}>{v.name}</td>
-                  <td style={{ ...S.td, fontSize:'12px', color:'#6b7280' }}>{v.contact}</td>
-                  <td style={{ ...S.td, fontSize:'12px', color:'#6b7280' }}>{v.email}</td>
-                  <td style={{ ...S.td, fontSize:'12px', color:'#6b7280', maxWidth:'180px' }}>{v.address}</td>
+                  <td style={{ ...S.td, fontSize:'12px', color:'var(--gray)' }}>{v.contact}</td>
+                  <td style={{ ...S.td, fontSize:'12px', color:'var(--gray)' }}>{v.email}</td>
+                  <td style={{ ...S.td, fontSize:'12px', color:'var(--gray)', maxWidth:'180px' }}>{v.address}</td>
                   <td style={S.td}>
                     <div style={{ display:'flex', flexWrap:'wrap', gap:'4px' }}>
                       {(v.itemsSupplied || []).map(c => (
@@ -178,7 +178,7 @@ export default function VendorsTab({ vendors, setVendors, materials, categories,
             </tbody>
           </table>
         </div>
-        <div style={{ padding:'12px 16px', borderTop:'1px solid #f0f1f2' }}>
+        <div style={{ padding:'12px 16px', borderTop:'1px solid var(--border)' }}>
           <PaginationBar total={total} page={page} perPage={perPage} onPage={setPage} onPerPage={setPerPage} />
         </div>
       </div>
@@ -246,7 +246,7 @@ export default function VendorsTab({ vendors, setVendors, materials, categories,
           </Field>
 
           <Field label="Items Supplied" required error={errors.itemsSupplied}>
-            <div style={{ display:'flex', flexWrap:'wrap', gap:'8px', padding:'10px', border:`1px solid ${errors.itemsSupplied ? '#e05252' : '#e1e3e5'}`, borderRadius:'7px', background:'#f9f9f9', maxHeight:'180px', overflowY:'auto' }}>
+            <div style={{ display:'flex', flexWrap:'wrap', gap:'8px', padding:'10px', border:`1px solid ${errors.itemsSupplied ? '#e05252' : 'var(--border)'}`, borderRadius:'7px', background:'var(--dark2)', maxHeight:'180px', overflowY:'auto' }}>
               {(categories || []).map(cat => {
                 const active = form.itemsSupplied.includes(cat);
                 return (
@@ -255,10 +255,10 @@ export default function VendorsTab({ vendors, setVendors, materials, categories,
                     type="button"
                     onClick={() => toggleCategory(cat)}
                     style={{
-                      border: `1px solid ${active ? '#c9973f' : '#e1e3e5'}`,
+                      border: `1px solid ${active ? 'var(--gold)' : 'var(--border)'}`,
                       borderRadius:'20px', padding:'4px 12px', fontSize:'12px', cursor:'pointer',
-                      background: active ? '#c9973f' : '#fff',
-                      color:      active ? '#fff'    : '#374151',
+                      background: active ? 'var(--gold)' : 'var(--dark)',
+                      color:      active ? 'var(--dark)'    : 'var(--gray-light)',
                       fontWeight: active ? 600       : 400,
                       transition: 'all .12s',
                     }}
@@ -281,7 +281,7 @@ export default function VendorsTab({ vendors, setVendors, materials, categories,
                   <button type="button" onClick={() => { setShowCustom(false); setCustomInput(''); }} style={{ ...S.btnGhost, fontSize:'12px', padding:'4px 8px' }}>✕</button>
                 </div>
               ) : (
-                <button type="button" onClick={() => setShowCustom(true)} style={{ fontSize:'11px', color:'#c9973f', background:'none', border:'1px dashed #c9973f', borderRadius:'20px', padding:'3px 10px', cursor:'pointer' }}>
+                <button type="button" onClick={() => setShowCustom(true)} style={{ fontSize:'11px', color:'var(--gold)', background:'none', border:'1px dashed var(--gold)', borderRadius:'20px', padding:'3px 10px', cursor:'pointer' }}>
                   + Add Custom
                 </button>
               )}
