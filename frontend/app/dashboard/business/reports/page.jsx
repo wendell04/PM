@@ -261,9 +261,6 @@ const TABS = [
 export default function ReportsPage() {
   const { token } = useAuth();
   const [activeTab, setActiveTab] = useState('sales');
-  const [salesTrendCollapsed, setSalesTrendCollapsed] = useState(true);
-  const [salesPage, setSalesPage] = useState(1);
-  const [salesPerPage, setSalesPerPage] = useState(10);
   const [invPage, setInvPage] = useState(1);
   const [invPerPage, setInvPerPage] = useState(10);
   const [inventoryCollapsed, setInventoryCollapsed] = useState(false);
@@ -610,9 +607,6 @@ export default function ReportsPage() {
   };
 
   const salesGrouped = salesData?.grouped;
-  const salesGroupedLen = salesGrouped?.length ?? 0;
-  const salesPaged = salesGrouped ? salesGrouped.slice((salesPage - 1) * salesPerPage, salesPage * salesPerPage) : [];
-  useEffect(() => { setSalesPage(1); }, [salesData, salesPerPage]);
   useEffect(() => { setInvPage(1); }, [statusFilter, inventoryRaw, invPerPage]);
   const tpProducts = tpData?.products;
 
@@ -765,80 +759,6 @@ export default function ReportsPage() {
                         </ResponsiveContainer>
                       </div>
                     )}
-                    {salesGrouped && salesGrouped.length > 0 && (
-                      <div
-                        onClick={() => setSalesTrendCollapsed(p => !p)}
-                        style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer', userSelect: 'none', margin: '0.25rem 0 0.75rem' }}
-                      >
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--gray)" strokeWidth="2.5"
-                          style={{ transform: salesTrendCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)', transition: 'transform 0.2s', flexShrink: 0 }}>
-                          <path d="M6 9l6 6 6-6" />
-                        </svg>
-                        <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--gray)' }}>
-                          {salesTrendCollapsed ? 'Show' : 'Hide'} period breakdown
-                        </span>
-                      </div>
-                    )}
-                    {!salesTrendCollapsed && salesGrouped && salesGrouped.length > 0 ? (
-                      <>
-                      <div style={{ border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden' }}>
-                        <style>{`.rpt-tr:hover td { background: var(--dark2); }`}</style>
-                        <div style={{ overflowX: 'auto' }}>
-                          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-                            <thead>
-                              <tr style={{ background: 'var(--dark2)' }}>
-                                {[
-                                  { label: 'Period', align: 'left' },
-                                  { label: 'Revenue', align: 'right' },
-                                  { label: 'Cost', align: 'right' },
-                                  { label: 'Profit', align: 'right' },
-                                ].map((h) => (
-                                  <th
-                                    key={h.label}
-                                    style={{
-                                      textAlign: h.align,
-                                      padding: '0.85rem 1.25rem',
-                                      fontSize: '0.72rem',
-                                      fontWeight: 700,
-                                      letterSpacing: '0.05em',
-                                      textTransform: 'uppercase',
-                                      color: 'var(--gold)',
-                                      borderBottom: '1px solid var(--border)',
-                                      whiteSpace: 'nowrap',
-                                    }}
-                                  >
-                                    {h.label}
-                                  </th>
-                                ))}
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {salesPaged.map((row, idx) => {
-                                const prof = Number(row.profit ?? 0);
-                                const profitColor = prof >= 0 ? 'var(--green)' : 'var(--red)';
-                                const last = idx === salesPaged.length - 1;
-                                const cell = { padding: '0.8rem 1.25rem', borderBottom: last ? 'none' : '1px solid var(--border)', transition: 'background 0.12s' };
-                                const num = { ...cell, textAlign: 'right', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' };
-                                return (
-                                  <tr key={row.period} className="rpt-tr">
-                                    <td style={{ ...cell, color: 'var(--white)', fontWeight: 600 }}>{row.period}</td>
-                                    <td style={{ ...num, color: 'var(--gold)', fontWeight: 600 }}>{fmtPeso(row.revenue)}</td>
-                                    <td style={{ ...num, color: 'var(--gray)' }}>{fmtPeso(row.cost)}</td>
-                                    <td style={{ ...num, color: profitColor, fontWeight: 600 }}>{fmtPeso(row.profit)}</td>
-                                  </tr>
-                                );
-                              })}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-                      <PaginationBar total={salesGroupedLen} page={salesPage} perPage={salesPerPage} onPage={setSalesPage} onPerPage={setSalesPerPage} />
-                      </>
-                    ) : (!salesTrendCollapsed && (
-                      <p style={{ textAlign: 'center', color: 'var(--gray)', fontSize: '0.9rem' }}>
-                        No period data. Apply date range and grouping.
-                      </p>
-                    ))}
                   </>
                 )}
               </div>
