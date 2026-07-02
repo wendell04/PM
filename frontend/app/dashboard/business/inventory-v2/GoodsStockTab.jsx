@@ -97,19 +97,19 @@ export default function GoodsStockTab({ materials, batches, badOrders }) {
               ) : slice.map(d => {
                 const isExp = expanded.has(d.mat.id);
                 return [
-                  <tr key={d.mat.id} style={{ ...S.tr, background: isExp ? '#fffbe8' : '' }} onMouseEnter={e => { if (!isExp) e.currentTarget.style.background='#fafbfc'; }} onMouseLeave={e => { if (!isExp) e.currentTarget.style.background=''; }}>
+                  <tr key={d.mat.id} style={{ ...S.tr, background: isExp ? 'var(--gold-subtle)' : '' }} onMouseEnter={e => { if (!isExp) e.currentTarget.style.background='var(--dark2)'; }} onMouseLeave={e => { if (!isExp) e.currentTarget.style.background=''; }}>
                     <td style={{ ...S.td, textAlign:'center' }}>
                       {d.batches.length > 0 && (
-                        <button onClick={() => toggleExpand(d.mat.id)} style={{ background:'none', border:'none', cursor:'pointer', color:'#9ca3af', display:'flex', margin:'auto' }}>
+                        <button onClick={() => toggleExpand(d.mat.id)} style={{ background:'none', border:'none', cursor:'pointer', color:'var(--gray)', display:'flex', margin:'auto' }}>
                           {isExp ? ICONS.chevU : ICONS.chevD}
                         </button>
                       )}
                     </td>
-                    <td style={{ ...S.td, fontFamily:'monospace', fontSize:'12px', color:'#6b7280' }}>{d.mat.sku}</td>
+                    <td style={{ ...S.td, fontFamily:'monospace', fontSize:'12px', color:'var(--gray)' }}>{d.mat.sku}</td>
                     <td style={{ ...S.td, fontWeight:500 }}>{d.mat.name}</td>
-                    <td style={S.td}><span style={{ background:'#f3f4f6', borderRadius:'5px', padding:'2px 8px', fontSize:'12px' }}>{d.mat.category}</span></td>
+                    <td style={S.td}><span style={{ background:'var(--dark2)', borderRadius:'5px', padding:'2px 8px', fontSize:'12px' }}>{d.mat.category}</span></td>
                     <td style={{ ...S.td, textAlign:'right', fontWeight:700, color: d.status === 'out_of_stock' ? '#c62828' : d.status === 'low_stock' ? '#b45309' : '#2e7d32' }}>{d.goodsStock} {d.mat.unit}</td>
-                    <td style={{ ...S.td, textAlign:'right', color:'#9ca3af', fontSize:'12px' }}>{d.mat.minStock} {d.mat.unit}</td>
+                    <td style={{ ...S.td, textAlign:'right', color:'var(--gray)', fontSize:'12px' }}>{d.mat.minStock} {d.mat.unit}</td>
                     <td style={{ ...S.td, textAlign:'right' }}>{formatCurrency(d.unitCost)}</td>
                     <td style={{ ...S.td, textAlign:'right', fontWeight:600 }}>{formatCurrency(d.stockValue)}</td>
                     <td style={S.td}><StatusBadge status={d.status} /></td>
@@ -117,9 +117,9 @@ export default function GoodsStockTab({ materials, batches, badOrders }) {
 
                   isExp && (
                     <tr key={`exp_${d.mat.id}`}>
-                      <td colSpan={9} style={{ padding:'0 16px 14px 40px', background:'#fafbfc' }}>
-                        <div style={{ fontSize:'12px', fontWeight:600, color:'#6b7280', marginBottom:'8px', textTransform:'uppercase', letterSpacing:'.4px' }}>Batch History (FIFO order)</div>
-                        <table style={{ width:'100%', borderCollapse:'collapse', border:'1px solid #e9eaeb', borderRadius:'7px', overflow:'hidden' }}>
+                      <td colSpan={9} style={{ padding:'0 16px 14px 40px', background:'var(--dark2)' }}>
+                        <div style={{ fontSize:'12px', fontWeight:600, color:'var(--gray)', marginBottom:'8px', textTransform:'uppercase', letterSpacing:'.4px' }}>Batch History (FIFO order)</div>
+                        <table style={{ width:'100%', borderCollapse:'collapse', border:'1px solid var(--border)', borderRadius:'7px', overflow:'hidden' }}>
                           <thead>
                             <tr>
                               {[
@@ -135,14 +135,14 @@ export default function GoodsStockTab({ materials, batches, badOrders }) {
                             {d.batches.map(b => (
                               <tr key={b.id}>
                                 <td style={{ ...S.td, padding:'6px 10px', fontSize:'12px' }}>{formatDate(b.date)}</td>
-                                <td style={{ ...S.td, padding:'6px 10px', fontSize:'11px', fontFamily:'monospace', color:'#6b7280' }}>{b.invoiceNo}</td>
-                                <td style={{ ...S.td, padding:'6px 10px', fontSize:'12px', color:'#6b7280' }}>{b.vendorName}</td>
+                                <td style={{ ...S.td, padding:'6px 10px', fontSize:'11px', fontFamily:'monospace', color:'var(--gray)' }}>{b.invoiceNo}</td>
+                                <td style={{ ...S.td, padding:'6px 10px', fontSize:'12px', color:'var(--gray)' }}>{b.vendorName}</td>
                                 <td style={{ ...S.td, padding:'6px 10px', fontSize:'12px', textAlign:'right' }}>{b.qtyReceived} {d.mat.unit}</td>
                                 <td style={{ ...S.td, padding:'6px 10px', fontSize:'12px', textAlign:'right' }}>{formatCurrency(b.unitCost)}</td>
                                 <td style={{ ...S.td, padding:'6px 10px', fontSize:'12px', textAlign:'right', fontWeight:600, color: b.remainingQty < b.qtyReceived ? '#b45309' : '#2e7d32' }}>
                                   {b.remainingQty} {d.mat.unit}
                                 </td>
-                                <td style={{ ...S.td, padding:'6px 10px', fontSize:'11px', color:'#9ca3af' }}>{b.notes}</td>
+                                <td style={{ ...S.td, padding:'6px 10px', fontSize:'11px', color:'var(--gray)' }}>{b.notes}</td>
                               </tr>
                             ))}
                           </tbody>
@@ -155,7 +155,7 @@ export default function GoodsStockTab({ materials, batches, badOrders }) {
             </tbody>
           </table>
         </div>
-        <div style={{ padding:'12px 16px', borderTop:'1px solid #f0f1f2' }}>
+        <div style={{ padding:'12px 16px', borderTop:'1px solid var(--border)' }}>
           <PaginationBar total={total} page={page} perPage={perPage} onPage={setPage} onPerPage={setPerPage} />
         </div>
       </div>

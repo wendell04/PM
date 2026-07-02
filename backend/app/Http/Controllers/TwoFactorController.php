@@ -200,10 +200,12 @@ class TwoFactorController extends Controller
             $current->delete();
         }
 
+        // Match the login session policy (staff/admin get a long 30-day session; customers 30d,
+        // 90d with "remember me") so a 2FA login lasts the same as a non-2FA one.
         $deviceName = substr($request->userAgent() ?? 'Unknown Device', 0, 120);
         $isStaff    = ($user->role ?? 'customer') !== 'customer';
         $expiresAt  = $isStaff
-            ? now()->addHours(12)
+            ? now()->addDays(30)
             : ($request->boolean('rememberMe') ? now()->addDays(90) : now()->addDays(30));
 
         return $user->createToken($deviceName, ['*'], $expiresAt)->plainTextToken;

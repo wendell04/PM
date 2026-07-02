@@ -99,8 +99,8 @@ function ReturnModal({ open, onClose, materials, vendors, badOrders, onSave }) {
         <Field label="Resolution Expected">
           <div style={{ display:'flex', gap:'8px' }}>
             {[{val:'replacement', label:'Replacement'},{val:'credit', label:'Credit / Refund'},{val:'pending', label:'TBD'}].map(o => (
-              <label key={o.val} style={{ flex:1, display:'flex', alignItems:'center', gap:'6px', padding:'8px 10px', border:`1px solid ${resType===o.val?'#c9973f':'#e1e3e5'}`, borderRadius:'7px', cursor:'pointer', background: resType===o.val?'#fffbe8':'#fff', fontSize:'12px', fontWeight: resType===o.val ? 600 : 400, transition:'all .12s' }}>
-                <input type="radio" name="resType" value={o.val} checked={resType===o.val} onChange={() => setResType(o.val)} style={{ accentColor:'#c9973f' }} />
+              <label key={o.val} style={{ flex:1, display:'flex', alignItems:'center', gap:'6px', padding:'8px 10px', border:`1px solid ${resType===o.val?'var(--gold)':'var(--border)'}`, borderRadius:'7px', cursor:'pointer', background: resType===o.val?'var(--gold-subtle)':'var(--dark)', fontSize:'12px', fontWeight: resType===o.val ? 600 : 400, transition:'all .12s' }}>
+                <input type="radio" name="resType" value={o.val} checked={resType===o.val} onChange={() => setResType(o.val)} style={{ accentColor:'var(--gold)' }} />
                 {o.label}
               </label>
             ))}
@@ -119,9 +119,9 @@ function ReturnModal({ open, onClose, materials, vendors, badOrders, onSave }) {
         </Field>
 
         {qty && unitCost && Number(qty) > 0 && Number(unitCost) > 0 && (
-          <div style={{ ...S.cardSm, background:'#f8f9fa', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-            <span style={{ fontSize:'13px', color:'#6b7280' }}>Return Value</span>
-            <span style={{ fontWeight:700, fontSize:'16px', color:'#c9973f' }}>{formatCurrency(Number(qty) * Number(unitCost))}</span>
+          <div style={{ ...S.cardSm, background:'var(--dark2)', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+            <span style={{ fontSize:'13px', color:'var(--gray)' }}>Return Value</span>
+            <span style={{ fontWeight:700, fontSize:'16px', color:'var(--gold)' }}>{formatCurrency(Number(qty) * Number(unitCost))}</span>
           </div>
         )}
       </div>
@@ -284,14 +284,14 @@ export default function ReturnsTab({ returns, setReturns, materials, vendors, ba
               ) : slice.map(r => {
                 const mat = materials.find(m => m.id === r.matId);
                 return (
-                  <tr key={r.id} style={S.tr} onMouseEnter={e => e.currentTarget.style.background='#fafbfc'} onMouseLeave={e => e.currentTarget.style.background=''}>
+                  <tr key={r.id} style={S.tr} onMouseEnter={e => e.currentTarget.style.background='var(--dark2)'} onMouseLeave={e => e.currentTarget.style.background=''}>
                     <td style={{ ...S.td, whiteSpace:'nowrap' }}>{formatDate(r.date)}</td>
                     <td style={{ ...S.td, fontWeight:500 }}>{r.matName}</td>
-                    <td style={{ ...S.td, fontSize:'12px', color:'#6b7280' }}>{r.vendorName}</td>
+                    <td style={{ ...S.td, fontSize:'12px', color:'var(--gray)' }}>{r.vendorName}</td>
                     <td style={{ ...S.td, textAlign:'right', fontWeight:600 }}>{r.qty} {mat?.unit}</td>
                     <td style={{ ...S.td, textAlign:'right' }}>{formatCurrency(r.unitCost)}</td>
                     <td style={{ ...S.td, textAlign:'right', fontWeight:600, color:'#c62828' }}>{formatCurrency(r.totalValue)}</td>
-                    <td style={{ ...S.td, fontSize:'12px', color:'#6b7280', maxWidth:'160px' }}>{r.reason}</td>
+                    <td style={{ ...S.td, fontSize:'12px', color:'var(--gray)', maxWidth:'160px' }}>{r.reason}</td>
                     <td style={S.td}><StatusBadge status={r.resolutionType} /></td>
                     <td style={S.td}><StatusBadge status={r.status} /></td>
                     <td style={{ ...S.td, textAlign:'right' }}>
@@ -308,7 +308,7 @@ export default function ReturnsTab({ returns, setReturns, materials, vendors, ba
             </tbody>
           </table>
         </div>
-        <div style={{ padding:'12px 16px', borderTop:'1px solid #f0f1f2' }}>
+        <div style={{ padding:'12px 16px', borderTop:'1px solid var(--border)' }}>
           <PaginationBar total={total} page={page} perPage={perPage} onPage={setPage} onPerPage={setPerPage} />
         </div>
       </div>

@@ -115,7 +115,24 @@ export default function CustomersPage() {
 
   return (
     <ErrorBoundary>
-      <div style={{ maxWidth: '960px', margin: '0 auto', padding: '2rem 1rem' }}>
+      <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '2rem 1.5rem' }}>
+
+        {/* Summary stats */}
+        {!loading && !error && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px', marginBottom: '24px' }}>
+            {[
+              { label: 'Total Customers', value: customers.length,                          color: 'var(--white)' },
+              { label: 'Locked',          value: customers.filter(c => c.is_locked).length,  color: 'var(--red)'   },
+              { label: 'Unlock Requests', value: unlockRequests.length,                      color: 'var(--gold)'  },
+              { label: 'Unverified',      value: customers.filter(c => !c.is_verified).length, color: 'var(--gray)' },
+            ].map(s => (
+              <div key={s.label} style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '10px', padding: '14px 18px' }}>
+                <div style={{ fontSize: '1.5rem', fontWeight: 800, color: s.color, lineHeight: 1.1 }}>{s.value}</div>
+                <div style={{ fontSize: '0.78rem', color: 'var(--gray)', marginTop: '3px' }}>{s.label}</div>
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* Unlock Requests — always visible section */}
         {!loading && (
@@ -214,7 +231,7 @@ export default function CustomersPage() {
                     onClick={() => handleUnlock(c.id)}
                     style={{
                       padding: '7px 16px', borderRadius: '8px', border: 'none',
-                      background: '#16a34a', color: '#fff', fontWeight: 600, fontSize: '0.8rem',
+                      background: '#16a34a', color: 'var(--dark)', fontWeight: 600, fontSize: '0.8rem',
                       cursor: unlockActing[c.id] ? 'not-allowed' : 'pointer',
                       opacity: unlockActing[c.id] ? 0.6 : 1,
                       display: 'flex', alignItems: 'center', gap: '5px',
@@ -303,8 +320,8 @@ export default function CustomersPage() {
 
         {/* Loading */}
         {loading && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {[1, 2, 3, 4].map(i => (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(380px, 1fr))', gap: '12px' }}>
+            {[1, 2, 3, 4, 5, 6].map(i => (
               <div key={i} style={{
                 height: '72px', borderRadius: '12px', background: 'var(--dark2)',
                 border: '1px solid var(--border)',
@@ -338,7 +355,7 @@ export default function CustomersPage() {
 
         {/* Customer list */}
         {!loading && !error && paged.length > 0 && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(380px, 1fr))', gap: '12px', alignItems: 'start' }}>
             {paged.map(c => (
               <div key={c.id} style={{
                 display: 'flex', alignItems: 'center', gap: '14px',

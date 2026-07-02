@@ -76,6 +76,52 @@ def compute_mape(actual: np.ndarray, predicted: np.ndarray) -> float | None:
     return float(np.mean(errors) * 100)
 
 
+def demand_profile(series: np.ndarray):
+    """Classify a per-period demand series (Syntetos–Boylan).
+    Returns (cls, adi, cv2) where cls ∈ {steady, variable, intermittent, lumpy, new}.
+    ADI = average inter-demand interval; cv2 = squared CV of non-zero demand sizes."""
+    s = np.asarray(series, dtype=float)
+    nz = s[s > 0]
+    n = len(s)
+    if len(nz) == 0 or n < 3:
+        return "new", float("inf"), 0.0
+    adi = n / len(nz)
+    mean_nz = float(np.mean(nz))
+    cv2 = float((np.std(nz, ddof=1) / mean_nz) ** 2) if len(nz) > 1 and mean_nz > 0 else 0.0
+    if adi <= 1.32 and cv2 <= 0.49:   cls = "steady"
+    elif adi > 1.32 and cv2 <= 0.49:  cls = "intermittent"
+    elif adi <= 1.32 and cv2 > 0.49:  cls = "variable"
+    else:                             cls = "lumpy"
+    return cls, adi, cv2
+
+
+def croston_sba(series: np.ndarray, alpha: float = 0.1, sba: bool = True) -> float:
+    """Croston's method (SBA-corrected) for intermittent demand.
+    Smooths demand SIZE and inter-demand INTERVAL separately and returns a single
+    per-period demand RATE — the honest output for sparse series (a flat estimate,
+    not a spurious wiggly curve). SBA applies the (1 - alpha/2) bias correction."""
+    s = np.asarray(series, dtype=float)
+    nz_idx = np.where(s > 0)[0]
+    if len(nz_idx) == 0:
+        return 0.0
+    z = float(s[nz_idx[0]])              # smoothed demand size
+    p = float(nz_idx[0] + 1)             # smoothed interval (gap to first demand)
+    q = 1                                # periods since last demand
+    for t in range(nz_idx[0] + 1, len(s)):
+        if s[t] > 0:
+            z += alpha * (s[t] - z)
+            p += alpha * (q - p)
+            q = 1
+        else:
+            q += 1
+    if p <= 0:
+        return 0.0
+    rate = z / p
+    if sba:
+        rate *= (1.0 - alpha / 2.0)
+    return float(max(0.0, rate))
+
+
 def _compute_last_period_value(
     original_values: np.ndarray,
     dates: "pd.Series",
@@ -185,20 +231,20 @@ async def forecast(req: ForecastRequest):
                     df = df.iloc[:last_nz + 1].reset_index(drop=True)
 
         # ── Floor zero periods for SSA training stability (sales only) ───────
-        # For inventory stock, zeros are real out-of-stock states — don't floor.
+        # Zero/near-zero periods use peak/4 as a reasonable baseline instead
+        # of leaving them at zero (which destabilises SSA) or using tiny noise
+        # (which is too close to zero to matter). peak/4 keeps the series
+        # readable and gives SSA enough signal without inflating the trend.
         original_values = df["Value"].values.copy()
         if not is_stock:
             _nz_pre = original_values[original_values > 0]
             if len(_nz_pre) > 0:
-                _floor_base = max(1.0, float(np.mean(_nz_pre)) * 0.005)
-                _rng        = np.random.default_rng(seed=42)
-                _noise_mul  = _rng.uniform(0.5, 1.5, size=len(df))
-                _zero_mask  = original_values == 0
+                _peak      = float(np.max(_nz_pre))
+                _floor_val = _peak / 4.0
+                _zero_mask = original_values == 0
                 if _zero_mask.any():
                     df = df.copy()
-                    df.loc[_zero_mask, "Value"] = np.round(
-                        _noise_mul[_zero_mask] * _floor_base, 2
-                    )
+                    df.loc[_zero_mask, "Value"] = _floor_val
 
         n = len(df)
         if n < min_data:
@@ -299,9 +345,9 @@ async def forecast(req: ForecastRequest):
 
         # ── Backtest window sizing ─────────────────────────────────────────────
         if forecast_type == "weekly":
-            bt_periods = min(forecast_periods, max(2, n // 5), 8)
+            bt_periods = min(max(4, n // 5), 8)    # fixed window, independent of forecast_periods
         elif forecast_type == "monthly":
-            bt_periods = min(forecast_periods, max(2, n // 5), 6)
+            bt_periods = min(max(3, n // 5), 6)    # fixed window, independent of forecast_periods
         else:  # annually — 12 monthly periods = 1 full calendar year for backtest
             bt_periods = max(1, min(12, n - 10))
 
@@ -405,7 +451,8 @@ async def forecast(req: ForecastRequest):
                     "recall":            round(_bt_rec, 4),
                     "f1":                round(_bt_f1, 4),
                     "hit_rate":          round(float(np.mean(_bt_within)) * 100, 2),
-                    "mape_reliable":     forecast_type != "annually" or int(n_agg) >= 2,
+                    "mape_reliable":     (forecast_type != "annually" or int(n_agg) >= 2)
+                                         and not (is_high_volatility and mape_val is not None and mape_val > 300),
                 }
                 backtest_series = {
                     "dates":       pd.DatetimeIndex(bt_display_dates).strftime("%Y-%m-%d").tolist(),
@@ -418,18 +465,28 @@ async def forecast(req: ForecastRequest):
         # ── Forecast ─────────────────────────────────────────────────────────
         last_date = df["Date"].iloc[-1]
 
+        # gap_offset tracks how many periods we skip to reach today;
+        # used later to give honest CI widths from the true LRF horizon.
+        gap_offset = 0
+
         if forecast_type == "weekly":
-            fc_dates = pd.date_range(
-                start=last_date + pd.Timedelta(weeks=1),
-                periods=forecast_periods,
-                freq="W-MON",
-            )
+            today_monday = pd.Timestamp.now().normalize()
+            today_monday -= pd.Timedelta(days=today_monday.dayofweek)
+            natural_start = last_date + pd.Timedelta(weeks=1)
+            fc_start  = max(natural_start, today_monday)
+            gap_weeks = max(0, (fc_start - natural_start).days // 7)
+            gap_offset     = gap_weeks
+            extended_steps = gap_weeks + forecast_periods
+            fc_dates = pd.date_range(start=fc_start, periods=forecast_periods, freq="W-MON")
         elif forecast_type == "monthly":
-            fc_dates = pd.date_range(
-                start=last_date + pd.DateOffset(months=1),
-                periods=forecast_periods,
-                freq="MS",
-            )
+            this_month     = pd.Timestamp.now().replace(day=1).normalize()
+            natural_start_m = last_date + pd.DateOffset(months=1)
+            fc_start_m     = max(natural_start_m, this_month)
+            gap_months     = max(0, (fc_start_m.year - natural_start_m.year) * 12
+                                    + (fc_start_m.month - natural_start_m.month))
+            gap_offset     = gap_months
+            extended_steps = gap_months + forecast_periods
+            fc_dates = pd.date_range(start=fc_start_m, periods=forecast_periods, freq="MS")
         else:
             forecast_start = last_date + pd.DateOffset(months=1)
             if forecast_start.month != 1:
@@ -444,10 +501,14 @@ async def forecast(req: ForecastRequest):
                 periods=monthly_steps,
                 freq="MS",
             )
+            extended_steps = monthly_steps  # annual uses its own logic
 
         try:
             if forecast_type == "annually":
                 raw_fc = ssa.forecast(components, steps=monthly_steps)
+            elif gap_offset > 0:
+                raw_fc_full = ssa.forecast(components, steps=extended_steps)
+                raw_fc = raw_fc_full[gap_offset:]
             else:
                 raw_fc = ssa.forecast(components, steps=forecast_periods)
         except ValueError as lrf_err:
@@ -487,16 +548,31 @@ async def forecast(req: ForecastRequest):
         cap      = max(hist_max * 1.5, hist_mean * 2, 1.0)
         out_vals = np.clip(out_vals, 0.0, cap)
 
+        # ── Phase C: intermittent-demand override (Croston / SBA) ───────────────
+        # SSA needs a repeating pattern; sparse SKU demand has none, so for
+        # intermittent/lumpy inventory items we replace the wiggly SSA curve with a
+        # single honest demand RATE (a flat forecast). Steady items keep SSA.
+        # Restricted to weekly/monthly so the rate granularity matches the output.
+        forecast_method = "ssa"
+        demand_cls, demand_adi, demand_cv2 = demand_profile(original_values)
+        if is_stock and forecast_type in ("weekly", "monthly") and demand_cls in ("intermittent", "lumpy", "new"):
+            _rate = croston_sba(original_values, alpha=0.1, sba=True)
+            out_vals = np.clip(np.full(len(out_vals), _rate, dtype=float), 0.0, cap)
+            forecast_method = "sba"
+
         # ── Dampening + floor: sales-only (skip for inventory stock) ────────────
         is_dampened = False
         if not is_stock:
             # FIX C-1: dampening — cap SSA overshot vs recent actuals at 1.5×
             if forecast_type == "annually":
-                _ann_hist = (
-                    pd.Series(hist_vals, index=pd.to_datetime(df["Date"]))
-                    .resample("YS").sum()
-                    .values
-                )
+                # Use COMPLETE calendar years only (>= 12 months of data). Partial
+                # first/last years have artificially low sums that would drag the
+                # baseline down and trigger false dampening against the forecast.
+                _ann_series = pd.Series(hist_vals, index=pd.to_datetime(df["Date"]))
+                _ann_sum    = _ann_series.resample("YS").sum()
+                _ann_cnt    = _ann_series.resample("YS").count()
+                _ann_full   = _ann_sum[_ann_cnt >= 12]
+                _ann_hist   = _ann_full.values if len(_ann_full) > 0 else _ann_sum.values
                 _ann_window = min(3, len(_ann_hist))
                 recent_mean = float(_ann_hist[-_ann_window:].mean()) if _ann_window > 0 else 0.0
             else:
@@ -529,7 +605,7 @@ async def forecast(req: ForecastRequest):
         # weeks dominate). Cap CI so upper never exceeds the historical max and
         # lower is always at least 20% of the forecast (never pure zero).
         n_out      = len(out_vals)
-        max_growth = np.sqrt(forecast_periods)
+        max_growth = np.sqrt(extended_steps)
         if forecast_type == "annually":
             # noise_std is monthly-scale; scale to annual uncertainty via √12.
             # CI ceiling and cap must also use annual-aggregated history, not monthly max.
@@ -545,11 +621,11 @@ async def forecast(req: ForecastRequest):
             ci_scale = min(noise_std, float(out_vals.mean()) * 1.5) if out_vals.mean() > 0 else noise_std
             hist_max_ceiling = float(hist_vals.max()) * 1.2 if len(hist_vals) > 0 else float("inf")
         conf_high  = [
-            float(min(hist_max_ceiling, out_vals[i] + 1.96 * ci_scale * min(np.sqrt(i + 1), max_growth)))
+            float(min(hist_max_ceiling, out_vals[i] + 1.96 * ci_scale * min(np.sqrt(gap_offset + i + 1), max_growth)))
             for i in range(n_out)
         ]
         conf_low = [
-            float(max(out_vals[i] * 0.20, out_vals[i] - 1.96 * ci_scale * min(np.sqrt(i + 1), max_growth)))
+            float(max(out_vals[i] * 0.20, out_vals[i] - 1.96 * ci_scale * min(np.sqrt(gap_offset + i + 1), max_growth)))
             for i in range(n_out)
         ]
 
@@ -585,15 +661,12 @@ async def forecast(req: ForecastRequest):
         if not is_stock:
             _daily_nz = daily_rev["Value"].values[daily_rev["Value"].values > 0]
             if len(_daily_nz) > 0:
-                _daily_floor_base = max(100.0, float(np.mean(_daily_nz)) * 0.15)
-                _daily_rng   = np.random.default_rng(seed=99)
-                _daily_muls  = _daily_rng.uniform(0.5, 1.5, size=len(daily_rev))
+                _daily_peak  = float(np.max(_daily_nz))
+                _daily_floor = _daily_peak / 4.0
                 _daily_zero  = daily_rev["Value"].values == 0
                 if _daily_zero.any():
                     daily_rev = daily_rev.copy()
-                    daily_rev.loc[_daily_zero, "Value"] = np.round(
-                        _daily_muls[_daily_zero] * _daily_floor_base, 2
-                    )
+                    daily_rev.loc[_daily_zero, "Value"] = _daily_floor
 
         train_ts    = df["Date"].astype(np.int64).values
         daily_ts    = daily_rev["Date"].astype(np.int64).values
@@ -628,6 +701,30 @@ async def forecast(req: ForecastRequest):
                     original_values, df["Date"], "annually"
                 )
 
+        # ── Build training_data series for the chart ─────────────────────────
+        # For annual forecasts the SSA trains on MONTHLY buckets but the forecast
+        # is annual-aggregated. We must aggregate the training series to annual too,
+        # otherwise the chart plots ~6K monthly history against ~108K annual forecast
+        # and the two lines visually disconnect.
+        if forecast_type == "annually":
+            _ts_idx    = pd.to_datetime(df["Date"])
+            _noise_arr = df["Value"].values - trend - seasonality
+            _ann_v = pd.Series(original_values, index=_ts_idx).resample("YS").sum()
+            _ann_t = pd.Series(trend,           index=_ts_idx).resample("YS").sum()
+            _ann_s = pd.Series(seasonality,     index=_ts_idx).resample("YS").sum()
+            _ann_n = pd.Series(_noise_arr,      index=_ts_idx).resample("YS").sum()
+            train_dates_out = _ann_v.index.strftime("%Y-%m-%d").tolist()
+            train_vals_out  = _ann_v.values.tolist()
+            train_trend_out = _ann_t.values.tolist()
+            train_seas_out  = _ann_s.values.tolist()
+            train_noise_out = _ann_n.values.tolist()
+        else:
+            train_dates_out = df["Date"].dt.strftime("%Y-%m-%d").tolist()
+            train_vals_out  = original_values.tolist()
+            train_trend_out = trend.tolist()
+            train_seas_out  = seasonality.tolist()
+            train_noise_out = (df["Value"].values - trend - seasonality).tolist()
+
         return {
             "historical": {
                 "dates":       daily_rev["Date"].dt.strftime("%Y-%m-%d").tolist(),
@@ -635,6 +732,17 @@ async def forecast(req: ForecastRequest):
                 "trend":       trend_daily.tolist(),
                 "seasonality": seas_daily.tolist(),
                 "noise":       noise_daily.tolist(),
+            },
+            # training_data: the aggregated (weekly/monthly/annual) time series
+            # used for SSA — unfloored original values + decomposition at the
+            # same granularity as the forecast. Used by the frontend chart to
+            # show a consistent historical slice at period-level resolution.
+            "training_data": {
+                "dates":       train_dates_out,
+                "values":      train_vals_out,
+                "trend":       train_trend_out,
+                "seasonality": train_seas_out,
+                "noise":       train_noise_out,
             },
             "forecast": {
                 "dates":           pd.DatetimeIndex(out_dates).strftime("%Y-%m-%d").tolist(),
@@ -658,6 +766,9 @@ async def forecast(req: ForecastRequest):
             "accuracy":          accuracy,
             "backtest_series":   backtest_series,
             "auto_L":            {"L_used": L, "period_detected": int(period) if period else None},
+            # Phase C: which estimator produced the forecast + the demand class.
+            "method":            forecast_method,
+            "demand_class":      demand_cls,
             "granularity":       "daily",
             "safe_max":          safe_max,
             "training_n":        n,

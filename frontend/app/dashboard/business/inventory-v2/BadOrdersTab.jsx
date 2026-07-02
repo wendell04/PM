@@ -33,13 +33,13 @@ function ResolveModal({ open, onClose, badOrder, material, onResolve }) {
       }
     >
       <div style={S.col}>
-        <div style={{ ...S.cardSm, background:'#f8f9fa' }}>
-          <div style={{ fontSize:'12px', color:'#9ca3af', marginBottom:'6px' }}>Bad Order Summary</div>
+        <div style={{ ...S.cardSm, background:'var(--dark2)' }}>
+          <div style={{ fontSize:'12px', color:'var(--gray)', marginBottom:'6px' }}>Bad Order Summary</div>
           <div style={{ fontWeight:600, fontSize:'14px' }}>{material?.name}</div>
-          <div style={{ fontSize:'12px', color:'#6b7280', marginTop:'4px' }}>
+          <div style={{ fontSize:'12px', color:'var(--gray)', marginTop:'4px' }}>
             Qty: <b>{badOrder?.qty}</b> · Type: <b>{badOrder?.type?.replace('_',' ')}</b> · Invoice: <b>{badOrder?.invoiceNo}</b>
           </div>
-          {badOrder?.notes && <div style={{ fontSize:'12px', color:'#6b7280', marginTop:'4px' }}>{badOrder.notes}</div>}
+          {badOrder?.notes && <div style={{ fontSize:'12px', color:'var(--gray)', marginTop:'4px' }}>{badOrder.notes}</div>}
         </div>
 
         <Field label="Resolution">
@@ -49,8 +49,8 @@ function ResolveModal({ open, onClose, badOrder, material, onResolve }) {
               {val:'refunded',   label:'Refunded'},
               {val:'written_off',label:'Written Off'},
             ].map(o => (
-              <label key={o.val} style={{ flex:1, minWidth:'120px', display:'flex', alignItems:'center', gap:'8px', padding:'10px 12px', border:`1px solid ${resolution === o.val ? '#c9973f' : '#e1e3e5'}`, borderRadius:'7px', cursor:'pointer', background: resolution === o.val ? '#fffbe8' : '#fff', transition:'all .12s' }}>
-                <input type="radio" name="resolution" value={o.val} checked={resolution === o.val} onChange={() => setResolution(o.val)} style={{ accentColor:'#c9973f' }} />
+              <label key={o.val} style={{ flex:1, minWidth:'120px', display:'flex', alignItems:'center', gap:'8px', padding:'10px 12px', border:`1px solid ${resolution === o.val ? 'var(--gold)' : 'var(--border)'}`, borderRadius:'7px', cursor:'pointer', background: resolution === o.val ? 'var(--gold-subtle)' : 'var(--dark)', transition:'all .12s' }}>
+                <input type="radio" name="resolution" value={o.val} checked={resolution === o.val} onChange={() => setResolution(o.val)} style={{ accentColor:'var(--gold)' }} />
                 <span style={{ fontSize:'13px', fontWeight: resolution === o.val ? 600 : 400 }}>{o.label}</span>
               </label>
             ))}
@@ -129,7 +129,7 @@ export default function BadOrdersTab({ badOrders, setBadOrders, materials, batch
       <div style={{ display:'flex', gap:'12px', flexWrap:'wrap' }}>
         <SummaryCard label="Pending"     value={pending}    color="#e65100" accent />
         <SummaryCard label="Replaced"    value={replaced}   color="#2e7d32" />
-        <SummaryCard label="Written Off" value={writtenOff} color="#6b7280" />
+        <SummaryCard label="Written Off" value={writtenOff} color="var(--gray)" />
         <SummaryCard label="Total Loss"  value={formatCurrency(totalLoss)} color="#c62828" />
       </div>
 
@@ -165,17 +165,17 @@ export default function BadOrdersTab({ badOrders, setBadOrders, materials, batch
               ) : slice.map(b => {
                 const mat = materials.find(m => m.id === b.matId);
                 return (
-                  <tr key={b.id} style={S.tr} onMouseEnter={e => e.currentTarget.style.background='#fafbfc'} onMouseLeave={e => e.currentTarget.style.background=''}>
+                  <tr key={b.id} style={S.tr} onMouseEnter={e => e.currentTarget.style.background='var(--dark2)'} onMouseLeave={e => e.currentTarget.style.background=''}>
                     <td style={{ ...S.td, whiteSpace:'nowrap' }}>{formatDate(b.date)}</td>
-                    <td style={{ ...S.td, fontFamily:'monospace', fontSize:'12px', color:'#6b7280' }}>{b.invoiceNo}</td>
+                    <td style={{ ...S.td, fontFamily:'monospace', fontSize:'12px', color:'var(--gray)' }}>{b.invoiceNo}</td>
                     <td style={{ ...S.td, fontWeight:500 }}>{b.matName}</td>
                     <td style={{ ...S.td, textAlign:'right', fontWeight:600, color:'#c62828' }}>{b.qty} {mat?.unit}</td>
                     <td style={S.td}><StatusBadge status={b.type} /></td>
-                    <td style={{ ...S.td, fontSize:'12px', color:'#6b7280', maxWidth:'180px' }}>{b.notes}</td>
+                    <td style={{ ...S.td, fontSize:'12px', color:'var(--gray)', maxWidth:'180px' }}>{b.notes}</td>
                     <td style={S.td}><StatusBadge status={b.status} /></td>
-                    <td style={{ ...S.td, fontSize:'12px', color:'#6b7280' }}>
+                    <td style={{ ...S.td, fontSize:'12px', color:'var(--gray)' }}>
                       {b.resolvedDate ? formatDate(b.resolvedDate) : ''}
-                      {b.resolvedNotes && <div style={{ color:'#9ca3af', marginTop:'2px' }}>{b.resolvedNotes}</div>}
+                      {b.resolvedNotes && <div style={{ color:'var(--gray)', marginTop:'2px' }}>{b.resolvedNotes}</div>}
                     </td>
                     <td style={{ ...S.td, textAlign:'center' }}>
                       {b.status === 'pending' && (
@@ -188,7 +188,7 @@ export default function BadOrdersTab({ badOrders, setBadOrders, materials, batch
             </tbody>
           </table>
         </div>
-        <div style={{ padding:'12px 16px', borderTop:'1px solid #f0f1f2' }}>
+        <div style={{ padding:'12px 16px', borderTop:'1px solid var(--border)' }}>
           <PaginationBar total={total} page={page} perPage={perPage} onPage={setPage} onPerPage={setPerPage} />
         </div>
       </div>

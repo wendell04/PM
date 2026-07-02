@@ -1130,7 +1130,7 @@ export default function SettingsPage() {
           {twoFactorEnabled ? 'Enabled' : 'Disabled'}
         </span>
         <button onClick={handleToggle2FA} disabled={twoFaToggling} aria-pressed={twoFactorEnabled} style={{ position: 'relative', width: '44px', height: '24px', borderRadius: '12px', border: 'none', cursor: twoFaToggling ? 'not-allowed' : 'pointer', background: twoFactorEnabled ? 'var(--gold)' : 'var(--border)', transition: 'background 0.2s', padding: 0, opacity: twoFaToggling ? 0.6 : 1, flexShrink: 0 }}>
-          <span style={{ position: 'absolute', top: '3px', left: twoFactorEnabled ? '23px' : '3px', width: '18px', height: '18px', borderRadius: '50%', background: '#fff', transition: 'left 0.2s' }} />
+          <span style={{ position: 'absolute', top: '3px', left: twoFactorEnabled ? '23px' : '3px', width: '18px', height: '18px', borderRadius: '50%', background: 'var(--dark)', transition: 'left 0.2s' }} />
         </button>
       </div>
 
@@ -1196,7 +1196,7 @@ export default function SettingsPage() {
           <div style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--white)', marginBottom: '1rem' }}>Scan this QR code with your authenticator app</div>
           <div style={{ display: 'flex', gap: '1.25rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
             {totpQr && (
-              <div dangerouslySetInnerHTML={{ __html: totpQr }} style={{ width: '160px', height: '160px', background: '#fff', borderRadius: '8px', padding: '8px', flexShrink: 0 }} />
+              <div dangerouslySetInnerHTML={{ __html: totpQr }} style={{ width: '160px', height: '160px', background: 'var(--dark)', borderRadius: '8px', padding: '8px', flexShrink: 0 }} />
             )}
             <div style={{ flex: 1, minWidth: '200px', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
               {totpSecret && (

@@ -11,13 +11,13 @@ import { S, ICONS, SearchBar, SummaryCard, PaginationBar, EmptyState, usePaginat
 // and materials are consumed. Fail -> back to production for reprint (materials stay reserved).
 
 const JO_BADGE = {
-  'QC_Pending': { bg: '#f5f3ff', color: '#5b21b6', border: '#ddd6fe', label: 'For QC' },
-  'QC_Failed':  { bg: '#fef2f2', color: '#991b1b', border: '#fecaca', label: 'Rework' },
-  'QC_Passed':  { bg: '#f0fdf4', color: '#166534', border: '#bbf7d0', label: 'Passed' },
+  'QC_Pending': { bg: 'var(--st-purple-bg)', color: 'var(--st-purple-fg)', border: 'rgba(168,85,247,0.35)', label: 'For QC' },
+  'QC_Failed':  { bg: 'var(--st-red-bg)', color: 'var(--st-red-fg)', border: 'rgba(239,68,68,0.35)', label: 'Rework' },
+  'QC_Passed':  { bg: 'var(--st-green-bg)', color: 'var(--st-green-fg)', border: 'rgba(34,197,94,0.35)', label: 'Passed' },
 };
 
 function StatusBadge({ status }) {
-  const c = JO_BADGE[status] || { bg: '#f3f4f6', color: '#6b7280', border: '#e1e3e5', label: status };
+  const c = JO_BADGE[status] || { bg: 'var(--dark2)', color: 'var(--gray)', border: 'var(--border)', label: status };
   return <span style={{ ...S.badge, background: c.bg, color: c.color, border: `1px solid ${c.border}`, fontSize: '11px' }}>{c.label}</span>;
 }
 
@@ -95,8 +95,8 @@ export default function QualityControlPage() {
       <div style={S.page}>
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '16px' }}>
           <SummaryCard label="Pending QC" value={counts.pending} accent />
-          <SummaryCard label="Rework (Failed)" value={counts.rework} color="#991b1b" />
-          <SummaryCard label="Passed" value={counts.passed} color="#166534" />
+          <SummaryCard label="Rework (Failed)" value={counts.rework} color="var(--st-red-fg)" />
+          <SummaryCard label="Passed" value={counts.passed} color="var(--st-green-fg)" />
         </div>
 
         <div style={{ ...S.card, ...S.rowBetween, marginBottom: '10px', padding: '12px 16px' }}>
@@ -106,7 +106,7 @@ export default function QualityControlPage() {
           <button onClick={load} style={S.btnGhost}>{ICONS.reload} Refresh</button>
         </div>
 
-        {error && <div style={{ ...S.note, background: '#fef2f2', borderColor: '#fecaca', color: '#991b1b', marginBottom: '10px' }}>{error}</div>}
+        {error && <div style={{ ...S.note, background: 'var(--st-red-bg)', borderColor: 'rgba(239,68,68,0.35)', color: 'var(--st-red-fg)', marginBottom: '10px' }}>{error}</div>}
 
         <div style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -117,7 +117,7 @@ export default function QualityControlPage() {
             </tr></thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={7} style={{ ...S.td, textAlign: 'center', color: '#9ca3af' }}>Loading…</td></tr>
+                <tr><td colSpan={7} style={{ ...S.td, textAlign: 'center', color: 'var(--gray)' }}>Loading…</td></tr>
               ) : slice.length === 0 ? (
                 <tr><td colSpan={7} style={{ padding: 0 }}><EmptyState message="Nothing to inspect" sub="Job orders appear here once production sends them For QC." /></td></tr>
               ) : slice.map(j => {
@@ -126,13 +126,13 @@ export default function QualityControlPage() {
                   <tr key={id} style={S.tr}>
                     <td style={{ ...S.td, fontFamily: 'monospace', fontWeight: 600 }}>
                       {j.joId || '—'}
-                      {j.isRush && <span style={{ ...S.badge, background: '#fef2f2', color: '#991b1b', border: '1px solid #fecaca', marginLeft: 6, fontSize: '10px' }}>RUSH</span>}
+                      {j.isRush && <span style={{ ...S.badge, background: 'var(--st-red-bg)', color: 'var(--st-red-fg)', border: '1px solid #fecaca', marginLeft: 6, fontSize: '10px' }}>RUSH</span>}
                     </td>
                     <td style={S.td}>{prodName(j)}</td>
                     <td style={S.td}>{j.product?.quantity ?? '—'}</td>
                     <td style={{ ...S.td, fontFamily: 'monospace' }}>{(j.orderId || '').slice(-8).toUpperCase() || '—'}</td>
                     <td style={S.td}><StatusBadge status={j.joStatus} /></td>
-                    <td style={{ ...S.td, color: '#6b7280', maxWidth: 220 }}>{j.qcResult?.defects || '—'}</td>
+                    <td style={{ ...S.td, color: 'var(--gray)', maxWidth: 220 }}>{j.qcResult?.defects || '—'}</td>
                     <td style={{ ...S.td, textAlign: 'right', whiteSpace: 'nowrap' }}>
                       <button disabled={busy} onClick={() => pass(j)} style={{ ...S.btnSm, background: '#16a34a' }}>{busy ? '…' : 'Pass'}</button>
                       <button disabled={busy} onClick={() => { setFailJob(j); setDefects(''); }} style={{ ...S.btnSmDanger, marginLeft: 6 }}>Fail</button>
@@ -148,8 +148,8 @@ export default function QualityControlPage() {
         {failJob && (
           <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: 16 }} onClick={() => !busyId && setFailJob(null)}>
             <div style={{ ...S.card, width: 440, maxWidth: '100%' }} onClick={e => e.stopPropagation()}>
-              <h3 style={{ margin: '0 0 4px', fontSize: '15px', fontWeight: 700, color: '#1a1a2e' }}>Fail QC — {failJob.joId}</h3>
-              <p style={{ margin: '0 0 12px', fontSize: '12px', color: '#6b7280' }}>{prodName(failJob)} · x{failJob.product?.quantity ?? 1}. The job returns to production for reprint; materials stay reserved.</p>
+              <h3 style={{ margin: '0 0 4px', fontSize: '15px', fontWeight: 700, color: 'var(--white)' }}>Fail QC — {failJob.joId}</h3>
+              <p style={{ margin: '0 0 12px', fontSize: '12px', color: 'var(--gray)' }}>{prodName(failJob)} · x{failJob.product?.quantity ?? 1}. The job returns to production for reprint; materials stay reserved.</p>
               <label style={S.label}>Defect details</label>
               <textarea style={{ ...S.textarea }} value={defects} onChange={e => setDefects(e.target.value.slice(0, 1000))} placeholder="What went wrong? (misprint, color, alignment, smudge…)" />
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>

@@ -1085,7 +1085,7 @@ export default function BannerManagementPage() {
                       <input type="text" className="banner-form-input" style={{ flex: 1 }} value={editedBanner?.headlineAccent || ''} onChange={(e) => updateField('headlineAccent', e.target.value.slice(0, 60))} placeholder="Colored word(s) appended to headline…" maxLength={60} disabled={isLive} />
                       <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
                         {['gold', 'red', 'white'].map(c => {
-                          const bg = c === 'gold' ? '#c9973f' : c === 'red' ? '#dc2626' : '#f5f5f5';
+                          const bg = c === 'gold' ? 'var(--gold)' : c === 'red' ? '#dc2626' : '#f5f5f5';
                           const active = (editedBanner?.headlineAccentColor || 'gold') === c;
                           return (
                             <button key={c} type="button" title={c} onClick={() => updateField('headlineAccentColor', c)}
@@ -1101,7 +1101,7 @@ export default function BannerManagementPage() {
                       <input type="text" className="banner-form-input" style={{ flex: 1 }} value={editedBanner?.headlineAccent2 || ''} onChange={(e) => updateField('headlineAccent2', e.target.value.slice(0, 60))} placeholder="Optional third word/phrase…" maxLength={60} disabled={isLive} />
                       <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
                         {['gold', 'red', 'white'].map(c => {
-                          const bg = c === 'gold' ? '#c9973f' : c === 'red' ? '#dc2626' : '#f5f5f5';
+                          const bg = c === 'gold' ? 'var(--gold)' : c === 'red' ? '#dc2626' : '#f5f5f5';
                           const active = (editedBanner?.headlineAccent2Color || 'gold') === c;
                           return (
                             <button key={c} type="button" title={c} onClick={() => updateField('headlineAccent2Color', c)}

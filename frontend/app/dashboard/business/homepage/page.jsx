@@ -19,7 +19,7 @@ import ErrorBoundary from '@/components/ErrorBoundary';
 import HeroImagePositioner from '@/components/cms/HeroImagePositioner';
 
 const ACCENTS = ['gold', 'red', 'white'];
-const accentBg = (c) => (c === 'gold' ? '#c9973f' : c === 'red' ? '#dc2626' : '#f5f5f5');
+const accentBg = (c) => (c === 'gold' ? 'var(--gold)' : c === 'red' ? '#dc2626' : 'var(--dark2)');
 // titleParts = ordered colored segments. Falls back to legacy headline+accent1+accent2 for old taglines.
 const partsOf = (t) => {
   if (Array.isArray(t?.titleParts) && t.titleParts.length) return t.titleParts;
@@ -29,7 +29,7 @@ const partsOf = (t) => {
   if (t?.headlineAccent2) arr.push({ text: t.headlineAccent2, color: t.headlineAccent2Color || 'gold', newLine: !!t.headlineBreak2 });
   return arr.length ? arr : [{ text: '', color: 'white', newLine: false }];
 };
-const partColorStyle = (c) => ({ color: c === 'gold' ? '#c9973f' : c === 'red' ? '#dc2626' : c === 'white' || !c ? '#f5f5f5' : c });
+const partColorStyle = (c) => ({ color: c === 'gold' ? 'var(--gold)' : c === 'red' ? '#dc2626' : c === 'white' || !c ? 'var(--dark2)' : c });
 // Perceived luminance (0..1) of a #rrggbb color; null if not a hex. Used to flag colors too dark for the dark hero.
 const hexLum = (hex) => { const m = /^#?([0-9a-f]{6})$/i.exec(hex || ''); if (!m) return null; const n = parseInt(m[1], 16); return (0.299 * ((n >> 16) & 255) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) / 255; };
 const lowContrast = (color) => { if (!color || ACCENTS.includes(color)) return false; const l = hexLum(color); return l !== null && l < 0.32; };
@@ -425,7 +425,7 @@ export default function HomepageCmsPage() {
                   <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp" style={{ display: 'none' }} onChange={e => upload(e.target.files[0])} />
                   <div onClick={() => fileRef.current?.click()} onDragOver={e => { e.preventDefault(); setDragOver(true); }} onDragLeave={() => setDragOver(false)} onDrop={e => { e.preventDefault(); setDragOver(false); upload(e.dataTransfer.files[0]); }}
                     style={{ aspectRatio: '16/7', borderRadius: 10, border: `2px dashed ${dragOver ? 'var(--gold)' : 'var(--border)'}`, background: 'var(--dark2)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', cursor: 'pointer' }}>
-                    {editImg.image ? /* eslint-disable-next-line @next/next/no-img-element */ <img src={editImg.image} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain', objectPosition: 'center center', background: '#fff' }} /> : <span style={{ color: 'var(--gray)', fontSize: '0.82rem' }}>Drop / click to upload</span>}
+                    {editImg.image ? /* eslint-disable-next-line @next/next/no-img-element */ <img src={editImg.image} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain', objectPosition: 'center center', background: 'var(--dark)' }} /> : <span style={{ color: 'var(--gray)', fontSize: '0.82rem' }}>Drop / click to upload</span>}
                   </div>
                 </div>
               </div>
@@ -561,7 +561,7 @@ export default function HomepageCmsPage() {
                     </div>
                     <span style={{ fontSize: '0.72rem', fontWeight: 700, color: on ? 'var(--gold)' : 'var(--gray)', minWidth: 28 }}>{on ? 'ON' : 'OFF'}</span>
                     <button type="button" role="switch" aria-checked={on} onClick={() => setPayment(p => ({ ...p, [m.id]: !on }))} style={{ flex: '0 0 auto', width: 46, height: 26, borderRadius: 999, border: 'none', cursor: 'pointer', background: on ? 'linear-gradient(135deg,var(--gold-light),var(--gold-dark))' : 'var(--dark3)', position: 'relative', transition: 'background 0.18s' }}>
-                      <span style={{ position: 'absolute', top: 3, left: on ? 23 : 3, width: 20, height: 20, borderRadius: '50%', background: '#fff', transition: 'left 0.18s' }} />
+                      <span style={{ position: 'absolute', top: 3, left: on ? 23 : 3, width: 20, height: 20, borderRadius: '50%', background: 'var(--dark)', transition: 'left 0.18s' }} />
                     </button>
                   </div>
                 );
@@ -587,7 +587,7 @@ export default function HomepageCmsPage() {
               <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
                 {modal.type === 'confirm' ? (<>
                   <button onClick={() => setModal(null)} style={{ padding: '0.55rem 1.1rem', borderRadius: 8, border: '1px solid var(--border)', background: 'transparent', color: 'var(--gray-light)', cursor: 'pointer' }}>Cancel</button>
-                  <button onClick={modal.onConfirm} disabled={busy} style={{ padding: '0.55rem 1.1rem', borderRadius: 8, border: 'none', background: 'linear-gradient(135deg,#dc2626,#991b1b)', color: '#fff', cursor: 'pointer' }}>{busy ? 'Deleting…' : 'Delete'}</button>
+                  <button onClick={modal.onConfirm} disabled={busy} style={{ padding: '0.55rem 1.1rem', borderRadius: 8, border: 'none', background: 'linear-gradient(135deg,#dc2626,#991b1b)', color: 'var(--dark)', cursor: 'pointer' }}>{busy ? 'Deleting…' : 'Delete'}</button>
                 </>) : (
                   <button onClick={() => setModal(null)} style={{ padding: '0.55rem 1.1rem', borderRadius: 8, border: 'none', background: 'linear-gradient(135deg,var(--gold-light),var(--gold-dark))', color: 'var(--black)', cursor: 'pointer' }}>{modal.type === 'success' ? 'Done' : 'OK'}</button>
                 )}

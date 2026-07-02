@@ -17,9 +17,9 @@ function Toggle({ on, onChange }) {
   return (
     <button type="button" onClick={() => onChange(!on)}
       style={{ position: 'relative', width: '40px', height: '22px', borderRadius: '11px', border: 'none',
-        cursor: 'pointer', background: on ? '#c9973f' : '#e1e3e5', flexShrink: 0, transition: 'background .15s' }}>
+        cursor: 'pointer', background: on ? 'var(--gold)' : 'var(--border)', flexShrink: 0, transition: 'background .15s' }}>
       <span style={{ position: 'absolute', top: '3px', left: on ? '21px' : '3px', width: '16px', height: '16px',
-        borderRadius: '50%', background: '#fff', transition: 'left .15s', boxShadow: '0 1px 3px rgba(0,0,0,.2)' }} />
+        borderRadius: '50%', background: 'var(--dark)', transition: 'left .15s', boxShadow: '0 1px 3px rgba(0,0,0,.2)' }} />
     </button>
   );
 }
@@ -41,7 +41,7 @@ function ProductPicker({ selected, onChange, products }) {
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-        <span style={{ fontSize: '12px', color: '#6b7280', fontWeight: 600 }}>
+        <span style={{ fontSize: '12px', color: 'var(--gray)', fontWeight: 600 }}>
           {selected.length} product{selected.length !== 1 ? 's' : ''} selected
         </span>
         {selected.length > 0 && (
@@ -53,31 +53,31 @@ function ProductPicker({ selected, onChange, products }) {
       </div>
       <input placeholder="Search products..." value={search} onChange={e => setSearch(e.target.value)}
         style={{ ...S.input, marginBottom: '8px' }} />
-      <div style={{ maxHeight: '240px', overflowY: 'auto', border: '1px solid #e1e3e5', borderRadius: '8px' }}>
+      <div style={{ maxHeight: '240px', overflowY: 'auto', border: '1px solid var(--border)', borderRadius: '8px' }}>
         {visible.length === 0 && (
-          <div style={{ padding: '16px', textAlign: 'center', color: '#9ca3af', fontSize: '13px' }}>No products found</div>
+          <div style={{ padding: '16px', textAlign: 'center', color: 'var(--gray)', fontSize: '13px' }}>No products found</div>
         )}
         {visible.map(p => {
           const checked = selected.includes(p.id);
           return (
             <label key={p.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 12px',
-              cursor: 'pointer', borderBottom: '1px solid #f0f1f2',
-              background: checked ? '#fffbe8' : 'transparent', transition: 'background .1s' }}>
+              cursor: 'pointer', borderBottom: '1px solid var(--border)',
+              background: checked ? 'var(--gold-subtle)' : 'transparent', transition: 'background .1s' }}>
               <input type="checkbox" checked={checked} onChange={() => toggle(p.id)}
-                style={{ accentColor: '#c9973f', width: '15px', height: '15px', flexShrink: 0, cursor: 'pointer' }} />
+                style={{ accentColor: 'var(--gold)', width: '15px', height: '15px', flexShrink: 0, cursor: 'pointer' }} />
               {p.thumbnail && (
-                <img src={p.thumbnail} alt="" style={{ width: '32px', height: '32px', objectFit: 'cover', borderRadius: '5px', flexShrink: 0, border: '1px solid #e1e3e5' }} />
+                <img src={p.thumbnail} alt="" style={{ width: '32px', height: '32px', objectFit: 'cover', borderRadius: '5px', flexShrink: 0, border: '1px solid var(--border)' }} />
               )}
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: '13px', fontWeight: 600, color: '#1a1a2e', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--white)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {p.name}
                 </div>
-                <div style={{ fontSize: '11px', color: '#9ca3af' }}>
+                <div style={{ fontSize: '11px', color: 'var(--gray)' }}>
                   {p.type === 'multi-variant' ? `${p.variants?.length || 0} variants` : 'Standalone'}
                 </div>
               </div>
               {!p.isPublished && (
-                <span style={{ fontSize: '10px', color: '#9ca3af', background: '#f3f4f6', borderRadius: '4px', padding: '1px 6px', flexShrink: 0 }}>
+                <span style={{ fontSize: '10px', color: 'var(--gray)', background: 'var(--dark2)', borderRadius: '4px', padding: '1px 6px', flexShrink: 0 }}>
                   Draft
                 </span>
               )}
@@ -123,35 +123,35 @@ function CollectionModal({ existing, onClose, onSave, products, token }) {
     onSave({ ...form, slug: form.slug || toSlug(form.title) });
   };
 
-  const LabelStyle = { display: 'block', fontSize: '12px', fontWeight: 700, color: '#374151', marginBottom: '5px' };
+  const LabelStyle = { display: 'block', fontSize: '12px', fontWeight: 700, color: 'var(--gray-light)', marginBottom: '5px' };
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1000,
       display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}
       onClick={e => e.target === e.currentTarget && onClose()}>
-      <div style={{ background: '#fff', borderRadius: '12px', width: '100%', maxWidth: '580px',
+      <div style={{ background: 'var(--dark)', borderRadius: '12px', width: '100%', maxWidth: '580px',
         maxHeight: '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden',
-        boxShadow: '0 20px 60px rgba(0,0,0,0.18)', border: '1px solid #e1e3e5' }}>
+        boxShadow: '0 20px 60px rgba(0,0,0,0.18)', border: '1px solid var(--border)' }}>
 
         {/* Header */}
-        <div style={{ padding: '16px 20px', borderBottom: '1px solid #e1e3e5',
+        <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)',
           display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
-          <div style={{ fontWeight: 700, fontSize: '15px', color: '#1a1a2e' }}>
+          <div style={{ fontWeight: 700, fontSize: '15px', color: 'var(--white)' }}>
             {existing ? `Edit "${existing.title}"` : 'New Collection'}
           </div>
           <button onClick={onClose}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280', fontSize: '22px', lineHeight: 1, padding: '2px' }}>
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--gray)', fontSize: '22px', lineHeight: 1, padding: '2px' }}>
             ×
           </button>
         </div>
 
         {/* Tabs */}
-        <div style={{ display: 'flex', borderBottom: '1px solid #e1e3e5', padding: '0 20px', flexShrink: 0 }}>
+        <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', padding: '0 20px', flexShrink: 0 }}>
           {[['basic', 'Basic Info'], ['products', `Products (${form.productIds.length})`]].map(([k, label]) => (
             <button key={k} type="button" onClick={() => setTab(k)}
               style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '10px 14px', fontSize: '13px', fontWeight: 600,
-                color: tab === k ? '#c9973f' : '#6b7280',
-                borderBottom: tab === k ? '2px solid #c9973f' : '2px solid transparent',
+                color: tab === k ? 'var(--gold)' : 'var(--gray)',
+                borderBottom: tab === k ? '2px solid var(--gold)' : '2px solid transparent',
                 marginBottom: '-1px' }}>
               {label}
             </button>
@@ -182,7 +182,7 @@ function CollectionModal({ existing, onClose, onSave, products, token }) {
                     </button>
                   )}
                 </div>
-                <div style={{ fontSize: '11px', color: '#9ca3af', marginTop: '4px' }}>
+                <div style={{ fontSize: '11px', color: 'var(--gray)', marginTop: '4px' }}>
                   /collections/{form.slug}
                 </div>
               </div>
@@ -192,7 +192,7 @@ function CollectionModal({ existing, onClose, onSave, products, token }) {
                 <textarea value={form.description} onChange={e => set('description', e.target.value)}
                   placeholder="Optional, shown on the storefront collection page" maxLength={400}
                   style={S.textarea} />
-                <div style={{ fontSize: '11px', color: '#9ca3af', textAlign: 'right', marginTop: '2px' }}>
+                <div style={{ fontSize: '11px', color: 'var(--gray)', textAlign: 'right', marginTop: '2px' }}>
                   {form.description.length}/400
                 </div>
               </div>
@@ -203,10 +203,10 @@ function CollectionModal({ existing, onClose, onSave, products, token }) {
                   <div style={{ position: 'relative', marginTop: '4px' }}>
                     <img src={form.image} alt="cover"
                       style={{ width: '100%', maxHeight: '160px', objectFit: 'cover',
-                        borderRadius: '8px', border: '1px solid #e1e3e5', display: 'block' }} />
+                        borderRadius: '8px', border: '1px solid var(--border)', display: 'block' }} />
                     <button type="button" onClick={() => set('image', '')}
                       style={{ position: 'absolute', top: '6px', right: '6px', width: '24px', height: '24px',
-                        borderRadius: '50%', background: 'rgba(0,0,0,0.55)', border: 'none', color: '#fff',
+                        borderRadius: '50%', background: 'rgba(0,0,0,0.55)', border: 'none', color: 'var(--dark)',
                         fontSize: '14px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}>
                       ×
                     </button>
@@ -217,23 +217,23 @@ function CollectionModal({ existing, onClose, onSave, products, token }) {
                     onDragOver={e => e.preventDefault()}
                     onPaste={e => { const f = Array.from(e.clipboardData?.items || []).find(i => i.type.startsWith('image/'))?.getAsFile(); if (f) handleImageFile(f); }}
                     tabIndex={0}
-                    style={{ marginTop: '4px', border: '1.5px dashed #d1d5db', borderRadius: '8px',
-                      padding: '24px 16px', textAlign: 'center', background: '#fafafa', cursor: 'default', outline: 'none' }}>
+                    style={{ marginTop: '4px', border: '1.5px dashed var(--border)', borderRadius: '8px',
+                      padding: '24px 16px', textAlign: 'center', background: 'var(--dark2)', cursor: 'default', outline: 'none' }}>
                     {imgUploading ? (
-                      <span style={{ fontSize: '13px', color: '#9ca3af' }}>Uploading…</span>
+                      <span style={{ fontSize: '13px', color: 'var(--gray)' }}>Uploading…</span>
                     ) : (
                       <>
-                        <div style={{ fontSize: '22px', marginBottom: '6px', color: '#d1d5db' }}>↑</div>
-                        <div style={{ fontSize: '13px', color: '#6b7280', marginBottom: '10px' }}>
+                        <div style={{ fontSize: '22px', marginBottom: '6px', color: 'var(--border)' }}>↑</div>
+                        <div style={{ fontSize: '13px', color: 'var(--gray)', marginBottom: '10px' }}>
                           Drag &amp; drop or
-                          <label style={{ marginLeft: '6px', color: '#c9973f', fontWeight: 600, cursor: 'pointer' }}>
+                          <label style={{ marginLeft: '6px', color: 'var(--gold)', fontWeight: 600, cursor: 'pointer' }}>
                             Upload image
                             <input type="file" accept="image/*" style={{ display: 'none' }}
                               onChange={e => { if (e.target.files?.[0]) handleImageFile(e.target.files[0]); e.target.value = ''; }} />
                           </label>
                         </div>
                         <button type="button" onClick={() => setImgUrlMode(v => !v)}
-                          style={{ fontSize: '11px', color: '#9ca3af', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>
+                          style={{ fontSize: '11px', color: 'var(--gray)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>
                           {imgUrlMode ? 'hide URL input' : 'or enter URL'}
                         </button>
                         {imgUrlMode && (
@@ -247,12 +247,12 @@ function CollectionModal({ existing, onClose, onSave, products, token }) {
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                padding: '12px 14px', background: '#f9fafb', borderRadius: '8px', border: '1px solid #f0f1f2' }}>
+                padding: '12px 14px', background: 'var(--dark2)', borderRadius: '8px', border: '1px solid var(--border)' }}>
                 <div>
-                  <div style={{ fontSize: '13px', fontWeight: 600, color: '#374151' }}>
+                  <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--gray-light)' }}>
                     {form.isPublished ? 'Published' : 'Draft'}
                   </div>
-                  <div style={{ fontSize: '11px', color: '#9ca3af', marginTop: '2px' }}>
+                  <div style={{ fontSize: '11px', color: 'var(--gray)', marginTop: '2px' }}>
                     {form.isPublished ? 'Visible in the storefront' : 'Hidden from customers'}
                   </div>
                 </div>
@@ -260,13 +260,13 @@ function CollectionModal({ existing, onClose, onSave, products, token }) {
               </div>
 
               {/* Landing Page Section */}
-              <div style={{ borderTop: '1px solid #f0f1f2', paddingTop: '14px' }}>
-                <div style={{ fontSize: '11px', fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '10px' }}>Landing Page</div>
+              <div style={{ borderTop: '1px solid var(--border)', paddingTop: '14px' }}>
+                <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '10px' }}>Landing Page</div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                  padding: '12px 14px', background: '#f9fafb', borderRadius: '8px', border: '1px solid #f0f1f2', marginBottom: '10px' }}>
+                  padding: '12px 14px', background: 'var(--dark2)', borderRadius: '8px', border: '1px solid var(--border)', marginBottom: '10px' }}>
                   <div>
-                    <div style={{ fontSize: '13px', fontWeight: 600, color: '#374151' }}>Show on Landing Page</div>
-                    <div style={{ fontSize: '11px', color: '#9ca3af', marginTop: '2px' }}>
+                    <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--gray-light)' }}>Show on Landing Page</div>
+                    <div style={{ fontSize: '11px', color: 'var(--gray)', marginTop: '2px' }}>
                       {form.landing_order ? `Order position: ${form.landing_order}` : 'Not shown on landing page'}
                     </div>
                   </div>
@@ -286,7 +286,7 @@ function CollectionModal({ existing, onClose, onSave, products, token }) {
                           onChange={e => set('landing_order', Math.max(1, parseInt(e.target.value) || 1))}
                           style={{ ...S.input, width: '80px', textAlign: 'center' }}
                         />
-                        <span style={{ fontSize: '11px', color: '#9ca3af' }}>Every 4 = 1 dot page</span>
+                        <span style={{ fontSize: '11px', color: 'var(--gray)' }}>Every 4 = 1 dot page</span>
                       </div>
                     </div>
                     <div>
@@ -303,19 +303,19 @@ function CollectionModal({ existing, onClose, onSave, products, token }) {
                               onClick={() => set('landing_image_position', pos)}
                               style={{
                                 width: '36px', height: '36px', borderRadius: '5px',
-                                border: `2px solid ${active ? '#c9973f' : '#e1e3e5'}`,
-                                background: active ? 'rgba(201,151,63,0.12)' : '#f9fafb',
+                                border: `2px solid ${active ? 'var(--gold)' : 'var(--border)'}`,
+                                background: active ? 'rgba(201,151,63,0.12)' : 'var(--dark2)',
                                 cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
                               }}>
                               <div style={{
                                 width: '8px', height: '8px', borderRadius: '50%',
-                                background: active ? '#c9973f' : '#d1d5db',
+                                background: active ? 'var(--gold)' : 'var(--border)',
                               }} />
                             </button>
                           );
                         })}
                       </div>
-                      <div style={{ fontSize: '11px', color: '#9ca3af', marginTop: '4px' }}>
+                      <div style={{ fontSize: '11px', color: 'var(--gray)', marginTop: '4px' }}>
                         {form.landing_image_position || 'center center'}
                       </div>
                     </div>
@@ -332,7 +332,7 @@ function CollectionModal({ existing, onClose, onSave, products, token }) {
         </div>
 
         {/* Footer */}
-        <div style={{ padding: '14px 20px', borderTop: '1px solid #e1e3e5',
+        <div style={{ padding: '14px 20px', borderTop: '1px solid var(--border)',
           display: 'flex', gap: '8px', justifyContent: 'flex-end', flexShrink: 0 }}>
           <button type="button" onClick={onClose} style={S.btnGhost}>Cancel</button>
           <button type="button" onClick={handleSave} style={S.btnPrimary} disabled={!form.title.trim()}>
@@ -455,7 +455,7 @@ export default function CollectionsPage() {
   if (loading) {
     return (
       <div style={{ ...S.page, display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '300px' }}>
-        <span style={{ color: '#9ca3af', fontSize: '14px' }}>Loading collections...</span>
+        <span style={{ color: 'var(--gray)', fontSize: '14px' }}>Loading collections...</span>
       </div>
     );
   }
@@ -470,21 +470,21 @@ export default function CollectionsPage() {
       <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginBottom: '20px' }}>
         <SummaryCard label="Total"     value={counts.all}       accent />
         <SummaryCard label="Published" value={counts.published} color="#2e7d32" />
-        <SummaryCard label="Draft"     value={counts.draft}     color="#6b7280" />
+        <SummaryCard label="Draft"     value={counts.draft}     color="var(--gray)" />
       </div>
 
       <div style={{ ...S.card, marginBottom: '16px' }}>
 
         {/* Tabs */}
-        <div style={{ display: 'flex', borderBottom: '1px solid #e1e3e5', padding: '0 16px' }}>
+        <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', padding: '0 16px' }}>
           {[['all', 'All'], ['published', 'Published'], ['draft', 'Draft']].map(([k, label]) => (
             <button key={k} onClick={() => setTab(k)}
               style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '12px 16px', fontSize: '13px', fontWeight: 600,
-                color: tab === k ? '#c9973f' : '#6b7280',
-                borderBottom: tab === k ? '2px solid #c9973f' : '2px solid transparent',
+                color: tab === k ? 'var(--gold)' : 'var(--gray)',
+                borderBottom: tab === k ? '2px solid var(--gold)' : '2px solid transparent',
                 marginBottom: '-1px', display: 'flex', alignItems: 'center', gap: '6px' }}>
               {label}
-              <span style={{ background: tab === k ? '#f5ede0' : '#f0f0f0', color: tab === k ? '#c9973f' : '#6b7280',
+              <span style={{ background: tab === k ? '#f5ede0' : '#f0f0f0', color: tab === k ? 'var(--gold)' : 'var(--gray)',
                 borderRadius: '20px', padding: '1px 8px', fontSize: '11px', fontWeight: 700 }}>
                 {counts[k]}
               </span>
@@ -493,7 +493,7 @@ export default function CollectionsPage() {
         </div>
 
         {/* Toolbar */}
-        <div style={{ padding: '12px 16px', borderBottom: '1px solid #f0f1f2' }}>
+        <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
           <SearchBar value={search} onChange={setSearch} placeholder="Search collections..." style={{ width: '240px' }} />
         </div>
 
@@ -510,13 +510,13 @@ export default function CollectionsPage() {
             <tbody>
               {slice.length === 0 ? (
                 <tr>
-                  <td colSpan={5} style={{ textAlign: 'center', padding: '48px', color: '#9ca3af', fontSize: '14px' }}>
+                  <td colSpan={5} style={{ textAlign: 'center', padding: '48px', color: 'var(--gray)', fontSize: '14px' }}>
                     No collections found
                   </td>
                 </tr>
               ) : slice.map(col => (
                 <tr key={col.id} style={S.tr}
-                  onMouseEnter={e => e.currentTarget.style.background = '#fafbfc'}
+                  onMouseEnter={e => e.currentTarget.style.background = 'var(--dark2)'}
                   onMouseLeave={e => e.currentTarget.style.background = ''}>
 
                   <td style={S.td}>
@@ -524,40 +524,40 @@ export default function CollectionsPage() {
                       {col.image
                         ? <img src={col.image} alt={col.title}
                             style={{ width: '40px', height: '40px', borderRadius: '7px', objectFit: 'cover',
-                              border: '1px solid #e1e3e5', flexShrink: 0 }} />
-                        : <div style={{ width: '40px', height: '40px', borderRadius: '7px', background: '#f4f6f8',
-                            border: '1px solid #e1e3e5', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            color: '#d1d5db', flexShrink: 0 }}>
+                              border: '1px solid var(--border)', flexShrink: 0 }} />
+                        : <div style={{ width: '40px', height: '40px', borderRadius: '7px', background: 'var(--dark2)',
+                            border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            color: 'var(--border)', flexShrink: 0 }}>
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
                               <path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"/>
                             </svg>
                           </div>
                       }
                       <div>
-                        <div style={{ fontWeight: 600, fontSize: '14px', color: '#1a1a2e' }}>{col.title}</div>
+                        <div style={{ fontWeight: 600, fontSize: '14px', color: 'var(--white)' }}>{col.title}</div>
                         {col.description
-                          ? <div style={{ fontSize: '11px', color: '#9ca3af', maxWidth: '280px',
+                          ? <div style={{ fontSize: '11px', color: 'var(--gray)', maxWidth: '280px',
                               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                               {col.description}
                             </div>
-                          : <div style={{ fontSize: '11px', color: '#d1d5db', fontStyle: 'italic' }}>No description</div>
+                          : <div style={{ fontSize: '11px', color: 'var(--border)', fontStyle: 'italic' }}>No description</div>
                         }
                       </div>
                     </div>
                   </td>
 
                   <td style={S.td}>
-                    <span style={{ fontSize: '12px', color: '#9ca3af', fontFamily: 'monospace',
-                      background: '#f4f6f8', padding: '2px 7px', borderRadius: '4px' }}>
+                    <span style={{ fontSize: '12px', color: 'var(--gray)', fontFamily: 'monospace',
+                      background: 'var(--dark2)', padding: '2px 7px', borderRadius: '4px' }}>
                       /{col.slug}
                     </span>
                   </td>
 
                   <td style={S.td}>
-                    <span style={{ fontSize: '13px', fontWeight: 700, color: '#374151' }}>
+                    <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--gray-light)' }}>
                       {col.productIds?.length ?? 0}
                     </span>
-                    <span style={{ fontSize: '11px', color: '#9ca3af', marginLeft: '3px' }}>
+                    <span style={{ fontSize: '11px', color: 'var(--gray)', marginLeft: '3px' }}>
                       product{(col.productIds?.length ?? 0) !== 1 ? 's' : ''}
                     </span>
                   </td>
@@ -565,12 +565,12 @@ export default function CollectionsPage() {
                   <td style={S.td}>
                     <button onClick={() => togglePublish(col.id)}
                       title={col.isPublished ? 'Click to unpublish' : 'Click to publish'}
-                      style={{ background: col.isPublished ? '#e9f5ea' : '#f3f4f6',
-                        color: col.isPublished ? '#2e7d32' : '#6b7280',
+                      style={{ background: col.isPublished ? '#e9f5ea' : 'var(--dark2)',
+                        color: col.isPublished ? '#2e7d32' : 'var(--gray)',
                         border: 'none', borderRadius: '20px', padding: '3px 12px', fontSize: '12px', fontWeight: 600,
                         cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
                       <span style={{ width: '6px', height: '6px', borderRadius: '50%',
-                        background: col.isPublished ? '#2e7d32' : '#9ca3af', flexShrink: 0 }} />
+                        background: col.isPublished ? '#2e7d32' : 'var(--gray)', flexShrink: 0 }} />
                       {col.isPublished ? 'Published' : 'Draft'}
                     </button>
                   </td>
@@ -588,7 +588,7 @@ export default function CollectionsPage() {
           </table>
         </div>
 
-        <div style={{ padding: '12px 16px', borderTop: '1px solid #f0f1f2' }}>
+        <div style={{ padding: '12px 16px', borderTop: '1px solid var(--border)' }}>
           <PaginationBar total={total} page={page} perPage={perPage} onPage={setPage} onPerPage={setPerPage} />
         </div>
       </div>

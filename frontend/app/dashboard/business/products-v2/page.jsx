@@ -207,7 +207,7 @@ export default function ProductsV2() {
 
   const modeBadge = (mode) => {
     const map = {
-      tiered:  { bg: '#fdf3e0', color: '#b8922f' },
+      tiered:  { bg: '#fdf3e0', color: 'var(--gold)' },
       fixed:   { bg: '#f0fdf4', color: '#15803d' },
       inquiry: { bg: '#fef9c3', color: '#854d0e' },
     };
@@ -222,13 +222,13 @@ export default function ProductsV2() {
 
   const collectionPills = (p) => {
     const titles = (p.collectionIds || []).map(id => collections.find(c => c.id === id)?.title).filter(Boolean);
-    if (!titles.length) return <span style={{ color: '#9ca3af', fontSize: '12px' }}>--</span>;
+    if (!titles.length) return <span style={{ color: 'var(--gray)', fontSize: '12px' }}>--</span>;
     return (
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
         {titles.slice(0, 2).map(t => (
-          <span key={t} style={{ fontSize: '11px', background: '#f3f4f6', borderRadius: '4px', padding: '2px 7px', color: '#374151' }}>{t}</span>
+          <span key={t} style={{ fontSize: '11px', background: 'var(--dark2)', borderRadius: '4px', padding: '2px 7px', color: 'var(--gray-light)' }}>{t}</span>
         ))}
-        {titles.length > 2 && <span style={{ fontSize: '11px', color: '#9ca3af' }}>+{titles.length - 2}</span>}
+        {titles.length > 2 && <span style={{ fontSize: '11px', color: 'var(--gray)' }}>+{titles.length - 2}</span>}
       </div>
     );
   };
@@ -254,7 +254,7 @@ export default function ProductsV2() {
       }).filter(v => v !== null);
       units = vals.length ? Math.min(...vals) : null;
     }
-    if (units === null) return <span style={{ color: '#9ca3af', fontSize: '12px' }}>--</span>;
+    if (units === null) return <span style={{ color: 'var(--gray)', fontSize: '12px' }}>--</span>;
     return (
       <span style={{ fontSize: '12px', fontWeight: 700, color: units > 0 ? '#2e7d32' : '#dc2626' }}>
         {units > 0 ? `${units} units` : 'Out of stock'}
@@ -308,7 +308,7 @@ export default function ProductsV2() {
   if (loading) {
     return (
       <div style={{ ...S.page, display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '300px' }}>
-        <span style={{ color: '#9ca3af', fontSize: '14px' }}>Loading products...</span>
+        <span style={{ color: 'var(--gray)', fontSize: '14px' }}>Loading products...</span>
       </div>
     );
   }
@@ -323,27 +323,27 @@ export default function ProductsV2() {
       <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginBottom: '20px' }}>
         <SummaryCard label="Total"     value={counts.all}       accent />
         <SummaryCard label="Published" value={counts.published} color="#2e7d32" />
-        <SummaryCard label="Draft"     value={counts.draft}     color="#6b7280" />
+        <SummaryCard label="Draft"     value={counts.draft}     color="var(--gray)" />
       </div>
 
       <div style={{ ...S.card, marginBottom: '16px' }}>
 
         {/* Tabs */}
-        <div style={{ display: 'flex', borderBottom: '1px solid #e1e3e5', padding: '0 16px' }}>
+        <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', padding: '0 16px' }}>
           {[['all', 'All'], ['published', 'Published'], ['draft', 'Draft']].map(([k, label]) => (
             <button key={k} onClick={() => setTab(k)}
               style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '12px 16px', fontSize: '13px', fontWeight: 600,
-                color: tab === k ? '#d4a843' : '#6b7280', borderBottom: tab === k ? '2px solid #d4a843' : '2px solid transparent',
+                color: tab === k ? 'var(--gold)' : 'var(--gray)', borderBottom: tab === k ? '2px solid var(--gold)' : '2px solid transparent',
                 marginBottom: '-1px', display: 'flex', alignItems: 'center', gap: '6px' }}>
               {label}
-              <span style={{ background: tab === k ? '#f5ede0' : '#f0f0f0', color: tab === k ? '#d4a843' : '#6b7280',
+              <span style={{ background: tab === k ? '#f5ede0' : '#f0f0f0', color: tab === k ? 'var(--gold)' : 'var(--gray)',
                 borderRadius: '20px', padding: '1px 8px', fontSize: '11px', fontWeight: 700 }}>{counts[k]}</span>
             </button>
           ))}
         </div>
 
         {/* Toolbar */}
-        <div style={{ ...S.rowBetween, padding: '12px 16px', borderBottom: '1px solid #f0f1f2' }}>
+        <div style={{ ...S.rowBetween, padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
             <SearchBar value={search} onChange={setSearch} placeholder="Search products..." style={{ width: '220px' }} />
             <CustomSelect value={colFilter} onChange={setColFilter}
@@ -364,22 +364,22 @@ export default function ProductsV2() {
             </thead>
             <tbody>
               {slice.length === 0 ? (
-                <tr><td colSpan={6} style={{ textAlign: 'center', padding: '48px', color: '#9ca3af', fontSize: '14px' }}>No products found</td></tr>
+                <tr><td colSpan={6} style={{ textAlign: 'center', padding: '48px', color: 'var(--gray)', fontSize: '14px' }}>No products found</td></tr>
               ) : slice.map(p => (
                 <React.Fragment key={p.id}>
                 <tr style={S.tr}
-                  onMouseEnter={e => e.currentTarget.style.background = '#fafbfc'}
+                  onMouseEnter={e => e.currentTarget.style.background = 'var(--dark2)'}
                   onMouseLeave={e => e.currentTarget.style.background = ''}>
 
                   <td style={S.td}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                       {p.thumbnail
-                        ? <img src={p.thumbnail} alt={p.name} style={{ width: '40px', height: '40px', borderRadius: '7px', objectFit: 'cover', border: '1px solid #e1e3e5' }} />
-                        : <div style={{ width: '40px', height: '40px', borderRadius: '7px', background: '#f4f6f8', border: '1px solid #e1e3e5', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#bbb', fontSize: '16px' }}>+</div>
+                        ? <img src={p.thumbnail} alt={p.name} style={{ width: '40px', height: '40px', borderRadius: '7px', objectFit: 'cover', border: '1px solid var(--border)' }} />
+                        : <div style={{ width: '40px', height: '40px', borderRadius: '7px', background: 'var(--dark2)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#bbb', fontSize: '16px' }}>+</div>
                       }
                       <div>
                         <div style={{ fontWeight: 600, fontSize: '14px' }}>{p.name}</div>
-                        <div style={{ fontSize: '11px', color: '#9ca3af' }}>
+                        <div style={{ fontSize: '11px', color: 'var(--gray)' }}>
                           {(p.type === 'multi-variant' || p.combinations?.length) ? `${(p.combinations || p.variants)?.length || 0} variants` : 'Standalone'}
                         </div>
                       </div>
@@ -391,7 +391,7 @@ export default function ProductsV2() {
                   <td style={S.td}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                       {modeBadge(p.pricingMode)}
-                      <span style={{ fontWeight: 700, color: p.pricingMode === 'inquiry' ? '#9ca3af' : '#d4a843', fontSize: '13px', whiteSpace: 'nowrap' }}>
+                      <span style={{ fontWeight: 700, color: p.pricingMode === 'inquiry' ? 'var(--gray)' : 'var(--gold)', fontSize: '13px', whiteSpace: 'nowrap' }}>
                         {priceDisplay(p)}
                       </span>
                     </div>
@@ -399,8 +399,8 @@ export default function ProductsV2() {
 
                   <td style={S.td}>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                      {p.isCustomizable && <span style={{ fontSize: '10px', background: '#fdf3e0', color: '#b8922f', borderRadius: '4px', padding: '2px 6px', fontWeight: 600 }}>Custom</span>}
-                      {p.isMadeToOrder  && <span style={{ fontSize: '10px', background: '#f3f4f6', color: '#374151', borderRadius: '4px', padding: '2px 6px', fontWeight: 600 }}>MTO</span>}
+                      {p.isCustomizable && <span style={{ fontSize: '10px', background: '#fdf3e0', color: 'var(--gold)', borderRadius: '4px', padding: '2px 6px', fontWeight: 600 }}>Custom</span>}
+                      {p.isMadeToOrder  && <span style={{ fontSize: '10px', background: 'var(--dark2)', color: 'var(--gray-light)', borderRadius: '4px', padding: '2px 6px', fontWeight: 600 }}>MTO</span>}
                       {p.allowCOD       && <span style={{ fontSize: '10px', background: '#f0fdf4', color: '#15803d', borderRadius: '4px', padding: '2px 6px', fontWeight: 600 }}>COD</span>}
                       {!p.allowCOD      && <span style={{ fontSize: '10px', background: '#fef2f2', color: '#dc2626', borderRadius: '4px', padding: '2px 6px', fontWeight: 600 }}>Online</span>}
                       {p.downpaymentPct > 0 && <span style={{ fontSize: '10px', background: '#fff8e1', color: '#b45309', borderRadius: '4px', padding: '2px 6px', fontWeight: 600 }}>{p.downpaymentPct}% DP</span>}
@@ -410,10 +410,10 @@ export default function ProductsV2() {
                   <td style={S.td}>
                     <button onClick={() => togglePublish(p.id)}
                       title={p.isPublished ? 'Click to unpublish' : 'Click to publish'}
-                      style={{ background: p.isPublished ? '#e9f5ea' : '#f3f4f6', color: p.isPublished ? '#2e7d32' : '#6b7280',
+                      style={{ background: p.isPublished ? '#e9f5ea' : 'var(--dark2)', color: p.isPublished ? '#2e7d32' : 'var(--gray)',
                         border: 'none', borderRadius: '20px', padding: '3px 12px', fontSize: '12px', fontWeight: 600,
                         cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
-                      <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: p.isPublished ? '#2e7d32' : '#9ca3af', flexShrink: 0 }} />
+                      <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: p.isPublished ? '#2e7d32' : 'var(--gray)', flexShrink: 0 }} />
                       {p.isPublished ? 'Published' : 'Draft'}
                     </button>
                   </td>
@@ -438,7 +438,7 @@ export default function ProductsV2() {
                 </tr>
                 {expandedStock === p.id && (
                   <tr>
-                    <td colSpan={6} style={{ padding:0, background:'#f8f9fa', borderBottom:'1px solid #e1e3e5' }}>
+                    <td colSpan={6} style={{ padding:0, background:'var(--dark2)', borderBottom:'1px solid var(--border)' }}>
                       <StockBreakdown product={p} boms={boms} materials={materials} />
                     </td>
                   </tr>
@@ -449,7 +449,7 @@ export default function ProductsV2() {
           </table>
         </div>
 
-        <div style={{ padding: '12px 16px', borderTop: '1px solid #f0f1f2' }}>
+        <div style={{ padding: '12px 16px', borderTop: '1px solid var(--border)' }}>
           <PaginationBar total={total} page={page} perPage={perPage} onPage={setPage} onPerPage={setPerPage} />
         </div>
       </div>
@@ -496,7 +496,7 @@ function StockBreakdown({ product, boms, materials }) {
   }, [product, bomMap, matMap]);
 
   if (variants.every(v => v.bom == null)) {
-    return <div style={{ padding:'12px 20px', fontSize:'12px', color:'#9ca3af' }}>No BOM linked to this product.</div>;
+    return <div style={{ padding:'12px 20px', fontSize:'12px', color:'var(--gray)' }}>No BOM linked to this product.</div>;
   }
 
   return (
@@ -520,8 +520,8 @@ function StockBreakdown({ product, boms, materials }) {
           <div key={vi}>
             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'8px' }}>
               {v.label
-                ? <span style={{ fontSize:'12px', fontWeight:700, color:'#374151' }}>{v.label}</span>
-                : <span style={{ fontSize:'12px', color:'#9ca3af' }}>Standalone</span>
+                ? <span style={{ fontSize:'12px', fontWeight:700, color:'var(--gray-light)' }}>{v.label}</span>
+                : <span style={{ fontSize:'12px', color:'var(--gray)' }}>Standalone</span>
               }
               <span style={{ fontSize:'12px', fontWeight:700, color:prodColor }}>{prod} can build</span>
             </div>
@@ -529,7 +529,7 @@ function StockBreakdown({ product, boms, materials }) {
               <thead>
                 <tr>
                   {['Material','Stock','Need / unit','Can make'].map(h => (
-                    <th key={h} style={{ fontSize:'10px', fontWeight:700, color:'#9ca3af', textTransform:'uppercase', letterSpacing:'.4px', padding:'3px 8px', textAlign:'left' }}>{h}</th>
+                    <th key={h} style={{ fontSize:'10px', fontWeight:700, color:'var(--gray)', textTransform:'uppercase', letterSpacing:'.4px', padding:'3px 8px', textAlign:'left' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -542,12 +542,12 @@ function StockBreakdown({ product, boms, materials }) {
                   const c      = can === 0 ? '#c62828' : can <= 10 ? '#b45309' : '#1a7f3c';
                   return (
                     <tr key={ii}>
-                      <td style={{ padding:'4px 8px', fontSize:'12px', color:'#374151', fontWeight: isLimit ? 600 : 400 }}>
+                      <td style={{ padding:'4px 8px', fontSize:'12px', color:'var(--gray-light)', fontWeight: isLimit ? 600 : 400 }}>
                         {isLimit && <span style={{ fontSize:'9px', fontWeight:700, background:'#fde8e8', color:'#c62828', border:'1px solid #fca5a5', borderRadius:'3px', padding:'1px 4px', marginRight:'5px', textTransform:'uppercase' }}>limit</span>}
                         {mat.name}
                       </td>
-                      <td style={{ padding:'4px 8px', fontSize:'12px', color:'#374151' }}>{mat.stockQty} {mat.unit}</td>
-                      <td style={{ padding:'4px 8px', fontSize:'12px', color:'#6b7280' }}>{item.qty} {mat.unit}</td>
+                      <td style={{ padding:'4px 8px', fontSize:'12px', color:'var(--gray-light)' }}>{mat.stockQty} {mat.unit}</td>
+                      <td style={{ padding:'4px 8px', fontSize:'12px', color:'var(--gray)' }}>{item.qty} {mat.unit}</td>
                       <td style={{ padding:'4px 8px', fontSize:'12px', fontWeight:600, color:c }}>{can}</td>
                     </tr>
                   );
@@ -555,7 +555,7 @@ function StockBreakdown({ product, boms, materials }) {
               </tbody>
             </table>
             {vi < variants.filter(x => x.bom).length - 1 && (
-              <div style={{ borderTop:'1px solid #e1e3e5', marginTop:'10px' }} />
+              <div style={{ borderTop:'1px solid var(--border)', marginTop:'10px' }} />
             )}
           </div>
         );

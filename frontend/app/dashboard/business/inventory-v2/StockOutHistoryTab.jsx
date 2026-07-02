@@ -19,8 +19,8 @@ function ReasonBadge({ reason }) {
     damage:        { bg:'#fee2e2', color:'#991b1b', border:'#fecaca' },
     writeoff:      { bg:'#fee2e2', color:'#991b1b', border:'#fecaca' },
     scrap:         { bg:'#ffedd5', color:'#9a3412', border:'#fed7aa' },
-    adjustment:    { bg:'#f3f4f6', color:'#374151', border:'#e5e7eb' },
-    lost:          { bg:'#f3f4f6', color:'#374151', border:'#e5e7eb' },
+    adjustment:    { bg:'var(--dark2)', color:'var(--gray-light)', border:'var(--border)' },
+    lost:          { bg:'var(--dark2)', color:'var(--gray-light)', border:'var(--border)' },
   };
   const c = colors[reason] ?? colors.adjustment;
   return (
@@ -32,7 +32,7 @@ function ReasonBadge({ reason }) {
 
 function ChevronIcon({ open }) {
   return (
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2.5"
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--gray)" strokeWidth="2.5"
       style={{ transform: open ? 'rotate(180deg)' : 'none', transition:'transform .2s', flexShrink:0 }}>
       <polyline points="6 9 12 15 18 9" />
     </svg>
@@ -119,7 +119,7 @@ function ByOrderTab({ stockOuts, materials }) {
 
       <div style={{ ...S.card, ...S.rowBetween }}>
         <SearchBar value={search} onChange={setSearch} placeholder="Search order, customer, product…" style={{ width:'280px' }} />
-        <span style={{ fontSize:'12px', color:'#6b7280' }}>{total} order{total !== 1 ? 's' : ''}</span>
+        <span style={{ fontSize:'12px', color:'var(--gray)' }}>{total} order{total !== 1 ? 's' : ''}</span>
       </div>
 
       <div style={{ ...S.card, padding:0, overflow:'hidden' }}>
@@ -146,13 +146,13 @@ function ByOrderTab({ stockOuts, materials }) {
                     <tr key={ord.orderId}
                       style={{ ...S.tr, cursor:'pointer' }}
                       onClick={() => setExpanded(isOpen ? null : ord.orderId)}
-                      onMouseEnter={e => e.currentTarget.style.background='#fafbfc'}
+                      onMouseEnter={e => e.currentTarget.style.background='var(--dark2)'}
                       onMouseLeave={e => e.currentTarget.style.background=''}
                     >
-                      <td style={{ ...S.td, color:'#6b7280', fontSize:'12px', whiteSpace:'nowrap' }}>{ord.date}</td>
+                      <td style={{ ...S.td, color:'var(--gray)', fontSize:'12px', whiteSpace:'nowrap' }}>{ord.date}</td>
                       <td style={{ ...S.td, fontWeight:600, fontFamily:'monospace', fontSize:'12px' }}>{ord.ref}</td>
                       <td style={{ ...S.td }}>{ord.customerName}</td>
-                      <td style={{ ...S.td, textAlign:'center', color:'#6b7280', fontSize:'12px' }}>{itemCount} product{itemCount !== 1 ? 's' : ''}</td>
+                      <td style={{ ...S.td, textAlign:'center', color:'var(--gray)', fontSize:'12px' }}>{itemCount} product{itemCount !== 1 ? 's' : ''}</td>
                       <td style={{ ...S.td, textAlign:'center', fontWeight:600, color:'#166534', fontFamily:'monospace', fontSize:'12px' }}>
                         ₱{ord.totalCost.toLocaleString('en-PH', { minimumFractionDigits:2 })}
                       </td>
@@ -160,35 +160,35 @@ function ByOrderTab({ stockOuts, materials }) {
                     </tr>
                     {isOpen && (
                       <tr key={`${ord.orderId}_detail`}>
-                        <td colSpan={6} style={{ padding:0, background:'#f8f9fa', borderBottom:'1px solid #e1e3e5' }}>
+                        <td colSpan={6} style={{ padding:0, background:'var(--dark2)', borderBottom:'1px solid var(--border)' }}>
                           <div style={{ padding:'12px 20px', display:'flex', flexDirection:'column', gap:'8px' }}>
                             {prodList.map(([pkey, prod]) => {
                               const pExpanded = expandedProduct[`${ord.orderId}__${pkey}`];
                               const hasMaterials = prod.materials.length > 0;
                               const isFinishedGood = prod.materials.length === 1 && prod.materials[0].productName === prod.productName;
                               return (
-                                <div key={pkey} style={{ background:'#fff', border:'1px solid #e1e3e5', borderRadius:'8px', overflow:'hidden' }}>
+                                <div key={pkey} style={{ background:'var(--dark)', border:'1px solid var(--border)', borderRadius:'8px', overflow:'hidden' }}>
                                   <div
                                     style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'10px 14px', cursor: hasMaterials && !isFinishedGood ? 'pointer' : 'default' }}
                                     onClick={() => !isFinishedGood && toggleProduct(ord.orderId, pkey)}
                                   >
                                     <div style={{ display:'flex', alignItems:'center', gap:'8px' }}>
                                       {!isFinishedGood && <ChevronIcon open={pExpanded} />}
-                                      <span style={{ fontWeight:600, fontSize:'13px', color:'#1a1a2e' }}>{prod.productName}</span>
+                                      <span style={{ fontWeight:600, fontSize:'13px', color:'var(--white)' }}>{prod.productName}</span>
                                       {isFinishedGood && (
                                         <span style={{ ...S.badge, background:'#eef4ff', color:'#2c4a8c', border:'1px solid #bfcfee', fontSize:'10px' }}>finished goods</span>
                                       )}
                                     </div>
-                                    <span style={{ fontSize:'12px', color:'#6b7280' }}>
+                                    <span style={{ fontSize:'12px', color:'var(--gray)' }}>
                                       {prod.materials.length} material{prod.materials.length !== 1 ? 's' : ''} consumed
                                     </span>
                                   </div>
                                   {(pExpanded || isFinishedGood) && (
-                                    <table style={{ width:'100%', borderCollapse:'collapse', borderTop:'1px solid #f0f1f2' }}>
+                                    <table style={{ width:'100%', borderCollapse:'collapse', borderTop:'1px solid var(--border)' }}>
                                       <thead>
                                         <tr>
                                           {['Material','Qty Deducted','Remaining','Unit Cost','Total Cost','Type'].map(h => (
-                                            <th key={h} style={{ fontSize:'10px', fontWeight:700, color:'#9ca3af', textTransform:'uppercase', letterSpacing:'.4px', padding:'6px 14px', textAlign:'left', background:'#f8f9fa' }}>{h}</th>
+                                            <th key={h} style={{ fontSize:'10px', fontWeight:700, color:'var(--gray)', textTransform:'uppercase', letterSpacing:'.4px', padding:'6px 14px', textAlign:'left', background:'var(--dark2)' }}>{h}</th>
                                           ))}
                                         </tr>
                                       </thead>
@@ -196,17 +196,17 @@ function ByOrderTab({ stockOuts, materials }) {
                                         {prod.materials.map((so, mi) => {
                                           const mat = matMap[so.matId];
                                           return (
-                                            <tr key={mi} style={{ borderTop:'1px solid #f0f1f2' }}>
-                                              <td style={{ padding:'7px 14px', fontSize:'12px', color:'#374151', fontWeight:500 }}>
+                                            <tr key={mi} style={{ borderTop:'1px solid var(--border)' }}>
+                                              <td style={{ padding:'7px 14px', fontSize:'12px', color:'var(--gray-light)', fontWeight:500 }}>
                                                 {so.matName || mat?.name || '—'}
                                               </td>
                                               <td style={{ padding:'7px 14px', fontSize:'12px', color:'#c62828', fontWeight:600 }}>
                                                 -{so.qty} {mat?.unit ?? 'pcs'}
                                               </td>
-                                              <td style={{ padding:'7px 14px', fontSize:'12px', color:'#6b7280' }}>
+                                              <td style={{ padding:'7px 14px', fontSize:'12px', color:'var(--gray)' }}>
                                                 {so.remainingQty} {mat?.unit ?? 'pcs'}
                                               </td>
-                                              <td style={{ padding:'7px 14px', fontSize:'12px', color:'#6b7280', fontFamily:'monospace' }}>
+                                              <td style={{ padding:'7px 14px', fontSize:'12px', color:'var(--gray)', fontFamily:'monospace' }}>
                                                 ₱{so.unitCost.toFixed(2)}
                                               </td>
                                               <td style={{ padding:'7px 14px', fontSize:'12px', fontWeight:600, color:'#166534', fontFamily:'monospace' }}>
@@ -235,7 +235,7 @@ function ByOrderTab({ stockOuts, materials }) {
           </table>
         </div>
         {total > 0 && (
-          <div style={{ padding:'12px 16px', borderTop:'1px solid #f0f1f2' }}>
+          <div style={{ padding:'12px 16px', borderTop:'1px solid var(--border)' }}>
             <PaginationBar total={total} page={page} perPage={perPage} onPage={setPage} onPerPage={setPerPage} />
           </div>
         )}
@@ -260,15 +260,15 @@ function ByOrderTab({ stockOuts, materials }) {
                 return (
                   <tr key={i}
                     style={{ ...S.tr }}
-                    onMouseEnter={e => e.currentTarget.style.background='#fafbfc'}
+                    onMouseEnter={e => e.currentTarget.style.background='var(--dark2)'}
                     onMouseLeave={e => e.currentTarget.style.background=''}
                   >
-                    <td style={{ ...S.td, color:'#6b7280', fontSize:'12px', whiteSpace:'nowrap' }}>{so.date}</td>
+                    <td style={{ ...S.td, color:'var(--gray)', fontSize:'12px', whiteSpace:'nowrap' }}>{so.date}</td>
                     <td style={{ ...S.td, fontWeight:500 }}>{so.matName || mat?.name || '—'}</td>
                     <td style={{ ...S.td, color:'#c62828', fontWeight:600 }}>-{so.qty} {mat?.unit ?? 'pcs'}</td>
                     <td style={{ ...S.td, fontFamily:'monospace', fontSize:'12px' }}>₱{so.unitCost.toFixed(2)}</td>
                     <td style={{ ...S.td }}><ReasonBadge reason={so.reason} /></td>
-                    <td style={{ ...S.td, color:'#6b7280', fontSize:'12px', maxWidth:'200px', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{so.notes || '—'}</td>
+                    <td style={{ ...S.td, color:'var(--gray)', fontSize:'12px', maxWidth:'200px', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{so.notes || '—'}</td>
                   </tr>
                 );
               })}
@@ -332,7 +332,7 @@ function ByMaterialTab({ stockOuts, materials }) {
 
       <div style={{ ...S.card, ...S.rowBetween }}>
         <SearchBar value={search} onChange={setSearch} placeholder="Search material…" style={{ width:'240px' }} />
-        <span style={{ fontSize:'12px', color:'#6b7280' }}>{total} material{total !== 1 ? 's' : ''}</span>
+        <span style={{ fontSize:'12px', color:'var(--gray)' }}>{total} material{total !== 1 ? 's' : ''}</span>
       </div>
 
       <div style={{ ...S.card, padding:0, overflow:'hidden' }}>
@@ -357,11 +357,11 @@ function ByMaterialTab({ stockOuts, materials }) {
                     <tr key={g.matId}
                       style={{ ...S.tr, cursor:'pointer' }}
                       onClick={() => setExpanded(isOpen ? null : g.matId)}
-                      onMouseEnter={e => e.currentTarget.style.background='#fafbfc'}
+                      onMouseEnter={e => e.currentTarget.style.background='var(--dark2)'}
                       onMouseLeave={e => e.currentTarget.style.background=''}
                     >
                       <td style={{ ...S.td, fontWeight:600 }}>{g.matName}</td>
-                      <td style={{ ...S.td, textAlign:'center', fontFamily:'monospace', fontSize:'12px', color:'#374151' }}>
+                      <td style={{ ...S.td, textAlign:'center', fontFamily:'monospace', fontSize:'12px', color:'var(--gray-light)' }}>
                         {g.stockQty} {g.unit}
                       </td>
                       <td style={{ ...S.td, textAlign:'center', color:'#c62828', fontWeight:600, fontFamily:'monospace', fontSize:'12px' }}>
@@ -370,17 +370,17 @@ function ByMaterialTab({ stockOuts, materials }) {
                       <td style={{ ...S.td, textAlign:'center', fontWeight:600, color:'#166534', fontFamily:'monospace', fontSize:'12px' }}>
                         ₱{g.totalCost.toLocaleString('en-PH', { minimumFractionDigits:2 })}
                       </td>
-                      <td style={{ ...S.td, textAlign:'center', color:'#6b7280', fontSize:'12px' }}>{g.records.length}</td>
+                      <td style={{ ...S.td, textAlign:'center', color:'var(--gray)', fontSize:'12px' }}>{g.records.length}</td>
                       <td style={{ ...S.td, textAlign:'center' }}><ChevronIcon open={isOpen} /></td>
                     </tr>
                     {isOpen && (
                       <tr key={`${g.matId}_detail`}>
-                        <td colSpan={6} style={{ padding:0, background:'#f8f9fa', borderBottom:'1px solid #e1e3e5' }}>
+                        <td colSpan={6} style={{ padding:0, background:'var(--dark2)', borderBottom:'1px solid var(--border)' }}>
                           <table style={{ width:'100%', borderCollapse:'collapse' }}>
                             <thead>
                               <tr>
                                 {['Date','Order / Ref','Product','Customer','Qty','Cost','Type'].map(h => (
-                                  <th key={h} style={{ fontSize:'10px', fontWeight:700, color:'#9ca3af', textTransform:'uppercase', letterSpacing:'.4px', padding:'6px 14px', textAlign:'left', background:'#f0f1f2' }}>{h}</th>
+                                  <th key={h} style={{ fontSize:'10px', fontWeight:700, color:'var(--gray)', textTransform:'uppercase', letterSpacing:'.4px', padding:'6px 14px', textAlign:'left', background:'var(--dark2)' }}>{h}</th>
                                 ))}
                               </tr>
                             </thead>
@@ -389,11 +389,11 @@ function ByMaterialTab({ stockOuts, materials }) {
                                 .slice()
                                 .sort((a, b) => new Date(b.date) - new Date(a.date))
                                 .map((so, ri) => (
-                                <tr key={ri} style={{ borderTop:'1px solid #e8e9ea' }}>
-                                  <td style={{ padding:'7px 14px', fontSize:'11px', color:'#6b7280', whiteSpace:'nowrap' }}>{so.date}</td>
-                                  <td style={{ padding:'7px 14px', fontSize:'11px', fontFamily:'monospace', color:'#374151' }}>{so.ref}</td>
-                                  <td style={{ padding:'7px 14px', fontSize:'12px', color:'#374151' }}>{so.productName || '—'}</td>
-                                  <td style={{ padding:'7px 14px', fontSize:'12px', color:'#6b7280' }}>{so.customerName || '—'}</td>
+                                <tr key={ri} style={{ borderTop:'1px solid var(--border)' }}>
+                                  <td style={{ padding:'7px 14px', fontSize:'11px', color:'var(--gray)', whiteSpace:'nowrap' }}>{so.date}</td>
+                                  <td style={{ padding:'7px 14px', fontSize:'11px', fontFamily:'monospace', color:'var(--gray-light)' }}>{so.ref}</td>
+                                  <td style={{ padding:'7px 14px', fontSize:'12px', color:'var(--gray-light)' }}>{so.productName || '—'}</td>
+                                  <td style={{ padding:'7px 14px', fontSize:'12px', color:'var(--gray)' }}>{so.customerName || '—'}</td>
                                   <td style={{ padding:'7px 14px', fontSize:'12px', color:'#c62828', fontWeight:600 }}>-{so.qty} {g.unit}</td>
                                   <td style={{ padding:'7px 14px', fontSize:'12px', fontFamily:'monospace', color:'#166534' }}>₱{so.totalCost.toFixed(2)}</td>
                                   <td style={{ padding:'7px 14px' }}><ReasonBadge reason={so.reason} /></td>
@@ -411,7 +411,7 @@ function ByMaterialTab({ stockOuts, materials }) {
           </table>
         </div>
         {total > 0 && (
-          <div style={{ padding:'12px 16px', borderTop:'1px solid #f0f1f2' }}>
+          <div style={{ padding:'12px 16px', borderTop:'1px solid var(--border)' }}>
             <PaginationBar total={total} page={page} perPage={perPage} onPage={setPage} onPerPage={setPerPage} />
           </div>
         )}
@@ -432,14 +432,14 @@ export default function StockOutHistoryTab({ stockOuts, materials }) {
 
   return (
     <div style={S.col}>
-      <div style={{ display:'flex', gap:'4px', background:'#f3f4f6', borderRadius:'8px', padding:'3px', alignSelf:'flex-start' }}>
+      <div style={{ display:'flex', gap:'4px', background:'var(--dark2)', borderRadius:'8px', padding:'3px', alignSelf:'flex-start' }}>
         {SUB_TABS.map(t => (
           <button key={t.id} onClick={() => setSubTab(t.id)}
             style={{
               padding:'6px 18px', borderRadius:'6px', border:'none', cursor:'pointer',
               fontWeight:600, fontSize:'12px',
-              background: subTab === t.id ? '#fff' : 'transparent',
-              color:      subTab === t.id ? '#1a1a2e' : '#6b7280',
+              background: subTab === t.id ? 'var(--dark)' : 'transparent',
+              color:      subTab === t.id ? 'var(--white)' : 'var(--gray)',
               boxShadow:  subTab === t.id ? '0 1px 3px rgba(0,0,0,.1)' : 'none',
               transition: 'all .15s',
             }}

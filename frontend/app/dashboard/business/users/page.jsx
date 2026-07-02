@@ -401,7 +401,7 @@ export default function UserManagementPage() {
 
   return (
     <ErrorBoundary>
-    <div style={{ maxWidth: '900px', margin: '0 auto', padding: '2rem 1rem' }}>
+    <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '2rem 1.5rem' }}>
       <style>{`
         @keyframes usersSkelPulse {
           0%, 100% { opacity: 1; }
@@ -493,7 +493,7 @@ export default function UserManagementPage() {
         const uTotalPages = Math.max(1, Math.ceil(staff.length / uRpp));
         const pagedStaff = staff.slice((uPage - 1) * uRpp, uPage * uRpp);
         return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(420px, 1fr))', gap: '12px', alignItems: 'start' }}>
           {pagedStaff.map((member) => {
             const fullName = `${member.firstName || ''} ${member.lastName || ''}`.trim() || '—';
             const role = member.role;

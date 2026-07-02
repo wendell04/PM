@@ -117,7 +117,7 @@ export default function AdminReviewsPage() {
   };
 
   return (
-    <div style={{ padding: '24px', maxWidth: '1000px' }}>
+    <div style={{ padding: '24px' }}>
 
       {/* Stats row */}
       {stats && (
@@ -215,11 +215,11 @@ export default function AdminReviewsPage() {
       )}
 
       {!loading && reviews.length > 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          {reviews.map(r => {
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(460px, 1fr))', gap: '12px', alignItems: 'start' }}>
+          {reviews.map((r, idx) => {
             const id = r._id ?? r.id;
             return (
-              <div key={id} style={{
+              <div key={id || `rev-${idx}`} style={{
                 padding: '16px',
                 background: 'var(--dark2)',
                 border: `1px solid ${r.is_visible ? 'var(--border)' : 'rgba(107,114,128,0.3)'}`,

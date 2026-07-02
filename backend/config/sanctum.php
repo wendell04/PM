@@ -47,7 +47,11 @@ return [
     |
     */
 
-    'expiration' => env('SANCTUM_TOKEN_EXPIRATION', 1440),
+    // Null = no global cap, so each token's own "expires_at" (set per-role at
+    // login in AuthController) is the single source of truth for its lifetime.
+    'expiration' => env('SANCTUM_TOKEN_EXPIRATION') !== null && env('SANCTUM_TOKEN_EXPIRATION') !== ''
+        ? (int) env('SANCTUM_TOKEN_EXPIRATION')
+        : null,
 
     /*
     |--------------------------------------------------------------------------

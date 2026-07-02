@@ -111,7 +111,7 @@ export default function ProductStockTab({ boms, materials, products }) {
             options={[{ value:'All', label:'All Status' },{ value:'ok', label:'In Stock' },{ value:'low', label:'Low Stock' },{ value:'out', label:'Out of Stock' }]}
             style={{ width:'140px' }} />
         </div>
-        <span style={{ fontSize:'12px', color:'#6b7280' }}>{total} product{total !== 1 ? 's' : ''}</span>
+        <span style={{ fontSize:'12px', color:'var(--gray)' }}>{total} product{total !== 1 ? 's' : ''}</span>
       </div>
 
       <div style={{ ...S.card, padding:0, overflow:'hidden' }}>
@@ -133,19 +133,19 @@ export default function ProductStockTab({ boms, materials, products }) {
                     key={row.id}
                     style={{ ...S.tr, cursor:'pointer' }}
                     onClick={() => setExpanded(expanded === row.id ? null : row.id)}
-                    onMouseEnter={e => e.currentTarget.style.background='#fafbfc'}
+                    onMouseEnter={e => e.currentTarget.style.background='var(--dark2)'}
                     onMouseLeave={e => e.currentTarget.style.background=''}
                   >
                     <td style={{ ...S.td, fontWeight:600 }}>{row.name}</td>
-                    <td style={{ ...S.td, fontSize:'12px', color:'#6b7280' }}>{row.standalone ? <span style={{ color:'#9ca3af', fontStyle:'italic' }}>BOM only</span> : row.category}</td>
-                    <td style={{ ...S.td, textAlign:'center', fontSize:'12px', color:'#6b7280' }}>
+                    <td style={{ ...S.td, fontSize:'12px', color:'var(--gray)' }}>{row.standalone ? <span style={{ color:'var(--gray)', fontStyle:'italic' }}>BOM only</span> : row.category}</td>
+                    <td style={{ ...S.td, textAlign:'center', fontSize:'12px', color:'var(--gray)' }}>
                       {row.variants.length > 1 ? `${row.variants.length} variants` : '—'}
                     </td>
                     <td style={{ ...S.td, textAlign:'center' }}>
                       <StatusBadge status={stockStatus(row.minProd)} />
                     </td>
                     <td style={{ ...S.td, textAlign:'center' }}>
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2.5"
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--gray)" strokeWidth="2.5"
                         style={{ transform: expanded === row.id ? 'rotate(180deg)' : 'none', transition:'transform .2s' }}>
                         <polyline points="6 9 12 15 18 9" />
                       </svg>
@@ -153,7 +153,7 @@ export default function ProductStockTab({ boms, materials, products }) {
                   </tr>
                   {expanded === row.id && (
                     <tr key={`${row.id}_detail`}>
-                      <td colSpan={5} style={{ padding:0, background:'#f8f9fa', borderBottom:'1px solid #e1e3e5' }}>
+                      <td colSpan={5} style={{ padding:0, background:'var(--dark2)', borderBottom:'1px solid var(--border)' }}>
                         <DetailPanel variants={row.variants} matMap={matMap} />
                       </td>
                     </tr>
@@ -163,7 +163,7 @@ export default function ProductStockTab({ boms, materials, products }) {
             </tbody>
           </table>
         </div>
-        <div style={{ padding:'12px 16px', borderTop:'1px solid #f0f1f2' }}>
+        <div style={{ padding:'12px 16px', borderTop:'1px solid var(--border)' }}>
           <PaginationBar total={total} page={page} perPage={perPage} onPage={setPage} onPerPage={setPerPage} />
         </div>
       </div>
@@ -191,7 +191,7 @@ function DetailPanel({ variants, matMap }) {
           <div key={vi}>
             {v.label && (
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'8px' }}>
-                <span style={{ fontSize:'12px', fontWeight:700, color:'#374151' }}>{v.label}</span>
+                <span style={{ fontSize:'12px', fontWeight:700, color:'var(--gray-light)' }}>{v.label}</span>
                 <span style={{ fontSize:'12px', fontWeight:700, color: prod===0?'#c62828':prod<=10?'#b45309':'#1a7f3c' }}>{prod} can build</span>
               </div>
             )}
@@ -199,7 +199,7 @@ function DetailPanel({ variants, matMap }) {
               <thead>
                 <tr>
                   {['Material','Stock','Need / unit','Can make'].map(h => (
-                    <th key={h} style={{ fontSize:'10px', fontWeight:700, color:'#9ca3af', textTransform:'uppercase', letterSpacing:'.4px', padding:'4px 8px', textAlign:'left' }}>{h}</th>
+                    <th key={h} style={{ fontSize:'10px', fontWeight:700, color:'var(--gray)', textTransform:'uppercase', letterSpacing:'.4px', padding:'4px 8px', textAlign:'left' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -211,19 +211,19 @@ function DetailPanel({ variants, matMap }) {
                   const isBottleneck = item.matId === bottleneckId;
                   return (
                     <tr key={ii}>
-                      <td style={{ padding:'4px 8px', fontSize:'12px', color:'#374151', fontWeight: isBottleneck ? 600 : 400 }}>
+                      <td style={{ padding:'4px 8px', fontSize:'12px', color:'var(--gray-light)', fontWeight: isBottleneck ? 600 : 400 }}>
                         {isBottleneck && <span style={{ fontSize:'9px', fontWeight:700, background:'#fde8e8', color:'#c62828', border:'1px solid #fca5a5', borderRadius:3, padding:'1px 4px', marginRight:5, textTransform:'uppercase' }}>limit</span>}
                         {mat.name}
                       </td>
-                      <td style={{ padding:'4px 8px', fontSize:'12px', color:'#374151' }}>{mat.stockQty} {mat.unit}</td>
-                      <td style={{ padding:'4px 8px', fontSize:'12px', color:'#6b7280' }}>{item.qty} {mat.unit}</td>
+                      <td style={{ padding:'4px 8px', fontSize:'12px', color:'var(--gray-light)' }}>{mat.stockQty} {mat.unit}</td>
+                      <td style={{ padding:'4px 8px', fontSize:'12px', color:'var(--gray)' }}>{item.qty} {mat.unit}</td>
                       <td style={{ padding:'4px 8px', fontSize:'12px', fontWeight:600, color: can===0?'#c62828':can<=10?'#b45309':'#1a7f3c' }}>{can}</td>
                     </tr>
                   );
                 })}
               </tbody>
             </table>
-            {vi < variants.length - 1 && <div style={{ borderTop:'1px solid #e1e3e5', marginTop:'10px' }} />}
+            {vi < variants.length - 1 && <div style={{ borderTop:'1px solid var(--border)', marginTop:'10px' }} />}
           </div>
         );
       })}

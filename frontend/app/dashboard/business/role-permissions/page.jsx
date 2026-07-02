@@ -84,7 +84,7 @@ function ToggleSwitch({ checked, disabled, onChange }) {
         left: checked ? '16px' : '2px',
         width: '14px', height: '14px',
         borderRadius: '50%',
-        background: disabled ? 'var(--gray)' : '#fff',
+        background: disabled ? 'var(--gray)' : 'var(--dark)',
         transition: 'left 0.18s',
         boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
       }} />
@@ -213,7 +213,7 @@ export default function RolePermissionsPage() {
 
   return (
     <ErrorBoundary>
-      <div style={{ maxWidth: '1000px', margin: '0 auto', padding: '2rem 1rem' }}>
+      <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '2rem 1.5rem' }}>
 
         {/* Admin/Owner notice */}
         <div style={{

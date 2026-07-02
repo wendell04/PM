@@ -299,18 +299,8 @@ export default function OrderRequestsPage() {
   return (
     <ErrorBoundary>
     <div style={{ padding: '2rem' }}>
-      {/* Page Header */}
-      <div style={{ marginBottom: '2rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>
-            <rect x="8" y="2" width="8" height="4" rx="1" ry="1"/>
-            <path d="M9 12h6M9 16h6"/>
-          </svg>
-          <h1 className="page-title">Order Requests</h1>
-        </div>
-        <p style={{ margin: 0, color: 'var(--gray)', fontSize: '0.9rem' }}>Review and manage customer print orders</p>
-      </div>
+      {/* Page title is shown in the top bar; keep only the descriptive subtitle */}
+      <p style={{ margin: '0 0 1.5rem', color: 'var(--gray)', fontSize: '0.9rem' }}>Review and manage customer print orders</p>
 
       {/* Summary Cards */}
       <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '1.5rem' }}>

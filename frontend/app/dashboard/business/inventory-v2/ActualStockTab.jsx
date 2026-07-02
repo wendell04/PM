@@ -65,35 +65,35 @@ function StockOutModal({ open, onClose, material, currentStock, materialBatches,
       <div style={S.col}>
         <Note>This permanently records stock as having left inventory. Use for physically lost, damaged, expired, or discarded units.</Note>
 
-        <div style={{ ...S.cardSm, background:'#f8f9fa', display:'flex', justifyContent:'space-between' }}>
-          <span style={{ fontSize:'13px', color:'#6b7280' }}>Current Stock</span>
-          <span style={{ fontWeight:700, fontSize:'15px', color: currentStock <= (material?.minStock || 0) ? '#c62828' : '#1a1a2e' }}>{currentStock} {material?.unit}</span>
+        <div style={{ ...S.cardSm, background:'var(--dark2)', display:'flex', justifyContent:'space-between' }}>
+          <span style={{ fontSize:'13px', color:'var(--gray)' }}>Current Stock</span>
+          <span style={{ fontWeight:700, fontSize:'15px', color: currentStock <= (material?.minStock || 0) ? '#c62828' : 'var(--white)' }}>{currentStock} {material?.unit}</span>
         </div>
 
         {/* Batch picker toggle */}
         {availBatches.length > 1 && (
           <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
-            <label style={{ display:'flex', alignItems:'center', gap:'8px', cursor:'pointer', userSelect:'none', fontSize:'13px', color:'#374151' }}>
+            <label style={{ display:'flex', alignItems:'center', gap:'8px', cursor:'pointer', userSelect:'none', fontSize:'13px', color:'var(--gray-light)' }}>
               <input type="checkbox" checked={useBatch} onChange={e => handleToggleBatch(e.target.checked)}
-                style={{ accentColor:'#d4a843', width:'15px', height:'15px' }} />
+                style={{ accentColor:'var(--gold)', width:'15px', height:'15px' }} />
               Deduct from specific batch (instead of FIFO)
             </label>
           </div>
         )}
 
         {useBatch && (
-          <div style={{ border:'1px solid #e1e3e5', borderRadius:'7px', overflow:'hidden' }}>
-            <div style={{ padding:'8px 12px', background:'#f8f9fa', fontSize:'11px', fontWeight:700, color:'#9ca3af', textTransform:'uppercase', letterSpacing:'.4px', display:'grid', gridTemplateColumns:'1fr auto auto auto', gap:'8px' }}>
+          <div style={{ border:'1px solid var(--border)', borderRadius:'7px', overflow:'hidden' }}>
+            <div style={{ padding:'8px 12px', background:'var(--dark2)', fontSize:'11px', fontWeight:700, color:'var(--gray)', textTransform:'uppercase', letterSpacing:'.4px', display:'grid', gridTemplateColumns:'1fr auto auto auto', gap:'8px' }}>
               <span>Invoice</span><span>Date</span><span style={{ textAlign:'right' }}>Remaining</span><span></span>
             </div>
             {availBatches.map(b => (
-              <label key={b.id} style={{ display:'grid', gridTemplateColumns:'1fr auto auto auto', gap:'8px', alignItems:'center', padding:'9px 12px', cursor:'pointer', borderTop:'1px solid #f0f1f2', background: batchId === b.id ? '#fffbe8' : '#fff', transition:'background .1s' }}>
-                <span style={{ fontSize:'12px', fontFamily:'monospace', color:'#374151' }}>{b.invoiceNo || '—'}</span>
-                <span style={{ fontSize:'12px', color:'#6b7280' }}>{b.date}</span>
+              <label key={b.id} style={{ display:'grid', gridTemplateColumns:'1fr auto auto auto', gap:'8px', alignItems:'center', padding:'9px 12px', cursor:'pointer', borderTop:'1px solid var(--border)', background: batchId === b.id ? 'var(--gold-subtle)' : 'var(--dark)', transition:'background .1s' }}>
+                <span style={{ fontSize:'12px', fontFamily:'monospace', color:'var(--gray-light)' }}>{b.invoiceNo || '—'}</span>
+                <span style={{ fontSize:'12px', color:'var(--gray)' }}>{b.date}</span>
                 <span style={{ fontSize:'12px', fontWeight:600, textAlign:'right', color: b.remainingQty <= 10 ? '#b45309' : '#2e7d32' }}>{b.remainingQty} {material?.unit}</span>
                 <input type="radio" name="batchPick" value={b.id} checked={batchId === b.id}
                   onChange={() => { setBatchId(b.id); setQty(''); setErrors({}); }}
-                  style={{ accentColor:'#d4a843' }} />
+                  style={{ accentColor:'var(--gold)' }} />
               </label>
             ))}
           </div>
@@ -113,7 +113,7 @@ function StockOutModal({ open, onClose, material, currentStock, materialBatches,
 
         {qty && Number(qty) > 0 && Number(qty) <= maxQty && (
           <div style={{ background:'#fff5f5', border:'1px solid #fca5a5', borderRadius:'7px', padding:'10px 14px', fontSize:'13px' }}>
-            {useBatch && selectedBatch && <div style={{ fontSize:'12px', color:'#6b7280', marginBottom:'4px' }}>Batch {selectedBatch.invoiceNo || 'no invoice'} · {selectedBatch.remainingQty - Number(qty)} remaining after</div>}
+            {useBatch && selectedBatch && <div style={{ fontSize:'12px', color:'var(--gray)', marginBottom:'4px' }}>Batch {selectedBatch.invoiceNo || 'no invoice'} · {selectedBatch.remainingQty - Number(qty)} remaining after</div>}
             Remaining stock: <b>{currentStock - Number(qty)} {material?.unit}</b>
             {currentStock - Number(qty) <= (material?.minStock || 0) && (
               <span style={{ color:'#c62828', marginLeft:'8px' }}>(below min stock!)</span>
@@ -261,16 +261,16 @@ export default function ActualStockTab({ materials, batches, setBatches, badOrde
               {slice.length === 0 ? (
                 <tr><td colSpan={10}><EmptyState message="No stock data" sub="Receive stock first." /></td></tr>
               ) : slice.map(d => (
-                <tr key={d.mat.id} style={S.tr} onMouseEnter={e => e.currentTarget.style.background='#fafbfc'} onMouseLeave={e => e.currentTarget.style.background=''}>
-                  <td style={{ ...S.td, fontFamily:'monospace', fontSize:'12px', color:'#6b7280' }}>{d.mat.sku}</td>
+                <tr key={d.mat.id} style={S.tr} onMouseEnter={e => e.currentTarget.style.background='var(--dark2)'} onMouseLeave={e => e.currentTarget.style.background=''}>
+                  <td style={{ ...S.td, fontFamily:'monospace', fontSize:'12px', color:'var(--gray)' }}>{d.mat.sku}</td>
                   <td style={{ ...S.td, fontWeight:500 }}>{d.mat.name}</td>
                   <td style={{ ...S.td, textAlign:'right', fontWeight:700, fontSize:'15px', color: d.status === 'out_of_stock' ? '#c62828' : d.status === 'low_stock' ? '#b45309' : '#2e7d32' }}>
                     {d.actualQty} {d.mat.unit}
                   </td>
-                  <td style={{ ...S.td, textAlign:'right', color: d.pendingBOQty > 0 ? '#e05252' : '#9ca3af' }}>
+                  <td style={{ ...S.td, textAlign:'right', color: d.pendingBOQty > 0 ? '#e05252' : 'var(--gray)' }}>
                     {d.pendingBOQty > 0 ? `−${d.pendingBOQty}` : '0'} {d.mat.unit}
                   </td>
-                  <td style={{ ...S.td, textAlign:'right', color: d.reductionQty > 0 ? '#b45309' : '#9ca3af' }}>
+                  <td style={{ ...S.td, textAlign:'right', color: d.reductionQty > 0 ? '#b45309' : 'var(--gray)' }}>
                     {d.reductionQty > 0 ? `−${d.reductionQty}` : '0'} {d.mat.unit}
                   </td>
                   <td style={{ ...S.td, textAlign:'right', fontWeight:600, color: d.goodsQty === 0 ? '#c62828' : d.goodsQty <= d.mat.minStock ? '#b45309' : '#2e7d32' }}>
@@ -287,13 +287,13 @@ export default function ActualStockTab({ materials, batches, setBatches, badOrde
             </tbody>
           </table>
         </div>
-        <div style={{ padding:'12px 16px', borderTop:'1px solid #f0f1f2' }}>
+        <div style={{ padding:'12px 16px', borderTop:'1px solid var(--border)' }}>
           <PaginationBar total={total} page={page} perPage={perPage} onPage={setPage} onPerPage={setPerPage} />
         </div>
       </div>
 
       {/* Stock out history */}
-      <div style={{ ...S.cardSm, fontWeight:700, fontSize:'14px', color:'#374151' }}>Stock Out History</div>
+      <div style={{ ...S.cardSm, fontWeight:700, fontSize:'14px', color:'var(--gray-light)' }}>Stock Out History</div>
       <div style={{ ...S.card, ...S.rowBetween }}>
         <div style={{ display:'flex', gap:'8px', flexWrap:'wrap' }}>
           <SearchBar value={histSearch} onChange={setHistSearch} placeholder="Search material, reason, or ref…" style={{ width:'260px' }} />
@@ -325,27 +325,27 @@ export default function ActualStockTab({ materials, batches, setBatches, badOrde
                 const isProduction = s.type === 'production';
                 const isSale = s.type === 'sale';
                 return (
-                  <tr key={s.id} style={S.tr} onMouseEnter={e => e.currentTarget.style.background='#fafbfc'} onMouseLeave={e => e.currentTarget.style.background=''}>
+                  <tr key={s.id} style={S.tr} onMouseEnter={e => e.currentTarget.style.background='var(--dark2)'} onMouseLeave={e => e.currentTarget.style.background=''}>
                     <td style={{ ...S.td, whiteSpace:'nowrap' }}>{formatDate(s.date)}</td>
-                    <td style={{ ...S.td, fontFamily:'monospace', fontSize:'12px', color:'#6b7280' }}>{s.ref || '—'}</td>
+                    <td style={{ ...S.td, fontFamily:'monospace', fontSize:'12px', color:'var(--gray)' }}>{s.ref || '—'}</td>
                     <td style={S.td}>
-                      <span style={{ background: isProduction ? '#f0f4ff' : isSale ? '#f0fdf4' : '#f3f4f6', color: isProduction ? '#1e40af' : isSale ? '#166534' : '#374151', borderRadius:'5px', padding:'2px 8px', fontSize:'11px', fontWeight:600 }}>
+                      <span style={{ background: isProduction ? '#f0f4ff' : isSale ? '#f0fdf4' : 'var(--dark2)', color: isProduction ? '#1e40af' : isSale ? '#166534' : 'var(--gray-light)', borderRadius:'5px', padding:'2px 8px', fontSize:'11px', fontWeight:600 }}>
                         {isProduction ? 'Production' : isSale ? 'Sale' : 'Adjustment'}
                       </span>
                     </td>
                     <td style={{ ...S.td, fontWeight:500 }}>{s.matName}</td>
                     <td style={{ ...S.td, textAlign:'right', color:'#c62828', fontWeight:600 }}>−{s.qty} {mat?.unit}</td>
                     <td style={S.td}><StatusBadge status={s.reason} label={s.reason.replace(/_/g,' ').replace(/\b\w/g, c => c.toUpperCase())} /></td>
-                    <td style={{ ...S.td, textAlign:'right', fontWeight:600, color: isProduction ? '#374151' : '#c62828' }}>{formatCurrency(s.totalCost)}</td>
-                    <td style={{ ...S.td, fontSize:'12px', color:'#374151' }}>{s.performedBy || <span style={{ color:'#9ca3af' }}>—</span>}</td>
-                    <td style={{ ...S.td, fontSize:'12px', color:'#6b7280', maxWidth:'200px' }}>{s.notes}</td>
+                    <td style={{ ...S.td, textAlign:'right', fontWeight:600, color: isProduction ? 'var(--gray-light)' : '#c62828' }}>{formatCurrency(s.totalCost)}</td>
+                    <td style={{ ...S.td, fontSize:'12px', color:'var(--gray-light)' }}>{s.performedBy || <span style={{ color:'var(--gray)' }}>—</span>}</td>
+                    <td style={{ ...S.td, fontSize:'12px', color:'var(--gray)', maxWidth:'200px' }}>{s.notes}</td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
         </div>
-        <div style={{ padding:'12px 16px', borderTop:'1px solid #f0f1f2' }}>
+        <div style={{ padding:'12px 16px', borderTop:'1px solid var(--border)' }}>
           <PaginationBar total={hTotal} page={hPage} perPage={hPerPage} onPage={setHPage} onPerPage={setHPerPage} />
         </div>
       </div>

@@ -18,16 +18,16 @@ function StepIndicator({ step }) {
             <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:'4px' }}>
               <div style={{
                 width:'28px', height:'28px', borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center',
-                background: done ? '#2e7d32' : active ? '#c9973f' : '#e1e3e5',
-                color:      done || active ? '#fff' : '#9ca3af',
+                background: done ? '#2e7d32' : active ? 'var(--gold)' : 'var(--border)',
+                color:      done || active ? 'var(--dark)' : 'var(--gray)',
                 fontWeight: 700, fontSize:'12px',
               }}>
                 {done ? ICONS.check : idx}
               </div>
-              <span style={{ fontSize:'11px', fontWeight: active ? 600 : 400, color: active ? '#c9973f' : done ? '#2e7d32' : '#9ca3af', whiteSpace:'nowrap' }}>{label}</span>
+              <span style={{ fontSize:'11px', fontWeight: active ? 600 : 400, color: active ? 'var(--gold)' : done ? '#2e7d32' : 'var(--gray)', whiteSpace:'nowrap' }}>{label}</span>
             </div>
             {i < steps.length - 1 && (
-              <div style={{ flex:1, height:'2px', background: done ? '#2e7d32' : '#e1e3e5', margin:'0 8px', marginBottom:'16px' }} />
+              <div style={{ flex:1, height:'2px', background: done ? '#2e7d32' : 'var(--border)', margin:'0 8px', marginBottom:'16px' }} />
             )}
           </div>
         );
@@ -39,22 +39,22 @@ function StepIndicator({ step }) {
 function CategoryCard({ group, expanded, onToggle, selectedIds, onToggleMat }) {
   const selectedCount = group.materials.filter(m => selectedIds.includes(m.id)).length;
   return (
-    <div style={{ border:'1px solid #e1e3e5', borderRadius:'8px', overflow:'hidden', marginBottom:'6px' }}>
+    <div style={{ border:'1px solid var(--border)', borderRadius:'8px', overflow:'hidden', marginBottom:'6px' }}>
       <button type="button" onClick={onToggle} style={{
         width:'100%', display:'flex', alignItems:'center', justifyContent:'space-between',
-        padding:'10px 14px', background: expanded ? '#fffbe8' : '#f8f9fa',
-        border:'none', borderBottom: expanded ? '1px solid #e1e3e5' : 'none',
+        padding:'10px 14px', background: expanded ? 'var(--gold-subtle)' : 'var(--dark2)',
+        border:'none', borderBottom: expanded ? '1px solid var(--border)' : 'none',
         cursor:'pointer', textAlign:'left',
       }}>
         <div style={{ display:'flex', alignItems:'center', gap:'8px' }}>
-          <span style={{ display:'inline-flex', color:'#9ca3af', transition:'transform .15s', transform: expanded ? 'rotate(90deg)' : 'none' }}>{ICONS.chevR}</span>
+          <span style={{ display:'inline-flex', color:'var(--gray)', transition:'transform .15s', transform: expanded ? 'rotate(90deg)' : 'none' }}>{ICONS.chevR}</span>
           <div>
-            <div style={{ fontWeight:600, fontSize:'13px', color:'#1a1a2e' }}>{group.category}</div>
-            <div style={{ fontSize:'11px', color:'#9ca3af' }}>{group.materials.length} material{group.materials.length !== 1 ? 's' : ''}</div>
+            <div style={{ fontWeight:600, fontSize:'13px', color:'var(--white)' }}>{group.category}</div>
+            <div style={{ fontSize:'11px', color:'var(--gray)' }}>{group.materials.length} material{group.materials.length !== 1 ? 's' : ''}</div>
           </div>
         </div>
         {selectedCount > 0 && (
-          <span style={{ background:'#c9973f', color:'#fff', borderRadius:'12px', padding:'2px 9px', fontSize:'11px', fontWeight:600 }}>{selectedCount} selected</span>
+          <span style={{ background:'var(--gold)', color:'var(--dark)', borderRadius:'12px', padding:'2px 9px', fontSize:'11px', fontWeight:600 }}>{selectedCount} selected</span>
         )}
       </button>
       {expanded && group.materials.map((m, idx) => {
@@ -64,19 +64,19 @@ function CategoryCard({ group, expanded, onToggle, selectedIds, onToggleMat }) {
             style={{
               width:'100%', display:'flex', alignItems:'center', gap:'12px',
               padding:'9px 14px 9px 28px',
-              background: isSel ? '#fffbe8' : idx % 2 === 0 ? '#fff' : '#fafbfc',
-              border:'none', borderBottom:'1px solid #f0f1f2', cursor:'pointer', textAlign:'left',
+              background: isSel ? 'var(--gold-subtle)' : idx % 2 === 0 ? 'var(--dark)' : 'var(--dark2)',
+              border:'none', borderBottom:'1px solid var(--border)', cursor:'pointer', textAlign:'left',
             }}>
             <div style={{ width:'18px', height:'18px', borderRadius:'50%', flexShrink:0,
-              background: isSel ? '#c9973f' : '#e1e3e5',
+              background: isSel ? 'var(--gold)' : 'var(--border)',
               display:'flex', alignItems:'center', justifyContent:'center' }}>
-              {isSel && <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>}
+              {isSel && <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="var(--dark)" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>}
             </div>
             <div style={{ flex:1 }}>
-              <div style={{ fontWeight:500, fontSize:'13px', color: isSel ? '#c9973f' : '#1a1a2e' }}>{m.name}</div>
-              <div style={{ fontSize:'11px', color:'#9ca3af' }}>{m.sku} · {m.unit}</div>
+              <div style={{ fontWeight:500, fontSize:'13px', color: isSel ? 'var(--gold)' : 'var(--white)' }}>{m.name}</div>
+              <div style={{ fontSize:'11px', color:'var(--gray)' }}>{m.sku} · {m.unit}</div>
             </div>
-            <span style={{ fontSize:'11px', color:'#9ca3af', flexShrink:0 }}>Base: {formatCurrency(m.baseCost)}</span>
+            <span style={{ fontSize:'11px', color:'var(--gray)', flexShrink:0 }}>Base: {formatCurrency(m.baseCost)}</span>
           </button>
         );
       })}
@@ -305,23 +305,23 @@ export default function StockInTab({ materials, vendors, batches, setBatches, ba
               ) : hSlice.map(b => {
                 const mat = materials.find(m => m.id === b.matId);
                 return (
-                  <tr key={b.id} style={S.tr} onMouseEnter={e => e.currentTarget.style.background='#fafbfc'} onMouseLeave={e => e.currentTarget.style.background=''}>
+                  <tr key={b.id} style={S.tr} onMouseEnter={e => e.currentTarget.style.background='var(--dark2)'} onMouseLeave={e => e.currentTarget.style.background=''}>
                     <td style={{ ...S.td, whiteSpace:'nowrap' }}>{formatDate(b.date)}</td>
-                    <td style={{ ...S.td, fontFamily:'monospace', fontSize:'12px', color:'#6b7280' }}>{b.invoiceNo}</td>
+                    <td style={{ ...S.td, fontFamily:'monospace', fontSize:'12px', color:'var(--gray)' }}>{b.invoiceNo}</td>
                     <td style={{ ...S.td, fontWeight:500 }}>{mat?.name || b.matId}</td>
-                    <td style={{ ...S.td, fontSize:'12px', color:'#6b7280' }}>{b.vendorName}</td>
+                    <td style={{ ...S.td, fontSize:'12px', color:'var(--gray)' }}>{b.vendorName}</td>
                     <td style={{ ...S.td, textAlign:'right' }}>{b.qtyReceived} {mat?.unit}</td>
                     <td style={{ ...S.td, textAlign:'right' }}>{formatCurrency(b.unitCost)}</td>
                     <td style={{ ...S.td, textAlign:'right', fontWeight:600 }}>{formatCurrency(b.qtyReceived * b.unitCost)}</td>
                     <td style={{ ...S.td, textAlign:'right', color: b.remainingQty < b.qtyReceived ? '#b45309' : '#2e7d32', fontWeight:600 }}>{b.remainingQty} {mat?.unit}</td>
-                    <td style={{ ...S.td, fontSize:'12px', color:'#6b7280', maxWidth:'180px' }}>{b.notes}</td>
+                    <td style={{ ...S.td, fontSize:'12px', color:'var(--gray)', maxWidth:'180px' }}>{b.notes}</td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
         </div>
-        <div style={{ padding:'12px 16px', borderTop:'1px solid #f0f1f2' }}>
+        <div style={{ padding:'12px 16px', borderTop:'1px solid var(--border)' }}>
           <PaginationBar total={hTotal} page={hPage} perPage={hPerPage} onPage={setHPage} onPerPage={setHPerPage} />
         </div>
       </div>
@@ -389,8 +389,8 @@ export default function StockInTab({ materials, vendors, batches, setBatches, ba
         {/* ── Step 2: Delivery details + per-material quantities ────────────── */}
         {step === 2 && (
           <div style={S.col}>
-            <div style={{ ...S.cardSm, background:'#f8f9fa' }}>
-              <div style={{ fontSize:'12px', fontWeight:700, color:'#6b7280', textTransform:'uppercase', marginBottom:'10px' }}>Delivery Details</div>
+            <div style={{ ...S.cardSm, background:'var(--dark2)' }}>
+              <div style={{ fontSize:'12px', fontWeight:700, color:'var(--gray)', textTransform:'uppercase', marginBottom:'10px' }}>Delivery Details</div>
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px' }}>
                 <Field label="Invoice / OR No." required error={errors2.invoiceNo}>
                   <input value={invoiceNo} onChange={e => { setInvoiceNo(e.target.value); setErr2(p=>({...p,invoiceNo:''})); }}
@@ -416,7 +416,7 @@ export default function StockInTab({ materials, vendors, batches, setBatches, ba
                     )}
                   </div>
                   {relevantVendors.length < vendors.length && !showAllVendors && (
-                    <div style={{ fontSize:'11px', color:'#9ca3af', marginTop:'3px' }}>Showing vendors that supply selected material categories.</div>
+                    <div style={{ fontSize:'11px', color:'var(--gray)', marginTop:'3px' }}>Showing vendors that supply selected material categories.</div>
                   )}
                 </Field>
               </div>
@@ -427,14 +427,14 @@ export default function StockInTab({ materials, vendors, batches, setBatches, ba
               </div>
             </div>
 
-            <div style={{ fontSize:'13px', fontWeight:600, color:'#374151', marginTop:'4px' }}>Per-Material Quantities</div>
+            <div style={{ fontSize:'13px', fontWeight:600, color:'var(--gray-light)', marginTop:'4px' }}>Per-Material Quantities</div>
             {rows.map((r, i) => {
               const mat    = materials.find(m => m.id === r.matId);
               const totalBO = r.bos.reduce((s, b) => s + (Number(b.qty) || 0), 0);
               return (
-                <div key={r.matId} style={{ border:'1px solid #e1e3e5', borderRadius:'9px', padding:'14px', background:'#fff' }}>
+                <div key={r.matId} style={{ border:'1px solid var(--border)', borderRadius:'9px', padding:'14px', background:'var(--dark)' }}>
                   <div style={{ fontWeight:600, marginBottom:'10px', fontSize:'13px' }}>
-                    {mat?.name} <span style={{ fontWeight:400, color:'#9ca3af', fontSize:'12px' }}>({mat?.unit})</span>
+                    {mat?.name} <span style={{ fontWeight:400, color:'var(--gray)', fontSize:'12px' }}>({mat?.unit})</span>
                   </div>
                   <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px' }}>
                     <Field label={`Qty Received (${mat?.unit})`} required error={errors2[`qty_${i}`]}>
@@ -458,7 +458,7 @@ export default function StockInTab({ materials, vendors, batches, setBatches, ba
                           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'8px' }}>
                             <span style={{ fontSize:'12px', fontWeight:600, color:'#c62828' }}>Bad Order #{j + 1}</span>
                             <button type="button" onClick={() => removeBO(i, j)}
-                              style={{ background:'none', border:'none', cursor:'pointer', color:'#9ca3af', fontSize:'16px', lineHeight:1 }}>×</button>
+                              style={{ background:'none', border:'none', cursor:'pointer', color:'var(--gray)', fontSize:'16px', lineHeight:1 }}>×</button>
                           </div>
                           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'8px', marginBottom:'8px' }}>
                             <Field label="BO Qty" required error={errors2[`boQty_${i}_${j}`]}>
@@ -483,7 +483,7 @@ export default function StockInTab({ materials, vendors, batches, setBatches, ba
                   <button type="button" onClick={() => addBO(i)}
                     style={{ ...S.btnGhost, marginTop:'10px', fontSize:'12px', color:'#e05252', borderColor:'#fca5a5' }}>
                     + Add BO Issue
-                    {totalBO > 0 && r.qty && <span style={{ marginLeft:'6px', color:'#9ca3af' }}>({totalBO}/{r.qty} flagged)</span>}
+                    {totalBO > 0 && r.qty && <span style={{ marginLeft:'6px', color:'var(--gray)' }}>({totalBO}/{r.qty} flagged)</span>}
                   </button>
                 </div>
               );
@@ -496,16 +496,16 @@ export default function StockInTab({ materials, vendors, batches, setBatches, ba
           <div style={S.col}>
             <Note type="info">Review the details before confirming. Stock will be updated immediately.</Note>
 
-            <div style={{ ...S.cardSm, background:'#f8f9fa' }}>
+            <div style={{ ...S.cardSm, background:'var(--dark2)' }}>
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'6px 16px', fontSize:'13px' }}>
-                <div><span style={{ color:'#9ca3af' }}>Invoice: </span><b>{invoiceNo}</b></div>
-                <div><span style={{ color:'#9ca3af' }}>Date: </span><b>{formatDate(date)}</b></div>
-                <div style={{ gridColumn:'1 / -1' }}><span style={{ color:'#9ca3af' }}>Vendor: </span><b>{vendor?.name}</b></div>
-                {sharedNotes && <div style={{ gridColumn:'1 / -1' }}><span style={{ color:'#9ca3af' }}>Notes: </span>{sharedNotes}</div>}
+                <div><span style={{ color:'var(--gray)' }}>Invoice: </span><b>{invoiceNo}</b></div>
+                <div><span style={{ color:'var(--gray)' }}>Date: </span><b>{formatDate(date)}</b></div>
+                <div style={{ gridColumn:'1 / -1' }}><span style={{ color:'var(--gray)' }}>Vendor: </span><b>{vendor?.name}</b></div>
+                {sharedNotes && <div style={{ gridColumn:'1 / -1' }}><span style={{ color:'var(--gray)' }}>Notes: </span>{sharedNotes}</div>}
               </div>
             </div>
 
-            <table style={{ width:'100%', borderCollapse:'collapse', border:'1px solid #e1e3e5', borderRadius:'8px', overflow:'hidden' }}>
+            <table style={{ width:'100%', borderCollapse:'collapse', border:'1px solid var(--border)', borderRadius:'8px', overflow:'hidden' }}>
               <thead>
                 <tr>
                   {[{l:'Material'},{l:'Qty',r:true},{l:'Unit Cost',r:true},{l:'Total',r:true},{l:'Bad Orders'}].map(h => (
@@ -524,7 +524,7 @@ export default function StockInTab({ materials, vendors, batches, setBatches, ba
                       <td style={{ ...S.td, padding:'9px 12px', textAlign:'right', fontWeight:600 }}>{formatCurrency(Number(r.qty) * Number(r.unitCost))}</td>
                       <td style={{ ...S.td, padding:'9px 12px' }}>
                         {r.bos.length === 0
-                          ? <span style={{ color:'#9ca3af', fontSize:'12px' }}>None</span>
+                          ? <span style={{ color:'var(--gray)', fontSize:'12px' }}>None</span>
                           : <div style={{ display:'flex', flexDirection:'column', gap:'3px' }}>
                               {r.bos.map((bo, j) => (
                                 <StatusBadge key={j} status={bo.type} label={`${bo.qty} ${mat?.unit} · ${bo.type.replace('_',' ')}`} />
@@ -537,9 +537,9 @@ export default function StockInTab({ materials, vendors, batches, setBatches, ba
                 })}
               </tbody>
               <tfoot>
-                <tr style={{ background:'#f8f9fa' }}>
+                <tr style={{ background:'var(--dark2)' }}>
                   <td colSpan={3} style={{ ...S.td, padding:'10px 12px', fontWeight:700, textAlign:'right' }}>Total</td>
-                  <td style={{ ...S.td, padding:'10px 12px', fontWeight:700, color:'#c9973f' }}>
+                  <td style={{ ...S.td, padding:'10px 12px', fontWeight:700, color:'var(--gold)' }}>
                     {formatCurrency(rows.reduce((s,r) => s + Number(r.qty) * Number(r.unitCost), 0))}
                   </td>
                   <td style={S.td}></td>

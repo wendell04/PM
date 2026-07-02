@@ -55,9 +55,9 @@ export function statusLabel(v) {
 }
 
 // Badge palette aligned with the shared dashboard look (gold=active, green=done, red=negative).
-const GOLD  = { color: '#c9973f', bg: 'rgba(212,168,67,0.08)', border: 'rgba(212,168,67,0.3)' };
-const GREEN = { color: '#166534', bg: 'rgba(34,197,94,0.08)',  border: 'rgba(34,197,94,0.3)'  };
-const RED   = { color: '#991b1b', bg: 'rgba(239,68,68,0.08)',  border: 'rgba(239,68,68,0.3)'  };
+const GOLD  = { color: 'var(--gold)',        bg: 'var(--gold-subtle)', border: 'rgba(212,168,67,0.3)' };
+const GREEN = { color: 'var(--st-green-fg)', bg: 'var(--st-green-bg)',  border: 'rgba(34,197,94,0.3)'  };
+const RED   = { color: 'var(--st-red-fg)',   bg: 'var(--st-red-bg)',    border: 'rgba(239,68,68,0.3)'  };
 
 const COLORS = {
   pending: GOLD, processing: GOLD, in_production: GOLD, for_qc: GOLD,

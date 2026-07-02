@@ -49,6 +49,7 @@ Route::post('/logout',          [AuthController::class, 'logout'])->middleware('
 // Aliases (tooling / documentation compatibility)
 Route::post('/auth/login',      [AuthController::class, 'login'])->middleware('throttle:login');
 Route::post('/auth/logout',     [AuthController::class, 'logout'])->middleware('auth:sanctum');
+Route::post('/auth/refresh',    [AuthController::class, 'refresh'])->middleware('auth:sanctum');
 Route::get('/auth/me', function (Request $request) {
     return response()->json($request->user());
 })->middleware('auth:sanctum');
@@ -64,7 +65,10 @@ Route::post('/unlock-request',  [AuthController::class, 'unlockRequest'])->middl
 
 // ─── Auth (Protected — any logged-in user) ───────────────────────────────────
 Route::get('/user', function (Request $request) {
-    return $request->user();
+    $user = $request->user();
+    // Surface the current token's expiry so the client can warn before it lapses.
+    $user->token_expires_at = optional($user->currentAccessToken())->expires_at?->toIso8601String();
+    return $user;
 })->middleware('auth:sanctum');
 
 // ─── Public Store Settings ───────────────────────────────────────────────────

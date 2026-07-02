@@ -46,9 +46,9 @@ function Toggle({ on, onChange }) {
   return (
     <button type="button" onClick={() => onChange(!on)}
       style={{ position: 'relative', width: '40px', height: '22px', borderRadius: '11px', border: 'none',
-        cursor: 'pointer', background: on ? '#c9973f' : '#e1e3e5', flexShrink: 0, transition: 'background .15s' }}>
+        cursor: 'pointer', background: on ? 'var(--gold)' : 'var(--border)', flexShrink: 0, transition: 'background .15s' }}>
       <span style={{ position: 'absolute', top: '3px', left: on ? '21px' : '3px', width: '16px', height: '16px',
-        borderRadius: '50%', background: '#fff', transition: 'left .15s', boxShadow: '0 1px 3px rgba(0,0,0,.2)' }} />
+        borderRadius: '50%', background: 'var(--dark)', transition: 'left .15s', boxShadow: '0 1px 3px rgba(0,0,0,.2)' }} />
     </button>
   );
 }
@@ -56,22 +56,22 @@ function Toggle({ on, onChange }) {
 function Card({ children, style, onPaste }) {
   return (
     <div onPaste={onPaste}
-      style={{ background: '#fff', border: '1px solid #e1e3e5', borderRadius: '10px', padding: '16px', ...style }}>
+      style={{ background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '10px', padding: '16px', ...style }}>
       {children}
     </div>
   );
 }
 
 function CardTitle({ children }) {
-  return <div style={{ fontSize: '13px', fontWeight: 700, color: '#374151', marginBottom: '12px' }}>{children}</div>;
+  return <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--gray-light)', marginBottom: '12px' }}>{children}</div>;
 }
 
 function ToggleRow({ label, hint, on, onChange, disabled }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', opacity: disabled ? 0.5 : 1 }}>
       <div>
-        <div style={{ fontSize: '13px', fontWeight: 600, color: '#374151' }}>{label}</div>
-        {hint && <div style={{ fontSize: '11px', color: '#9ca3af', marginTop: '2px' }}>{hint}</div>}
+        <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--gray-light)' }}>{label}</div>
+        {hint && <div style={{ fontSize: '11px', color: 'var(--gray)', marginTop: '2px' }}>{hint}</div>}
       </div>
       <Toggle on={on} onChange={disabled ? () => {} : onChange} />
     </div>
@@ -99,23 +99,23 @@ function MediaLibraryModal({ multi = false, onSelect, onClose, existingImages = 
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1000,
       display: 'flex', alignItems: 'center', justifyContent: 'center' }}
       onClick={e => e.target === e.currentTarget && onClose()}>
-      <div style={{ background: '#fff', borderRadius: '12px', width: '620px', maxWidth: '95vw',
+      <div style={{ background: 'var(--dark)', borderRadius: '12px', width: '620px', maxWidth: '95vw',
         maxHeight: '82vh', display: 'flex', flexDirection: 'column', overflow: 'hidden',
         boxShadow: '0 20px 60px rgba(0,0,0,0.25)' }}>
 
         {/* Header */}
-        <div style={{ padding: '14px 20px', borderBottom: '1px solid #e1e3e5',
+        <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)',
           display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div style={{ fontWeight: 700, fontSize: '15px', color: '#1a1a2e' }}>Select file</div>
+          <div style={{ fontWeight: 700, fontSize: '15px', color: 'var(--white)' }}>Select file</div>
           <button onClick={onClose}
             style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '20px',
-              color: '#6b7280', lineHeight: 1, padding: '4px' }}>×</button>
+              color: 'var(--gray)', lineHeight: 1, padding: '4px' }}>×</button>
         </div>
 
         {/* Search */}
-        <div style={{ padding: '10px 16px', borderBottom: '1px solid #f3f4f6' }}>
+        <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)' }}>
           <div style={{ position: 'relative' }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2"
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gray)" strokeWidth="2"
               style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}>
               <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
             </svg>
@@ -126,21 +126,21 @@ function MediaLibraryModal({ multi = false, onSelect, onClose, existingImages = 
         </div>
 
         {/* Upload zone */}
-        <div style={{ margin: '10px 16px 0', border: '2px dashed #d1d5db', borderRadius: '8px',
-          padding: '10px 16px', display: 'flex', alignItems: 'center', gap: '10px', background: '#fafbfc' }}>
+        <div style={{ margin: '10px 16px 0', border: '2px dashed var(--border)', borderRadius: '8px',
+          padding: '10px 16px', display: 'flex', alignItems: 'center', gap: '10px', background: 'var(--dark2)' }}>
           <label style={{ ...S.btnSm, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
             Add media
             <input type="file" accept="image/*" multiple style={{ display: 'none' }}
               onChange={e => { if (e.target.files?.length) { onFileUpload(e.target.files); onClose(); } e.target.value = ''; }} />
           </label>
-          <span style={{ fontSize: '12px', color: '#9ca3af' }}>Drag and drop images and files</span>
+          <span style={{ fontSize: '12px', color: 'var(--gray)' }}>Drag and drop images and files</span>
         </div>
 
         {/* Grid */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '12px 16px' }}>
           {filtered.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '3rem', color: '#9ca3af', fontSize: '13px' }}>
+            <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--gray)', fontSize: '13px' }}>
               {existingImages.length === 0
                 ? 'No uploaded images yet. Use "Add media" to upload one.'
                 : 'No images match your search.'}
@@ -152,14 +152,14 @@ function MediaLibraryModal({ multi = false, onSelect, onClose, existingImages = 
                 return (
                   <button key={img.id} type="button" onClick={() => toggle(img.url)}
                     style={{ position: 'relative', background: 'none',
-                      border: `2px solid ${isSel ? '#c9973f' : '#e1e3e5'}`,
+                      border: `2px solid ${isSel ? 'var(--gold)' : 'var(--border)'}`,
                       borderRadius: '8px', padding: 0, cursor: 'pointer',
                       overflow: 'hidden', aspectRatio: '1/1', transition: 'border-color .15s' }}>
                     <img src={img.url} alt={img.label}
                       style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                     {isSel && (
                       <div style={{ position: 'absolute', top: '4px', right: '4px', width: '20px', height: '20px',
-                        borderRadius: '50%', background: '#c9973f', display: 'flex',
+                        borderRadius: '50%', background: 'var(--gold)', display: 'flex',
                         alignItems: 'center', justifyContent: 'center' }}>
                         {ICONS.check}
                       </div>
@@ -167,7 +167,7 @@ function MediaLibraryModal({ multi = false, onSelect, onClose, existingImages = 
                     {img.label && (
                       <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0,
                         background: 'linear-gradient(transparent, rgba(0,0,0,0.65))',
-                        padding: '16px 4px 4px', fontSize: '9px', color: '#fff',
+                        padding: '16px 4px 4px', fontSize: '9px', color: 'var(--dark)',
                         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {img.label}
                       </div>
@@ -180,9 +180,9 @@ function MediaLibraryModal({ multi = false, onSelect, onClose, existingImages = 
         </div>
 
         {multi && (
-          <div style={{ padding: '12px 20px', borderTop: '1px solid #e1e3e5',
+          <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border)',
             display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
-            <span style={{ fontSize: '12px', color: '#9ca3af' }}>
+            <span style={{ fontSize: '12px', color: 'var(--gray)' }}>
               {sel.size > 0 ? `${sel.size} file${sel.size > 1 ? 's' : ''} selected` : ''}
             </span>
             <div style={{ display: 'flex', gap: '8px' }}>
@@ -201,7 +201,7 @@ function MediaLibraryModal({ multi = false, onSelect, onClose, existingImages = 
 function StorefrontPreview({ name, description, thumbnail, priceRange, variantCount, isCustomizable }) {
   return (
     <div>
-      <div style={{ fontSize: '10px', fontWeight: 700, color: '#9ca3af', marginBottom: '8px',
+      <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--gray)', marginBottom: '8px',
         textTransform: 'uppercase', letterSpacing: '0.06em',
         display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span>Storefront Preview</span>
@@ -209,18 +209,18 @@ function StorefrontPreview({ name, description, thumbnail, priceRange, variantCo
           fontWeight: 400, letterSpacing: '0.03em' }}>How customers see it</span>
       </div>
 
-      <div style={{ background: '#fff', border: '1px solid #e1e3e5',
+      <div style={{ background: 'var(--dark)', border: '1px solid var(--border)',
         borderRadius: '12px', overflow: 'hidden' }}>
 
         {/* Image area — 1:1 aspect */}
         <div style={{ aspectRatio: '1/1', width: '100%',
-          background: '#f4f6f8',
+          background: 'var(--dark2)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           position: 'relative', overflow: 'hidden' }}>
           {thumbnail ? (
             <img src={thumbnail} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
           ) : (
-            <div style={{ textAlign: 'center', color: '#d1d5db' }}>
+            <div style={{ textAlign: 'center', color: 'var(--border)' }}>
               <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                 strokeWidth="1" strokeLinecap="round" strokeLinejoin="round"
                 style={{ display: 'block', margin: '0 auto 8px' }}>
@@ -228,12 +228,12 @@ function StorefrontPreview({ name, description, thumbnail, priceRange, variantCo
                 <circle cx="8.5" cy="8.5" r="1.5"/>
                 <polyline points="21 15 16 10 5 21"/>
               </svg>
-              <div style={{ fontSize: '0.75rem', color: '#9ca3af' }}>No image</div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>No image</div>
             </div>
           )}
           {isCustomizable && (
-            <div style={{ position: 'absolute', top: '10px', right: '10px', background: '#c9973f',
-              color: '#fff', fontSize: '0.6rem', fontWeight: 700, padding: '3px 8px',
+            <div style={{ position: 'absolute', top: '10px', right: '10px', background: 'var(--gold)',
+              color: 'var(--dark)', fontSize: '0.6rem', fontWeight: 700, padding: '3px 8px',
               borderRadius: '6px', textTransform: 'uppercase', letterSpacing: '0.5px', zIndex: 2 }}>
               Customizable
             </div>
@@ -242,29 +242,29 @@ function StorefrontPreview({ name, description, thumbnail, priceRange, variantCo
 
         {/* Info */}
         <div style={{ padding: '1rem' }}>
-          <div style={{ margin: '0 0 0.4rem', fontSize: '0.95rem', fontWeight: 600, color: '#1a1a2e',
+          <div style={{ margin: '0 0 0.4rem', fontSize: '0.95rem', fontWeight: 600, color: 'var(--white)',
             lineHeight: 1.4, overflow: 'hidden', display: '-webkit-box',
             WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
-            {name || <span style={{ color: '#d1d5db', fontStyle: 'italic', fontWeight: 400 }}>Product name</span>}
+            {name || <span style={{ color: 'var(--border)', fontStyle: 'italic', fontWeight: 400 }}>Product name</span>}
           </div>
 
           <p style={{ margin: '0 0 0.75rem', fontSize: '0.82rem', lineHeight: 1.5,
-            color: description ? '#6b7280' : '#d1d5db',
+            color: description ? 'var(--gray)' : 'var(--border)',
             fontStyle: description ? 'normal' : 'italic',
             overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
             {description || 'No description'}
           </p>
 
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span style={{ fontSize: '1rem', fontWeight: 700, color: '#c9973f' }}>
+            <span style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--gold)' }}>
               {priceRange || (
-                <span style={{ fontSize: '0.78rem', color: '#d1d5db', fontWeight: 400, fontStyle: 'italic' }}>
+                <span style={{ fontSize: '0.78rem', color: 'var(--border)', fontWeight: 400, fontStyle: 'italic' }}>
                   Set price below
                 </span>
               )}
             </span>
             {variantCount > 1 && (
-              <span style={{ fontSize: '0.75rem', color: '#9ca3af', fontWeight: 500 }}>
+              <span style={{ fontSize: '0.75rem', color: 'var(--gray)', fontWeight: 500 }}>
                 {variantCount} variant{variantCount !== 1 ? 's' : ''}
               </span>
             )}
@@ -656,16 +656,16 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
     <div style={{ minHeight: '100%', paddingBottom: '60px' }}>
 
       {/* Sticky top bar */}
-      <div style={{ position: 'sticky', top: 0, zIndex: 10, background: '#fff', borderBottom: '1px solid #e1e3e5' }}>
+      <div style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--dark)', borderBottom: '1px solid var(--border)' }}>
         <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '10px 24px',
           display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <button onClick={onCancel}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280', fontSize: '13px', fontWeight: 600, padding: '4px 0' }}>
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--gray)', fontSize: '13px', fontWeight: 600, padding: '4px 0' }}>
               Products
             </button>
-            <span style={{ color: '#d1d5db', fontSize: '14px' }}>/</span>
-            <span style={{ fontSize: '13px', fontWeight: 700, color: '#1a1a2e' }}>
+            <span style={{ color: 'var(--border)', fontSize: '14px' }}>/</span>
+            <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--white)' }}>
               {isEdit ? product.name : 'Add Product'}
             </span>
           </div>
@@ -698,7 +698,7 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
                 <Field label="Description" error={errors.description}>
                   <textarea value={form.description} onChange={e => setF('description', e.target.value)}
                     maxLength={500} placeholder="Materials, printing method, available sizes..." style={S.textarea} />
-                  <span style={{ fontSize: '11px', color: '#9ca3af', textAlign: 'right' }}>{form.description.length}/500</span>
+                  <span style={{ fontSize: '11px', color: 'var(--gray)', textAlign: 'right' }}>{form.description.length}/500</span>
                 </Field>
               </div>
             </Card>
@@ -713,19 +713,19 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
                   {form.images.map((url, i) => (
                     <div key={i} style={{ position: 'relative', flexShrink: 0 }}>
                       <div style={{ position: 'relative', width: '108px', height: '108px', borderRadius: '8px', overflow: 'hidden',
-                        border: i === 0 ? '2px solid #c9973f' : '1px solid #e1e3e5' }}>
+                        border: i === 0 ? '2px solid var(--gold)' : '1px solid var(--border)' }}>
                         <img src={url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                         {i === 0 && (
-                          <span style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: '#c9973f',
-                            color: '#fff', fontSize: '9px', fontWeight: 700, textAlign: 'center', padding: '2px 0', letterSpacing: '0.5px' }}>
+                          <span style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'var(--gold)',
+                            color: 'var(--dark)', fontSize: '9px', fontWeight: 700, textAlign: 'center', padding: '2px 0', letterSpacing: '0.5px' }}>
                             THUMBNAIL
                           </span>
                         )}
                       </div>
                       <button onClick={() => removeImage(i)}
                         style={{ position: 'absolute', top: '-8px', right: '-8px', width: '20px', height: '20px',
-                          borderRadius: '50%', background: '#1a1a2e', border: '1.5px solid #fff', cursor: 'pointer',
-                          color: '#fff', fontSize: '11px', display: 'flex', alignItems: 'center',
+                          borderRadius: '50%', background: 'var(--white)', border: '1.5px solid var(--border)', cursor: 'pointer',
+                          color: 'var(--dark)', fontSize: '11px', display: 'flex', alignItems: 'center',
                           justifyContent: 'center', lineHeight: 1, zIndex: 2 }}>
                         ×
                       </button>
@@ -737,19 +737,19 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
                     <div ref={mediaMenuRef} style={{ position: 'relative', flexShrink: 0 }}>
                       <div onClick={() => setMediaMenuOpen(p => !p)}
                         style={{ width: '108px', height: '108px', borderRadius: '8px',
-                          border: '2px dashed #d1d5db', display: 'flex', flexDirection: 'column',
+                          border: '2px dashed var(--border)', display: 'flex', flexDirection: 'column',
                           alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-                          color: '#9ca3af', gap: '4px' }}>
+                          color: 'var(--gray)', gap: '4px' }}>
                         <span style={{ fontSize: '24px', lineHeight: 1, fontWeight: 300 }}>+</span>
                         <span style={{ fontSize: '10px' }}>Add media</span>
                       </div>
                       {mediaMenuOpen && (
                         <div style={{ position: 'absolute', top: 'calc(100% + 4px)', left: 0, zIndex: 200,
-                          background: '#fff', border: '1px solid #e1e3e5', borderRadius: '8px',
+                          background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '8px',
                           minWidth: '160px', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', overflow: 'hidden' }}>
                           <label style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 14px',
-                            cursor: 'pointer', fontSize: '13px', color: '#374151', fontWeight: 500 }}
-                            onMouseEnter={e => e.currentTarget.style.background = '#f9fafb'}
+                            cursor: 'pointer', fontSize: '13px', color: 'var(--gray-light)', fontWeight: 500 }}
+                            onMouseEnter={e => e.currentTarget.style.background = 'var(--dark2)'}
                             onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
                             Upload image
@@ -758,18 +758,18 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
                           </label>
                           <button onClick={() => { setMediaMenuOpen(false); setMediaUrlMode(true); }}
                             style={{ width: '100%', textAlign: 'left', background: 'none', border: 'none',
-                              borderTop: '1px solid #f3f4f6', padding: '10px 14px', cursor: 'pointer',
-                              fontSize: '13px', color: '#374151', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '8px' }}
-                            onMouseEnter={e => e.currentTarget.style.background = '#f9fafb'}
+                              borderTop: '1px solid var(--border)', padding: '10px 14px', cursor: 'pointer',
+                              fontSize: '13px', color: 'var(--gray-light)', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '8px' }}
+                            onMouseEnter={e => e.currentTarget.style.background = 'var(--dark2)'}
                             onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>
                             Add URL
                           </button>
                           <button onClick={() => openLib('product')}
                             style={{ width: '100%', textAlign: 'left', background: 'none', border: 'none',
-                              borderTop: '1px solid #f3f4f6', padding: '10px 14px', cursor: 'pointer',
-                              fontSize: '13px', color: '#374151', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '8px' }}
-                            onMouseEnter={e => e.currentTarget.style.background = '#f9fafb'}
+                              borderTop: '1px solid var(--border)', padding: '10px 14px', cursor: 'pointer',
+                              fontSize: '13px', color: 'var(--gray-light)', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '8px' }}
+                            onMouseEnter={e => e.currentTarget.style.background = 'var(--dark2)'}
                             onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
                             Media library
@@ -786,13 +786,13 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
                 <div
                   onDrop={e => { e.preventDefault(); if (e.dataTransfer.files?.length) handleFileUpload(e.dataTransfer.files, 'product'); }}
                   onDragOver={e => e.preventDefault()}
-                  style={{ border: '2px dashed #d1d5db', borderRadius: '10px', padding: '32px 20px',
-                    textAlign: 'center', marginBottom: '10px', background: '#fafbfc' }}>
+                  style={{ border: '2px dashed var(--border)', borderRadius: '10px', padding: '32px 20px',
+                    textAlign: 'center', marginBottom: '10px', background: 'var(--dark2)' }}>
                   <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="rgba(201,151,63,0.4)"
                     strokeWidth="1.5" style={{ margin: '0 auto 10px', display: 'block' }}>
                     <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
                   </svg>
-                  <div style={{ fontSize: '13px', color: '#6b7280', marginBottom: '12px' }}>
+                  <div style={{ fontSize: '13px', color: 'var(--gray)', marginBottom: '12px' }}>
                     Drag &amp; drop images here, or
                   </div>
                   <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', flexWrap: 'wrap' }}>
@@ -820,11 +820,11 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
               )}
 
               {uploadingCount > 0 && (
-                <span style={{ fontSize: '11px', color: '#c9973f', display: 'block', marginBottom: '4px' }}>
+                <span style={{ fontSize: '11px', color: 'var(--gold)', display: 'block', marginBottom: '4px' }}>
                   Uploading {uploadingCount} image{uploadingCount > 1 ? 's' : ''}…
                 </span>
               )}
-              <span style={{ fontSize: '11px', color: '#9ca3af', display: 'block' }}>
+              <span style={{ fontSize: '11px', color: 'var(--gray)', display: 'block' }}>
                 {form.images.length}/8 images. First image is the thumbnail in the shop. You can also paste (Ctrl+V) a copied image.
               </span>
             </Card>
@@ -840,14 +840,14 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
                     { val: 'multi-variant', label: 'Multi-Variant', desc: 'Multiple options (sizes, types...)' },
                   ].map(o => (
                     <label key={o.val} style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '4px',
-                      padding: '12px', border: `1px solid ${form.type === o.val ? '#c9973f' : '#e1e3e5'}`,
-                      borderRadius: '8px', cursor: 'pointer', background: form.type === o.val ? '#fffbe8' : '#fff' }}>
+                      padding: '12px', border: `1px solid ${form.type === o.val ? 'var(--gold)' : 'var(--border)'}`,
+                      borderRadius: '8px', cursor: 'pointer', background: form.type === o.val ? 'var(--gold-subtle)' : 'var(--dark)' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                         <input type="radio" name="ptype" value={o.val} checked={form.type === o.val}
-                          onChange={() => handleTypeChange(o.val)} style={{ accentColor: '#c9973f' }} />
+                          onChange={() => handleTypeChange(o.val)} style={{ accentColor: 'var(--gold)' }} />
                         <span style={{ fontWeight: 600, fontSize: '13px' }}>{o.label}</span>
                       </div>
-                      <span style={{ fontSize: '11px', color: '#9ca3af', paddingLeft: '20px' }}>{o.desc}</span>
+                      <span style={{ fontSize: '11px', color: 'var(--gray)', paddingLeft: '20px' }}>{o.desc}</span>
                     </label>
                   ))}
                 </div>
@@ -862,8 +862,8 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
                         error={errors.bomId} />
                     </Field>
                     {form.bomId && (
-                      <div style={{ display: 'flex', gap: '20px', padding: '8px 12px', background: '#f4f6f8', borderRadius: '7px', fontSize: '12px', color: '#6b7280' }}>
-                        <span>Floor cost: <b style={{ color: '#374151' }}>{floorCostMap[form.bomId] > 0 ? formatCurrency(floorCostMap[form.bomId]) : '--'}</b></span>
+                      <div style={{ display: 'flex', gap: '20px', padding: '8px 12px', background: 'var(--dark2)', borderRadius: '7px', fontSize: '12px', color: 'var(--gray)' }}>
+                        <span>Floor cost: <b style={{ color: 'var(--gray-light)' }}>{floorCostMap[form.bomId] > 0 ? formatCurrency(floorCostMap[form.bomId]) : '--'}</b></span>
                         <span>Can produce: <b style={{ color: (maxProducibleMap[form.bomId] || 0) > 0 ? '#2e7d32' : '#dc2626' }}>
                           {(maxProducibleMap[form.bomId] || 0) > 0 ? `${maxProducibleMap[form.bomId]} units` : 'Out of stock'}
                         </b></span>
@@ -876,7 +876,7 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
                 {form.type === 'multi-variant' && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontSize: '12px', fontWeight: 600, color: '#6b7280' }}>Variants</span>
+                      <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--gray)' }}>Variants</span>
                       <button onClick={addVariant} style={S.btnSm}>{ICONS.plus} Add Variant</button>
                     </div>
                     {errors.variants && <span style={S.errText}>{errors.variants}</span>}
@@ -889,9 +889,9 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
                       const urlOpen  = vImgUrlId  === v.id;
 
                       return (
-                        <div key={v.id} style={{ border: '1px solid #e1e3e5', borderRadius: '8px', padding: '12px', background: '#fafbfc' }}>
+                        <div key={v.id} style={{ border: '1px solid var(--border)', borderRadius: '8px', padding: '12px', background: 'var(--dark2)' }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                            <span style={{ fontSize: '12px', fontWeight: 600, color: '#6b7280' }}>Variant {i + 1}</span>
+                            <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--gray)' }}>Variant {i + 1}</span>
                             {form.variants.length > 1 && (
                               <button onClick={() => removeVariant(i)}
                                 style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#e05252', display: 'flex' }}>
@@ -907,8 +907,8 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
                                 <div onClick={() => { setVImgMenuId(menuOpen ? null : v.id); setVImgUrlId(null); }}
                                   style={{ width: '64px', height: '64px', borderRadius: '8px', overflow: 'hidden',
                                     cursor: 'pointer', display: 'flex', alignItems: 'center',
-                                    justifyContent: 'center', background: '#f4f6f8',
-                                    border: imgUrl ? '1px solid #e1e3e5' : '2px dashed #d1d5db' }}>
+                                    justifyContent: 'center', background: 'var(--dark2)',
+                                    border: imgUrl ? '1px solid var(--border)' : '2px dashed var(--border)' }}>
                                   {imgUrl ? (
                                     <img src={imgUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                                   ) : (
@@ -920,8 +920,8 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
                                 {imgUrl && (
                                   <button onClick={e => { e.stopPropagation(); setVariantImages(p => { const n = {...p}; delete n[v.id]; return n; }); }}
                                     style={{ position: 'absolute', top: '-6px', right: '-6px', width: '16px', height: '16px',
-                                      borderRadius: '50%', background: '#1a1a2e', border: '1.5px solid #fff', cursor: 'pointer',
-                                      color: '#fff', fontSize: '9px', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2 }}>
+                                      borderRadius: '50%', background: 'var(--white)', border: '1.5px solid var(--border)', cursor: 'pointer',
+                                      color: 'var(--dark)', fontSize: '9px', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2 }}>
                                     ×
                                   </button>
                                 )}
@@ -929,11 +929,11 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
                                 {/* Variant image menu */}
                                 {menuOpen && (
                                   <div style={{ position: 'absolute', top: 'calc(100% + 4px)', left: 0, zIndex: 200,
-                                    background: '#fff', border: '1px solid #e1e3e5', borderRadius: '8px',
+                                    background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '8px',
                                     minWidth: '150px', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', overflow: 'hidden' }}>
                                     <label style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '9px 12px',
-                                      cursor: 'pointer', fontSize: '12px', color: '#374151', fontWeight: 500 }}
-                                      onMouseEnter={e => e.currentTarget.style.background = '#f9fafb'}
+                                      cursor: 'pointer', fontSize: '12px', color: 'var(--gray-light)', fontWeight: 500 }}
+                                      onMouseEnter={e => e.currentTarget.style.background = 'var(--dark2)'}
                                       onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
                                       Upload
                                       <input type="file" accept="image/*" style={{ display: 'none' }}
@@ -941,17 +941,17 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
                                     </label>
                                     <button onClick={() => { setVImgUrlId(v.id); setVImgInput(''); setVImgMenuId(null); }}
                                       style={{ width: '100%', textAlign: 'left', background: 'none', border: 'none',
-                                        borderTop: '1px solid #f3f4f6', padding: '9px 12px', cursor: 'pointer',
-                                        fontSize: '12px', color: '#374151', fontWeight: 500 }}
-                                      onMouseEnter={e => e.currentTarget.style.background = '#f9fafb'}
+                                        borderTop: '1px solid var(--border)', padding: '9px 12px', cursor: 'pointer',
+                                        fontSize: '12px', color: 'var(--gray-light)', fontWeight: 500 }}
+                                      onMouseEnter={e => e.currentTarget.style.background = 'var(--dark2)'}
                                       onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
                                       Add URL
                                     </button>
                                     <button onClick={() => openLib(v.id)}
                                       style={{ width: '100%', textAlign: 'left', background: 'none', border: 'none',
-                                        borderTop: '1px solid #f3f4f6', padding: '9px 12px', cursor: 'pointer',
-                                        fontSize: '12px', color: '#374151', fontWeight: 500 }}
-                                      onMouseEnter={e => e.currentTarget.style.background = '#f9fafb'}
+                                        borderTop: '1px solid var(--border)', padding: '9px 12px', cursor: 'pointer',
+                                        fontSize: '12px', color: 'var(--gray-light)', fontWeight: 500 }}
+                                      onMouseEnter={e => e.currentTarget.style.background = 'var(--dark2)'}
                                       onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
                                       Library
                                     </button>
@@ -990,8 +990,8 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
 
                           {v.bomId && (
                             <div style={{ display: 'flex', gap: '20px', marginTop: '8px', paddingTop: '8px',
-                              borderTop: '1px solid #f0f1f2', fontSize: '11px', color: '#6b7280' }}>
-                              <span>Floor cost: <b style={{ color: '#374151' }}>{cost > 0 ? formatCurrency(cost) : '--'}</b></span>
+                              borderTop: '1px solid var(--border)', fontSize: '11px', color: 'var(--gray)' }}>
+                              <span>Floor cost: <b style={{ color: 'var(--gray-light)' }}>{cost > 0 ? formatCurrency(cost) : '--'}</b></span>
                               {units !== null && (
                                 <span>Can produce: <b style={{ color: units > 0 ? '#2e7d32' : '#dc2626' }}>
                                   {units > 0 ? `${units} units` : 'Out of stock'}
@@ -1020,11 +1020,11 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
                   ].map(o => (
                     <button key={o.val} type="button" onClick={() => handlePricingModeChange(o.val)}
                       style={{ flex: 1, padding: '8px 10px',
-                        border: `1px solid ${form.pricingMode === o.val ? '#c9973f' : '#e1e3e5'}`,
-                        borderRadius: '7px', background: form.pricingMode === o.val ? '#fffbe8' : '#fff',
+                        border: `1px solid ${form.pricingMode === o.val ? 'var(--gold)' : 'var(--border)'}`,
+                        borderRadius: '7px', background: form.pricingMode === o.val ? 'var(--gold-subtle)' : 'var(--dark)',
                         cursor: 'pointer', textAlign: 'center' }}>
-                      <div style={{ fontSize: '12px', fontWeight: 700, color: form.pricingMode === o.val ? '#c9973f' : '#374151' }}>{o.label}</div>
-                      <div style={{ fontSize: '10px', color: '#9ca3af', marginTop: '2px' }}>{o.hint}</div>
+                      <div style={{ fontSize: '12px', fontWeight: 700, color: form.pricingMode === o.val ? 'var(--gold)' : 'var(--gray-light)' }}>{o.label}</div>
+                      <div style={{ fontSize: '10px', color: 'var(--gray)', marginTop: '2px' }}>{o.hint}</div>
                     </button>
                   ))}
                 </div>
@@ -1056,9 +1056,9 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
                           const price  = Number(v.price) || 0;
                           const margin = price > 0 ? price - cost : null;
                           return (
-                            <tr key={v.id} style={{ background: i % 2 === 1 ? '#fafbfc' : '#fff' }}>
+                            <tr key={v.id} style={{ background: i % 2 === 1 ? 'var(--dark2)' : 'var(--dark)' }}>
                               <td style={{ ...S.td, fontWeight: 500 }}>{v.name || `Variant ${i + 1}`}</td>
-                              <td style={{ ...S.td, textAlign: 'right', color: '#6b7280' }}>{cost > 0 ? formatCurrency(cost) : '--'}</td>
+                              <td style={{ ...S.td, textAlign: 'right', color: 'var(--gray)' }}>{cost > 0 ? formatCurrency(cost) : '--'}</td>
                               <td style={S.td}>
                                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px' }}>
                                   <DecimalInput value={v.price} onChange={val => setVariant(i, 'price', val)}
@@ -1092,7 +1092,7 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
                               <th style={{ ...S.th, minWidth: '110px' }}>
                                 <div>Price (P)</div>
                                 {form.bomId && floorCostMap[form.bomId] > 0 && (
-                                  <div style={{ fontSize: '10px', color: '#9ca3af', fontWeight: 400, marginTop: '2px' }}>BOM: {formatCurrency(floorCostMap[form.bomId])}</div>
+                                  <div style={{ fontSize: '10px', color: 'var(--gray)', fontWeight: 400, marginTop: '2px' }}>BOM: {formatCurrency(floorCostMap[form.bomId])}</div>
                                 )}
                               </th>
                             ) : (
@@ -1100,7 +1100,7 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
                                 <th key={v.id} style={{ ...S.th, minWidth: '110px', whiteSpace: 'nowrap' }}>
                                   <div>{v.name || `Variant ${vi + 1}`} (P)</div>
                                   {v.bomId && floorCostMap[v.bomId] > 0 && (
-                                    <div style={{ fontSize: '10px', color: '#9ca3af', fontWeight: 400, marginTop: '2px' }}>BOM: {formatCurrency(floorCostMap[v.bomId])}</div>
+                                    <div style={{ fontSize: '10px', color: 'var(--gray)', fontWeight: 400, marginTop: '2px' }}>BOM: {formatCurrency(floorCostMap[v.bomId])}</div>
                                   )}
                                 </th>
                               ))
@@ -1110,7 +1110,7 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
                         </thead>
                         <tbody>
                           {form.tiers.map((tier, ti) => (
-                            <tr key={tier.id} style={{ background: ti % 2 === 1 ? '#fafbfc' : '#fff' }}>
+                            <tr key={tier.id} style={{ background: ti % 2 === 1 ? 'var(--dark2)' : 'var(--dark)' }}>
                               <td style={S.td}><IntegerInput value={tier.minQty} onChange={v => setTierField(ti, 'minQty', v)} min={1} placeholder="1" style={{ ...S.input, width: '70px' }} /></td>
                               <td style={S.td}><IntegerInput value={tier.maxQty} onChange={v => setTierField(ti, 'maxQty', v)} min={1} placeholder="above" style={{ ...S.input, width: '70px' }} /></td>
                               {form.type === 'standalone' ? (
@@ -1132,7 +1132,7 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                       <button onClick={addTier} style={S.btnSm}>{ICONS.plus} Add Tier</button>
-                      <span style={{ fontSize: '11px', color: '#9ca3af' }}>Leave Max Qty blank for "and above".</span>
+                      <span style={{ fontSize: '11px', color: 'var(--gray)' }}>Leave Max Qty blank for "and above".</span>
                     </div>
                   </div>
                 )}
@@ -1170,22 +1170,22 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
             <Card>
               <CardTitle>Collections</CardTitle>
               {collections.length === 0 ? (
-                <span style={{ fontSize: '12px', color: '#9ca3af' }}>No collections yet.</span>
+                <span style={{ fontSize: '12px', color: 'var(--gray)' }}>No collections yet.</span>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '9px' }}>
                   {collections.map(c => (
                     <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
                       <input type="checkbox" checked={form.collectionIds.includes(c.id)} onChange={() => toggleCollection(c.id)}
-                        style={{ accentColor: '#c9973f', width: '14px', height: '14px', cursor: 'pointer' }} />
-                      <span style={{ fontSize: '13px', color: '#374151', flex: 1 }}>{c.title}</span>
+                        style={{ accentColor: 'var(--gold)', width: '14px', height: '14px', cursor: 'pointer' }} />
+                      <span style={{ fontSize: '13px', color: 'var(--gray-light)', flex: 1 }}>{c.title}</span>
                       {!c.isPublished && (
-                        <span style={{ fontSize: '10px', color: '#9ca3af', background: '#f3f4f6', borderRadius: '4px', padding: '1px 6px' }}>Hidden</span>
+                        <span style={{ fontSize: '10px', color: 'var(--gray)', background: 'var(--dark2)', borderRadius: '4px', padding: '1px 6px' }}>Hidden</span>
                       )}
                     </label>
                   ))}
                 </div>
               )}
-              <div style={{ marginTop: '10px', fontSize: '11px', color: '#c9973f', cursor: 'pointer', fontWeight: 600 }}>
+              <div style={{ marginTop: '10px', fontSize: '11px', color: 'var(--gold)', cursor: 'pointer', fontWeight: 600 }}>
                 Manage Collections
               </div>
             </Card>
@@ -1198,7 +1198,7 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
                 {form.isCustomizable && (
                   <Field label="Design Fee (P)" error={errors.designFee}>
                     <DecimalInput value={form.designFee} onChange={v => setF('designFee', v)} placeholder="0.00" />
-                    <span style={{ fontSize: '11px', color: '#9ca3af', marginTop: '3px', display: 'block' }}>Optional — charged for artwork/design service</span>
+                    <span style={{ fontSize: '11px', color: 'var(--gray)', marginTop: '3px', display: 'block' }}>Optional — charged for artwork/design service</span>
                   </Field>
                 )}
                 <ToggleRow label="COD Available" hint="Cash on delivery allowed" on={form.allowCOD} onChange={v => setF('allowCOD', v)} />
@@ -1213,7 +1213,7 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
                     <IntegerInput value={form.downpaymentPct} onChange={v => setF('downpaymentPct', v)}
                       max={100} placeholder="0"
                       style={{ ...(errors.downpaymentPct ? S.inputErr : S.input), width: '70px' }} />
-                    <span style={{ fontSize: '11px', color: '#6b7280' }}>
+                    <span style={{ fontSize: '11px', color: 'var(--gray)' }}>
                       {Number(form.downpaymentPct) === 0 ? 'No DP required' : `${form.downpaymentPct}% on approval`}
                     </span>
                   </div>
@@ -1223,7 +1223,7 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
                     <IntegerInput value={form.minOrderQty} onChange={v => setF('minOrderQty', v)}
                       min={1} placeholder="1"
                       style={{ ...S.input, width: '70px' }} />
-                    <span style={{ fontSize: '11px', color: '#6b7280' }}>units minimum per order</span>
+                    <span style={{ fontSize: '11px', color: 'var(--gray)' }}>units minimum per order</span>
                   </div>
                   {form.isCustomizable && Number(form.minOrderQty) <= 1 && (
                     <div style={{ marginTop: '6px', fontSize: '11px', color: '#b45309', background: '#fef9c3', border: '1px solid #fcd34d', borderRadius: '4px', padding: '5px 8px' }}>
@@ -1243,7 +1243,7 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
                 disabled={form.isMadeToOrder}
               />
               {form.isMadeToOrder && (
-                <span style={{ fontSize: '11px', color: '#9ca3af', marginTop: '8px', display: 'block' }}>
+                <span style={{ fontSize: '11px', color: 'var(--gray)', marginTop: '8px', display: 'block' }}>
                   Not applicable for made-to-order products.
                 </span>
               )}

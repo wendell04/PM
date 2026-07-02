@@ -40,6 +40,7 @@ export function normInventory(item) {
     vendorId: item.supplierId ?? null,
     baseCost: Number(item.baseCost ?? item.lastUnitCost ?? 0),
     minStock: Number(item.minStockLevel ?? 0),
+    leadTime: Number(item.leadTimeDays ?? 7),
     stockQty: Number(item.stockQty ?? 0),
   };
   return { mat, batches };

@@ -111,14 +111,14 @@ function QuickAddVendorModal({ open, onClose, categories, onAdd, initialCategory
             placeholder="e.g. 09272518750" maxLength={20} style={S.input} />
         </Field>
         <Field label="Items Supplied" required error={errors.supplied}>
-          <div style={{ display:'flex', flexWrap:'wrap', gap:'6px', padding:'8px', border:`1px solid ${errors.supplied?'#e05252':'#e1e3e5'}`, borderRadius:'7px', background:'#f9f9f9', maxHeight:'120px', overflowY:'auto' }}>
+          <div style={{ display:'flex', flexWrap:'wrap', gap:'6px', padding:'8px', border:`1px solid ${errors.supplied?'#e05252':'var(--border)'}`, borderRadius:'7px', background:'var(--dark2)', maxHeight:'120px', overflowY:'auto' }}>
             {categories.map(cat => {
               const active = supplied.includes(cat);
               return (
                 <button key={cat} type="button" onClick={() => toggle(cat)}
-                  style={{ border:`1px solid ${active?'#c9973f':'#e1e3e5'}`, borderRadius:'20px', padding:'3px 10px',
-                    fontSize:'12px', cursor:'pointer', background: active?'#c9973f':'#fff',
-                    color: active?'#fff':'#374151', fontWeight: active?600:400, transition:'all .12s' }}>
+                  style={{ border:`1px solid ${active?'var(--gold)':'var(--border)'}`, borderRadius:'20px', padding:'3px 10px',
+                    fontSize:'12px', cursor:'pointer', background: active?'var(--gold)':'var(--dark)',
+                    color: active?'var(--dark)':'var(--gray-light)', fontWeight: active?600:400, transition:'all .12s' }}>
                   {cat}
                 </button>
               );
@@ -177,12 +177,12 @@ function ManageListsModal({ open, onClose, categories, setCategories, units, set
     return (
       <div key={val} style={{ borderRadius:'6px', overflow:'hidden', marginBottom:'3px' }}>
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'6px 10px',
-          background: isPending ? '#fff5f5' : '#f8f9fa', border: isPending ? '1px solid #fca5a5' : '1px solid transparent',
+          background: isPending ? '#fff5f5' : 'var(--dark2)', border: isPending ? '1px solid #fca5a5' : '1px solid transparent',
           borderRadius:'6px', fontSize:'13px' }}>
           <div>
             <span>{val}</span>
             {inUse > 0 && (
-              <span style={{ fontSize:'11px', color:'#9ca3af', marginLeft:'6px' }}>({inUse} material{inUse!==1?'s':''})</span>
+              <span style={{ fontSize:'11px', color:'var(--gray)', marginLeft:'6px' }}>({inUse} material{inUse!==1?'s':''})</span>
             )}
           </div>
           {isPending ? (
@@ -191,17 +191,17 @@ function ManageListsModal({ open, onClose, categories, setCategories, units, set
                 {inUse > 0 ? `Remove? (${inUse} material${inUse!==1?'s':''} use this)` : 'Remove?'}
               </span>
               <button onClick={confirmRemove}
-                style={{ background:'#c62828', color:'#fff', border:'none', borderRadius:'4px', padding:'2px 8px', fontSize:'11px', cursor:'pointer', fontWeight:600 }}>
+                style={{ background:'#c62828', color:'var(--dark)', border:'none', borderRadius:'4px', padding:'2px 8px', fontSize:'11px', cursor:'pointer', fontWeight:600 }}>
                 Yes
               </button>
               <button onClick={cancelRemove}
-                style={{ background:'none', border:'1px solid #e1e3e5', borderRadius:'4px', padding:'2px 8px', fontSize:'11px', cursor:'pointer' }}>
+                style={{ background:'none', border:'1px solid var(--border)', borderRadius:'4px', padding:'2px 8px', fontSize:'11px', cursor:'pointer' }}>
                 No
               </button>
             </div>
           ) : (
             <button onClick={() => tryRemove(type, val)}
-              style={{ background:'none', border:'none', cursor:'pointer', color:'#9ca3af', fontSize:'18px', lineHeight:1, padding:'0 2px' }}>×</button>
+              style={{ background:'none', border:'none', cursor:'pointer', color:'var(--gray)', fontSize:'18px', lineHeight:1, padding:'0 2px' }}>×</button>
           )}
         </div>
       </div>
@@ -214,7 +214,7 @@ function ManageListsModal({ open, onClose, categories, setCategories, units, set
     >
       <div style={{ display:'flex', gap:'24px' }}>
         <div style={{ flex:1 }}>
-          <div style={{ fontSize:'12px', fontWeight:700, color:'#374151', marginBottom:'10px', textTransform:'uppercase' }}>Categories</div>
+          <div style={{ fontSize:'12px', fontWeight:700, color:'var(--gray-light)', marginBottom:'10px', textTransform:'uppercase' }}>Categories</div>
           <div style={{ display:'flex', gap:'6px', marginBottom:'10px' }}>
             <input value={newCat} onChange={e => setNewCat(e.target.value)} placeholder="New category…"
               onKeyDown={e => e.key==='Enter' && addCat()}
@@ -226,7 +226,7 @@ function ManageListsModal({ open, onClose, categories, setCategories, units, set
           </div>
         </div>
         <div style={{ flex:1 }}>
-          <div style={{ fontSize:'12px', fontWeight:700, color:'#374151', marginBottom:'10px', textTransform:'uppercase' }}>Units</div>
+          <div style={{ fontSize:'12px', fontWeight:700, color:'var(--gray-light)', marginBottom:'10px', textTransform:'uppercase' }}>Units</div>
           <div style={{ display:'flex', gap:'6px', marginBottom:'10px' }}>
             <input value={newUnit} onChange={e => setNewUnit(e.target.value)} placeholder="New unit…"
               onKeyDown={e => e.key==='Enter' && addUnit()}
@@ -246,7 +246,7 @@ function ManageListsModal({ open, onClose, categories, setCategories, units, set
 export default function MaterialsTab({ materials, setMaterials, vendors, setVendors, batches, boms, categories, setCategories, units, setUnits, token, onRefresh, toast }) {
   const [search,       setSearch]     = useState('');
   const [catFilter,    setCat]        = useState('All');
-  const [form,         setForm]       = useState({ name:'', category:'', unit:'', vendorId:'', baseCost:'', minStock:'' });
+  const [form,         setForm]       = useState({ name:'', category:'', unit:'', vendorId:'', baseCost:'', minStock:'', leadTime:'7' });
   const [errors,       setErrors]     = useState({});
   const [editId,       setEditId]     = useState(null);
   const [showForm,     setShowForm]   = useState(false);
@@ -280,12 +280,12 @@ export default function MaterialsTab({ materials, setMaterials, vendors, setVend
   const { slice, page, perPage, total, setPage, setPerPage } = usePagination(filtered);
 
   const openAdd = () => {
-    setForm({ name:'', category: categories[0]||'', unit: units[0]||'', vendorId:'', baseCost:'', minStock:'' });
+    setForm({ name:'', category: categories[0]||'', unit: units[0]||'', vendorId:'', baseCost:'', minStock:'', leadTime:'7' });
     setErrors({}); setEditId(null); setShowForm(true);
   };
 
   const openEdit = (mat) => {
-    setForm({ name:mat.name, category:mat.category, unit:mat.unit, vendorId:mat.vendorId, baseCost:String(mat.baseCost), minStock:String(mat.minStock) });
+    setForm({ name:mat.name, category:mat.category, unit:mat.unit, vendorId:mat.vendorId, baseCost:String(mat.baseCost), minStock:String(mat.minStock), leadTime:String(mat.leadTime ?? 7) });
     setErrors({}); setEditId(mat.id); setShowForm(true);
   };
 
@@ -303,6 +303,7 @@ export default function MaterialsTab({ materials, setMaterials, vendors, setVend
       supplierName:  vendor?.name || null,
       baseCost:      Number(form.baseCost),
       minStockLevel: Number(form.minStock),
+      leadTimeDays:  Number(form.leadTime || 7),
     };
     setSaving(true);
     try {
@@ -410,12 +411,12 @@ export default function MaterialsTab({ materials, setMaterials, vendors, setVend
                 const status = qty === 0 ? 'out_of_stock' : qty <= mat.minStock ? 'low_stock' : 'in_stock';
                 const vendor = vendors.find(v => v.id === mat.vendorId);
                 return (
-                  <tr key={mat.id} style={S.tr} onMouseEnter={e => e.currentTarget.style.background='#fafbfc'} onMouseLeave={e => e.currentTarget.style.background=''}>
-                    <td style={{ ...S.td, fontFamily:'monospace', fontSize:'12px', color:'#6b7280' }}>{mat.sku}</td>
+                  <tr key={mat.id} style={S.tr} onMouseEnter={e => e.currentTarget.style.background='var(--dark2)'} onMouseLeave={e => e.currentTarget.style.background=''}>
+                    <td style={{ ...S.td, fontFamily:'monospace', fontSize:'12px', color:'var(--gray)' }}>{mat.sku}</td>
                     <td style={{ ...S.td, fontWeight:500 }}>{mat.name}</td>
-                    <td style={S.td}><span style={{ background:'#f3f4f6', borderRadius:'5px', padding:'2px 8px', fontSize:'12px', color:'#374151' }}>{mat.category}</span></td>
+                    <td style={S.td}><span style={{ background:'var(--dark2)', borderRadius:'5px', padding:'2px 8px', fontSize:'12px', color:'var(--gray-light)' }}>{mat.category}</span></td>
                     <td style={S.td}>{mat.unit}</td>
-                    <td style={{ ...S.td, fontSize:'12px', color:'#6b7280' }}>{vendor?.name}</td>
+                    <td style={{ ...S.td, fontSize:'12px', color:'var(--gray)' }}>{vendor?.name}</td>
                     <td style={S.td}>{formatCurrency(mat.baseCost)}</td>
                     <td style={S.td}>{mat.minStock} {mat.unit}</td>
                     <td style={{ ...S.td, fontWeight:600 }}>{qty} {mat.unit}</td>
@@ -432,7 +433,7 @@ export default function MaterialsTab({ materials, setMaterials, vendors, setVend
             </tbody>
           </table>
         </div>
-        <div style={{ padding:'12px 16px', borderTop:'1px solid #f0f1f2' }}>
+        <div style={{ padding:'12px 16px', borderTop:'1px solid var(--border)' }}>
           <PaginationBar total={total} page={page} perPage={perPage} onPage={setPage} onPerPage={setPerPage} />
         </div>
       </div>
@@ -501,7 +502,7 @@ export default function MaterialsTab({ materials, setMaterials, vendors, setVend
               <div style={{ fontSize:'11px', color:'#b45309', marginTop:'4px' }}>No vendors yet. Click + to add one.</div>
             )}
             {catVendors.length > 0 && catVendors.length < vendors.length && (
-              <div style={{ fontSize:'11px', color:'#9ca3af', marginTop:'3px' }}>Showing vendors that supply {form.category}.</div>
+              <div style={{ fontSize:'11px', color:'var(--gray)', marginTop:'3px' }}>Showing vendors that supply {form.category}.</div>
             )}
           </Field>
 
@@ -513,6 +514,13 @@ export default function MaterialsTab({ materials, setMaterials, vendors, setVend
               <IntegerInput value={form.minStock} onChange={v => setF('minStock', v)} placeholder="0" style={errors.minStock ? S.inputErr : undefined} />
             </Field>
           </div>
+
+          <Field label="Lead Time (days)">
+            <IntegerInput value={form.leadTime} onChange={v => setF('leadTime', v)} placeholder="7" />
+            <div style={{ fontSize:'11px', color:'var(--gray)', marginTop:'4px' }}>
+              How long replenishment takes — used to compute the reorder point in the Forecast page.
+            </div>
+          </Field>
 
           {!editId && (
             <div style={S.noteInfo}>

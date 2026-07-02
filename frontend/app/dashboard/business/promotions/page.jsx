@@ -321,48 +321,52 @@ function VouchersTab({ token }) {
 
   return (
     <>
-      {/* Toolbar: stats + action + filter */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', flexWrap: 'wrap', marginBottom: '0.875rem' }}>
+      {/* Toolbar: stats + action */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
         {[
-          { label: 'Total',  value: vouchers.length, color: 'var(--white)' },
-          { label: 'Active', value: activeCnt,        color: 'var(--green)' },
+          { label: 'Total',       value: vouchers.length, color: 'var(--white)' },
+          { label: 'Active',      value: activeCnt,        color: 'var(--green)' },
+          { label: 'Expired',     value: vouchers.filter(v => v.expiresAt && new Date(v.expiresAt) < new Date()).length, color: 'var(--gray)' },
+          { label: 'Redemptions', value: vouchers.reduce((s, v) => s + (v.usedCount || 0), 0), color: 'var(--gold)' },
         ].map(c => (
           <div key={c.label} style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '7px', padding: '0.4rem 0.875rem', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
             <span style={{ fontSize: '1rem', fontWeight: 700, color: c.color }}>{c.value}</span>
             <span style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>{c.label}</span>
           </div>
         ))}
-        <div style={{ flex: 1, display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center' }}>
-          {[{ key: 'all', label: 'All' }, ...BENEFIT_CATEGORIES].map(c => {
-            const ac = CAT_COLORS[c.key] || {};
-            const active = catFilter === c.key;
-            return (
-              <button
-                key={c.key}
-                onClick={() => { setCatFilter(c.key); setPage(1); }}
-                style={{
-                  padding: '0.25rem 0.75rem', borderRadius: '999px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s',
-                  display: 'inline-flex', alignItems: 'center', gap: '4px',
-                  background: active ? (ac.bg || 'rgba(212,168,67,0.15)') : 'var(--dark2)',
-                  border: `1px solid ${active ? (ac.border || 'rgba(212,168,67,0.4)') : 'var(--border)'}`,
-                  color: active ? (ac.color || 'var(--gold)') : 'var(--gray)',
-                }}
-              >
-                {c.key !== 'all' && <CatIcon type={c.key} size={11} />}
-                {c.label}
-                {c.key !== 'all' && catCounts[c.key] > 0 && (
-                  <span style={{ fontSize: '0.68rem', opacity: 0.7 }}>({catCounts[c.key]})</span>
-                )}
-              </button>
-            );
-          })}
-        </div>
         <button
           onClick={openCreate}
-          style={{ padding: '0.45rem 1rem', background: 'var(--gold)', color: 'var(--black)', border: 'none', borderRadius: '7px', fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer', whiteSpace: 'nowrap' }}
+          style={{ marginLeft: 'auto', padding: '0.45rem 1rem', background: 'var(--gold)', color: 'var(--black)', border: 'none', borderRadius: '7px', fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer', whiteSpace: 'nowrap' }}
         >
           + New Voucher
         </button>
+      </div>
+
+      {/* Category filter */}
+      <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center', marginBottom: '0.875rem' }}>
+        {[{ key: 'all', label: 'All' }, ...BENEFIT_CATEGORIES].map(c => {
+          const ac = CAT_COLORS[c.key] || {};
+          const active = catFilter === c.key;
+          return (
+            <button
+              key={c.key}
+              onClick={() => { setCatFilter(c.key); setPage(1); }}
+              style={{
+                padding: '0.25rem 0.75rem', borderRadius: '999px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s',
+                display: 'inline-flex', alignItems: 'center', gap: '4px',
+                background: active ? (ac.bg || 'rgba(212,168,67,0.15)') : 'var(--dark2)',
+                border: `1px solid ${active ? (ac.border || 'rgba(212,168,67,0.4)') : 'var(--border)'}`,
+                color: active ? (ac.color || 'var(--gold)') : 'var(--gray)',
+              }}
+            >
+              {c.key !== 'all' && <CatIcon type={c.key} size={11} />}
+              {c.label}
+              {c.key !== 'all' && catCounts[c.key] > 0 && (
+                <span style={{ fontSize: '0.68rem', opacity: 0.7 }}>({catCounts[c.key]})</span>
+              )}
+            </button>
+          );
+        })}
       </div>
 
       {error && (
@@ -762,7 +766,7 @@ function FlashSalesTab({ token }) {
     <>
       {/* Stats + action */}
       <div style={{ display: 'flex', gap: '0.625rem', flexWrap: 'wrap', marginBottom: '0.875rem', alignItems: 'center' }}>
-        {[{ label: 'Total', value: sales.length, color: 'var(--white)' }, { label: 'Live Now', value: liveCount, color: 'var(--green)' }, { label: 'Upcoming', value: upcomingCount, color: 'var(--blue)' }].map(c => (
+        {[{ label: 'Total', value: sales.length, color: 'var(--white)' }, { label: 'Live Now', value: liveCount, color: 'var(--green)' }, { label: 'Upcoming', value: upcomingCount, color: 'var(--blue)' }, { label: 'Ended', value: Math.max(0, sales.length - liveCount - upcomingCount), color: 'var(--gray)' }].map(c => (
           <div key={c.label} style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '7px', padding: '0.4rem 0.875rem', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
             <span style={{ fontSize: '1rem', fontWeight: 700, color: c.color }}>{c.value}</span>
             <span style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>{c.label}</span>
