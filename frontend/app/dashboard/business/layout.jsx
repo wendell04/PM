@@ -19,6 +19,11 @@ import "./admin-dashboard.css";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 
+// Roles allowed into the /dashboard/business/* admin area. This layout wraps EVERY admin page,
+// so this single allowlist guards the whole dashboard at once. Anyone else — customers, guests,
+// or any unknown/future role — is redirected out. (Data is independently protected server-side.)
+const STAFF_ROLES = ['admin', 'owner', 'salesRep', 'productionOperator', 'qualityControl', 'cashier', 'inventoryManager'];
+
 export default function BusinessDashboardLayout({ children }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -91,24 +96,28 @@ export default function BusinessDashboardLayout({ children }) {
   const [avatarSuccess, setAvatarSuccess] = useState(false);
 
   useEffect(() => {
-    if (currentUser) {
-      if (currentUser.role === 'customer') {
-        router.replace("/shop");
-        return;
-      }
-      setProfileForm({
-        firstName: currentUser.firstName || "",
-        lastName: currentUser.lastName || "",
-        email: currentUser.email || "",
-        phoneNumber: currentUser.phoneNumber || "",
-        address: currentUser.address || "",
-        businessName: currentUser.businessName || "",
-        businessType: currentUser.businessType || "",
-        taxId: currentUser.taxId || "",
-        website: currentUser.website || "",
-        bio: currentUser.bio || "",
-      });
+    // Route guard for the whole /dashboard/business/* admin area (this layout wraps every admin
+    // page). AuthContext resolves before this renders, so currentUser is the user or null (guest).
+    if (!currentUser) {
+      router.replace("/");         // guest / not logged in → landing + login
+      return;
     }
+    if (!STAFF_ROLES.includes(currentUser.role)) {
+      router.replace("/shop");     // customer or any non-staff role → storefront
+      return;
+    }
+    setProfileForm({
+      firstName: currentUser.firstName || "",
+      lastName: currentUser.lastName || "",
+      email: currentUser.email || "",
+      phoneNumber: currentUser.phoneNumber || "",
+      address: currentUser.address || "",
+      businessName: currentUser.businessName || "",
+      businessType: currentUser.businessType || "",
+      taxId: currentUser.taxId || "",
+      website: currentUser.website || "",
+      bio: currentUser.bio || "",
+    });
   }, [currentUser, router]);
 
   // Reset password form when switching away from Security tab
@@ -727,6 +736,12 @@ export default function BusinessDashboardLayout({ children }) {
     };
     return current;
   };
+
+  // Never paint the admin shell for anyone unauthorized — the guard above redirects them.
+  // This runs after all hooks, so hook order stays stable.
+  if (!currentUser || !STAFF_ROLES.includes(currentUser.role)) {
+    return null;
+  }
 
   return (
     <div className="admin-dashboard-wrapper">

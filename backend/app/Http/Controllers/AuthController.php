@@ -152,6 +152,9 @@ class AuthController extends Controller
             $user = User::where('email', $request->email)->first();
 
             if (!$user) {
+                // Constant-time: run a dummy hash so response timing doesn't reveal whether the email
+                // exists (blocks user enumeration via timing). Message is already generic.
+                Hash::check($request->password, '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi');
                 Log::warning('Login failed: user not found', ['email' => $request->email, 'ip' => $ip]);
                 return $this->errorResponse('The email or password you entered is incorrect. Please try again.', 401);
             }
@@ -195,21 +198,8 @@ class AuthController extends Controller
             $user->failed_login_attempts = 0;
             $user->login_locked_until    = null;
 
-            $deviceName   = $this->parseDeviceName($request->userAgent() ?? 'Unknown Device');
-            // Session policy by role (overrides the global SANCTUM_TOKEN_EXPIRATION so the two don't
-            // share one 24h lifetime): staff/admin get SHORT-lived tokens (high-value access);
-            // customers get long, convenient sessions, extended further by "remember me".
-            $isStaff   = ($user->role ?? 'customer') !== 'customer';
-            $expiresAt = $isStaff
-                ? now()->addHours(12)
-                : ($request->boolean('rememberMe') ? now()->addDays(90) : now()->addDays(30));
-            $sanctumToken = $user->createToken($deviceName, ['*'], $expiresAt)->plainTextToken;
-            $user->lastLogin     = now()->toDateTimeString();
-            $user->last_login_at = now();
-            $user->save();
-
-            Log::info('Login successful', ['email' => $user->email, 'ip' => $ip]);
-
+            // Decide whether this login still needs a 2FA challenge BEFORE minting the token, so a
+            // pending login receives only a limited, short-lived token — never a full session.
             $requires2fa  = false;
             $twoFaEnabled = (bool) ($user->two_factor_enabled ?? false);
 
@@ -233,9 +223,33 @@ class AuthController extends Controller
 
                 if ($deviceTokens !== ($user->device_tokens ?? [])) {
                     $user->device_tokens = $deviceTokens;
-                    $user->save();
                 }
             }
+
+            $deviceName = $this->parseDeviceName($request->userAgent() ?? 'Unknown Device');
+
+            if ($requires2fa) {
+                // 2FA still pending: issue a LIMITED token that can ONLY reach the 2FA-completion
+                // endpoints (enforced by EnsureTwoFactorComplete). The real full-access token is
+                // minted by TwoFactorController after the code is verified — so the second factor
+                // is enforced server-side, not merely by the frontend redirect.
+                $sanctumToken = $user->createToken($deviceName, ['2fa-pending'], now()->addMinutes(15))->plainTextToken;
+            } else {
+                // Session policy by role (overrides the global SANCTUM_TOKEN_EXPIRATION so the two
+                // don't share one 24h lifetime): staff/admin get SHORT-lived tokens (high-value
+                // access); customers get long, convenient sessions, extended by "remember me".
+                $isStaff   = ($user->role ?? 'customer') !== 'customer';
+                $expiresAt = $isStaff
+                    ? now()->addHours(12)
+                    : ($request->boolean('rememberMe') ? now()->addDays(90) : now()->addDays(30));
+                $sanctumToken = $user->createToken($deviceName, ['*'], $expiresAt)->plainTextToken;
+            }
+
+            $user->lastLogin     = now()->toDateTimeString();
+            $user->last_login_at = now();
+            $user->save();
+
+            Log::info('Login successful', ['email' => $user->email, 'ip' => $ip, 'requires_2fa' => $requires2fa]);
 
             return $this->successResponse(
                 'Login successful!',

@@ -312,13 +312,16 @@ function CodeEntry({ token, method, userEmail, persistLogin, onSuccess, onBack, 
     setLoading(true); setError(null);
     try {
       const result = isTOTP
-        ? await verifyTotp(token, code)
-        : await verifyTwoFactorOtp(token, { code });
+        ? await verifyTotp(token, code, persistLogin)
+        : await verifyTwoFactorOtp(token, { code, rememberMe: persistLogin });
 
       if (result.verified) {
-        if (remember) {
+        // The server mints the real full-access token only now; the pending token used to
+        // reach this point is limited and already revoked — use the new one from here on.
+        const sessionToken = result.token || token;
+        if (remember && result.token) {
           try {
-            const dr = await rememberDevice(token);
+            const dr = await rememberDevice(sessionToken);
             if (dr.device_token) {
               const storage = persistLogin ? localStorage : sessionStorage;
               storage.setItem("device_token", dr.device_token);
@@ -328,7 +331,7 @@ function CodeEntry({ token, method, userEmail, persistLogin, onSuccess, onBack, 
         const redirectTo = sessionStorage.getItem("post_2fa_redirect") || "/shop";
         sessionStorage.removeItem("pending_2fa");
         sessionStorage.removeItem("post_2fa_redirect");
-        onSuccess(redirectTo);
+        onSuccess(redirectTo, sessionToken);
       }
     } catch (err) {
       if (err.status === 423) { setIsLocked(true); setLockedUntil(err.lockedUntil || "10 minutes"); }

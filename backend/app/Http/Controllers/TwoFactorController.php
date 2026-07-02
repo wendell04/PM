@@ -172,14 +172,41 @@ class TwoFactorController extends Controller
             $otp->used = true;
             $otp->save();
 
+            $fullToken = $this->promoteToFullSession($request, $user);
+
             Log::info('2FA verified', ['user' => $user->email, 'ip' => $request->ip()]);
 
-            return response()->json(['message' => 'OTP verified.', 'verified' => true], 200);
+            return response()->json([
+                'message'  => 'OTP verified.',
+                'verified' => true,
+                'token'    => $fullToken,
+            ], 200);
 
         } catch (\Exception $e) {
             Log::error('TwoFactorController@verifyOtp: ' . $e->getMessage());
             return response()->json(['message' => 'Verification failed.'], 500);
         }
+    }
+
+    /**
+     * Mint the real full-access session token after a successful 2FA challenge, and revoke the
+     * limited "2fa-pending" token that was used to reach this endpoint. No full-access token
+     * exists until the code is verified — this is what enforces 2FA on the server.
+     */
+    private function promoteToFullSession(Request $request, $user): string
+    {
+        $current = $user->currentAccessToken();
+        if ($current && method_exists($current, 'delete')) {
+            $current->delete();
+        }
+
+        $deviceName = substr($request->userAgent() ?? 'Unknown Device', 0, 120);
+        $isStaff    = ($user->role ?? 'customer') !== 'customer';
+        $expiresAt  = $isStaff
+            ? now()->addHours(12)
+            : ($request->boolean('rememberMe') ? now()->addDays(90) : now()->addDays(30));
+
+        return $user->createToken($deviceName, ['*'], $expiresAt)->plainTextToken;
     }
 
     // ─── TOTP Setup — generate secret + QR code ───────────────────────────
@@ -326,6 +353,8 @@ class TwoFactorController extends Controller
             $user->otp_locked_until     = null;
             $user->save();
 
+            $fullToken = $this->promoteToFullSession($request, $user);
+
             Log::info('TOTP verified at login', [
                 'user' => $user->email,
                 'ip'   => $request->ip(),
@@ -334,6 +363,7 @@ class TwoFactorController extends Controller
             return response()->json([
                 'message'  => 'OTP verified.',
                 'verified' => true,
+                'token'    => $fullToken,
             ], 200);
 
         } catch (\Exception $e) {

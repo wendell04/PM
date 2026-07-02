@@ -624,7 +624,7 @@ export async function confirmTotp(token, code) {
  * @param {string} token - Auth token
  * @param {string} code  - 6-digit code from authenticator app
  */
-export async function verifyTotp(token, code) {
+export async function verifyTotp(token, code, rememberMe = false) {
   const response = await fetchWithTimeout(
     `${API_URL}/api/2fa/totp/verify`,
     {
@@ -633,7 +633,7 @@ export async function verifyTotp(token, code) {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ code }),
+      body: JSON.stringify({ code, rememberMe }),
     },
     15000,
   );

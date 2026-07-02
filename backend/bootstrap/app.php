@@ -22,6 +22,9 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'isAdmin'    => \App\Http\Middleware\IsAdminMiddleware::class,
         ]);
+        // Confine limited "2fa-pending" tokens to the 2FA-completion endpoints so the
+        // second factor is enforced server-side, not just by the frontend redirect.
+        $middleware->appendToGroup('api', \App\Http\Middleware\EnsureTwoFactorComplete::class);
         $middleware->redirectGuestsTo(fn() => null);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

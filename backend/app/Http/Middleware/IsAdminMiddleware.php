@@ -23,12 +23,25 @@ class IsAdminMiddleware
             return $next($request);
         }
 
-        // No specific roles — allow any non-customer staff member through.
-        // Fine-grained permission checks are handled per-controller via hasPermission().
-        if ($user->role === 'customer') {
-            return response()->json(['message' => 'Forbidden. Admin access required.'], 403);
+        // No specific roles required — but FAIL CLOSED: allow only provisioned staff, instead of
+        // "anything that isn't literally 'customer'" (which would let a null/empty/unknown role in).
+        // Built-in admin/owner always pass; any other role must exist in the role_permissions
+        // registry, where staff roles are provisioned — so custom roles created via the admin UI
+        // still work, while customers and any null/empty/unknown/future role are denied by default.
+        // Fine-grained per-feature checks still happen per-controller via hasPermission().
+        $role = $user->role;
+
+        if ($role === 'admin' || $role === 'owner') {
+            return $next($request);
         }
 
-        return $next($request);
+        if (
+            is_string($role) && $role !== '' && $role !== 'customer'
+            && \App\Models\RolePermission::where('role', $role)->exists()
+        ) {
+            return $next($request);
+        }
+
+        return response()->json(['message' => 'Forbidden. Admin access required.'], 403);
     }
 }

@@ -48,21 +48,22 @@ export default function TwoFactorChallengePage() {
       userEmail={userEmail}
       userRole={userRole}
       persistLogin={rememberMe}
-      onSuccess={(redirectTo) => {
-        // OTP verified — now write credentials to final storage
-        const pendingToken = sessionStorage.getItem('pmp_pending_token');
+      onSuccess={(redirectTo, sessionToken) => {
+        // OTP verified — write the real full-access token (minted by the server on verify)
+        // to final storage. The pending token never becomes a usable session.
+        const finalToken = sessionToken || sessionStorage.getItem('pmp_pending_token');
         const pendingUserRaw = sessionStorage.getItem('pmp_pending_user');
         const remember = sessionStorage.getItem('pmp_pending_remember') === '1';
 
-        if (pendingToken && pendingUserRaw) {
+        if (finalToken && pendingUserRaw) {
           const storage = remember ? localStorage : sessionStorage;
-          storage.setItem('auth_token', pendingToken);
+          storage.setItem('auth_token', finalToken);
           storage.setItem('auth_user', pendingUserRaw);
           try {
             const bc = new BroadcastChannel('pmp_auth');
             bc.postMessage({
               type: 'AUTH_UPDATE',
-              token: pendingToken,
+              token: finalToken,
               user: JSON.parse(pendingUserRaw),
             });
             bc.close();

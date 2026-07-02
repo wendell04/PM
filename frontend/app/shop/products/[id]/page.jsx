@@ -10,6 +10,10 @@ import { submitOrderRequest, uploadDesignFile } from '@/lib/orderRequestApi';
 const API_URL = process.env.NEXT_PUBLIC_API_URL
   || 'http://127.0.0.1:8000';
 
+// Same name-slug used by the product cards (ShopClient) so URLs stay consistent
+// (e.g. /shop/products/t-shirt-printing, not the raw ObjectId).
+const toSlug = (name) => (name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+
 function applyFlashDiscount(price, sale) {
   if (!sale || price <= 0) return price;
   if (sale.discountType === 'percentage') return Math.max(0, price * (1 - sale.discountValue / 100));
@@ -1296,7 +1300,7 @@ export default function ProductDetailPage() {
                 return price > 0 ? formatPeso(price) : 'Price on request';
               })();
               return (
-                <a key={recId} href={`/shop/products/${recId}`} className="rec-card">
+                <a key={recId} href={`/shop/products/${rec.slug || (rec.name ? toSlug(rec.name) : recId)}`} className="rec-card">
                   <div className="rec-img">
                     {rec.thumbnail || rec.images?.[0] ? (
                       /* eslint-disable-next-line @next/next/no-img-element */

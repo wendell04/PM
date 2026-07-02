@@ -12,6 +12,7 @@ class AnalyticsDataController extends Controller
     // Returns sales rows needed for Python RFM segmentation endpoint.
     public function rfmData(Request $request)
     {
+        if (!$this->hasPermission($request, 'reports')) return $this->unauthorizedResponse();
         try {
             $query = Sale::where('status', '!=', 'refunded')
                 ->whereNotNull('customerEmail')
@@ -48,6 +49,7 @@ class AnalyticsDataController extends Controller
     //      Non-walk-in Sale records are included individually as single-item transactions.
     public function basketData(Request $request)
     {
+        if (!$this->hasPermission($request, 'reports')) return $this->unauthorizedResponse();
         try {
             $query = Order::whereIn('orderStatus', ['completed', 'Delivered'])
                 ->whereNotNull('items');
@@ -111,6 +113,7 @@ class AnalyticsDataController extends Controller
     // Returns sales rows needed for service segmentation.
     public function serviceData(Request $request)
     {
+        if (!$this->hasPermission($request, 'reports')) return $this->unauthorizedResponse();
         try {
             $query = Sale::where('status', '!=', 'refunded')
                 ->whereNotNull('productName');

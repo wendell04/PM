@@ -1919,14 +1919,16 @@ export default function ShopLayout({ children }) {
             userEmail={twoFaEmail}
             userRole={twoFaRole}
             persistLogin={twoFaPendingRememberMe}
-            onSuccess={(redirectTo) => {
-              // OTP verified — now write credentials to storage
-              if (twoFaPendingUser && twoFaToken) {
-                localStorage.setItem('auth_token', twoFaToken);
+            onSuccess={(redirectTo, sessionToken) => {
+              // OTP verified — write the real full-access token minted by the server on verify.
+              // The pending token (twoFaToken) is limited and already revoked; never persist it.
+              const finalToken = sessionToken || twoFaToken;
+              if (twoFaPendingUser && finalToken) {
+                localStorage.setItem('auth_token', finalToken);
                 localStorage.setItem('auth_user', JSON.stringify(twoFaPendingUser));
                 try {
                   const bc = new BroadcastChannel('pmp_auth');
-                  bc.postMessage({ type: 'AUTH_UPDATE', token: twoFaToken, user: twoFaPendingUser });
+                  bc.postMessage({ type: 'AUTH_UPDATE', token: finalToken, user: twoFaPendingUser });
                   bc.close();
                 } catch {}
               }
