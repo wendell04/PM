@@ -53,12 +53,14 @@ export default function TwoFactorChallengePage() {
         // to final storage. The pending token never becomes a usable session.
         const finalToken = sessionToken || sessionStorage.getItem('pmp_pending_token');
         const pendingUserRaw = sessionStorage.getItem('pmp_pending_user');
-        const remember = sessionStorage.getItem('pmp_pending_remember') === '1';
 
         if (finalToken && pendingUserRaw) {
-          const storage = remember ? localStorage : sessionStorage;
-          storage.setItem('auth_token', finalToken);
-          storage.setItem('auth_user', pendingUserRaw);
+          // Always store in localStorage — AuthContext, the admin route guard, and the
+          // shop all read auth from localStorage only. A sessionStorage token is invisible
+          // to them, so the user would appear logged out and get bounced to the landing.
+          // "Remember me" duration is enforced server-side by the token's expiry.
+          localStorage.setItem('auth_token', finalToken);
+          localStorage.setItem('auth_user', pendingUserRaw);
           try {
             const bc = new BroadcastChannel('pmp_auth');
             bc.postMessage({
