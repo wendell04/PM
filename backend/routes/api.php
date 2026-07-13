@@ -190,7 +190,6 @@ Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
 
     // ─── Analytics data (feeds SSA Python service endpoints) ─────────────────
     Route::get('/admin/analytics/rfm-data',      [AnalyticsDataController::class, 'rfmData']);
-    Route::get('/admin/analytics/basket-data',   [AnalyticsDataController::class, 'basketData']);
     Route::get('/admin/analytics/service-data',  [AnalyticsDataController::class, 'serviceData']);
 
     // ─── Collections ─────────────────────────────────────────────────────────

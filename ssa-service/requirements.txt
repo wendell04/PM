@@ -5,4 +5,3 @@ numpy
 openpyxl
 scipy
 scikit-learn
-mlxtend
