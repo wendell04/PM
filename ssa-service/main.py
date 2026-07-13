@@ -30,6 +30,7 @@ class SaleRow(BaseModel):
     customerEmail: str
     totalPrice: float
     saleDate: str
+    orderKey: str = None   # distinct-order id so Frequency counts orders, not line items
 
 class RFMRequest(BaseModel):
     sales: List[SaleRow]
@@ -820,7 +821,8 @@ async def customer_segments(req: RFMRequest):
             "email":  s.customerEmail,
             "amount": s.totalPrice,
             "date":   pd.to_datetime(s.saleDate, errors="coerce"),
-        } for s in req.sales])
+            "order":  s.orderKey or f"row_{i}",
+        } for i, s in enumerate(req.sales)])
         df = df.dropna(subset=["date"])
         if df.empty:
             raise HTTPException(status_code=400, detail="No valid sale rows after date parsing.")
@@ -829,15 +831,17 @@ async def customer_segments(req: RFMRequest):
         if df["date"].dt.tz is not None:
             df["date"] = df["date"].dt.tz_convert("UTC").dt.tz_localize(None)
 
+        # Recency is measured against the latest sale in the dataset (the analysis
+        # snapshot), not the server clock — so historical data isn't scored as "stale".
         ref_date = (
             pd.to_datetime(req.reference_date).tz_localize(None)
             if req.reference_date
-            else pd.Timestamp.now(tz=None)
+            else df["date"].max()
         )
 
         rfm = df.groupby("email").agg(
             recency=("date",   lambda x: (ref_date - x.max()).days),
-            frequency=("date", "count"),
+            frequency=("order", "nunique"),   # distinct orders/visits, not line-item rows
             monetary=("amount","sum"),
         ).reset_index()
 

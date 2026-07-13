@@ -3013,7 +3013,7 @@ export default function SSAForecastPage() {
                       <h2 className="ssa-card-title">RFM Customer Segmentation</h2>
                       <p style={{fontSize:"0.8rem",color:"var(--gray)",marginTop:"0.3rem",lineHeight:1.5}}>
                         Each customer is scored 1–5 on <strong style={{color:"var(--white)"}}>Recency</strong> (days since last purchase),{" "}
-                        <strong style={{color:"var(--white)"}}>Frequency</strong> (number of orders), and{" "}
+                        <strong style={{color:"var(--white)"}}>Frequency</strong> (how many separate orders), and{" "}
                         <strong style={{color:"var(--white)"}}>Monetary</strong> (total spend). Higher = better.
                       </p>
                     </div>
@@ -3159,7 +3159,7 @@ export default function SSAForecastPage() {
                       <h2 className="ssa-card-title">Products &amp; Services</h2>
                       <p style={{fontSize:"0.8rem",color:"var(--gray)",marginTop:"0.3rem",lineHeight:1.55}}>
                         <strong style={{color:"var(--white)"}}>ABC revenue analysis</strong> — ranks every product by its
-                        revenue contribution (A = top 70%, B = next 20%, C = the rest), with units sold and average price.
+                        revenue contribution (A = top 70%, B = next 20%, C = the rest), with how often each sells and its average sale value.
                       </p>
                     </div>
                     <button type="button" className="ssa-run-btn" onClick={loadProducts}>Re-run</button>
@@ -3203,7 +3203,7 @@ export default function SSAForecastPage() {
                     <div style={{marginBottom:"1rem"}}>
                       <h2 className="ssa-card-title">Product Performance</h2>
                       <p style={{fontSize:"0.78rem",color:"var(--gray)",marginTop:"0.3rem"}}>
-                        Sorted by revenue. Orders column shows how many recorded sales included this product.
+                        Sorted by revenue. &ldquo;Times sold&rdquo; is how many recorded sales included this product.
                       </p>
                     </div>
                     <div className="ssa-tbl-wrap" style={{maxHeight:"500px"}}>
@@ -3214,8 +3214,8 @@ export default function SSAForecastPage() {
                             <th>Class</th>
                             <th style={{textAlign:"right"}}>Revenue</th>
                             <th style={{textAlign:"right"}}>Revenue share</th>
-                            <th style={{textAlign:"right"}}>Orders</th>
-                            <th style={{textAlign:"right"}}>Avg price</th>
+                            <th style={{textAlign:"right"}}>Times sold</th>
+                            <th style={{textAlign:"right"}}>Avg / sale</th>
                           </tr>
                         </thead>
                         <tbody>

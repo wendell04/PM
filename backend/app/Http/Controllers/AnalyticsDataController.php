@@ -24,12 +24,17 @@ class AnalyticsDataController extends Controller
                 $query->where('saleDate', '<=', $request->endDate);
             }
 
-            $sales = $query->get(['customerEmail', 'totalPrice', 'saleDate']);
+            $sales = $query->get(['customerEmail', 'totalPrice', 'saleDate', 'orderRequestId', 'jobOrderId']);
 
+            // A stable "purchase occasion" key so RFM Frequency counts distinct orders,
+            // not line-item rows. Line items of one order share orderRequestId/jobOrderId;
+            // sales without either fall back to a per-day key (same customer + same day = 1 visit).
             $rows = $sales->map(fn($s) => [
                 'customerEmail' => $s->customerEmail,
                 'totalPrice'    => (float) ($s->totalPrice ?? 0),
                 'saleDate'      => $s->saleDate,
+                'orderKey'      => (string) ($s->orderRequestId
+                    ?: ($s->jobOrderId ?: ('day_' . substr((string) $s->saleDate, 0, 10)))),
             ])->values();
 
             return response()->json(['data' => $rows, 'total' => $rows->count()]);
