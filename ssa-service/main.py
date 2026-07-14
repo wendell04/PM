@@ -29,7 +29,7 @@ class ForecastRequest(BaseModel):
 class SaleRow(BaseModel):
     customerEmail: str
     totalPrice: float
-    saleDate: str
+    saleDate: str = None   # optional: null dates are coerced to NaT and dropped (matches ServiceRow)
     orderKey: str = None   # distinct-order id so Frequency counts orders, not line items
 
 class RFMRequest(BaseModel):
