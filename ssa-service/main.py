@@ -29,22 +29,12 @@ class ForecastRequest(BaseModel):
 class SaleRow(BaseModel):
     customerEmail: str
     totalPrice: float
-    saleDate: str
+    saleDate: str = None   # optional: null dates are coerced to NaT and dropped (matches ServiceRow)
+    orderKey: str = None   # distinct-order id so Frequency counts orders, not line items
 
 class RFMRequest(BaseModel):
     sales: List[SaleRow]
     reference_date: str = None
-
-class BasketRow(BaseModel):
-    orderId: str
-    productName: str
-
-class MarketBasketRequest(BaseModel):
-    transactions: List[BasketRow]
-    min_support: float = 0.01
-    min_confidence: float = 0.3
-    min_lift: float = 1.0
-    top_n: int = 20
 
 class ServiceRow(BaseModel):
     productName: str
@@ -831,7 +821,8 @@ async def customer_segments(req: RFMRequest):
             "email":  s.customerEmail,
             "amount": s.totalPrice,
             "date":   pd.to_datetime(s.saleDate, errors="coerce"),
-        } for s in req.sales])
+            "order":  s.orderKey or f"row_{i}",
+        } for i, s in enumerate(req.sales)])
         df = df.dropna(subset=["date"])
         if df.empty:
             raise HTTPException(status_code=400, detail="No valid sale rows after date parsing.")
@@ -840,15 +831,17 @@ async def customer_segments(req: RFMRequest):
         if df["date"].dt.tz is not None:
             df["date"] = df["date"].dt.tz_convert("UTC").dt.tz_localize(None)
 
+        # Recency is measured against the latest sale in the dataset (the analysis
+        # snapshot), not the server clock — so historical data isn't scored as "stale".
         ref_date = (
             pd.to_datetime(req.reference_date).tz_localize(None)
             if req.reference_date
-            else pd.Timestamp.now(tz=None)
+            else df["date"].max()
         )
 
         rfm = df.groupby("email").agg(
             recency=("date",   lambda x: (ref_date - x.max()).days),
-            frequency=("date", "count"),
+            frequency=("order", "nunique"),   # distinct orders/visits, not line-item rows
             monetary=("amount","sum"),
         ).reset_index()
 
@@ -880,130 +873,6 @@ async def customer_segments(req: RFMRequest):
         )
 
         return {"customers": customers, "summary": summary, "total_customers": len(rfm)}
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        import traceback
-        raise HTTPException(status_code=500, detail=str(e) + "\n" + traceback.format_exc())
-
-
-# ── Market Basket Analysis ────────────────────────────────────────────────
-
-def _apriori(transactions: list, min_support: float, max_len: int = 3):
-    """Pure-Python Apriori — no external dependencies."""
-    from itertools import combinations
-
-    n = len(transactions)
-    if n == 0:
-        return []
-
-    txn_sets = [frozenset(t) for t in transactions]
-    all_items = sorted({item for t in txn_sets for item in t})
-
-    freq: list = []
-    prev_freq_sets: list = [frozenset([item]) for item in all_items]
-
-    for k in range(1, max_len + 1):
-        candidates = prev_freq_sets if k == 1 else [
-            a | b
-            for i, a in enumerate(prev_freq_sets)
-            for b in prev_freq_sets[i + 1:]
-            if len(a | b) == k
-        ]
-        # Deduplicate
-        seen: set = set()
-        unique_cands = []
-        for c in candidates:
-            if c not in seen:
-                seen.add(c)
-                unique_cands.append(c)
-
-        next_freq: list = []
-        for cand in unique_cands:
-            sup = sum(1 for t in txn_sets if cand.issubset(t)) / n
-            if sup >= min_support:
-                freq.append({"itemsets": cand, "support": sup})
-                next_freq.append(cand)
-
-        if not next_freq:
-            break
-        prev_freq_sets = next_freq
-
-    return freq
-
-
-def _assoc_rules(freq_list: list, min_confidence: float, min_lift: float, top_n: int):
-    from itertools import combinations
-
-    support_map = {item["itemsets"]: item["support"] for item in freq_list}
-    rules = []
-
-    for item in freq_list:
-        itemset = item["itemsets"]
-        if len(itemset) < 2:
-            continue
-        for size in range(1, len(itemset)):
-            for ant in combinations(list(itemset), size):
-                ant_set  = frozenset(ant)
-                con_set  = itemset - ant_set
-                ant_sup  = support_map.get(ant_set, 0)
-                con_sup  = support_map.get(con_set, 0)
-                if ant_sup == 0:
-                    continue
-                confidence = item["support"] / ant_sup
-                lift       = confidence / con_sup if con_sup > 0 else 0
-                if confidence >= min_confidence and lift >= min_lift:
-                    conv = (1 - con_sup) / (1 - confidence) if confidence < 1 else float("inf")
-                    rules.append({
-                        "antecedents": sorted(list(ant_set)),
-                        "consequents": sorted(list(con_set)),
-                        "support":    round(item["support"], 4),
-                        "confidence": round(confidence, 4),
-                        "lift":       round(lift, 4),
-                        "conviction": round(conv, 4) if not np.isinf(conv) else 999.0,
-                    })
-
-    rules.sort(key=lambda r: r["lift"], reverse=True)
-    return rules[:top_n]
-
-
-@app.post("/api/market-basket")
-async def market_basket(req: MarketBasketRequest):
-    try:
-        if not req.transactions:
-            raise HTTPException(status_code=400, detail="No transaction data provided.")
-
-        orders: dict = {}
-        for row in req.transactions:
-            orders.setdefault(row.orderId, set()).add(row.productName)
-
-        if len(orders) < 2:
-            raise HTTPException(status_code=400, detail="Need at least 2 orders for basket analysis.")
-
-        transactions = [list(items) for items in orders.values()]
-        all_products = sorted({item for t in transactions for item in t})
-
-        freq_list = _apriori(transactions, min_support=req.min_support, max_len=3)
-
-        if not freq_list:
-            return {
-                "rules": [], "frequent_itemsets": [],
-                "total_orders": len(orders), "total_products": len(all_products),
-                "message": "No frequent itemsets found. Try lowering min_support.",
-            }
-
-        rules_out = _assoc_rules(freq_list, req.min_confidence, req.min_lift, req.top_n)
-
-        freq_out = sorted(freq_list, key=lambda x: x["support"], reverse=True)[:50]
-        freq_out = [{"itemset": sorted(list(f["itemsets"])), "support": round(f["support"], 4)} for f in freq_out]
-
-        return {
-            "rules": rules_out,
-            "frequent_itemsets": freq_out,
-            "total_orders": len(orders),
-            "total_products": len(all_products),
-        }
 
     except HTTPException:
         raise

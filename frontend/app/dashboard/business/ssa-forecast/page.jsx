@@ -911,11 +911,9 @@ export default function SSAForecastPage() {
 
   const [activeTab, setActiveTab] = useState("forecast");
   const [rfmResult, setRfmResult] = useState(null);
-  const [basketResult, setBasketResult] = useState(null);
   const [serviceResult, setServiceResult] = useState(null);
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
   const [rfmError, setRfmError] = useState("");
-  const [basketError, setBasketError] = useState("");
   const [serviceError, setServiceError] = useState("");
 
 
@@ -1232,38 +1230,6 @@ export default function SSAForecastPage() {
     }
   };
 
-  const loadBasket = async () => {
-    if (!token) return;
-    setAnalyticsLoading(true);
-    setBasketError("");
-    try {
-      const res = await fetchWithTimeout(`${API_URL}/api/admin/analytics/basket-data`, {
-        headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
-      });
-      const d = await res.json();
-      const transactions = d.data ?? [];
-      if (transactions.length === 0) {
-        setBasketError("No order data found for market basket analysis.");
-        return;
-      }
-      const ssaRes = await fetch(`${SSA_API_URL}/api/market-basket`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ transactions }),
-      });
-      if (!ssaRes.ok) {
-        const err = await ssaRes.json().catch(() => ({}));
-        const msg = typeof err.detail === "string" ? err.detail : JSON.stringify(err.detail);
-        throw new Error(msg.split("\n")[0] || "Market basket analysis failed.");
-      }
-      setBasketResult(await ssaRes.json());
-    } catch (err) {
-      setBasketError(err.message || "Failed to run market basket analysis.");
-    } finally {
-      setAnalyticsLoading(false);
-    }
-  };
-
   const loadService = async () => {
     if (!token) return;
     setAnalyticsLoading(true);
@@ -1299,44 +1265,24 @@ export default function SSAForecastPage() {
   const loadProducts = async () => {
     if (!token) return;
     setAnalyticsLoading(true);
-    setBasketError("");
     setServiceError("");
     try {
-      const [basketRes, serviceRes] = await Promise.all([
-        fetchWithTimeout(`${API_URL}/api/admin/analytics/basket-data`, {
-          headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
-        }),
-        fetchWithTimeout(`${API_URL}/api/admin/analytics/service-data`, {
-          headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
-        }),
-      ]);
-      const basketD  = await basketRes.json();
+      const serviceRes = await fetchWithTimeout(`${API_URL}/api/admin/analytics/service-data`, {
+        headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+      });
       const serviceD = await serviceRes.json();
-      const transactions = basketD.data  ?? [];
-      const sales        = serviceD.data ?? [];
-
-      const [bRes, sRes] = await Promise.all([
-        transactions.length > 0
-          ? fetch(`${SSA_API_URL}/api/market-basket`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ transactions }),
-            }).then(r => r.ok ? r.json() : null).catch(() => null)
-          : Promise.resolve(null),
-        sales.length > 0
-          ? fetch(`${SSA_API_URL}/api/service-segments`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ sales }),
-            }).then(r => r.ok ? r.json() : null).catch(() => null)
-          : Promise.resolve(null),
-      ]);
-
-      if (bRes) setBasketResult(bRes);
+      const sales = serviceD.data ?? [];
+      const sRes = sales.length > 0
+        ? await fetch(`${SSA_API_URL}/api/service-segments`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ sales }),
+          }).then(r => r.ok ? r.json() : null).catch(() => null)
+        : null;
       if (sRes) setServiceResult(sRes);
-      if (!bRes && !sRes) setBasketError("No product data found.");
+      else setServiceError("No product data found.");
     } catch (err) {
-      setBasketError(err.message || "Failed to load product data.");
+      setServiceError(err.message || "Failed to load product data.");
     } finally {
       setAnalyticsLoading(false);
     }
@@ -3067,7 +3013,7 @@ export default function SSAForecastPage() {
                       <h2 className="ssa-card-title">RFM Customer Segmentation</h2>
                       <p style={{fontSize:"0.8rem",color:"var(--gray)",marginTop:"0.3rem",lineHeight:1.5}}>
                         Each customer is scored 1–5 on <strong style={{color:"var(--white)"}}>Recency</strong> (days since last purchase),{" "}
-                        <strong style={{color:"var(--white)"}}>Frequency</strong> (number of orders), and{" "}
+                        <strong style={{color:"var(--white)"}}>Frequency</strong> (how many separate orders), and{" "}
                         <strong style={{color:"var(--white)"}}>Monetary</strong> (total spend). Higher = better.
                       </p>
                     </div>
@@ -3201,10 +3147,10 @@ export default function SSAForecastPage() {
           </div>
         )}
 
-        {/* ── Products & Services Tab (Market Basket + Service Segmentation combined) ── */}
+        {/* ── Products & Services Tab (ABC Product/Service Segmentation) ── */}
         {activeTab === "products" && (
           <div className="ssa-tab-scroll">
-            {analyticsLoading ? <AnalyticsSkeleton /> : (serviceResult || basketResult) ? (
+            {analyticsLoading ? <AnalyticsSkeleton /> : serviceResult ? (
               <>
                 {/* ── header ── */}
                 <div className="ssa-card" style={{marginBottom:"1.5rem"}}>
@@ -3212,8 +3158,8 @@ export default function SSAForecastPage() {
                     <div>
                       <h2 className="ssa-card-title">Products &amp; Services</h2>
                       <p style={{fontSize:"0.8rem",color:"var(--gray)",marginTop:"0.3rem",lineHeight:1.55}}>
-                        Combines <strong style={{color:"var(--white)"}}>ABC revenue analysis</strong> (which products earn the most) with{" "}
-                        <strong style={{color:"var(--white)"}}>purchase frequency</strong> (how often each product appears in orders).
+                        <strong style={{color:"var(--white)"}}>ABC revenue analysis</strong> — ranks every product by its
+                        revenue contribution (A = top 70%, B = next 20%, C = the rest), with how often each sells and its average sale value.
                       </p>
                     </div>
                     <button type="button" className="ssa-run-btn" onClick={loadProducts}>Re-run</button>
@@ -3238,9 +3184,9 @@ export default function SSAForecastPage() {
                 {/* ── summary metrics ── */}
                 <div className="ssa-metrics-grid">
                   {[
-                    { label: "Total Products",    value: serviceResult?.total_services ?? basketResult?.total_products ?? "—",   sub: "distinct products / services" },
+                    { label: "Total Products",    value: serviceResult?.total_services ?? "—",   sub: "distinct products / services" },
                     { label: "Total Revenue",      value: serviceResult ? "₱" + (serviceResult.total_revenue ?? 0).toLocaleString("en-US",{maximumFractionDigits:0}) : "—", sub: "from all recorded sales" },
-                    { label: "Total Orders",       value: basketResult?.total_orders ?? "—",                                       sub: "orders analyzed" },
+                    { label: "A-Class Products",   value: (serviceResult?.services ?? []).filter(s => s.abc_class === "A").length || "—", sub: "top 70% of revenue" },
                     { label: "Top Earner",         value: serviceResult?.top_services?.[0]?.service ?? "—",                        sub: "highest revenue product" },
                   ].map(({ label, value, sub }) => (
                     <div key={label} className="ssa-stat-card">
@@ -3257,7 +3203,7 @@ export default function SSAForecastPage() {
                     <div style={{marginBottom:"1rem"}}>
                       <h2 className="ssa-card-title">Product Performance</h2>
                       <p style={{fontSize:"0.78rem",color:"var(--gray)",marginTop:"0.3rem"}}>
-                        Sorted by revenue. Orders column shows how many of the {basketResult?.total_orders ?? "analyzed"} orders included this product.
+                        Sorted by revenue. &ldquo;Times sold&rdquo; is how many recorded sales included this product.
                       </p>
                     </div>
                     <div className="ssa-tbl-wrap" style={{maxHeight:"500px"}}>
@@ -3268,21 +3214,12 @@ export default function SSAForecastPage() {
                             <th>Class</th>
                             <th style={{textAlign:"right"}}>Revenue</th>
                             <th style={{textAlign:"right"}}>Revenue share</th>
-                            <th style={{textAlign:"right"}}>Orders</th>
-                            <th style={{textAlign:"right"}}>Order frequency</th>
-                            <th style={{textAlign:"right"}}>Avg price</th>
+                            <th style={{textAlign:"right"}}>Times sold</th>
+                            <th style={{textAlign:"right"}}>Avg / sale</th>
                           </tr>
                         </thead>
                         <tbody>
                           {(serviceResult.services ?? []).map((svc, idx) => {
-                            const basketItem = (basketResult?.frequent_itemsets ?? []).find(item => {
-                              const name = Array.isArray(item.itemset) ? item.itemset[0] : item.itemset;
-                              return name === svc.service && (!Array.isArray(item.itemset) || item.itemset.length === 1);
-                            });
-                            const orderFreq = basketItem?.support ?? null;
-                            const orderCount = orderFreq != null && basketResult?.total_orders
-                              ? Math.round(orderFreq * basketResult.total_orders)
-                              : svc.order_count;
                             return (
                               <tr key={idx}>
                                 <td style={{fontWeight:600}}>{svc.service}</td>
@@ -3303,10 +3240,7 @@ export default function SSAForecastPage() {
                                     </div>
                                   </div>
                                 </td>
-                                <td style={{textAlign:"right",fontWeight:600}}>{orderCount}</td>
-                                <td style={{textAlign:"right",color:"var(--gray)"}}>
-                                  {orderFreq != null ? `${(orderFreq * 100).toFixed(1)}%` : "—"}
-                                </td>
+                                <td style={{textAlign:"right",fontWeight:600}}>{svc.order_count}</td>
                                 <td style={{textAlign:"right"}}>₱{svc.avg_price?.toLocaleString("en-US",{maximumFractionDigits:0})}</td>
                               </tr>
                             );
@@ -3317,47 +3251,6 @@ export default function SSAForecastPage() {
                   </div>
                 )}
 
-                {/* ── cross-sell opportunities (only when rules exist) ── */}
-                {(basketResult?.rules?.length ?? 0) > 0 && (
-                  <div className="ssa-card">
-                    <div style={{marginBottom:"1rem"}}>
-                      <h2 className="ssa-card-title">Cross-Sell Opportunities</h2>
-                      <p style={{fontSize:"0.78rem",color:"var(--gray)",marginTop:"0.3rem"}}>
-                        When a customer buys the left product, they are likely to also buy the right one.{" "}
-                        <strong style={{color:"var(--white)"}}>Confidence</strong> = how often this holds.{" "}
-                        <strong style={{color:"var(--white)"}}>Lift</strong> = how much stronger than random ({">"} 1 = meaningful).
-                      </p>
-                    </div>
-                    <div className="ssa-tbl-wrap">
-                      <table className="ssa-table">
-                        <thead>
-                          <tr>
-                            <th>Customer buys</th>
-                            <th>And likely buys</th>
-                            <th style={{textAlign:"right"}}>Confidence</th>
-                            <th style={{textAlign:"right"}}>Lift</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {basketResult.rules.map((rule, idx) => (
-                            <tr key={idx}>
-                              <td style={{color:"var(--gold)",fontWeight:500}}>{rule.antecedents.join(", ")}</td>
-                              <td style={{fontWeight:600}}>{rule.consequents.join(", ")}</td>
-                              <td style={{textAlign:"right"}}>
-                                <span style={{color: rule.confidence >= 0.7 ? "#4ade80" : rule.confidence >= 0.4 ? "#fbbf24" : "var(--gray)", fontWeight:600}}>
-                                  {(rule.confidence * 100).toFixed(1)}%
-                                </span>
-                              </td>
-                              <td style={{textAlign:"right",fontWeight:700,color: rule.lift >= 2 ? "#4ade80" : rule.lift >= 1.5 ? "#fbbf24" : "var(--white)"}}>
-                                {rule.lift.toFixed(2)}×
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                )}
               </>
             ) : (
               <div className="ssa-card">
@@ -3370,8 +3263,8 @@ export default function SSAForecastPage() {
                   </div>
                   <button type="button" className="ssa-run-btn" onClick={loadProducts}>Run Analysis</button>
                 </div>
-                {(basketError || serviceError) && (
-                  <div className="ssa-error" style={{marginTop:"1rem"}}>{basketError || serviceError}</div>
+                {serviceError && (
+                  <div className="ssa-error" style={{marginTop:"1rem"}}>{serviceError}</div>
                 )}
               </div>
             )}
