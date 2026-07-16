@@ -7,6 +7,11 @@ use App\Models\Product;
 use App\Models\Sale;
 use App\Models\Inventory;
 use App\Models\StockHistory;
+use App\Models\Conversation;
+use App\Models\Message;
+use App\Models\Notification;
+use App\Models\User;
+use App\Events\MessageSent;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Http;
@@ -134,14 +139,17 @@ class OrderRequestController extends Controller
         ]);
 
         try {
-            Mail::to($orderRequest->customerEmail)
-                ->send(new OrderSubmittedMail(
-                    customerName:   $orderRequest->customerName,
-                    orderId:        (string) $orderRequest->_id,
-                    productName:    $orderRequest->productName,
-                    quantity:       (int) $orderRequest->quantity,
-                    suggestedPrice: (float) ($orderRequest->suggestedPrice ?? 0),
-                ));
+            // Inquiry requests are handled entirely via chat / Messenger — skip the "request received" email.
+            if (($orderRequest->priceType ?? '') !== 'inquiry') {
+                Mail::to($orderRequest->customerEmail)
+                    ->send(new OrderSubmittedMail(
+                        customerName:   $orderRequest->customerName,
+                        orderId:        (string) $orderRequest->_id,
+                        productName:    $orderRequest->productName,
+                        quantity:       (int) $orderRequest->quantity,
+                        suggestedPrice: (float) ($orderRequest->suggestedPrice ?? 0),
+                    ));
+            }
         } catch (\Exception $e) {
             Log::error('OrderSubmittedMail failed', [
                 'orderId' => (string) $orderRequest->_id,
@@ -211,6 +219,11 @@ class OrderRequestController extends Controller
             'note'          => 'nullable|string|max:500',
             'adminComment'  => 'nullable|string|max:2000',
             'mockupUrl'     => 'nullable|string|url',
+            'materials'                => 'nullable|array',
+            'materials.*.inventoryId'  => 'required_with:materials|string',
+            'materials.*.materialName' => 'nullable|string',
+            'materials.*.qty'          => 'required_with:materials|numeric|min:0',
+            'materials.*.unitCost'     => 'nullable|numeric|min:0',
         ])->validate();
 
         $user = $request->user();
@@ -277,23 +290,38 @@ class OrderRequestController extends Controller
             $req->mockupUrl = $validated['mockupUrl'] ?? null;
         }
 
+        if (array_key_exists('materials', $validated)) {
+            $materials = $validated['materials'] ?? [];
+            $req->materials = $materials;
+            // COGS for this made-to-order job = sum(qty × unit cost) of the assembled materials.
+            $req->materialsCost = array_reduce($materials, function ($sum, $m) {
+                return $sum + ((float) ($m['qty'] ?? 0) * (float) ($m['unitCost'] ?? 0));
+            }, 0.0);
+        }
+
         $req->save();
 
         if ($validated['status'] === 'confirmed') {
-            try {
-                Mail::to($req->customerEmail)
-                    ->send(new OrderConfirmedMail(
-                        customerName:   $req->customerName,
-                        orderId:        (string) $req->_id,
-                        productName:    $req->productName,
-                        quantity:       (int) $req->quantity,
-                        suggestedPrice: (float) ($req->suggestedPrice ?? 0),
-                    ));
-            } catch (\Exception $e) {
-                Log::error('OrderConfirmedMail failed', [
-                    'orderId' => (string) $req->_id,
-                    'error'   => $e->getMessage(),
-                ]);
+            // Push the quote into the customer's chat + an in-app notification so they can pay.
+            $this->notifyQuoteInChat($req);
+
+            // Inquiries are a chat-first channel — the quote card above is the notice, no email.
+            if ($req->priceType !== 'inquiry') {
+                try {
+                    Mail::to($req->customerEmail)
+                        ->send(new OrderConfirmedMail(
+                            customerName:   $req->customerName,
+                            orderId:        (string) $req->_id,
+                            productName:    $req->productName,
+                            quantity:       (int) $req->quantity,
+                            suggestedPrice: (float) ($req->suggestedPrice ?? 0),
+                        ));
+                } catch (\Exception $e) {
+                    Log::error('OrderConfirmedMail failed', [
+                        'orderId' => (string) $req->_id,
+                        'error'   => $e->getMessage(),
+                    ]);
+                }
             }
         }
 
@@ -448,6 +476,154 @@ class OrderRequestController extends Controller
     /**
      * GET /my/order-requests
      */
+    /**
+     * POST /admin/quotations — the admin builds a quote straight from the chat.
+     * Creates a CONFIRMED OrderRequest (the RFQ backbone) for the customer, then posts
+     * the View & Pay quotation card into their chat. Works whether or not the customer
+     * came through the product "Inquire" button (free-text product/service description).
+     */
+    public function adminQuote(Request $request)
+    {
+        $user = $request->user();
+        if (!$user || !in_array($user->role ?? null, ['admin', 'owner'])) {
+            return $this->unauthorizedResponse();
+        }
+
+        $validated = $request->validate([
+            'recipientId' => 'required|string',
+            'productName' => 'required|string|max:200',
+            'qty'         => 'required|integer|min:1',
+            'unitPrice'   => 'required|numeric|min:0',
+            'designFee'   => 'nullable|numeric|min:0',
+            'deliveryFee' => 'nullable|numeric|min:0',
+            'downPayment' => 'nullable|numeric|min:0',
+            'note'        => 'nullable|string|max:1000',
+        ]);
+
+        $customer = User::where('_id', $validated['recipientId'])->first();
+        if (!$customer) {
+            return $this->errorResponse('Customer not found.', 404);
+        }
+
+        $qty         = (int) $validated['qty'];
+        $unitPrice   = round((float) $validated['unitPrice'], 2);
+        $designFee   = round((float) ($validated['designFee'] ?? 0), 2);
+        $deliveryFee = round((float) ($validated['deliveryFee'] ?? 0), 2);
+        $total       = round($unitPrice * $qty + $designFee + $deliveryFee, 2);
+        $downPayment = $validated['downPayment'] !== null ? round((float) $validated['downPayment'], 2) : null;
+
+        $orderRequest = OrderRequest::create([
+            'customerId'    => (string) $customer->_id,
+            'customerName'  => trim(($customer->firstName ?? '') . ' ' . ($customer->lastName ?? '')),
+            'customerEmail' => $customer->email ?? null,
+            'productName'   => $validated['productName'],
+            'priceType'     => 'inquiry',
+            'quantity'      => $qty,
+            'designFee'     => $designFee,
+            'shippingFee'   => $deliveryFee,
+            'finalPrice'    => $total,
+            'suggestedPrice'=> $total,
+            'downPayment'   => $downPayment,
+            'adminComment'  => $validated['note'] ?? null,
+            'status'        => 'confirmed',
+            'paymentStatus' => 'unpaid',
+            'statusHistory' => [['status' => 'confirmed', 'at' => now()->toISOString()]],
+            'createdAt'     => now(),
+            'updatedAt'     => now(),
+        ]);
+
+        $this->notifyQuoteInChat($orderRequest, [
+            'unitPrice'   => $unitPrice,
+            'designFee'   => $designFee,
+            'deliveryFee' => $deliveryFee,
+        ]);
+
+        return $this->successResponse('Quotation sent.', $orderRequest);
+    }
+
+    /**
+     * Post the confirmed quote into the customer's chat as a quotation card (with a
+     * View & Pay CTA the frontend deep-links to /shop/quotes) plus an in-app notification.
+     * Chat-first channel for inquiries — replaces the confirmation email. Best-effort/non-fatal.
+     */
+    private function notifyQuoteInChat(OrderRequest $req, array $extraMeta = []): void
+    {
+        try {
+            $customerId = (string) $req->customerId;
+            $admin      = User::whereIn('role', ['admin', 'owner'])->first();
+            if (!$admin || $customerId === '') {
+                return;
+            }
+            $adminId = (string) $admin->_id;
+
+            // Find or create the 1-to-1 conversation (string participants — matches ChatController).
+            $participants = [$customerId, $adminId];
+            sort($participants);
+            $conversation = Conversation::where('participants', $customerId)->get()
+                ->first(function ($c) use ($customerId, $adminId) {
+                    $parts = array_map('strval', is_array($c->participants) ? $c->participants : []);
+                    return in_array($customerId, $parts, true) && in_array($adminId, $parts, true);
+                });
+            if (!$conversation) {
+                $conversation = Conversation::create([
+                    'participants'    => $participants,
+                    'last_message_at' => now(),
+                    'is_active'       => true,
+                ]);
+            }
+
+            $finalPrice = round((float) ($req->finalPrice ?? 0), 2);
+            $qty        = max(1, (int) ($req->quantity ?? 1));
+            $down       = ($req->downPayment !== null && (float) $req->downPayment > 0)
+                ? round((float) $req->downPayment, 2)
+                : round($finalPrice * 0.5, 2);
+            $dpPct      = $finalPrice > 0 ? (int) round($down / $finalPrice * 100) : 50;
+
+            $message = Message::create([
+                'conversation_id' => (string) $conversation->_id,
+                'sender_id'       => $adminId,
+                'sender_name'     => trim(($admin->firstName ?? '') . ' ' . ($admin->lastName ?? '')) ?: 'Store',
+                'body'            => "Here is your quote for {$req->productName}.",
+                'type'            => 'quotation',
+                'metadata'        => array_merge([
+                    'productName'    => $req->productName,
+                    'thumbnail'      => $req->productThumbnail,
+                    'qty'            => $qty,
+                    'unitPrice'      => $qty > 0 ? round($finalPrice / $qty, 2) : $finalPrice,
+                    'total'          => $finalPrice,
+                    'downPayment'    => $down,
+                    'downPaymentPct' => $dpPct,
+                    'orderRequestId' => (string) $req->_id,
+                    'note'           => $req->adminComment ?? '',
+                ], $extraMeta),
+                'is_read'         => false,
+            ]);
+
+            $conversation->update([
+                'last_message'    => 'Sent a quotation',
+                'last_message_at' => now(),
+            ]);
+
+            try {
+                broadcast(new MessageSent($message))->toOthers();
+            } catch (\Throwable $e) {
+                Log::warning('Quote chat broadcast failed (message still saved): ' . $e->getMessage());
+            }
+
+            Notification::create([
+                'user_id'    => $customerId,
+                'type'       => 'quote_ready',
+                'title'      => 'Your quote is ready',
+                'message'    => "We've sent a price for \"{$req->productName}\". Tap to review and pay.",
+                'is_read'    => false,
+                'data'       => ['orderRequestId' => (string) $req->_id, 'link' => '/shop/quotes'],
+                'created_at' => now(),
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('notifyQuoteInChat failed', ['orderId' => (string) $req->_id, 'error' => $e->getMessage()]);
+        }
+    }
+
     public function myRequests(Request $request)
     {
         $user = $request->user();

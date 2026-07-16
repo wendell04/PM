@@ -2,19 +2,41 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { containsProfanity } from '../../lib/profanity';
+import QuotationModal from './QuotationModal';
+import { createAdminQuotation } from '../../lib/orderRequestApi';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
-const ChatInput = ({ onSendMessage, isSending, activeConversation, token, onTyping }) => {
+const ChatInput = ({ onSendMessage, isSending, activeConversation, token, onTyping, isAdmin }) => {
   const [text, setText] = useState('');
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
   const [profanityWarning, setProfanityWarning] = useState(false);
   const [previewFile, setPreviewFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState('');
+  const [showQuotation, setShowQuotation] = useState(false);
+  const [quotationSending, setQuotationSending] = useState(false);
+  const [quotationError, setQuotationError] = useState('');
   const fileInputRef = useRef(null);
   const typingThrottleRef = useRef(null);
   const profanityTimerRef = useRef(null);
+
+  const customerId = activeConversation?.other_user?.id;
+  const canQuote = isAdmin && customerId
+    && customerId !== 'support_auto' && !String(activeConversation?._id || '').startsWith('new_');
+
+  const handleSendQuotation = async (payload) => {
+    setQuotationSending(true);
+    setQuotationError('');
+    try {
+      await createAdminQuotation(token, { recipientId: customerId, ...payload });
+      setShowQuotation(false);
+    } catch (err) {
+      setQuotationError(err.message || 'Failed to send quotation.');
+    } finally {
+      setQuotationSending(false);
+    }
+  };
 
   useEffect(() => {
     return () => { if (previewUrl) URL.revokeObjectURL(previewUrl); };
@@ -162,6 +184,11 @@ const ChatInput = ({ onSendMessage, isSending, activeConversation, token, onTypi
           {uploadError}
         </div>
       )}
+      {quotationError && (
+        <div style={{ fontSize: '0.75rem', color: '#ef4444', marginBottom: '6px', padding: '4px 8px', background: 'rgba(239,68,68,0.08)', borderRadius: '6px' }}>
+          {quotationError}
+        </div>
+      )}
       <form onSubmit={handleSubmit} className="input-wrapper">
         <button
           type="button"
@@ -185,6 +212,25 @@ const ChatInput = ({ onSendMessage, isSending, activeConversation, token, onTypi
             </svg>
           )}
         </button>
+
+        {canQuote && (
+          <button
+            type="button"
+            disabled={isSending || isUploading}
+            onClick={() => { setQuotationError(''); setShowQuotation(true); }}
+            title="Send quotation"
+            style={{
+              background: 'transparent', border: 'none',
+              color: '#d4a843',
+              cursor: isSending || isUploading ? 'not-allowed' : 'pointer',
+              lineHeight: 1, padding: '4px',
+            }}
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="4" y="2" width="16" height="20" rx="2" /><line x1="8" y1="7" x2="16" y2="7" /><line x1="8" y1="11" x2="16" y2="11" /><line x1="8" y1="15" x2="12" y2="15" />
+            </svg>
+          </button>
+        )}
 
         <input
           type="file"
@@ -233,6 +279,14 @@ const ChatInput = ({ onSendMessage, isSending, activeConversation, token, onTypi
         </button>
       </form>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+
+      {showQuotation && (
+        <QuotationModal
+          onClose={() => setShowQuotation(false)}
+          onSubmit={handleSendQuotation}
+          isSending={quotationSending}
+        />
+      )}
     </div>
   );
 };

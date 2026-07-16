@@ -47,6 +47,8 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
   const activeConvRef = useRef(null);
   const scrollRef = useRef(null);
   const pendingFaqRef = useRef(null);
+  const pendingCardRef = useRef(null);
+  const lastInquiryRef = useRef({ key: '', at: 0 });
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -77,9 +79,12 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
               const msgs = await getMessages(token, nid(fresh._id));
               setMessages(prev => {
                 const normalized = msgs.map(normalizeMsg);
-                const freshIds = new Set(normalized.map(m => m._id));
-                const pending = prev.filter(m => m.pending && !freshIds.has(m._id));
-                return [...normalized, ...pending];
+                const freshIds = new Set(normalized.map(m => String(m._id)));
+                // Keep local messages not yet in the fetch — pending OR just-confirmed (racing the DB
+                // read) — so a just-sent message isn't dropped from the view before it re-appears.
+                const localExtra = prev.filter(m => !freshIds.has(String(m._id)) &&
+                  (m.pending || (m.created_at && Date.now() - new Date(m.created_at).getTime() < 15000)));
+                return [...normalized, ...localExtra];
               });
             } catch { /* silent */ }
           }
@@ -241,7 +246,19 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
 
   // Auto-send FAQ question once chat view is ready
   useEffect(() => {
-    if (view !== 'chat' || !activeConv || !pendingFaqRef.current) return;
+    if (view !== 'chat' || !activeConv) return;
+    if (pendingCardRef.current) {
+      const card = pendingCardRef.current;
+      pendingCardRef.current = null;
+      // Dedupe the ACTUAL send — the support_auto → real-conversation transition can re-fire this effect.
+      const key = card.productId || card.productName || '';
+      const now = Date.now();
+      if (lastInquiryRef.current.key === key && now - lastInquiryRef.current.at < 6000) return;
+      lastInquiryRef.current = { key, at: now };
+      handleSendMessage({ body: `Hi! I'd like to inquire about ${card.productName}.`, type: 'inquiry', metadata: card, conversation_id: activeConv._id });
+      return;
+    }
+    if (!pendingFaqRef.current) return;
     const q = pendingFaqRef.current;
     pendingFaqRef.current = null;
     handleSendMessage({ body: q, type: 'text', conversation_id: activeConv._id });
@@ -254,20 +271,45 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
   };
 
   const openNewChat = () => {
+    // Reuse the existing store conversation (a customer chats with a single store) — prefer the
+    // admin/owner thread, else the most recent one — so we never fragment the history into a fresh
+    // "support_auto" thread (which clears messages) when a conversation already exists.
     const supportConv = conversations.find(
       c => c.other_user?.role === 'admin' || c.other_user?.role === 'owner'
-    );
+    ) || conversations[0];
     if (supportConv) {
       openConversation(supportConv);
     } else {
       openConversation({
         _id: 'support_auto',
-        other_user: { id: 'support', name: 'PersonalizeMe Support', role: 'admin' },
+        // id MUST be 'support_auto' so the backend resolves it to the real store admin/owner
+        // (ChatController@store special-cases 'support_auto'/'admin_auto'). 'support' would NOT
+        // resolve → the message fails to send.
+        other_user: { id: 'support_auto', name: 'PersonalizeMe Support', role: 'admin' },
         unread_count: 0,
         last_message: '',
       });
     }
   };
+
+  // Let other parts of the app (e.g. the "Request a Quote" button) open the chat with a
+  // prefilled first message — reuses the FAQ auto-send path (pendingFaqRef).
+  useEffect(() => {
+    const handleOpenChat = (e) => {
+      if (!token) { onRequestLogin?.(); return; }
+      const card = e.detail?.inquiryCard;
+      if (card) {
+        pendingCardRef.current = card;
+      } else if (e.detail?.message) {
+        pendingFaqRef.current = e.detail.message;
+      }
+      setOpen(true);
+      openNewChat();
+    };
+    window.addEventListener('pmp_open_chat', handleOpenChat);
+    return () => window.removeEventListener('pmp_open_chat', handleOpenChat);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, conversations]);
 
   const typingNames = activeConv
     ? Object.entries(typingUsers)
@@ -458,6 +500,38 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
                         );
                       }
 
+                      if (msg.type === 'inquiry' && msg.metadata) {
+                        const m = msg.metadata;
+                        return (
+                          <div key={msgKey} style={{ display: 'flex', justifyContent: isMe ? 'flex-end' : 'flex-start' }}>
+                            <div className="quotation-card">
+                              <div className="quotation-header">
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#d4a843" strokeWidth="2.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                                <span className="quotation-tag">Inquiry</span>
+                              </div>
+                              <a href={`/shop/products/${m.productSlug || m.productId || ''}`} style={{ textDecoration: 'none', color: 'inherit', cursor: 'pointer' }}>
+                                <div className="quotation-body" style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                                  {m.thumbnail ? (
+                                    /* eslint-disable-next-line @next/next/no-img-element */
+                                    <img src={m.thumbnail} alt="" style={{ width: 46, height: 46, borderRadius: 8, objectFit: 'cover', flexShrink: 0 }} />
+                                  ) : (
+                                    <div style={{ width: 46, height: 46, borderRadius: 8, background: 'rgba(0,0,0,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                                    </div>
+                                  )}
+                                  <div style={{ minWidth: 0 }}>
+                                    <div className="quotation-product" style={{ margin: 0 }}>{m.productName}</div>
+                                    {m.category && <div style={{ fontSize: '0.72rem', color: '#9ca3af' }}>{m.category}</div>}
+                                  </div>
+                                </div>
+                              </a>
+                              {msg.body && <div style={{ padding: '2px 12px 6px', fontSize: '0.82rem', color: '#4b5563' }}>{msg.body}</div>}
+                              <div className="quotation-timestamp">{formatTime(msg.created_at)}</div>
+                            </div>
+                          </div>
+                        );
+                      }
+
                       if (msg.type === 'quotation' && msg.metadata) {
                         const m = msg.metadata;
                         const fmt = (n) => Number(n).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -478,11 +552,18 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
                                   <span className="quotation-total-label">Total</span>
                                   <span className="quotation-total-amount">&#8369;{fmt(m.total)}</span>
                                 </div>
-                                {!isMe && addToCart && (
+                                {m.orderRequestId && m.downPayment != null && (
+                                  <div className="quotation-line"><span>Downpayment ({m.downPaymentPct ?? 50}%)</span><span>&#8369;{fmt(m.downPayment)}</span></div>
+                                )}
+                                {!isMe && (m.orderRequestId ? (
+                                  <a href="/shop/quotes" className="btn-add-cart" style={{ display: 'block', textAlign: 'center', textDecoration: 'none' }}>
+                                    View &amp; Pay
+                                  </a>
+                                ) : addToCart && (
                                   <button className="btn-add-cart" onClick={() => addToCart({ _id: `quotation_${msgKey}`, name: `${m.productName} (${m.qty} pcs)`, flatPrice: m.total, isCustom: true, thumbnail: null }, 1, null, null, null, m.note ? { notes: m.note } : null)}>
                                     Add to Cart
                                   </button>
-                                )}
+                                ))}
                               </div>
                               <div className="quotation-timestamp">{formatTime(msg.created_at)}</div>
                             </div>

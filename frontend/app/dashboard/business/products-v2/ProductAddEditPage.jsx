@@ -279,13 +279,16 @@ function StorefrontPreview({ name, description, thumbnail, priceRange, variantCo
 
 function validate(form) {
   const e = {};
+  // Inquiry / made-to-order products build their BOM per-order at quote time, so a fixed
+  // product-level BOM is not required for them.
+  const bomOptional = form.pricingMode === 'inquiry' || form.isMadeToOrder;
   if (!form.name.trim()) e.name = 'Product name is required.';
-  if (form.type === 'standalone' && !form.bomId) e.bomId = 'Select a BOM.';
+  if (form.type === 'standalone' && !form.bomId && !bomOptional) e.bomId = 'Select a BOM.';
   if (form.type === 'multi-variant') {
     if (!form.variants.length) e.variants = 'Add at least one variant.';
     form.variants.forEach((v, i) => {
       if (!v.name.trim()) e[`vname_${i}`] = 'Variant name required.';
-      if (!v.bomId)       e[`vbom_${i}`]  = 'Select a BOM.';
+      if (!v.bomId && !bomOptional) e[`vbom_${i}`]  = 'Select a BOM.';
     });
   }
   if (form.pricingMode === 'fixed') {
@@ -550,9 +553,11 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
           ? p.tiers.map(t => ({ ...t, prices: keys.reduce((a, k) => ({ ...a, [k]: '' }), {}) }))
           : [emptyTier(keys)];
       }
-      return { ...p, pricingMode: newMode, tiers };
+      // Inquiry products are made-to-order (quoted + produced per order) — enable MTO automatically.
+      const isMadeToOrder = newMode === 'inquiry' ? true : p.isMadeToOrder;
+      return { ...p, pricingMode: newMode, tiers, isMadeToOrder };
     });
-    setErrors(p => ({ ...p, price: '', tiers: '' }));
+    setErrors(p => ({ ...p, price: '', tiers: '', bomId: '' }));
   };
 
   const toggleCollection = (id) =>

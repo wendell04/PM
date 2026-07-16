@@ -22,6 +22,7 @@ const QuotationModal = ({ onClose, onSubmit, isSending }) => {
     unitPrice: '',
     designFee: '',
     deliveryFee: '',
+    downPayment: '',
     note: '',
   });
 
@@ -30,6 +31,8 @@ const QuotationModal = ({ onClose, onSubmit, isSending }) => {
   const designFee = parseFloat(form.designFee) || 0;
   const deliveryFee = parseFloat(form.deliveryFee) || 0;
   const total = unitPrice * qty + designFee + deliveryFee;
+  const downPayment = parseFloat(form.downPayment) || 0;
+  const dpPct = total > 0 && downPayment > 0 ? Math.round((downPayment / total) * 100) : 0;
 
   const fmt = (n) => n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -43,7 +46,7 @@ const QuotationModal = ({ onClose, onSubmit, isSending }) => {
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!canSubmit) return;
-    onSubmit({ productName: form.productName.trim(), qty, unitPrice, designFee, deliveryFee, note: form.note.trim(), total });
+    onSubmit({ productName: form.productName.trim(), qty, unitPrice, designFee, deliveryFee, downPayment, note: form.note.trim(), total });
   };
 
   return (
@@ -103,6 +106,13 @@ const QuotationModal = ({ onClose, onSubmit, isSending }) => {
               <label style={{ fontSize: '0.7rem', color: '#888', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 700 }}>Delivery Fee (&#8369;)</label>
               <input name="deliveryFee" type="number" min="0" step="0.01" value={form.deliveryFee} onChange={handleChange} placeholder="0.00" style={inp} />
             </div>
+          </div>
+
+          <div style={{ marginBottom: '12px' }}>
+            <label style={{ fontSize: '0.7rem', color: '#888', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 700 }}>
+              Downpayment (&#8369;, optional){dpPct > 0 ? ` — ${dpPct}%` : ''}
+            </label>
+            <input name="downPayment" type="number" min="0" step="0.01" value={form.downPayment} onChange={handleChange} placeholder="Leave blank for 50% default" style={inp} />
           </div>
 
           <div style={{ marginBottom: '16px' }}>

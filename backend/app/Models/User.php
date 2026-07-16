@@ -95,6 +95,26 @@ class User extends Authenticatable
     ];
 
     /**
+     * Session token lifetime by role + "remember me" (single source of truth for login,
+     * refresh, and post-2FA token minting). Staff/admin sessions are short-lived when
+     * "remember me" is off (sensitive accounts on shared devices); customers keep a long
+     * shopping session. Tune the durations here only.
+     */
+    public function sessionExpiresAt(bool $rememberMe = false): \Carbon\Carbon
+    {
+        // No "remember me" → short session for everyone (shared/temporary device). This is the
+        // server-side equivalent of a "just this visit" session; a true logout-on-browser-close
+        // would additionally need sessionStorage on the client.
+        if (!$rememberMe) {
+            return now()->addDay();
+        }
+
+        // "Remember me" on → long session. Staff a bit shorter than customers (more sensitive).
+        $isStaff = ($this->role ?? 'customer') !== 'customer';
+        return $isStaff ? now()->addDays(30) : now()->addDays(90);
+    }
+
+    /**
      * Override Sanctum createToken to write
      * directly to MongoDB via our custom model.
      */

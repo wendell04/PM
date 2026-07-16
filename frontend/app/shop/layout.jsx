@@ -1,6 +1,8 @@
 'use client';
 // TwoFactorModal imported for inline 2FA — no page redirect needed
 import TwoFactorModal from '@/components/auth/TwoFactorModal';
+// Shared with the landing page so the sign-up form (fields, CAPTCHA, password rules, T&C) is identical.
+import RegisterForm from '@/components/auth/RegisterForm';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
@@ -341,360 +343,6 @@ const EyeClosed = () => (
     <path d="M12 7c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.83l2.92 2.92c1.51-1.26 2.7-2.89 3.43-4.75C21.27 7.61 17 4.5 12 4.5c-1.23 0-2.41.2-3.51.57l2.17 2.17C11.13 7.09 11.56 7 12 7zM2 4.27l2.28 2.28.46.46A11.8 11.8 0 0 0 1 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22 21 20.73 3.27 3 2 4.27zM7.53 9.8l1.55 1.55c-.05.21-.08.43-.08.65a3 3 0 0 0 3 3c.22 0 .44-.03.65-.08l1.55 1.55c-.67.33-1.41.53-2.2.53a5 5 0 0 1-5-5c0-.79.2-1.53.53-2.2zm4.31-.78 3.15 3.15.02-.16c0-1.66-1.34-3-3-3l-.17.01z"/>
   </svg>
 );
-
-// ─── Register Form Component ──────────────────────────────────────────────────
-function RegisterForm({ onSuccess, onSwitchToLogin }) {
-  const [formData, setFormData] = useState({
-    firstName: '',
-    middleInitial: '',
-    lastName: '',
-    phoneNumber: '',
-    email: '',
-    password: '',
-    confirmPassword: '',
-    agreeToTerms: false,
-  });
-  const [errors, setErrors] = useState({});
-  const [loading, setLoading] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirm, setShowConfirm] = useState(false);
-  const [tAndCModalOpen, setTAndCModalOpen] = useState(false);
-  const [passwordTouched, setPasswordTouched] = useState(false);
-  const [confirmTouched, setConfirmTouched] = useState(false);
-  const [rememberMe, setRememberMe] = useState(false);
-
-  const validateField = (field, value) => {
-    switch (field) {
-      case 'firstName':
-        if (!value.trim()) return 'First name is required';
-        if (value.trim().length < 2) return 'First name must be at least 2 characters';
-        return '';
-      case 'middleInitial':
-        if (value && !/^[A-Z]{1,2}$/.test(value)) return 'Middle initial must be 1-2 uppercase letters';
-        return '';
-      case 'lastName':
-        if (!value.trim()) return 'Last name is required';
-        if (value.trim().length < 2) return 'Last name must be at least 2 characters';
-        return '';
-      case 'phoneNumber':
-        if (!value.trim()) return 'Phone number is required';
-        if (!/^(\+63|0)\d{10}$/.test(value.replace(/\s/g, ''))) return 'Please enter a valid Philippine phone number';
-        return '';
-      case 'email':
-        if (!value.trim()) return 'Email is required';
-        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) return 'Please enter a valid email address';
-        return '';
-      case 'password':
-        if (!value) return 'Password is required';
-        if (value.length < 8) return 'Password must be at least 8 characters';
-        if (value.length > 64) return 'Password must not exceed 64 characters';
-        if (!/[A-Z]/.test(value)) return 'Password must contain at least one uppercase letter';
-        if (!/[a-z]/.test(value)) return 'Password must contain at least one lowercase letter';
-        if (!/\d/.test(value)) return 'Password must contain at least one number';
-        if (!/[!@#$%^&*(),.?":{}|<>]/.test(value)) return 'Password must contain at least one special character';
-        return '';
-      case 'confirmPassword':
-        if (!value) return 'Please confirm your password';
-        if (value !== formData.password) return 'Passwords do not match';
-        return '';
-      case 'agreeToTerms':
-        if (!value) return 'You must agree to the Terms and Conditions';
-        return '';
-      default:
-        return '';
-    }
-  };
-
-  const handleRegisterChange = (field, value) => {
-    if (['firstName', 'lastName'].includes(field)) value = value.replace(/[^a-zA-Z\s]/g, '');
-    if (field === 'middleInitial') value = value.replace(/[^a-zA-Z]/g, '').toUpperCase();
-    setFormData(f => ({ ...f, [field]: value }));
-    if (errors[field]) setErrors(e => ({ ...e, [field]: '' }));
-  };
-
-  const validateForm = () => {
-    const newErrors = {};
-    ['firstName', 'middleInitial', 'lastName', 'phoneNumber', 'email', 'password', 'confirmPassword', 'agreeToTerms']
-      .forEach(field => {
-        const err = validateField(field, formData[field]);
-        if (err) newErrors[field] = err;
-      });
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!validateForm()) return;
-    setLoading(true);
-
-    try {
-      const res = await fetchWithTimeout(`${API_URL}/api/register`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          firstName: formData.firstName.trim(),
-          middleInitial: formData.middleInitial.trim(),
-          lastName: formData.lastName.trim(),
-          phoneNumber: formData.phoneNumber.trim(),
-          email: formData.email.trim(),
-          password: formData.password,
-          password_confirmation: formData.confirmPassword,
-        }),
-      }, 15000);
-
-      const data = await res.json();
-      if (!res.ok) {
-        if (data.errors) {
-          const serverErrors = {};
-          Object.keys(data.errors).forEach(k => { serverErrors[k] = data.errors[k][0]; });
-          setErrors(serverErrors);
-        } else {
-          setErrors({ email: data.error || data.message || 'Registration failed. Please try again.' });
-        }
-        return;
-      }
-
-      onSuccess(data.data.user, data.data.token, rememberMe, data.data.requires_2fa);
-    } catch (err) {
-      setErrors({ email: 'Network error. Make sure the backend server is running.' });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <>
-      <StepIndicator step={1} />
-      <div className="auth-modal-body">
-        <form onSubmit={handleSubmit} autoComplete="off">
-          <div className="auth-fields-grid">
-            <div className="auth-field">
-              <label>First Name</label>
-              <input
-                type="text"
-                placeholder="Juan"
-                value={formData.firstName}
-                onChange={e => handleRegisterChange('firstName', e.target.value)}
-                onBlur={e => handleRegisterChange('firstName', e.target.value.trim())}
-                className={errors.firstName ? 'error' : ''}
-              />
-              {errors.firstName && <span className="error-message">{errors.firstName}</span>}
-            </div>
-            <div className="auth-field">
-              <label>Middle Initial</label>
-              <input
-                type="text"
-                placeholder="D."
-                value={formData.middleInitial}
-                onChange={e => handleRegisterChange('middleInitial', e.target.value.toUpperCase())}
-                maxLength="2"
-                className={errors.middleInitial ? 'error' : ''}
-              />
-              {errors.middleInitial && <span className="error-message">{errors.middleInitial}</span>}
-            </div>
-            <div className="auth-field">
-              <label>Last Name</label>
-              <input
-                type="text"
-                placeholder="Dela Cruz"
-                value={formData.lastName}
-                onChange={e => handleRegisterChange('lastName', e.target.value)}
-                onBlur={e => handleRegisterChange('lastName', e.target.value.trim())}
-                className={errors.lastName ? 'error' : ''}
-              />
-              {errors.lastName && <span className="error-message">{errors.lastName}</span>}
-            </div>
-          </div>
-
-          <div className="auth-field">
-            <label>Phone Number</label>
-            <div style={{ display: 'flex', borderRadius: '10px', overflow: 'hidden', border: '1px solid var(--border)' }}>
-              <div style={{ background: 'var(--dark3)', borderRight: '1px solid var(--border)', padding: '0 1rem', display: 'flex', alignItems: 'center', color: 'var(--white)', fontWeight: '700', fontSize: '0.95rem', flexShrink: 0, userSelect: 'none' }}>+63</div>
-              <input
-                type="tel"
-                placeholder="912 345 6789"
-                value={formData.phoneNumber.replace(/^\+63/, '')}
-                onChange={e => { const d = e.target.value.replace(/\D/g, '').slice(0, 10); handleRegisterChange('phoneNumber', '+63' + d); }}
-                className={errors.phoneNumber ? 'error' : ''}
-                maxLength={10}
-                style={{ border: 'none', borderRadius: '0', flex: '1', background: 'transparent' }}
-              />
-            </div>
-            {errors.phoneNumber && <span className="error-message">{errors.phoneNumber}</span>}
-          </div>
-
-          <div className="auth-field">
-            <label>Email Address</label>
-            <input
-              type="email"
-              placeholder="you@example.com"
-              value={formData.email}
-              onChange={e => handleRegisterChange('email', e.target.value)}
-              className={errors.email ? 'error' : ''}
-            />
-            {errors.email && <span className="error-message">{errors.email}</span>}
-          </div>
-
-          <div className="auth-fields-grid">
-            <div className="auth-field" style={{ position: 'relative' }}>
-              <label>Password</label>
-              <div className="auth-input-wrap">
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  placeholder="Create Password"
-                  autoComplete="new-password"
-                  maxLength={64}
-                  value={formData.password}
-                  onChange={e => handleRegisterChange('password', e.target.value)}
-                  onFocus={() => setPasswordTouched(true)}
-                  className={errors.password ? 'error' : ''}
-                />
-                <button type="button" className="auth-eye" onClick={() => setShowPassword(v => !v)}>
-                  {showPassword ? <EyeOpen /> : <EyeClosed />}
-                </button>
-              </div>
-              {(passwordTouched || formData.password.length > 0) && (
-                <div style={{ marginTop: '0.5rem', background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '10px', padding: '0.75rem' }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                    {[
-                      { label: 'At least 8 characters', pass: formData.password.length >= 8 },
-                      { label: 'One uppercase letter', pass: /[A-Z]/.test(formData.password) },
-                      { label: 'One lowercase letter', pass: /[a-z]/.test(formData.password) },
-                      { label: 'One number', pass: /\d/.test(formData.password) },
-                      { label: 'One special character', pass: /[!@#$%^&*(),.?":{}|<>]/.test(formData.password) },
-                    ].map((c, i) => (
-                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.78rem', color: c.pass ? 'var(--green)' : 'var(--gray)', transition: 'color 0.2s' }}>
-                        <span style={{ fontSize: '0.72rem' }}>{c.pass ? (
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--green)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{flexShrink:0}}><polyline points="20 6 9 17 4 12"/></svg>
-                        ) : (
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{flexShrink:0,opacity:0.3}}><circle cx="12" cy="12" r="2"/></svg>
-                        )}</span>{c.label}
-                      </div>
-                    ))}
-                  </div>
-                  <div style={{ marginTop: '0.55rem' }}>
-                    <PasswordStrength password={formData.password} />
-                  </div>
-                </div>
-              )}
-              {errors.password && <span className="error-message">{errors.password}</span>}
-            </div>
-
-            <div className="auth-field">
-              <label>Confirm Password</label>
-              <div className="auth-input-wrap">
-                <input
-                  type={showConfirm ? 'text' : 'password'}
-                  placeholder="Repeat Password"
-                  autoComplete="new-password"
-                  value={formData.confirmPassword}
-                  onChange={e => handleRegisterChange('confirmPassword', e.target.value)}
-                  onFocus={() => setConfirmTouched(true)}
-                  className={errors.confirmPassword ? 'error' : ''}
-                />
-                <button type="button" className="auth-eye" onClick={() => setShowConfirm(v => !v)}>
-                  {showConfirm ? <EyeOpen /> : <EyeClosed />}
-                </button>
-              </div>
-              {(confirmTouched || formData.confirmPassword.length > 0) && (
-                <div style={{ marginTop: '0.5rem', fontSize: '0.8rem', color: formData.confirmPassword.length === 0 ? 'var(--gray)' : (formData.confirmPassword === formData.password ? 'var(--green)' : 'var(--red)') }}>
-                  {formData.confirmPassword.length === 0
-                    ? 'Re-enter your password to confirm.'
-                    : (formData.confirmPassword === formData.password ? (
-                        <><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--green)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{display:'inline',verticalAlign:'middle',marginRight:'4px'}}><polyline points="20 6 9 17 4 12"/></svg> Passwords match</>
-                      ) : 'Passwords do not match')}
-                </div>
-              )}
-              {errors.confirmPassword && <span className="error-message">{errors.confirmPassword}</span>}
-            </div>
-          </div>
-
-          <div className="auth-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
-            <label className="auth-check" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer', fontSize: '0.88rem', color: 'var(--gray)' }}>
-              <input
-                type="checkbox"
-                checked={rememberMe}
-                onChange={e => setRememberMe(e.target.checked)}
-                style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: 'var(--gold)' }}
-              />
-              <span>Remember Me</span>
-              <span
-                style={{
-                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                  width: '14px', height: '14px', borderRadius: '50%', verticalAlign: 'middle',
-                  background: 'var(--border)', color: 'var(--gray)', fontSize: '0.65rem',
-                  cursor: 'help', flexShrink: 0
-                }}
-                title="Keep you logged in for 30 days. Don't use on shared devices."
-              >?</span>
-            </label>
-          </div>
-
-          <button type="button" className="btn-auth-submit"
-            onClick={() => { if (!validateForm()) return; setTAndCModalOpen(true); }}>
-            Proceed to Terms &amp; Conditions
-          </button>
-        </form>
-        <p className="auth-switch">Already have an account? <button onClick={onSwitchToLogin}>Sign In</button></p>
-      </div>
-
-      {/* T&C Modal */}
-      {tAndCModalOpen && (
-        <div className="tnc-overlay" onClick={() => setTAndCModalOpen(false)}>
-          <div className="tnc-modal" onClick={e => e.stopPropagation()}>
-            <div className="tnc-header">
-              <h3>Terms and Conditions</h3>
-              <button className="tnc-close" onClick={() => setTAndCModalOpen(false)}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-              </button>
-            </div>
-            <StepIndicator step={2} />
-            <div className="tnc-content">
-              <p><strong>1. Acceptance of Terms</strong></p>
-              <p>By creating an account with Personalize Me Prints, you agree to comply with and be bound by these Terms and Conditions. If you do not agree with any part of these terms, please do not use our services.</p>
-              <p><strong>2. Account Registration</strong></p>
-              <p>You must provide accurate and complete information when registering for an account. You are responsible for maintaining the confidentiality of your account credentials and for all activities that occur under your account.</p>
-              <p><strong>3. Product Quality</strong></p>
-              <p>We strive to provide high-quality custom printing services. All products are subject to quality inspection before shipment. We are not responsible for damages caused by improper use or handling of printed products.</p>
-              <p><strong>4. Intellectual Property</strong></p>
-              <p>You warrant that any designs or content you upload for printing do not infringe upon any third-party rights. You grant us a non-exclusive license to use your designs solely for the purpose of fulfilling your order.</p>
-              <p><strong>5. Payment and Pricing</strong></p>
-              <p>All prices are subject to change without notice. Payment is required before production begins. We reserve the right to refuse any order for any reason.</p>
-              <p><strong>6. Shipping and Delivery</strong></p>
-              <p>Delivery times are estimates and not guaranteed. We are not responsible for delays caused by shipping carriers or customs processing.</p>
-              <p><strong>7. Returns and Refunds</strong></p>
-              <p>Due to the custom nature of our products, all sales are final. We will only accept returns or provide refunds for products that are damaged or significantly different from the approved proof.</p>
-              <p><strong>8. Limitation of Liability</strong></p>
-              <p>Personalize Me Prints shall not be liable for any indirect, incidental, or consequential damages arising from the use of our products or services.</p>
-              <p><strong>9. Changes to Terms</strong></p>
-              <p>We reserve the right to modify these terms at any time. Changes will be effective immediately upon posting on our website. Your continued use of our services after any changes constitutes acceptance of the new terms.</p>
-            </div>
-            <div style={{ padding: '1rem 1.5rem', borderTop: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-              <input
-                type="checkbox"
-                id="tnc-agree-shop"
-                checked={formData.agreeToTerms}
-                onChange={e => handleRegisterChange('agreeToTerms', e.target.checked)}
-                style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: 'var(--gold)', flexShrink: 0 }}
-              />
-              <label htmlFor="tnc-agree-shop" style={{ fontSize: '0.88rem', color: 'var(--white)', cursor: 'pointer', userSelect: 'none' }}>
-                I have read and agree to the Terms and Conditions
-              </label>
-            </div>
-            <div className="tnc-actions">
-              <button className="btn-primary" disabled={!formData.agreeToTerms || loading}
-                onClick={async () => { setTAndCModalOpen(false); await handleSubmit({ preventDefault: () => {} }); }}>
-                {loading ? 'Creating Account...' : 'Create Account'}
-              </button>
-              <button className="btn-secondary" onClick={() => setTAndCModalOpen(false)}>Cancel</button>
-            </div>
-          </div>
-        </div>
-      )}
-    </>
-  );
-}
 
 // ─── Layout ───────────────────────────────────────────────────────────────────
 export default function ShopLayout({ children }) {
@@ -1768,6 +1416,14 @@ export default function ShopLayout({ children }) {
                             </svg>
                             My Orders
                           </Link>
+                          <Link href="/shop/quotes" className="shop-navbar-menu-item" onClick={() => setMenuOpen(false)}>
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                              <polyline points="14 2 14 8 20 8"/>
+                              <line x1="9" y1="15" x2="15" y2="15"/>
+                            </svg>
+                            My Quotes
+                          </Link>
                           <button onClick={handleLogout} className="shop-navbar-menu-item shop-navbar-logout">
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                               <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
@@ -1863,6 +1519,7 @@ export default function ShopLayout({ children }) {
               </summary>
               {user?.role && user.role !== 'customer' && <Link href="/dashboard/business/dashboardoverview">Dashboard</Link>}
               <Link href="/shop/orders-history">My Orders</Link>
+              <Link href="/shop/quotes">My Quotes</Link>
               <Link href="/shop/profile">My Profile</Link>
               <Link href="/shop/cart">Cart</Link>
             </details>
@@ -1900,18 +1557,20 @@ export default function ShopLayout({ children }) {
                 </button>
               </div>
 
-              <div className="auth-modal-body">
-                {authModalType === 'login' ? (
+              {authModalType === 'login' ? (
+                <div className="auth-modal-body">
                   <LoginForm
                     key={`login-${authModalInstanceKey}`}
                     onSuccess={handleLoginSuccess}
                     onSwitchToRegister={() => setAuthModalType('register')}
                     onForgotPassword={() => { setAuthModalOpen(false); setForgotPasswordOpen(true); }}
                   />
-                ) : (
-                  <RegisterForm key={`register-${authModalInstanceKey}`} onSuccess={handleRegisterSuccess} onSwitchToLogin={() => setAuthModalType('login')} />
-                )}
-              </div>
+                </div>
+              ) : (
+                /* RegisterForm renders its own step indicator + .auth-modal-body — wrapping it in
+                   another .auth-modal-body double-padded it and inset the stepper (landing does not). */
+                <RegisterForm key={`register-${authModalInstanceKey}`} onSuccess={handleRegisterSuccess} onSwitchToLogin={() => setAuthModalType('login')} theme={theme} />
+              )}
             </div>
           </div>
         )}

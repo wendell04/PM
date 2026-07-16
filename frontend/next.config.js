@@ -16,11 +16,13 @@ const securityHeaders = [
       "default-src 'self'",
       // 'unsafe-inline' kept for Next.js hydration scripts; full removal requires nonce implementation
       // 'unsafe-eval' restricted to dev only — not needed in production builds
-      `script-src 'self' 'unsafe-inline'${process.env.NODE_ENV === 'development' ? " 'unsafe-eval'" : ''}`,
+      `script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com${process.env.NODE_ENV === 'development' ? " 'unsafe-eval'" : ''}`,
       "style-src 'self' 'unsafe-inline'", // needed for inline <style> tags used in components
       "img-src 'self' data: blob: https://res.cloudinary.com https://images.unsplash.com https://via.placeholder.com https://*.tile.openstreetmap.org https://unpkg.com https://server.arcgisonline.com",
       "font-src 'self'",
-      `connect-src 'self' ${apiUrl} ${ssaUrl} https://api.paymongo.com https://nominatim.openstreetmap.org https://router.project-osrm.org ws: wss:`,
+      `connect-src 'self' ${apiUrl} ${ssaUrl} https://api.paymongo.com https://nominatim.openstreetmap.org https://router.project-osrm.org https://challenges.cloudflare.com ws: wss:`,
+      // Cloudflare Turnstile renders its challenge inside an iframe from challenges.cloudflare.com
+      "frame-src 'self' https://challenges.cloudflare.com",
       "frame-ancestors 'none'",
     ].join('; '),
   },

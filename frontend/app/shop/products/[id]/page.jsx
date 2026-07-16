@@ -30,6 +30,7 @@ export default function ProductDetailPage() {
   const [quantity, setQuantity] = useState(1);
   const [quantityInput, setQuantityInput] = useState('1');
   const [flashSale, setFlashSale] = useState(null);
+  const [requestingQuote, setRequestingQuote] = useState(false);
 
   const params = useParams();
   const router = useRouter();
@@ -435,6 +436,7 @@ export default function ProductDetailPage() {
   }
 
   const effectiveMinQty = product?.minOrderQty || 1;
+  const isInquiry = (product?.priceType ?? product?.pricingMode) === 'inquiry';
 
   const effectiveMaxQty = (() => {
     if (!product?.trackInventory || product?.isMadeToOrder || product?.stockStatus === 'upon-order') return 9999;
@@ -991,8 +993,8 @@ export default function ProductDetailPage() {
             )}
 
 
-            {/* Quantity input — hidden when out of stock */}
-            {!isOutOfStock && <div>
+            {/* Quantity input — hidden when out of stock, and for inquiry (qty is set in the quote) */}
+            {!isOutOfStock && !isInquiry && <div>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
                 <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                   Quantity
@@ -1125,10 +1127,37 @@ export default function ProductDetailPage() {
                   /* Custom product — goes to order form, not cart */
                   <>
                     <button
-                      onClick={() => !isOutOfStock && router.push(`/shop/products/${id}/order`)}
-                      disabled={isOutOfStock}
+                      onClick={() => {
+                        if (isOutOfStock || requestingQuote) return;
+                        // Fixed/tiered custom products keep the structured order form.
+                        if (!isInquiry) { router.push(`/shop/products/${id}/order`); return; }
+                        if (!token) {
+                          window.dispatchEvent(new CustomEvent('pmp_open_auth', { detail: { type: 'login', returnPath: window.location.pathname } }));
+                          return;
+                        }
+                        setRequestingQuote(true);
+                        // Open the chat INSTANTLY (the lag/spam came from awaiting the request write first).
+                        window.dispatchEvent(new CustomEvent('pmp_open_chat', {
+                          detail: {
+                            inquiryCard: {
+                              productId: String(product._id ?? product.id),
+                              productSlug: product.slug || String(product._id ?? product.id),
+                              productName: product.name,
+                              thumbnail: product.thumbnail || product.images?.[0] || null,
+                              category: product.category || product.subCategoryName || 'Custom order',
+                            },
+                          },
+                        }));
+                        // Track the request in the background — does not block the chat.
+                        fetchWithTimeout(`${API_URL}/api/order-requests`, {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                          body: JSON.stringify({ productId: String(product._id ?? product.id), quantity, isCustom: true }),
+                        }, 20000).catch(() => {}).finally(() => setTimeout(() => setRequestingQuote(false), 2000));
+                      }}
+                      disabled={isOutOfStock || requestingQuote}
                       style={{
-                        background: isOutOfStock ? 'rgba(107,114,128,0.3)' : 'var(--gold)',
+                        background: (isOutOfStock || requestingQuote) ? 'rgba(107,114,128,0.3)' : 'var(--gold)',
                         color: isOutOfStock ? 'var(--gray)' : '#000',
                         border: 'none', borderRadius: '10px', padding: '0.875rem 1.5rem',
                         fontWeight: 800, fontSize: '1rem',
@@ -1136,10 +1165,16 @@ export default function ProductDetailPage() {
                         width: '100%', fontFamily: "'Outfit', sans-serif",
                         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
                       }}>
-                      {isOutOfStock ? 'Out of Stock' : 'Place Custom Order'}
+                      {requestingQuote
+                        ? 'Opening chat…'
+                        : isOutOfStock
+                          ? 'Out of Stock'
+                          : (isInquiry ? 'Inquire' : 'Place Custom Order')}
                     </button>
                     <p style={{ textAlign: 'center', fontSize: '0.75rem', color: 'var(--gray)', margin: 0, lineHeight: 1.5 }}>
-                      Custom orders are fulfilled separately. You&apos;ll upload or request a design on the next step.
+                      {(product.priceType ?? product.pricingMode) === 'inquiry'
+                        ? "No payment now — we'll review your request and send a quote in chat."
+                        : "Custom orders are fulfilled separately. You'll upload or request a design on the next step."}
                     </p>
                   </>
                 ) : (

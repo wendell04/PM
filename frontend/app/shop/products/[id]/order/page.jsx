@@ -112,6 +112,7 @@ export default function CustomOrderPage() {
   const [verifyingPayment, setVerifyingPayment] = useState(false);
   const [pendingVerifyId, setPendingVerifyId] = useState(null);
   const [submitError, setSubmitError] = useState(null);
+  const [requestSubmitted, setRequestSubmitted] = useState(false);
   const [storeSettings, setStoreSettings]     = useState(null);
   const [shippingFeeAmt, setShippingFeeAmt]   = useState(null);
 
@@ -231,6 +232,9 @@ export default function CustomOrderPage() {
   }, [token]);
 
   const moq = product?.minOrderQty || 1;
+  // Inquiry (quotation) products have no computable price — they go through the quote flow
+  // (request now, owner sends a quote, customer pays it later), never a direct ₱0 checkout.
+  const isInquiry = (product?.priceType ?? product?.pricingMode) === 'inquiry';
   const unitPrice = getUnitPrice(product, quantity, selectedVariants);
   const designFee = designMode === 'request' ? (product?.designFee ?? 0) : 0;
   const lineTotal = (unitPrice ?? 0) * quantity;
@@ -275,6 +279,37 @@ export default function CustomOrderPage() {
       setSubmitError(uploading ? 'Design is still uploading, please wait.' : 'Please upload your design file.');
       return;
     }
+
+    // Inquiry (quotation) products: submit a quote request only — no address, no payment.
+    // The owner reviews it, sends a quote; the customer pays that quote later.
+    if (isInquiry) {
+      setSubmitError(null);
+      setPlacing(true);
+      try {
+        const res = await fetchWithTimeout(`${API_URL}/api/order-requests`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            productId: String(product._id ?? product.id),
+            quantity,
+            selectedVariants,
+            designUrl: designMode === 'upload' ? designFileUrl : null,
+            designNotes: designNotes.trim() || null,
+            designType: designMode,
+            isCustom: true,
+          }),
+        }, 20000);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.message || 'Failed to submit your request.');
+        setRequestSubmitted(true);
+      } catch (err) {
+        setSubmitError(err.message || 'Something went wrong. Please try again.');
+      } finally {
+        setPlacing(false);
+      }
+      return;
+    }
+
     if (!selectedAddress) {
       setSubmitError('Please select a delivery address.'); return;
     }
@@ -455,6 +490,24 @@ export default function CustomOrderPage() {
     </div>
   );
   
+  if (requestSubmitted) return (
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--dark1)', padding: '20px', fontFamily: "'Outfit', sans-serif" }}>
+      <div style={{ background: 'var(--dark2)', border: '1px solid rgba(212,168,67,0.25)', borderRadius: '18px', padding: '40px 32px', maxWidth: '420px', width: '100%', textAlign: 'center' }}>
+        <div style={{ width: 68, height: 68, borderRadius: '50%', background: 'rgba(212,168,67,0.1)', border: '2px solid var(--gold)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px' }}>
+          <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+        </div>
+        <h2 style={{ color: 'var(--white)', fontWeight: 700, fontSize: '1.3rem', marginBottom: 8 }}>Quote request submitted</h2>
+        <p style={{ color: 'var(--gray)', fontSize: '0.9rem', marginBottom: 28, lineHeight: 1.6 }}>
+          We&apos;ve received your request for <strong style={{ color: 'var(--white)' }}>{product.name}</strong>. We&apos;ll review the details and send you a quote via chat — you only pay once you approve it.
+        </p>
+        <button onClick={() => router.push('/shop')}
+          style={{ width: '100%', padding: '12px', background: 'var(--gold)', color: '#000', border: 'none', borderRadius: 9, fontWeight: 700, cursor: 'pointer', fontSize: '0.9rem' }}>
+          Continue Shopping
+        </button>
+      </div>
+    </div>
+  );
+
   if (loadError || !product) return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '1rem', background: 'var(--dark1)', color: 'var(--white)', fontFamily: "'Outfit', sans-serif" }}>
       <p style={{ color: 'var(--gray)' }}>{loadError ?? 'Product not found.'}</p>
@@ -476,7 +529,7 @@ export default function CustomOrderPage() {
           Back to Product
         </Link>
 
-        <h1 style={{ fontSize: '1.4rem', fontWeight: 800, marginBottom: '0.2rem' }}>Place Custom Order</h1>
+        <h1 style={{ fontSize: '1.4rem', fontWeight: 800, marginBottom: '0.2rem' }}>{isInquiry ? 'Request a Quote' : 'Place Custom Order'}</h1>
         <p style={{ color: 'var(--gray)', fontSize: '0.875rem', marginBottom: '2rem' }}>{product.name}</p>
 
         <div className="custom-order-grid">
@@ -551,7 +604,7 @@ export default function CustomOrderPage() {
                   <p style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.2rem', color: designMode === 'request' ? 'var(--gold)' : 'var(--white)' }}>Request a design</p>
                   <p style={{ fontSize: '0.75rem', color: 'var(--gray)', margin: 0 }}>
                     We&apos;ll create it for you
-                    {product.designFee > 0 && (
+                    {product.designFee > 0 && !isInquiry && (
                       <span style={{ color: 'var(--gold)', fontWeight: 700, marginLeft: '4px' }}>+{fmt(product.designFee)}</span>
                     )}
                   </p>
@@ -615,7 +668,7 @@ export default function CustomOrderPage() {
             </section>
 
             {/* Step 3: Delivery — shown for both upload and request */}
-            {(designMode === 'upload' || designMode === 'request') && <section style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border)', borderRadius: '12px', padding: '1.5rem' }}>
+            {(designMode === 'upload' || designMode === 'request') && !isInquiry && <section style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border)', borderRadius: '12px', padding: '1.5rem' }}>
               <h2 style={{ fontSize: '0.85rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--gold)', marginBottom: '1.25rem' }}>3 — Delivery Address</h2>
               {addressLoading ? (
                 <p style={{ color: 'var(--gray)', fontSize: '0.85rem' }}>Loading addresses...</p>
@@ -656,7 +709,7 @@ export default function CustomOrderPage() {
             </section>}
 
             {/* Step 4: Payment */}
-            {(designMode === 'request' || (designMode === 'upload' && downpaymentRequired)) && <section style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border)', borderRadius: '12px', padding: '1.5rem' }}>
+            {(designMode === 'request' || (designMode === 'upload' && downpaymentRequired)) && !isInquiry && <section style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border)', borderRadius: '12px', padding: '1.5rem' }}>
               <h2 style={{ fontSize: '0.85rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--gold)', marginBottom: '1.25rem' }}>4 — Payment Method</h2>
 
               <div style={{ padding: '0.75rem 1rem', background: 'rgba(212,168,67,0.08)', border: '1px solid rgba(212,168,67,0.2)', borderRadius: '8px', marginBottom: '1rem', fontSize: '0.8rem', color: 'var(--gray)', lineHeight: 1.5 }}>
@@ -769,37 +822,51 @@ export default function CustomOrderPage() {
                 </div>
               </div>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem', marginBottom: '1rem' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
-                  <span style={{ color: 'var(--gray)' }}>{fmt(unitPrice ?? 0)} × {quantity} pc{quantity > 1 ? 's' : ''}</span>
-                  <span>{fmt(lineTotal)}</span>
+              {isInquiry ? (
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', fontSize: '0.9rem', fontWeight: 700, marginBottom: '1rem', paddingBottom: '1rem', borderBottom: '1px solid var(--border)' }}>
+                  <span>{quantity} pc{quantity > 1 ? 's' : ''}</span>
+                  <span style={{ color: 'var(--gold)' }}>Priced on quotation</span>
                 </div>
-                {designMode === 'request' && designFee > 0 && (
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem', marginBottom: '1rem' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
-                    <span style={{ color: 'var(--gray)' }}>Design fee</span>
-                    <span style={{ color: 'var(--gold)' }}>+{fmt(designFee)}</span>
+                    <span style={{ color: 'var(--gray)' }}>{fmt(unitPrice ?? 0)} × {quantity} pc{quantity > 1 ? 's' : ''}</span>
+                    <span>{fmt(lineTotal)}</span>
                   </div>
-                )}
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
-                  <span style={{ color: 'var(--gray)' }}>Shipping</span>
-                  {shippingFeeAmt !== null
-                    ? <span>{fmt(shippingFeeAmt)}</span>
-                    : <span style={{ color: 'var(--gray)', fontStyle: 'italic', fontSize: '0.78rem' }}>Billed separately</span>}
+                  {designMode === 'request' && designFee > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
+                      <span style={{ color: 'var(--gray)' }}>Design fee</span>
+                      <span style={{ color: 'var(--gold)' }}>+{fmt(designFee)}</span>
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
+                    <span style={{ color: 'var(--gray)' }}>Shipping</span>
+                    {shippingFeeAmt !== null
+                      ? <span>{fmt(shippingFeeAmt)}</span>
+                      : <span style={{ color: 'var(--gray)', fontStyle: 'italic', fontSize: '0.78rem' }}>Billed separately</span>}
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', fontWeight: 700, paddingTop: '0.5rem', borderTop: '1px solid var(--border)' }}>
+                    <span>Total</span>
+                    <span>{fmt(grandTotal)}</span>
+                  </div>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', fontWeight: 700, paddingTop: '0.5rem', borderTop: '1px solid var(--border)' }}>
-                  <span>Total</span>
-                  <span>{fmt(grandTotal)}</span>
-                </div>
-              </div>
+              )}
 
-              {designMode === 'upload' && (
+              {isInquiry && (
+                <div style={{ padding: '0.875rem', background: 'rgba(212,168,67,0.08)', border: '1px solid rgba(212,168,67,0.2)', borderRadius: '10px', marginBottom: '1rem', fontSize: '0.78rem', color: 'var(--gray)', lineHeight: 1.6 }}>
+                  <strong style={{ color: 'var(--gold)', display: 'block', marginBottom: '4px' }}>No payment now</strong>
+                  We&apos;ll review your request and send you a quote in chat. You only pay once you approve the quote.
+                </div>
+              )}
+
+              {designMode === 'upload' && !isInquiry && (
                 <div style={{ padding: '0.875rem', background: 'rgba(96,165,250,0.08)', border: '1px solid rgba(96,165,250,0.2)', borderRadius: '10px', marginBottom: '1rem', fontSize: '0.78rem', color: 'var(--gray)', lineHeight: 1.6 }}>
                   <strong style={{ color: '#60a5fa', display: 'block', marginBottom: '4px' }}>No payment yet</strong>
                   We&apos;ll review your file first. You&apos;ll confirm your address and pay only after we verify it&apos;s print-ready.
                 </div>
               )}
 
-              {designMode === 'request' && (
+              {designMode === 'request' && !isInquiry && (
                 <div style={{ padding: '0.875rem', background: 'rgba(212,168,67,0.08)', border: '1px solid rgba(212,168,67,0.2)', borderRadius: '10px', marginBottom: '1rem' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.35rem', fontSize: '0.85rem' }}>
                     <span style={{ color: 'var(--gray)' }}>Design fee due now</span>
@@ -812,7 +879,7 @@ export default function CustomOrderPage() {
                 </div>
               )}
 
-              {designMode === 'request' && (
+              {designMode === 'request' && !isInquiry && (
                 <div style={{ padding: '0.75rem', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border)', borderRadius: '8px', marginBottom: '1rem', fontSize: '0.75rem', color: 'var(--gray)', lineHeight: 1.6 }}>
                   Our designer will send a proof via chat within 24–48 hrs. Production starts once you approve.
                 </div>
@@ -829,8 +896,10 @@ export default function CustomOrderPage() {
                 {placing ? (
                   <>
                     <div style={{ width: 16, height: 16, border: '2px solid rgba(0,0,0,0.2)', borderTopColor: '#000', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
-                    {designMode === 'upload' ? 'Submitting...' : designMode === 'request' ? 'Requesting...' : 'Placing Order...'}
+                    {isInquiry ? 'Submitting...' : designMode === 'upload' ? 'Submitting...' : designMode === 'request' ? 'Requesting...' : 'Placing Order...'}
                   </>
+                ) : isInquiry ? (
+                  'Submit Quote Request'
                 ) : designMode === 'upload' ? (
                   'Submit for Review'
                 ) : designMode === 'request' ? (
@@ -841,9 +910,11 @@ export default function CustomOrderPage() {
               </button>
 
               <p style={{ textAlign: 'center', fontSize: '0.72rem', color: 'var(--gray)', marginTop: '0.75rem', lineHeight: 1.5 }}>
-                {designMode === 'upload'
-                  ? 'You\'ll only pay after your file is reviewed and approved.'
-                  : 'By placing this order you agree to our terms of service.'}
+                {isInquiry
+                  ? 'No charge now — we\'ll send your quote after review.'
+                  : designMode === 'upload'
+                    ? 'You\'ll only pay after your file is reviewed and approved.'
+                    : 'By placing this order you agree to our terms of service.'}
               </p>
             </div>
           </div>

@@ -158,7 +158,7 @@ class ChatController extends Controller
                 'conversation_id' => 'nullable|string',
                 'recipient_id'    => 'nullable|string',
                 'body'            => 'nullable|string|max:2000',
-                'type'            => 'required|in:text,image,order_reference,quotation',
+                'type'            => 'required|in:text,image,order_reference,quotation,inquiry',
                 'file_url'        => 'nullable|string',
                 'order_id'        => 'nullable|string',
                 'metadata'        => 'nullable|array',
@@ -228,11 +228,36 @@ class ChatController extends Controller
                     'note'        => $m['note'] ?? '',
                     'total'       => floatval($m['total'] ?? 0),
                 ];
+            } elseif ($request->type === 'inquiry' && $request->metadata) {
+                $m = $request->metadata;
+                $metadata = [
+                    'productName' => $m['productName'] ?? '',
+                    'thumbnail'   => $m['thumbnail'] ?? null,
+                    'category'    => $m['category'] ?? '',
+                    'productSlug' => $m['productSlug'] ?? null,
+                    'productId'   => $m['productId'] ?? null,
+                ];
+            }
+
+            // Dedupe: ignore a repeat inquiry from the same sender within 20s (the chat widget can
+            // fire the inquiry send more than once). Match on `body` (top-level — reliable in MongoDB,
+            // and identical per product) rather than a nested metadata field. Return the existing one.
+            if ($request->type === 'inquiry' && !empty($request->body)) {
+                $existing = Message::where('sender_id', $user->_id)
+                    ->where('type', 'inquiry')
+                    ->where('body', $request->body)
+                    ->where('created_at', '>=', now()->subSeconds(20))
+                    ->orderBy('created_at', 'desc')
+                    ->first();
+                if ($existing) {
+                    return response()->json($existing, 200);
+                }
             }
 
             $lastMessageText = match($request->type) {
                 'image'     => 'Sent an image',
                 'quotation' => 'Sent a quotation',
+                'inquiry'   => 'Requested a quote',
                 default     => $request->body ?? '',
             };
 
@@ -253,8 +278,13 @@ class ChatController extends Controller
                 'last_message_at' => now(),
             ]);
 
-            // Broadcast real-time event
-            broadcast(new MessageSent($message))->toOthers();
+            // Broadcast real-time event — NON-FATAL: the message is already persisted above, so a
+            // broadcast failure (e.g. the Reverb/websocket server not running) must NOT fail the send.
+            try {
+                broadcast(new MessageSent($message))->toOthers();
+            } catch (\Throwable $e) {
+                Log::warning('Chat broadcast failed (message still saved): ' . $e->getMessage());
+            }
 
             return $this->successResponse('Message sent successfully', $message);
         } catch (\Exception $e) {

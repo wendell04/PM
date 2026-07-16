@@ -43,7 +43,7 @@ use App\Http\Controllers\SiteContentController;
 Route::get('/health', [HealthController::class, 'check']);
 
 // ─── Auth (Public) ────────────────────────────────────────────────────────────
-Route::post('/register',        [AuthController::class, 'register'])->middleware('throttle:10,1');
+Route::post('/register',        [AuthController::class, 'register'])->middleware(['throttle:register', \App\Http\Middleware\VerifyTurnstile::class]);
 Route::post('/login',           [AuthController::class, 'login'])->middleware('throttle:login');
 Route::post('/logout',          [AuthController::class, 'logout'])->middleware('auth:sanctum');
 // Aliases (tooling / documentation compatibility)
@@ -53,8 +53,8 @@ Route::post('/auth/refresh',    [AuthController::class, 'refresh'])->middleware(
 Route::get('/auth/me', function (Request $request) {
     return response()->json($request->user());
 })->middleware('auth:sanctum');
-Route::post('/verify-email',    [AuthController::class, 'verify'])->middleware('throttle:5,1');
-Route::post('/resend-code',     [AuthController::class, 'resend'])->middleware('throttle:5,1');
+Route::post('/verify-email',    [AuthController::class, 'verify'])->middleware('throttle:verify');
+Route::post('/resend-code',     [AuthController::class, 'resend'])->middleware('throttle:verify');
 Route::post('/forgot-password', [AuthController::class, 'forgotPassword'])->middleware('throttle:5,1');
 Route::post('/verify-reset-token', [AuthController::class, 'verifyResetToken'])->middleware('throttle:10,1');
 Route::post('/send-reset-code', [AuthController::class, 'sendResetCode'])->middleware('throttle:5,1');
@@ -292,6 +292,8 @@ Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
     Route::get('/admin/order-requests/stats',         [OrderRequestController::class, 'stats']);
     Route::get('/admin/order-requests/{id}',          [OrderRequestController::class, 'show']);
     Route::patch('/admin/order-requests/{id}/status', [OrderRequestController::class, 'updateStatus']);
+    // Create a quotation straight from the chat → confirmed OrderRequest + posts the View & Pay card.
+    Route::post('/admin/quotations',                  [OrderRequestController::class, 'adminQuote']);
 
     // ─── Bill of Materials ─────────────────────────────────────────────────────────────────────
     Route::get('/admin/bom',                          [BillOfMaterialController::class, 'index']);

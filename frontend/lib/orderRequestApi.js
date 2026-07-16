@@ -37,7 +37,7 @@ export async function fetchOrderRequest(token, id) {
   return data.data ?? data;
 }
 
-export async function updateOrderRequestStatus(token, id, { status, finalPrice, note, downPayment, paymentStatus, eta, adminComment, mockupUrl }) {
+export async function updateOrderRequestStatus(token, id, { status, finalPrice, note, downPayment, paymentStatus, eta, adminComment, mockupUrl, materials }) {
   const body = { status };
   if (finalPrice !== undefined && finalPrice !== null) body.finalPrice = finalPrice;
   if (note) body.note = note;
@@ -46,6 +46,7 @@ export async function updateOrderRequestStatus(token, id, { status, finalPrice, 
   if (eta) body.eta = eta;
   if (adminComment !== undefined) body.adminComment = adminComment;
   if (mockupUrl !== undefined) body.mockupUrl = mockupUrl;
+  if (materials !== undefined) body.materials = materials;
 
   const res = await fetchWithTimeout(`${API_URL}/api/admin/order-requests/${id}/status`, {
     method: 'PATCH',
@@ -152,7 +153,32 @@ export async function uploadDesignFile(token, file) {
   return { url: data.url, publicId: data.public_id };
 }
 
-export async function createOrderRequestPaymentLink(token, orderRequestId, type) {
+// Admin creates a quotation straight from the chat → confirmed OrderRequest + posts the View & Pay card.
+export async function createAdminQuotation(token, { recipientId, productName, qty, unitPrice, designFee, deliveryFee, downPayment, note }) {
+  const res = await fetchWithTimeout(`${API_URL}/api/admin/quotations`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      ...ngrokHeader,
+    },
+    body: JSON.stringify({
+      recipientId,
+      productName,
+      qty,
+      unitPrice,
+      designFee: designFee || 0,
+      deliveryFee: deliveryFee || 0,
+      ...(downPayment ? { downPayment } : {}),
+      note: note || '',
+    }),
+  }, 30000);
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.message || 'Failed to send quotation');
+  return data.data ?? data;
+}
+
+export async function createOrderRequestPaymentLink(token, orderRequestId, type, deliveryAddress = null) {
   const res = await fetchWithTimeout(`${API_URL}/api/payment/order-request-link`, {
     method: 'POST',
     headers: {
@@ -160,7 +186,7 @@ export async function createOrderRequestPaymentLink(token, orderRequestId, type)
       Authorization: `Bearer ${token}`,
       ...ngrokHeader,
     },
-    body: JSON.stringify({ orderRequestId, type }),
+    body: JSON.stringify({ orderRequestId, type, ...(deliveryAddress ? { deliveryAddress } : {}) }),
   }, 30000);
   const data = await res.json();
   if (!res.ok) throw new Error(data.message || 'Failed to create payment link');

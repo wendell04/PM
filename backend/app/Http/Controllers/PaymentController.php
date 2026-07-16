@@ -1008,8 +1008,9 @@ class PaymentController extends Controller
             }
 
             $validated = $request->validate([
-                'orderRequestId' => 'required|string|size:24',
-                'type'           => 'required|in:downpayment,balance',
+                'orderRequestId'  => 'required|string|size:24',
+                'type'            => 'required|in:downpayment,balance,full',
+                'deliveryAddress' => 'nullable|array',
             ]);
 
             $orderRequest = OrderRequest::find($validated['orderRequestId']);
@@ -1021,6 +1022,19 @@ class PaymentController extends Controller
             // Ownership check
             if ((string) $orderRequest->customerId !== (string) $user->_id) {
                 return $this->errorResponse('Forbidden.', 403);
+            }
+
+            // Persist the delivery address on the quote so the webhook can attach it to the
+            // converted Order (the webhook is server-to-server and has no request context).
+            // Required on the first (converting) payment: downpayment or full.
+            if (in_array($validated['type'], ['downpayment', 'full'], true)) {
+                $address = $validated['deliveryAddress'] ?? $orderRequest->deliveryAddress;
+                if (empty($address)) {
+                    return $this->errorResponse('A delivery address is required before payment.', 422);
+                }
+                $orderRequest->deliveryAddress = $address;
+                // Keep the admin-set delivery fee (already folded into finalPrice); do not zero it out.
+                $orderRequest->save();
             }
 
             // Must be confirmed before payment
@@ -1036,8 +1050,12 @@ class PaymentController extends Controller
             }
 
             $finalPrice  = (float) $orderRequest->finalPrice;
-            $downPayment = round($finalPrice * 0.5, 2);
+            // Use the downpayment the admin set on the quote; fall back to 50% if none was set.
+            $downPayment = ($orderRequest->downPayment !== null && (float) $orderRequest->downPayment > 0)
+                ? round((float) $orderRequest->downPayment, 2)
+                : round($finalPrice * 0.5, 2);
             $balance     = round($finalPrice - $downPayment, 2);
+            $dpPct       = $finalPrice > 0 ? (int) round($downPayment / $finalPrice * 100) : 50;
             $type        = $validated['type'];
 
             // Determine amount and validate current paymentStatus
@@ -1050,7 +1068,18 @@ class PaymentController extends Controller
                 }
                 $amount          = $downPayment;
                 $referenceNumber = 'OR-' . $validated['orderRequestId'] . '-down';
-                $label           = 'Downpayment (50%)';
+                $label           = "Downpayment ({$dpPct}%)";
+            } elseif ($type === 'full') {
+                // Customer opts to pay the whole amount upfront instead of just the downpayment.
+                if ($orderRequest->paymentStatus !== 'unpaid') {
+                    return $this->errorResponse(
+                        'This order has already been paid.',
+                        422
+                    );
+                }
+                $amount          = $finalPrice;
+                $referenceNumber = 'OR-' . $validated['orderRequestId'] . '-full';
+                $label           = 'Full Payment';
             } else {
                 if ($orderRequest->paymentStatus !== 'downpayment_paid') {
                     return $this->errorResponse(
@@ -1060,7 +1089,7 @@ class PaymentController extends Controller
                 }
                 $amount          = $balance;
                 $referenceNumber = 'OR-' . $validated['orderRequestId'] . '-bal';
-                $label           = 'Remaining Balance (50%)';
+                $label           = 'Remaining Balance';
             }
 
             $amountInCentavos = (int) round($amount * 100);
@@ -1132,6 +1161,127 @@ class PaymentController extends Controller
     }
 
     /**
+     * Convert a paid OrderRequest (RFQ quote) into a real Order so it enters the
+     * canonical JO → Production → QC → balance-gate pipeline. Idempotent: if the
+     * request was already converted, the existing order is returned untouched.
+     *
+     * @param string $paymentType 'down' (downpayment → partial) or 'full' (paid upfront)
+     */
+    private function convertOrderRequestToOrder(OrderRequest $orderRequest, string $paymentType, array $paymentMeta = []): ?Order
+    {
+        // Idempotency guard — never mint a second order for the same quote.
+        if (!empty($orderRequest->convertedOrderId)) {
+            return Order::find($orderRequest->convertedOrderId);
+        }
+
+        $customer   = User::find($orderRequest->customerId);
+        $finalPrice = round((float) $orderRequest->finalPrice, 2);
+        $qty        = max(1, (int) ($orderRequest->quantity ?? 1));
+
+        $downPayment = ($orderRequest->downPayment !== null && (float) $orderRequest->downPayment > 0)
+            ? round((float) $orderRequest->downPayment, 2)
+            : round($finalPrice * 0.5, 2);
+
+        $paidInFull = $paymentType === 'full';
+        $paidAmount = $paidInFull ? $finalPrice : $downPayment;
+        $balance    = $paidInFull ? 0.0 : round($finalPrice - $downPayment, 2);
+        $dpPct      = $finalPrice > 0 ? (int) round($downPayment / $finalPrice * 100) : null;
+
+        // Canonical order item shape (matches OrderController@store).
+        $item = [
+            'productId'     => (string) $orderRequest->productId,
+            'productName'   => $orderRequest->productName,
+            'isCustom'      => true,
+            'isMadeToOrder' => true,
+            'thumbnail'     => $orderRequest->productThumbnail,
+            'variantId'     => null,
+            'variantName'   => null,
+            'qty'           => $qty,
+            'unitPrice'     => round($finalPrice / $qty, 2),
+            'lineTotal'     => $finalPrice,
+            'flashSaleId'   => null,
+            'designUrl'     => $orderRequest->designUrl,
+            'designNotes'   => $orderRequest->designNotes,
+            'selectedVariants' => $orderRequest->selectedVariants ?? [],
+        ];
+
+        $order = Order::create([
+            'userId'        => (string) $orderRequest->customerId,
+            'userSnapshot'  => [
+                'name'  => $orderRequest->customerName
+                    ?: trim(($customer->firstName ?? '') . ' ' . ($customer->lastName ?? '')),
+                'email' => $orderRequest->customerEmail ?? ($customer->email ?? null),
+                'phone' => $customer->phoneNumber ?? null,
+            ],
+            'items'                => [$item],
+            'totalAmount'          => $finalPrice,
+            // Informational — the delivery fee the admin set on the quote is already inside finalPrice.
+            'shippingFee'          => round((float) ($orderRequest->shippingFee ?? 0), 2),
+            'orderStatus'          => 'awaiting_production',
+            'paymentStatus'        => $paidInFull ? 'paid' : 'partial',
+            'downPayment'          => $paidAmount,
+            'balance'              => $balance,
+            'requiresDownpayment'  => true,
+            'downpaymentPercent'   => $dpPct,
+            'paymentMethod'        => $paymentMeta['method'] ?? null,
+            'paymentDate'          => now(),
+            'paymongoPaymentId'    => $paymentMeta['paymentId'] ?? null,
+            'paymongoReferenceNumber' => $paymentMeta['ref'] ?? null,
+            'deliveryAddress'      => $orderRequest->deliveryAddress,
+            'isCustomOrder'        => true,
+            'orderSource'          => 'inquiry',
+            'designType'           => $orderRequest->designType,
+            'designFilePath'       => $orderRequest->designUrl,
+            'designNotes'          => $orderRequest->designNotes,
+            'designStatus'         => $orderRequest->designUrl ? 'pending_review' : null,
+            'materials'            => $orderRequest->materials,
+            'materialsCost'        => $orderRequest->materialsCost,
+            'orderRequestId'       => (string) $orderRequest->_id,
+            'paymentHistory'       => [[
+                'amount' => $paidAmount,
+                'method' => $paymentMeta['method'] ?? 'online',
+                'note'   => ($paidInFull ? 'Full payment' : 'Downpayment')
+                    . ' via PayMongo' . (!empty($paymentMeta['ref']) ? " ({$paymentMeta['ref']})" : ''),
+                'paidAt' => now()->toDateTimeString(),
+            ]],
+            'statusHistory'        => [['status' => 'awaiting_production', 'at' => now()->toISOString()]],
+            'createdAt'            => now(),
+            'updatedAt'            => now(),
+        ]);
+
+        $orderRequest->convertedOrderId = (string) $order->_id;
+        $orderRequest->save();
+
+        Log::info('OrderRequest converted to Order', [
+            'orderRequestId' => (string) $orderRequest->_id,
+            'orderId'        => (string) $order->_id,
+            'paymentType'    => $paymentType,
+        ]);
+
+        // Admin in-app notification for the new production-bound order.
+        try {
+            $admin = User::whereIn('role', ['admin', 'owner'])->first();
+            if ($admin) {
+                Notification::create([
+                    'user_id'    => (string) $admin->_id,
+                    'type'       => 'new_order',
+                    'title'      => 'Custom Order Paid',
+                    'message'    => 'Inquiry order #' . strtoupper(substr((string) $order->_id, -8))
+                        . ' paid (' . ($paidInFull ? 'full' : 'downpayment') . ') by '
+                        . ($order->userSnapshot['name'] ?? 'a customer') . '.',
+                    'is_read'    => false,
+                    'data'       => ['orderId' => (string) $order->_id, 'orderRequestId' => (string) $orderRequest->_id],
+                    'created_at' => now(),
+                ]);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('convert notification failed', ['error' => $e->getMessage()]);
+        }
+
+        return $order;
+    }
+
+    /**
      * POST /api/payment/webhook
      *
      * PayMongo sends payment.paid event.
@@ -1189,7 +1339,7 @@ class PaymentController extends Controller
             // Route: OR-{24hexId}-down or OR-{24hexId}-bal → OrderRequest
             // Route: raw 24-hex → Order
             $isOrderRequest = preg_match(
-                '/^OR-([a-f0-9]{24})-(down|bal)$/i',
+                '/^OR-([a-f0-9]{24})-(down|bal|full)$/i',
                 $remarks,
                 $orMatches
             );
@@ -1211,13 +1361,39 @@ class PaymentController extends Controller
                     ?? $paymentAttrs['payment_method_type']
                     ?? null;
 
+                $convertMeta = [
+                    'method'    => $paymentMethod,
+                    'paymentId' => $data['id'] ?? null,
+                    'ref'       => $remarks,
+                ];
+
                 if ($paymentType === 'down' && $orderRequest->paymentStatus === 'unpaid') {
                     $orderRequest->paymentStatus = 'downpayment_paid';
-                    $orderRequest->downPayment   = round((float) $orderRequest->finalPrice * 0.5, 2);
+                    // Keep the downpayment the admin set on the quote — do NOT overwrite with 50%.
+                    if ($orderRequest->downPayment === null || (float) $orderRequest->downPayment <= 0) {
+                        $orderRequest->downPayment = round((float) $orderRequest->finalPrice * 0.5, 2);
+                    }
                     $orderRequest->updatedAt     = now();
                     $orderRequest->save();
 
+                    // Convert the quote into a real Order → enters the JO/Production/QC pipeline.
+                    $this->convertOrderRequestToOrder($orderRequest, 'down', $convertMeta);
+
                     Log::info('OrderRequest downpayment received', [
+                        'orderRequestId' => $orderRequestId,
+                        'paymentMethod'  => $paymentMethod,
+                    ]);
+                } elseif ($paymentType === 'full' && $orderRequest->paymentStatus === 'unpaid') {
+                    // Customer chose to pay the whole amount upfront.
+                    $orderRequest->paymentStatus = 'paid';
+                    $orderRequest->downPayment   = round((float) $orderRequest->finalPrice, 2);
+                    $orderRequest->updatedAt     = now();
+                    $orderRequest->save();
+
+                    // Convert to a fully-paid Order (balance = 0) → straight into production.
+                    $this->convertOrderRequestToOrder($orderRequest, 'full', $convertMeta);
+
+                    Log::info('OrderRequest paid in full upfront', [
                         'orderRequestId' => $orderRequestId,
                         'paymentMethod'  => $paymentMethod,
                     ]);
@@ -1225,6 +1401,27 @@ class PaymentController extends Controller
                     $orderRequest->paymentStatus = 'paid';
                     $orderRequest->updatedAt     = now();
                     $orderRequest->save();
+
+                    // If already converted, settle the balance on the linked Order too.
+                    if (!empty($orderRequest->convertedOrderId)) {
+                        $linked = Order::find($orderRequest->convertedOrderId);
+                        if ($linked && $linked->paymentStatus !== 'paid') {
+                            $paidNow = round((float) ($linked->balance ?? 0), 2);
+                            $history = $linked->paymentHistory ?? [];
+                            $history[] = [
+                                'amount' => $paidNow,
+                                'method' => $paymentMethod ?? 'online',
+                                'note'   => 'Balance via PayMongo' . ($remarks ? " ({$remarks})" : ''),
+                                'paidAt' => now()->toDateTimeString(),
+                            ];
+                            $linked->paymentStatus  = 'paid';
+                            $linked->downPayment    = round((float) ($linked->totalAmount ?? 0), 2);
+                            $linked->balance        = 0;
+                            $linked->paymentHistory = $history;
+                            $linked->updatedAt      = now();
+                            $linked->save();
+                        }
+                    }
 
                     Log::info('OrderRequest balance paid in full', [
                         'orderRequestId' => $orderRequestId,

@@ -200,13 +200,10 @@ class TwoFactorController extends Controller
             $current->delete();
         }
 
-        // Match the login session policy (staff/admin get a long 30-day session; customers 30d,
-        // 90d with "remember me") so a 2FA login lasts the same as a non-2FA one.
+        // Match the login session policy (single source of truth: User::sessionExpiresAt) so a
+        // 2FA login lasts exactly as long as a non-2FA one for the same role + "remember me".
         $deviceName = substr($request->userAgent() ?? 'Unknown Device', 0, 120);
-        $isStaff    = ($user->role ?? 'customer') !== 'customer';
-        $expiresAt  = $isStaff
-            ? now()->addDays(30)
-            : ($request->boolean('rememberMe') ? now()->addDays(90) : now()->addDays(30));
+        $expiresAt  = $user->sessionExpiresAt($request->boolean('rememberMe'));
 
         return $user->createToken($deviceName, ['*'], $expiresAt)->plainTextToken;
     }
@@ -234,11 +231,13 @@ class TwoFactorController extends Controller
                 new SvgImageBackEnd()
             );
             $writer = new Writer($renderer);
-            $qrSvg  = base64_encode($writer->writeString($qrUrl));
+            $rawSvg = $writer->writeString($qrUrl);
 
             return response()->json([
                 'secret'       => $secret,
-                'qr_code'      => 'data:image/svg+xml;base64,' . $qrSvg,
+                // Data URI for <img src> (customer profile) + raw SVG for inline render (admin settings).
+                'qr_code'      => 'data:image/svg+xml;base64,' . base64_encode($rawSvg),
+                'qr_code_svg'  => $rawSvg,
                 'manual_entry' => [
                     'account' => $user->email,
                     'key'     => $secret,

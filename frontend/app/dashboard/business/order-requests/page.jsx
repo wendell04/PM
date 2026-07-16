@@ -7,6 +7,7 @@ import {
   updateOrderRequestStatus,
 } from '@/lib/orderRequestApi';
 import ErrorBoundary from '@/components/ErrorBoundary';
+import { loadInventory } from '../inventory-v2/api';
 
 const STATUS_LABELS = {
   pending_review: 'Pending Review',
@@ -127,6 +128,8 @@ export default function OrderRequestsPage() {
   const [updateNote, setUpdateNote] = useState('');
   const [updateAdminComment, setUpdateAdminComment] = useState('');
   const [updateMockupUrl, setUpdateMockupUrl] = useState('');
+  const [materialsList, setMaterialsList] = useState([]);
+  const [updateMaterials, setUpdateMaterials] = useState([]);
   const [submitting, setSubmitting] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
 
@@ -151,6 +154,12 @@ export default function OrderRequestsPage() {
     };
     load();
     return () => { cancelled = true; };
+  }, [token]);
+
+  // Load the materials list once so the admin can assemble a per-order BOM on a quote.
+  useEffect(() => {
+    if (!token) return;
+    loadInventory(token).then(({ mats }) => setMaterialsList(mats || [])).catch(() => {});
   }, [token]);
 
   // Auto-refresh every 30s — skipped when a modal is active or submitting
@@ -205,6 +214,9 @@ export default function OrderRequestsPage() {
     setUpdateNote('');
     setUpdateAdminComment(req.adminComment || '');
     setUpdateMockupUrl(req.mockupUrl || '');
+    setUpdateMaterials(Array.isArray(req.materials)
+      ? req.materials.map(m => ({ inventoryId: m.inventoryId ?? '', materialName: m.materialName ?? '', qty: m.qty != null ? String(m.qty) : '', unitCost: Number(m.unitCost) || 0 }))
+      : []);
     setModalError(null);
     setModalSuccess(null);
   }
@@ -220,6 +232,7 @@ export default function OrderRequestsPage() {
     setUpdateNote('');
     setUpdateAdminComment('');
     setUpdateMockupUrl('');
+    setUpdateMaterials([]);
     setModalError(null);
     setModalSuccess(null);
   }
@@ -250,6 +263,9 @@ export default function OrderRequestsPage() {
         eta: updateEta || undefined,
         adminComment: updateAdminComment.trim() || undefined,
         mockupUrl: updateMockupUrl.trim() || undefined,
+        materials: updateMaterials
+          .filter(m => m.inventoryId && Number(m.qty) > 0)
+          .map(m => ({ inventoryId: m.inventoryId, materialName: m.materialName, qty: Number(m.qty), unitCost: Number(m.unitCost) || 0 })),
       };
       const updated = await updateOrderRequestStatus(token, selectedRequest.id, payload);
       // Update local state
@@ -264,6 +280,17 @@ export default function OrderRequestsPage() {
       setSubmitting(false);
     }
   }
+
+  // ── Per-order BOM (materials) helpers — assembled at quote time, drives COGS ──
+  const materialsCostTotal = updateMaterials.reduce((s, m) => s + (Number(m.qty) || 0) * (Number(m.unitCost) || 0), 0);
+  const addMaterialRow = () => setUpdateMaterials(prev => [...prev, { inventoryId: '', materialName: '', qty: '', unitCost: 0 }]);
+  const removeMaterialRow = (i) => setUpdateMaterials(prev => prev.filter((_, j) => j !== i));
+  const setMaterialQty = (i, v) => setUpdateMaterials(prev => prev.map((m, j) => (j === i ? { ...m, qty: v } : m)));
+  const setMaterialRow = (i, invId) => setUpdateMaterials(prev => prev.map((m, j) => {
+    if (j !== i) return m;
+    const mat = materialsList.find(x => String(x.id) === String(invId));
+    return { ...m, inventoryId: invId, materialName: mat?.name ?? '', unitCost: mat ? Number(mat.baseCost) || 0 : 0 };
+  }));
 
   // Get valid next statuses for current request
   function getNextStatuses(currentStatus) {
@@ -798,6 +825,42 @@ export default function OrderRequestsPage() {
                           boxSizing: 'border-box',
                         }}
                       />
+                    </div>
+
+                    {/* Materials (per-order BOM) — assembled at quote time; drives COGS/profit */}
+                    <div style={{ marginBottom: '1rem' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.375rem' }}>
+                        <label style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>
+                          Materials <span style={{ color: 'var(--gray)', fontWeight: 400 }}>(per-order BOM — sets cost / COGS)</span>
+                        </label>
+                        <button type="button" onClick={addMaterialRow}
+                          style={{ fontSize: '0.72rem', color: 'var(--gold)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}>
+                          + Add material
+                        </button>
+                      </div>
+                      {updateMaterials.length === 0 && (
+                        <div style={{ fontSize: '0.72rem', color: 'var(--gray)', fontStyle: 'italic' }}>No materials added yet.</div>
+                      )}
+                      {updateMaterials.map((m, i) => (
+                        <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 60px 68px 22px', gap: '6px', alignItems: 'center', marginBottom: '6px' }}>
+                          <select value={m.inventoryId} onChange={e => setMaterialRow(i, e.target.value)}
+                            style={{ padding: '6px 8px', fontSize: '0.78rem', background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--white)' }}>
+                            <option value="">— Material —</option>
+                            {materialsList.map(mat => <option key={mat.id} value={mat.id}>{mat.name}</option>)}
+                          </select>
+                          <input type="number" min="0" value={m.qty} onChange={e => setMaterialQty(i, e.target.value)} placeholder="Qty"
+                            style={{ padding: '6px 8px', fontSize: '0.78rem', background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--white)', width: '100%', boxSizing: 'border-box' }} />
+                          <span style={{ fontSize: '0.72rem', color: 'var(--gray)', textAlign: 'right' }}>{formatPeso((Number(m.qty) || 0) * (Number(m.unitCost) || 0))}</span>
+                          <button type="button" onClick={() => removeMaterialRow(i)}
+                            style={{ background: 'none', border: 'none', color: 'var(--red)', cursor: 'pointer', fontSize: '1.05rem', lineHeight: 1, padding: 0 }}>×</button>
+                        </div>
+                      ))}
+                      {updateMaterials.length > 0 && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', fontWeight: 600, marginTop: '4px', paddingTop: '4px', borderTop: '1px solid var(--border)' }}>
+                          <span style={{ color: 'var(--gray)' }}>Material cost (COGS)</span>
+                          <span style={{ color: 'var(--white)' }}>{formatPeso(materialsCostTotal)}</span>
+                        </div>
+                      )}
                     </div>
 
                     {/* Mockup URL */}

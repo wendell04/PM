@@ -11,6 +11,9 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { useCart } from '@/context/CartContext';
 import { fetchNotifications, markNotificationRead, markAllNotificationsRead } from '@/lib/notificationApi';
 import CustomerChatModal from '@/components/chat/CustomerChatModal';
+// Shared with the shop layout — one sign-up form (fields, CAPTCHA, password rules, T&C) everywhere.
+import RegisterForm from '@/components/auth/RegisterForm';
+import { PasswordGuide } from '@/components/auth/PasswordGuide';
 import '@/components/custom-styles.css';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
@@ -29,48 +32,6 @@ const HERO_SLIDER_IMAGES = [
   { src: '/products/Ballpens.jpg',       label: 'Ballpens',             pos: 'center 30%'    },
   { src: '/products/Caps.jpg',           label: 'Caps',                 pos: 'center 60%'    },
 ];
-
-const PasswordStrength = ({password}) => {
-  const checks = [
-    password.length >= 8,
-    /[A-Z]/.test(password),
-    /[a-z]/.test(password),
-    /\d/.test(password),
-    /[!@#$%^&*(),.?":{}|<>]/.test(password),
-  ];
-  const score = checks.filter(Boolean).length;
-  const levels = [
-    {label: 'Too Weak',    color: 'var(--red)', width: '20%'},
-    {label: 'Weak',        color: 'var(--red)', width: '40%'},
-    {label: 'Fair',        color: 'var(--gold)', width: '60%'},
-    {label: 'Strong',      color: 'var(--green)', width: '80%'},
-    {label: 'Very Strong', color: 'var(--green)', width: '100%'},
-  ];
-  const isTooShort = password.length > 0 && password.length < 8;
-  const isTooLong  = password.length > 32;
-  const current    = levels[score - 1] || {label: 'Too Weak', color: 'var(--red)', width: '20%'};
-  return (
-    <div style={{marginTop: '0.4rem'}}>
-      {(isTooShort || isTooLong) && (
-        <div style={{ fontSize: '0.7rem', marginBottom: '0.4rem', padding: '0.25rem 0.6rem', borderRadius: '6px',
-          background: isTooLong ? 'rgba(196,30,58,0.12)' : 'rgba(212,168,67,0.12)',
-          border: `1px solid ${isTooLong ? 'var(--red)' : 'var(--gold)'}`,
-          color: isTooLong ? 'var(--red)' : 'var(--gold)' }}>
-          {isTooLong ? '⚠ Too long' : '⚠ Too short'}
-        </div>
-      )}
-      <div style={{ height: '4px', borderRadius: '999px', background: 'rgba(255,255,255,0.1)', overflow: 'hidden' }}>
-        <div style={{ height: '100%', borderRadius: '999px',
-          width: isTooLong ? '100%' : current.width,
-          background: isTooLong ? 'var(--red)' : current.color,
-          transition: 'width 0.3s ease, background 0.3s ease' }}/>
-      </div>
-      <div style={{ fontSize: '0.72rem', marginTop: '0.25rem', color: isTooLong ? 'var(--red)' : current.color, transition: 'color 0.3s' }}>
-        {isTooLong ? 'Too Long — recommended max 32 characters' : current.label}
-      </div>
-    </div>
-  );
-};
 
 const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=[]}) => {
   const router = useRouter();
@@ -180,9 +141,11 @@ const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=
   const [forgotResendSuccess, setForgotResendSuccess] = useState(false);
   const [forgotResendCooldown, setForgotResendCooldown] = useState(0);
   const [isForgotResending, setIsForgotResending]     = useState(false);
-  const [registerPasswordTouched, setRegisterPasswordTouched] = useState(false);
   const [registerConfirmTouched, setRegisterConfirmTouched] = useState(false);
-  const [forgotPasswordTouched, setForgotPasswordTouched] = useState(false);
+  const [registerPasswordFocused, setRegisterPasswordFocused] = useState(false);
+  const [forgotPasswordFocused, setForgotPasswordFocused] = useState(false);
+  const [turnstileToken, setTurnstileToken] = useState('');
+  const turnstileRef = useRef(null);
   const [forgotConfirmTouched, setForgotConfirmTouched] = useState(false);
 
   const [registerForm, setRegisterForm] = useState({
@@ -401,19 +364,19 @@ const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=
 
   useEffect(() => {
     if (!modal) {
-      setRegisterPasswordTouched(false);
+      setRegisterPasswordFocused(false);
       setRegisterConfirmTouched(false);
       return;
     }
     if (modal === 'register') {
-      setRegisterPasswordTouched(false);
+      setRegisterPasswordFocused(false);
       setRegisterConfirmTouched(false);
     }
   }, [modal]);
 
   useEffect(() => {
     if (!forgotModal) {
-      setForgotPasswordTouched(false);
+      setForgotPasswordFocused(false);
       setForgotConfirmTouched(false);
     }
   }, [forgotModal]);
@@ -426,7 +389,7 @@ const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=
     setLoginForm({email: '', password: ''});
     setShowPassword(false);
     setShowConfirm(false);
-    setRegisterPasswordTouched(false);
+    setRegisterPasswordFocused(false);
     setRegisterConfirmTouched(false);
     setIsVerifying(false);
     setVerifyError('');
@@ -586,6 +549,7 @@ const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=
           email:        registerForm.email.trim(),
           password:     registerForm.password,
           password_confirmation: registerForm.confirmPassword,
+          turnstileToken,
         }),
       });
       const data = await response.json();
@@ -610,6 +574,9 @@ const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=
       setErrors({email: 'Network error. Make sure the backend server is running.'});
     } finally {
       setIsRegistering(false);
+      // Turnstile tokens are single-use — reset so a re-submit (e.g. after a validation error)
+      // gets a fresh token instead of reusing a spent one ("Verification failed").
+      turnstileRef.current?.reset();
     }
   };
 
@@ -871,6 +838,29 @@ const handleForgotResetPassword = async () => {
     setIsSendingReset(false);
   }
 };
+
+  // From the login screen: when login says "verify your email", resend the code and open the
+  // verification modal so the user can enter it — no need to re-register.
+  const handleResendFromLogin = async () => {
+    const email = loginForm.email.trim();
+    if (!email) { setLoginErrors({ email: 'Enter your email first.' }); return; }
+    setRegisteredEmail(email);
+    setLoginErrors({});
+    try {
+      await fetchWithTimeout(`${API_URL}/api/resend-code`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+    } catch { /* ignore — still open the modal so they can request again */ }
+    setModal(null);
+    setVerificationCode('');
+    setVerifyError('');
+    setResendSuccess(true);
+    setResendCooldown(60);
+    setVerificationModal(true);
+    setTimeout(() => setResendSuccess(false), 5000);
+  };
 
   const handleResendCode = async () => {
     if (resendCooldown > 0 || isResending) return;
@@ -2486,6 +2476,12 @@ const handleForgotResetPassword = async () => {
                         </button>
                       </div>
                       {loginErrors.password && <span className="error-message">{loginErrors.password}</span>}
+                      {loginErrors.password && loginErrors.password.toLowerCase().includes('verify') && (
+                        <button type="button" className="auth-link" style={{ marginTop: '0.4rem', textAlign: 'left' }}
+                          onClick={handleResendFromLogin}>
+                          Resend verification email
+                        </button>
+                      )}
                     </div>
                     <div className="auth-row">
                       <label className="auth-check" style={{display:'flex', alignItems:'center'}}>
@@ -2519,133 +2515,19 @@ const handleForgotResetPassword = async () => {
                   <div><h2>Create Account</h2><p>Join Personalize Me Prints</p></div>
                   <button className="auth-close" onClick={closeModal}>✕</button>
                 </div>
-                <StepIndicator step={1}/>
-                <div className="auth-modal-body">
-                  <form onSubmit={(e) => { e.preventDefault(); }} autoComplete="off">
-                    <div className="auth-fields-grid">
-                      <div className="auth-field">
-                        <label>First Name</label>
-                        <input type="text" placeholder="Juan" value={registerForm.firstName}
-                          onChange={e => handleRegisterChange('firstName', e.target.value)}
-                          onBlur={e => handleRegisterChange('firstName', e.target.value.trim())}
-                          className={errors.firstName ? 'error' : ''}/>
-                        {errors.firstName && <span className="error-message">{errors.firstName}</span>}
-                      </div>
-                      <div className="auth-field">
-                        <label>Middle Initial</label>
-                        <input type="text" placeholder="D." value={registerForm.middleInitial}
-                          onChange={e => handleRegisterChange('middleInitial', e.target.value.toUpperCase())}
-                          maxLength="2" className={errors.middleInitial ? 'error' : ''}/>
-                        {errors.middleInitial && <span className="error-message">{errors.middleInitial}</span>}
-                      </div>
-                      <div className="auth-field">
-                        <label>Last Name</label>
-                        <input type="text" placeholder="Dela Cruz" value={registerForm.lastName}
-                          onChange={e => handleRegisterChange('lastName', e.target.value)}
-                          onBlur={e => handleRegisterChange('lastName', e.target.value.trim())}
-                          className={errors.lastName ? 'error' : ''}/>
-                        {errors.lastName && <span className="error-message">{errors.lastName}</span>}
-                      </div>
-                    </div>
-
-                    <div className="auth-field">
-                      <label>Phone Number</label>
-                      <div style={{display:'flex',borderRadius:'10px',overflow:'hidden',border:'1px solid var(--border)'}}>
-                        <div style={{background:'var(--dark3)',borderRight:'1px solid var(--border)',padding:'0 1rem',display:'flex',alignItems:'center',color:'var(--white)',fontWeight:'700',fontSize:'0.95rem',flexShrink:0,userSelect:'none'}}>+63</div>
-                        <input type="tel" placeholder="912 345 6789"
-                          value={registerForm.phoneNumber.replace(/^\+63/, '')}
-                          onChange={e => { const d = e.target.value.replace(/\D/g,'').slice(0,10); handleRegisterChange('phoneNumber', '+63'+d); }}
-                          className={errors.phoneNumber ? 'error' : ''} maxLength={10}
-                          style={{border:'none',borderRadius:'0',flex:'1',background:'transparent'}}/>
-                      </div>
-                      {errors.phoneNumber && <span className="error-message">{errors.phoneNumber}</span>}
-                    </div>
-
-                    <div className="auth-field">
-                      <label>Email Address</label>
-                      <input type="email" placeholder="you@example.com" value={registerForm.email}
-                        onChange={e => handleRegisterChange('email', e.target.value)}
-                        className={errors.email ? 'error' : ''}/>
-                      {errors.email && <span className="error-message">{errors.email}</span>}
-                    </div>
-
-                    <div className="auth-fields-grid">
-                      <div className="auth-field" style={{position:'relative'}}>
-                        <label>Password</label>
-                        <div className="auth-input-wrap">
-                          <input type={showPassword ? 'text' : 'password'} placeholder="Create Password"
-                            autoComplete="new-password" maxLength={64} value={registerForm.password}
-                            onChange={e => handleRegisterChange('password', e.target.value)}
-                            onFocus={() => setRegisterPasswordTouched(true)}
-                            className={errors.password ? 'error' : ''}/>
-                          <button type="button" className="auth-eye" onClick={() => setShowPassword(v => !v)}>
-                            {showPassword ? <EyeOpen/> : <EyeClosed/>}
-                          </button>
-                        </div>
-                        {(registerPasswordTouched || registerForm.password.length > 0) && (
-                          <div style={{marginTop:'0.5rem',background:'rgba(255,255,255,0.04)',border:'1px solid var(--border)',borderRadius:'10px',padding:'0.75rem'}}>
-                            <div style={{display:'flex',flexDirection:'column',gap:'0.4rem'}}>
-                              {[
-                                {label:'At least 8 characters',    pass: registerForm.password.length >= 8},
-                                {label:'One uppercase letter',      pass: /[A-Z]/.test(registerForm.password)},
-                                {label:'One lowercase letter',      pass: /[a-z]/.test(registerForm.password)},
-                                {label:'One number',                pass: /\d/.test(registerForm.password)},
-                                {label:'One special character',     pass: /[!@#$%^&*(),.?":{}|<>]/.test(registerForm.password)},
-                              ].map((c, i) => (
-                                <div key={i} style={{display:'flex',alignItems:'center',gap:'0.4rem',fontSize:'0.78rem',color:c.pass?'var(--green)':'var(--gray)',transition:'color 0.2s'}}>
-                                  <span style={{fontSize:'0.72rem'}}>{c.pass ? '✓' : '·'}</span>{c.label}
-                                </div>
-                              ))}
-                            </div>
-
-                            <div style={{marginTop:'0.55rem'}}>
-                              <PasswordStrength password={registerForm.password}/>
-                            </div>
-                          </div>
-                        )}
-                        {errors.password && <span className="error-message">{errors.password}</span>}
-                      </div>
-
-                      <div className="auth-field">
-                        <label>Confirm Password</label>
-                        <div className="auth-input-wrap">
-                          <input type={showConfirm ? 'text' : 'password'} placeholder="Repeat Password"
-                            autoComplete="new-password" value={registerForm.confirmPassword}
-                            onChange={e => handleRegisterChange('confirmPassword', e.target.value)}
-                            onFocus={() => setRegisterConfirmTouched(true)}
-                            className={errors.confirmPassword ? 'error' : ''}/>
-                          <button type="button" className="auth-eye" onClick={() => setShowConfirm(v => !v)}>
-                            {showConfirm ? <EyeOpen/> : <EyeClosed/>}
-                          </button>
-                        </div>
-                        {(registerConfirmTouched || registerForm.confirmPassword.length > 0) && (
-                          <div style={{marginTop:'0.5rem',fontSize:'0.8rem',color: registerForm.confirmPassword.length === 0 ? 'var(--gray)' : (registerForm.confirmPassword === registerForm.password ? 'var(--green)' : 'var(--red)')}}>
-                            {registerForm.confirmPassword.length === 0
-                              ? 'Re-enter your password to confirm.'
-                              : (registerForm.confirmPassword === registerForm.password ? '✓ Passwords match' : 'Passwords do not match')}
-                          </div>
-                        )}
-                        {errors.confirmPassword && <span className="error-message">{errors.confirmPassword}</span>}
-                      </div>
-                    </div>
-
-                    <button type="button" className="btn-auth-submit"
-                      disabled={isRegistering || !!errors.email || !!errors.phoneNumber}
-                      onClick={() => {
-                        if (!validateForm()) return;
-                        setHasReadTerms(false);
-                        setTAndCModalOpen(true);
-                        setTimeout(() => {
-                          if (termsScrollRef.current) {
-                            termsScrollRef.current.scrollTop = 0;
-                          }
-                        }, 50);
-                      }}>
-                      Proceed to Terms &amp; Conditions
-                    </button>
-                  </form>
-                  <p className="auth-switch">Already have an account? <button onClick={() => setModal('login')}>Sign In</button></p>
-                </div>
+                {/* Shared with the shop layout — one sign-up form everywhere. */}
+                <RegisterForm
+                  theme={theme}
+                  onSwitchToLogin={() => setModal('login')}
+                  onSuccess={(user, token, rememberMe) => {
+                    setPendingAuth({ token, user, rememberMe });
+                    setRegisteredEmail(user.email);
+                    setModal(null);
+                    setErrors({});
+                    setVerifyError('');
+                    setVerificationModal(true);
+                  }}
+                />
               </>
             )}
 
@@ -2712,7 +2594,7 @@ const handleForgotResetPassword = async () => {
 
       {/* ── FORGOT PASSWORD MODAL ── */}
       {forgotModal && (
-        <div className="auth-overlay" onClick={() => { setForgotModal(false); setForgotStep(1); setForgotPasswordTouched(false); setForgotConfirmTouched(false); }}>
+        <div className="auth-overlay" onClick={() => { setForgotModal(false); setForgotStep(1); setForgotPasswordFocused(false); setForgotConfirmTouched(false); }}>
           <div className="auth-modal" onClick={e => e.stopPropagation()} style={{maxWidth:'420px'}}>
             <div className="auth-modal-header">
               <img src="/logos/PersonalizeMe logo.png" alt="Logo" className="auth-modal-logo"/>
@@ -2724,7 +2606,7 @@ const handleForgotResetPassword = async () => {
                    forgotStep === 3 ? "Enter verification code" : "Set a new password"}
                 </p>
               </div>
-              <button className="auth-close" onClick={() => { setForgotModal(false); setForgotStep(1); setForgotPasswordTouched(false); setForgotConfirmTouched(false); }}>✕</button>
+              <button className="auth-close" onClick={() => { setForgotModal(false); setForgotStep(1); setForgotPasswordFocused(false); setForgotConfirmTouched(false); }}>✕</button>
             </div>
             <div className="auth-modal-body">
 
@@ -2877,33 +2759,15 @@ const handleForgotResetPassword = async () => {
                         maxLength={64}
                         value={forgotNewPassword}
                         onChange={e => { setForgotNewPassword(e.target.value); setForgotError(''); }}
-                        onFocus={() => setForgotPasswordTouched(true)}
+                        onFocus={() => setForgotPasswordFocused(true)}
+                        onBlur={() => setForgotPasswordFocused(false)}
                         className={forgotError ? 'error' : ''}
                       />
                       <button type="button" className="auth-eye" onClick={() => setShowForgotPassword(v => !v)}>
                         {showForgotPassword ? <EyeOpen/> : <EyeClosed/>}
                       </button>
                     </div>
-                    {(forgotPasswordTouched || forgotNewPassword.length > 0) && (
-                      <div style={{marginTop:'0.5rem',background:'rgba(255,255,255,0.04)',border:'1px solid var(--border)',borderRadius:'10px',padding:'0.75rem'}}>
-                        <div style={{display:'flex',flexDirection:'column',gap:'0.4rem'}}>
-                          {[
-                            {label:'At least 8 characters',    pass: forgotNewPassword.length >= 8},
-                            {label:'One uppercase letter',      pass: /[A-Z]/.test(forgotNewPassword)},
-                            {label:'One lowercase letter',      pass: /[a-z]/.test(forgotNewPassword)},
-                            {label:'One number',                pass: /\d/.test(forgotNewPassword)},
-                            {label:'One special character',     pass: /[!@#$%^&*(),.?":{}|<>]/.test(forgotNewPassword)},
-                          ].map((c, i) => (
-                            <div key={i} style={{display:'flex',alignItems:'center',gap:'0.4rem',fontSize:'0.78rem',color:c.pass?'var(--green)':'var(--gray)',transition:'color 0.2s'}}>
-                              <span style={{fontSize:'0.72rem'}}>{c.pass ? '✓' : '·'}</span>{c.label}
-                            </div>
-                          ))}
-                        </div>
-                        <div style={{marginTop:'0.55rem'}}>
-                          <PasswordStrength password={forgotNewPassword}/>
-                        </div>
-                      </div>
-                    )}
+                    <PasswordGuide password={forgotNewPassword} focused={forgotPasswordFocused}/>
                   </div>
                   <div className="auth-field">
                     <label>Confirm New Password</label>
@@ -2922,10 +2786,10 @@ const handleForgotResetPassword = async () => {
                       </button>
                     </div>
                     {(forgotConfirmTouched || forgotConfirmPassword.length > 0) && (
-                      <div style={{marginTop:'0.5rem',fontSize:'0.8rem',color: forgotConfirmPassword.length === 0 ? 'var(--gray)' : (forgotConfirmPassword === forgotNewPassword ? 'var(--green)' : 'var(--red)')}}>
+                      <div style={{marginTop:'0.5rem',fontSize:'0.8rem',color: forgotConfirmPassword.length === 0 ? 'var(--gray)' : (forgotConfirmPassword === forgotNewPassword ? 'var(--black)' : 'var(--red)')}}>
                         {forgotConfirmPassword.length === 0
                           ? 'Re-enter your new password to confirm.'
-                          : (forgotConfirmPassword === forgotNewPassword ? '✓ Passwords match' : 'Passwords do not match')}
+                          : (forgotConfirmPassword === forgotNewPassword ? 'Passwords match' : 'Passwords do not match')}
                       </div>
                     )}
                     {forgotError && <span className="error-message">{forgotError}</span>}

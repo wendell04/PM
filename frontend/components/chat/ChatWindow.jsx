@@ -104,7 +104,7 @@ const ChatWindow = ({ activeConversation, messages, user, isLoading, isAdmin, on
             className="start-btn"
             onClick={(e) => {
               e.preventDefault();
-              onStartChat('Hello! I would like to inquire about my order.');
+              onStartChat('Hi! This is the Personalize Me Prints team. How can we help you?');
             }}
           >
             Start Conversation
@@ -121,6 +121,40 @@ const ChatWindow = ({ activeConversation, messages, user, isLoading, isAdmin, on
     const myId = String(user?.id || user?._id || '');
     const isMe = msg.sender_id === myId;
     const msgKey = msg._id || msg.id || `msg-${idx}`;
+
+    if (msg.type === 'inquiry' && msg.metadata) {
+      const m = msg.metadata;
+      return (
+        <div key={msgKey} style={{ display: 'flex', justifyContent: isMe ? 'flex-end' : 'flex-start', padding: '4px 12px' }}>
+          <div className="quotation-card">
+            <div className="quotation-header">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#d4a843" strokeWidth="2.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+              <span className="quotation-tag">Inquiry</span>
+            </div>
+            <a href={`/shop/products/${m.productSlug || m.productId || ''}`} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none', color: 'inherit', cursor: 'pointer' }}>
+              <div className="quotation-body" style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                {m.thumbnail ? (
+                  /* eslint-disable-next-line @next/next/no-img-element */
+                  <img src={m.thumbnail} alt="" style={{ width: 46, height: 46, borderRadius: 8, objectFit: 'cover', flexShrink: 0 }} />
+                ) : (
+                  <div style={{ width: 46, height: 46, borderRadius: 8, background: 'rgba(0,0,0,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                  </div>
+                )}
+                <div style={{ minWidth: 0 }}>
+                  <div className="quotation-product" style={{ margin: 0 }}>{m.productName}</div>
+                  {m.category && <div style={{ fontSize: '0.72rem', color: '#9ca3af' }}>{m.category}</div>}
+                </div>
+              </div>
+            </a>
+            {msg.body && <div style={{ padding: '2px 12px 6px', fontSize: '0.82rem', color: '#4b5563' }}>{msg.body}</div>}
+            <div className="quotation-timestamp" style={{ textAlign: isMe ? 'right' : 'left' }}>
+              {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            </div>
+          </div>
+        </div>
+      );
+    }
 
     if (msg.type === 'quotation' && msg.metadata) {
       const m = msg.metadata;
@@ -167,7 +201,10 @@ const ChatWindow = ({ activeConversation, messages, user, isLoading, isAdmin, on
                 <span className="quotation-total-label">Total</span>
                 <span className="quotation-total-amount">&#8369;{fmt(m.total)}</span>
               </div>
-              {!isAdmin && !isMe && addToCart && (
+              {m.orderRequestId && m.downPayment != null && (
+                <div className="quotation-line"><span>Downpayment ({m.downPaymentPct ?? 50}%)</span><span>&#8369;{fmt(m.downPayment)}</span></div>
+              )}
+              {!isAdmin && !isMe && !m.orderRequestId && addToCart && (
                 <button
                   onClick={handleAddQuotationToCart}
                   disabled={alreadyAdded}

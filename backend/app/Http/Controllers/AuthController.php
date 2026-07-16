@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Mail\ContactFormMail;
 use App\Mail\VerificationCodeMail;
 use App\Mail\WelcomeMail;
+use App\Mail\AccountSecurityAlertMail;
 use App\Models\User;
 use App\Models\Conversation;
 use App\Models\Message;
@@ -28,7 +29,9 @@ class AuthController extends Controller
                 'middleInitial' => 'nullable|string|max:2',
                 'lastName'    => 'required|string|min:2',
                 'address'     => 'nullable|string',
-                'phoneNumber' => ['required', 'string', 'regex:/^(09|\+639)\d{9}$/'],
+                // E.164 (any country) — the client picks the country and validates its exact
+                // length/format; this is the shape check for what it sends.
+                'phoneNumber' => ['required', 'string', 'regex:/^\+[1-9]\d{6,14}$/'],
                 'email'       => ['required', 'email'],
                 'password'    => ['required', 'confirmed', Password::min(8)->mixedCase()->numbers()->symbols()],
             ], [
@@ -37,7 +40,7 @@ class AuthController extends Controller
                 'lastName.required'   => 'Last name is required.',
                 'lastName.min'        => 'Last name must be at least 2 characters.',
                 'phoneNumber.required'=> 'Phone number is required.',
-                'phoneNumber.regex'   => 'Phone number must be a valid PH number (e.g. 09171234567 or +639171234567).',
+                'phoneNumber.regex'   => 'Please enter a valid phone number with its country code (e.g. +639171234567).',
                 'email.required'      => 'Email address is required.',
                 'email.email'         => 'Please enter a valid email address.',
                 'password.required'   => 'Password is required.',
@@ -55,15 +58,8 @@ class AuthController extends Controller
                 ]);
             }
 
-            $phoneExists = User::where('phoneNumber', $request->phoneNumber)
-                ->where('is_verified', true)
-                ->exists();
-
-            if ($phoneExists) {
-                throw ValidationException::withMessages([
-                    'phoneNumber' => ['This phone number is already registered. Please log in or use a different number.'],
-                ]);
-            }
+            // Phone number is contact info, not an identity — email is the unique key. Same phone with
+            // a different email is allowed (households/family), consistent with standard e-commerce.
 
             // Additional email validation
             $email = strtolower(trim($request->email));
@@ -135,7 +131,7 @@ class AuthController extends Controller
         }
     }
 
-    private const LOGIN_MAX_ATTEMPTS = 3;
+    private const LOGIN_MAX_ATTEMPTS = 5;
     private const LOGIN_LOCKOUT_MINUTES = 15;
     private const DEVICE_TOKEN_MAX_AGE_DAYS = 90;
 
@@ -179,6 +175,22 @@ class AuthController extends Controller
                     $user->login_locked_until = now()->addMinutes(self::LOGIN_LOCKOUT_MINUTES);
                     $user->failed_login_attempts = 0;
                     Log::warning('Login failed: account locked after max attempts', ['email' => $user->email, 'ip' => $ip]);
+
+                    // Alert the owner in case this was someone else attacking the account. Non-fatal.
+                    try {
+                        Mail::to($user->email)->send(new AccountSecurityAlertMail(
+                            userName:    $user->firstName ?? 'there',
+                            subjectLine: 'Security alert: your account was temporarily locked',
+                            headline:    'Your account was temporarily locked',
+                            message:     'We locked your account for ' . self::LOGIN_LOCKOUT_MINUTES
+                                . ' minutes after ' . self::LOGIN_MAX_ATTEMPTS . ' failed sign-in attempts. '
+                                . 'You can wait it out, or reset your password to unlock right away.',
+                            ipAddress:   $ip ?? 'unknown',
+                            eventTime:   now()->format('M j, Y g:i A'),
+                        ));
+                    } catch (\Throwable $e) {
+                        Log::warning('Lockout alert email failed: ' . $e->getMessage());
+                    }
                 } else {
                     Log::warning('Login failed: wrong password', [
                         'email'    => $user->email,
@@ -236,13 +248,9 @@ class AuthController extends Controller
                 $expiresAt    = now()->addMinutes(15);
                 $sanctumToken = $user->createToken($deviceName, ['2fa-pending'], $expiresAt)->plainTextToken;
             } else {
-                // Session policy by role (per-token expiry governs; the global SANCTUM_TOKEN_EXPIRATION
-                // cap is disabled): staff/admin get a long 30-day session; customers get 30 days,
-                // extended to 90 by "remember me".
-                $isStaff   = ($user->role ?? 'customer') !== 'customer';
-                $expiresAt = $isStaff
-                    ? now()->addDays(30)
-                    : ($request->boolean('rememberMe') ? now()->addDays(90) : now()->addDays(30));
+                // Session policy by role + "remember me" (single source of truth: User::sessionExpiresAt).
+                // Per-token expiry governs; the global SANCTUM_TOKEN_EXPIRATION cap is disabled.
+                $expiresAt    = $user->sessionExpiresAt($request->boolean('rememberMe'));
                 $sanctumToken = $user->createToken($deviceName, ['*'], $expiresAt)->plainTextToken;
             }
 
@@ -294,10 +302,7 @@ class AuthController extends Controller
                 return $this->unauthorizedResponse('Not authenticated.');
             }
 
-            $isStaff   = ($user->role ?? 'customer') !== 'customer';
-            $expiresAt = $isStaff
-                ? now()->addDays(30)
-                : ($request->boolean('rememberMe') ? now()->addDays(90) : now()->addDays(30));
+            $expiresAt = $user->sessionExpiresAt($request->boolean('rememberMe'));
 
             $deviceName = $this->parseDeviceName($request->userAgent() ?? 'Unknown Device');
 
@@ -644,7 +649,25 @@ class AuthController extends Controller
             $user->reset_code_expires_at = null;
             $user->reset_token = null;
             $user->reset_token_expires_at = null;
+            // Self-service unlock: confirming identity via reset clears any active login lockout
+            // (standard "unlock on identity confirmation" — no admin needed).
+            $user->login_locked_until    = null;
+            $user->failed_login_attempts = 0;
             $user->save();
+
+            // Notify the owner that the password changed — alerts them if it wasn't them. Non-fatal.
+            try {
+                Mail::to($user->email)->send(new AccountSecurityAlertMail(
+                    userName:    $user->firstName ?? 'there',
+                    subjectLine: 'Security alert: your password was changed',
+                    headline:    'Your password was changed',
+                    message:     'Your Personalize Me Prints password was just reset. If this was you, no action is needed.',
+                    ipAddress:   $request->ip() ?? 'unknown',
+                    eventTime:   now()->format('M j, Y g:i A'),
+                ));
+            } catch (\Throwable $e) {
+                Log::warning('Password-change alert email failed: ' . $e->getMessage());
+            }
 
             return $this->successResponse('Password reset successfully! You can now log in.');
         } catch (\Illuminate\Validation\ValidationException $e) {
@@ -676,14 +699,21 @@ class AuthController extends Controller
             $admin  = User::whereIn('role', ['admin', 'owner'])->first();
 
             if ($admin) {
-                $participants = [$admin->_id];
+                // Store participants as strings to match ChatController's string-based queries
+                // (ObjectId-typed participants are invisible to the chat list/send queries → fragmentation).
+                $participants = [(string) $admin->_id];
                 if ($sender) {
-                    $participants[] = $sender->_id;
+                    $participants[] = (string) $sender->_id;
                 }
                 sort($participants);
 
-                // Find or create conversation
-                $conversation = Conversation::where('participants', $participants)->first();
+                // Find or create conversation (PHP-level filter avoids exact-array-order match issues)
+                $conversation = Conversation::where('participants', (string) ($sender ? $sender->_id : $admin->_id))->get()
+                    ->first(function ($c) use ($participants) {
+                        $parts = array_map('strval', is_array($c->participants) ? $c->participants : []);
+                        sort($parts);
+                        return $parts === $participants;
+                    });
                 if (!$conversation) {
                     $conversation = Conversation::create([
                         'participants' => $participants,
@@ -766,7 +796,9 @@ class AuthController extends Controller
         try {
             $request->validate(['email' => 'required|email']);
 
-            $user = User::where('email', $request->email)->where('role', 'customer')->first();
+            // Any locked account (customer or staff) may request an unlock — a locked admin must not
+            // be shut out. Primary self-service recovery is still password reset (which clears the lock).
+            $user = User::where('email', $request->email)->first();
 
             if (!$user) {
                 // Return success to avoid user enumeration
