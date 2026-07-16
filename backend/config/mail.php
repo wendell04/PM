@@ -47,7 +47,9 @@ return [
             'port' => env('MAIL_PORT', 2525),
             'username' => env('MAIL_USERNAME'),
             'password' => env('MAIL_PASSWORD'),
-            'timeout' => null,
+            // Short timeout so a blocked/slow SMTP host (Railway blocks outbound port 587) fails
+            // fast instead of hanging the request for the PHP default (~60s).
+            'timeout' => env('MAIL_TIMEOUT', 8),
             'local_domain' => env('MAIL_EHLO_DOMAIN', parse_url((string) env('APP_URL', 'http://localhost'), PHP_URL_HOST)),
         ],
 

@@ -99,13 +99,19 @@ class AuthController extends Controller
                 'verification_code_expires_at' => now()->addMinutes(10)->toDateTimeString(),
             ]);
 
-            try {
-                Mail::to($request->email)->send(new VerificationCodeMail($plainCode, $request->firstName));
-            } catch (\Exception $e) {
-                Log::error('Failed to send verification email: ' . $e->getMessage());
-                // Don't fail registration, but log the error
-                // User can request resend code later
-            }
+            // Send the OTP AFTER the HTTP response is flushed. The account already exists at this
+            // point, so registration must never hang waiting on the mail server — a slow or blocked
+            // SMTP host (Railway blocks outbound port 587) would otherwise stall the request until
+            // the client times out. If delivery fails the customer can use "Resend code".
+            $verifyEmail = $request->email;
+            $verifyName  = $request->firstName;
+            dispatch(function () use ($verifyEmail, $verifyName, $plainCode) {
+                try {
+                    Mail::to($verifyEmail)->send(new VerificationCodeMail($plainCode, $verifyName));
+                } catch (\Throwable $e) {
+                    Log::error('Failed to send verification email: ' . $e->getMessage());
+                }
+            })->afterResponse();
 
             return $this->successResponse(
                 'Registration successful! Please check your email for the verification code.',
@@ -438,8 +444,17 @@ class AuthController extends Controller
             $user->verification_code_expires_at = now()->addMinutes(10)->toDateTimeString();
             $user->save();
 
-            Mail::to($user->email)->send(new VerificationCodeMail($plainCode, $user->firstName));
-            
+            // After-response so a slow/blocked SMTP host can't hang the request (see register()).
+            $resendEmail = $user->email;
+            $resendName  = $user->firstName;
+            dispatch(function () use ($resendEmail, $resendName, $plainCode) {
+                try {
+                    Mail::to($resendEmail)->send(new VerificationCodeMail($plainCode, $resendName));
+                } catch (\Throwable $e) {
+                    Log::error('Failed to resend verification email: ' . $e->getMessage());
+                }
+            })->afterResponse();
+
             return $this->successResponse('Verification code sent successfully!');
         } catch (\Exception $e) {
             return $this->serverErrorResponse($e, 'An unexpected error occurred.');

@@ -16,9 +16,17 @@ class VerifyTurnstile
 {
     public function handle(Request $request, Closure $next)
     {
+        // Only enforce CAPTCHA in production. On localhost the widget's token is tied to the
+        // dev hostname / a mismatched key pair, so siteverify would reject every legitimate
+        // sign-up ("Verification failed"). Skipping in non-production keeps dev testing working;
+        // production still gets full bot protection.
+        if (!app()->environment('production')) {
+            return $next($request);
+        }
+
         $secret = env('TURNSTILE_SECRET_KEY');
 
-        // Not configured → skip (dev/other envs without Turnstile keys still work).
+        // Not configured → skip (other envs without Turnstile keys still work).
         if (empty($secret)) {
             return $next($request);
         }
