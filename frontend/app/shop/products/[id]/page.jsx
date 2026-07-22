@@ -391,21 +391,19 @@ export default function ProductDetailPage() {
       const basePrice = unitPrice ?? product.flatPrice ?? product.price ?? 0;
       const resolvedPrice = flashSale ? applyFlashDiscount(basePrice, flashSale) : basePrice;
       const comboId = resolveCombinationId(selectedVariants);
+      // Prefer the selected variant's own image so the cart/checkout thumbnail matches the chosen
+      // variant (e.g. Yellow), not the generic product photo.
+      const variantImg = comboId ? (product.variantImageUrls?.[comboId] ?? product.variantImageUrls?.[String(comboId)] ?? null) : null;
       const fsId = flashSale ? (flashSale.id ?? flashSale._id ?? null) : null;
-      await addToCart(
-        { ...product, flatPrice: resolvedPrice },
-        quantity,
-        comboId,
-        resolveVariantName(selectedVariants),
-        fsId,
-        null
-      );
+      // Direct checkout (Buy Now): go straight to checkout with only this item — do NOT add it to
+      // the cart, otherwise a leftover item is left behind after the purchase or a cancel.
       const payload = {
         items: [{
           product: {
             _id:                  product._id ?? product.id,
             name:                 product.name || product.subCategoryName,
             images: [
+              ...(variantImg ? [variantImg] : []),
               ...(product.thumbnail ? [product.thumbnail] : []),
               ...(product.images || []),
             ].filter(Boolean),
@@ -1130,7 +1128,14 @@ export default function ProductDetailPage() {
                       onClick={() => {
                         if (isOutOfStock || requestingQuote) return;
                         // Fixed/tiered custom products keep the structured order form.
-                        if (!isInquiry) { router.push(`/shop/products/${id}/order`); return; }
+                        // Carry the variant/qty chosen here so the order page confirms
+                        // that choice instead of silently resetting to the first option.
+                        if (!isInquiry) {
+                          const qs = new URLSearchParams({ qty: String(quantity) });
+                          Object.entries(selectedVariants).forEach(([g, v]) => { if (v) qs.set(`v_${g}`, v); });
+                          router.push(`/shop/products/${id}/order?${qs.toString()}`);
+                          return;
+                        }
                         if (!token) {
                           window.dispatchEvent(new CustomEvent('pmp_open_auth', { detail: { type: 'login', returnPath: window.location.pathname } }));
                           return;
@@ -1169,7 +1174,7 @@ export default function ProductDetailPage() {
                         ? 'Opening chat…'
                         : isOutOfStock
                           ? 'Out of Stock'
-                          : (isInquiry ? 'Inquire' : 'Place Custom Order')}
+                          : (isInquiry ? 'Inquire' : 'Customize This Product')}
                     </button>
                     <p style={{ textAlign: 'center', fontSize: '0.75rem', color: 'var(--gray)', margin: 0, lineHeight: 1.5 }}>
                       {(product.priceType ?? product.pricingMode) === 'inquiry'

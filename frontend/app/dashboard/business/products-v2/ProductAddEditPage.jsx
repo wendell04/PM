@@ -3,6 +3,8 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { uploadImage } from '@/lib/productApi';
 import { S, ICONS, Field, IntegerInput, DecimalInput, Note, formatCurrency, uid, CustomSelect } from '../inventory-v2/shared';
+import ImageCropper from '@/components/ImageCropper';
+import { compressImage } from '@/lib/imageCompress';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -38,6 +40,7 @@ const EMPTY_FORM = {
   downpaymentPct: '0', hideWhenOutOfStock: false, isPublished: false,
   isFeatured: false,
   designFee: '', minOrderQty: '1',
+  designTemplates: [],
 };
 
 // ── Shared UI components ──────────────────────────────────────────────────────
@@ -97,8 +100,8 @@ function MediaLibraryModal({ multi = false, onSelect, onClose, existingImages = 
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1000,
-      display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-      onClick={e => e.target === e.currentTarget && onClose()}>
+      display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      {/* No backdrop-close: large product form — a stray click would discard all edits. */}
       <div style={{ background: 'var(--dark)', borderRadius: '12px', width: '620px', maxWidth: '95vw',
         maxHeight: '82vh', display: 'flex', flexDirection: 'column', overflow: 'hidden',
         boxShadow: '0 20px 60px rgba(0,0,0,0.25)' }}>
@@ -323,6 +326,7 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
   const [errors,         setErrors]        = useState({});
   const [variantImages,  setVariantImages] = useState({});
   const [uploadingCount, setUploadingCount] = useState(0);
+  const [prodCrop, setProdCrop] = useState(null); // { src, target } — square-crop a single picked image
 
   // ── Media picker state ──────────────────────────────────────────────────────
   const [mediaMenuOpen,  setMediaMenuOpen] = useState(false);
@@ -388,6 +392,7 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
                             ?? [EMPTY_VARIANT()],
       pricingMode:        product.pricingMode || product.priceType || 'fixed',
       price:              product.price != null ? String(product.price) : '',
+      cost:               product.cost != null ? String(product.cost) : '',
       tiers,
       collectionIds:      product.collectionIds || [],
       isCustomizable:     product.isCustomizable ?? false,
@@ -399,6 +404,7 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
       isFeatured:         product.isFeatured ?? false,
       designFee:          product.designFee != null ? String(product.designFee) : '',
       minOrderQty:        product.minOrderQty != null ? String(product.minOrderQty) : '1',
+      designTemplates:    Array.isArray(product.designTemplates) ? product.designTemplates : [],
     });
     setErrors({});
     // Restore variant images from saved variantImageUrls
@@ -415,30 +421,80 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
 
   // ── Image helpers ───────────────────────────────────────────────────────────
 
+  // Functional update: concurrent uploads must each read the latest images,
+  // otherwise parallel adds all start from the same stale array and only one survives.
   const addImages = (urls) => {
-    const next = [...form.images, ...urls.filter(u => u && !form.images.includes(u))].slice(0, 8);
-    setF('images', next);
+    setForm(p => ({ ...p, images: [...p.images, ...urls.filter(u => u && !p.images.includes(u))].slice(0, 8) }));
+    setErrors(p => ({ ...p, images: '' }));
   };
 
   const removeImage = (i) => setF('images', form.images.filter((_, j) => j !== i));
 
+  const routeUploaded = (url, target) => {
+    if (target === 'product') {
+      addImages([url]);
+    } else {
+      setVariantImages(p => ({ ...p, [target]: url }));
+      addImages([url]);
+    }
+  };
+
   const handleFileUpload = async (files, target = 'product') => {
     const fileList = Array.from(files);
+    // Single image → square-crop first (product cards & variant swatches render 1:1).
+    if (fileList.length === 1) {
+      setProdCrop({ src: URL.createObjectURL(fileList[0]), target });
+      return;
+    }
     setUploadingCount(c => c + fileList.length);
+    let failed = 0;
     await Promise.all(fileList.map(async (f) => {
       try {
-        const result = await uploadImage(f, 'pmp-products', token);
-        if (target === 'product') {
-          addImages([result.url]);
-        } else {
-          setVariantImages(p => ({ ...p, [target]: result.url }));
-          addImages([result.url]);
-        }
+        // Bulk uploads skip the cropper, so shrink anything over the API's 5 MB cap first.
+        const result = await uploadImage(await compressImage(f), 'pmp-products', token);
+        routeUploaded(result.url, target);
+      } catch {
+        failed += 1;
       } finally {
         setUploadingCount(c => c - 1);
       }
     }));
+    if (failed) setErrors(p => ({ ...p, images: `${failed} image${failed > 1 ? 's' : ''} failed to upload. Please try again.` }));
   };
+
+  const uploadCroppedProduct = async (file) => {
+    const { target = 'product', replaceIndex = null, src } = prodCrop || {};
+    if (src?.startsWith('blob:')) URL.revokeObjectURL(src);
+    setProdCrop(null);
+    setUploadingCount(c => c + 1);
+    try {
+      const result = await uploadImage(file, 'pmp-products', token);
+      if (replaceIndex != null) {
+        setForm(p => ({ ...p, images: p.images.map((u, j) => (j === replaceIndex ? result.url : u)) }));
+      } else {
+        routeUploaded(result.url, target);
+      }
+    } finally {
+      setUploadingCount(c => c - 1);
+    }
+  };
+
+  // Paste anywhere on the page, not just inside the Media card. A plain div never receives
+  // paste events - it cannot take focus - which is why Ctrl+V looked broken. Typing into a
+  // real field still pastes normally; only image pastes outside inputs are intercepted.
+  useEffect(() => {
+    const onPaste = (e) => {
+      const tag = (e.target?.tagName || '').toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || e.target?.isContentEditable) return;
+      const file = Array.from(e.clipboardData?.items || [])
+        .find(i => i.type?.startsWith('image/'))?.getAsFile();
+      if (!file) return;
+      e.preventDefault();
+      handleFileUpload([file], 'product');
+    };
+    window.addEventListener('paste', onPaste);
+    return () => window.removeEventListener('paste', onPaste);
+  });
 
   const handleMediaPaste = async (e) => {
     const items = e.clipboardData?.items;
@@ -450,8 +506,10 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
         if (file) {
           setUploadingCount(c => c + 1);
           try {
-            const result = await uploadImage(file, 'pmp-products', token);
+            const result = await uploadImage(await compressImage(file), 'pmp-products', token);
             addImages([result.url]);
+          } catch {
+            setErrors(p => ({ ...p, images: 'Image failed to upload. Please try again.' }));
           } finally {
             setUploadingCount(c => c - 1);
           }
@@ -629,7 +687,12 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
       hideWhenOutOfStock: f.hideWhenOutOfStock, isPublished: f.isPublished,
       isFeatured: f.isFeatured,
       designFee: f.isCustomizable && f.designFee ? Number(f.designFee) : 0,
+      designTemplates: f.isCustomizable
+        ? (f.designTemplates || []).filter(t => t.label?.trim() && t.url?.trim())
+            .map(t => ({ label: t.label.trim(), url: t.url.trim() }))
+        : [],
       minOrderQty: Number(f.minOrderQty) || 1,
+      cost: (f.cost !== '' && f.cost != null) ? Number(f.cost) : null,
     };
     let data;
     if (f.pricingMode === 'tiered') {
@@ -659,6 +722,12 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
 
   return (
     <div style={{ minHeight: '100%', paddingBottom: '60px' }}>
+
+      {prodCrop && (
+        <ImageCropper src={prodCrop.src} aspect={1} title="Crop image (1:1)"
+          onCancel={() => { URL.revokeObjectURL(prodCrop.src); setProdCrop(null); }}
+          onConfirm={uploadCroppedProduct} />
+      )}
 
       {/* Sticky top bar */}
       <div style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--dark)', borderBottom: '1px solid var(--border)' }}>
@@ -733,6 +802,13 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
                           color: 'var(--dark)', fontSize: '11px', display: 'flex', alignItems: 'center',
                           justifyContent: 'center', lineHeight: 1, zIndex: 2 }}>
                         ×
+                      </button>
+                      <button title="Adjust crop" onClick={() => setProdCrop({ src: url, target: 'product', replaceIndex: i })}
+                        style={{ position: 'absolute', top: '-8px', left: '-8px', height: '20px', padding: '0 8px',
+                          borderRadius: '10px', background: 'var(--white)', border: '1.5px solid var(--border)', cursor: 'pointer',
+                          color: 'var(--dark)', fontSize: '10px', fontWeight: 700, display: 'flex', alignItems: 'center',
+                          justifyContent: 'center', lineHeight: 1, zIndex: 2 }}>
+                        Edit
                       </button>
                     </div>
                   ))}
@@ -1044,6 +1120,12 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
                   </Field>
                 )}
 
+                {/* COGS fallback: used for profit when a product has no BOM and no linked inventory. */}
+                <Field label="Cost Price / Buy Price (P, optional)">
+                  <DecimalInput value={form.cost} onChange={v => setF('cost', v)} placeholder="0.00" />
+                  <Note type="info">What you pay the supplier per unit. Used to compute profit when this product has no BOM or linked inventory. Leave blank if the cost comes from a BOM or inventory item.</Note>
+                </Field>
+
                 {form.pricingMode === 'fixed' && form.type === 'multi-variant' && (
                   <div style={{ overflowX: 'auto' }}>
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
@@ -1201,9 +1283,48 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
                 <ToggleRow label="Made to Order" hint="No stock held; supplies ordered on demand" on={form.isMadeToOrder} onChange={v => setF('isMadeToOrder', v)} />
                 <ToggleRow label="Customizable" hint="Customers upload a design file" on={form.isCustomizable} onChange={v => setF('isCustomizable', v)} />
                 {form.isCustomizable && (
-                  <Field label="Design Fee (P)" error={errors.designFee}>
-                    <DecimalInput value={form.designFee} onChange={v => setF('designFee', v)} placeholder="0.00" />
-                    <span style={{ fontSize: '11px', color: 'var(--gray)', marginTop: '3px', display: 'block' }}>Optional — charged for artwork/design service</span>
+                  <Field label="Design Fee Override (P)" error={errors.designFee}>
+                    <DecimalInput value={form.designFee} onChange={v => setF('designFee', v)} placeholder="Use store fee" />
+                    <span style={{ fontSize: '11px', color: 'var(--gray)', marginTop: '3px', display: 'block' }}>
+                      Leave blank to use the store design fee from Settings. Set this only if
+                      this product&apos;s artwork costs more. An order is charged one design fee,
+                      never one per item.
+                    </span>
+                  </Field>
+                )}
+                {form.isCustomizable && (
+                  <Field label="Design templates">
+                    <span style={{ fontSize: '11px', color: 'var(--gray)', display: 'block', marginBottom: '6px' }}>
+                      Print-ready files the customer downloads before designing. A mug is curved,
+                      so without one they can only guess where the handle falls. Paste a link
+                      (Drive, Dropbox, your own storage).
+                    </span>
+                    {(form.designTemplates || []).map((t, i) => (
+                      <div key={i} style={{ display: 'flex', gap: '6px', marginBottom: '6px' }}>
+                        <input
+                          value={t.label ?? ''} maxLength={120} placeholder="Adobe Illustrator (.ai)"
+                          onChange={e => setF('designTemplates', form.designTemplates.map((x, j) => j === i ? { ...x, label: e.target.value } : x))}
+                          style={{ flex: '0 0 40%', minWidth: 0, padding: '7px 9px', border: '1px solid var(--border)', borderRadius: '7px', background: 'transparent', color: 'var(--white)', fontSize: '12px', fontFamily: 'inherit' }}
+                        />
+                        <input
+                          value={t.url ?? ''} maxLength={600} placeholder="https://..."
+                          onChange={e => setF('designTemplates', form.designTemplates.map((x, j) => j === i ? { ...x, url: e.target.value } : x))}
+                          style={{ flex: 1, minWidth: 0, padding: '7px 9px', border: '1px solid var(--border)', borderRadius: '7px', background: 'transparent', color: 'var(--white)', fontSize: '12px', fontFamily: 'inherit' }}
+                        />
+                        <button type="button"
+                          onClick={() => setF('designTemplates', form.designTemplates.filter((_, j) => j !== i))}
+                          style={{ flexShrink: 0, width: '30px', background: 'none', border: '1px solid var(--border)', borderRadius: '7px', color: 'var(--gray)', cursor: 'pointer' }}>
+                          &times;
+                        </button>
+                      </div>
+                    ))}
+                    {(form.designTemplates || []).length < 8 && (
+                      <button type="button"
+                        onClick={() => setF('designTemplates', [...(form.designTemplates || []), { label: '', url: '' }])}
+                        style={{ background: 'none', border: 'none', color: 'var(--gold)', fontSize: '11px', fontWeight: 600, cursor: 'pointer', padding: 0 }}>
+                        + Add template
+                      </button>
+                    )}
                   </Field>
                 )}
                 <ToggleRow label="COD Available" hint="Cash on delivery allowed" on={form.allowCOD} onChange={v => setF('allowCOD', v)} />

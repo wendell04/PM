@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import Turnstile from '@/components/Turnstile';
 import { PasswordGuide } from '@/components/auth/PasswordGuide';
@@ -73,8 +73,25 @@ export default function RegisterForm({ onSuccess, onSwitchToLogin, theme = 'ligh
   const [pwFocused, setPwFocused]       = useState(false);
   const [confirmTouched, setConfirmTouched] = useState(false);
   const [tAndCOpen, setTAndCOpen] = useState(false);
+  // Gate the agree checkbox behind actually scrolling through the terms.
+  const [tncRead, setTncRead] = useState(false);
+  const tncContentRef = useRef(null);
   const [turnstileToken, setTurnstileToken] = useState('');
   const turnstileRef = useRef(null);
+
+  // Reset the read-gate each time the terms open; if the text is short enough that it
+  // doesn't scroll, count it as read immediately so the box isn't stuck disabled.
+  useEffect(() => {
+    if (!tAndCOpen) return;
+    setTncRead(false);
+    const el = tncContentRef.current;
+    if (el && el.scrollHeight <= el.clientHeight + 4) setTncRead(true);
+  }, [tAndCOpen]);
+
+  const handleTncScroll = (e) => {
+    const el = e.currentTarget;
+    if (el.scrollTop + el.clientHeight >= el.scrollHeight - 8) setTncRead(true);
+  };
 
   const validateField = (field, value) => {
     switch (field) {
@@ -117,8 +134,11 @@ export default function RegisterForm({ onSuccess, onSwitchToLogin, theme = 'ligh
   };
 
   const handleChange = (field, value) => {
-    if (['firstName', 'lastName'].includes(field)) value = value.replace(/[^a-zA-Z\s]/g, '');
-    if (field === 'middleInitial') value = value.replace(/[^a-zA-Z]/g, '').toUpperCase();
+    // Names: letters (incl. accented / ñ / José), spaces, hyphens, apostrophes only — no digits
+    // or other symbols; capped at 50 chars so an absurdly long value can't be typed or pasted.
+    if (['firstName', 'lastName'].includes(field)) value = value.replace(/[^\p{L}\s'-]/gu, '').slice(0, 50);
+    if (field === 'middleInitial') value = value.replace(/[^a-zA-Z]/g, '').toUpperCase().slice(0, 2);
+    if (field === 'email') value = value.slice(0, 254);
     setFormData(f => ({ ...f, [field]: value }));
     if (errors[field]) setErrors(e => ({ ...e, [field]: '' }));
   };
@@ -292,7 +312,7 @@ export default function RegisterForm({ onSuccess, onSwitchToLogin, theme = 'ligh
               </button>
             </div>
             <StepIndicator step={2} />
-            <div className="tnc-content">
+            <div className="tnc-content" ref={tncContentRef} onScroll={handleTncScroll}>
               <p><strong>1. Acceptance of Terms</strong></p>
               <p>By creating an account with Personalize Me Prints, you agree to comply with and be bound by these Terms and Conditions. If you do not agree with any part of these terms, please do not use our services.</p>
               <p><strong>2. Account Registration</strong></p>
@@ -312,11 +332,18 @@ export default function RegisterForm({ onSuccess, onSwitchToLogin, theme = 'ligh
               <p><strong>9. Changes to Terms</strong></p>
               <p>We reserve the right to modify these terms at any time. Changes will be effective immediately upon posting on our website. Your continued use of our services after any changes constitutes acceptance of the new terms.</p>
             </div>
+            {!tncRead && (
+              <div style={{ padding: '0.5rem 1.5rem 0', fontSize: '0.78rem', color: 'var(--gold)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                Please scroll to the bottom to read all the terms first.
+              </div>
+            )}
             <div style={{ padding: '1rem 1.5rem', borderTop: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
               <input type="checkbox" id="tnc-agree" checked={formData.agreeToTerms}
+                disabled={!tncRead}
                 onChange={e => handleChange('agreeToTerms', e.target.checked)}
-                style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: 'var(--gold)' }} />
-              <label htmlFor="tnc-agree" style={{ fontSize: '0.85rem', color: 'var(--gray)', cursor: 'pointer' }}>
+                style={{ width: '16px', height: '16px', cursor: tncRead ? 'pointer' : 'not-allowed', accentColor: 'var(--gold)', opacity: tncRead ? 1 : 0.5 }} />
+              <label htmlFor="tnc-agree" style={{ fontSize: '0.85rem', color: tncRead ? 'var(--gray)' : 'var(--border)', cursor: tncRead ? 'pointer' : 'not-allowed' }}>
                 I have read and agree to the Terms and Conditions
               </label>
             </div>

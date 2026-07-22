@@ -382,9 +382,11 @@ class OrderRequestController extends Controller
                 $qty        = (int) ($req->quantity ?? 1);
                 $unitPrice  = (float) ($req->finalPrice ?? 0.0);
                 $totalPrice = $unitPrice; // finalPrice is the total for the request
-                $cost       = $inventory
-                    ? (float) ($inventory->averageCost ?? 0) * $qty
-                    : 0.0;
+                // COGS resolved from BOM → inventory → product cost (services have no inventory link).
+                // Prefer the materials cost the admin attached to the quote, if any.
+                $cost       = ($req->materialsCost !== null && (float) $req->materialsCost > 0)
+                    ? round((float) $req->materialsCost, 2)
+                    : \App\Support\CostResolver::lineCost($product, $qty);
                 $profit     = $totalPrice - $cost;
 
                 $newSaleId = 'SALE-' . strtoupper(substr(
@@ -490,14 +492,23 @@ class OrderRequestController extends Controller
         }
 
         $validated = $request->validate([
-            'recipientId' => 'required|string',
-            'productName' => 'required|string|max:200',
-            'qty'         => 'required|integer|min:1',
-            'unitPrice'   => 'required|numeric|min:0',
-            'designFee'   => 'nullable|numeric|min:0',
-            'deliveryFee' => 'nullable|numeric|min:0',
-            'downPayment' => 'nullable|numeric|min:0',
-            'note'        => 'nullable|string|max:1000',
+            'recipientId'       => 'required|string',
+            'items'             => 'required|array|min:1|max:20',
+            'items.*.productId' => 'required|string',
+            'items.*.qty'       => 'required|integer|min:1',
+            'items.*.unitPrice' => 'required|numeric|min:0',
+            'items.*.variantId'   => 'nullable|string|max:64',
+            'items.*.variantName' => 'nullable|string|max:200',
+            'items.*.materials'                 => 'nullable|array|max:30',
+            'items.*.materials.*.inventoryId'   => 'required_with:items.*.materials|string',
+            'items.*.materials.*.qty'           => 'required_with:items.*.materials|numeric|min:0',
+            'designFee'         => 'nullable|numeric|min:0',
+            'deliveryFee'       => 'nullable|numeric|min:0',
+            'downPayment'       => 'nullable|numeric|min:0',
+            'note'              => 'nullable|string|max:1000',
+            'designUrl'         => 'nullable|string|max:1000',
+            'designNotes'       => 'nullable|string|max:1000',
+            'expiresInDays'     => 'nullable|integer|min:1|max:90',
         ]);
 
         $customer = User::where('_id', $validated['recipientId'])->first();
@@ -505,37 +516,118 @@ class OrderRequestController extends Controller
             return $this->errorResponse('Customer not found.', 404);
         }
 
-        $qty         = (int) $validated['qty'];
-        $unitPrice   = round((float) $validated['unitPrice'], 2);
+        // Every line is resolved against the real catalog item so the quote — and the Order it
+        // later converts into — carries ids/thumbnails, not typed strings. Name/thumbnail come
+        // from the product; only qty and price are the admin's to set.
+        $lineItems     = [];
+        $goodsTotal    = 0.0;
+        $materialTotal = 0.0;
+        foreach ($validated['items'] as $row) {
+            $product = Product::find($row['productId']);
+            if (!$product) {
+                return $this->errorResponse("Product '{$row['productId']}' no longer exists.", 422);
+            }
+            $qty       = (int) $row['qty'];
+            $unitPrice = round((float) $row['unitPrice'], 2);
+            $lineTotal = round($unitPrice * $qty, 2);
+            $goodsTotal += $lineTotal;
+
+            // Materials this line will consume. Costs are re-read from Inventory rather
+            // than trusted from the client, so the recorded profit can't be spoofed and
+            // always reflects what we actually last paid.
+            $materials   = [];
+            $lineMatCost = 0.0;
+            foreach ($row['materials'] ?? [] as $m) {
+                $inv   = Inventory::find($m['inventoryId'] ?? null);
+                $mQty  = (float) ($m['qty'] ?? 0);
+                if (!$inv || $mQty <= 0) continue;
+
+                $mCost = (float) ($inv->lastUnitCost ?: $inv->averageCost ?: $inv->baseCost ?: 0);
+                $lineMatCost += $mCost * $mQty;
+
+                $materials[] = [
+                    'inventoryId' => (string) $inv->_id,
+                    'name'        => $inv->name,
+                    'uom'         => $inv->uom,
+                    'qty'         => $mQty,
+                    'unitCost'    => $mCost,
+                    'isOnDemand'  => (bool) ($inv->isOnDemand ?? false),
+                ];
+            }
+            $materialTotal += $lineMatCost;
+
+            $lineItems[] = [
+                'productId'    => (string) $product->_id,
+                'productName'  => $product->name,
+                'thumbnail'    => $product->thumbnail ?? ($product->images[0] ?? null),
+                'category'     => $product->category ?? null,
+                'variantId'    => $row['variantId'] ?? null,
+                'variantName'  => $row['variantName'] ?? null,
+                'qty'          => $qty,
+                'unitPrice'    => $unitPrice,
+                'lineTotal'    => $lineTotal,
+                'materials'    => $materials,
+                'materialCost' => round($lineMatCost, 2),
+            ];
+        }
+
         $designFee   = round((float) ($validated['designFee'] ?? 0), 2);
         $deliveryFee = round((float) ($validated['deliveryFee'] ?? 0), 2);
-        $total       = round($unitPrice * $qty + $designFee + $deliveryFee, 2);
-        $downPayment = $validated['downPayment'] !== null ? round((float) $validated['downPayment'], 2) : null;
+        $total       = round($goodsTotal + $designFee + $deliveryFee, 2);
+        // Absent (blank) means "use the 50% default" — nullable rules drop the key entirely, so it
+        // must be coalesced rather than read directly.
+        $downPayment = isset($validated['downPayment']) ? round((float) $validated['downPayment'], 2) : null;
+
+        // A design the owner attaches to the quote is already the agreed artwork (settled in
+        // chat), so it is marked approved — the converted order skips the proof-approval gate
+        // and goes straight to production. (Customer-uploaded custom designs are NOT approved
+        // here; those still route through review on the product-page custom-order flow.)
+        $designUrl   = !empty($validated['designUrl']) ? $validated['designUrl'] : null;
+        $designNotes = $designUrl ? ($validated['designNotes'] ?? null) : null;
+
+        $first = $lineItems[0];
 
         $orderRequest = OrderRequest::create([
             'customerId'    => (string) $customer->_id,
             'customerName'  => trim(($customer->firstName ?? '') . ' ' . ($customer->lastName ?? '')),
             'customerEmail' => $customer->email ?? null,
-            'productName'   => $validated['productName'],
+            'items'         => $lineItems,
+            // Singular mirrors of the first line — kept populated so anything still reading the
+            // old fields (list previews, legacy screens) keeps working. lineItems is the truth.
+            'productId'        => $first['productId'],
+            'productName'      => $first['productName'],
+            'productThumbnail' => $first['thumbnail'],
+            'category'         => $first['category'],
             'priceType'     => 'inquiry',
-            'quantity'      => $qty,
+            'quantity'      => array_sum(array_column($lineItems, 'qty')),
             'designFee'     => $designFee,
             'shippingFee'   => $deliveryFee,
             'finalPrice'    => $total,
             'suggestedPrice'=> $total,
             'downPayment'   => $downPayment,
+            // Costing is a two-stage affair: at quote time the material cost is only an
+            // estimate (on-demand stock isn't bought until the customer commits), so it
+            // is stored as such and re-stated with the real purchase cost later.
+            'estimatedMaterialCost' => round($materialTotal, 2),
+            'costBasis'             => 'estimated',
             'adminComment'  => $validated['note'] ?? null,
+            'designUrl'     => $designUrl,
+            'designNotes'   => $designNotes,
+            'designType'    => $designUrl ? 'upload' : null,
+            'designApproved'=> $designUrl ? true : false,
             'status'        => 'confirmed',
             'paymentStatus' => 'unpaid',
+            // Quote validity — after this the customer can no longer pay the quoted price (default 7 days).
+            'expiresAt'     => now()->addDays((int) ($validated['expiresInDays'] ?? 7)),
             'statusHistory' => [['status' => 'confirmed', 'at' => now()->toISOString()]],
             'createdAt'     => now(),
             'updatedAt'     => now(),
         ]);
 
         $this->notifyQuoteInChat($orderRequest, [
-            'unitPrice'   => $unitPrice,
             'designFee'   => $designFee,
             'deliveryFee' => $deliveryFee,
+            'designUrl'   => $designUrl,
         ]);
 
         return $this->successResponse('Quotation sent.', $orderRequest);
@@ -543,7 +635,7 @@ class OrderRequestController extends Controller
 
     /**
      * Post the confirmed quote into the customer's chat as a quotation card (with a
-     * View & Pay CTA the frontend deep-links to /shop/quotes) plus an in-app notification.
+     * View & Pay CTA deep-links to /shop/checkout/quote/{id}) plus an in-app notification.
      * Chat-first channel for inquiries — replaces the confirmation email. Best-effort/non-fatal.
      */
     private function notifyQuoteInChat(OrderRequest $req, array $extraMeta = []): void
@@ -573,23 +665,39 @@ class OrderRequestController extends Controller
             }
 
             $finalPrice = round((float) ($req->finalPrice ?? 0), 2);
+            $lineItems  = $req->lineItems;
             $qty        = max(1, (int) ($req->quantity ?? 1));
             $down       = ($req->downPayment !== null && (float) $req->downPayment > 0)
                 ? round((float) $req->downPayment, 2)
                 : round($finalPrice * 0.5, 2);
             $dpPct      = $finalPrice > 0 ? (int) round($down / $finalPrice * 100) : 50;
 
+            $body = count($lineItems) > 1
+                ? 'Here is your quote for ' . count($lineItems) . ' items.'
+                : "Here is your quote for {$req->productName}.";
+
             $message = Message::create([
                 'conversation_id' => (string) $conversation->_id,
                 'sender_id'       => $adminId,
                 'sender_name'     => trim(($admin->firstName ?? '') . ' ' . ($admin->lastName ?? '')) ?: 'Store',
-                'body'            => "Here is your quote for {$req->productName}.",
+                'body'            => $body,
                 'type'            => 'quotation',
                 'metadata'        => array_merge([
+                    // The card is the CUSTOMER's copy - it carries only what they should
+                    // read. Passing the raw line items would ship our material costs into
+                    // a chat message, where they are one DevTools tab away.
+                    'items'          => array_map(fn ($li) => [
+                        'productId'   => $li['productId']   ?? null,
+                        'productName' => $li['productName'] ?? null,
+                        'thumbnail'   => $li['thumbnail']   ?? null,
+                        'variantName' => $li['variantName'] ?? null,
+                        'qty'         => $li['qty']         ?? 0,
+                        'unitPrice'   => $li['unitPrice']   ?? 0,
+                        'lineTotal'   => $li['lineTotal']   ?? 0,
+                    ], $lineItems),
                     'productName'    => $req->productName,
                     'thumbnail'      => $req->productThumbnail,
                     'qty'            => $qty,
-                    'unitPrice'      => $qty > 0 ? round($finalPrice / $qty, 2) : $finalPrice,
                     'total'          => $finalPrice,
                     'downPayment'    => $down,
                     'downPaymentPct' => $dpPct,
@@ -616,7 +724,10 @@ class OrderRequestController extends Controller
                 'title'      => 'Your quote is ready',
                 'message'    => "We've sent a price for \"{$req->productName}\". Tap to review and pay.",
                 'is_read'    => false,
-                'data'       => ['orderRequestId' => (string) $req->_id, 'link' => '/shop/quotes'],
+                'data'       => [
+                    'orderRequestId' => (string) $req->_id,
+                    'link'           => '/shop/checkout/quote/' . (string) $req->_id,
+                ],
                 'created_at' => now(),
             ]);
         } catch (\Throwable $e) {
@@ -639,7 +750,7 @@ class OrderRequestController extends Controller
             ->get();
 
         return response()->json([
-            'data'  => $requests,
+            'data'  => $requests->map(fn ($r) => $r->toCustomerArray()),
             'total' => $requests->count(),
         ]);
     }
@@ -656,7 +767,9 @@ class OrderRequestController extends Controller
         }
 
         $validated = Validator::make($request->all(), [
-            'design' => 'required|file|mimes:jpg,jpeg,png,pdf,ai,psd,svg|max:10240',
+            // webp was missing here while the storefront offered it, so a .webp passed the
+            // browser check and then failed on upload with no useful explanation.
+            'design' => 'required|file|mimes:jpg,jpeg,png,webp,pdf,ai,psd,svg|max:10240',
         ])->validate();
 
         $cloudName = config('services.cloudinary.cloud_name');
@@ -682,6 +795,9 @@ class OrderRequestController extends Controller
             return response()->json([
                 'url'       => $data['secure_url'],
                 'public_id' => $data['public_id'],
+                // Cloudinary names the stored file itself, so the customer would otherwise
+                // only ever see a random string where their artwork's name should be.
+                'name'      => $validated['design']->getClientOriginalName(),
             ]);
         }
 

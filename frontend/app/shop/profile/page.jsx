@@ -14,6 +14,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import "../../../components/custom-styles.css";
 import AddressBook from "../../../components/profile/AddressBook";
+import ImageCropper from "../../../components/ImageCropper";
 import { useAuth } from "../../../contexts/AuthContext";
 import "../shop.css";
 
@@ -696,6 +697,7 @@ export default function CustomerProfilePage() {
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const [avatarError, setAvatarError] = useState("");
   const [avatarHover, setAvatarHover] = useState(false);
+  const [avatarCropSrc, setAvatarCropSrc] = useState(null);
 
   // Overview addresses state
   const [overviewAddresses, setOverviewAddresses] = useState([]);
@@ -1014,8 +1016,9 @@ export default function CustomerProfilePage() {
     }
   };
 
-  const handleAvatarUpload = async (e) => {
+  const handleAvatarUpload = (e) => {
     const file = e.target.files?.[0];
+    e.target.value = "";
     if (!file) return;
 
     const validTypes = ["image/jpeg", "image/png", "image/webp"];
@@ -1023,11 +1026,17 @@ export default function CustomerProfilePage() {
       setAvatarError("Only JPG, PNG, or WEBP files are allowed.");
       return;
     }
-    if (file.size > 2 * 1024 * 1024) {
-      setAvatarError("Image must be under 2MB.");
+    if (file.size > 15 * 1024 * 1024) {
+      setAvatarError("Image must be under 15MB.");
       return;
     }
+    // Square-crop before upload (avatar renders as a circle).
+    setAvatarError("");
+    setAvatarCropSrc(URL.createObjectURL(file));
+  };
 
+  const uploadAvatarFile = async (file) => {
+    if (avatarCropSrc) { URL.revokeObjectURL(avatarCropSrc); setAvatarCropSrc(null); }
     setIsUploadingAvatar(true);
     setAvatarError("");
 
@@ -1419,6 +1428,11 @@ export default function CustomerProfilePage() {
               disabled={isUploadingAvatar}
               onChange={handleAvatarUpload}
             />
+            {avatarCropSrc && (
+              <ImageCropper src={avatarCropSrc} aspect={1} round outputSize={512} title="Crop profile photo"
+                onCancel={() => { URL.revokeObjectURL(avatarCropSrc); setAvatarCropSrc(null); }}
+                onConfirm={uploadAvatarFile} />
+            )}
           </div>
 
           {/* Name */}

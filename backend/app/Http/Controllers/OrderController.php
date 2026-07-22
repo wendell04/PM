@@ -980,7 +980,9 @@ class OrderController extends Controller
                 $newSaleId = 'SALE-' . strtoupper(substr(str_replace('-', '',
                     \Illuminate\Support\Str::uuid()->toString()), 0, 8));
 
-                $cost        = $inventory ? (float) ($inventory->averageCost ?? 0) * $item['qty'] : 0.0;
+                // COGS resolved from BOM → inventory → product cost, so profit is correct even when
+                // there is no directly-linked inventory item (services, finished goods with a buy price).
+                $cost        = \App\Support\CostResolver::lineCost($product, $item['qty']);
                 $profit      = $item['lineTotal'] - $cost;
                 $variantName = $item['variantName'] ?? '';
 
@@ -1793,6 +1795,13 @@ class OrderController extends Controller
             }
 
             $order->designStatus = 'approved';
+            // An order submitted for review has not been paid yet - approving the artwork
+            // is what unlocks payment. Without this it stayed parked in review and the
+            // customer was never given anything to pay.
+            $awaitingPayment = ($order->paymentStatus ?? 'unpaid') === 'unpaid';
+            if ($awaitingPayment) {
+                $order->orderStatus = 'awaiting_payment';
+            }
             $order->updatedAt    = now();
             $order->save();
 
@@ -1804,7 +1813,9 @@ class OrderController extends Controller
                     'title'      => 'Design Approved!',
                     'message'    => 'Your design for order #' .
                         strtoupper(substr((string) $order->_id, -8)) .
-                        ' has been approved. We\'ll begin production shortly.',
+                        ($awaitingPayment
+                            ? ' has been approved. You can now complete your payment in My Orders.'
+                            : ' has been approved. We\'ll begin production shortly.'),
                     'is_read'    => false,
                     'data'       => [
                         'orderId'      => (string) $order->_id,

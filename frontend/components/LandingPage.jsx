@@ -2,7 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import { getStorefrontBanners } from '@/lib/bannerUtils';
@@ -90,6 +90,12 @@ const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=
   const [hoveredNav, setHoveredNav]               = useState(null);
   const [navProducts, setNavProducts]             = useState(initialProducts.filter(p => p.isPublished !== false));
   const [navProductsLoading, setNavProductsLoading] = useState(false);
+  // Featured = a fresh random pick each page load (one desktop row). Shuffles once when products land.
+  const featuredRandom = useMemo(() => {
+    const arr = [...navProducts];
+    for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [arr[i], arr[j]] = [arr[j], arr[i]]; }
+    return arr.slice(0, 5);
+  }, [navProducts]);
   const [hoveredCollection, setHoveredCollection] = useState(null);
   const [collectionProducts, setCollectionProducts] = useState([]);
   const [navHoverLoading, setNavHoverLoading]     = useState(false);
@@ -1207,10 +1213,16 @@ const handleForgotResetPassword = async () => {
       })
     : HERO_SLIDER_IMAGES.map(im => ({ image: im.src, position: im.pos, scale: 1, positionMobile: im.pos, scaleMobile: 1, fit: 'cover', bg: '#0f0f0f' }));
 
-  const landingOrdered = [...landingCollections]
-    .filter(c => c.landing_order != null)
-    .sort((a, b) => a.landing_order - b.landing_order);
-  const colSource = landingOrdered.length > 0 ? landingOrdered : landingCollections;
+  // Published collections show on the landing by DEFAULT (no manual per-collection toggle needed).
+  // Only an EXPLICIT hide (landing_order === -1) removes one. Ordered collections (positive
+  // landing_order) come first in the owner's order; the rest follow.
+  const colSource = [...landingCollections]
+    .filter(c => c.isPublished !== false && c.landing_order !== -1)
+    .sort((a, b) => {
+      const ao = (a.landing_order == null || a.landing_order < 0) ? 9999 : a.landing_order;
+      const bo = (b.landing_order == null || b.landing_order < 0) ? 9999 : b.landing_order;
+      return ao - bo;
+    });
 
   // Collections carousel: arrow scroll (desktop) — touch swipes natively.
   const colScrollRef = useRef(null);
@@ -1827,8 +1839,8 @@ const handleForgotResetPassword = async () => {
         </div>
       </section>
 
-      {/* COLLECTIONS — Pinnacle-style 4-grid with auto-rotation */}
-      {landingCollections.length > 0 && (
+      {/* COLLECTIONS — Pinnacle-style 4-grid; only collections toggled "Show on Landing Page" appear */}
+      {colSource.length > 0 && (
         <section
           className="lp-pinnacle"
           onMouseEnter={() => setColPaused(true)}
@@ -1890,8 +1902,7 @@ const handleForgotResetPassword = async () => {
 
       {/* FEATURED PRODUCTS */}
       {navProducts.length > 0 && (() => {
-        const featuredList = navProducts.filter(p => p.isFeatured);
-        const featured = (featuredList.length ? featuredList : navProducts).slice(0, 8);
+        const featured = featuredRandom;
         const slugOf  = p => p.slug || (p.name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
         const priceOf = p => p.flatPrice ?? p.price ?? p.basePrice ?? null;
         const imgOf   = p => p.thumbnail || (Array.isArray(p.images) ? p.images[0] : null) || p.image || null;
@@ -1899,11 +1910,10 @@ const handleForgotResetPassword = async () => {
           <section style={{ padding: '64px 0' }}>
             <div className="container">
               <div className="section-header center">
-                <span className="section-tag">Shop Best-Sellers</span>
                 <h2 className="section-title">Featured <span className="gold-text">Products</span></h2>
-                <p className="section-subtitle">Ready-made favorites our customers love — tap any item to customize and order.</p>
+                <p className="section-subtitle">A fresh pick every visit — tap any item to customize and order.</p>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '18px', marginTop: '8px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '18px', marginTop: '8px' }}>
                 {featured.map((p, i) => {
                   const price = priceOf(p);
                   const img = imgOf(p);
@@ -2146,7 +2156,7 @@ const handleForgotResetPassword = async () => {
           <div className="section-header center">
             <span className="section-tag">Transparent Pricing</span>
             <h2 className="section-title">Our <span className="gold-text">Price</span> List</h2>
-            <p className="section-subtitle">Starting prices for all our products. Login or Register to view the complete pricelist with bulk pricing breakdowns.</p>
+            <p className="section-subtitle">Starting prices for all our products — see the complete bulk pricing breakdowns inside.</p>
           </div>
           <div className="pricing-new-layout">
             {/* Left — unlock card */}
@@ -2158,9 +2168,18 @@ const handleForgotResetPassword = async () => {
                 </svg>
               </div>
               <h3>Full Pricelist</h3>
-              <p>Unlock bulk pricing breakdowns for all our products and services.</p>
-              <button className="btn-primary" onClick={() => { setLoginFromPricing(true); openModal('login'); }}>Login to View</button>
-              <button className="btn-secondary" onClick={() => { setLoginFromPricing(true); openModal('register'); }}>Register Free</button>
+              {user ? (
+                <>
+                  <p>See the complete bulk pricing breakdowns for all our products and services.</p>
+                  <button className="btn-primary" onClick={() => setPricelistModalOpen(true)}>View Full Pricelist</button>
+                </>
+              ) : (
+                <>
+                  <p>Unlock bulk pricing breakdowns for all our products and services.</p>
+                  <button className="btn-primary" onClick={() => { setLoginFromPricing(true); openModal('login'); }}>Login to View</button>
+                  <button className="btn-secondary" onClick={() => { setLoginFromPricing(true); openModal('register'); }}>Register Free</button>
+                </>
+              )}
             </div>
 
             {/* Right — pricing grid */}
@@ -2430,7 +2449,8 @@ const handleForgotResetPassword = async () => {
 
       {/* ── AUTH MODAL ── */}
       {modal && (
-        <div className="auth-overlay" onClick={closeModal}>
+        // No backdrop-close: holds the register/login + OTP form; a stray click would wipe it.
+        <div className="auth-overlay">
           <div className="auth-modal" onClick={e => e.stopPropagation()}>
 
             {/* LOGIN */}
@@ -2593,8 +2613,9 @@ const handleForgotResetPassword = async () => {
       )}
 
       {/* ── FORGOT PASSWORD MODAL ── */}
+      {/* No backdrop-close: 3-step email/code/new-password flow — a stray click would wipe progress. */}
       {forgotModal && (
-        <div className="auth-overlay" onClick={() => { setForgotModal(false); setForgotStep(1); setForgotPasswordFocused(false); setForgotConfirmTouched(false); }}>
+        <div className="auth-overlay">
           <div className="auth-modal" onClick={e => e.stopPropagation()} style={{maxWidth:'420px'}}>
             <div className="auth-modal-header">
               <img src="/logos/PersonalizeMe logo.png" alt="Logo" className="auth-modal-logo"/>
@@ -2855,7 +2876,8 @@ const handleForgotResetPassword = async () => {
 
       {/* ── EMAIL VERIFICATION ── */}
       {verificationModal && (
-        <div className="auth-overlay" onClick={() => setVerificationModal(false)}>
+        // No backdrop-close: OTP entry — a stray click would drop the code the user is typing.
+        <div className="auth-overlay">
           <div className="verify-modal" onClick={e => e.stopPropagation()}>
             <div className="verify-icon-wrap">
               <div className="verify-icon" style={{color:'var(--gold)',display:'flex',alignItems:'center',justifyContent:'center'}}>

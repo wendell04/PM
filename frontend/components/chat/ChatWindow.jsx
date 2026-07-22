@@ -160,12 +160,25 @@ const ChatWindow = ({ activeConversation, messages, user, isLoading, isAdmin, on
       const m = msg.metadata;
       const fmt = (n) => Number(n).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
       const alreadyAdded = addedToCart[msgKey];
+      // Quotes are multi-item now; cards sent before that only carry the singular
+      // fields, so fold them into the same shape.
+      const lines = Array.isArray(m.items) && m.items.length
+        ? m.items
+        : [{
+            productName: m.productName,
+            qty: m.qty ?? 1,
+            unitPrice: m.unitPrice ?? 0,
+            lineTotal: (m.unitPrice ?? 0) * (m.qty ?? 1),
+          }];
+      const cartLabel = lines.length > 1
+        ? `Quotation (${lines.length} items)`
+        : `${lines[0].productName} (${lines[0].qty} pcs)`;
 
       const handleAddQuotationToCart = async () => {
         if (!addToCart || alreadyAdded) return;
         try {
           await addToCart(
-            { _id: `quotation_${msgKey}`, name: `${m.productName} (${m.qty} pcs)`, flatPrice: m.total, isCustom: true, thumbnail: null },
+            { _id: `quotation_${msgKey}`, name: cartLabel, flatPrice: m.total, isCustom: true, thumbnail: null },
             1, null, null, null,
             m.note ? { notes: m.note } : null
           );
@@ -185,11 +198,22 @@ const ChatWindow = ({ activeConversation, messages, user, isLoading, isAdmin, on
               <span className="quotation-tag">Quotation</span>
             </div>
             <div className="quotation-body">
-              <div className="quotation-product">{m.productName}</div>
-              <div className="quotation-line">
-                <span>{m.qty} pcs &times; &#8369;{fmt(m.unitPrice)}</span>
-                <span>&#8369;{fmt(m.unitPrice * m.qty)}</span>
-              </div>
+              {lines.map((li, li_i) => (
+                // Keyed by index as well: one product can appear on several lines (a shirt
+                // printed in two sizes), so productId alone is not unique.
+                <div key={`${li.productId ?? 'l'}-${li_i}`} style={{ marginBottom: '6px' }}>
+                  <div className="quotation-product" style={{ marginBottom: '2px' }}>
+                    {li.productName}
+                    {li.variantName && (
+                      <span style={{ fontWeight: 500, color: '#6b7280' }}> - {li.variantName}</span>
+                    )}
+                  </div>
+                  <div className="quotation-line">
+                    <span>{li.qty} pcs &times; &#8369;{fmt(li.unitPrice)}</span>
+                    <span>&#8369;{fmt(li.lineTotal ?? li.unitPrice * li.qty)}</span>
+                  </div>
+                </div>
+              ))}
               {m.designFee > 0 && (
                 <div className="quotation-line"><span>Design fee</span><span>&#8369;{fmt(m.designFee)}</span></div>
               )}
@@ -197,6 +221,12 @@ const ChatWindow = ({ activeConversation, messages, user, isLoading, isAdmin, on
                 <div className="quotation-line"><span>Delivery fee</span><span>&#8369;{fmt(m.deliveryFee)}</span></div>
               )}
               {m.note && <div className="quotation-note">{m.note}</div>}
+              {m.designUrl && (
+                <a href={m.designUrl} target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px', textDecoration: 'none' }}>
+                  <img src={m.designUrl} alt="" style={{ width: 40, height: 40, borderRadius: 6, objectFit: 'cover', flexShrink: 0 }} />
+                  <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#2563eb' }}>View attached design</span>
+                </a>
+              )}
               <div className="quotation-total-row">
                 <span className="quotation-total-label">Total</span>
                 <span className="quotation-total-amount">&#8369;{fmt(m.total)}</span>

@@ -203,6 +203,8 @@ Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
     // ─── Products ─────────────────────────────────────────────────────────────
     Route::get('/admin/products',                [ProductController::class, 'adminIndex']);
     Route::get('/admin/products/available-inventory', [ProductController::class, 'availableInventory']);
+    // Resolved BOM for a quote line (pre-fills the materials a quotation will consume)
+    Route::get('/admin/products/{id}/bom-components', [ProductController::class, 'bomComponents']);
     Route::get('/admin/products/{id}',           [ProductController::class, 'adminShow']);
     Route::post('/admin/products',               [ProductController::class, 'store']);
     Route::put('/admin/products/{id}',           [ProductController::class, 'update']);
@@ -211,7 +213,12 @@ Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
     Route::post('/admin/upload-image',           [ProductController::class, 'uploadImage']);
     Route::post('/admin/upload-file',            [ProductController::class, 'uploadFile']);
 
+    // Customer address lookup — used when drafting a quote (delivery fee / courier booking)
+    Route::get('/admin/customers/{id}/addresses', [AddressController::class, 'adminIndex']);
+
     // ─── Inventory ───────────────────────────────────────────────────────────
+    // What must be purchased for orders already committed to (shortfall only)
+    Route::get('/admin/inventory/to-buy',             [InventoryController::class, 'toBuy']);
     Route::get('/admin/inventory/recent-movements',   [InventoryController::class, 'recentMovements']);
     Route::get('/admin/inventory/stock-outs',         [InventoryController::class, 'stockOuts']);
     Route::get('/admin/inventory',                    [InventoryController::class, 'index']);

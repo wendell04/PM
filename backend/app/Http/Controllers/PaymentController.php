@@ -17,7 +17,9 @@ use App\Models\ActivityLog;
 use App\Models\FlashSale;
 use App\Models\Notification;
 use App\Models\User;
+use App\Models\SiteContent;
 use App\Services\PriceResolver;
+use App\Support\OrderStatus;
 
 class PaymentController extends Controller
 {
@@ -33,10 +35,39 @@ class PaymentController extends Controller
     {
         $isCustom   = filter_var($request->input('isCustomOrder', false), FILTER_VALIDATE_BOOLEAN);
         $designType = $request->input('designType');
-        if ($isCustom) {
-            return $designType === 'upload' ? 'awaiting_production' : 'pending_design';
-        }
-        return 'Pending';
+        // Fulfillment only. awaiting_production was wrong (it normalises to Processing and
+        // claimed production before anyone had looked at the artwork), but so was
+        // pending_review - it is not a canonical code, so the admin's transition table had
+        // no entry for it and the order could not be moved at all. The design stage lives
+        // in designStatus, exactly as OrderStatus documents.
+        return OrderStatus::PENDING;
+    }
+
+    /**
+     * Resolve the Bill of Materials for one order line.
+     *
+     * Multi-variant products carry a PER-VARIANT BOM (bomGroupName + the variant's
+     * BOM id); single products carry one bomId. Stock pre-validation already handled
+     * both, but the deduction pass checked `bomId` only — so per-variant products were
+     * validated and then never deducted, silently drifting inventory away from reality.
+     * Both passes now resolve through here so they can't disagree again.
+     */
+    private function resolveBom($product, $variantId = null)
+    {
+        return $product ? $product->resolveBom($variantId) : null;
+    }
+
+    /**
+     * True unless the owner has explicitly disabled this method in Homepage CMS
+     * → Payment Methods (SiteContent key 'payment_methods'). Missing key = enabled.
+     */
+    private function paymentMethodEnabled(string $type): bool
+    {
+        $row     = SiteContent::where('key', 'payment_methods')->first();
+        $enabled = $row?->data['enabled'] ?? null;
+        if ($enabled instanceof \MongoDB\Model\BSONDocument) $enabled = $enabled->getArrayCopy();
+        if (!is_array($enabled)) return true;
+        return ($enabled[$type] ?? true) !== false;
     }
 
     /**
@@ -73,6 +104,7 @@ class PaymentController extends Controller
                 'deliveryAddress.province'    => 'nullable|string|max:255',
                 'deliveryAddress.zip'         => 'nullable|string|max:10',
                 'deliveryAddress.phone'       => 'nullable|string|max:30',
+                'deliveryAddress.delivery_notes' => 'nullable|string|max:300',
                 'design_file'                 => 'nullable|file|mimes:jpeg,jpg,png,webp,pdf|max:10240',
                 'design_notes'                => 'nullable|string|max:2000',
                 'shippingFee'                 => 'nullable|numeric|min:0|max:10000',
@@ -250,13 +282,7 @@ class PaymentController extends Controller
                 $itemQty   = (int) ($item['qty'] ?? 1);
                 $variantId = $item['variantId'] ?? null;
                 if (!$bomProd) continue;
-                $bom = null;
-                if (!empty($bomProd->bomGroupName) && $variantId) {
-                    $bom = \App\Models\BillOfMaterial::where('productGroupName', $bomProd->bomGroupName)
-                                                      ->where('_id', $variantId)->first();
-                } elseif (!empty($bomProd->bomId)) {
-                    $bom = \App\Models\BillOfMaterial::find($bomProd->bomId);
-                }
+                $bom = $this->resolveBom($bomProd, $variantId);
                 if (!$bom || empty($bom->components)) continue;
                 if (!empty($bomProd->bomGroupName) && $variantId) {
                     $variantCap = isset($bomProd->variantStock[$variantId]) && (int) $bomProd->variantStock[$variantId] > 0
@@ -379,9 +405,11 @@ class PaymentController extends Controller
             // BOM material deduction at order creation
             foreach ($orderItems as $item) {
                 $bomProd = \App\Models\Product::find($item['productId'] ?? null);
-                if (!$bomProd || empty($bomProd->bomId)) continue;
+                if (!$bomProd) continue;
                 try {
-                    $bom = \App\Models\BillOfMaterial::find($bomProd->bomId);
+                    // Must resolve the SAME way pre-validation did (per-variant BOMs
+                    // included), otherwise validated stock is never actually deducted.
+                    $bom = $this->resolveBom($bomProd, $item['variantId'] ?? null);
                     if ($bom && !empty($bom->components)) {
                         foreach ($bom->components as $component) {
                             $rawInv = Inventory::find($component['inventoryId'] ?? null);
@@ -557,19 +585,36 @@ class PaymentController extends Controller
                 'deliveryAddress.province'    => 'nullable|string|max:255',
                 'deliveryAddress.zip'         => 'nullable|string|max:10',
                 'deliveryAddress.phone'       => 'nullable|string|max:30',
+                'deliveryAddress.delivery_notes' => 'nullable|string|max:300',
                 'design_notes'                => 'nullable|string|max:2000',
                 'shippingFee'                 => 'nullable|numeric|min:0|max:10000',
                 'paymentType'                 => 'required|in:gcash,paymaya,card',
                 'paymentMethodId'             => 'nullable|string',
                 'eWalletPhone'                => 'nullable|string|max:20',
                 'isCustomOrder'               => 'nullable|boolean',
+                // Without these the checkout's "Pay 50% now" was decoration - the customer
+                // was shown ₱528.94 and charged the full ₱1,057.88.
+                'isDownpayment'               => 'nullable|boolean',
+                'downpaymentPercent'          => 'nullable|integer|min:1|max:100',
                 'designType'                  => 'nullable|string|in:upload,request',
                 'items.*.designRequested'     => 'nullable|boolean',
                 'items.*.designFee'           => 'nullable|numeric|min:0',
+                // Each cart line carries its own artwork now. Without these the design was
+                // accepted at checkout and then dropped on the floor when the order was
+                // built - the customer paid and the store never saw which file went where.
+                'items.*.designUrl'           => 'nullable|string|max:600',
+                'items.*.designName'          => 'nullable|string|max:255',
+                'items.*.designNotes'         => 'nullable|string|max:2000',
+                'items.*.designFiles'         => 'nullable|array|max:5',
+                'items.*.designFiles.*.url'   => 'required_with:items.*.designFiles|string|max:600',
+                'items.*.designFiles.*.name'  => 'nullable|string|max:255',
                 'isDesignFeeOnly'             => 'nullable|boolean',
             ]);
 
             $paymentType      = $validated['paymentType'];
+            if (!$this->paymentMethodEnabled($paymentType)) {
+                return $this->errorResponse('This payment method is currently unavailable. Please choose another.', 422);
+            }
             $isDesignFeeOnly  = filter_var($request->input('isDesignFeeOnly', false), FILTER_VALIDATE_BOOLEAN);
 
             // ── Resolve prices + build order items ────────────────────
@@ -636,11 +681,38 @@ class PaymentController extends Controller
                     'flashSaleId'     => $flashSaleId,
                     'designRequested' => (bool) ($item['designRequested'] ?? false),
                     'designFee'       => isset($item['designFee']) ? (float) $item['designFee'] : null,
+                    'designUrl'       => $item['designUrl']   ?? null,
+                    'designName'      => $item['designName']  ?? null,
+                    'designNotes'     => $item['designNotes'] ?? null,
+                    // Up to five files per line - one design for the ladies, one for the
+                    // gents. designUrl above stays the first of them.
+                    'designFiles'     => $item['designFiles'] ?? null,
+                    'designStatus'    => !empty($item['designUrl']) ? 'pending_review' : null,
                 ];
             }
 
             $requiresDownpayment = (bool) ($firstProduct?->requiresDownpayment ?? false);
             $orderDownpaymentPct = $requiresDownpayment ? (int) ($firstProduct?->downpaymentPercent ?? 0) : 0;
+
+            // ONE design fee for the order - the same rule the cart and checkout display.
+            // It was shown to the customer and then never charged: the storefront quoted
+            // ₱1,157.88 and PayMongo collected ₱1,057.88, so every request-design order
+            // gave the artwork away for free.
+            $orderDesignFee = 0.0;
+            $designLines = array_filter(
+                $validated['items'],
+                fn($i) => filter_var($i['designRequested'] ?? false, FILTER_VALIDATE_BOOLEAN)
+            );
+            if (count($designLines) > 0) {
+                $storeFee = (float) (User::where('role', 'owner')->first()->designRequestFee ?? 100);
+                $lineFees = array_map(fn($i) => (float) ($i['designFee'] ?? 0), $designLines);
+                // Highest wins, once. Summing it charged a fee per product, which is the
+                // opposite of "one artwork across a mug and a totebag is one piece of work".
+                $orderDesignFee = round(max($storeFee, ...$lineFees), 2);
+            }
+            // The order still records the full value of the goods; isDesignFeeOnly only
+            // changes what is collected NOW.
+            $totalAmount += $orderDesignFee;
 
             $shippingFee  = (float) ($validated['shippingFee'] ?? 0);
             $totalAmount += $shippingFee;
@@ -685,13 +757,7 @@ class PaymentController extends Controller
                 $itemQty   = (int) ($item['qty'] ?? 1);
                 $variantId = $item['variantId'] ?? null;
                 if (!$bomProd) continue;
-                $bom = null;
-                if (!empty($bomProd->bomGroupName) && $variantId) {
-                    $bom = \App\Models\BillOfMaterial::where('productGroupName', $bomProd->bomGroupName)
-                                                      ->where('_id', $variantId)->first();
-                } elseif (!empty($bomProd->bomId)) {
-                    $bom = \App\Models\BillOfMaterial::find($bomProd->bomId);
-                }
+                $bom = $this->resolveBom($bomProd, $variantId);
                 if (!$bom || empty($bom->components)) continue;
                 if (!empty($bomProd->bomGroupName) && $variantId) {
                     $variantCap = isset($bomProd->variantStock[$variantId]) && (int) $bomProd->variantStock[$variantId] > 0
@@ -741,6 +807,35 @@ class PaymentController extends Controller
                 ];
             }
 
+            // ── Proof gate ────────────────────────────────────────────
+            // A cart order derives these from its own lines. Read only from the request,
+            // they stayed false/null, so a multi-item custom order slipped past the
+            // approval gate in JobOrderController and went to production unreviewed.
+            $anyCustom    = false;
+            $anyUploaded  = false;
+            $anyRequested = false;
+            $firstDesign  = null;
+            foreach ($orderItems as $oi) {
+                if (!empty($oi['isCustom']))        $anyCustom = true;
+                if (!empty($oi['designRequested'])) $anyRequested = true;
+                if (!empty($oi['designUrl'])) {
+                    $anyUploaded = true;
+                    $firstDesign = $firstDesign ?? $oi['designUrl'];
+                }
+            }
+            // Computed here because the order is written before the charge is built, and
+            // the webhook reads pendingPaymentType/Amount to record a partial payment.
+            $payDownpaymentNow = filter_var($request->input('isDownpayment', false), FILTER_VALIDATE_BOOLEAN);
+            $dpPctRequested    = (int) $request->input('downpaymentPercent', 0);
+            $takesDownpayment  = $payDownpaymentNow && $dpPctRequested > 0 && $dpPctRequested < 100;
+
+            $isCustomOrder = filter_var($request->input('isCustomOrder', false), FILTER_VALIDATE_BOOLEAN) || $anyCustom;
+            // Uploaded artwork waits for the store to check it. Requested artwork has
+            // nothing to check yet - the store draws it, then the customer approves.
+            $orderDesignStatus = $anyUploaded ? 'pending_review' : null;
+            $orderDesignType   = $request->input('designType')
+                ?? ($anyUploaded ? 'upload' : ($anyRequested ? 'request' : null));
+
             // ── Create order ──────────────────────────────────────────
             $order = Order::create([
                 'userId'          => (string) $user->_id,
@@ -756,11 +851,21 @@ class PaymentController extends Controller
                 'notes'           => htmlspecialchars(strip_tags(trim($validated['notes'] ?? '')), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
                 'deliveryAddress' => $validated['deliveryAddress'] ?? null,
                 'designNotes'     => isset($validated['design_notes']) ? htmlspecialchars(strip_tags(trim($validated['design_notes'])), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') : null,
-                'isCustomOrder'        => filter_var($request->input('isCustomOrder', false), FILTER_VALIDATE_BOOLEAN),
-                'designType'           => $request->input('designType'),
+                'isCustomOrder'        => $isCustomOrder,
+                'designType'           => $orderDesignType,
+                // Mirrored at order level so the existing approve / reject / re-upload
+                // screens and the production gate all see a cart order too.
+                'designFilePath'       => $firstDesign,
+                'designStatus'         => $orderDesignStatus,
                 'isDesignFeeOnly'      => $isDesignFeeOnly,
+                'designFee'            => $orderDesignFee > 0 ? $orderDesignFee : null,
                 'requiresDownpayment'  => $requiresDownpayment,
                 'downpaymentPercent'   => $orderDownpaymentPct > 0 ? $orderDownpaymentPct : null,
+                // Tells the webhook this payment settles only part of the order, so it
+                // records paymentStatus = partial with a real remaining balance instead of
+                // marking a half-paid order as fully paid.
+                'pendingPaymentType'   => $takesDownpayment ? 'downpayment' : null,
+                'pendingPaymentAmount' => $takesDownpayment ? round($totalAmount * $dpPctRequested / 100, 2) : null,
                 'statusHistory'        => [['status' => $this->resolveCustomOrderStatus($request), 'at' => now()->toISOString()]],
                 'createdAt'       => now(),
                 'updatedAt'       => now(),
@@ -789,20 +894,7 @@ class PaymentController extends Controller
                 $variantId = $item['variantId'] ?? null;
                 if (!$bomProd) continue;
                 try {
-                    $bom = null;
-                    if (!empty($bomProd->bomGroupName) && $variantId) {
-                        $bom = \App\Models\BillOfMaterial::find($variantId);
-                    } elseif (!empty($bomProd->bomId)) {
-                        $bom = \App\Models\BillOfMaterial::find($bomProd->bomId);
-                    }
-                    if (!$bom && $variantId && !empty($bomProd->combinations)) {
-                        foreach ($bomProd->combinations as $combo) {
-                            if ((string) ($combo['id'] ?? $combo['_id'] ?? '') === (string) $variantId && !empty($combo['bomId'])) {
-                                $bom = \App\Models\BillOfMaterial::find($combo['bomId']);
-                                break;
-                            }
-                        }
-                    }
+                    $bom = $this->resolveBom($bomProd, $variantId);
                     if (!$bom || empty($bom->components)) continue;
                     // Made-to-order / custom items RESERVE now (consumed at QC pass via the JO);
                     // stocked ready-made items DEDUCT now.
@@ -866,9 +958,9 @@ class PaymentController extends Controller
             }
 
             $frontendUrl    = config('app.frontend_url', 'http://localhost:3000');
-            $designFeeTotal = $isDesignFeeOnly
-                ? (float) collect($validated['items'])->sum(fn($i) => (float) ($i['designFee'] ?? 0))
-                : 0.0;
+            // One fee for the order, not one per line - a cart holding a mug and a totebag
+            // that share a single artwork pays ₱100, not ₱200.
+            $designFeeTotal = $isDesignFeeOnly ? $orderDesignFee : 0.0;
 
             if ($isDesignFeeOnly && $designFeeTotal <= 0) {
                 // designFee not set on product — fall back to full amount
@@ -884,7 +976,11 @@ class PaymentController extends Controller
                 );
             }
 
-            $chargeAmount   = $isDesignFeeOnly ? $designFeeTotal : $totalAmount;
+            // Charge what the customer was shown. A downpayment order takes its percentage
+            // now; the balance is collected later against the same order.
+            $chargeAmount = $isDesignFeeOnly
+                ? $designFeeTotal
+                : ($takesDownpayment ? round($totalAmount * $dpPctRequested / 100, 2) : $totalAmount);
             $amountCentavos = (int) round($chargeAmount * 100);
 
 
@@ -1022,6 +1118,13 @@ class PaymentController extends Controller
             // Ownership check
             if ((string) $orderRequest->customerId !== (string) $user->_id) {
                 return $this->errorResponse('Forbidden.', 403);
+            }
+
+            // Quote expiry — an unpaid quote past its expiresAt can no longer be paid at the quoted price.
+            if ($orderRequest->expiresAt
+                && ($orderRequest->paymentStatus ?? 'unpaid') === 'unpaid'
+                && now()->greaterThan($orderRequest->expiresAt)) {
+                return $this->errorResponse('This quote has expired. Please ask the seller for a new quote.', 422);
             }
 
             // Persist the delivery address on the quote so the webhook can attach it to the
@@ -1167,6 +1270,58 @@ class PaymentController extends Controller
      *
      * @param string $paymentType 'down' (downpayment → partial) or 'full' (paid upfront)
      */
+    /**
+     * Hold the materials the quote said the job would consume.
+     *
+     * A quote records its own materials per line - including for a SERVICE whose product
+     * carries no BOM at all - so this is the only place that knows what a quoted job will
+     * really eat. Until now nothing was held here, so every quote sold left stock counts
+     * drifting away from reality.
+     *
+     * Quote orders are made-to-order, so stock is RESERVED and consumed later at QC pass
+     * via the job order. Deducting here as well would take it twice. Materials bought per
+     * order are skipped - there is no stock to hold against.
+     */
+    private function reserveQuoteMaterials(OrderRequest $orderRequest, Order $order): void
+    {
+        foreach ($orderRequest->lineItems ?? [] as $line) {
+            foreach ($line['materials'] ?? [] as $mat) {
+                try {
+                    $inv = Inventory::find($mat['inventoryId'] ?? null);
+                    $qty = (int) round((float) ($mat['qty'] ?? 0));
+                    if (!$inv || $inv->isOnDemand || $qty <= 0) continue;
+
+                    $inv->reservedQty = (int) ($inv->reservedQty ?? 0) + $qty;
+                    $inv->save();
+
+                    StockHistory::create([
+                        'inventoryId'  => (string) $inv->_id,
+                        'quantity'     => $qty,
+                        'remainingQty' => (int) ($inv->stockQty ?? 0),
+                        'unitCost'     => $inv->averageCost ?? 0,
+                        'totalCost'    => 0,
+                        'reason'       => 'production_reserved',
+                        'type'         => 'reservation',
+                        'orderId'      => (string) $order->_id,
+                        'productId'    => $line['productId'] ?? null,
+                        'productName'  => $line['productName'] ?? '',
+                        'customerName' => $orderRequest->customerName ?? '',
+                        'performedBy'  => 'system',
+                        'remarks'      => 'Reserved from quote: ' . (string) $orderRequest->_id,
+                        'createdAt'    => now(),
+                    ]);
+                } catch (\Throwable $e) {
+                    // One bad material must not undo a paid order.
+                    Log::warning('reserveQuoteMaterials failed', [
+                        'orderRequestId' => (string) $orderRequest->_id,
+                        'inventoryId'    => $mat['inventoryId'] ?? null,
+                        'error'          => $e->getMessage(),
+                    ]);
+                }
+            }
+        }
+    }
+
     private function convertOrderRequestToOrder(OrderRequest $orderRequest, string $paymentType, array $paymentMeta = []): ?Order
     {
         // Idempotency guard — never mint a second order for the same quote.
@@ -1176,7 +1331,6 @@ class PaymentController extends Controller
 
         $customer   = User::find($orderRequest->customerId);
         $finalPrice = round((float) $orderRequest->finalPrice, 2);
-        $qty        = max(1, (int) ($orderRequest->quantity ?? 1));
 
         $downPayment = ($orderRequest->downPayment !== null && (float) $orderRequest->downPayment > 0)
             ? round((float) $orderRequest->downPayment, 2)
@@ -1187,23 +1341,28 @@ class PaymentController extends Controller
         $balance    = $paidInFull ? 0.0 : round($finalPrice - $downPayment, 2);
         $dpPct      = $finalPrice > 0 ? (int) round($downPayment / $finalPrice * 100) : null;
 
-        // Canonical order item shape (matches OrderController@store).
-        $item = [
-            'productId'     => (string) $orderRequest->productId,
-            'productName'   => $orderRequest->productName,
+        // Canonical order item shape (matches OrderController@store). A quote can hold several
+        // products; lineItems normalises both the multi-item and the legacy single-product shape.
+        // Prices come straight from the quote lines — design/delivery fees stay OUT of unitPrice
+        // (they are separate components of finalPrice, not part of what a piece costs).
+        $items = array_map(fn ($line) => [
+            'productId'     => (string) ($line['productId'] ?? ''),
+            'productName'   => $line['productName'] ?? null,
             'isCustom'      => true,
             'isMadeToOrder' => true,
-            'thumbnail'     => $orderRequest->productThumbnail,
-            'variantId'     => null,
-            'variantName'   => null,
-            'qty'           => $qty,
-            'unitPrice'     => round($finalPrice / $qty, 2),
-            'lineTotal'     => $finalPrice,
+            'thumbnail'     => $line['thumbnail'] ?? null,
+            // Carry the quoted variant through - without it the order cannot tell which
+            // BOM was priced, and production would have to guess the colour.
+            'variantId'     => $line['variantId'] ?? null,
+            'variantName'   => $line['variantName'] ?? null,
+            'qty'           => max(1, (int) ($line['qty'] ?? 1)),
+            'unitPrice'     => round((float) ($line['unitPrice'] ?? 0), 2),
+            'lineTotal'     => round((float) ($line['lineTotal'] ?? 0), 2),
             'flashSaleId'   => null,
             'designUrl'     => $orderRequest->designUrl,
             'designNotes'   => $orderRequest->designNotes,
             'selectedVariants' => $orderRequest->selectedVariants ?? [],
-        ];
+        ], $orderRequest->lineItems);
 
         $order = Order::create([
             'userId'        => (string) $orderRequest->customerId,
@@ -1213,7 +1372,7 @@ class PaymentController extends Controller
                 'email' => $orderRequest->customerEmail ?? ($customer->email ?? null),
                 'phone' => $customer->phoneNumber ?? null,
             ],
-            'items'                => [$item],
+            'items'                => $items,
             'totalAmount'          => $finalPrice,
             // Informational — the delivery fee the admin set on the quote is already inside finalPrice.
             'shippingFee'          => round((float) ($orderRequest->shippingFee ?? 0), 2),
@@ -1233,7 +1392,11 @@ class PaymentController extends Controller
             'designType'           => $orderRequest->designType,
             'designFilePath'       => $orderRequest->designUrl,
             'designNotes'          => $orderRequest->designNotes,
-            'designStatus'         => $orderRequest->designUrl ? 'pending_review' : null,
+            // An owner-attached quote design is pre-approved (agreed in chat) → no proof gate.
+            // A customer-uploaded design still needs the store to review it.
+            'designStatus'         => $orderRequest->designUrl
+                ? ($orderRequest->designApproved ? 'approved' : 'pending_review')
+                : null,
             'materials'            => $orderRequest->materials,
             'materialsCost'        => $orderRequest->materialsCost,
             'orderRequestId'       => (string) $orderRequest->_id,
@@ -1251,6 +1414,8 @@ class PaymentController extends Controller
 
         $orderRequest->convertedOrderId = (string) $order->_id;
         $orderRequest->save();
+
+        $this->reserveQuoteMaterials($orderRequest, $order);
 
         Log::info('OrderRequest converted to Order', [
             'orderRequestId' => (string) $orderRequest->_id,

@@ -30,7 +30,7 @@ class ShopOrderRequestController extends Controller
             ->get();
 
         return response()->json([
-            'data'  => $orders,
+            'data'  => $orders->map(fn ($o) => $o->toCustomerArray()),
             'total' => $orders->count(),
         ]);
     }
@@ -56,7 +56,7 @@ class ShopOrderRequestController extends Controller
             return response()->json(['message' => 'Order request not found.'], 404);
         }
 
-        return response()->json(['data' => $order]);
+        return response()->json(['data' => $order->toCustomerArray()]);
     }
 
     /**

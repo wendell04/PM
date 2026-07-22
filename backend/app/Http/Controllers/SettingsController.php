@@ -47,6 +47,7 @@ class SettingsController extends Controller
                 'storeEmail'           => $user->storeEmail            ?? '',
                 'storePhone'           => $user->storePhone            ?? '',
                 'storeAddress'         => $owner->storeAddress          ?? '',
+                'storeAddressParts'    => $owner->storeAddressParts     ?? null,
                 'storeLat'             => $owner->storeLat              ?? null,
                 'storeLng'             => $owner->storeLng              ?? null,
                 'shippingMode'         => $owner->shippingMode          ?? 'courier_booked',
@@ -71,8 +72,11 @@ class SettingsController extends Controller
 
             $request->validate([
                 'storeAddress'         => 'nullable|string|max:300',
+                'storeAddressParts'    => 'nullable|array',
                 'storeLat'             => 'nullable|numeric|between:-90,90',
                 'storeLng'             => 'nullable|numeric|between:-180,180',
+                // Stored on the OWNER, because that is where the storefront reads it from.
+                'designRequestFee'     => 'nullable|numeric|min:0|max:99999',
                 'shippingMode'         => 'nullable|string|in:distance,flat,courier_booked',
                 'shippingBaseRate'     => 'nullable|numeric|min:0|max:9999',
                 'shippingPerKmRate'    => 'nullable|numeric|min:0|max:9999',
@@ -81,8 +85,10 @@ class SettingsController extends Controller
             ]);
 
             if ($request->has('storeAddress'))         $owner->storeAddress         = $request->storeAddress ?? '';
+            if ($request->has('storeAddressParts'))    $owner->storeAddressParts    = $request->storeAddressParts ?? null;
             if ($request->has('storeLat'))             $owner->storeLat             = $request->storeLat !== null ? (float) $request->storeLat : null;
             if ($request->has('storeLng'))             $owner->storeLng             = $request->storeLng !== null ? (float) $request->storeLng : null;
+            if ($request->has('designRequestFee'))     $owner->designRequestFee     = (float) $request->designRequestFee;
             if ($request->has('shippingMode'))         $owner->shippingMode         = $request->shippingMode ?? 'courier_booked';
             if ($request->has('shippingBaseRate'))     $owner->shippingBaseRate     = (float) $request->shippingBaseRate;
             if ($request->has('shippingPerKmRate'))    $owner->shippingPerKmRate    = (float) $request->shippingPerKmRate;
@@ -92,6 +98,7 @@ class SettingsController extends Controller
 
             return $this->successResponse('Shipping settings saved.', [
                 'storeAddress'         => $owner->storeAddress          ?? '',
+                'storeAddressParts'    => $owner->storeAddressParts     ?? null,
                 'storeLat'             => $owner->storeLat              ?? null,
                 'storeLng'             => $owner->storeLng              ?? null,
                 'shippingMode'         => $owner->shippingMode          ?? 'courier_booked',

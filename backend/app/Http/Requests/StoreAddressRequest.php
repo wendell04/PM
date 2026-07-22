@@ -18,6 +18,7 @@ class StoreAddressRequest extends FormRequest
             'house_number' => ['required', 'string', 'max:100'],
             'street'       => ['required', 'string', 'max:100'],
             'subdivision'  => ['nullable', 'string', 'max:100'],
+            'delivery_notes' => ['nullable', 'string', 'max:300'],
             'region'        => ['required', 'string', 'max:100'],
             'region_code'   => ['required', 'string', 'max:20'],
             'province'      => ['required', 'string', 'max:100'],

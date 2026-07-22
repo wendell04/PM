@@ -526,7 +526,7 @@ function VoucherModal({ form, setForm, formError, saving, editTarget, onSave, on
   }
 
   return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.72)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.72)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
       <div onClick={e => e.stopPropagation()} style={{ background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '14px', width: '100%', maxWidth: '520px', maxHeight: '92vh', overflowY: 'auto', scrollbarWidth: 'thin' }}>
 
         {/* Header */}
@@ -912,7 +912,7 @@ function FlashSalesTab({ token }) {
 // ─── Flash Sale Modal ────────────────────────────────────────────────────────
 function FlashSaleModal({ form, setForm, formError, saving, editTarget, products, onSubmit, onClose }) {
   return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+    <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
       <div onClick={e => e.stopPropagation()} style={{ background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '16px', width: '100%', maxWidth: '480px', maxHeight: '90vh', overflowY: 'auto', scrollbarWidth: 'thin' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1.25rem 1.5rem', borderBottom: '1px solid var(--border)', position: 'sticky', top: 0, background: 'var(--dark)', zIndex: 10 }}>
           <h2 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: 'var(--white)' }}>{editTarget ? 'Edit Flash Sale' : 'New Flash Sale'}</h2>

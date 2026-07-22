@@ -27,6 +27,113 @@ class InventoryController extends Controller
      * GET /api/inventory
      * Returns all active inventory items
      */
+    /**
+     * GET /api/admin/inventory/to-buy
+     *
+     * What has to be purchased for work already committed to.
+     *
+     * Demand is summed from orders that are paid (or part-paid) and not yet finished, then
+     * compared against what is physically on hand. Reserved quantities are deliberately NOT
+     * subtracted: those reservations belong to these very orders, so counting both would
+     * double the shortfall.
+     *
+     * Materials bought per order are never stocked, so their whole demand shows up here -
+     * that is the point of flagging them on-demand in the first place.
+     */
+    public function toBuy(Request $request)
+    {
+        try {
+            if (!$this->hasPermission($request, 'inventory')) {
+                return $this->unauthorizedResponse();
+            }
+
+            $done = ['delivered', 'Delivered', 'cancelled', 'Cancelled', 'returned', 'Returned'];
+
+            $orders = \App\Models\Order::whereNotIn('orderStatus', $done)
+                ->whereIn('paymentStatus', ['paid', 'partial'])
+                ->get();
+
+            $demand   = [];   // inventoryId => qty needed
+            $sources  = [];   // inventoryId => [order refs]
+            $bomCache = [];
+
+            foreach ($orders as $order) {
+                foreach ($order->items ?? [] as $item) {
+                    // A quote records the materials it will actually consume - including for
+                    // services whose product has no BOM at all - so trust that when present.
+                    $materials = $item['materials'] ?? null;
+
+                    if (!$materials) {
+                        $productId = (string) ($item['productId'] ?? '');
+                        $variantId = $item['variantId'] ?? null;
+                        $key       = $productId . '|' . ($variantId ?? '');
+                        if (!array_key_exists($key, $bomCache)) {
+                            $product = $productId ? \App\Models\Product::find($productId) : null;
+                            $bom     = $product ? $product->resolveBom($variantId) : null;
+                            $bomCache[$key] = $bom->components ?? [];
+                        }
+                        $qty = max(1, (int) ($item['qty'] ?? 1));
+                        $materials = array_map(fn ($c) => [
+                            'inventoryId' => $c['inventoryId'] ?? null,
+                            'qty'         => (float) ($c['qty'] ?? 0) * $qty,
+                        ], $bomCache[$key]);
+                    }
+
+                    foreach ($materials as $m) {
+                        $invId = (string) ($m['inventoryId'] ?? '');
+                        $need  = (float) ($m['qty'] ?? 0);
+                        if ($invId === '' || $need <= 0) continue;
+                        $demand[$invId] = ($demand[$invId] ?? 0) + $need;
+                        $ref = '#' . strtoupper(substr((string) $order->_id, -8));
+                        if (!in_array($ref, $sources[$invId] ?? [], true)) $sources[$invId][] = $ref;
+                    }
+                }
+            }
+
+            $rows = [];
+            foreach ($demand as $invId => $need) {
+                $inv = Inventory::find($invId);
+                if (!$inv || ($inv->isActive === false)) continue;
+
+                $onHand    = (int) ($inv->stockQty ?? 0);
+                $shortfall = $need - $onHand;
+                if ($shortfall <= 0) continue;          // enough on hand - nothing to buy
+
+                $unitCost = (float) ($inv->lastUnitCost ?: $inv->averageCost ?: $inv->baseCost ?: 0);
+
+                $rows[] = [
+                    'inventoryId'   => (string) $inv->_id,
+                    'name'          => $inv->name,
+                    'sku'           => $inv->sku,
+                    'uom'           => $inv->uom,
+                    'category'      => $inv->category,
+                    'supplierId'    => $inv->supplierId ?? null,
+                    'supplierName'  => $inv->supplierName ?: 'No supplier set',
+                    'leadTimeDays'  => (int) ($inv->leadTimeDays ?? 0),
+                    'isOnDemand'    => (bool) ($inv->isOnDemand ?? false),
+                    'needed'        => round($need, 4),
+                    'onHand'        => $onHand,
+                    'shortfall'     => round($shortfall, 4),
+                    'unitCost'      => $unitCost,
+                    'estimatedCost' => round($shortfall * $unitCost, 2),
+                    'orders'        => array_slice($sources[$invId] ?? [], 0, 6),
+                ];
+            }
+
+            // Biggest money first - that is the order the owner should work in.
+            usort($rows, fn ($a, $b) => $b['estimatedCost'] <=> $a['estimatedCost']);
+
+            return $this->successResponse('Purchase requirements fetched successfully.', [
+                'items'         => $rows,
+                'totalItems'    => count($rows),
+                'estimatedCost' => round(array_sum(array_column($rows, 'estimatedCost')), 2),
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('toBuy failed', ['error' => $e->getMessage()]);
+            return $this->errorResponse('Failed to compute purchase requirements.', 500);
+        }
+    }
+
     public function index(Request $request)
     {
         try {

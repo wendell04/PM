@@ -29,6 +29,33 @@ class AddressController extends Controller
     }
 
     /**
+     * GET /api/admin/customers/{id}/addresses
+     *
+     * Staff-only lookup. Lets the owner see where a quote will actually be
+     * delivered (and the pinned coordinates) while drafting it in chat, so the
+     * delivery fee can be checked against a courier before sending.
+     */
+    public function adminIndex(Request $request, $id)
+    {
+        $customer = User::where('_id', $id)->first();
+
+        if (!$customer) {
+            return response()->json(['success' => false, 'message' => 'Customer not found.'], 404);
+        }
+
+        $addresses = array_values($customer->addresses ?? []);
+
+        return response()->json([
+            'success'   => true,
+            'customer'  => [
+                'name'  => trim(($customer->firstName ?? '') . ' ' . ($customer->lastName ?? '')),
+                'phone' => $customer->phoneNumber ?? null,
+            ],
+            'addresses' => $addresses,
+        ]);
+    }
+
+    /**
      * Store a new address
      */
     public function store(StoreAddressRequest $request)
@@ -66,6 +93,7 @@ class AddressController extends Controller
             'house_number'  => $san($validated['house_number']),
             'street'        => $san($validated['street']),
             'subdivision'   => $san($validated['subdivision'] ?? null),
+            'delivery_notes' => $san($validated['delivery_notes'] ?? null),
             'region'        => $san($validated['region']),
             'region_code'   => $validated['region_code'],
             'province'      => $san($validated['province']),
@@ -141,6 +169,7 @@ class AddressController extends Controller
             'house_number'  => $san($validated['house_number']),
             'street'        => $san($validated['street']),
             'subdivision'   => $san($validated['subdivision'] ?? null),
+            'delivery_notes' => $san($validated['delivery_notes'] ?? null),
             'region'        => $san($validated['region']),
             'region_code'   => $validated['region_code'],
             'province'      => $san($validated['province']),

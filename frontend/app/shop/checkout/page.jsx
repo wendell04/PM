@@ -301,19 +301,48 @@ export default function CheckoutPage() {
   const hasCustomItem = items.some(i => i.isCustom === true && !i.designUrl && !i.designRequested);
   const voucherDiscount = appliedVoucher ? appliedVoucher.discountAmount : 0;
   const total           = Math.max(0, subtotal - voucherDiscount);
-  const grandTotal      = total + (shippingFeeAmt ?? 0);
+  // ONE design fee for the order, not one per product. The fee buys the artwork, and one
+  // artwork put on a mug and a totebag is still a single piece of work - so the highest
+  // product's fee applies once rather than every fee being added up.
+  // The store-level fee is the truth; a product's own fee is only an override for work
+  // that really is harder. Either way it is charged ONCE.
+  const wantsDesign = items.some(i => i.designMode === 'request' || i.designRequested);
+  const designFee = wantsDesign
+    ? Math.max(
+        Number(storeSettings?.designRequestFee) || 0,
+        ...items
+          .filter(i => i.designMode === 'request' || i.designRequested)
+          .map(i => Number(i.designFee) || 0),
+      )
+    : 0;
+  const grandTotal      = total + designFee + (shippingFeeAmt ?? 0);
 
   // Order-level downpayment: if ANY item requires DP, apply the highest DP% to the full order total
   const downpaymentPercent = items
-    .filter(i => i.product?.requiresDownpayment)
-    .reduce((max, i) => Math.max(max, i.product?.downpaymentPercent ?? 50), 0);
-  const downpaymentRequired = downpaymentPercent > 0;
-  const amountDue = (downpaymentRequired && !payFull)
-    ? Math.round(grandTotal * downpaymentPercent / 100 * 100) / 100
-    : grandTotal;
-  const remainingBalance = (downpaymentRequired && !payFull) ? Math.round((grandTotal - amountDue) * 100) / 100 : 0;
+    // Cart lines carry these at the top level; a Buy-Now payload nests them under `product`.
+    // Reading only one shape let a made-to-order item slip through the cart with no
+    // downpayment required - and with COD still on the table.
+    .filter(i => i.requiresDownpayment ?? i.product?.requiresDownpayment)
+    .reduce((max, i) => Math.max(max, i.downpaymentPercent ?? i.product?.downpaymentPercent ?? 50), 0);
+  // Every custom line is a requested design and none has artwork yet, so there is nothing
+  // to produce and nothing to charge for the goods. Only the designer's fee is collected
+  // now; the order total is paid from the order detail modal once the proof is approved.
+  const customItems = items.filter(i => i.isCustom);
+  const designFeeOnly = customItems.length > 0
+    && customItems.every(i => (i.designMode === 'request' || i.designRequested) && !i.designUrl)
+    && designFee > 0;
 
-  const cartAllowsCOD = items.every(i => (i.product?.allowCOD ?? true) !== false);
+  const downpaymentRequired = !designFeeOnly && downpaymentPercent > 0;
+  const amountDue = designFeeOnly
+    ? designFee
+    : (downpaymentRequired && !payFull)
+      ? Math.round(grandTotal * downpaymentPercent / 100 * 100) / 100
+      : grandTotal;
+  const remainingBalance = designFeeOnly
+    ? Math.round((grandTotal - designFee) * 100) / 100
+    : (downpaymentRequired && !payFull) ? Math.round((grandTotal - amountDue) * 100) / 100 : 0;
+
+  const cartAllowsCOD = items.every(i => (i.allowCOD ?? i.product?.allowCOD ?? true) !== false);
 
   // A method is offered only if the owner hasn't disabled it (and COD also obeys cart/DP rules).
   const methodAvailable = (id) => {
@@ -513,8 +542,15 @@ export default function CheckoutPage() {
         unitPrice: i.unitPrice,
         ...(i.flashSaleId ? { flashSaleId: String(i.flashSaleId) } : {}),
         ...(i.designUrl ? { designUrl: i.designUrl } : {}),
+        ...(i.designName ? { designName: i.designName } : {}),
+        ...(i.designFiles?.length ? { designFiles: i.designFiles } : {}),
         ...(i.designNotes ? { designNotes: i.designNotes } : {}),
-        ...(i.designRequested ? { designRequested: true, designFee: i.designFee ?? null } : {}),
+        // A cart line added from the configurator carries designMode; a Buy-Now payload
+        // uses designRequested. Both mean the same thing to the order.
+        ...((i.designRequested || i.designMode === 'request')
+          ? { designRequested: true, designFee: i.designFee ?? null }
+          : {}),
+        ...(i.designMode ? { designMode: i.designMode } : {}),
       }));
 
       const deliveryAddress = {
@@ -528,6 +564,7 @@ export default function CheckoutPage() {
         province:     selectedAddress.province,
         zip:          selectedAddress.zip,
         phone:        selectedAddress.phone,
+        delivery_notes: selectedAddress.delivery_notes ?? null,
         lat:          selectedAddress.lat ?? null,
         lng:          selectedAddress.lng ?? null,
       };
@@ -593,6 +630,7 @@ export default function CheckoutPage() {
           eWalletPhone: eWalletPhone.trim() ? `+63${eWalletPhone.trim()}` : null,
           shippingFee: shippingFeeAmt ?? 0,
           ...(appliedVoucher?.code ? { voucherCode: appliedVoucher.code } : {}),
+          ...(designFeeOnly ? { isDesignFeeOnly: true, isCustomOrder: true, designType: 'request' } : {}),
           ...(downpaymentRequired && !payFull ? { isDownpayment: true, downpaymentPercent } : {}),
         });
         const onlineHeaders = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
@@ -654,7 +692,7 @@ export default function CheckoutPage() {
             className="checkout-back-cart-link"
             onClick={() => setShowCancelModal(true)}
           >
-            ← Back to Cart
+            {fromCart ? '← Back to Cart' : '← Back to Shop'}
           </button>
         </div>
       </div>
@@ -799,7 +837,7 @@ export default function CheckoutPage() {
             <line x1="19" y1="12" x2="5" y2="12"/>
             <polyline points="12 19 5 12 12 5"/>
           </svg>
-          Back to Cart
+          {fromCart ? 'Back to Cart' : 'Back to Shop'}
         </button>
         <span className="checkout-divider">/</span>
         <h1 className="checkout-title">Checkout</h1>
@@ -882,36 +920,75 @@ export default function CheckoutPage() {
           Order Items ({items.length})
         </div>
 
-        {items.map((item, idx) => (
-          <div key={idx} className="checkout-item-row">
-            {/* Thumbnail */}
-            <div className="checkout-item-thumb">
-              {item.product.thumbnail || item.product.images?.[0]
-                ? <img src={item.product.thumbnail || item.product.images[0]} alt="" className="checkout-item-thumb-img" />
-                : <div className="checkout-item-thumb-placeholder">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                      <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/>
-                      <polyline points="21 15 16 10 5 21"/>
-                    </svg>
+        {/* Same line shape as the cart: name and total paired on one row, the artwork
+            given its own full-width strip instead of being squeezed under the variant. */}
+        {items.map((item, idx) => {
+          const thumb = item.product.thumbnail || item.product.images?.[0];
+          const files = item.designFiles?.length ? item.designFiles : (item.designUrl ? [{ url: item.designUrl, name: item.designName }] : []);
+          const wantsDesign = item.designRequested || item.designMode === 'request';
+          return (
+            <div key={idx} style={{ display: 'flex', gap: 12, padding: '14px 0', borderTop: idx > 0 ? '1px solid rgba(255,255,255,0.07)' : 'none' }}>
+              <div style={{ width: 72, height: 72, borderRadius: 10, overflow: 'hidden', background: 'var(--dark)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {thumb
+                  /* eslint-disable-next-line @next/next/no-img-element */
+                  ? <img src={thumb} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  : <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--gray)" strokeWidth="1.5">
+                      <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
+                    </svg>}
+              </div>
+
+              <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 7 }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 700, fontSize: '0.9rem', lineHeight: 1.35, color: 'var(--white)' }}>
+                      {item.product.name}
+                      {item.variantName && <span style={{ fontWeight: 500, color: 'var(--gray)' }}> - {item.variantName}</span>}
+                    </div>
+                    <div style={{ color: 'var(--gray)', fontSize: '0.76rem', marginTop: 3 }}>
+                      {item.qty} × ₱{Number(item.unitPrice).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </div>
                   </div>
-              }
-            </div>
+                  <div style={{ fontWeight: 800, fontSize: '0.92rem', whiteSpace: 'nowrap', color: 'var(--white)' }}>
+                    ₱{(item.unitPrice * item.qty).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </div>
+                </div>
 
-            {/* Info */}
-            <div className="checkout-item-info">
-              <div className="checkout-item-name">{item.product.name}</div>
-              {item.variantName && (
-                <div className="checkout-item-variant">{item.variantName}</div>
-              )}
+                {/* A confirmation screen states facts; it should not celebrate them. The
+                    thumbnails carry the meaning, so the strip stays neutral - a bright
+                    green badge here reads as an alert, not as "this is in order". */}
+                {item.isCustom && (files.length > 0 || wantsDesign) && (
+                  <div style={{
+                    display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+                    padding: '7px 9px', borderRadius: 9,
+                    background: 'rgba(255,255,255,0.03)',
+                    border: '1px solid var(--border)',
+                  }}>
+                    {files.length > 0 ? (
+                      <>
+                        {files.slice(0, 5).map((f, i) => (
+                          <a key={i} href={f.url} target="_blank" rel="noopener noreferrer" title={f.name || 'design'}
+                            style={{ width: 30, height: 30, borderRadius: 6, overflow: 'hidden', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--dark)', border: '1px solid var(--border)' }}>
+                            {/\.(jpe?g|png|webp|gif|avif)(\?|$)/i.test(f.url)
+                              /* eslint-disable-next-line @next/next/no-img-element */
+                              ? <img src={f.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                              : <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--gray)" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>}
+                          </a>
+                        ))}
+                        <span style={{ fontSize: '0.74rem', fontWeight: 600, color: 'var(--gray)' }}>
+                          {files.length} file{files.length === 1 ? '' : 's'} attached
+                        </span>
+                      </>
+                    ) : (
+                      <span style={{ fontSize: '0.74rem', fontWeight: 600, color: 'var(--gray)' }}>
+                        We design this for you
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
-
-            {/* Pricing */}
-            <div className="checkout-item-pricing">
-              <div className="checkout-item-price">{item.qty} × ₱{Number(item.unitPrice).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-              <div className="checkout-item-total">₱{(item.unitPrice * item.qty).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* SECTION 3B – Design Upload (only shown for custom print products) */}
@@ -1102,6 +1179,17 @@ export default function CheckoutPage() {
           <span>Subtotal</span>
           <span>₱{subtotal.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
         </div>
+        {designFee > 0 && (
+          <div className="checkout-summary-row">
+            <span>
+              Design fee
+              <span style={{ display: 'block', fontSize: '.7rem', opacity: .7 }}>
+                Charged once, however many products the artwork goes on
+              </span>
+            </span>
+            <span>₱{designFee.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+          </div>
+        )}
         <div className="checkout-summary-row">
           <span>Delivery</span>
           {courierBooked ? (
@@ -1214,6 +1302,11 @@ export default function CheckoutPage() {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '6px', padding: '8px 10px', background: 'rgba(212,168,67,0.08)', borderRadius: '8px', border: '1px solid rgba(212,168,67,0.2)' }}>
             <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--gold)' }}>Due Now</span>
             <span style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--gold)' }}>₱{amountDue.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+            {designFeeOnly && (
+              <span style={{ display: 'block', width: '100%', fontSize: '0.72rem', color: 'var(--gray)', marginTop: 4, lineHeight: 1.5 }}>
+                Design fee only. The ₱{remainingBalance.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} order total is paid from My Orders once you approve the proof.
+              </span>
+            )}
           </div>
         )}
 
@@ -1428,7 +1521,7 @@ export default function CheckoutPage() {
                       </div>
                       <div style={{
                         display: 'flex', alignItems: 'center',
-                        background: 'var(--dark2)', border: '1px solid rgba(255,255,255,0.1)',
+                        background: 'var(--dark2)', border: '1px solid var(--border)',
                         borderRadius: '8px', overflow: 'hidden',
                       }}
                         onFocusCapture={e => { e.currentTarget.style.borderColor = opt.id === 'gcash' ? '#0066FF' : '#00B14F'; }}
@@ -1491,13 +1584,13 @@ export default function CheckoutPage() {
                   value={cardNumber}
                   onChange={e => setCardNumber(fmtCardNumber(e.target.value))}
                   style={{
-                    width: '100%', background: 'var(--dark2)', border: '1px solid rgba(255,255,255,0.1)',
+                    width: '100%', background: '#ffffff', border: '1px solid var(--border)',
                     borderRadius: '8px', padding: '0.72rem 2.75rem 0.72rem 0.875rem',
-                    color: 'var(--white)', fontSize: '1rem', outline: 'none', boxSizing: 'border-box',
+                    color: '#111827', fontSize: '1rem', outline: 'none', boxSizing: 'border-box',
                     fontFamily: 'monospace', letterSpacing: '0.08em',
                   }}
                   onFocus={e => { e.target.style.borderColor = '#9C7BE8'; }}
-                  onBlur={e => { e.target.style.borderColor = 'rgba(255,255,255,0.1)'; }}
+                  onBlur={e => { e.target.style.borderColor = 'var(--border)'; }}
                 />
                 {cardBrand(cardNumber) && (
                   <span style={{
@@ -1522,13 +1615,13 @@ export default function CheckoutPage() {
                   value={cardExpiry}
                   onChange={e => setCardExpiry(fmtExpiry(e.target.value))}
                   style={{
-                    width: '100%', background: 'var(--dark2)', border: '1px solid rgba(255,255,255,0.1)',
+                    width: '100%', background: '#ffffff', border: '1px solid var(--border)',
                     borderRadius: '8px', padding: '0.72rem 0.875rem',
-                    color: 'var(--white)', fontSize: '0.95rem', outline: 'none',
+                    color: '#111827', fontSize: '0.95rem', outline: 'none',
                     fontFamily: 'monospace', boxSizing: 'border-box',
                   }}
                   onFocus={e => { e.target.style.borderColor = '#9C7BE8'; }}
-                  onBlur={e => { e.target.style.borderColor = 'rgba(255,255,255,0.1)'; }}
+                  onBlur={e => { e.target.style.borderColor = 'var(--border)'; }}
                 />
               </div>
               <div>
@@ -1541,13 +1634,13 @@ export default function CheckoutPage() {
                     maxLength={4} value={cardCvc}
                     onChange={e => setCardCvc(e.target.value.replace(/\D/g, '').slice(0, 4))}
                     style={{
-                      width: '100%', background: 'var(--dark2)', border: '1px solid rgba(255,255,255,0.1)',
+                      width: '100%', background: '#ffffff', border: '1px solid var(--border)',
                       borderRadius: '8px', padding: '0.72rem 2.25rem 0.72rem 0.875rem',
-                      color: 'var(--white)', fontSize: '0.95rem', outline: 'none',
+                      color: '#111827', fontSize: '0.95rem', outline: 'none',
                       fontFamily: 'monospace', boxSizing: 'border-box',
                     }}
                     onFocus={e => { e.target.style.borderColor = '#9C7BE8'; }}
-                    onBlur={e => { e.target.style.borderColor = 'rgba(255,255,255,0.1)'; }}
+                    onBlur={e => { e.target.style.borderColor = 'var(--border)'; }}
                   />
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--gray)" strokeWidth="1.5"
                     style={{ position: 'absolute', right: '0.625rem', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}>
@@ -1567,12 +1660,12 @@ export default function CheckoutPage() {
                 value={cardName}
                 onChange={e => setCardName(e.target.value)}
                 style={{
-                  width: '100%', background: 'var(--dark2)', border: '1px solid rgba(255,255,255,0.1)',
+                  width: '100%', background: '#ffffff', border: '1px solid var(--border)',
                   borderRadius: '8px', padding: '0.72rem 0.875rem',
-                  color: 'var(--white)', fontSize: '0.95rem', outline: 'none', boxSizing: 'border-box',
+                  color: '#111827', fontSize: '0.95rem', outline: 'none', boxSizing: 'border-box',
                 }}
                 onFocus={e => { e.target.style.borderColor = '#9C7BE8'; }}
-                onBlur={e => { e.target.style.borderColor = 'rgba(255,255,255,0.1)'; }}
+                onBlur={e => { e.target.style.borderColor = 'var(--border)'; }}
               />
             </div>
 
@@ -1682,9 +1775,9 @@ export default function CheckoutPage() {
 
       {/* PIN LOCATION MODAL */}
       {showPinModal && (
+        // No backdrop-close: holds the address + map-pin form; a stray click would wipe it.
         <div
           style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', zIndex: 3000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '1rem', overflowY: 'auto' }}
-          onClick={e => { if (e.target === e.currentTarget) setShowPinModal(false); }}
         >
           <div style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '16px', padding: '1.5rem', width: '100%', maxWidth: '580px', marginTop: '2rem', marginBottom: '2rem' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem' }}>

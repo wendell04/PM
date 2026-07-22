@@ -4,6 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { S, ICONS, ConfirmModal, PaginationBar, SearchBar, SummaryCard, ToastContainer, useToast, usePagination } from '../inventory-v2/shared';
 import { loadProductsAndCollections, createCollection, updateCollection, deleteCollection, toggleCollectionPublish, normCollection } from '../products-v2/api';
 import { uploadImage } from '@/lib/productApi';
+import ImageCropper from '@/components/ImageCropper';
 
 function toSlug(str) {
   return str.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
@@ -13,11 +14,12 @@ const EMPTY_FORM = { title: '', slug: '', description: '', image: '', isPublishe
 
 // ── Toggle ────────────────────────────────────────────────────────────────────
 
-function Toggle({ on, onChange }) {
+function Toggle({ on, onChange, disabled = false }) {
   return (
-    <button type="button" onClick={() => onChange(!on)}
+    <button type="button" disabled={disabled} onClick={() => { if (!disabled) onChange(!on); }}
       style={{ position: 'relative', width: '40px', height: '22px', borderRadius: '11px', border: 'none',
-        cursor: 'pointer', background: on ? 'var(--gold)' : 'var(--border)', flexShrink: 0, transition: 'background .15s' }}>
+        cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.45 : 1,
+        background: on ? 'var(--gold)' : 'var(--border)', flexShrink: 0, transition: 'background .15s' }}>
       <span style={{ position: 'absolute', top: '3px', left: on ? '21px' : '3px', width: '16px', height: '16px',
         borderRadius: '50%', background: 'var(--dark)', transition: 'left .15s', boxShadow: '0 1px 3px rgba(0,0,0,.2)' }} />
     </button>
@@ -97,17 +99,29 @@ function CollectionModal({ existing, onClose, onSave, products, token }) {
   const [tab, setTab]               = useState('basic');
   const [imgUploading, setImgUploading] = useState(false);
   const [imgUrlMode, setImgUrlMode] = useState(false);
+  const [urlDraft, setUrlDraft] = useState('');
+  const [imgErr, setImgErr] = useState(false);
+  const [uploadErr, setUploadErr] = useState('');
+  const [cropSrc, setCropSrc] = useState(null);
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
-  const handleImageFile = async (file) => {
+  // Open the cropper on a freshly-picked file; upload only the square crop.
+  const handleImageFile = (file) => {
     if (!file) return;
+    setCropSrc(URL.createObjectURL(file));
+  };
+
+  const uploadCropped = async (file) => {
     setImgUploading(true);
+    if (cropSrc) { if (cropSrc.startsWith('blob:')) URL.revokeObjectURL(cropSrc); setCropSrc(null); }
     try {
       const result = await uploadImage(file, 'pmp-products', token);
       set('image', result.url ?? result.secure_url ?? result);
+      set('landing_image_position', 'center center'); // crop is baked in — reset focus point
+      setUploadErr('');
     } catch {
-      // silent — user can retry
+      setUploadErr('Upload failed. Please try again.');
     } finally {
       setImgUploading(false);
     }
@@ -127,8 +141,13 @@ function CollectionModal({ existing, onClose, onSave, products, token }) {
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1000,
-      display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}
-      onClick={e => e.target === e.currentTarget && onClose()}>
+      display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
+      {cropSrc && (
+        <ImageCropper src={cropSrc} aspect={1} title="Crop collection cover (1:1)"
+          onCancel={() => { if (cropSrc.startsWith('blob:')) URL.revokeObjectURL(cropSrc); setCropSrc(null); }}
+          onConfirm={uploadCropped} />
+      )}
+      {/* No backdrop-close: form input — a stray click would wipe it. */}
       <div style={{ background: 'var(--dark)', borderRadius: '12px', width: '100%', maxWidth: '580px',
         maxHeight: '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden',
         boxShadow: '0 20px 60px rgba(0,0,0,0.18)', border: '1px solid var(--border)' }}>
@@ -170,22 +189,11 @@ function CollectionModal({ existing, onClose, onSave, products, token }) {
                   style={S.input} autoFocus />
               </div>
 
-              <div>
-                <label style={LabelStyle}>Slug (URL handle)</label>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <input value={form.slug} onChange={e => { setSlugManual(true); set('slug', toSlug(e.target.value)); }}
-                    placeholder="auto-generated" style={{ ...S.input, flex: 1 }} />
-                  {slugManual && (
-                    <button type="button" onClick={() => { setSlugManual(false); set('slug', toSlug(form.title)); }}
-                      style={S.btnGhost}>
-                      Auto
-                    </button>
-                  )}
+              {(form.slug || form.title) && (
+                <div style={{ fontSize: '11px', color: 'var(--gray)', marginTop: '-6px' }}>
+                  Link: /shop?collection={form.slug || toSlug(form.title)}
                 </div>
-                <div style={{ fontSize: '11px', color: 'var(--gray)', marginTop: '4px' }}>
-                  /collections/{form.slug}
-                </div>
-              </div>
+              )}
 
               <div>
                 <label style={LabelStyle}>Description</label>
@@ -199,17 +207,34 @@ function CollectionModal({ existing, onClose, onSave, products, token }) {
 
               <div>
                 <label style={LabelStyle}>Cover Image</label>
+                {uploadErr && (
+                  <div style={{ fontSize: '11px', color: '#dc2626', marginBottom: '4px' }}>{uploadErr}</div>
+                )}
                 {form.image ? (
                   <div style={{ position: 'relative', marginTop: '4px' }}>
-                    <img src={form.image} alt="cover"
-                      style={{ width: '100%', maxHeight: '160px', objectFit: 'cover',
-                        borderRadius: '8px', border: '1px solid var(--border)', display: 'block' }} />
-                    <button type="button" onClick={() => set('image', '')}
-                      style={{ position: 'absolute', top: '6px', right: '6px', width: '24px', height: '24px',
-                        borderRadius: '50%', background: 'rgba(0,0,0,0.55)', border: 'none', color: 'var(--dark)',
-                        fontSize: '14px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}>
-                      ×
-                    </button>
+                    <img src={form.image} alt="cover" onLoad={() => setImgErr(false)} onError={() => setImgErr(true)}
+                      style={{ width: '100%', maxWidth: '260px', aspectRatio: '1 / 1', objectFit: 'cover',
+                        objectPosition: form.landing_image_position || 'center center',
+                        borderRadius: '8px', border: `1px solid ${imgErr ? '#dc2626' : 'var(--border)'}`, display: 'block', margin: '0 auto' }} />
+                    <div style={{ position: 'absolute', top: '6px', right: '6px', display: 'flex', gap: '6px' }}>
+                      <button type="button" title="Adjust crop" onClick={() => setCropSrc(form.image)}
+                        style={{ height: '24px', padding: '0 10px', borderRadius: '12px', background: 'rgba(0,0,0,0.55)',
+                          border: 'none', color: '#fff', fontSize: '11px', fontWeight: 600, cursor: 'pointer',
+                          display: 'flex', alignItems: 'center', lineHeight: 1 }}>
+                        Edit
+                      </button>
+                      <button type="button" title="Remove" onClick={() => { set('image', ''); setImgErr(false); }}
+                        style={{ width: '24px', height: '24px',
+                          borderRadius: '50%', background: 'rgba(0,0,0,0.55)', border: 'none', color: '#fff',
+                          fontSize: '14px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}>
+                        ×
+                      </button>
+                    </div>
+                    {imgErr && (
+                      <div style={{ fontSize: '11px', color: '#dc2626', textAlign: 'center', marginTop: '6px' }}>
+                        Couldn&apos;t load this image URL — remove (×) and try upload/drag instead.
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div
@@ -237,8 +262,15 @@ function CollectionModal({ existing, onClose, onSave, products, token }) {
                           {imgUrlMode ? 'hide URL input' : 'or enter URL'}
                         </button>
                         {imgUrlMode && (
-                          <input value={form.image} onChange={e => set('image', e.target.value)}
-                            placeholder="https://…" style={{ ...S.input, marginTop: '8px' }} />
+                          <div style={{ display: 'flex', gap: '6px', marginTop: '8px' }}>
+                            <input value={urlDraft}
+                              onChange={e => setUrlDraft(e.target.value)}
+                              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); const u = urlDraft.trim(); if (u) { setImgErr(false); set('image', u); } } }}
+                              onPaste={e => { const f = Array.from(e.clipboardData?.items || []).find(i => i.type.startsWith('image/'))?.getAsFile(); if (f) { e.preventDefault(); handleImageFile(f); } }}
+                              placeholder="Paste image URL, then Load" style={{ ...S.input, flex: 1 }} />
+                            <button type="button" onClick={() => { const u = urlDraft.trim(); if (u) { setImgErr(false); set('image', u); } }}
+                              style={{ ...S.btnSm, whiteSpace: 'nowrap' }}>Load</button>
+                          </div>
                         )}
                       </>
                     )}
@@ -267,57 +299,31 @@ function CollectionModal({ existing, onClose, onSave, products, token }) {
                   <div>
                     <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--gray-light)' }}>Show on Landing Page</div>
                     <div style={{ fontSize: '11px', color: 'var(--gray)', marginTop: '2px' }}>
-                      {form.landing_order ? `Order position: ${form.landing_order}` : 'Not shown on landing page'}
+                      {!form.isPublished ? 'Draft — publish first to show it on the landing page'
+                        : form.landing_order === -1 ? 'Hidden from landing page'
+                        : form.landing_order > 0 ? `Shown — order position: ${form.landing_order}`
+                        : 'Shown on landing page (default)'}
                     </div>
                   </div>
                   <Toggle
-                    on={form.landing_order != null}
-                    onChange={v => set('landing_order', v ? 99 : null)}
+                    disabled={!form.isPublished}
+                    on={form.isPublished && form.landing_order !== -1}
+                    onChange={v => set('landing_order', v ? (form.landing_order > 0 ? form.landing_order : null) : -1)}
                   />
                 </div>
-                {form.landing_order != null && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                    <div>
-                      <label style={{ ...LabelStyle, marginBottom: '4px' }}>Order Position</label>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <input
-                          type="number" min="1" max="100"
-                          value={form.landing_order ?? ''}
-                          onChange={e => set('landing_order', Math.max(1, parseInt(e.target.value) || 1))}
-                          style={{ ...S.input, width: '80px', textAlign: 'center' }}
-                        />
-                        <span style={{ fontSize: '11px', color: 'var(--gray)' }}>Every 4 = 1 dot page</span>
-                      </div>
-                    </div>
-                    <div>
-                      <label style={{ ...LabelStyle, marginBottom: '6px' }}>Image Focus Point</label>
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '4px', width: '120px' }}>
-                        {[
-                          ['top left','top center','top right'],
-                          ['center left','center center','center right'],
-                          ['bottom left','bottom center','bottom right'],
-                        ].flat().map(pos => {
-                          const active = (form.landing_image_position || 'center center') === pos;
-                          return (
-                            <button key={pos} type="button" title={pos}
-                              onClick={() => set('landing_image_position', pos)}
-                              style={{
-                                width: '36px', height: '36px', borderRadius: '5px',
-                                border: `2px solid ${active ? 'var(--gold)' : 'var(--border)'}`,
-                                background: active ? 'rgba(201,151,63,0.12)' : 'var(--dark2)',
-                                cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                              }}>
-                              <div style={{
-                                width: '8px', height: '8px', borderRadius: '50%',
-                                background: active ? 'var(--gold)' : 'var(--border)',
-                              }} />
-                            </button>
-                          );
-                        })}
-                      </div>
-                      <div style={{ fontSize: '11px', color: 'var(--gray)', marginTop: '4px' }}>
-                        {form.landing_image_position || 'center center'}
-                      </div>
+                {form.isPublished && form.landing_order !== -1 && (
+                  <div>
+                    <label style={{ ...LabelStyle, marginBottom: '4px' }}>
+                      Order Position <span style={{ fontWeight: 400, color: 'var(--gray)' }}>(optional)</span>
+                    </label>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <input
+                        type="number" min="1" max="100" placeholder="—"
+                        value={form.landing_order > 0 ? form.landing_order : ''}
+                        onChange={e => { const n = parseInt(e.target.value); set('landing_order', n > 0 ? n : null); }}
+                        style={{ ...S.input, width: '80px', textAlign: 'center' }}
+                      />
+                      <span style={{ fontSize: '11px', color: 'var(--gray)' }}>Lower number shows first. Blank = default order.</span>
                     </div>
                   </div>
                 )}

@@ -220,8 +220,12 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
       }
       const newMessage = normalizeMsg(await sendMessage(token, actualPayload));
 
-      // Replace optimistic bubble with real confirmed message
-      setMessages(prev => prev.map(m => m._id === tempId ? newMessage : m));
+      // Replace the optimistic bubble with the confirmed message. If the realtime socket already
+      // delivered the same message (it can beat the HTTP response), just drop the placeholder instead
+      // of swapping it in — otherwise we'd end up with two copies (the duplicate inquiry/quote card bug).
+      setMessages(prev => prev.some(m => m._id === newMessage._id)
+        ? prev.filter(m => m._id !== tempId)
+        : prev.map(m => m._id === tempId ? newMessage : m));
 
       if (isNewConv) {
         const convs = await getConversations(token);
@@ -535,6 +539,16 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
                       if (msg.type === 'quotation' && msg.metadata) {
                         const m = msg.metadata;
                         const fmt = (n) => Number(n).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                        // Quotes are multi-item now; cards sent before that only carry the
+                        // singular fields, so fold them into the same shape.
+                        const lines = Array.isArray(m.items) && m.items.length
+                          ? m.items
+                          : [{
+                              productName: m.productName,
+                              qty: m.qty ?? 1,
+                              unitPrice: m.unitPrice ?? 0,
+                              lineTotal: (m.unitPrice ?? 0) * (m.qty ?? 1),
+                            }];
                         return (
                           <div key={msgKey} style={{ display: 'flex', justifyContent: isMe ? 'flex-end' : 'flex-start' }}>
                             <div className="quotation-card">
@@ -543,11 +557,31 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
                                 <span className="quotation-tag">Quotation</span>
                               </div>
                               <div className="quotation-body">
-                                <div className="quotation-product">{m.productName}</div>
-                                <div className="quotation-line"><span>{m.qty} pcs x &#8369;{fmt(m.unitPrice)}</span><span>&#8369;{fmt(m.unitPrice * m.qty)}</span></div>
+                                {lines.map((li, li_i) => (
+                                  // Keyed by index too: one product can appear on several
+                                  // lines (a shirt printed in two sizes).
+                                  <div key={`${li.productId ?? 'l'}-${li_i}`} style={{ marginBottom: '6px' }}>
+                                    <div className="quotation-product" style={{ marginBottom: '2px' }}>
+                                      {li.productName}
+                                      {li.variantName && (
+                                        <span style={{ fontWeight: 500, color: '#6b7280' }}> - {li.variantName}</span>
+                                      )}
+                                    </div>
+                                    <div className="quotation-line">
+                                      <span>{li.qty} pcs x &#8369;{fmt(li.unitPrice)}</span>
+                                      <span>&#8369;{fmt(li.lineTotal ?? li.unitPrice * li.qty)}</span>
+                                    </div>
+                                  </div>
+                                ))}
                                 {m.designFee > 0 && <div className="quotation-line"><span>Design fee</span><span>&#8369;{fmt(m.designFee)}</span></div>}
                                 {m.deliveryFee > 0 && <div className="quotation-line"><span>Delivery fee</span><span>&#8369;{fmt(m.deliveryFee)}</span></div>}
                                 {m.note && <div className="quotation-note">{m.note}</div>}
+                                {m.designUrl && (
+                                  <a href={m.designUrl} target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px', textDecoration: 'none' }}>
+                                    <img src={m.designUrl} alt="" style={{ width: 40, height: 40, borderRadius: 6, objectFit: 'cover', flexShrink: 0 }} />
+                                    <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#2563eb' }}>View attached design</span>
+                                  </a>
+                                )}
                                 <div className="quotation-total-row">
                                   <span className="quotation-total-label">Total</span>
                                   <span className="quotation-total-amount">&#8369;{fmt(m.total)}</span>
@@ -556,7 +590,7 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
                                   <div className="quotation-line"><span>Downpayment ({m.downPaymentPct ?? 50}%)</span><span>&#8369;{fmt(m.downPayment)}</span></div>
                                 )}
                                 {!isMe && (m.orderRequestId ? (
-                                  <a href="/shop/quotes" className="btn-add-cart" style={{ display: 'block', textAlign: 'center', textDecoration: 'none' }}>
+                                  <a href={`/shop/checkout/quote/${m.orderRequestId}`} className="btn-add-cart" style={{ display: 'block', textAlign: 'center', textDecoration: 'none' }}>
                                     View &amp; Pay
                                   </a>
                                 ) : addToCart && (

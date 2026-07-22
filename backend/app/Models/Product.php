@@ -19,6 +19,7 @@ class Product extends Model
         'isMadeToOrder',
         'minOrderQty',
         'designFee',
+        'designTemplates',
         'name',
         'description',
         'category',
@@ -31,6 +32,7 @@ class Product extends Model
         'combinations',
         'priceType',
         'price',
+        'cost',
         'flatPrice',
         'priceTiers',
         'variantPrices',
@@ -67,6 +69,7 @@ class Product extends Model
         'weightGrams'         => 'integer',
         'storeStockCap'       => 'integer',
         'price'               => 'float',
+        'cost'                => 'float',
         'flatPrice'      => 'float',
         'trackInventory' => 'boolean',
         'stock'          => 'integer',
@@ -108,5 +111,38 @@ class Product extends Model
     public function scopeByCategory($query, $category)
     {
         return $query->where('category', $category);
+    }
+
+    /**
+     * Resolve this product's Bill of Materials for a given variant.
+     *
+     * A product can carry its BOM in three different shapes, and every caller that
+     * checks stock or deducts inventory must agree on which one wins — when they
+     * disagreed before, variants were validated and then never deducted, so stock
+     * silently drifted away from reality. This is the single source of truth.
+     */
+    public function resolveBom($variantId = null)
+    {
+        $bom = null;
+
+        if (!empty($this->bomGroupName) && $variantId) {
+            $bom = BillOfMaterial::where('productGroupName', $this->bomGroupName)
+                                 ->where('_id', $variantId)->first()
+                ?: BillOfMaterial::find($variantId);
+        } elseif (!empty($this->bomId)) {
+            $bom = BillOfMaterial::find($this->bomId);
+        }
+
+        // Each variant combination may carry its own bomId.
+        if (!$bom && $variantId && !empty($this->combinations)) {
+            foreach ($this->combinations as $combo) {
+                if ((string) ($combo['id'] ?? $combo['_id'] ?? '') === (string) $variantId && !empty($combo['bomId'])) {
+                    $bom = BillOfMaterial::find($combo['bomId']);
+                    break;
+                }
+            }
+        }
+
+        return $bom;
     }
 }

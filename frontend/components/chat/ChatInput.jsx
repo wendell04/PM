@@ -285,6 +285,9 @@ const ChatInput = ({ onSendMessage, isSending, activeConversation, token, onTypi
           onClose={() => setShowQuotation(false)}
           onSubmit={handleSendQuotation}
           isSending={quotationSending}
+          token={token}
+          customerId={activeConversation?.other_user?.id}
+          customerName={activeConversation?.other_user?.name}
         />
       )}
     </div>

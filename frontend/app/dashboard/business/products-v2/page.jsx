@@ -66,6 +66,7 @@ export default function ProductsV2() {
         downpaymentPercent:  Number(formData.downpaymentPct) || null,
         isPublished:         formData.isPublished,
         designFee:           Number(formData.designFee) || 0,
+        designTemplates:     formData.designTemplates ?? [],
         minOrderQty:         Number(formData.minOrderQty) || 1,
         bomId:               formData.type === 'standalone' ? (formData.bomId || null) : null,
         variantGroups:       formData.type === 'multi-variant'

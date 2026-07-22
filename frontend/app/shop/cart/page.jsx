@@ -5,79 +5,69 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useCart } from '../layout';
 import ErrorBoundary from '../../../components/ErrorBoundary';
-import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import { useAuth } from '@/contexts/AuthContext';
 import { uploadDesignFile } from '@/lib/orderRequestApi';
+import { formatPeso } from '@/lib/shopUtils';
 import '@/app/shop/shop.css';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
-const MAX_QTY = 99;
 
-// Mirrors layout’s openAuthModalWithRedirect — cart cannot import shop layout, so we dispatch the same event.
+// Mirrors layout's openAuthModalWithRedirect - cart cannot import shop layout, so we dispatch the same event.
 function openAuthModalWithRedirect(returnPath) {
   window.dispatchEvent(new CustomEvent('pmp_open_auth', {
     detail: { type: 'login', returnPath },
   }));
 }
 
-function resolvePrice(product, qty) {
-  const tiers = product.priceTiers ?? [];
-  if (tiers.length > 0) {
-    const sorted = [...tiers].sort((a, b) => a.minQty - b.minQty);
-    for (const tier of sorted) {
-      if (qty >= tier.minQty && qty <= (tier.maxQty ?? Infinity)) return tier.price;
-    }
-    return sorted[sorted.length - 1].price;
+// A PDF or an AI file has no thumbnail, so the strip falls back to an icon and the name.
+const IMAGE_RE = /\.(jpe?g|png|webp|gif|avif)(\?|$)/i;
+// Must stay in step with the server's mimes rule on /api/order-requests/upload-design.
+const ACCEPTED_RE = /\.(jpe?g|png|webp|pdf|ai|psd|svg)$/i;
+const ACCEPTED_LABEL = 'JPG, PNG, WEBP, PDF, AI, PSD or SVG';
+
+function fileNameFromUrl(url) {
+  try {
+    const name = decodeURIComponent(new URL(url, 'http://x').pathname.split('/').pop() || '');
+    return name || 'design file';
+  } catch {
+    return 'design file';
   }
-  return product.flatPrice ?? 0;
 }
+
+// Same card language as the quote checkout: white surface, hairline border, quiet labels.
+const CARD = { background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 14 };
+const MICRO_LABEL = {
+  display: 'block', fontSize: '.74rem', fontWeight: 800, letterSpacing: '.03em',
+  textTransform: 'uppercase', color: '#6b7280',
+};
 
 // ── Login Required Modal ──────────────────────────────────────────────────────
 function LoginRequiredModal({ isOpen, onClose }) {
   if (!isOpen) return null;
 
   return (
-    <div className="modal-overlay" onClick={onClose} style={{ zIndex: 9999 }}>
-      <div className="modal-content modal-content-sm" onClick={e => e.stopPropagation()} style={{ maxWidth: '400px' }}>
-        <div className="modal-header">
-          <h2 className="modal-title">Login Required</h2>
-          <button className="modal-close" onClick={onClose}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M18 6L6 18M6 6l12 12"/>
-            </svg>
-          </button>
-        </div>
-
-        <div className="modal-body" style={{ textAlign: 'center', padding: '2rem 1rem' }}>
-          <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>
-            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{display:'inline-block'}}><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-          </div>
-          <h3 style={{ fontSize: '1.25rem', fontWeight: 600, color: 'var(--white)', marginBottom: '0.5rem' }}>
-            Please Login or Register
-          </h3>
-          <p style={{ fontSize: '0.875rem', color: 'var(--gray)', lineHeight: 1.6 }}>
-            You need to have an account to place orders. This helps us process your order and keep you updated on its status.
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }} onClick={onClose}>
+      <div style={{ ...CARD, padding: 20, width: '100%', maxWidth: 400 }} onClick={e => e.stopPropagation()}>
+        <div style={{ textAlign: 'center', marginBottom: 16 }}>
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />
+          </svg>
+          <p style={{ fontSize: '1rem', fontWeight: 800, margin: '10px 0 4px' }}>Please log in or register</p>
+          <p style={{ fontSize: '.82rem', color: '#6b7280', lineHeight: 1.6, margin: 0 }}>
+            You need an account to place orders, so we can process it and keep you updated.
           </p>
         </div>
 
-        <div className="modal-actions" style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center' }}>
+        <div style={{ display: 'flex', gap: 8 }}>
           <button
-            className="btn-primary"
-            style={{ flex: 1 }}
-            onClick={() => {
-              onClose();
-              openAuthModalWithRedirect('/shop/checkout');
-            }}
+            onClick={() => { onClose(); openAuthModalWithRedirect('/shop/checkout'); }}
+            style={{ flex: 1, padding: '10px 12px', borderRadius: 10, border: '1px solid #d1d5db', background: '#fff', fontWeight: 700, fontSize: '.85rem', cursor: 'pointer' }}
           >
-            Login
+            Log in
           </button>
           <button
-            className="btn-secondary"
-            style={{ flex: 1, background: 'var(--gold)', borderColor: 'var(--gold)', color: 'var(--black)' }}
-            onClick={() => {
-              onClose();
-              window.dispatchEvent(new CustomEvent('pmp_open_auth', { detail: { type: 'register' } }));
-            }}
+            onClick={() => { onClose(); window.dispatchEvent(new CustomEvent('pmp_open_auth', { detail: { type: 'register' } })); }}
+            style={{ flex: 1, padding: '10px 12px', borderRadius: 10, border: 'none', background: '#111827', color: '#fff', fontWeight: 800, fontSize: '.85rem', cursor: 'pointer' }}
           >
             Register
           </button>
@@ -89,7 +79,7 @@ function LoginRequiredModal({ isOpen, onClose }) {
 
 export default function CartPage() {
   const router = useRouter();
-  const { cartItems, isCartLoading, updateQty, removeFromCart, bulkRemove, clearCart } = useCart();
+  const { cartItems, isCartLoading, updateQty, removeFromCart, bulkRemove } = useCart();
   const { token } = useAuth();
 
   const [selectedItems, setSelectedItems] = useState(new Set());
@@ -100,22 +90,34 @@ export default function CartPage() {
   const [isCheckingOut, setIsCheckingOut] = useState(false);
   // designChoices: { [lineId]: { mode: 'upload'|'request'|null, file: File|null, url: string|null, uploading: boolean } }
   const [designChoices, setDesignChoices] = useState({});
+  // Store-level design fee, so the cart quotes the same number checkout will charge.
+  const [storeDesignFee, setStoreDesignFee] = useState(0);
   const removeTimerRef = useRef(null);
+
+  useEffect(() => {
+    let alive = true;
+    fetch(`${API_URL}/api/public/settings`)
+      .then(r => r.json())
+      .then(d => { if (alive) setStoreDesignFee(Number(d?.data?.designRequestFee) || 0); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, []);
 
   const setDesignChoice = (lineId, patch) =>
     setDesignChoices(prev => ({ ...prev, [lineId]: { ...prev[lineId], ...patch } }));
 
   async function handleDesignFileSelect(lineId, file) {
     if (!file) return;
-    const allowed = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
-    if (!allowed.includes(file.type)) { setError('Design must be JPG, PNG, WEBP, or PDF.'); return; }
+    // Checked by extension, not MIME type: browsers report .ai as application/pdf and .psd
+    // as octet-stream, so a MIME whitelist silently rejected the formats the server accepts.
+    if (!ACCEPTED_RE.test(file.name)) { setError(`Design must be one of: ${ACCEPTED_LABEL}.`); return; }
     if (file.size > 10 * 1024 * 1024) { setError('Design file must be under 10 MB.'); return; }
     setError(null);
     setDesignChoice(lineId, { mode: 'upload', file, url: null, uploading: !!token });
     if (token) {
       try {
-        const { url } = await uploadDesignFile(token, file);
-        setDesignChoice(lineId, { url, uploading: false });
+        const { url, name } = await uploadDesignFile(token, file);
+        setDesignChoice(lineId, { url, name, uploading: false });
       } catch {
         setDesignChoice(lineId, { mode: null, file: null, url: null, uploading: false });
         setError('Upload failed. Please try again.');
@@ -123,12 +125,15 @@ export default function CartPage() {
     }
   }
 
-  function handleRequestDesign(lineId) {
-    setDesignChoices(prev => {
-      const cur = prev[lineId];
-      const next = cur?.mode === 'request' ? { mode: null, file: null, url: null, uploading: false } : { mode: 'request', file: null, url: null, uploading: false };
-      return { ...prev, [lineId]: next };
-    });
+  // currentMode is the effective mode - it may have come from the line itself rather than
+  // from a local pick, and without it an already-requested line could never be un-picked.
+  function handleRequestDesign(lineId, currentMode) {
+    setDesignChoices(prev => ({
+      ...prev,
+      [lineId]: currentMode === 'request'
+        ? { mode: null, file: null, url: null, uploading: false }
+        : { mode: 'request', file: null, url: null, uploading: false },
+    }));
   }
 
   useEffect(() => () => { if (removeTimerRef.current) clearTimeout(removeTimerRef.current); }, []);
@@ -164,33 +169,27 @@ export default function CartPage() {
     };
   }), [cartItems]);
 
-  // Toggle select item
   const toggleSelectItem = (key) => {
     const newSelected = new Set(selectedItems);
-    if (newSelected.has(key)) {
-      newSelected.delete(key);
-    } else {
-      newSelected.add(key);
-    }
+    if (newSelected.has(key)) newSelected.delete(key);
+    else newSelected.add(key);
     setSelectedItems(newSelected);
   };
 
-  // Select all
   const toggleSelectAll = () => {
-    if (selectedItems.size === enrichedCart.length) {
-      setSelectedItems(new Set());
-    } else {
-      setSelectedItems(new Set(enrichedCart.map((_, i) => i)));
-    }
+    if (selectedItems.size === enrichedCart.length) setSelectedItems(new Set());
+    else setSelectedItems(new Set(enrichedCart.map((_, i) => i)));
   };
 
-  // Get selected items
   const selectedCartItems = enrichedCart.filter((_, i) => selectedItems.has(i));
   const selectedBaseTotal = selectedCartItems.reduce((sum, i) => sum + i.lineTotal, 0);
-  const selectedDesignFee = selectedCartItems.reduce((sum, i) => {
-    const choice = designChoices[i.lineId];
-    return sum + ((choice?.mode === 'request' && i.designFee > 0) ? (i.designFee * i.qty) : 0);
-  }, 0);
+  // ONE design fee for the order - the same rule checkout applies. The fee buys the
+  // artwork, so one artwork across a mug and a totebag is still a single piece of work.
+  // Summing each line and multiplying by quantity charged it once per piece.
+  const designLines = selectedCartItems.filter(i => (designChoices[i.lineId]?.mode ?? i.designMode) === 'request');
+  const selectedDesignFee = designLines.length > 0
+    ? Math.max(storeDesignFee, ...designLines.map(i => Number(i.designFee) || 0))
+    : 0;
   const selectedTotal = selectedBaseTotal + selectedDesignFee;
 
   const handleRemoveItem = (lineId, index) => {
@@ -204,7 +203,7 @@ export default function CartPage() {
         return newSet;
       });
       setRemovingId(null);
-    }, 300);
+    }, 250);
   };
 
   const handleDeleteSelected = async () => {
@@ -246,19 +245,19 @@ export default function CartPage() {
       return;
     }
 
-    // Validate all selected custom items have a design choice
     const customWithNoDesign = selectedCartItems.filter(i => {
       if (!i.isCustom) return false;
       if (i.designUrl) return false; // already has design from product page
       const choice = designChoices[i.lineId];
-      return !choice || (choice.mode !== 'request' && !choice.url);
+      // The configurator may have already settled this, so its designMode counts too.
+      if ((choice?.mode ?? i.designMode) === 'request') return false;
+      return !choice?.url;
     });
     if (customWithNoDesign.length > 0) {
       setError(`Please attach a design or request design service for: ${customWithNoDesign.map(i => i.product.name).join(', ')}`);
       return;
     }
 
-    // Upload any pending design files (mode='upload' but still uploading or no url yet)
     const pendingUploads = selectedCartItems.filter(i => {
       const ch = designChoices[i.lineId];
       return ch?.mode === 'upload' && ch.file && !ch.url;
@@ -282,18 +281,13 @@ export default function CartPage() {
     setError(null);
     setIsCheckingOut(true);
 
-    // Read latest designChoices after uploads
     const latestChoices = { ...designChoices };
-    for (const item of pendingUploads) {
-      // already updated via setDesignChoice — but state may not be flushed yet
-      // so we re-read from the file that was just uploaded above via closure
-    }
 
     const payload = {
       items: selectedCartItems.map(i => {
         const choice = latestChoices[i.lineId];
         const designUrl = choice?.url ?? i.designUrl ?? null;
-        const designRequested = choice?.mode === 'request';
+        const designRequested = (choice?.mode ?? i.designMode) === 'request';
         const designFee = i.designFee ?? null;
         return {
           product: {
@@ -309,11 +303,16 @@ export default function CartPage() {
           variantId:       i.variantId   ?? null,
           variantName:     i.variantName ?? null,
           qty:             i.qty,
-          unitPrice:       designRequested && designFee ? i.unitPrice + designFee : i.unitPrice,
+          // The design fee is NOT folded into the unit price. Checkout adds it once for
+          // the whole order; adding it here too charged it a second time, per piece.
+          unitPrice:       i.unitPrice,
           isCustom:        i.isCustom    ?? false,
           designUrl:       designUrl,
+          designName:      choice?.name ?? i.designName ?? null,
+          designFiles:     i.designFiles ?? null,
           designNotes:     i.designNotes ?? null,
           designRequested: designRequested,
+          designMode:      choice?.mode ?? i.designMode ?? null,
           designFee:       designRequested ? designFee : null,
         };
       }),
@@ -329,386 +328,353 @@ export default function CartPage() {
     }
   }
 
-  {/* success state removed — order placement now redirects to /shop/payment-success */}
-
   // ── Empty cart ──────────────────────────────────────────────────────────────
   if (!isCartLoading && enrichedCart.length === 0) {
     return (
-      <div style={{
-        display: 'flex',
-        flexDirection: 'column',
-        minHeight: '60vh',
-        padding: '2rem',
-      }}>
-        <div>
-          <Link href="/shop" className="back-to-shop-btn">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
-              stroke="currentColor" strokeWidth="2"
-              strokeLinecap="round" strokeLinejoin="round">
-              <line x1="19" y1="12" x2="5" y2="12"/>
-              <polyline points="12 19 5 12 12 5"/>
-            </svg>
-            Continue Shopping
-          </Link>
-        </div>
-        <div style={{
-          flex: 1,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}>
-          <div className="cart-empty-state">
-            <div className="cart-empty-icon">
-              <svg width="48" height="48" viewBox="0 0 24 24" fill="none"
-                stroke="rgba(212,168,67,0.3)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/>
-                <line x1="3" y1="6" x2="21" y2="6"/>
-                <path d="M16 10a4 4 0 0 1-8 0"/>
-              </svg>
-            </div>
-            <p className="cart-empty-text">Your cart is empty.</p>
-            <Link href="/shop" className="cart-continue-btn">
-              Browse Products
-            </Link>
-          </div>
-        </div>
+      <div className="shop-container" style={{ maxWidth: 640, margin: '0 auto', padding: '3rem 1rem', textAlign: 'center' }}>
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#d1d5db" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z" />
+          <line x1="3" y1="6" x2="21" y2="6" /><path d="M16 10a4 4 0 0 1-8 0" />
+        </svg>
+        <p style={{ fontWeight: 700, margin: '10px 0 6px' }}>Your cart is empty</p>
+        <p style={{ color: '#6b7280', fontSize: '.88rem', marginBottom: 16 }}>Browse the shop and add something you like.</p>
+        <Link href="/shop" style={{ color: '#2563eb', fontWeight: 700, textDecoration: 'none' }}>Browse products &rarr;</Link>
       </div>
     );
   }
 
-  // ── Cart ────────────────────────────────────────────────────────────────────
   return (
     <ErrorBoundary>
-      <div className="cart-page-wrapper">
-      <div className="cart-header">
-        <Link href="/shop" className="back-to-shop-btn">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
-            stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>
+      <div className="shop-container" style={{ maxWidth: 980, margin: '0 auto', padding: '1.25rem 1rem 4rem' }}>
+        <Link href="/shop" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: '#6b7280', fontSize: '.82rem', fontWeight: 600, textDecoration: 'none', marginBottom: 10 }}>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="19" y1="12" x2="5" y2="12" /><polyline points="12 19 5 12 12 5" />
           </svg>
-          Continue Shopping
+          Continue shopping
         </Link>
-        <span className="cart-divider">/</span>
-        <h1 className="cart-title">
-          Shopping Cart ({enrichedCart.length} item{enrichedCart.length !== 1 ? 's' : ''})
-        </h1>
-      </div>
 
-      <div className="cart-content">
-        {/* Items Section */}
-        <div className="cart-items-section">
-          {/* Header with Select All */}
-          <div className="cart-items-header">
-            <label className="cart-select-all">
-              <input
-                type="checkbox"
-                checked={selectedItems.size === enrichedCart.length && enrichedCart.length > 0}
-                onChange={toggleSelectAll}
-                className="cart-checkbox"
-              />
-              <span className="cart-checkbox-label">Select All ({enrichedCart.length})</span>
-            </label>
-            {selectedItems.size > 0 && (
-              <button className="cart-delete-selected" onClick={handleDeleteSelected}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <polyline points="3 6 5 6 21 6"/>
-                  <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
-                  <path d="M10 11v6"/><path d="M14 11v6"/>
-                </svg>
-                Delete ({selectedItems.size})
-              </button>
-            )}
+        <h1 style={{ fontSize: '1.4rem', fontWeight: 800, margin: 0 }}>Shopping cart</h1>
+        <p style={{ color: '#6b7280', fontSize: '.86rem', margin: '4px 0 18px' }}>
+          {enrichedCart.length} item{enrichedCart.length !== 1 ? 's' : ''} saved. Tick what you want to check out now.
+        </p>
+
+        {error && (
+          <div style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#b91c1c', padding: '10px 12px', borderRadius: 10, fontSize: '.84rem', marginBottom: 14 }}>
+            {error}
           </div>
+        )}
 
-          {/* Items List - Shopee Style */}
-          <div className="cart-items-list">
-            {enrichedCart.map((item, idx) => {
-              const isRemoving = removingId === item.lineId;
-              const isSelected = selectedItems.has(idx);
+        <div className="cart-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,340px)', gap: 16, alignItems: 'start' }}>
+          {/* LEFT - items */}
+          <section style={{ ...CARD, padding: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '12px 14px', borderBottom: '1px solid #e5e7eb' }}>
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={selectedItems.size === enrichedCart.length && enrichedCart.length > 0}
+                  onChange={toggleSelectAll}
+                  style={{ width: 16, height: 16, accentColor: '#111827', cursor: 'pointer' }}
+                />
+                <span style={{ ...MICRO_LABEL, display: 'inline' }}>Select all ({enrichedCart.length})</span>
+              </label>
+              {selectedItems.size > 0 && (
+                <button
+                  onClick={handleDeleteSelected}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', color: '#b91c1c', fontSize: '.78rem', fontWeight: 700, cursor: 'pointer', padding: 0 }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                  </svg>
+                  Remove ({selectedItems.size})
+                </button>
+              )}
+            </div>
 
-              return (
-                <div key={idx} className={`cart-item-card ${isRemoving ? 'removing' : ''} ${isSelected ? 'selected' : ''}`}>
-                  {/* Checkbox */}
-                  <div className="cart-item-checkbox">
+            <div style={{ padding: '0 14px' }}>
+              {enrichedCart.map((item, idx) => {
+                const isRemoving = removingId === item.lineId;
+                const isSelected = selectedItems.has(idx);
+                const choice = designChoices[item.lineId];
+                const mode = choice?.mode ?? item.designMode;
+                const isUpload = mode === 'upload';
+                const isReq = mode === 'request';
+                const hasDesign = !!item.designUrl;
+                const settled = hasDesign || isUpload || isReq;
+                const designHref = item.designUrl ?? choice?.url ?? null;
+                const fileCount = item.designFiles?.length || (designHref ? 1 : 0);
+
+                return (
+                  <div
+                    key={item.lineId ?? idx}
+                    style={{
+                      display: 'flex', gap: 12, padding: '14px 0',
+                      borderTop: idx > 0 ? '1px solid #f3f4f6' : 'none',
+                      opacity: isRemoving ? 0 : 1,
+                      transform: isRemoving ? 'translateX(-16px)' : 'none',
+                      transition: 'opacity .25s, transform .25s',
+                    }}
+                  >
                     <input
                       type="checkbox"
                       checked={isSelected}
                       onChange={() => toggleSelectItem(idx)}
-                      className="cart-checkbox"
+                      style={{ width: 16, height: 16, accentColor: '#111827', cursor: 'pointer', marginTop: 4, flexShrink: 0 }}
                     />
-                  </div>
 
-                  {/* Thumbnail */}
-                  <Link href={`/shop/products/${item.product._id}`} className="cart-item-thumbnail">
-                    {item.product.images?.[0]
-                      ? <>
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={item.product.images[0]} alt="" />
-                        </>
-                      : <div className="cart-item-no-image">
-                          <svg width="24" height="24" viewBox="0 0 24 24" fill="none"
-                            stroke="currentColor" strokeWidth="1.5">
-                            <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/>
-                            <polyline points="21 15 16 10 5 21"/>
-                          </svg>
-                        </div>
-                    }
-                  </Link>
+                    <Link
+                      href={`/shop/products/${item.product._id}`}
+                      style={{ width: 72, height: 72, borderRadius: 10, overflow: 'hidden', background: '#f3f4f6', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                    >
+                      {item.product.images?.[0]
+                        /* eslint-disable-next-line @next/next/no-img-element */
+                        ? <img src={item.product.images[0]} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        : <span style={{ color: '#9ca3af', fontSize: '.6rem' }}>No image</span>}
+                    </Link>
 
-                  {/* Info */}
-                  <div className="cart-item-info">
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                      <Link href={`/shop/products/${item.product._id}`} className="cart-item-name">
-                        {item.product.name}
-                      </Link>
-                      {item.requiresDownpayment && (
-                        <span style={{ display: 'inline-flex', alignItems: 'center', background: '#D4A843', color: '#000', borderRadius: '999px', padding: '1px 7px', fontSize: '0.55rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', flexShrink: 0 }}>
-                          Req DP
-                        </span>
-                      )}
-                    </div>
-                    {item.variantName && (
-                      <div className="cart-item-variant">
-                        <span className="cart-variant-label">Variant:</span> {item.variantName}
-                      </div>
-                    )}
-                    {/* Design widget for custom products */}
-                    {item.isCustom && (() => {
-                      const choice = designChoices[item.lineId];
-                      const hasExistingDesign = !!item.designUrl;
-                      if (hasExistingDesign) return (
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem', marginTop: '0.25rem', background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: '4px', padding: '0.15rem 0.5rem', fontSize: '0.7rem', fontWeight: 700, color: 'var(--green)' }}>
-                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-                          Design attached
-                        </div>
-                      );
-                      const isUpload = choice?.mode === 'upload';
-                      const isReq = choice?.mode === 'request';
-                      const uploading = choice?.uploading;
-                      const badge = (active) => ({
-                        display: 'inline-flex', alignItems: 'center', gap: '4px',
-                        padding: '3px 10px', borderRadius: '999px',
-                        background: active ? '#D4A843' : 'rgba(212,168,67,0.08)',
-                        border: `1px solid ${active ? '#D4A843' : 'rgba(212,168,67,0.4)'}`,
-                        color: active ? '#000' : 'var(--gold)',
-                        fontSize: '0.65rem', fontWeight: 700, cursor: 'pointer',
-                        textTransform: 'uppercase', letterSpacing: '0.04em', fontFamily: 'inherit',
-                      });
-                      return (
-                        <div style={{ marginTop: '7px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                          {!isUpload && !isReq && (
-                            <div style={{ fontSize: '0.68rem', color: '#ef4444', fontWeight: 600 }}>Design required before checkout</div>
-                          )}
-                          {uploading && (
-                            <div style={{ fontSize: '0.68rem', color: 'var(--gray)' }}>Uploading...</div>
-                          )}
-                          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                            <label style={badge(isUpload)}>
-                              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                              Upload Design
-                              <input type="file" accept=".jpg,.jpeg,.png,.webp,.pdf" style={{ display: 'none' }} onChange={e => handleDesignFileSelect(item.lineId, e.target.files?.[0])} />
-                            </label>
-                            {item.designFee > 0 && (
-                              <button type="button" onClick={() => handleRequestDesign(item.lineId)} style={badge(isReq)}>
-                                Req Design
-                              </button>
+                    <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 7 }}>
+                      {/* Name and line total share a row, so the eye pairs them directly. */}
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <Link
+                            href={`/shop/products/${item.product._id}`}
+                            style={{ fontWeight: 700, fontSize: '.9rem', lineHeight: 1.35, color: '#111827', textDecoration: 'none' }}
+                          >
+                            {item.product.name}
+                            {item.variantName && (
+                              <span style={{ fontWeight: 500, color: '#6b7280' }}> - {item.variantName}</span>
+                            )}
+                          </Link>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap', marginTop: 3 }}>
+                            <span style={{ color: '#6b7280', fontSize: '.76rem' }}>
+                              {item.qty} &times; {formatPeso(item.unitPrice)}
+                            </span>
+                            {item.requiresDownpayment && (
+                              <span style={{ background: '#fef3c7', color: '#92400e', border: '1px solid #fde68a', borderRadius: 999, padding: '1px 7px', fontSize: '.62rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.04em' }}>
+                                Downpayment
+                              </span>
                             )}
                           </div>
                         </div>
-                      );
-                    })()}
+                        <div style={{ fontWeight: 800, fontSize: '.92rem', whiteSpace: 'nowrap' }}>
+                          {formatPeso(item.lineTotal)}
+                        </div>
+                      </div>
 
-                    <div className="cart-item-price">
-                      ₱{Number(item.unitPrice).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / pc
+                      {/* Artwork state gets the full row width - squeezed into the name column it
+                          wrapped onto three lines and read as an error. */}
+                      {item.isCustom && (
+                        <div style={{
+                          display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+                          padding: '7px 9px', borderRadius: 9,
+                          background: settled ? '#f0fdf4' : '#fffbeb',
+                          border: `1px solid ${settled ? '#bbf7d0' : '#fde68a'}`,
+                        }}>
+                          {designHref ? (
+                            /* The customer needs to see WHAT they attached, not just that they did. */
+                            <a
+                              href={designHref} target="_blank" rel="noopener noreferrer"
+                              style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, marginRight: 'auto', textDecoration: 'none' }}
+                            >
+                              <span style={{ width: 34, height: 34, borderRadius: 7, overflow: 'hidden', background: '#fff', border: '1px solid #bbf7d0', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                {IMAGE_RE.test(designHref)
+                                  /* eslint-disable-next-line @next/next/no-img-element */
+                                  ? <img src={designHref} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                  : <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#166534" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>}
+                              </span>
+                              <span style={{ minWidth: 0 }}>
+                                <span style={{ display: 'block', fontSize: '.76rem', fontWeight: 700, color: '#166534' }}>
+                                  {fileCount} file{fileCount === 1 ? '' : 's'} attached
+                                </span>
+                                <span style={{ display: 'block', fontSize: '.7rem', color: '#166534', opacity: .8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                  {fileCount > 1
+                                    ? item.designFiles.map(f => f.name || fileNameFromUrl(f.url)).join(', ')
+                                    : (item.designName || fileNameFromUrl(designHref))}
+                                </span>
+                              </span>
+                            </a>
+                          ) : (
+                            <span style={{ fontSize: '.76rem', fontWeight: 700, color: settled ? '#166534' : '#92400e', marginRight: 'auto' }}>
+                              {choice?.uploading ? 'Uploading your design...'
+                                : isReq ? 'We will design this for you'
+                                : 'This item still needs artwork'}
+                            </span>
+                          )}
+
+                          {!hasDesign && (
+                            <>
+                              <label style={{
+                                display: 'inline-flex', alignItems: 'center', gap: 5, cursor: 'pointer',
+                                padding: '5px 11px', borderRadius: 999, fontSize: '.74rem', fontWeight: 700,
+                                background: isUpload ? '#111827' : '#fff',
+                                color: isUpload ? '#fff' : '#111827',
+                                border: `1px solid ${isUpload ? '#111827' : '#d1d5db'}`,
+                              }}>
+                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                  <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" />
+                                </svg>
+                                {isUpload ? 'Replace file' : 'Upload file'}
+                                <input type="file" accept=".jpg,.jpeg,.png,.webp,.pdf,.ai,.psd,.svg" style={{ display: 'none' }} onChange={e => handleDesignFileSelect(item.lineId, e.target.files?.[0])} />
+                              </label>
+                              {item.designFee > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleRequestDesign(item.lineId, mode)}
+                                  style={{
+                                    padding: '5px 11px', borderRadius: 999, fontSize: '.74rem', fontWeight: 700, cursor: 'pointer',
+                                    background: isReq ? '#111827' : '#fff',
+                                    color: isReq ? '#fff' : '#111827',
+                                    border: `1px solid ${isReq ? '#111827' : '#d1d5db'}`,
+                                  }}
+                                >
+                                  Request design
+                                </button>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      )}
+
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', border: '1px solid #d1d5db', borderRadius: 9, overflow: 'hidden', background: '#fff' }}>
+                          <button
+                            onClick={() => updateQty(item.lineId, item.qty - 1)}
+                            disabled={item.qty <= (item.minOrderQty || 1)}
+                            style={{ width: 30, height: 30, border: 'none', background: 'transparent', fontSize: '1rem', fontWeight: 700, cursor: item.qty <= (item.minOrderQty || 1) ? 'not-allowed' : 'pointer', opacity: item.qty <= (item.minOrderQty || 1) ? 0.35 : 1 }}
+                          >
+                            &minus;
+                          </button>
+                          <span style={{ minWidth: 40, textAlign: 'center', fontSize: '.85rem', fontWeight: 700, borderLeft: '1px solid #e5e7eb', borderRight: '1px solid #e5e7eb', lineHeight: '30px' }}>
+                            {item.qty}
+                          </span>
+                          <button
+                            onClick={() => updateQty(item.lineId, Math.min(item.qty + 1, item.stockCap))}
+                            disabled={item.qty >= item.stockCap}
+                            style={{ width: 30, height: 30, border: 'none', background: 'transparent', fontSize: '1rem', fontWeight: 700, cursor: item.qty >= item.stockCap ? 'not-allowed' : 'pointer', opacity: item.qty >= item.stockCap ? 0.35 : 1 }}
+                          >
+                            +
+                          </button>
+                        </div>
+
+                        <button
+                          onClick={() => handleRemoveItem(item.lineId, idx)}
+                          title="Remove item"
+                          style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', color: '#9ca3af', fontSize: '.76rem', fontWeight: 600, cursor: 'pointer', padding: 0 }}
+                        >
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                          </svg>
+                          Remove
+                        </button>
+                      </div>
                     </div>
                   </div>
+                );
+              })}
+            </div>
+          </section>
 
-                  {/* Qty Controls */}
-                  <div className="cart-item-qty">
-                    <div className="cart-qty-stepper">
-                      <button
-                        onClick={() => updateQty(item.lineId, item.qty - 1)}
-                        className="cart-qty-btn"
-                        disabled={item.qty <= (item.minOrderQty || 1)}
-                      >
-                        −
-                      </button>
-                      <span className="cart-qty-input" style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        pointerEvents: 'none',
-                      }}>
-                        {item.qty}
-                      </span>
-                      <button
-                        onClick={() => updateQty(item.lineId, Math.min(item.qty + 1, item.stockCap))}
-                        className="cart-qty-btn"
-                        disabled={item.qty >= item.stockCap}
-                      >
-                        +
-                      </button>
-                    </div>
-                  </div>
+          {/* RIGHT - order summary */}
+          <aside style={{ ...CARD, position: 'sticky', top: 16 }}>
+            <span style={{ ...MICRO_LABEL, marginBottom: 10 }}>Order summary</span>
 
-                  {/* Line Total */}
-                  <div className="cart-item-total">
-                    <div className="cart-total-amount">₱{Number(item.lineTotal).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-                  </div>
-
-                  {/* Remove Button */}
-                  <button
-                    onClick={() => handleRemoveItem(item.lineId, idx)}
-                    className="cart-remove-btn"
-                    title="Remove item"
-                  >
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
-                      stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <polyline points="3 6 5 6 21 6"/>
-                      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
-                      <path d="M10 11v6"/><path d="M14 11v6"/>
-                    </svg>
-                  </button>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '.8rem' }}>
+                <span style={{ color: '#6b7280' }}>Selected items</span>
+                <span>{selectedCartItems.length} of {enrichedCart.length}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '.8rem' }}>
+                <span style={{ color: '#6b7280' }}>Subtotal</span>
+                <span>{formatPeso(selectedBaseTotal)}</span>
+              </div>
+              {selectedDesignFee > 0 && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: '.8rem' }}>
+                  <span style={{ color: '#6b7280' }}>
+                    Design fee
+                    <span style={{ display: 'block', fontSize: '.7rem', opacity: .8 }}>
+                      Charged once, however many products the artwork goes on
+                    </span>
+                  </span>
+                  <span style={{ whiteSpace: 'nowrap' }}>{formatPeso(selectedDesignFee)}</span>
                 </div>
-              );
-            })}
-          </div>
-
-          {/* removed duplicate Continue Shopping — Back to Shop in header serves this purpose */}
-        </div>
-
-        {/* Order Summary Panel */}
-        <div className="cart-summary-panel">
-          <div className="cart-summary-header">
-            <h2>Order Summary</h2>
-          </div>
-
-          <div className="cart-summary-body">
-            {/* Selected Items Count */}
-            <div className="cart-summary-row">
-              <span>Selected Items</span>
-              <span>{selectedCartItems.length} of {enrichedCart.length}</span>
+              )}
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: '.8rem' }}>
+                <span style={{ color: '#6b7280' }}>Shipping</span>
+                <span style={{ color: '#6b7280', textAlign: 'right' }}>Calculated at checkout</span>
+              </div>
             </div>
 
-            {/* Subtotal */}
-            <div className="cart-summary-row">
-              <span>Subtotal</span>
-              <span>₱{Number(selectedBaseTotal).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #e5e7eb', marginTop: 10, paddingTop: 10 }}>
+              <span style={{ fontWeight: 800, fontSize: '.9rem' }}>Total</span>
+              <span style={{ fontWeight: 900, fontSize: '1.05rem' }}>{formatPeso(selectedTotal)}</span>
             </div>
 
-            {/* Design fee */}
-            {selectedDesignFee > 0 && (
-              <div className="cart-summary-row">
-                <span style={{ color: 'var(--gold)' }}>Design fee</span>
-                <span style={{ color: 'var(--gold)' }}>₱{Number(selectedDesignFee).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+            {dpRequired && (
+              <div style={{ marginTop: 10, padding: '9px 11px', borderRadius: 10, background: '#f9fafb', border: '1px solid #e5e7eb', display: 'flex', flexDirection: 'column', gap: 5 }}>
+                <span style={{ fontSize: '.76rem', fontWeight: 800 }}>{dpPercent}% downpayment required</span>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '.8rem' }}>
+                  <span style={{ color: '#6b7280' }}>Due now</span>
+                  <span style={{ fontWeight: 700 }}>{formatPeso(dpAmountDue)}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '.78rem', color: '#6b7280' }}>
+                  <span>Balance on completion</span>
+                  <span>{formatPeso(dpRemaining)}</span>
+                </div>
+                <span style={{ fontSize: '.72rem', color: '#6b7280', lineHeight: 1.5, borderTop: '1px solid #e5e7eb', paddingTop: 6 }}>
+                  Your cart contains custom items, so production starts once the downpayment clears.
+                </span>
               </div>
             )}
 
-            {/* Shipping */}
-            <div className="cart-summary-row cart-summary-note">
-              <span>Shipping</span>
-              <span className="cart-shipping-note">Calculated after confirmation</span>
-            </div>
-
-            {/* Divider */}
-            <div className="cart-summary-divider" />
-
-            {dpRequired ? (
-              <>
-                <div className="cart-summary-total">
-                  <span>Total</span>
-                  <span className="cart-total-price">₱{Number(selectedTotal).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                </div>
-                <div style={{ marginTop: '10px', padding: '10px 12px', background: 'rgba(212,168,67,0.07)', border: '1px solid rgba(212,168,67,0.25)', borderRadius: '8px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--gold)' }}>{dpPercent}% Downpayment Required</div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
-                    <span style={{ color: 'var(--gray)' }}>Due now ({dpPercent}%)</span>
-                    <span style={{ color: 'var(--white)', fontWeight: 700 }}>₱{Number(dpAmountDue).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem' }}>
-                    <span style={{ color: 'var(--gray)' }}>Balance on completion</span>
-                    <span style={{ color: 'var(--gray)' }}>₱{Number(dpRemaining).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                  </div>
-                  <div style={{ fontSize: '0.67rem', color: 'rgba(212,168,67,0.6)', lineHeight: 1.4, borderTop: '1px solid rgba(212,168,67,0.15)', paddingTop: '6px' }}>
-                    Your cart contains custom items. The full order total requires a {dpPercent}% downpayment before production starts.
-                  </div>
-                </div>
-              </>
-            ) : (
-              <div className="cart-summary-total">
-                <span>Total</span>
-                <span className="cart-total-price">₱{Number(selectedTotal).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-              </div>
+            {/* A zero total next to a priced item reads as a bug rather than a prompt. */}
+            {selectedItems.size === 0 && (
+              <p style={{ marginTop: 10, marginBottom: 0, fontSize: '.76rem', color: '#6b7280', lineHeight: 1.5 }}>
+                Tick an item to include it - the total updates as you select.
+              </p>
             )}
 
-            {/* Order Notes */}
-            <div className="cart-notes-section">
-              <label className="cart-notes-label">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                  <polyline points="14 2 14 8 20 8"/>
-                </svg>
-                Order Notes (optional)
-              </label>
+            <div style={{ marginTop: 12 }}>
+              <label style={{ ...MICRO_LABEL, marginBottom: 6 }}>Order notes (optional)</label>
               <textarea
                 rows={3}
                 maxLength={500}
-                placeholder="e.g. design requests, color preferences, special instructions..."
+                placeholder="Colour preferences, deadlines, special instructions..."
                 value={notes}
                 onChange={e => setNotes(e.target.value.slice(0, 500))}
-                className="cart-notes-input"
+                style={{ width: '100%', padding: '9px 11px', border: '1px solid #d1d5db', borderRadius: 9, fontSize: '.84rem', fontFamily: 'inherit', resize: 'vertical', background: '#fff' }}
               />
-              <span style={{ fontSize: '0.7rem', color: 'var(--gray)', display: 'block', textAlign: 'right' }}>
-                {notes.length}/500
-              </span>
+              <span style={{ display: 'block', textAlign: 'right', fontSize: '.7rem', color: '#9ca3af' }}>{notes.length}/500</span>
             </div>
 
-            {/* Error Message */}
-            {error && (
-              <div className="cart-error-message">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-                </svg>
-                {error}
-              </div>
-            )}
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.78rem', color: 'var(--gray)', margin: '0 0 0.5rem' }}>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-                <path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/>
-                <circle cx="12" cy="10" r="3"/>
-              </svg>
-              <span>Delivery address is selected at checkout.</span>
-            </div>
-
-            {/* Place Order Button */}
             <button
               onClick={handlePlaceOrder}
               disabled={selectedItems.size === 0 || isCheckingOut}
-              className="cart-place-order-btn"
+              style={{
+                width: '100%', marginTop: 10, padding: '11px 12px', borderRadius: 10, border: 'none',
+                background: '#111827', color: '#fff', fontWeight: 800, fontSize: '.88rem',
+                cursor: (selectedItems.size === 0 || isCheckingOut) ? 'not-allowed' : 'pointer',
+                opacity: (selectedItems.size === 0 || isCheckingOut) ? 0.5 : 1,
+              }}
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/>
-                <line x1="3" y1="6" x2="21" y2="6"/>
-                <path d="M16 10a4 4 0 0 1-8 0"/>
-              </svg>
-              Check Out ({selectedItems.size})
+              {isCheckingOut ? 'Preparing checkout...' : `Check out (${selectedItems.size})`}
             </button>
 
-            {/* Disclaimer */}
-            <p className="cart-disclaimer">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
+            <p style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '10px 0 0', fontSize: '.74rem', color: '#6b7280' }}>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                <path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z" /><circle cx="12" cy="10" r="3" />
               </svg>
-              Payment will be arranged with the owner after confirmation.
+              Delivery address is chosen at checkout.
             </p>
-          </div>
+          </aside>
         </div>
-      </div>
 
-      {/* Login Required Modal */}
-      <LoginRequiredModal isOpen={showLoginModal} onClose={() => setShowLoginModal(false)} />
-    </div>
+        <LoginRequiredModal isOpen={showLoginModal} onClose={() => setShowLoginModal(false)} />
+
+        <style jsx>{`
+          @media (max-width: 820px) {
+            .cart-grid { grid-template-columns: 1fr !important; }
+          }
+        `}</style>
+      </div>
     </ErrorBoundary>
   );
 }

@@ -150,11 +150,12 @@ export async function uploadDesignFile(token, file) {
   }, 60000);
   const data = await res.json();
   if (!res.ok) throw new Error(data.message || 'Failed to upload design file');
-  return { url: data.url, publicId: data.public_id };
+  return { url: data.url, publicId: data.public_id, name: data.name ?? file?.name ?? null };
 }
 
 // Admin creates a quotation straight from the chat → confirmed OrderRequest + posts the View & Pay card.
-export async function createAdminQuotation(token, { recipientId, productName, qty, unitPrice, designFee, deliveryFee, downPayment, note }) {
+// `items` is a list so one quote can cover several products and be paid in a single transaction.
+export async function createAdminQuotation(token, { recipientId, items, designFee, deliveryFee, downPayment, expiresInDays, note, designUrl, designNotes }) {
   const res = await fetchWithTimeout(`${API_URL}/api/admin/quotations`, {
     method: 'POST',
     headers: {
@@ -164,13 +165,14 @@ export async function createAdminQuotation(token, { recipientId, productName, qt
     },
     body: JSON.stringify({
       recipientId,
-      productName,
-      qty,
-      unitPrice,
+      items,
       designFee: designFee || 0,
       deliveryFee: deliveryFee || 0,
       ...(downPayment ? { downPayment } : {}),
+      ...(expiresInDays ? { expiresInDays } : {}),
       note: note || '',
+      ...(designUrl ? { designUrl } : {}),
+      ...(designNotes ? { designNotes } : {}),
     }),
   }, 30000);
   const data = await res.json();

@@ -78,6 +78,24 @@ class CartController extends Controller
                 'items.*.isCustom' => 'nullable|boolean',
                 'items.*.designUrl' => 'nullable|string',
                 'items.*.designNotes' => 'nullable|string',
+                // Cloudinary renames the stored file, so the customer's own filename has to
+                // travel with the line or they only ever see a random string.
+                'items.*.designName' => 'nullable|string|max:255',
+                // The full set of artwork for this line. designUrl remains the first file.
+                'items.*.designFiles' => 'nullable|array|max:5',
+                'items.*.designFiles.*.url'  => 'required_with:items.*.designFiles|string|max:600',
+                'items.*.designFiles.*.name' => 'nullable|string|max:255',
+                // A customised line has to survive the round trip. Anything not listed
+                // here is stripped on save - which is why the cart forgot that a design
+                // had already been requested and demanded an upload, and why checkout
+                // forgot the item was made-to-order (no downpayment, COD still offered).
+                'items.*.designMode' => 'nullable|string|in:upload,request',
+                'items.*.designFee' => 'nullable|numeric|min:0|max:99999',
+                'items.*.requiresDownpayment' => 'nullable|boolean',
+                'items.*.downpaymentPercent' => 'nullable|numeric|min:0|max:100',
+                'items.*.allowCOD' => 'nullable|boolean',
+                'items.*.minOrderQty' => 'nullable|integer|min:1',
+                'items.*.priceTiers' => 'nullable|array',
                 'items.*.flashSaleId' => 'nullable|string',
             ]);
 
@@ -135,6 +153,24 @@ class CartController extends Controller
                 'items.*.isCustom' => 'nullable|boolean',
                 'items.*.designUrl' => 'nullable|string',
                 'items.*.designNotes' => 'nullable|string',
+                // Cloudinary renames the stored file, so the customer's own filename has to
+                // travel with the line or they only ever see a random string.
+                'items.*.designName' => 'nullable|string|max:255',
+                // The full set of artwork for this line. designUrl remains the first file.
+                'items.*.designFiles' => 'nullable|array|max:5',
+                'items.*.designFiles.*.url'  => 'required_with:items.*.designFiles|string|max:600',
+                'items.*.designFiles.*.name' => 'nullable|string|max:255',
+                // A customised line has to survive the round trip. Anything not listed
+                // here is stripped on save - which is why the cart forgot that a design
+                // had already been requested and demanded an upload, and why checkout
+                // forgot the item was made-to-order (no downpayment, COD still offered).
+                'items.*.designMode' => 'nullable|string|in:upload,request',
+                'items.*.designFee' => 'nullable|numeric|min:0|max:99999',
+                'items.*.requiresDownpayment' => 'nullable|boolean',
+                'items.*.downpaymentPercent' => 'nullable|numeric|min:0|max:100',
+                'items.*.allowCOD' => 'nullable|boolean',
+                'items.*.minOrderQty' => 'nullable|integer|min:1',
+                'items.*.priceTiers' => 'nullable|array',
                 'items.*.flashSaleId' => 'nullable|string',
             ]);
 

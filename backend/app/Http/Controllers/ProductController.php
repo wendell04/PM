@@ -427,6 +427,150 @@ class ProductController extends Controller
      * GET /api/admin/products/available-inventory
      * Returns inventory items NOT yet linked to products
      */
+    /**
+     * GET /api/admin/products/{id}/bom-components?variantId=…
+     *
+     * Resolved BOM for one product line, enriched with live stock and cost, so a
+     * quotation can pre-fill the materials it will actually consume. Resolution goes
+     * through Product::resolveBom() — the same path the payment flow deducts with — so
+     * what the owner is quoted on cannot drift from what gets taken out of stock.
+     */
+    public function bomComponents(Request $request, $id)
+    {
+        try {
+            if (!$this->hasPermission($request, 'products')) {
+                return $this->unauthorizedResponse();
+            }
+
+            $product = Product::find($id);
+            if (!$product) {
+                return $this->errorResponse('Product not found.', 404);
+            }
+
+            // Every variant is returned with its own materials and buildable count, so the
+            // quote can show the whole picture and switch variants without another round trip.
+            $invCache      = [];
+            $variants      = [];
+            $variantPrices = is_array($product->variantPrices ?? null) ? $product->variantPrices : [];
+            $basePrice     = (float) ($product->flatPrice ?: $product->price ?: 0);
+
+            // Whatever the owner already configured for this variant — the quote should
+            // start from it rather than making them retype a price they've already set.
+            $priceOf = function ($vid) use ($variantPrices, $basePrice) {
+                return (float) ($variantPrices[$vid] ?? $basePrice);
+            };
+
+            if (!empty($product->bomGroupName)) {
+                foreach (\App\Models\BillOfMaterial::where('productGroupName', $product->bomGroupName)->get() as $b) {
+                    $vid = (string) $b->_id;
+                    $variants[] = array_merge(
+                        ['variantId' => $vid, 'name' => $b->variantName ?: ($b->sku ?: 'Variant'), 'price' => $priceOf($vid)],
+                        $this->describeBom($b, $invCache),
+                    );
+                }
+            } elseif (!empty($product->combinations) && is_array($product->combinations)) {
+                foreach ($product->combinations as $combo) {
+                    $vid = (string) ($combo['id'] ?? $combo['_id'] ?? '');
+                    if ($vid === '' || empty($combo['bomId'])) continue;
+                    $b = \App\Models\BillOfMaterial::find($combo['bomId']);
+                    if (!$b) continue;
+                    $name = $combo['name'] ?? (implode(' / ', array_values($combo['options'] ?? [])) ?: 'Variant');
+                    $variants[] = array_merge(
+                        [
+                            'variantId' => $vid,
+                            'name'      => $name,
+                            'price'     => (float) ($combo['price'] ?? $priceOf($vid)),
+                        ],
+                        $this->describeBom($b, $invCache),
+                    );
+                }
+            }
+
+            // A standalone product is just a product with exactly one BOM. Returning it as
+            // a single "variant" keeps the quote UI to ONE shape — a product with one BOM
+            // and a product with three should not look like different features.
+            $single = $variants ? null : $product->resolveBom(null);
+            if ($single) {
+                $variants[] = array_merge(
+                    ['variantId' => self::STANDALONE_VARIANT, 'name' => 'Standalone', 'price' => $basePrice],
+                    $this->describeBom($single, $invCache),
+                );
+            }
+
+            return $this->successResponse('BOM components fetched successfully.', [
+                'hasBom'     => (bool) $variants,
+                'variants'   => $variants,
+                // Kept for a service with no BOM at all — nothing to pre-fill, the owner
+                // searches Master Data by hand.
+                'components' => [],
+                // Quantity breaks the owner already set — the quote applies them as the
+                // quantity changes instead of making them remember the price list.
+                'priceTiers' => is_array($product->priceTiers ?? null) ? $product->priceTiers : [],
+                'basePrice'  => $basePrice,
+            ]);
+        } catch (\Throwable $e) {
+            return $this->errorResponse('Failed to load BOM components.', 500);
+        }
+    }
+
+    /** Marks the implicit single "variant" of a standalone product. Not a real variant id. */
+    private const STANDALONE_VARIANT = '__standalone__';
+
+    /**
+     * One BOM described for the quote UI: each component with live stock, lead time and
+     * best-known cost, plus how many units the current stock could build.
+     *
+     * `canBuild` is null when nothing constrains it — every component is bought per order,
+     * so capacity is a question of lead time, not of stock on hand.
+     */
+    private function describeBom($bom, array &$invCache = []): array
+    {
+        $components = [];
+        $canBuild   = PHP_INT_MAX;
+
+        foreach ($bom->components ?? [] as $component) {
+            // Variants of the same product share most of their materials, so cache the
+            // lookups — a 3-variant mug went from 9 round trips to 4, which matters a lot
+            // when the Atlas connection is slow.
+            $invId = (string) ($component['inventoryId'] ?? '');
+            if ($invId === '') continue;
+            if (!array_key_exists($invId, $invCache)) {
+                $invCache[$invId] = \App\Models\Inventory::find($invId);
+            }
+            $inv = $invCache[$invId];
+            if (!$inv) continue;
+
+            $qtyPerUnit = (float) ($component['qty'] ?? 0);
+            $onDemand   = (bool) ($inv->isOnDemand ?? false);
+            $available  = max(0, (int) ($inv->stockQty ?? 0) - (int) ($inv->reservedQty ?? 0));
+
+            if (!$onDemand && $qtyPerUnit > 0) {
+                $canBuild = min($canBuild, (int) floor($available / $qtyPerUnit));
+            }
+
+            $components[] = [
+                'inventoryId'  => (string) $inv->_id,
+                'name'         => $inv->name,
+                'sku'          => $inv->sku,
+                'uom'          => $inv->uom,
+                'category'     => $inv->category,
+                'qtyPerUnit'   => $qtyPerUnit,
+                'stockQty'     => (int) ($inv->stockQty ?? 0),
+                'reservedQty'  => (int) ($inv->reservedQty ?? 0),
+                'isOnDemand'   => $onDemand,
+                'leadTimeDays' => (int) ($inv->leadTimeDays ?? 0),
+                // What we last paid, else the running average, else the expected cost.
+                // Zero here means any profit shown would be fiction.
+                'unitCost'     => (float) ($inv->lastUnitCost ?: $inv->averageCost ?: $inv->baseCost ?: 0),
+            ];
+        }
+
+        return [
+            'components' => $components,
+            'canBuild'   => $canBuild === PHP_INT_MAX ? null : $canBuild,
+        ];
+    }
+
     public function availableInventory(Request $request)
     {
         try {
@@ -484,6 +628,7 @@ class ProductController extends Controller
                 'description'       => 'nullable|string',
                 'priceType'         => 'required|in:fixed,tiered,inquiry',
                 'price'             => 'nullable|numeric|min:0',
+                'cost'              => 'nullable|numeric|min:0',
                 'flatPrice'         => 'nullable|numeric|min:0',
                 'priceTiers'        => 'nullable|array',
                 'priceTiers.*.id'   => 'required',
@@ -512,6 +657,12 @@ class ProductController extends Controller
                 'isMadeToOrder'       => 'nullable|boolean',
                 'minOrderQty'         => 'nullable|integer|min:1',
                 'designFee'           => 'nullable|numeric|min:0',
+                // Print-ready templates the customer downloads before drawing anything -
+                // a mug is curved, so guessing where the handle falls is how artwork gets
+                // rejected. [{label, url}]
+                'designTemplates'     => 'nullable|array|max:8',
+                'designTemplates.*.label' => 'required_with:designTemplates|string|max:120',
+                'designTemplates.*.url'   => 'required_with:designTemplates|string|max:600',
                 'variantBackorder'    => 'nullable|array',
                 'requiresDownpayment' => 'nullable|boolean',
                 'downpaymentPercent'  => 'nullable|integer|min:1|max:100',
@@ -643,6 +794,7 @@ class ProductController extends Controller
                 'description'       => 'nullable|string',
                 'priceType'         => 'sometimes|required|in:fixed,tiered,inquiry',
                 'price'             => 'nullable|numeric|min:0',
+                'cost'              => 'nullable|numeric|min:0',
                 'flatPrice'         => 'nullable|numeric|min:0',
                 'priceTiers'        => 'nullable|array',
                 'priceTiers.*.id'   => 'required',
@@ -671,6 +823,12 @@ class ProductController extends Controller
                 'isMadeToOrder'       => 'nullable|boolean',
                 'minOrderQty'         => 'nullable|integer|min:1',
                 'designFee'           => 'nullable|numeric|min:0',
+                // Print-ready templates the customer downloads before drawing anything -
+                // a mug is curved, so guessing where the handle falls is how artwork gets
+                // rejected. [{label, url}]
+                'designTemplates'     => 'nullable|array|max:8',
+                'designTemplates.*.label' => 'required_with:designTemplates|string|max:120',
+                'designTemplates.*.url'   => 'required_with:designTemplates|string|max:600',
                 'variantBackorder'    => 'nullable|array',
                 'requiresDownpayment' => 'nullable|boolean',
                 'downpaymentPercent'  => 'nullable|integer|min:1|max:100',

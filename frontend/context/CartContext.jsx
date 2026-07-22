@@ -99,6 +99,15 @@ export function CartProvider({ children }) {
     setIsCartLoading(true);
     try {
       const resolvedQty = Math.max(1, parseInt(qty) || 1);
+      // The chosen variant's own photo, when it has one. Resolved here rather than at each
+      // call site so every entry point into the cart shows the variant the customer picked
+      // instead of the generic product shot.
+      const variantImage = variantId != null
+        ? (product.variantImageUrls?.[variantId]
+            ?? product.variantImageUrls?.[String(variantId)]
+            ?? product.combinations?.find(c => String(c.id) === String(variantId))?.imageUrl
+            ?? null)
+        : null;
       const newItem = {
         lineId: `line_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
         productId: product._id || product.id,
@@ -109,14 +118,21 @@ export function CartProvider({ children }) {
         unitPrice: product.flatPrice || product.price || 0,
         lineTotal: (product.flatPrice || product.price || 0) * resolvedQty,
         ...(product.priceTiers?.length ? { priceTiers: product.priceTiers } : {}),
-        image: product.thumbnail || product.images?.[0] || null,
+        image: variantImage || product.thumbnail || product.images?.[0] || null,
         isCustom: product.isCustom ?? false,
         allowCOD: product.allowCOD ?? true,
         ...(product.designFee != null ? { designFee: product.designFee } : {}),
         ...(product.minOrderQty != null ? { minOrderQty: product.minOrderQty } : {}),
         ...(product.requiresDownpayment ? { requiresDownpayment: true, downpaymentPercent: product.downpaymentPercent ?? 50 } : {}),
+        // A customised line carries its own artwork - this is what lets several customised
+        // products share one cart, one delivery fee and one checkout.
         ...(designData?.url ? { designUrl: designData.url } : {}),
+        ...(designData?.name ? { designName: designData.name } : {}),
+        // designUrl stays the first file so nothing downstream had to change; designFiles
+        // carries the whole set for lines that need more than one.
+        ...(designData?.files?.length ? { designFiles: designData.files } : {}),
         ...(designData?.notes ? { designNotes: designData.notes } : {}),
+        ...(designData?.mode ? { designMode: designData.mode } : {}),
         ...(flashSaleId != null ? { flashSaleId: String(flashSaleId) } : {}),
       };
 

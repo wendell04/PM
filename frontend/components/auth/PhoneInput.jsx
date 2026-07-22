@@ -66,7 +66,11 @@ export default function PhoneInput({ value = '', onChange, error, defaultCountry
   };
 
   const handleNumber = (raw) => {
-    const digits = raw.replace(/\D/g, '');
+    // Cap to the ITU E.164 maximum (15 digits total incl. the country code), so no country's
+    // field can accept an absurd length. Per-country exact validity is still enforced by
+    // isValidPhone on submit.
+    const maxNational = Math.max(4, 15 - getCountryCallingCode(country).length);
+    const digits = raw.replace(/\D/g, '').slice(0, maxNational);
     // Format as the user types, using the selected country's own rules.
     const pretty = new AsYouType(country).input(digits);
     setNational(pretty);

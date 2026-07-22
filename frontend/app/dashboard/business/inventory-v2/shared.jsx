@@ -140,9 +140,13 @@ export function Note({ type = 'warn', children }) {
 }
 
 // ── CustomSelect — styled dropdown, max 8 visible rows then scroll ────────────
-export function CustomSelect({ value, onChange, options = [], placeholder = 'Select…', style, error, disabled, emptyLabel }) {
+// `searchable` adds a type-to-filter box at the top of the list (for long option
+// lists like PSGC barangays); it is opt-in so existing short-list usages are unchanged.
+export function CustomSelect({ value, onChange, options = [], placeholder = 'Select…', style, error, disabled, emptyLabel, searchable = false }) {
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
   const ref = useRef(null);
+  const searchRef = useRef(null);
 
   useEffect(() => {
     if (!open) return;
@@ -151,9 +155,14 @@ export function CustomSelect({ value, onChange, options = [], placeholder = 'Sel
     return () => document.removeEventListener('mousedown', h);
   }, [open]);
 
+  useEffect(() => { if (!open) setQuery(''); }, [open]);
+  useEffect(() => { if (open && searchable) { const t = setTimeout(() => searchRef.current?.focus(), 0); return () => clearTimeout(t); } }, [open, searchable]);
+
   const normalized = options.map(o => typeof o === 'string' ? { value: o, label: o } : o);
   const selected   = normalized.find(o => String(o.value) === String(value ?? ''));
   const hasValue   = value !== '' && value !== null && value !== undefined;
+  const q = query.trim().toLowerCase();
+  const visible = (searchable && q) ? normalized.filter(o => String(o.label).toLowerCase().includes(q)) : normalized;
 
   return (
     <div ref={ref} style={{ position: 'relative', ...(style ?? {}) }}>
@@ -186,14 +195,22 @@ export function CustomSelect({ value, onChange, options = [], placeholder = 'Sel
           boxShadow: '0 8px 24px rgba(0,0,0,0.25)',
           maxHeight: '288px', overflowY: 'auto',
         }}>
-          {normalized.map((o, i) => {
+          {searchable && (
+            <div style={{ position: 'sticky', top: 0, zIndex: 1, background: 'var(--dark)', padding: '8px', borderBottom: '1px solid var(--border)' }}>
+              <input ref={searchRef} type="text" value={query} onChange={e => setQuery(e.target.value)}
+                onClick={e => e.stopPropagation()} onKeyDown={e => { if (e.key === 'Enter') e.preventDefault(); }} placeholder="Search…"
+                style={{ width: '100%', background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '6px',
+                  padding: '6px 9px', fontSize: '13px', color: 'var(--white)', outline: 'none', boxSizing: 'border-box' }} />
+            </div>
+          )}
+          {visible.map((o, i) => {
             const isSel = String(o.value) === String(value ?? '');
             return (
               <button key={String(o.value ?? i)} type="button"
                 onClick={() => { onChange(o.value); setOpen(false); }}
                 style={{
                   width: '100%', textAlign: 'left', background: isSel ? 'var(--gold-subtle)' : 'none',
-                  border: 'none', borderBottom: i < normalized.length - 1 ? '1px solid var(--border)' : 'none',
+                  border: 'none', borderBottom: i < visible.length - 1 ? '1px solid var(--border)' : 'none',
                   padding: '9px 34px 9px 12px', fontSize: '13px',
                   color: isSel ? 'var(--gold)' : 'var(--gray-light)',
                   fontWeight: isSel ? 600 : 400, cursor: 'pointer', position: 'relative',
@@ -210,9 +227,9 @@ export function CustomSelect({ value, onChange, options = [], placeholder = 'Sel
               </button>
             );
           })}
-          {normalized.length === 0 && (
+          {visible.length === 0 && (
             <div style={{ padding: '12px 14px', fontSize: '12px', color: '#9ca3af', textAlign: 'center', lineHeight: 1.5 }}>
-              {emptyLabel || 'No options'}
+              {q ? 'No matches' : (emptyLabel || 'No options')}
             </div>
           )}
         </div>
@@ -245,11 +262,14 @@ export function StatusBadge({ status, label }) {
 }
 
 // ── Modal ─────────────────────────────────────────────────────────────────────
-export function Modal({ open, onClose, title, width = 520, children, footer }) {
+// Backdrop click does NOT close by default — these modals hold form input (quotation,
+// stock-in, etc.) and an accidental backdrop click would wipe everything typed. Only the
+// X button and footer buttons close. Pass closeOnBackdrop for throwaway/read-only dialogs.
+export function Modal({ open, onClose, title, width = 520, children, footer, closeOnBackdrop = false }) {
   if (!open) return null;
   return (
     <div
-      onClick={onClose}
+      onClick={closeOnBackdrop ? onClose : undefined}
       style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.35)', zIndex:1000, display:'flex', alignItems:'center', justifyContent:'center', padding:'16px' }}
     >
       <div
@@ -261,8 +281,9 @@ export function Modal({ open, onClose, title, width = 520, children, footer }) {
           <span style={{ fontWeight:700, fontSize:'16px', color:'var(--white)' }}>{title}</span>
           <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:'var(--gray)', padding:'4px', borderRadius:'5px', display:'flex' }}>{ICONS.x}</button>
         </div>
-        {/* body */}
-        <div style={{ overflowY:'auto', flex:1, padding:'18px 20px' }}>{children}</div>
+        {/* body — overflowX hidden so one long label can never turn the whole modal
+            into a sideways scroller; content is expected to ellipsis instead. */}
+        <div style={{ overflowY:'auto', overflowX:'hidden', flex:1, padding:'18px 20px' }}>{children}</div>
         {/* footer */}
         {footer && (
           <div style={{ padding:'14px 20px', borderTop:'1px solid var(--border)', display:'flex', justifyContent:'flex-end', gap:'8px', flexShrink:0 }}>

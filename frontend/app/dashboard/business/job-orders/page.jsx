@@ -137,10 +137,6 @@ function JobOrderForm({ initial = EMPTY_FORM, isEdit = false, orders = [], order
           <input style={errors.targetCompletion ? S.inputErr : S.input} type="date" value={form.targetCompletion} onChange={e => set('targetCompletion', e.target.value)} disabled={isSubmitting} />
           {errors.targetCompletion && <span style={S.errText}>{errors.targetCompletion}</span>}
         </div>
-        <div>
-          <label style={S.label}>Assigned to</label>
-          <input style={S.input} value={form.assignedTo} onChange={e => set('assignedTo', e.target.value)} placeholder="Staff name" disabled={isSubmitting} />
-        </div>
       </div>
 
       <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '13px', fontWeight: 600, color: 'var(--white)', cursor: 'pointer' }}>
@@ -332,8 +328,10 @@ export default function JobOrdersPage() {
             <div style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead><tr>
+                  {/* Whoever works the JO is whoever opens Production or QC - naming a
+                      staff member here just created a field nobody kept current. */}
                   <th style={S.th}>JO</th><th style={S.th}>Product</th><th style={S.th}>Qty</th>
-                  <th style={S.th}>Order</th><th style={S.th}>Assigned</th><th style={S.th}>Due</th>
+                  <th style={S.th}>Order</th><th style={S.th}>Due</th>
                   <th style={S.th}>Status</th><th style={{ ...S.th, textAlign: 'right' }}>Action</th>
                 </tr></thead>
                 <tbody>
@@ -353,7 +351,6 @@ export default function JobOrdersPage() {
                       </td>
                       <td style={S.td}>{jo.product?.quantity ?? '—'}</td>
                       <td style={{ ...S.td, fontFamily: 'monospace' }}>{(jo.orderId || '').slice(-8).toUpperCase() || '—'}</td>
-                      <td style={S.td}>{jo.assignedTo || '—'}</td>
                       <td style={S.td}>{fmtDate(jo.targetCompletion)}</td>
                       <td style={S.td}><StatusBadge status={jo.joStatus} /></td>
                       <td style={{ ...S.td, textAlign: 'right' }}>
@@ -394,7 +391,6 @@ export default function JobOrdersPage() {
                             <tr key={jo.id ?? jo._id} style={S.tr}>
                               <td style={{ ...S.td, fontFamily: 'monospace', fontWeight: 600, width: 120 }}>{jo.joId || (jo.id ?? jo._id)?.slice(-8).toUpperCase()}{jo.isRush && <span style={{ ...S.badge, background: 'var(--st-red-bg)', color: 'var(--st-red-fg)', border: '1px solid #fecaca', marginLeft: 6, fontSize: '10px' }}>RUSH</span>}</td>
                               <td style={S.td}>{prodName(jo)} {jo.product?.quantity ? `× ${jo.product.quantity}` : ''}</td>
-                              <td style={S.td}>{jo.assignedTo || '—'}</td>
                               <td style={{ ...S.td, textAlign: 'right' }}><StatusBadge status={jo.joStatus} /></td>
                             </tr>
                           ))}

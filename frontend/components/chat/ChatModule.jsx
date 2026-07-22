@@ -302,8 +302,12 @@ const ChatModule = ({ user, token, addToCart }) => {
 
       const newMessage = normalizeMsg(await sendMessage(token, actualPayload));
 
-      // Replace optimistic bubble with confirmed message
-      setMessages(prev => prev.map(m => m._id === tempId ? newMessage : m));
+      // Replace the optimistic bubble with the confirmed message. If the realtime socket already
+      // delivered the same message (it can beat the HTTP response), drop the placeholder instead of
+      // swapping it in — otherwise we'd get two copies (the duplicate inquiry/quote card bug).
+      setMessages(prev => prev.some(m => m._id === newMessage._id)
+        ? prev.filter(m => m._id !== tempId)
+        : prev.map(m => m._id === tempId ? newMessage : m));
 
       // For new conversations only: fetch real conv and update sidebar
       if (isNewConv) {

@@ -615,7 +615,6 @@ export default function UserManagementPage() {
             padding: '16px',
             background: 'rgba(0,0,0,0.7)',
           }}
-          onClick={(e) => { if (e.target === e.currentTarget) closeModal(); }}
         >
           <div
             role="dialog"
@@ -918,7 +917,6 @@ export default function UserManagementPage() {
       {addRoleOpen && (
         <div
           style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', background: 'rgba(0,0,0,0.7)' }}
-          onClick={(e) => { if (e.target === e.currentTarget && !addRoleSubmitting) setAddRoleOpen(false); }}
         >
           <div role="dialog" aria-modal="true" style={{ width: '100%', maxWidth: '420px', background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '16px', overflow: 'hidden' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1.125rem 1.5rem', borderBottom: '1px solid var(--border)' }}>

@@ -1,180 +1,251 @@
 'use client';
 
-import ErrorBoundary from '../../../../components/ErrorBoundary';
-
 /**
  * SALES MANAGEMENT PAGE
- *
- * Fetches sales data from backend API.
+ * Redesigned to match the Orders / Job Orders / Production / QC / Inventory look — uses the SAME
+ * inventory-v2 shared components (SummaryCard, SearchBar, PaginationBar, EmptyState, CustomSelect, S)
+ * as the Orders module, so the stat cards / toolbar / table / pagination are pixel-consistent.
+ * Data logic is unchanged from the previous version; three display bugs were fixed:
+ *  - "Downpayment" no longer shows the full amount when an order is fully paid.
+ *  - The payment breakdown shows a Shipping line so Subtotal + Shipping = Total reconciles.
+ *  - (Profit/Cost is deferred to PLAN A — the cost resolver.)
  */
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { formatPrice } from '@/src/utils/format';
-import { fetchSales } from '@/lib/salesApi';
-import { fetchInventory } from '@/lib/inventoryApi';
-import CustomDropdown from '@/app/components/CustomDropdown';
+import ErrorBoundary from '../../../../components/ErrorBoundary';
+import { S, ICONS, SummaryCard, SearchBar, PaginationBar, EmptyState, CustomSelect } from '../inventory-v2/shared';
 
-// ── Order Detail Expand Row ─────────────────────────────────────────────────
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const YEARS = [2025, 2026, 2027, 2028];
+
+// Payment-status pill using the dashboard's theme-aware --st-* palette (same as StatusBadge elsewhere).
+const STATUS_LABEL = { paid: 'Paid', partial: 'Partial DP', pending: 'Pending', cancelled: 'Cancelled' };
+const STATUS_TONE  = { paid: 'green', partial: 'amber', pending: 'amber', cancelled: 'red' };
+function StatusPill({ status }) {
+  const tone = STATUS_TONE[status] || 'gray';
+  return (
+    <span style={{ ...S.badge, background: `var(--st-${tone}-bg)`, color: `var(--st-${tone}-fg)` }}>
+      {STATUS_LABEL[status] || status}
+    </span>
+  );
+}
+
+function orderToRow(o) {
+  const id = o._id || o.id;
+  const ps = o.paymentStatus || 'unpaid';
+  const total = Number(o.totalAmount ?? o.totalPrice ?? 0);
+  const dp    = Number(o.downPayment ?? 0);
+  const bal   = Number(o.balance ?? total);
+  const shipping = Number(o.shippingFee ?? 0);
+  const designFee = (o.items || []).reduce((s, i) => s + Number(i.designFee ?? 0), 0);
+  const isCancelled = (o.orderStatus || '').toLowerCase() === 'cancelled' || o.status === 'cancelled';
+  return {
+    id,
+    orderNumber: o.orderId || o.orderNumber || id?.slice?.(-8) || '—',
+    customerName: o.userSnapshot?.name || o.customerName || '—',
+    customerContact: o.userSnapshot?.phone || o.customerContact || null,
+    customerEmail: o.userSnapshot?.email || o.customerEmail || null,
+    items: (o.items || []).map(item => ({
+      productId: item.productId,
+      productName: item.productName,
+      category: item.category || item.productCategory || 'Uncategorized',
+      variant: item.variantName,
+      quantity: item.qty ?? item.quantity ?? 1,
+      unitPrice: item.unitPrice ?? 0,
+      designFee: Number(item.designFee ?? 0),
+    })),
+    quantity: (o.items || []).reduce((s, i) => s + (i.qty ?? i.quantity ?? 0), 0),
+    orderDate: o.createdAt || o.orderDate || new Date().toISOString(),
+    dueDate: o.dueDate || null,
+    totalPrice: total,
+    shipping,
+    designFee: Math.round(designFee * 100) / 100,
+    subtotal: Math.max(0, Math.round((total - shipping - designFee) * 100) / 100),
+    downPayment: dp,
+    downpaymentPercent: o.downpaymentPercent ?? null,
+    balance: bal,
+    status: isCancelled ? 'cancelled' : (ps === 'paid' || bal === 0 ? 'paid' : (dp > 0 && bal > 0 ? 'partial' : 'pending')),
+    paymentStatus: ps,
+    source: o.source || 'online',
+    notes: o.notes || '',
+  };
+}
+
+// ── Expandable detail row ─────────────────────────────────────────────────────
 function OrderExpandRow({ order, colSpan }) {
+  const fullyPaid = order.status !== 'cancelled' && order.balance === 0;
+  const partial   = order.downPayment > 0 && order.balance > 0;
+  const label = { fontSize: '11px', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: '8px' };
+  const line = { display: 'flex', justifyContent: 'space-between', gap: '10px', marginBottom: '4px', fontSize: '13px' };
   return (
     <tr>
-      <td colSpan={colSpan} style={{ padding: 0, background: 'rgba(99,102,241,0.04)', borderBottom: '1px solid var(--border)' }}>
-  <div style={{ padding: '1rem 1.25rem 1.25rem', display: 'flex', gap: '2rem', width: '100%', justifyContent: 'space-between' }}>
+      <td colSpan={colSpan} style={{ padding: 0, background: 'var(--dark2)', borderBottom: '1px solid var(--border)' }}>
+        <div style={{ padding: '16px 18px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '20px' }}>
 
-    {/* Customer Info */}
-    <div style={{ width: '160px', minWidth: 0 }}>
-      <div style={{ fontSize: '0.72rem', color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.35rem', fontWeight: 600 }}>Customer</div>
-      <div style={{ fontSize: '0.85rem', color: 'var(--white)', lineHeight: 1.5 }}>
-        <div style={{ fontWeight: 600 }}>{order.customerName || 'N/A'}</div>
-        <div style={{ color: 'var(--gray)', fontSize: '0.75rem' }}>{order.customerContact || 'N/A'}</div>
-        <div style={{ color: 'var(--gray)', fontSize: '0.75rem' }}>{order.customerEmail || 'N/A'}</div>
-      </div>
-    </div>
+          <div>
+            <div style={label}>Customer</div>
+            <div style={{ fontSize: '13px', color: 'var(--white)', fontWeight: 600 }}>{order.customerName || 'N/A'}</div>
+            <div style={{ fontSize: '12px', color: 'var(--gray)' }}>{order.customerContact || '—'}</div>
+            <div style={{ fontSize: '12px', color: 'var(--gray)', overflow: 'hidden', textOverflow: 'ellipsis' }}>{order.customerEmail || '—'}</div>
+          </div>
 
-    {/* Order Items */}
-    <div style={{ width: '160px', minWidth: 0 }}>
-      <div style={{ fontSize: '0.72rem', color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.35rem', fontWeight: 600 }}>Order Items</div>
-      {order.items && order.items.length > 0 ? (
-        order.items.map((item, idx) => (
-          <div key={idx} style={{ fontSize: '0.85rem', color: 'var(--white)', marginBottom: '0.5rem' }}>
-            <div style={{ fontWeight: 600 }}>{item.productName}</div>
-            <div style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>
-              {item.variant ? `${item.variant} × ${item.quantity}` : `× ${item.quantity}`}
+          <div>
+            <div style={label}>Order Items</div>
+            {order.items?.length > 0 ? order.items.map((item, i) => (
+              <div key={i} style={{ marginBottom: '6px' }}>
+                <div style={{ fontSize: '13px', color: 'var(--white)', fontWeight: 600 }}>{item.productName}</div>
+                <div style={{ fontSize: '12px', color: 'var(--gray)' }}>
+                  {item.variant ? `${item.variant} × ${item.quantity}` : `× ${item.quantity}`} &middot; {formatPrice(item.unitPrice || 0)} each
+                </div>
+              </div>
+            )) : (
+              <div style={{ fontSize: '13px', color: 'var(--gray)', fontStyle: 'italic' }}>—</div>
+            )}
+          </div>
+
+          <div>
+            <div style={label}>Payment</div>
+            <div style={line}><span style={{ color: 'var(--gray)' }}>Subtotal</span><span style={{ color: 'var(--white)' }}>{formatPrice(order.subtotal)}</span></div>
+            {order.designFee > 0 && (
+              <div style={line}><span style={{ color: 'var(--gray)' }}>Design fee</span><span style={{ color: 'var(--white)' }}>{formatPrice(order.designFee)}</span></div>
+            )}
+            {order.shipping > 0 && (
+              <div style={line}><span style={{ color: 'var(--gray)' }}>Shipping</span><span style={{ color: 'var(--white)' }}>{formatPrice(order.shipping)}</span></div>
+            )}
+            <div style={{ ...line, borderTop: '1px solid var(--border)', paddingTop: '6px', marginTop: '2px' }}>
+              <span style={{ color: 'var(--gray)', fontWeight: 700 }}>Total</span>
+              <span style={{ color: 'var(--gold)', fontWeight: 700 }}>{formatPrice(order.totalPrice)}</span>
             </div>
-            <div style={{ fontSize: '0.75rem', color: 'var(--gold)' }}>{formatPrice(item.unitPrice || 0)} each</div>
+            {order.status === 'cancelled' ? (
+              <div style={{ fontSize: '12px', color: 'var(--gray)', marginTop: '6px' }}>Cancelled</div>
+            ) : fullyPaid ? (
+              <div style={{ fontSize: '12px', color: 'var(--st-green-fg)', marginTop: '6px', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                {ICONS.check} Paid in full
+              </div>
+            ) : partial ? (
+              <>
+                <div style={{ ...line, marginTop: '6px' }}><span style={{ color: 'var(--gray)' }}>Downpayment{order.downpaymentPercent ? ` (${order.downpaymentPercent}%)` : ''}</span><span style={{ color: 'var(--st-green-fg)' }}>{formatPrice(order.downPayment)}</span></div>
+                <div style={line}><span style={{ color: '#e0a43a', fontWeight: 700 }}>Balance due</span><span style={{ color: '#e0a43a', fontWeight: 700 }}>{formatPrice(order.balance)}</span></div>
+              </>
+            ) : (
+              <div style={{ ...line, marginTop: '6px' }}><span style={{ color: '#e0a43a', fontWeight: 700 }}>Balance due</span><span style={{ color: '#e0a43a', fontWeight: 700 }}>{formatPrice(order.balance)}</span></div>
+            )}
           </div>
-        ))
-      ) : order.quantity ? (
-        <div style={{ fontSize: '0.85rem', color: 'var(--white)' }}>
-          <div style={{ fontWeight: 600 }}>{order.productName || 'Product'}</div>
-          <div style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>× {order.quantity} pcs</div>
-          <div style={{ fontSize: '0.75rem', color: 'var(--gold)' }}>{formatPrice(order.unitPrice || 0)} each</div>
-        </div>
-      ) : (
-        <div style={{ fontSize: '0.85rem', color: 'var(--gray)', fontStyle: 'italic', opacity: 0.6 }}>—</div>
-      )}
-    </div>
 
-    {/* Payment Details */}
-    <div style={{ width: '220px', minWidth: 0 }}>
-      <div style={{ fontSize: '0.72rem', color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.35rem', fontWeight: 600 }}>Payment</div>
-      <div style={{ fontSize: '0.85rem', color: 'var(--white)', lineHeight: 1.5 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
-          <span style={{ color: 'var(--gray)' }}>Total:</span>
-          <span style={{ fontWeight: 600, color: 'var(--gold)' }}>{formatPrice(order.totalPrice || 0)}</span>
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
-          <span style={{ color: 'var(--gray)' }}>Downpayment:</span>
-          <span style={{ fontWeight: 600, color: 'var(--green)' }}>{formatPrice(order.downPayment || 0)}</span>
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
-          <span style={{ color: 'var(--gray)' }}>Balance:</span>
-          <span style={{ fontWeight: 600, color: order.balance === 0 ? 'var(--green)' : 'var(--gold)' }}>
-            {formatPrice(order.balance || 0)}
-          </span>
-        </div>
-        {order.balance === 0 && (
-          <div style={{ fontSize: '0.7rem', color: 'var(--green)', marginTop: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <path d="M20 6L9 17l-5-5"/>
-            </svg>
-            Fully Paid
+          <div>
+            <div style={label}>Order Notes</div>
+            <div style={{ fontSize: '13px', color: 'var(--gray-light)' }}>{order.notes || '—'}</div>
+            <div style={{ fontSize: '12px', color: 'var(--gray)', marginTop: '8px' }}>
+              <div>Order Date: {new Date(order.orderDate).toLocaleDateString()}</div>
+              <div>Due Date: {order.dueDate ? new Date(order.dueDate).toLocaleDateString() : '—'}</div>
+              <div style={{ color: 'var(--gold)', marginTop: '2px' }}>
+                Source: {order.source === 'manual' ? 'Outside System (Manual Sale)' : 'Online Storefront'}
+              </div>
+            </div>
           </div>
-        )}
-      </div>
-    </div>
 
-    {/* Order Notes */}
-    <div style={{ width: '200px', minWidth: 0 }}>
-      <div style={{ fontSize: '0.72rem', color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.35rem', fontWeight: 600 }}>Order Notes</div>
-      <div style={{ fontSize: '0.85rem', color: 'var(--white)', lineHeight: 1.5, opacity: 0.85 }}>
-        {order.notes || '—'}
-      </div>
-      <div style={{ marginTop: '0.5rem', fontSize: '0.75rem', color: 'var(--gray)' }}>
-        <div>Order Date: {new Date(order.orderDate).toLocaleDateString()}</div>
-        <div>Due Date: {order.dueDate ? new Date(order.dueDate).toLocaleDateString() : '—'}</div>
-        {order.source && (
-          <div style={{ color: 'var(--gold)', marginTop: '0.25rem' }}>
-            Source: {order.source === 'manual' ? 'Outside System (Manual Sale)' : 'Online Storefront'}
-          </div>
-        )}
-      </div>
-    </div>
-
-  </div>
-</td>
+        </div>
+      </td>
     </tr>
   );
 }
 
-// ── Main SalesListPage ───────────────────────────────────────────────────────
+// ── Main page ─────────────────────────────────────────────────────────────────
+// ── Reports view (PLAN G) — aggregated analytics over the filtered sales ──────
+function ReportsView({ reports }) {
+  const { revenue, units, orders, aov, bestSellers, byCategory, byPayment, byMonth } = reports;
+  const maxMonthRev = Math.max(1, ...byMonth.map(x => x.revenue));
+
+  const MiniTable = ({ title, rows, cols }) => (
+    <div style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
+      <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', fontSize: '13px', fontWeight: 700, color: 'var(--white)' }}>{title}</div>
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead><tr>{cols.map((c, i) => <th key={i} style={{ ...S.th, textAlign: i === 0 ? 'left' : 'right' }}>{c.label}</th>)}</tr></thead>
+          <tbody>
+            {rows.length === 0 ? (
+              <tr><td colSpan={cols.length} style={{ padding: '18px', textAlign: 'center', color: 'var(--gray)', fontSize: '13px' }}>No data</td></tr>
+            ) : rows.map((r, i) => (
+              <tr key={i} style={S.tr}>{cols.map((c, j) => <td key={j} style={{ ...S.td, textAlign: j === 0 ? 'left' : 'right' }}>{c.render(r)}</td>)}</tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+      <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+        <SummaryCard label="Revenue (filtered)" value={formatPrice(revenue)} sub="Goods + design fee, excl. shipping" color="var(--st-green-fg)" />
+        <SummaryCard label="Orders"             value={orders}              sub="Active in the current filter"     color="var(--st-blue-fg)" />
+        <SummaryCard label="Avg Order Value"    value={formatPrice(aov)}    sub="Revenue / orders"                 color="var(--gold)" />
+        <SummaryCard label="Units Sold"         value={units}               sub="Total item quantity"              color="var(--st-purple-fg)" />
+      </div>
+
+      <div style={S.card}>
+        <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--white)', marginBottom: '12px' }}>Revenue by month</div>
+        {byMonth.length === 0 ? <div style={{ color: 'var(--gray)', fontSize: '13px' }}>No data</div> : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {byMonth.map((mo, i) => (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{ width: '72px', fontSize: '12px', color: 'var(--gray)' }}>{mo.name}</span>
+                <div style={{ flex: 1, height: '18px', background: 'var(--dark)', borderRadius: '4px', overflow: 'hidden' }}>
+                  <div style={{ width: `${(mo.revenue / maxMonthRev) * 100}%`, height: '100%', background: 'var(--st-green-fg)' }} />
+                </div>
+                <span style={{ width: '96px', textAlign: 'right', fontSize: '12px', fontWeight: 600, color: 'var(--white)' }}>{formatPrice(mo.revenue)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '14px' }}>
+        <MiniTable title="Best sellers" rows={bestSellers} cols={[
+          { label: 'Product',  render: r => r.name },
+          { label: 'Qty',      render: r => r.qty },
+          { label: 'Revenue',  render: r => formatPrice(r.revenue) },
+        ]} />
+        <MiniTable title="By category" rows={byCategory} cols={[
+          { label: 'Category', render: r => r.name },
+          { label: 'Qty',      render: r => r.qty },
+          { label: 'Revenue',  render: r => formatPrice(r.revenue) },
+        ]} />
+        <MiniTable title="By payment status" rows={byPayment} cols={[
+          { label: 'Status',   render: r => r.name },
+          { label: 'Orders',   render: r => r.count },
+          { label: 'Revenue',  render: r => formatPrice(r.revenue) },
+        ]} />
+      </div>
+
+      <div style={{ fontSize: '11px', color: 'var(--gray)' }}>
+        Revenue excludes shipping (pass-through to courier). Profit reporting hooks into the Sale.cost pipeline (PLAN A) once cost flows into this view.
+      </div>
+    </div>
+  );
+}
+
 export default function SalesListPage() {
   const { token } = useAuth();
-  const router = useRouter();
   const [sales, setSales] = useState([]);
-  const [inventory, setInventory] = useState([]);
-  const [isLoaded, setIsLoaded] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [paymentFilter, setPaymentFilter] = useState('');
   const [dateFilter, setDateFilter] = useState('all');
-  const [customDateRange, setCustomDateRange] = useState({ fromMonth: 0, toMonth: 0, year: 2025 });
+  const [customDateRange, setCustomDateRange] = useState({ fromMonth: 0, toMonth: 0, year: 2026 });
   const [expandedRows, setExpandedRows] = useState(new Set());
   const [sPage, setSPage] = useState(1);
   const [sRpp, setSRpp] = useState(10);
+  const [view, setView] = useState('list'); // 'list' | 'reports'
 
-  const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-  const YEARS = [2025, 2026, 2027, 2028];
-
-  const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
-
-  function orderToRow(o) {
-    const id = o._id || o.id;
-    const ps = o.paymentStatus || 'unpaid';
-    const total = Number(o.totalAmount ?? o.totalPrice ?? 0);
-    const dp    = Number(o.downPayment ?? 0);
-    const bal   = Number(o.balance ?? total);
-    const isCancelled = (o.orderStatus || '').toLowerCase() === 'cancelled' || o.status === 'cancelled';
-    return {
-      id,
-      orderNumber: o.orderId || o.orderNumber || id?.slice?.(-8) || '—',
-      customerName: o.userSnapshot?.name || o.customerName || '—',
-      customerContact: o.userSnapshot?.phone || o.customerContact || null,
-      customerEmail: o.userSnapshot?.email || o.customerEmail || null,
-      items: (o.items || []).map(item => ({
-        productId: item.productId,
-        productName: item.productName,
-        variant: item.variantName,
-        quantity: item.qty ?? item.quantity ?? 1,
-        unitPrice: item.unitPrice ?? 0,
-      })),
-      quantity: (o.items || []).reduce((s, i) => s + (i.qty ?? i.quantity ?? 0), 0),
-      orderDate: o.createdAt || o.orderDate || new Date().toISOString(),
-      dueDate: o.dueDate || null,
-      totalPrice: total,
-      downPayment: dp,
-      downpaymentPercent: o.downpaymentPercent ?? null,
-      balance: bal,
-      status: isCancelled ? 'cancelled' : (ps === 'paid' || bal === 0 ? 'paid' : 'pending'),
-      paymentStatus: ps,
-      source: o.source || 'online',
-      notes: o.notes || '',
-    };
-  }
-
-  // Load orders (source of truth for sales — Sale records are only created at delivery)
   useEffect(() => {
     async function loadData() {
-      if (!token) {
-        setError('Unable to load sales. Please refresh or log in again.');
-        setIsLoading(false);
-        return;
-      }
-      setIsLoading(true);
-      setError(null);
+      if (!token) { setError('Unable to load sales. Please refresh or log in again.'); setIsLoading(false); return; }
+      setIsLoading(true); setError(null);
       try {
         const res = await fetch(`${API_URL}/api/admin/orders`, {
           headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
@@ -184,523 +255,276 @@ export default function SalesListPage() {
         const list = Array.isArray(data.data) ? data.data : (Array.isArray(data) ? data : []);
         setSales(list.map(orderToRow));
       } catch (err) {
-        console.error('Failed to load sales data:', err);
         setError(err.message || 'Failed to load sales data');
         setSales([]);
       } finally {
-        setIsLoaded(true);
         setIsLoading(false);
       }
     }
     loadData();
   }, [token]);
 
-  const toggleExpand = (orderId) => {
-    setExpandedRows(prev => {
-      const next = new Set(prev);
-      next.has(orderId) ? next.delete(orderId) : next.add(orderId);
-      return next;
-    });
-  };
-
-  const getStatusBadge = (order) => {
-    if (order.status === 'cancelled')
-      return { label: 'Cancelled', color: 'var(--red)', bg: 'rgba(248,113,113,0.15)', border: 'rgba(248,113,113,0.4)' };
-    if (order.paymentStatus === 'paid' || order.balance === 0)
-      return { label: 'Paid', color: 'var(--green)', bg: 'rgba(74,222,128,0.15)', border: 'rgba(74,222,128,0.4)' };
-    if (order.paymentStatus === 'partial' || (order.downPayment > 0 && order.balance > 0))
-      return { label: 'Partial DP', color: 'var(--gold)', bg: 'rgba(250,204,21,0.15)', border: 'rgba(250,204,21,0.4)' };
-    return { label: 'Pending', color: 'var(--gold)', bg: 'rgba(250,204,21,0.15)', border: 'rgba(250,204,21,0.4)' };
-  };
+  const toggleExpand = (id) => setExpandedRows(prev => {
+    const next = new Set(prev);
+    next.has(id) ? next.delete(id) : next.add(id);
+    return next;
+  });
 
   useEffect(() => { setSPage(1); }, [searchQuery, paymentFilter, dateFilter, customDateRange]);
 
   const filteredSales = useMemo(() => {
     return sales.filter(order => {
-      const matchesSearch = 
+      const matchesSearch =
         order.customerName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         order.orderNumber?.toLowerCase().includes(searchQuery.toLowerCase());
-      
-      let matchesPayment = true;
-      if (paymentFilter === 'paid') {
-        matchesPayment = order.status !== 'cancelled' && (order.paymentStatus === 'paid' || order.balance === 0);
-      } else if (paymentFilter === 'pending-50') {
-        matchesPayment = order.status !== 'cancelled' && order.downPayment > 0 && order.balance > 0;
-      } else if (paymentFilter === 'outside-system') {
-        matchesPayment = order.source === 'manual';
-      } else if (paymentFilter === 'cancelled') {
-        matchesPayment = order.status === 'cancelled';
-      }
-      
-      // Date filter
-      let matchesDate = true;
-      const orderDate = new Date(order.orderDate || order.createdAt);
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      orderDate.setHours(0, 0, 0, 0);
 
-      if (dateFilter === 'all') {
-        matchesDate = true; // Show all sales
-      } else if (dateFilter === 'today') {
-        matchesDate = orderDate.getTime() === today.getTime();
-      } else if (dateFilter === 'this-week') {
-        const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
-        matchesDate = orderDate >= weekAgo;
-      } else if (dateFilter === 'this-month') {
-        matchesDate = orderDate.getMonth() === today.getMonth() && orderDate.getFullYear() === today.getFullYear();
-      } else if (dateFilter === 'custom') {
-        const fromMonth = customDateRange.fromMonth;
-        const toMonth = customDateRange.toMonth;
-        const year = customDateRange.year;
-        matchesDate = orderDate.getFullYear() === year && orderDate.getMonth() >= fromMonth && orderDate.getMonth() <= toMonth;
-      }
-      
+      let matchesPayment = true;
+      if (paymentFilter === 'paid') matchesPayment = order.status !== 'cancelled' && (order.paymentStatus === 'paid' || order.balance === 0);
+      else if (paymentFilter === 'pending-50') matchesPayment = order.status !== 'cancelled' && order.downPayment > 0 && order.balance > 0;
+      else if (paymentFilter === 'cancelled') matchesPayment = order.status === 'cancelled';
+
+      let matchesDate = true;
+      const orderDate = new Date(order.orderDate);
+      const today = new Date(); today.setHours(0, 0, 0, 0); orderDate.setHours(0, 0, 0, 0);
+      if (dateFilter === 'today') matchesDate = orderDate.getTime() === today.getTime();
+      else if (dateFilter === 'this-week') matchesDate = orderDate >= new Date(today.getTime() - 7 * 864e5);
+      else if (dateFilter === 'this-month') matchesDate = orderDate.getMonth() === today.getMonth() && orderDate.getFullYear() === today.getFullYear();
+      else if (dateFilter === 'custom') matchesDate = orderDate.getFullYear() === customDateRange.year && orderDate.getMonth() >= customDateRange.fromMonth && orderDate.getMonth() <= customDateRange.toMonth;
+
       return matchesSearch && matchesPayment && matchesDate;
     });
   }, [sales, searchQuery, paymentFilter, dateFilter, customDateRange]);
 
-  const sTotalPages = Math.max(1, Math.ceil(filteredSales.length / sRpp));
   const pagedSales = filteredSales.slice((sPage - 1) * sRpp, sPage * sRpp);
 
-  const summaryMetrics = useMemo(() => {
-    const active      = sales.filter(o => o.status !== 'cancelled');
-    const paid        = active.filter(o => o.paymentStatus === 'paid' || o.balance === 0);
-    const partial     = active.filter(o => o.downPayment > 0 && o.balance > 0);
-    const cancelled   = sales.filter(o => o.status === 'cancelled');
-    const totalRevenue  = active.reduce((s, o) => s + (o.totalPrice || 0), 0);
-    const outstanding   = active.reduce((s, o) => s + (o.balance || 0), 0);
-    const productsSold  = new Set();
-    active.forEach(o => o.items?.forEach(i => { if (i.productId) productsSold.add(i.productId); }));
+  const m = useMemo(() => {
+    const active    = sales.filter(o => o.status !== 'cancelled');
+    const paid      = active.filter(o => o.paymentStatus === 'paid' || o.balance === 0);
+    const partial   = active.filter(o => o.downPayment > 0 && o.balance > 0);
+    const cancelled = sales.filter(o => o.status === 'cancelled');
+    const products  = new Set();
+    active.forEach(o => o.items?.forEach(i => { if (i.productId) products.add(i.productId); }));
     return {
-      totalSales: active.length,
-      paid: paid.length,
-      pending50: partial.length,
-      cancelled: cancelled.length,
-      revenue: totalRevenue,
-      outstanding,
-      topProductsCount: productsSold.size,
+      totalSales: active.length, paid: paid.length, pending50: partial.length, cancelled: cancelled.length,
+      revenue: active.reduce((s, o) => s + Math.max(0, (o.totalPrice || 0) - (o.shipping || 0)), 0),
+      shippingCollected: active.reduce((s, o) => s + (o.shipping || 0), 0),
+      outstanding: active.reduce((s, o) => s + (o.balance || 0), 0),
+      topProductsCount: products.size,
     };
   }, [sales]);
 
-  if (isLoading) {
-    return (
-      <div className="page-content-wrapper">
-        <div className="skeleton-page">
-          <div className="skeleton-header">
-            <div className="skeleton-title" />
-            <div className="skeleton-subtitle" />
-          </div>
-          <div className="skeleton-cards">
-            {[...Array(3)].map((_, i) => (
-              <div className="skeleton-card" key={i} />
-            ))}
-          </div>
-          <div className="skeleton-table">
-            <div className="skeleton-table-header" />
-            {[...Array(6)].map((_, i) => (
-              <div className="skeleton-row" key={i}>
-                <div className="skeleton-cell skeleton-cell-short" />
-                <div className="skeleton-cell skeleton-cell-wide" />
-                <div className="skeleton-cell skeleton-cell-mid" />
-                <div className="skeleton-cell skeleton-cell-short" />
-                <div className="skeleton-cell-badge" />
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    );
-  }
+  // ── Reports aggregation (respects the current search/date/payment filters via filteredSales) ──
+  const reports = useMemo(() => {
+    const active = filteredSales.filter(o => o.status !== 'cancelled');
+    const goods = (o) => Math.max(0, (o.totalPrice || 0) - (o.shipping || 0));
+    const revenue = active.reduce((s, o) => s + goods(o), 0);
+    const units   = active.reduce((s, o) => s + (o.quantity || 0), 0);
+    const orders  = active.length;
+    const aov     = orders > 0 ? revenue / orders : 0;
 
-  if (error) {
-    return (
-      <div className="page-content-wrapper">
-        <div className="error-state" style={{ padding: '2rem', textAlign: 'center' }}>
-          <p style={{ color: 'var(--red)', marginBottom: '1rem' }}>{error}</p>
-          <button 
-            onClick={() => window.location.reload()}
-            className="btn-primary"
-          >
-            Retry
-          </button>
-        </div>
-      </div>
-    );
-  }
+    const agg = (keyer) => {
+      const map = {};
+      active.forEach(o => (o.items || []).forEach(i => {
+        const key = keyer(i) || '—';
+        if (!map[key]) map[key] = { name: key, qty: 0, revenue: 0 };
+        map[key].qty += Number(i.quantity || 0);
+        map[key].revenue += Number(i.unitPrice || 0) * Number(i.quantity || 0);
+      }));
+      return Object.values(map).sort((a, b) => b.revenue - a.revenue);
+    };
+    const bestSellers = agg(i => i.productName || i.productId).slice(0, 10);
+    const byCategory  = agg(i => i.category || 'Uncategorized');
+
+    const payMap = {};
+    active.forEach(o => {
+      const key = o.status || 'pending';
+      if (!payMap[key]) payMap[key] = { name: key, count: 0, revenue: 0 };
+      payMap[key].count += 1;
+      payMap[key].revenue += goods(o);
+    });
+    const byPayment = Object.values(payMap).sort((a, b) => b.revenue - a.revenue);
+
+    const monMap = {};
+    active.forEach(o => {
+      const d = new Date(o.orderDate);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      if (!monMap[key]) monMap[key] = { name: key, orders: 0, revenue: 0 };
+      monMap[key].orders += 1;
+      monMap[key].revenue += goods(o);
+    });
+    const byMonth = Object.values(monMap).sort((a, b) => a.name.localeCompare(b.name));
+
+    return { revenue, units, orders, aov, bestSellers, byCategory, byPayment, byMonth };
+  }, [filteredSales]);
+
+  const exportCsv = () => {
+    const header = ['Order Ref', 'Customer', 'Date', 'Items', 'Qty', 'Subtotal', 'Design Fee', 'Shipping', 'Total', 'Downpayment', 'Balance', 'Status'];
+    const dataRows = filteredSales.map(o => [
+      o.orderNumber, o.customerName, new Date(o.orderDate).toLocaleDateString(),
+      (o.items || []).map(i => `${i.productName} x${i.quantity}`).join('; '),
+      o.quantity, o.subtotal, o.designFee, o.shipping, o.totalPrice, o.downPayment, o.balance, o.status,
+    ]);
+    const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const csv = [header, ...dataRows].map(r => r.map(esc).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `sales-report-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const FILTER_CARDS = [
+    { label: 'All Sales',  value: m.totalSales, id: '' },
+    { label: 'Paid',       value: m.paid,       id: 'paid',       color: 'var(--st-green-fg)' },
+    { label: 'Partial DP', value: m.pending50,  id: 'pending-50', color: 'var(--st-amber-fg)' },
+    { label: 'Cancelled',  value: m.cancelled,  id: 'cancelled',  color: 'var(--st-red-fg)' },
+  ];
+
+  const TH = (h, i, right) => (
+    <th key={i} style={{ ...S.th, ...(i === 0 ? { width: '36px' } : {}), textAlign: right ? 'center' : 'left' }}>{h}</th>
+  );
 
   return (
     <ErrorBoundary>
-      <div className="page-content-wrapper">
-      
-      {/* Page Header */}
-      <div className="page-header">
+      <div style={{ padding: '1.5rem', maxWidth: '1200px', margin: '0 auto' }}>
 
-        {/* Payment Status Filter Cards */}
-        <div className="inventory-summary">
-          <div className={`summary-card${paymentFilter === '' ? ' active' : ''}`} onClick={() => setPaymentFilter('')} style={{ cursor: 'pointer' }}>
-            <div className="summary-content">
-              <span className="summary-value">{summaryMetrics.totalSales}</span>
-              <span className="summary-label">All Sales</span>
+        {/* Filter stat cards */}
+        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginBottom: '12px' }}>
+          {FILTER_CARDS.map(c => (
+            <div key={c.id || 'all'} onClick={() => { setPaymentFilter(c.id); setSPage(1); }} style={{ cursor: 'pointer', flex: '1', minWidth: '140px' }}>
+              <SummaryCard label={c.label} value={c.value}
+                accent={paymentFilter === c.id}
+                color={paymentFilter === c.id ? 'var(--gold)' : (c.color || undefined)} />
             </div>
+          ))}
+        </div>
+
+        {/* Analytics cards */}
+        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginBottom: '14px' }}>
+          <SummaryCard label="Total Revenue"       value={formatPrice(m.revenue)}           sub="Goods + design fee, excl. shipping" color="var(--st-green-fg)" />
+          <SummaryCard label="Shipping Collected"   value={formatPrice(m.shippingCollected)} sub="Pass-through to courier"            color="var(--st-blue-fg)" />
+          <SummaryCard label="Outstanding Balance"  value={formatPrice(m.outstanding)}       sub="Total unpaid balance"               color="var(--gold)" />
+          <SummaryCard label="Top Products"         value={m.topProductsCount}               sub="Distinct products sold"             color="var(--st-purple-fg)" />
+        </div>
+
+        {error && <div style={{ ...S.note, background: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b', marginBottom: '10px' }}>{error}</div>}
+
+        {/* Toolbar — separate card above the table, exactly like the Orders module */}
+        <div style={{ ...S.card, ...S.rowBetween, marginBottom: '10px', padding: '12px 16px' }}>
+          <div style={{ ...S.row, gap: '8px', flex: 1 }}>
+            <SearchBar value={searchQuery} onChange={v => { setSearchQuery(v); setSPage(1); }}
+              placeholder="Search customer or order number…" style={{ width: '260px' }} />
+            <CustomSelect
+              value={dateFilter} onChange={setDateFilter} style={{ width: '150px' }}
+              options={[
+                { value: 'all', label: 'All Time' }, { value: 'today', label: 'Today' },
+                { value: 'this-week', label: 'This Week' }, { value: 'this-month', label: 'This Month' },
+                { value: 'custom', label: 'Custom Range' },
+              ]}
+            />
+            {dateFilter === 'custom' && (
+              <>
+                <CustomSelect value={String(customDateRange.fromMonth)} onChange={v => setCustomDateRange(p => ({ ...p, fromMonth: parseInt(v) }))} options={MONTHS.map((mo, i) => ({ value: String(i), label: mo }))} style={{ width: '130px' }} />
+                <span style={{ color: 'var(--gray)', fontSize: '13px' }}>to</span>
+                <CustomSelect value={String(customDateRange.toMonth)} onChange={v => setCustomDateRange(p => ({ ...p, toMonth: parseInt(v) }))} options={MONTHS.map((mo, i) => ({ value: String(i), label: mo }))} style={{ width: '130px' }} />
+                <CustomSelect value={String(customDateRange.year)} onChange={v => setCustomDateRange(p => ({ ...p, year: parseInt(v) }))} options={YEARS.map(y => ({ value: String(y), label: String(y) }))} style={{ width: '100px' }} />
+              </>
+            )}
           </div>
-          <div className={`summary-card summary-card-success${paymentFilter === 'paid' ? ' active' : ''}`}
-            onClick={() => setPaymentFilter(paymentFilter === 'paid' ? '' : 'paid')} style={{ cursor: 'pointer' }}>
-            <div className="summary-content">
-              <span className="summary-value">{summaryMetrics.paid}</span>
-              <span className="summary-label">Paid</span>
+          <div style={{ ...S.row, gap: '8px' }}>
+            <div style={{ display: 'flex', border: '1px solid var(--border)', borderRadius: '6px', overflow: 'hidden' }}>
+              {[['list', 'List'], ['reports', 'Reports']].map(([v, lbl]) => (
+                <button key={v} type="button" onClick={() => setView(v)}
+                  style={{ padding: '6px 13px', fontSize: '12px', fontWeight: 600, border: 'none', cursor: 'pointer',
+                    background: view === v ? 'var(--gold)' : 'var(--dark)', color: view === v ? 'var(--black)' : 'var(--gray)' }}>
+                  {lbl}
+                </button>
+              ))}
             </div>
-          </div>
-          <div className={`summary-card summary-card-warning${paymentFilter === 'pending-50' ? ' active' : ''}`}
-            onClick={() => setPaymentFilter(paymentFilter === 'pending-50' ? '' : 'pending-50')} style={{ cursor: 'pointer' }}>
-            <div className="summary-content">
-              <span className="summary-value">{summaryMetrics.pending50}</span>
-              <span className="summary-label">Partial DP</span>
-            </div>
-          </div>
-          <div className={`summary-card summary-card-danger${paymentFilter === 'cancelled' ? ' active' : ''}`}
-            onClick={() => setPaymentFilter(paymentFilter === 'cancelled' ? '' : 'cancelled')} style={{ cursor: 'pointer' }}>
-            <div className="summary-content">
-              <span className="summary-value">{summaryMetrics.cancelled}</span>
-              <span className="summary-label">Cancelled</span>
-            </div>
+            <button type="button" onClick={exportCsv}
+              style={{ padding: '6px 12px', fontSize: '12px', fontWeight: 600, borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--dark)', color: 'var(--white)', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+              Export CSV
+            </button>
+            <span style={{ fontSize: '12px', color: 'var(--gray)', whiteSpace: 'nowrap' }}>{filteredSales.length} sale{filteredSales.length !== 1 ? 's' : ''}</span>
           </div>
         </div>
 
-        {/* Sales Analytics Module */}
-        <div style={{
-          background: 'var(--dark)',
-          border: '1px solid var(--border)',
-          borderRadius: '12px',
-          padding: '1.5rem',
-          marginTop: '1rem',
-        }}>
-          {/* Module Header */}
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            marginBottom: '1.5rem',
-            flexWrap: 'wrap',
-            gap: '1rem',
-          }}>
-          </div>
-          
-          {/* Analytics Cards */}
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(3, 1fr)',
-            gap: '1.25rem',
-            marginBottom: '1.25rem',
-          }}>
-            {/* Total Sales Card */}
-            <div style={{
-              background: 'rgba(34, 197, 94, 0.1)',
-              border: '1px solid rgba(34, 197, 94, 0.3)',
-              borderRadius: '12px',
-              padding: '1.25rem',
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
-                <span style={{ fontSize: '0.75rem', color: 'var(--green)', textTransform: 'uppercase', fontWeight: 700 }}>Total Revenue</span>
-              </div>
-              <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--green)' }}>
-                ₱{summaryMetrics.revenue.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--gray)', marginTop: '0.5rem' }}>
-                Total order value (excl. cancelled)
-              </div>
-            </div>
-            
-            {/* Outstanding Balance Card */}
-            <div style={{
-              background: 'rgba(212, 168, 67, 0.1)',
-              border: '1px solid rgba(212, 168, 67, 0.3)',
-              borderRadius: '12px',
-              padding: '1.25rem',
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
-                <span style={{ fontSize: '0.75rem', color: 'var(--gold)', textTransform: 'uppercase', fontWeight: 700 }}>Outstanding Balance</span>
-              </div>
-              <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--gold)' }}>
-                ₱{(summaryMetrics.outstanding ?? 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--gray)', marginTop: '0.5rem' }}>
-                Total unpaid balance
-              </div>
-            </div>
-            
-            {/* Top Products Card */}
-            <div style={{
-              background: 'rgba(99, 102, 241, 0.1)',
-              border: '1px solid rgba(99, 102, 241, 0.3)',
-              borderRadius: '12px',
-              padding: '1.25rem',
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
-                <span style={{ fontSize: '0.75rem', color: 'var(--indigo)', textTransform: 'uppercase', fontWeight: 700 }}>Top Products</span>
-              </div>
-              <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--indigo)' }}>
-                {summaryMetrics.topProductsCount}
-              </div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--gray)', marginTop: '0.5rem' }}>
-                Products sold
-              </div>
-            </div>
+        {view === 'list' && (<>
+        {/* Table */}
+        <div style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '820px' }}>
+              <thead>
+                <tr>
+                  {TH('', 0)}{TH('Order Ref', 1)}{TH('Customer', 2)}{TH('Items', 3, true)}
+                  {TH('Date', 4)}{TH('Total', 5, true)}{TH('Downpayment', 6, true)}{TH('Balance', 7, true)}{TH('Status', 8, true)}
+                </tr>
+              </thead>
+              <tbody>
+                {isLoading ? (
+                  <tr><td colSpan={9} style={{ padding: '40px', textAlign: 'center', color: 'var(--gray)', fontSize: '13px' }}>Loading sales…</td></tr>
+                ) : filteredSales.length === 0 ? (
+                  <tr><td colSpan={9}><EmptyState icon={ICONS.pkg} message={searchQuery || paymentFilter ? 'No sales found' : 'No sales records yet'} sub={searchQuery || paymentFilter ? 'Try adjusting your search or filter.' : 'Sales appear here once orders are created.'} /></td></tr>
+                ) : pagedSales.map(order => {
+                  const isExpanded = expandedRows.has(order.id);
+                  const totalItems = order.items?.reduce((s, i) => s + i.quantity, 0) || order.quantity || 0;
+                  const cancelled = order.status === 'cancelled';
+                  const fullyPaid = !cancelled && order.balance === 0;
+                  const partial = order.downPayment > 0 && order.balance > 0;
+                  return (
+                    <React.Fragment key={order.id}>
+                      <tr style={{ ...S.tr, opacity: cancelled ? 0.55 : 1, cursor: 'pointer' }} onClick={() => toggleExpand(order.id)}>
+                        <td style={{ ...S.td, textAlign: 'center' }}>
+                          <span style={{ display: 'inline-flex', color: 'var(--gray)', transform: isExpanded ? 'rotate(90deg)' : 'none', transition: 'transform .15s' }}>{ICONS.chevR}</span>
+                        </td>
+                        <td style={S.td}>
+                          <div style={{ fontWeight: 700, color: 'var(--gold)' }}>{order.orderNumber}</div>
+                          {order.source === 'manual' && <div style={{ fontSize: '11px', color: 'var(--orange)' }}>Outside System</div>}
+                        </td>
+                        <td style={S.td}>
+                          <div style={{ fontWeight: 600, color: 'var(--white)' }}>{order.customerName}</div>
+                          <div style={{ fontSize: '11px', color: 'var(--gray)' }}>{order.customerContact || ''}</div>
+                        </td>
+                        <td style={{ ...S.td, textAlign: 'center' }}>
+                          <span style={{ fontWeight: 600, color: 'var(--white)' }}>{totalItems} pcs</span>
+                          {order.items?.length > 1 && <div style={{ fontSize: '11px', color: 'var(--gray)' }}>{order.items.length} variants</div>}
+                        </td>
+                        <td style={{ ...S.td, color: 'var(--gray)' }}>{new Date(order.orderDate).toLocaleDateString()}</td>
+                        <td style={{ ...S.td, textAlign: 'center', fontWeight: 700, color: 'var(--gold)' }}>{formatPrice(order.totalPrice)}</td>
+                        <td style={{ ...S.td, textAlign: 'center' }}>
+                          {cancelled ? <span style={{ color: 'var(--gray)' }}>—</span>
+                            : fullyPaid ? <span style={{ color: 'var(--st-green-fg)', fontWeight: 600 }}>Paid in full</span>
+                            : partial ? (
+                              <>
+                                <span style={{ fontWeight: 600, color: 'var(--st-green-fg)' }}>{formatPrice(order.downPayment)}</span>
+                                {order.downpaymentPercent ? <div style={{ fontSize: '11px', color: 'var(--st-green-fg)' }}>{order.downpaymentPercent}% DP</div> : null}
+                              </>
+                            ) : <span style={{ color: 'var(--gray)' }}>—</span>}
+                        </td>
+                        <td style={{ ...S.td, textAlign: 'center' }}>
+                          <span style={{ fontWeight: 600, color: cancelled ? 'var(--gray)' : (order.balance === 0 ? 'var(--st-green-fg)' : '#e0a43a') }}>
+                            {cancelled ? '—' : formatPrice(order.balance)}
+                          </span>
+                        </td>
+                        <td style={{ ...S.td, textAlign: 'center' }}><StatusPill status={order.status} /></td>
+                      </tr>
+                      {isExpanded && <OrderExpandRow order={order} colSpan={9} />}
+                    </React.Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         </div>
-      </div>
 
-      {/* Toolbar */}
-      <div className="inventory-toolbar">
-        <div className="search-wrapper">
-          <span className="search-icon">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
-            </svg>
-          </span>
-          <input type="text" className="search-input" placeholder="Search customer or order number..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
-          {searchQuery && <button className="search-clear" onClick={() => setSearchQuery('')}>×</button>}
-        </div>
-
-        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-          <CustomDropdown
-            value={dateFilter}
-            onChange={v => setDateFilter(v)}
-            options={[
-              { value: 'all', label: 'All Time' },
-              { value: 'today', label: 'Today' },
-              { value: 'this-week', label: 'This Week' },
-              { value: 'this-month', label: 'This Month' },
-              { value: 'custom', label: 'Custom Range' },
-            ]}
-            style={{ minWidth: '130px' }}
-          />
-
-          {dateFilter === 'custom' && (
-            <div style={{ display: 'flex', gap: '0.25rem', alignItems: 'center' }}>
-              <CustomDropdown
-                value={String(customDateRange.fromMonth)}
-                onChange={v => setCustomDateRange(prev => ({ ...prev, fromMonth: parseInt(v) }))}
-                options={MONTHS.map((m, i) => ({ value: String(i), label: m }))}
-                style={{ minWidth: '110px' }}
-              />
-              <span style={{ color: 'var(--gray)', fontSize: '0.75rem' }}>to</span>
-              <CustomDropdown
-                value={String(customDateRange.toMonth)}
-                onChange={v => setCustomDateRange(prev => ({ ...prev, toMonth: parseInt(v) }))}
-                options={MONTHS.map((m, i) => ({ value: String(i), label: m }))}
-                style={{ minWidth: '110px' }}
-              />
-              <CustomDropdown
-                value={String(customDateRange.year)}
-                onChange={v => setCustomDateRange(prev => ({ ...prev, year: parseInt(v) }))}
-                options={YEARS.map(y => ({ value: String(y), label: String(y) }))}
-                style={{ minWidth: '90px' }}
-              />
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Info Note */}
-      <div style={{
-        padding: '0.75rem 1rem',
-        marginBottom: '1rem',
-        background: 'rgba(212, 168, 67, 0.08)',
-        border: '1px solid var(--primary)',
-        borderRadius: '8px',
-        fontSize: '0.875rem',
-        color: 'var(--gray)'
-      }}>
-        <span style={{ marginRight: '0.5rem', fontWeight: 'bold', color: 'var(--primary)' }}>ℹ</span>
-        <strong>Quick Guide:</strong> Click row to view order details - All orders are shown here - Downpayment per product varies
-      </div>
-
-      {/* Table */}
-      <div style={{
-        WebkitOverflowScrolling: 'touch',
-        border: '1px solid var(--border)',
-        boxSizing: 'border-box',
-        scrollbarWidth: 'thin',
-        scrollbarColor: 'var(--gold) var(--dark2)',
-        borderRadius: '10px',
-        width: '0',
-        minWidth: '100%',
-        marginBottom: '1rem',
-        display: 'block',
-        overflowX: 'auto',
-      }}>
-        {filteredSales.length === 0 ? (
-          <div className="empty-state">
-            <div className="empty-icon">
-              <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                <rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/>
-              </svg>
-            </div>
-            <h3 className="empty-title">{searchQuery || paymentFilter ? 'No sales found' : 'No Sales Records Yet'}</h3>
-            <p className="empty-description">{searchQuery || paymentFilter ? 'Try adjusting your search or filter.' : 'Sales will appear here once orders are created.'}</p>
-          </div>
-        ) : (
-          <table className="inventory-table" style={{
-            width: 'max-content',
-            minWidth: '100%',
-          }}>
-            <thead>
-              <tr>
-                <th style={{ width: '28px' }}></th>
-                <th className="table-col-name">Order Number</th>
-                <th className="table-col-category">Customer</th>
-                <th className="table-col-stock">Items</th>
-                <th className="table-col-min">Date</th>
-                <th className="table-col-min">Total Price</th>
-                <th className="table-col-min">Downpayment</th>
-                <th className="table-col-min">Balance</th>
-                <th className="table-col-status">Payment Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {pagedSales.map(order => {
-                const statusBadge = getStatusBadge(order);
-                const isExpanded = expandedRows.has(order.id);
-                const totalItems = order.items?.reduce((sum, item) => sum + item.quantity, 0) || order.quantity || 0;
-
-                return (
-                  <React.Fragment key={order.id}>
-                    <tr className="inventory-table-row"
-                      style={{
-                        opacity: order.status === 'cancelled' ? 0.55 : 1,
-                      }}>
-
-                      {/* Expand chevron */}
-                      <td style={{ width: '28px', cursor: 'pointer' }} onClick={() => toggleExpand(order.id)}>
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-                          style={{ color: 'var(--gray)', transition: 'transform 0.2s', transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)', display: 'block' }}>
-                          <path d="M9 18l6-6-6-6"/>
-                        </svg>
-                      </td>
-
-                      {/* Order Number */}
-                      <td className="table-cell-name">
-                        <div style={{ fontWeight: 600, color: 'var(--gold)', fontSize: '0.9rem' }}>
-                          {order.orderNumber}
-                        </div>
-                        <div style={{ fontSize: '0.73rem', color: 'var(--gray)', marginTop: '0.15rem' }}>
-                          {order.source === 'manual' && (
-                            <span style={{ color: 'var(--orange)' }}>Outside System</span>
-                          )}
-                        </div>
-                      </td>
-
-                      {/* Customer */}
-                      <td className="table-cell">
-                        <div style={{ fontWeight: 600, color: 'var(--white)', fontSize: '0.875rem' }}>
-                          {order.customerName}
-                        </div>
-                        <div style={{ fontSize: '0.73rem', color: 'var(--gray)', marginTop: '0.15rem' }}>
-                          {order.customerContact}
-                        </div>
-                      </td>
-
-                      {/* Items */}
-                      <td className="table-cell-stock">
-                        <span style={{ fontWeight: 600, color: 'var(--white)', fontSize: '0.875rem' }}>
-                          {totalItems} pcs
-                        </span>
-                        {order.items?.length > 1 && (
-                          <div style={{ fontSize: '0.7rem', color: 'var(--gray)', marginTop: '0.1rem' }}>
-                            {order.items.length} variants
-                          </div>
-                        )}
-                      </td>
-
-                      {/* Date */}
-                      <td className="table-cell">
-                        <span style={{ fontSize: '0.875rem', color: 'var(--gray)' }}>
-                          {new Date(order.orderDate).toLocaleDateString()}
-                        </span>
-                      </td>
-
-                      {/* Total Price */}
-                      <td className="table-cell">
-                        <span style={{ fontWeight: 600, color: 'var(--gold)', fontSize: '0.875rem' }}>
-                          {formatPrice(order.totalPrice || 0)}
-                        </span>
-                      </td>
-
-                      {/* Downpayment */}
-                      <td className="table-cell">
-                        <span style={{ fontWeight: 600, color: order.downPayment > 0 ? 'var(--green)' : 'var(--gray)', fontSize: '0.875rem' }}>
-                          {order.downPayment > 0 ? formatPrice(order.downPayment) : '—'}
-                        </span>
-                        {order.downPayment > 0 && order.downpaymentPercent && (
-                          <div style={{ fontSize: '0.65rem', color: 'var(--green)', marginTop: '0.1rem' }}>
-                            {order.downpaymentPercent}% DP
-                          </div>
-                        )}
-                      </td>
-
-                      {/* Balance */}
-                      <td className="table-cell">
-                        <span style={{ fontWeight: 600, color: order.balance === 0 ? 'var(--green)' : (order.status === 'cancelled' ? 'var(--gray)' : 'var(--gold)'), fontSize: '0.875rem' }}>
-                          {order.status === 'cancelled' ? '—' : formatPrice(order.balance || 0)}
-                        </span>
-                        {order.balance === 0 && order.status !== 'cancelled' && (
-                          <div style={{ fontSize: '0.65rem', color: 'var(--green)', marginTop: '0.1rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                              <path d="M20 6L9 17l-5-5"/>
-                            </svg>
-                            Paid
-                          </div>
-                        )}
-                      </td>
-
-                      {/* Payment Status */}
-                      <td className="table-cell">
-                        <span style={{
-                          fontSize: '0.7rem',
-                          fontWeight: 700,
-                          background: statusBadge.bg,
-                          border: `1px solid ${statusBadge.border}`,
-                          borderRadius: '4px',
-                          padding: '0.2rem 0.5rem',
-                          color: statusBadge.color,
-                          textTransform: 'uppercase',
-                          letterSpacing: '0.03em',
-                          whiteSpace: 'nowrap',
-                        }}>
-                          {statusBadge.label}
-                        </span>
-                      </td>
-                    </tr>
-
-                    {/* Expand row */}
-                    {isExpanded && (
-                      <OrderExpandRow key={`${order.id}-expand`} order={order} colSpan={9} />
-                    )}
-                  </React.Fragment>
-                );
-              })}
-            </tbody>
-          </table>
+        {!isLoading && filteredSales.length > 0 && (
+          <PaginationBar total={filteredSales.length} page={sPage} perPage={sRpp} onPage={setSPage} onPerPage={setSRpp} />
         )}
-        {filteredSales.length > 0 && (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.625rem 1rem', borderTop: '1px solid var(--border)', flexWrap: 'wrap', gap: '0.5rem', fontSize: '0.8rem', color: 'var(--gray)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              Rows per page:
-              <select value={sRpp} onChange={e => { setSRpp(Number(e.target.value)); setSPage(1); }} style={{ background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '6px', color: 'var(--white)', padding: '0.2rem 0.5rem', fontSize: '0.8rem', cursor: 'pointer' }}>
-                {[5, 10, 25, 50].map(n => <option key={n} value={n}>{n}</option>)}
-              </select>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
-              <button onClick={() => setSPage(p => Math.max(1, p - 1))} disabled={sPage <= 1} style={{ padding: '0.25rem 0.625rem', background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '6px', color: sPage <= 1 ? 'var(--gray)' : 'var(--white)', cursor: sPage <= 1 ? 'not-allowed' : 'pointer' }}>‹</button>
-              <button onClick={() => setSPage(p => Math.min(sTotalPages, p + 1))} disabled={sPage >= sTotalPages} style={{ padding: '0.25rem 0.625rem', background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '6px', color: sPage >= sTotalPages ? 'var(--gray)' : 'var(--white)', cursor: sPage >= sTotalPages ? 'not-allowed' : 'pointer' }}>›</button>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-              Page: <span style={{ padding: '0.2rem 0.6rem', background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '6px', color: 'var(--white)', minWidth: '28px', textAlign: 'center' }}>{sPage}</span> of {sTotalPages}
-            </div>
-          </div>
-        )}
+        </>)}
+
+        {view === 'reports' && !isLoading && <ReportsView reports={reports} />}
       </div>
-    </div>
     </ErrorBoundary>
   );
 }

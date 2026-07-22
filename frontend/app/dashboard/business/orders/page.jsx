@@ -88,8 +88,8 @@ function InfoRow({ label, value, mono }) {
 function Modal({ children, onClose, maxWidth = 480 }) {
   return (
     <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.35)', zIndex:1000,
-      display:'flex', alignItems:'center', justifyContent:'center', padding:'16px' }}
-      onClick={e => e.target === e.currentTarget && onClose()}>
+      display:'flex', alignItems:'center', justifyContent:'center', padding:'16px' }}>
+      {/* No backdrop-close: modal may hold form input — a stray click would wipe it. */}
       <div style={{ ...S.card, width:'100%', maxWidth, maxHeight:'90vh', overflowY:'auto',
         boxShadow:'0 20px 60px rgba(0,0,0,.18)', padding:'24px' }}
         onClick={e => e.stopPropagation()}>
@@ -500,13 +500,23 @@ function getAvailableStatuses(o) {
   const s = o.orderStatus;
   const isCOD = (o.paymentMethod || '').toLowerCase() === 'cod';
   if (o.isCustom) {
+    // Keyed by BOTH the canonical codes and the legacy ones that older orders still carry.
+    // A custom order now starts at plain "pending", and this map had no entry for it - so
+    // every new custom order showed "No available transitions" and could never be moved.
     return ({
+      pending:             ['In Production', 'Cancelled'],
+      Pending:             ['In Production', 'Cancelled'],
       pending_review:      ['awaiting_payment'],
       design_approved:     ['awaiting_payment'],
+      awaiting_payment:    ['In Production'],
       awaiting_production: ['In Production'],
+      processing:          ['In Production', 'Cancelled'],
+      Processing:          ['In Production', 'Cancelled'],
+      in_production:       ['for_qc'],
       'In Production':     ['for_qc'],
       for_qc:              ['ready_for_delivery'],
       ready_for_delivery:  ['For Delivery'],
+      for_delivery:        ['Delivered'],
       'For Delivery':      ['Delivered'],
     })[s] ?? [];
   }
@@ -684,7 +694,12 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                   : lo.deliveryAddress}
               </div>
               {typeof lo.deliveryAddress === 'object' && lo.deliveryAddress.phone && (
-                <div style={{ fontSize:'12px', color:'var(--gray)', marginTop:'2px' }}>☎ {lo.deliveryAddress.phone}</div>
+                <div style={{ fontSize:'12px', color:'var(--gray)', marginTop:'2px' }}>Phone: {lo.deliveryAddress.phone}</div>
+              )}
+              {typeof lo.deliveryAddress === 'object' && lo.deliveryAddress.delivery_notes && (
+                <div style={{ fontSize:'12px', color:'var(--gray-light)', marginTop:'6px', padding:'8px 10px', background:'var(--dark2)', border:'1px solid var(--border)', borderRadius:'6px' }}>
+                  <span style={{ fontWeight:600, color:'var(--gray)' }}>Delivery notes: </span>{lo.deliveryAddress.delivery_notes}
+                </div>
               )}
               {typeof lo.deliveryAddress === 'object' && lo.deliveryAddress.lat && lo.deliveryAddress.lng && (
                 <div style={{ marginTop:'8px' }}>
@@ -961,11 +976,24 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
               <span style={{ fontWeight:600 }}>₱{fmt(lo.courierFee)}</span>
             </div>
           )}
-          <InfoRow label="Paid" value={`₱${fmt(lo.downPayment)}`} />
-          <div style={{ display:'flex', justifyContent:'space-between', fontSize:'12px', padding:'3px 0' }}>
-            <span style={{ color:'var(--gray)' }}>Balance</span>
-            <span style={{ fontWeight:700, color: Number(lo.balance??0) <= 0 ? '#166534' : '#c2410c' }}>₱{fmt(lo.balance)}</span>
-          </div>
+          {/* balance is only written once a payment lands, so an unpaid order reported
+              ₱0.00 owing on a ₱1,057.88 order. Derive it when it has never been set. */}
+          {(() => {
+            const paid  = Number(lo.downPayment ?? 0);
+            const total = Number(lo.totalAmount ?? lo.totalPrice ?? 0);
+            const owing = lo.balance != null && lo.balance !== ''
+              ? Number(lo.balance)
+              : Math.max(0, Math.round((total - paid) * 100) / 100);
+            return (
+              <>
+                <InfoRow label="Paid" value={`₱${fmt(paid)}`} />
+                <div style={{ display:'flex', justifyContent:'space-between', fontSize:'12px', padding:'3px 0' }}>
+                  <span style={{ color:'var(--gray)' }}>Balance</span>
+                  <span style={{ fontWeight:700, color: owing <= 0 ? '#166534' : '#c2410c' }}>₱{fmt(owing)}</span>
+                </div>
+              </>
+            );
+          })()}
 
           {Array.isArray(lo.paymentHistory) && lo.paymentHistory.length > 0 && (
             <>

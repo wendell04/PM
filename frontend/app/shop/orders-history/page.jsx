@@ -24,14 +24,20 @@ function orderBucket(o) {
   if (s === 'delivered' || raw === 'Paid') return 'Completed';
   if (s === 'for_delivery' || raw === 'shipped' || raw === 'ready_for_pickup') return 'To Receive';
   if (raw === 'awaiting_payment') return 'To Pay';
-  // Unpaid online order still at Pending → needs payment first
+  // "To Pay" means money is still owed on a real order - most often a downpaid order whose
+  // balance is still outstanding. An online order that was never paid at all belongs here
+  // too, since it is waiting on the same thing.
+  if (Number(o.balance) > 0) return 'To Pay';
   if (s === 'pending' && o.paymentStatus !== 'paid' && o.paymentMethod && o.paymentMethod !== 'cod') return 'To Pay';
   return 'In Progress';
 }
 
+// Payment comes before review now: the customer pays a downpayment at checkout, and the
+// artwork is checked before production starts. Showing Review first described a flow the
+// shop no longer runs.
 const UPLOAD_STEPS = [
-  { key: 'pending_review',      label: 'Review',     icon: <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> },
   { key: 'awaiting_payment',    label: 'Payment',    icon: <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg> },
+  { key: 'pending_review',      label: 'Review',     icon: <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> },
   { key: 'awaiting_production', label: 'Production', icon: <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg> },
   { key: 'for_qc',              label: 'QC Check',   icon: <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg> },
   { key: 'shipped',             label: 'Delivery',   icon: <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg> },
@@ -207,7 +213,7 @@ function OrderTracker({ status, paymentMethod, paymentStatus, statusHistory = []
 }
 
 // ─── CustomOrderTracker ─────────────────────────────────
-function CustomOrderTracker({ orderStatus, designType, designStatus }) {
+function CustomOrderTracker({ orderStatus, designType, designStatus, paymentStatus }) {
   const steps = designType === 'upload' ? UPLOAD_STEPS : REQUEST_STEPS;
   const isTerminal = orderStatus === 'Cancelled' || orderStatus === 'Returned';
   const statusLabel = CUSTOM_STATUS_LABEL[orderStatus] || orderStatus;
@@ -227,7 +233,23 @@ function CustomOrderTracker({ orderStatus, designType, designStatus }) {
   const approvedIdx = (designStatus === 'approved' || designStatus === 'revision_requested')
     ? steps.findIndex(s => s.key === 'design_approved')
     : -1;
-  const currentIdx = Math.max(rawIdx, approvedIdx);
+
+  // The API normalises orderStatus down to the fulfillment vocabulary (pending_review and
+  // awaiting_payment both arrive as "pending"), so the design and payment stages have to be
+  // read from their own fields - otherwise every early order rendered as a row of grey dots.
+  let derivedIdx = -1;
+  if (rawIdx === -1 && designType === 'upload') {
+    const paid = paymentStatus === 'paid' || paymentStatus === 'partial';
+    if (!paid) {
+      derivedIdx = steps.findIndex(s => s.key === 'awaiting_payment');
+    } else if (designStatus === 'pending_review' || designStatus === 'rejected' || !designStatus) {
+      derivedIdx = steps.findIndex(s => s.key === 'pending_review');
+    } else {
+      derivedIdx = steps.findIndex(s => s.key === 'awaiting_production');
+    }
+  }
+
+  const currentIdx = Math.max(rawIdx, approvedIdx, derivedIdx);
 
   const isDelivered = orderStatus === 'delivered' || orderStatus === 'Delivered';
 
@@ -385,6 +407,15 @@ export default function OrdersHistoryPage() {
   const [payNowError, setPayNowError]     = useState(null);
   const [payMethod, setPayMethod]         = useState(null);
   const [payFullToggle, setPayFullToggle] = useState(false);
+  // Owner-controlled method availability (Homepage CMS -> Payment Methods). Missing = enabled.
+  const [payEnabled, setPayEnabled] = useState({});
+
+  useEffect(() => {
+    fetch(`${API_URL}/api/storefront/content/payment_methods`)
+      .then(r => r.json())
+      .then(d => { if (d?.data?.enabled && typeof d.data.enabled === 'object') setPayEnabled(d.data.enabled); })
+      .catch(() => {});
+  }, []);
   const [payNowEWalletPhone, setPayNowEWalletPhone]       = useState('');
   const [payNowShowEWalletPhone, setPayNowShowEWalletPhone] = useState(false);
   const [payNowCardNumber, setPayNowCardNumber] = useState('');
@@ -993,7 +1024,7 @@ export default function OrdersHistoryPage() {
                     {/* Tracker */}
                     <div style={{ paddingBottom: '4px' }}>
                       {selectedOrder.isCustomOrder ? (
-                        <CustomOrderTracker orderStatus={selectedOrder.orderStatus} designType={selectedOrder.designType} designStatus={selectedOrder.designStatus} />
+                        <CustomOrderTracker orderStatus={selectedOrder.orderStatus} designType={selectedOrder.designType} designStatus={selectedOrder.designStatus} paymentStatus={selectedOrder.paymentStatus} />
                       ) : (
                         <OrderTracker status={selectedOrder.orderStatus} paymentMethod={selectedOrder.paymentMethod} paymentStatus={selectedOrder.paymentStatus} statusHistory={selectedOrder.statusHistory} />
                       )}
@@ -1394,7 +1425,10 @@ export default function OrdersHistoryPage() {
                           { id: 'gcash',    label: 'GCash',               sub: 'Redirect to GCash',  accent: '#0066FF', logo: '/logos/Gcash-Logo-1024x1024.png' },
                           { id: 'paymaya', label: 'Maya',                sub: 'Redirect to Maya',   accent: '#00B14F', logo: '/logos/maya logo.png' },
                           { id: 'card',    label: 'Credit / Debit Card', sub: 'Visa or Mastercard', accent: '#9C7BE8', logo: '/logos/credit-card.svg', filterImg: true },
-                        ].map(opt => {
+                        // The owner's Homepage CMS toggles were honoured at checkout but not
+                        // here, so a method switched off was still offered when paying a
+                        // balance - and the server would then reject the payment.
+                        ].filter(opt => payEnabled[opt.id] !== false).map(opt => {
                           const isSelected = payMethod === opt.id;
                           const isEWallet  = opt.id === 'gcash' || opt.id === 'paymaya';
                           const showPanel  = isEWallet && isSelected;

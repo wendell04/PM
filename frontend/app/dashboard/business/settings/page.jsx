@@ -7,6 +7,36 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import ErrorBoundary from '@/components/ErrorBoundary';
+import ImageCropper from '@/components/ImageCropper';
+
+// Google Places (New) — best PH landmark coverage for the store-location search. Falls back to OSM when unset/failed.
+const GOOGLE_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || '';
+
+// Structured store-address parts (himay-himay, like the customer address) + helpers to combine/parse them.
+const EMPTY_STORE_PARTS = { house_number: '', street: '', barangay: '', city: '', province: '', zip: '' };
+const combineStoreAddress = (p = {}) => [
+  [p.house_number, p.street].filter(Boolean).join(' '),
+  p.barangay, p.city, p.province, p.zip,
+].filter(Boolean).join(', ');
+const googleComponentsToParts = (components = []) => {
+  const get = (t) => components.find(c => (c.types || []).includes(t));
+  return {
+    house_number: get('street_number')?.longText || '',
+    street:       get('route')?.longText || '',
+    barangay:     get('sublocality_level_1')?.longText || get('neighborhood')?.longText || get('sublocality')?.longText || '',
+    city:         get('locality')?.longText || get('administrative_area_level_2')?.longText || '',
+    province:     get('administrative_area_level_1')?.longText || '',
+    zip:          get('postal_code')?.longText || '',
+  };
+};
+const osmAddressToParts = (a = {}) => ({
+  house_number: a.house_number || '',
+  street:       a.road || a.pedestrian || a.footway || '',
+  barangay:     a.suburb || a.village || a.neighbourhood || a.quarter || '',
+  city:         a.city || a.town || a.municipality || a.county || '',
+  province:     a.state || '',
+  zip:          (a.postcode || '').replace(/\D/g, '').slice(0, 4),
+});
 
 const StoreLocationMap = dynamic(() => import('@/components/maps/StoreLocationMap'), { ssr: false });
 
@@ -108,6 +138,7 @@ export default function SettingsPage() {
   const [showAvatarFallback, setShowAvatarFallback] = useState(false);
   const [isUploadingAvatar, setIsUploadingAvatar]   = useState(false);
   const [avatarError, setAvatarError]               = useState('');
+  const [avatarCropSrc, setAvatarCropSrc]           = useState(null);
   const [avatarSuccess, setAvatarSuccess]           = useState(false);
 
   // ── Personal ──────────────────────────────────────────────
@@ -156,7 +187,7 @@ export default function SettingsPage() {
 
   // ── Shipping ──────────────────────────────────────────────
   const [shippingForm, setShippingForm] = useState({
-    storeAddress: '', storeLat: null, storeLng: null,
+    storeAddress: '', storeAddressParts: { ...EMPTY_STORE_PARTS }, storeLat: null, storeLng: null,
     shippingMode: 'courier_booked',
     shippingBaseRate: '50', shippingPerKmRate: '15',
     flatRateInsideMetro: '150', flatRateOutsideMetro: '250',
@@ -170,6 +201,7 @@ export default function SettingsPage() {
   const [addrSearching, setAddrSearching]         = useState(false);
   const [addrMapGeocoding, setAddrMapGeocoding]   = useState(false);
   const addrTimerRef                              = useRef(null);
+  const addrGoogleSessionRef                      = useRef(null);
 
   // ── 2FA toggle ────────────────────────────────────────────
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
@@ -223,11 +255,13 @@ export default function SettingsPage() {
         if (d?.data) {
           setShippingForm({
             storeAddress:         d.data.storeAddress         || '',
+            storeAddressParts:    d.data.storeAddressParts    || { ...EMPTY_STORE_PARTS },
             storeLat:             d.data.storeLat             ?? null,
             storeLng:             d.data.storeLng             ?? null,
             shippingMode:         d.data.shippingMode         || 'courier_booked',
             shippingBaseRate:     d.data.shippingBaseRate     != null ? String(d.data.shippingBaseRate)     : '50',
             shippingPerKmRate:    d.data.shippingPerKmRate    != null ? String(d.data.shippingPerKmRate)    : '15',
+            designRequestFee:     d.data.designRequestFee     != null ? String(d.data.designRequestFee)     : '100',
             flatRateInsideMetro:  d.data.flatRateInsideMetro  != null ? String(d.data.flatRateInsideMetro)  : '150',
             flatRateOutsideMetro: d.data.flatRateOutsideMetro != null ? String(d.data.flatRateOutsideMetro) : '250',
           });
@@ -450,18 +484,26 @@ export default function SettingsPage() {
   };
 
   // ── Avatar upload ─────────────────────────────────────────
-  const handleAvatarUpload = async (e) => {
+  const handleAvatarUpload = (e) => {
     const file = e.target.files?.[0];
+    e.target.value = '';
     if (!file) return;
     const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
     if (!allowedTypes.includes(file.type)) {
       setAvatarError('Only JPEG, PNG, GIF, or WebP images are allowed.');
       return;
     }
-    if (file.size > 5 * 1024 * 1024) {
-      setAvatarError('Image must be smaller than 5 MB.');
+    if (file.size > 15 * 1024 * 1024) {
+      setAvatarError('Image must be smaller than 15 MB.');
       return;
     }
+    // Square-crop before upload (avatar renders as a circle).
+    setAvatarError('');
+    setAvatarCropSrc(URL.createObjectURL(file));
+  };
+
+  const uploadAvatarFile = async (file) => {
+    if (avatarCropSrc) { URL.revokeObjectURL(avatarCropSrc); setAvatarCropSrc(null); }
     setIsUploadingAvatar(true);
     setAvatarError('');
     setAvatarSuccess(false);
@@ -571,38 +613,74 @@ export default function SettingsPage() {
     setAddrSearching(true);
     addrTimerRef.current = setTimeout(async () => {
       try {
-        const res = await fetch(
-          `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=6&countrycodes=ph&q=${encodeURIComponent(q)}`,
-          { headers: { 'Accept-Language': 'en', 'User-Agent': 'PersonalizeMePrints/1.0' } }
-        );
-        const data = await res.json();
-        setAddrSuggestions(data);
-        setAddrShowSug(data.length > 0);
+        let results = [];
+        if (GOOGLE_KEY) {
+          try {
+            if (!addrGoogleSessionRef.current) addrGoogleSessionRef.current = (globalThis.crypto?.randomUUID?.() || String(Date.now()));
+            const body = {
+              input: q,
+              includedRegionCodes: ['ph'],
+              sessionToken: addrGoogleSessionRef.current,
+              ...(shippingForm.storeLat && shippingForm.storeLng
+                ? { locationBias: { circle: { center: { latitude: shippingForm.storeLat, longitude: shippingForm.storeLng }, radius: 30000 } } }
+                : {}),
+            };
+            const gres = await fetch('https://places.googleapis.com/v1/places:autocomplete', {
+              method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': GOOGLE_KEY }, body: JSON.stringify(body),
+            });
+            if (gres.ok) {
+              const gdata = await gres.json();
+              results = (gdata.suggestions || []).map(x => x.placePrediction).filter(Boolean).map(p => ({
+                google_place_id: p.placeId,
+                title:        p.structuredFormat?.mainText?.text || p.text?.text || '',
+                subtitle:     p.structuredFormat?.secondaryText?.text || '',
+                display_name: p.text?.text || '',
+              })).filter(x => x.google_place_id);
+            }
+          } catch { /* fall through to OSM */ }
+        }
+        if (results.length === 0) {
+          const res = await fetch(
+            `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=6&countrycodes=ph&q=${encodeURIComponent(q)}`,
+            { headers: { 'Accept-Language': 'en' } }
+          );
+          results = await res.json();
+        }
+        setAddrSuggestions(results);
+        setAddrShowSug(results.length > 0);
       } catch { setAddrSuggestions([]); }
       finally { setAddrSearching(false); }
     }, 280);
   };
 
-  const handleAddrSuggestionSelect = (s) => {
-    const a = s.address || {};
-    const parts = [
-      a.house_number,
-      a.road || a.pedestrian || a.footway,
-      a.suburb || a.village || a.neighbourhood || a.quarter,
-      a.city || a.town || a.municipality || a.county,
-      a.state,
-      a.postcode,
-    ].filter(Boolean);
-    const formatted = parts.join(', ');
+  const handleAddrSuggestionSelect = async (s) => {
+    setAddrShowSug(false);
+    setAddrSuggestions([]);
+    setAddrSearch('');
+    // Google prediction → resolve coordinates + formatted address via Place Details.
+    if (s.google_place_id) {
+      try {
+        const res = await fetch(
+          `https://places.googleapis.com/v1/places/${s.google_place_id}?sessionToken=${addrGoogleSessionRef.current || ''}`,
+          { headers: { 'X-Goog-Api-Key': GOOGLE_KEY, 'X-Goog-FieldMask': 'location,formattedAddress,addressComponents' } }
+        );
+        addrGoogleSessionRef.current = null;
+        if (res.ok) {
+          const d = await res.json();
+          const sp = googleComponentsToParts(d.addressComponents);
+          setShippingForm(f => ({ ...f, storeAddressParts: sp, storeAddress: d.formattedAddress || combineStoreAddress(sp) || s.display_name, storeLat: d.location?.latitude, storeLng: d.location?.longitude }));
+          return;
+        }
+      } catch { /* fall through to OSM shape */ }
+    }
+    const sp = osmAddressToParts(s.address || {});
     setShippingForm(f => ({
       ...f,
-      storeAddress: formatted || s.display_name,
+      storeAddressParts: sp,
+      storeAddress: combineStoreAddress(sp) || s.display_name,
       storeLat:     parseFloat(s.lat),
       storeLng:     parseFloat(s.lon),
     }));
-    setAddrSearch('');
-    setAddrSuggestions([]);
-    setAddrShowSug(false);
   };
 
   const handleMapLocationSelect = async (lat, lng) => {
@@ -615,17 +693,9 @@ export default function SettingsPage() {
       );
       const data = await res.json();
       if (data?.address) {
-        const a = data.address;
-        const parts = [
-          a.house_number,
-          a.road || a.pedestrian || a.footway,
-          a.suburb || a.village || a.neighbourhood || a.quarter,
-          a.city || a.town || a.municipality || a.county,
-          a.state,
-          a.postcode,
-        ].filter(Boolean);
-        const formatted = parts.join(', ');
-        if (formatted) setShippingForm(f => ({ ...f, storeAddress: formatted }));
+        const sp = osmAddressToParts(data.address);
+        const formatted = combineStoreAddress(sp);
+        if (formatted) setShippingForm(f => ({ ...f, storeAddressParts: sp, storeAddress: formatted }));
       }
     } catch { /* keep existing */ }
     finally { setAddrMapGeocoding(false); }
@@ -657,9 +727,11 @@ export default function SettingsPage() {
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'application/json' },
         body: JSON.stringify({
           storeAddress:         shippingForm.storeAddress,
+          storeAddressParts:    shippingForm.storeAddressParts,
           storeLat:             shippingForm.storeLat,
           storeLng:             shippingForm.storeLng,
           shippingMode:         shippingForm.shippingMode,
+          designRequestFee:     parseFloat(shippingForm.designRequestFee) || 0,
           shippingBaseRate:     isFlat ? 50  : base,
           shippingPerKmRate:    isFlat ? 15  : perKm,
           flatRateInsideMetro:  inside,
@@ -816,6 +888,11 @@ export default function SettingsPage() {
                     )}
                   </label>
                   <input id="settings-avatar-upload" type="file" accept="image/jpeg,image/png,image/webp" style={{ display: 'none' }} disabled={isUploadingAvatar} onChange={handleAvatarUpload} />
+                  {avatarCropSrc && (
+                    <ImageCropper src={avatarCropSrc} aspect={1} round outputSize={512} title="Crop profile photo"
+                      onCancel={() => { URL.revokeObjectURL(avatarCropSrc); setAvatarCropSrc(null); }}
+                      onConfirm={uploadAvatarFile} />
+                  )}
                 </div>
                 <div>
                   <div style={{ fontWeight: 700, fontSize: '0.9375rem', color: 'var(--white)', lineHeight: 1.3 }}>
@@ -1296,7 +1373,7 @@ export default function SettingsPage() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
 
               {/* Store Location */}
-              <div style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden' }}>
+              <div style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '12px', overflow: 'visible' }}>
                 <div style={{ padding: '0.875rem 1.25rem', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--gray-light)" strokeWidth="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
                   <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--white)' }}>Store Location</span>
@@ -1366,7 +1443,12 @@ export default function SettingsPage() {
                             onMouseEnter={e => e.currentTarget.style.background = 'var(--dark3)'}
                             onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                           >
-                            {s.display_name}
+                            {s.title ? (
+                              <>
+                                <div style={{ fontWeight: 600, color: 'var(--white)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.title}</div>
+                                <div style={{ fontSize: '0.72rem', color: 'var(--gray)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.subtitle}</div>
+                              </>
+                            ) : s.display_name}
                           </li>
                         ))}
                       </ul>
@@ -1379,16 +1461,38 @@ export default function SettingsPage() {
                   </div>
                 </div>
 
-                {/* Store Address (displayed to customers) */}
-                <div className="profile-form-field" style={{ marginTop: '0.75rem' }}>
-                  <label>Store Address <span style={{ fontSize: '0.75rem', color: 'var(--gray)', fontWeight: 400 }}>(displayed to customers)</span></label>
-                  <input
-                    type="text"
-                    value={shippingForm.storeAddress}
-                    onChange={e => setShippingForm(f => ({ ...f, storeAddress: e.target.value }))}
-                    placeholder="e.g., 123 Rizal St., Brgy. San Antonio, Quezon City"
-                    maxLength={300}
-                  />
+                {/* Store Address — structured by-fields (auto-fills from search/pin, editable) */}
+                <div style={{ marginTop: '0.75rem' }}>
+                  <label style={{ fontSize: '0.8rem', color: 'var(--gray)', marginBottom: '0.5rem', display: 'block' }}>
+                    Store Address <span style={{ fontSize: '0.75rem', color: 'var(--gray)', fontWeight: 400 }}>(displayed to customers — auto-fills from the search/pin, editable)</span>
+                  </label>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                    {[
+                      ['house_number', 'House/Unit/Bldg No.', 'e.g. 168'],
+                      ['street', 'Street', 'e.g. General Luis St.'],
+                      ['barangay', 'Barangay', 'e.g. Nagkaisang Nayon'],
+                      ['city', 'City / Municipality', 'e.g. Quezon City'],
+                      ['province', 'Province / Region', 'e.g. Metro Manila'],
+                      ['zip', 'ZIP Code', 'e.g. 1117'],
+                    ].map(([key, lbl, ph]) => (
+                      <div className="profile-form-field" key={key}>
+                        <label>{lbl}</label>
+                        <input
+                          type="text"
+                          value={shippingForm.storeAddressParts?.[key] || ''}
+                          onChange={e => setShippingForm(f => {
+                            const sp = { ...(f.storeAddressParts || {}), [key]: key === 'zip' ? e.target.value.replace(/\D/g, '').slice(0, 4) : e.target.value };
+                            return { ...f, storeAddressParts: sp, storeAddress: combineStoreAddress(sp) };
+                          })}
+                          placeholder={ph}
+                          maxLength={key === 'zip' ? 4 : 100}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  <p style={{ margin: '0.6rem 0 0', fontSize: '0.72rem', color: 'var(--gray)' }}>
+                    Full address (shown to customers): <span style={{ color: 'var(--gray-light)' }}>{shippingForm.storeAddress || '—'}</span>
+                  </p>
                 </div>
                 </div>
               </div>
@@ -1430,6 +1534,28 @@ export default function SettingsPage() {
                       </button>
                     );
                   })}
+                </div>
+
+                {/* One fee for the artwork, set once for the whole store. A design costs
+                    what it costs to draw - it is not worth more because it ends up on a
+                    mug rather than a totebag - so this is charged ONCE per order however
+                    many customised products share the same artwork. A product can still
+                    override it for genuinely harder work. */}
+                <div style={{ maxWidth: '480px', marginBottom: '1.25rem' }}>
+                  <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: 'var(--gray-light)', marginBottom: '0.35rem' }}>
+                    Design fee (₱)
+                  </label>
+                  <input
+                    type="text" inputMode="decimal" maxLength={7}
+                    value={shippingForm.designRequestFee ?? ''}
+                    onChange={e => setShippingForm(f => ({ ...f, designRequestFee: e.target.value.replace(/[^0-9.]/g, '') }))}
+                    placeholder="100.00"
+                    style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--dark2)', color: 'var(--white)', fontSize: '0.9rem' }}
+                  />
+                  <p style={{ fontSize: '0.72rem', color: 'var(--gray)', margin: '0.35rem 0 0', lineHeight: 1.5 }}>
+                    Charged once per order when a customer asks you to create the artwork -
+                    not per product. Three items sharing one design are still one fee.
+                  </p>
                 </div>
 
                 {shippingForm.shippingMode === 'courier_booked' && (

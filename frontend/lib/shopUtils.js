@@ -1,31 +1,34 @@
+// `tone` picks a theme-aware chip palette (--st-* in custom-styles.css): a light tint with
+// DARK text in light mode, a translucent tint with BRIGHT text in dark mode. The old flat
+// brand-gold chips read washed-out on light cards; these stay legible on both themes.
 export const STATUS_MAP = {
   // Standard order statuses (OrderController)
-  Pending:              { label: 'Pending',              color: '#d4a843' },
-  'In Production':      { label: 'In Production',        color: '#d4a843' },
-  'For QC':             { label: 'For QC',               color: '#d4a843' },
-  'For Delivery':       { label: 'For Delivery',         color: '#d4a843' },
-  Delivered:            { label: 'Delivered',            color: '#22c55e' },
-  Returned:             { label: 'Returned',             color: '#ef4444' },
-  Cancelled:            { label: 'Cancelled',            color: '#ef4444' },
-  Refunded:             { label: 'Refunded',             color: '#ef4444' },
+  Pending:              { label: 'Pending',              tone: 'amber' },
+  'In Production':      { label: 'In Production',        tone: 'blue' },
+  'For QC':             { label: 'For QC',               tone: 'purple' },
+  'For Delivery':       { label: 'For Delivery',         tone: 'blue' },
+  Delivered:            { label: 'Delivered',            tone: 'green' },
+  Returned:             { label: 'Returned',             tone: 'red' },
+  Cancelled:            { label: 'Cancelled',            tone: 'red' },
+  Refunded:             { label: 'Refunded',             tone: 'red' },
   // Job order statuses (JobOrderController)
-  Processing:           { label: 'Processing',           color: '#d4a843' },
-  Paid:                 { label: 'Paid',                 color: '#22c55e' },
-  Queued:               { label: 'Queued',               color: '#d4a843' },
-  'In Progress':        { label: 'In Progress',          color: '#d4a843' },
-  Completed:            { label: 'Completed',            color: '#22c55e' },
+  Processing:           { label: 'Processing',           tone: 'blue' },
+  Paid:                 { label: 'Paid',                 tone: 'green' },
+  Queued:               { label: 'Queued',               tone: 'amber' },
+  'In Progress':        { label: 'In Progress',          tone: 'blue' },
+  Completed:            { label: 'Completed',            tone: 'green' },
   // Custom order statuses
-  pending_review:       { label: 'Under Review',         color: '#d4a843' },
-  awaiting_payment:     { label: 'Awaiting Payment',     color: '#d4a843' },
-  pending_design:       { label: 'Pending Design',       color: '#d4a843' },
-  proof_sent:           { label: 'Proof Sent',           color: '#d4a843' },
-  revision_requested:   { label: 'Revision Requested',   color: '#d4a843' },
-  design_approved:      { label: 'Design Approved',      color: '#d4a843' },
-  awaiting_production:  { label: 'Awaiting Production',  color: '#d4a843' },
-  in_production:        { label: 'In Production',        color: '#d4a843' },
-  for_qc:               { label: 'For QC',               color: '#d4a843' },
-  ready_for_pickup:     { label: 'Ready for Pickup',     color: '#d4a843' },
-  shipped:              { label: 'Shipped',              color: '#d4a843' },
+  pending_review:       { label: 'Under Review',         tone: 'gray' },
+  awaiting_payment:     { label: 'Awaiting Payment',     tone: 'amber' },
+  pending_design:       { label: 'Pending Design',       tone: 'gray' },
+  proof_sent:           { label: 'Proof Sent',           tone: 'amber' },
+  revision_requested:   { label: 'Revision Requested',   tone: 'orange' },
+  design_approved:      { label: 'Design Approved',      tone: 'green' },
+  awaiting_production:  { label: 'Awaiting Production',  tone: 'amber' },
+  in_production:        { label: 'In Production',        tone: 'blue' },
+  for_qc:               { label: 'For QC',               tone: 'purple' },
+  ready_for_pickup:     { label: 'Ready for Pickup',     tone: 'blue' },
+  shipped:              { label: 'Shipped',              tone: 'blue' },
 };
 
 const STATUS_KEY_MAP = {
@@ -61,23 +64,37 @@ export function normalizeOrderStatus(status) {
   return STATUS_KEY_MAP[lower] ?? status;
 }
 
-export function StatusBadge({ status }) {
+/**
+ * Status chip. Pass a `status` (mapped via STATUS_MAP) or an explicit `label`+`tone`
+ * for things that aren't order statuses (e.g. quotes).
+ *
+ * Borderless — flat tint + dark text, matching the quote cards. This only reads correctly
+ * on a pure-white card (--dark in light mode); on --dark2 (#f5f7fa) the grey tint (#f3f4f6)
+ * is the same value as the card and the chip disappears.
+ */
+export function StatusBadge({ status, label, tone }) {
   const key = normalizeOrderStatus(status);
-  const s = STATUS_MAP[key] || { label: key ?? '—', color: '#9ca3af' };
+  const s = STATUS_MAP[key] || { label: key ?? '—', tone: 'gray' };
+  // Deliberately simple, consistent scheme for the customer's order/quote cards: GREEN only when
+  // delivered/completed, RED when cancelled/returned/refunded/declined, GREY for everything else
+  // (no amber/blue/purple). Overrides the per-status tone + any explicit tone on purpose.
+  const hay = `${status ?? ''} ${label ?? s.label ?? ''}`.toLowerCase();
+  const t = /cancel|return|refund|declin/.test(hay) ? 'red'
+    : /delivered|completed/.test(hay) ? 'green'
+    : 'gray';
   return (
     <span style={{
       display: 'inline-block',
-      background: `${s.color}18`,
-      color: s.color,
-      border: `1px solid ${s.color}55`,
+      background: `var(--st-${t}-bg)`,
+      color: `var(--st-${t}-fg)`,
+      border: 'none',
       borderRadius: '999px',
-      padding: '0.2rem 0.7rem',
-      fontSize: '0.72rem',
-      fontWeight: 700,
-      letterSpacing: '0.01em',
+      padding: '3px 8px',
+      fontSize: '0.68rem',
+      fontWeight: 800,
       whiteSpace: 'nowrap',
     }}>
-      {s.label}
+      {label ?? s.label}
     </span>
   );
 }

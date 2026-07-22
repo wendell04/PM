@@ -541,6 +541,12 @@ export default function BusinessDashboardLayout({ children }) {
       icon: "M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z",
     },
     {
+      name: "To Buy",
+      href: "/dashboard/business/to-buy",
+      permKey: "inventory",
+      icon: "M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.3 2.3A1 1 0 005.4 17H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z",
+    },
+    {
       name: "Bad Orders",
       href: "/dashboard/business/inventory-v2?tab=badorders",
       permKey: "inventory",
@@ -687,6 +693,7 @@ export default function BusinessDashboardLayout({ children }) {
       "/dashboard/business/audit-logs": "Audit Logs",
       "/dashboard/business/users": "Staff",
       "/dashboard/business/customers": "Customers",
+      "/dashboard/business/to-buy": "To Buy",
       "/dashboard/business/role-permissions": "Permissions",
       "/dashboard/business/settings": "Settings",
     };

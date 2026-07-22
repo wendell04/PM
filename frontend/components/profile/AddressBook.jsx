@@ -5,8 +5,75 @@ import dynamic from 'next/dynamic';
 import { useAuth } from '../../contexts/AuthContext';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import { fetchRegions, fetchProvinces, fetchCities, fetchBarangays, isNCR } from '@/lib/psgc';
+import { CustomSelect } from '@/app/dashboard/business/inventory-v2/shared';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
+
+// Optional upgrade: TomTom Search API gives commercial-grade POI/landmark coverage (free tier, no card).
+// When the key is set the address search uses TomTom; otherwise it falls back to free OSM/Nominatim.
+const TOMTOM_KEY = process.env.NEXT_PUBLIC_TOMTOM_API_KEY || '';
+
+// Google Places (New) — best PH landmark/POI coverage. Browser key (restrict by HTTP referrer + quota caps).
+// When set, the address search uses Google; any failure/quota falls back to TomTom/OSM (never breaks).
+const GOOGLE_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || '';
+
+// Map Google Place Details addressComponents[] → our { house_number, road, postcode, city, suburb, ... }.
+const parseGoogleComponents = (components = []) => {
+  const get = (type) => components.find(c => (c.types || []).includes(type));
+  return {
+    house_number: get('street_number')?.longText || '',
+    road:         get('route')?.longText || '',
+    postcode:     get('postal_code')?.longText || '',
+    city:         get('locality')?.longText || get('administrative_area_level_2')?.longText || '',
+    suburb:       get('sublocality_level_1')?.longText || get('neighborhood')?.longText || get('sublocality')?.longText || '',
+    state:        get('administrative_area_level_1')?.longText || '',
+    region:       get('administrative_area_level_1')?.longText || '',
+  };
+};
+
+// Haversine distance in km between two lat/lng points (for the Grab-style "x.xx km" on each result).
+const haversineKm = (lat1, lon1, lat2, lon2) => {
+  const toRad = (d) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return 6371 * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+};
+
+// Normalize a TomTom Fuzzy Search result into { title, subtitle, lat, lon, address:{...} } — POI name on
+// top, full address beneath — so the suggestion UI + autoFillPsgc read the same shape as the OSM path.
+const normalizeTomTom = (r) => {
+  const a = r.address || {};
+  const poiName = r.poi?.name;
+  const line = a.freeformAddress || '';
+  return {
+    title:    poiName || a.streetName || line,
+    subtitle: line,
+    display_name: poiName ? (line ? `${poiName} — ${line}` : poiName) : line,
+    lat: r.position?.lat,
+    lon: r.position?.lon,
+    address: {
+      house_number: a.streetNumber || '',
+      road:         a.streetName || '',
+      postcode:     a.postalCode || '',
+      city:         a.municipality || '',
+      suburb:       a.municipalitySubdivision || '',
+      state:        a.countrySubdivision || '',
+      region:       a.countrySubdivision || '',
+    },
+  };
+};
+
+// Same { title, subtitle, ... } shape for a raw Nominatim result.
+const normalizeNominatim = (r) => ({
+  place_id: r.place_id,
+  title:    r.name || (r.display_name || '').split(',')[0],
+  subtitle: r.display_name || '',
+  display_name: r.display_name || '',
+  lat: r.lat,
+  lon: r.lon,
+  address: r.address || {},
+});
 
 const StoreLocationMap = dynamic(() => import('@/components/maps/StoreLocationMap'), { ssr: false });
 
@@ -38,7 +105,7 @@ const fieldError = (msg) =>
   ) : null;
 
 const emptyForm = {
-  label: '', house_number: '', street: '', subdivision: '',
+  label: '', house_number: '', street: '', subdivision: '', delivery_notes: '',
   region: '', region_code: '',
   province: '', province_code: '',
   city: '', city_code: '',
@@ -46,20 +113,6 @@ const emptyForm = {
   zip: '', phone: '',
   is_default: false, lat: null, lng: null,
 };
-
-const selectStyle = (hasError, disabled) => ({
-  width: '100%',
-  padding: '0.625rem 0.75rem',
-  background: 'var(--dark2)',
-  border: `1px solid ${hasError ? 'var(--red)' : 'var(--border)'}`,
-  borderRadius: '8px',
-  color: 'var(--white)',
-  fontSize: '0.875rem',
-  boxSizing: 'border-box',
-  cursor: disabled ? 'not-allowed' : 'pointer',
-  opacity: disabled ? 0.5 : 1,
-  appearance: 'auto',
-});
 
 export default function AddressBook({ onSaved, initialEditAddress }) {
   const { token } = useAuth();
@@ -74,9 +127,10 @@ export default function AddressBook({ onSaved, initialEditAddress }) {
   const [formData, setFormData]         = useState(emptyForm);
   const [formErrors, setFormErrors]     = useState({});
   const [deletingId, setDeletingId]     = useState(null);
-  const [mapExpanded, setMapExpanded]     = useState(false);
+  const [mapExpanded, setMapExpanded]     = useState(true);
   const autoOpenedRef                     = useRef(false);
   const [isGeocoding, setIsGeocoding]     = useState(false);
+  const [userLoc, setUserLoc]             = useState(null); // device GPS, for the Grab-style distance
 
   // PSGC cascading dropdown option lists
   const [regions, setRegions]       = useState([]);
@@ -91,6 +145,7 @@ export default function AddressBook({ onSaved, initialEditAddress }) {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [isSearching, setIsSearching]     = useState(false);
   const searchTimerRef                    = useRef(null);
+  const googleSessionRef                  = useRef(null); // Places session token (1 search = 1 billable session)
 
   useEffect(() => { fetchAddresses(); }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -114,6 +169,16 @@ export default function AddressBook({ onSaved, initialEditAddress }) {
     let cancelled = false;
     fetchRegions().then(r => { if (!cancelled) setRegions(r); }).catch(() => {});
     return () => { cancelled = true; };
+  }, []);
+
+  // Device location (best-effort) → shows the Grab-style distance next to each search result. Silent if denied.
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      pos => setUserLoc({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      () => {},
+      { enableHighAccuracy: false, timeout: 8000, maximumAge: 300000 }
+    );
   }, []);
 
   useEffect(() => {
@@ -185,13 +250,130 @@ export default function AddressBook({ onSaved, initialEditAddress }) {
     setFormErrors(prev => ({ ...prev, city: null, barangay: null }));
   };
 
+  // Geocode a free-text address → lat/lng (best-effort, Nominatim/OSM) and drop/move the map pin.
+  const geocodeToPin = async (query) => {
+    if (!query || query.trim().length < 3) return false;
+    try {
+      setIsGeocoding(true);
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1&countrycodes=ph`,
+        { headers: { 'Accept-Language': 'en' } }
+      );
+      const data = await res.json();
+      if (Array.isArray(data) && data[0]) {
+        setFormData(prev => ({ ...prev, lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) }));
+        setMapExpanded(true);
+        setFormErrors(prev => ({ ...prev, pin: null }));
+        return true;
+      }
+    } catch { /* keep whatever pin the user set manually */ }
+    finally { setIsGeocoding(false); }
+    return false;
+  };
+
   const handleBarangayChange = (code) => {
     const b = barangays.find(x => x.code === code);
     setFormData(prev => ({ ...prev, barangay: b?.name || '', barangay_code: code }));
     setFormErrors(prev => ({ ...prev, barangay: null }));
+    // Initial pin at barangay level; refined to the exact house/street once those are typed (refinePin).
+    const parts = [b?.name, formData.city, formData.province, 'Philippines'].filter(Boolean);
+    if (parts.length >= 2) geocodeToPin(parts.join(', '));
+  };
+
+  // Refine the pin to the precise house-number + street once the customer types them (fires on blur).
+  // Falls back silently to the barangay-level pin if OSM can't resolve the exact address.
+  const refinePin = () => {
+    const { house_number, street, barangay, city, province } = formData;
+    if (!street || !city) return;
+    const parts = [[house_number, street].filter(Boolean).join(' '), barangay, city, province, 'Philippines'].filter(Boolean);
+    geocodeToPin(parts.join(', '));
   };
 
   // ── Address search (free, OpenStreetMap/Nominatim, PH-filtered) ──
+  // TomTom (commercial POI, when a key is set): finds named landmarks that OSM lacks. PH-filtered + pin-biased.
+  // Any failure — including a 429 when the daily free quota (2,500) is spent — returns [] so the caller
+  // silently falls back to free OSM/Nominatim; the search never breaks for the user.
+  const runTomTom = async (val) => {
+    try {
+      const bias = (formData.lat && formData.lng) ? `&lat=${formData.lat}&lon=${formData.lng}` : '';
+      const res = await fetch(
+        `https://api.tomtom.com/search/2/search/${encodeURIComponent(val)}.json?key=${TOMTOM_KEY}&typeahead=true&limit=6&countrySet=PH${bias}`
+      );
+      if (!res.ok) return [];
+      const data = await res.json();
+      return (data.results || []).map(normalizeTomTom).filter(r => r.lat && r.lon);
+    } catch { return []; }
+  };
+
+  // OSM/Nominatim (free, no key): catches small eskinita/local spots; PH-filtered + soft pin bias.
+  const runNominatim = async (val) => {
+    let bias = '';
+    if (formData.lat && formData.lng) {
+      const d = 0.15;
+      bias = `&viewbox=${formData.lng - d},${formData.lat + d},${formData.lng + d},${formData.lat - d}&bounded=0`;
+    }
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(val)}&format=json&addressdetails=1&limit=6&countrycodes=ph${bias}`,
+      { headers: { 'Accept-Language': 'en' } }
+    );
+    return (await res.json()).map(normalizeNominatim);
+  };
+
+  // Google Places Autocomplete (New): best PH POI/landmark coverage. One session token covers all the
+  // keystroke predictions of a search (billed as a single session; coords come later on select). PH-locked
+  // + biased to the current pin. Any failure/quota returns [] → caller falls back to TomTom/OSM.
+  const runGoogle = async (val) => {
+    try {
+      if (!googleSessionRef.current) googleSessionRef.current = (globalThis.crypto?.randomUUID?.() || String(Date.now() + Math.random()));
+      const body = {
+        input: val,
+        includedRegionCodes: ['ph'], // hard-restrict results to the Philippines (regionCode only formats)
+        sessionToken: googleSessionRef.current,
+        ...(formData.lat && formData.lng
+          ? { locationBias: { circle: { center: { latitude: formData.lat, longitude: formData.lng }, radius: 30000 } } }
+          : {}),
+      };
+      const res = await fetch('https://places.googleapis.com/v1/places:autocomplete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': GOOGLE_KEY },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) return [];
+      const data = await res.json();
+      return (data.suggestions || [])
+        .map(s => s.placePrediction)
+        .filter(Boolean)
+        .map(p => ({
+          google_place_id: p.placeId,
+          title:        p.structuredFormat?.mainText?.text || p.text?.text || '',
+          subtitle:     p.structuredFormat?.secondaryText?.text || '',
+          display_name: p.text?.text || '',
+          lat: null, lon: null, address: {},
+        }))
+        .filter(s => s.google_place_id);
+    } catch { return []; }
+  };
+
+  // Resolve a Google prediction → coordinates + address (Place Details, the one billable event per search).
+  // Closing the session token here ends the billing session.
+  const fetchGooglePlaceDetails = async (placeId) => {
+    try {
+      const res = await fetch(
+        `https://places.googleapis.com/v1/places/${placeId}?sessionToken=${googleSessionRef.current || ''}`,
+        { headers: { 'X-Goog-Api-Key': GOOGLE_KEY, 'X-Goog-FieldMask': 'location,formattedAddress,addressComponents' } }
+      );
+      if (!res.ok) return null;
+      const d = await res.json();
+      return {
+        lat: d.location?.latitude,
+        lon: d.location?.longitude,
+        address: parseGoogleComponents(d.addressComponents),
+        display_name: d.formattedAddress || '',
+      };
+    } catch { return null; }
+    finally { googleSessionRef.current = null; }
+  };
+
   const handleSearchChange = (val) => {
     setAddressSearch(val);
     if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
@@ -199,13 +381,11 @@ export default function AddressBook({ onSaved, initialEditAddress }) {
     setIsSearching(true);
     searchTimerRef.current = setTimeout(async () => {
       try {
-        const res = await fetch(
-          `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(val)}&format=json&addressdetails=1&limit=6&countrycodes=ph`,
-          { headers: { 'Accept-Language': 'en' } }
-        );
-        const data = await res.json();
-        setSuggestions(data);
-        setShowSuggestions(data.length > 0);
+        // Provider chain: Google (best landmarks) → TomTom → OSM. Each falls back when it has no key/no match.
+        let results = GOOGLE_KEY ? await runGoogle(val) : (TOMTOM_KEY ? await runTomTom(val) : []);
+        if (results.length === 0) results = await runNominatim(val);
+        setSuggestions(results);
+        setShowSuggestions(results.length > 0);
       } catch { setSuggestions([]); }
       finally { setIsSearching(false); }
     }, 280);
@@ -263,18 +443,26 @@ export default function AddressBook({ onSaved, initialEditAddress }) {
   };
 
   const handleSuggestionSelect = async (s) => {
-    const a = s.address || {};
+    setSuggestions([]);
+    setShowSuggestions(false);
+    setAddressSearch('');
+    // Google predictions carry only a placeId — resolve coordinates + address via Place Details on select.
+    let sel = s;
+    if (s.google_place_id && (!s.lat || !s.lon)) {
+      setIsGeocoding(true);
+      const details = await fetchGooglePlaceDetails(s.google_place_id);
+      setIsGeocoding(false);
+      if (details) sel = { ...s, ...details };
+    }
+    const a = sel.address || {};
     setFormData(prev => ({
       ...prev,
       house_number: a.house_number || prev.house_number,
       street:       a.road || a.pedestrian || a.footway || prev.street,
       zip:          a.postcode ? a.postcode.replace(/\D/g, '').slice(0, 4) : prev.zip,
-      lat:          parseFloat(s.lat),
-      lng:          parseFloat(s.lon),
+      lat:          parseFloat(sel.lat),
+      lng:          parseFloat(sel.lon),
     }));
-    setAddressSearch('');
-    setSuggestions([]);
-    setShowSuggestions(false);
     setMapExpanded(true);
     const patch = await autoFillPsgc(a);
     if (patch) {
@@ -302,7 +490,8 @@ export default function AddressBook({ onSaved, initialEditAddress }) {
     }
   };
 
-  // Pin drop → only SUGGEST a ZIP if the user hasn't typed one (dropdowns stay authoritative)
+  // Pin drop → back-fill Street / House No. / ZIP from the reverse-geocode, but ONLY when the field is
+  // still empty so a manual entry (and the authoritative PSGC dropdowns) are never overwritten.
   const handleLocationSelect = async (lat, lng) => {
     setFormData(prev => ({ ...prev, lat, lng }));
     setIsGeocoding(true);
@@ -312,13 +501,13 @@ export default function AddressBook({ onSaved, initialEditAddress }) {
         { headers: { 'Accept-Language': 'en' } }
       );
       const data = await res.json();
-      const pc = data?.address?.postcode;
-      if (pc) {
-        setFormData(prev => ({
-          ...prev, lat, lng,
-          zip: prev.zip || pc.replace(/\D/g, '').slice(0, 4),
-        }));
-      }
+      const a = data?.address || {};
+      setFormData(prev => ({
+        ...prev, lat, lng,
+        house_number: prev.house_number || a.house_number || '',
+        street:       prev.street || a.road || a.pedestrian || a.footway || '',
+        zip:          prev.zip || (a.postcode ? a.postcode.replace(/\D/g, '').slice(0, 4) : ''),
+      }));
     } catch { /* Nominatim unavailable — keep existing fields */ }
     finally { setIsGeocoding(false); }
   };
@@ -383,6 +572,7 @@ export default function AddressBook({ onSaved, initialEditAddress }) {
       house_number:  address.house_number  || '',
       street:        address.street        || '',
       subdivision:   address.subdivision   || '',
+      delivery_notes: address.delivery_notes || '',
       region:        address.region        || '',
       region_code:   address.region_code   || '',
       province:      address.province      || '',
@@ -397,7 +587,7 @@ export default function AddressBook({ onSaved, initialEditAddress }) {
       lat:           address.lat           ?? null,
       lng:           address.lng           ?? null,
     });
-    setMapExpanded(!!(address.lat && address.lng));
+    setMapExpanded(!(address.lat && address.lng)); // editing: keep the map hidden if a pin is already saved
     setShowForm(true);
     setFormErrors({});
     setError(null);
@@ -447,7 +637,7 @@ export default function AddressBook({ onSaved, initialEditAddress }) {
     setEditingAddress(null);
     setShowForm(false);
     setFormErrors({});
-    setMapExpanded(false);
+    setMapExpanded(true);
     setProvinces([]);
     setCities([]);
     setBarangays([]);
@@ -475,18 +665,17 @@ export default function AddressBook({ onSaved, initialEditAddress }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
 
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <h3 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--white)', fontWeight: 600 }}>Saved Addresses</h3>
-        {!showForm && (
+      {/* Header — title comes from the parent page; keep only the Add Address action here */}
+      {!showForm && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
           <button onClick={openAddForm} style={{ padding: '0.625rem 1.25rem', background: 'var(--gold)', border: 'none', borderRadius: '8px', color: 'var(--black)', fontSize: '0.875rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
               <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
             </svg>
             Add Address
           </button>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Success */}
       {successMsg && (
@@ -537,7 +726,7 @@ export default function AddressBook({ onSaved, initialEditAddress }) {
             </div>
 
             {showSuggestions && suggestions.length > 0 && (
-              <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 1200, background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '8px', marginTop: '4px', overflow: 'hidden', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
+              <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 1200, background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '8px', marginTop: '4px', maxHeight: '272px', overflowY: 'auto', overflowX: 'hidden', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
                 {suggestions.map((s, i) => (
                   <button
                     key={s.place_id || i}
@@ -547,10 +736,22 @@ export default function AddressBook({ onSaved, initialEditAddress }) {
                     onMouseEnter={e => { e.currentTarget.style.background = 'rgba(212,168,67,0.07)'; }}
                     onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
                   >
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="2" style={{ flexShrink: 0, marginTop: '2px' }}>
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="2" style={{ flexShrink: 0, marginTop: '3px' }}>
                       <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
                     </svg>
-                    <span style={{ lineHeight: 1.4 }}>{s.display_name}</span>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', minWidth: 0 }}>
+                      <span style={{ fontWeight: 600, color: 'var(--white)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {s.title || s.display_name}
+                      </span>
+                      <span style={{ fontSize: '0.72rem', color: 'var(--gray)', lineHeight: 1.35 }}>
+                        {userLoc && s.lat && s.lon && (
+                          <span style={{ color: 'var(--gold)', fontWeight: 600 }}>
+                            {haversineKm(userLoc.lat, userLoc.lng, parseFloat(s.lat), parseFloat(s.lon)).toFixed(2)} km&nbsp;·&nbsp;
+                          </span>
+                        )}
+                        {s.subtitle || s.display_name}
+                      </span>
+                    </div>
                   </button>
                 ))}
               </div>
@@ -636,23 +837,27 @@ export default function AddressBook({ onSaved, initialEditAddress }) {
           <div className="addr-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
             <div>
               <label style={labelStyle}>Region <span style={{ color: 'var(--red)' }}>*</span></label>
-              <select value={formData.region_code} onChange={e => handleRegionChange(e.target.value)} style={selectStyle(!!formErrors.region, false)}>
-                <option value="">Select region</option>
-                {regions.map(r => <option key={r.code} value={r.code}>{r.name}</option>)}
-              </select>
+              <CustomSelect
+                value={formData.region_code}
+                onChange={handleRegionChange}
+                options={regions.map(r => ({ value: r.code, label: r.name }))}
+                placeholder="Select region"
+                error={!!formErrors.region}
+                searchable
+              />
               {fieldError(formErrors.region)}
             </div>
             <div>
               <label style={labelStyle}>Province {!isNCR(formData.region_code) && <span style={{ color: 'var(--red)' }}>*</span>}</label>
-              <select
+              <CustomSelect
                 value={formData.province_code}
-                onChange={e => handleProvinceChange(e.target.value)}
+                onChange={handleProvinceChange}
+                options={provinces.map(p => ({ value: p.code, label: p.name }))}
+                placeholder={isNCR(formData.region_code) ? 'Metro Manila (NCR)' : 'Select province'}
                 disabled={!formData.region_code || isNCR(formData.region_code)}
-                style={selectStyle(!!formErrors.province, !formData.region_code || isNCR(formData.region_code))}
-              >
-                <option value="">{isNCR(formData.region_code) ? 'Metro Manila (NCR)' : 'Select province'}</option>
-                {provinces.map(p => <option key={p.code} value={p.code}>{p.name}</option>)}
-              </select>
+                error={!!formErrors.province}
+                searchable
+              />
               {fieldError(formErrors.province)}
             </div>
           </div>
@@ -661,28 +866,28 @@ export default function AddressBook({ onSaved, initialEditAddress }) {
           <div className="addr-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
             <div>
               <label style={labelStyle}>City / Municipality <span style={{ color: 'var(--red)' }}>*</span></label>
-              <select
+              <CustomSelect
                 value={formData.city_code}
-                onChange={e => handleCityChange(e.target.value)}
+                onChange={handleCityChange}
+                options={cities.map(c => ({ value: c.code, label: c.name }))}
+                placeholder={cities.length === 0 ? 'Select region/province first' : 'Select city/municipality'}
                 disabled={cities.length === 0}
-                style={selectStyle(!!formErrors.city, cities.length === 0)}
-              >
-                <option value="">{cities.length === 0 ? 'Select region/province first' : 'Select city/municipality'}</option>
-                {cities.map(c => <option key={c.code} value={c.code}>{c.name}</option>)}
-              </select>
+                error={!!formErrors.city}
+                searchable
+              />
               {fieldError(formErrors.city)}
             </div>
             <div>
               <label style={labelStyle}>Barangay <span style={{ color: 'var(--red)' }}>*</span></label>
-              <select
+              <CustomSelect
                 value={formData.barangay_code}
-                onChange={e => handleBarangayChange(e.target.value)}
+                onChange={handleBarangayChange}
+                options={barangays.map(b => ({ value: b.code, label: b.name }))}
+                placeholder={barangays.length === 0 ? 'Select city first' : 'Select barangay'}
                 disabled={barangays.length === 0}
-                style={selectStyle(!!formErrors.barangay, barangays.length === 0)}
-              >
-                <option value="">{barangays.length === 0 ? 'Select city first' : 'Select barangay'}</option>
-                {barangays.map(b => <option key={b.code} value={b.code}>{b.name}</option>)}
-              </select>
+                error={!!formErrors.barangay}
+                searchable
+              />
               {fieldError(formErrors.barangay)}
             </div>
           </div>
@@ -691,7 +896,7 @@ export default function AddressBook({ onSaved, initialEditAddress }) {
           <div className="addr-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
             <div>
               <label style={labelStyle}>House/Unit No. <span style={{ color: 'var(--red)' }}>*</span></label>
-              <input type="text" value={formData.house_number} onChange={e => handleInputChange('house_number', e.target.value)} placeholder="e.g. Blk 2 Lot 24" style={formErrors.house_number ? inputErrorStyle : inputStyle} />
+              <input type="text" value={formData.house_number} onChange={e => handleInputChange('house_number', e.target.value)} onBlur={refinePin} placeholder="e.g. 168 or Blk 2 Lot 24" style={formErrors.house_number ? inputErrorStyle : inputStyle} />
               {fieldError(formErrors.house_number)}
             </div>
             <div>
@@ -704,7 +909,7 @@ export default function AddressBook({ onSaved, initialEditAddress }) {
           <div className="addr-2col" style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '1rem' }}>
             <div>
               <label style={labelStyle}>Street <span style={{ color: 'var(--red)' }}>*</span></label>
-              <input type="text" value={formData.street} onChange={e => handleInputChange('street', e.target.value)} placeholder="e.g. Rizal Avenue" style={formErrors.street ? inputErrorStyle : inputStyle} />
+              <input type="text" value={formData.street} onChange={e => handleInputChange('street', e.target.value)} onBlur={refinePin} placeholder="e.g. General Luis St." style={formErrors.street ? inputErrorStyle : inputStyle} />
               {fieldError(formErrors.street)}
             </div>
             <div>
@@ -712,6 +917,19 @@ export default function AddressBook({ onSaved, initialEditAddress }) {
               <input type="text" value={formData.zip} onChange={e => handleInputChange('zip', e.target.value)} placeholder="e.g. 1400" style={formErrors.zip ? inputErrorStyle : inputStyle} />
               {fieldError(formErrors.zip)}
             </div>
+          </div>
+
+          {/* Delivery notes / landmark for the rider */}
+          <div>
+            <label style={labelStyle}>Delivery Notes <span style={{ color: 'var(--gray)', fontSize: '0.7rem' }}>(optional — landmark or instructions for the rider)</span></label>
+            <textarea
+              value={formData.delivery_notes}
+              onChange={e => handleInputChange('delivery_notes', e.target.value.slice(0, 300))}
+              placeholder="e.g. Green gate beside the sari-sari store. Ring the bell / call on arrival."
+              rows={2}
+              style={{ ...inputStyle, resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.5 }}
+            />
+            <span style={{ fontSize: '0.7rem', color: 'var(--gray)', display: 'block', marginTop: '0.2rem', textAlign: 'right' }}>{(formData.delivery_notes || '').length}/300</span>
           </div>
 
           {/* Actions */}

@@ -55,6 +55,7 @@ export function normProduct(raw, collectionMap = {}) {
     hideWhenOutOfStock: !!(raw.hideWhenOutOfStock),
     isPublished:        !!(raw.isPublished),
     designFee:          Number(raw.designFee ?? 0),
+    designTemplates:    Array.isArray(raw.designTemplates) ? raw.designTemplates : [],
     minOrderQty:        Number(raw.minOrderQty ?? 1),
     category:           raw.category ?? '',
     subCategoryName:    raw.subCategoryName ?? '',

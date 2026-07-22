@@ -1416,14 +1416,6 @@ export default function ShopLayout({ children }) {
                             </svg>
                             My Orders
                           </Link>
-                          <Link href="/shop/quotes" className="shop-navbar-menu-item" onClick={() => setMenuOpen(false)}>
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                              <polyline points="14 2 14 8 20 8"/>
-                              <line x1="9" y1="15" x2="15" y2="15"/>
-                            </svg>
-                            My Quotes
-                          </Link>
                           <button onClick={handleLogout} className="shop-navbar-menu-item shop-navbar-logout">
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                               <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
@@ -1519,7 +1511,6 @@ export default function ShopLayout({ children }) {
               </summary>
               {user?.role && user.role !== 'customer' && <Link href="/dashboard/business/dashboardoverview">Dashboard</Link>}
               <Link href="/shop/orders-history">My Orders</Link>
-              <Link href="/shop/quotes">My Quotes</Link>
               <Link href="/shop/profile">My Profile</Link>
               <Link href="/shop/cart">Cart</Link>
             </details>
@@ -1542,8 +1533,10 @@ export default function ShopLayout({ children }) {
         </footer>
 
         {/* ── Auth Modal (Same as Landing Page) ── */}
+        {/* No backdrop-close: this holds the multi-step register + OTP form; a stray click
+            outside would wipe everything typed. Closes only via the X button. */}
         {authModalOpen && (
-          <div className="auth-overlay" onClick={() => { setAuthModalOpen(false); setAuthModalSubtitle(''); setAuthModalInstanceKey(k => k + 1); }} style={{ zIndex: 1000 }}>
+          <div className="auth-overlay" style={{ zIndex: 1000 }}>
             <div className="auth-modal" onClick={e => e.stopPropagation()}>
               <div className="auth-modal-header">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -1614,8 +1607,10 @@ export default function ShopLayout({ children }) {
         )}
 
         {/* ── Forgot Password Modal — 3 Step Flow ── */}
+        {/* No backdrop-close: 3-step email/code/new-password flow — a stray click would
+            wipe progress. Closes only via the X button. */}
         {forgotPasswordOpen && (
-          <div className="auth-overlay" onClick={closeForgotPassword} style={{ zIndex: 1000 }}>
+          <div className="auth-overlay" style={{ zIndex: 1000 }}>
             <div className="auth-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '420px' }}>
               <div className="auth-modal-header">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -1811,7 +1806,7 @@ export default function ShopLayout({ children }) {
                 <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
               </svg>
               <span className="shop-cart-popup-empty-title">Your cart is empty</span>
-              <button className="shop-cart-popup-continue" onClick={() => setCartOpen(false)}>Continue shopping</button>
+              <button className="shop-cart-popup-continue" onClick={() => { setCartOpen(false); router.push('/shop'); }}>Continue shopping</button>
             </div>
           ) : (
             <>

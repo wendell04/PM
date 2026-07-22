@@ -218,13 +218,51 @@ function QuickViewModal({ product, flashSale, onClose, onToast }) {
   const handleCheckout = () => {
     if (isOOS) return;
     const { productForCart, comboId: cid, variantLabel } = buildCart();
-    addToCart(productForCart, qty, cid, variantLabel, flashSale?._id ?? null);
+    // Direct checkout (Buy Now): straight to checkout with only this item — do NOT add it to the
+    // cart. The selected variant's image goes first so the checkout thumbnail matches the choice.
+    const variantImg = cid ? (product.variantImageUrls?.[cid] ?? product.variantImageUrls?.[String(cid)] ?? null) : null;
+    const payload = {
+      items: [{
+        product: {
+          _id:                 product._id ?? product.id,
+          name:                product.name || product.subCategoryName,
+          images: [
+            ...(variantImg ? [variantImg] : []),
+            ...(product.thumbnail ? [product.thumbnail] : []),
+            ...(product.images || []),
+          ].filter(Boolean),
+          stock:               product.stock ?? null,
+          trackInventory:      product.trackInventory ?? false,
+          stockStatus:         product.stockStatus ?? null,
+          minOrderQty:         product.minOrderQty ?? null,
+          requiresDownpayment: product.requiresDownpayment ?? false,
+          downpaymentPercent:  product.downpaymentPercent ?? null,
+        },
+        variantId:   cid,
+        variantName: variantLabel,
+        qty,
+        unitPrice:   productForCart.flatPrice,
+        ...(flashSale?._id ? { flashSaleId: String(flashSale._id) } : {}),
+        designUrl:   null,
+        designNotes: null,
+      }],
+      notes: '',
+      designUrl: null,
+    };
+    sessionStorage.setItem('checkout_payload', JSON.stringify(payload));
     onClose();
     router.push('/shop/checkout');
   };
 
   const hasGroups = product.variantGroups?.length > 0;
   const productId = product._id || product.id;
+
+  // Lock the page behind the modal so it can't scroll while the quick-view is open.
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, []);
 
   useEffect(() => {
     if (!productId) return;
@@ -397,6 +435,12 @@ function QuickViewModal({ product, flashSale, onClose, onToast }) {
             {product.isCustom ? (
               <Link href={`/shop/products/${product.slug || toSlug(product.name)}`} className="shop-qv-btn-cart" onClick={onClose}>
                 Customize This Product
+              </Link>
+            ) : mode === 'inquiry' ? (
+              // Price-on-request items can't be bought at a fixed price — send to the PDP to inquire,
+              // never show Add to Cart / Checkout (would let the item be bought at ₱0).
+              <Link href={`/shop/products/${product.slug || toSlug(product.name)}`} className="shop-qv-btn-cart" onClick={onClose}>
+                Inquire / Get a Quote
               </Link>
             ) : (
               <>
