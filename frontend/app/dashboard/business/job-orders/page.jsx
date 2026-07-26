@@ -131,6 +131,43 @@ function JobOrderForm({ initial = EMPTY_FORM, isEdit = false, orders = [], order
         </div>
       )}
 
+      {/* The approved artwork the shop floor will print. Prefer the owner's adjusted proof if one
+          was sent; otherwise the customer's own uploaded file. */}
+      {!isEdit && selectedOrder && (() => {
+        const proof = selectedOrder.adminDesignUrls?.length ? selectedOrder.adminDesignUrls
+          : selectedOrder.adminDesignUrl ? [selectedOrder.adminDesignUrl] : [];
+        const cust = selectedOrder.items?.[0]?.designFiles?.length ? selectedOrder.items[0].designFiles.map(f => f.url)
+          : selectedOrder.designFilePath ? [selectedOrder.designFilePath] : [];
+        const files = (proof.length ? proof : cust).filter(Boolean);
+        if (!files.length) return null;
+        const base = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
+        return (
+          <div style={{ ...S.cardSm, background: 'var(--dark2)' }}>
+            <div style={{ ...S.label, marginBottom: 8 }}>Design to print</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+              {files.map((raw, i) => {
+                const url = String(raw).startsWith('http') ? raw : `${base}/storage/${raw}`;
+                const isImg = /\.(jpe?g|png|webp|gif|avif|svg)(\?|$)/i.test(url);
+                const isVid = /\.(mp4|webm|mov|m4v|ogg)(\?|$)/i.test(url);
+                if (isVid) return (
+                  <video key={i} src={url} controls playsInline style={{ width: 120, maxHeight: 90, borderRadius: 6, border: '1px solid var(--border)', background: '#000' }} />
+                );
+                return isImg ? (
+                  <a key={i} href={url} target="_blank" rel="noopener noreferrer" title="Open full file" style={{ display: 'block' }}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={url} alt="Design" style={{ width: 72, height: 72, objectFit: 'contain', background: 'var(--dark)', borderRadius: 6, border: '1px solid var(--border)', display: 'block' }} />
+                  </a>
+                ) : (
+                  <a key={i} href={url} target="_blank" rel="noopener noreferrer" title="Open file" style={{ width: 72, height: 72, borderRadius: 6, border: '1px solid var(--border)', background: 'var(--dark)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 600, color: 'var(--gold)', textAlign: 'center', textDecoration: 'none', padding: 4 }}>
+                    {files.length > 1 ? `File ${i + 1}` : 'Open file'}
+                  </a>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
+
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }} className="hp-2col">
         <div>
           <label style={S.label}>Target completion *</label>
