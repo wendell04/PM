@@ -203,6 +203,18 @@ class OrderController extends Controller
             $requiresDownpayment = (bool) ($firstProduct?->requiresDownpayment ?? false);
             $orderDownpaymentPct = $requiresDownpayment ? (int) ($firstProduct?->downpaymentPercent ?? 0) : 0;
 
+            // One design fee for the order (highest wins, once) - the same rule the cart and
+            // checkout show. A request-design order carries it so the fee can be collected as
+            // the first payment from the order detail modal, not on the product page.
+            $orderDesignFee = 0.0;
+            $designLines = array_filter($validated['items'], fn($i) => filter_var($i['designRequested'] ?? false, FILTER_VALIDATE_BOOLEAN));
+            if (count($designLines) > 0) {
+                $storeFee = (float) (User::where('role', 'owner')->first()->designRequestFee ?? 100);
+                $lineFees = array_map(fn($i) => (float) ($i['designFee'] ?? 0), $designLines);
+                $orderDesignFee = round(max($storeFee, ...$lineFees), 2);
+                $totalAmount += $orderDesignFee;
+            }
+
             // Add shipping fee to total
             $shippingFee  = (float) ($validated['shippingFee'] ?? 0);
             $totalAmount += $shippingFee;
@@ -458,6 +470,8 @@ class OrderController extends Controller
                 'designStatus'    => $orderDesignSt,
                 'isCustomOrder'        => $orderIsCustom,
                 'designType'           => $orderDesignTp,
+                'designFee'            => $orderDesignFee > 0 ? $orderDesignFee : null,
+                'designFeePaid'        => false,
                 'requiresDownpayment'  => $requiresDownpayment,
                 'downpaymentPercent'   => $orderDownpaymentPct > 0 ? $orderDownpaymentPct : null,
                 'statusHistory'        => [['status' => OrderStatus::PENDING, 'at' => now()->toISOString()]],
@@ -772,6 +786,20 @@ class OrderController extends Controller
             'designNotes',
             'designStatus',
             'designFilePath',
+            // Design-flow fields the order detail modal needs: without these the modal
+            // cannot show the Pay Design Fee action, the rejection reason, or the proof.
+            'isCustomOrder',
+            'designType',
+            'designFee',
+            'designFeePaid',
+            'designFeePaidAmount',
+            'designRejectionReason',
+            'designFiles',
+            'adminDesignUrl',
+            'adminDesignUrls',
+            'revisionNotes',
+            'requiresDownpayment',
+            'downpaymentPercent',
         ];
     }
 
@@ -811,6 +839,16 @@ class OrderController extends Controller
                     if (!$isCOD && ($order->paymentStatus ?? '') !== 'paid') {
                         return response()->json(['message' => 'The remaining balance must be fully paid before this order can be released for delivery.'], 422);
                     }
+                }
+
+                // Production gate — a custom order enters production only by creating a Job Order,
+                // which enforces downpayment-paid + design-approved and gives Production/QC a JO to
+                // work on. Block a manual jump straight to In Production that would bypass both gates
+                // and leave the Production module with nothing to build.
+                if ($targetNorm === OrderStatus::IN_PRODUCTION
+                    && ($order->isCustomOrder ?? false)
+                    && empty($order->joId)) {
+                    return response()->json(['message' => 'Create a Job Order to start production. The downpayment must be paid and the design approved first.'], 422);
                 }
             }
 
@@ -1890,6 +1928,69 @@ class OrderController extends Controller
     }
 
     /**
+     * POST /api/admin/orders/{id}/revert-design
+     * Undo an accidental design approval - sends it back to review. Only allowed BEFORE a Job
+     * Order exists (i.e. production has not started); once a JO is created the approval is locked.
+     */
+    public function revertDesignApproval(Request $request, $id)
+    {
+        try {
+            $user = $request->user();
+            if (!$user || !in_array($user->role, ['admin', 'owner'])) {
+                return $this->unauthorizedResponse();
+            }
+
+            $order = Order::find($id);
+            if (!$order) {
+                return $this->notFoundResponse('Order');
+            }
+
+            if (($order->designStatus ?? null) !== 'approved') {
+                return $this->errorResponse('Only an approved design can be reverted.', 422);
+            }
+
+            // Locked once production starts - a Job Order (or any in-production+ status) means the
+            // shop floor may already be working off this artwork.
+            $inProduction = in_array(OrderStatus::normalize($order->orderStatus), [
+                OrderStatus::IN_PRODUCTION, OrderStatus::FOR_QC, OrderStatus::READY_FOR_DELIVERY,
+                OrderStatus::FOR_DELIVERY, OrderStatus::DELIVERED,
+            ], true);
+            if (!empty($order->joId) || $inProduction) {
+                return $this->errorResponse('This design is locked - a Job Order was already created. Cancel the Job Order first.', 422);
+            }
+
+            $order->designStatus = 'pending_review';
+            // approveDesign parks an unpaid order at awaiting_payment; undo exactly that.
+            if ($order->orderStatus === 'awaiting_payment') {
+                $order->orderStatus = OrderStatus::PENDING;
+            }
+            $order->updatedAt = now();
+            $order->save();
+
+            try {
+                ActivityLog::create([
+                    'action'           => 'design_approval_reverted',
+                    'entityType'       => 'order',
+                    'entityId'         => (string) $order->_id,
+                    'description'      => 'Design approval reverted to review for order #' .
+                        strtoupper(substr((string) $order->_id, -8)),
+                    'performedBy'      => trim("{$user->firstName} {$user->lastName}"),
+                    'performedByEmail' => $user->email ?? null,
+                    'metadata'         => ['orderId' => (string) $order->_id],
+                    'createdAt'        => now(),
+                ]);
+            } catch (\Exception $logErr) {
+                Log::warning('ActivityLog write failed (revertDesignApproval)', ['error' => $logErr->getMessage()]);
+            }
+
+            return $this->successResponse('Design approval reverted to review.', $order);
+
+        } catch (\Exception $e) {
+            return $this->serverErrorResponse($e, 'Failed to revert design approval.');
+        }
+    }
+
+    /**
      * POST /api/admin/orders/{id}/reject-design
      * Owner rejects the customer's uploaded design.
      */
@@ -1914,11 +2015,14 @@ class OrderController extends Controller
                 return $this->errorResponse('This order has no design to reject.', 422);
             }
 
+            $reason = $validated['reason'] ?? null;
+
             $order->designStatus = 'rejected';
+            // Persist the reason on the order so the customer sees it inline in the order
+            // detail modal, not only in the notification bell.
+            $order->designRejectionReason = $reason;
             $order->updatedAt    = now();
             $order->save();
-
-            $reason = $validated['reason'] ?? null;
 
             // Notify customer
             try {
@@ -2363,8 +2467,9 @@ class OrderController extends Controller
 
             $uploadedUrls = [];
             foreach ($files as $file) {
-                if ($file->getSize() > 20 * 1024 * 1024) {
-                    return response()->json(['message' => 'Each file must be under 20 MB.'], 422);
+                // 50 MB to allow short proof videos (e.g. a 360 spin of a mug), not just images.
+                if ($file->getSize() > 50 * 1024 * 1024) {
+                    return response()->json(['message' => 'Each file must be under 50 MB.'], 422);
                 }
                 $response = Http::attach(
                     'file',

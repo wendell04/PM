@@ -495,7 +495,10 @@ function CustomOrderInner() {
     if (!selectedAddress) {
       setSubmitError('Please select a delivery address.'); return;
     }
-    const needsPayment = designMode === 'request' || (designMode === 'upload' && downpaymentRequired);
+    // Request design no longer pays on this page - it submits an unpaid order and the design
+    // fee (then the goods) is paid from the order detail modal. Only the (now unused) upload
+    // path here would ever need a payment method.
+    const needsPayment = designMode === 'upload' && downpaymentRequired;
     if (needsPayment && !paymentMethod) {
       setSubmitError('Please select a payment method.'); return;
     }
@@ -577,6 +580,28 @@ function CustomOrderInner() {
         zip: selectedAddress.zip,
         phone: selectedAddress.phone,
       };
+
+      // Request design: submit an UNPAID order (no payment here). The design fee is the first
+      // payment, then the goods - both collected from the order detail modal. paymentMethod
+      // 'online' (not cod) so the balance gate applies before delivery.
+      if (designMode === 'request') {
+        const res = await fetchWithTimeout(`${API_URL}/api/orders`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            items: [orderItem],
+            deliveryAddress,
+            shippingFee: shippingFeeAmt ?? 0,
+            isCustomOrder: true,
+            designType: 'request',
+            paymentMethod: 'online',
+          }),
+        }, 20000);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.message || 'Failed to submit your request.');
+        router.push('/shop/orders-history?submitted=request');
+        return;
+      }
 
       const commonFields = {
         items: [orderItem],
@@ -901,6 +926,20 @@ function CustomOrderInner() {
                 </div>
               )}
 
+              {/* Instructions for an UPLOADED design - placement, colour, sizing. The printer
+                  needs these as much as the file itself; without a field they had to guess. */}
+              {designMode === 'upload' && (
+                <div style={{ marginTop: '0.85rem' }}>
+                  <p style={{ fontSize: '0.8rem', color: 'var(--gray)', marginBottom: '0.5rem' }}>
+                    Printing instructions (optional):
+                  </p>
+                  <textarea value={designNotes} onChange={e => setDesignNotes(e.target.value)}
+                    placeholder="E.g. Print centered on the front, keep a 1cm margin, match the red exactly."
+                    rows={3}
+                    style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--border)', background: 'rgba(255,255,255,0.05)', color: 'var(--white)', fontSize: '0.85rem', fontFamily: "'Outfit', sans-serif", resize: 'vertical', boxSizing: 'border-box', outline: 'none' }} />
+                </div>
+              )}
+
               {designMode === 'request' && (
                 <div>
                   <p style={{ fontSize: '0.8rem', color: 'var(--gray)', marginBottom: '0.5rem' }}>
@@ -955,10 +994,10 @@ function CustomOrderInner() {
               )}
             </section>}
 
-            {/* Step 4: Payment - only for a requested design. There is no artwork yet, so
-                the goods cannot be charged; what is paid here is the designer's fee. An
-                uploaded design already has its artwork and goes through the cart instead. */}
-            {designMode === 'request' && !isInquiry && <section style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: '12px', padding: '1.15rem' }}>
+            {/* Step 4: Payment - never on this page any more. Request design submits an unpaid
+                order and pays the design fee (then the goods) from the order detail modal;
+                upload design goes through the cart. Kept only for the legacy inquiry branch. */}
+            {false && <section style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: '12px', padding: '1.15rem' }}>
               <h2 style={{ fontSize: '0.74rem', fontWeight: 800, letterSpacing: '0.03em', textTransform: 'uppercase', color: '#6b7280', marginBottom: '0.85rem' }}>Payment method</h2>
 
               <div style={{ padding: '0.75rem 1rem', background: 'rgba(212,168,67,0.08)', border: '1px solid rgba(212,168,67,0.2)', borderRadius: '8px', marginBottom: '1rem', fontSize: '0.8rem', color: 'var(--gray)', lineHeight: 1.5 }}>
@@ -1171,9 +1210,9 @@ function CustomOrderInner() {
                   {placing ? (
                     <>
                       <div style={{ width: 15, height: 15, border: '2px solid rgba(212,168,67,0.25)', borderTopColor: 'var(--gold)', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
-                      Requesting...
+                      Submitting...
                     </>
-                  ) : `Pay Design Fee ${fmt(designFee)}`}
+                  ) : 'Submit Design Request'}
                 </button>
               )}
 

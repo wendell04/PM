@@ -178,6 +178,22 @@ function normalizeOrder(apiOrder) {
     paymentHistory: paymentHistory,
     orderSource: apiOrder.orderSource || 'online',
     designs: designs,
+    // Design-flow fields the admin order detail (and customer modal) read directly. Without
+    // passing these through, the admin DESIGN section rendered blank - no file link, no
+    // approve/reject, no status badge - even though the backend had the data.
+    isCustomOrder:         !!(apiOrder.isCustomOrder ?? isCustom),
+    designFilePath:        apiOrder.designFilePath || apiOrder.design_file_path || null,
+    designStatus:          apiOrder.designStatus || null,
+    designType:            apiOrder.designType || null,
+    designNotes:           apiOrder.designNotes || null,
+    designFee:             apiOrder.designFee ?? null,
+    designFeePaid:         !!apiOrder.designFeePaid,
+    designRejectionReason: apiOrder.designRejectionReason || null,
+    adminDesignUrl:        apiOrder.adminDesignUrl || null,
+    adminDesignUrls:       apiOrder.adminDesignUrls || null,
+    revisionNotes:         apiOrder.revisionNotes || null,
+    requiresDownpayment:   !!apiOrder.requiresDownpayment,
+    downpaymentPercent:    apiOrder.downpaymentPercent ?? null,
     bom: { verified: false, items: [] },
     timeline: [],
     jo: apiOrder.jobOrder

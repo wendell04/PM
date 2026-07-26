@@ -7,12 +7,24 @@ import { fetchAllOrdersNew, updateJobOrderStatus, deleteOrder as deleteOrderApi 
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import { S, ICONS, SearchBar, SummaryCard, PaginationBar, EmptyState, usePagination, CustomSelect } from '../inventory-v2/shared';
 import { getStatusBadge } from '@/lib/utils/orderHelpers';
+import ImageLightbox from '@/components/shop/ImageLightbox';
 import { normalizeStatus, statusLabel, ORDER_STATUS_ORDER } from '@/lib/orderStatus';
 
 const API_URL    = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 const POLL_MS    = 30000;
 const PAGE_LIMIT = 500;
 const EXPIRY_DAYS = 7;
+
+// Preset reasons for rejecting a customer's uploaded file (bounce back for re-upload). "Other"
+// reveals a free-text box. The chosen reason is saved on the order and shown to the customer.
+const REJECT_REASONS = [
+  'Wrong file format or file type',
+  'Low resolution or blurry',
+  'Text or elements are cut off',
+  'Wrong size or dimensions',
+  'Copyright or not allowed',
+  'Other',
+];
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -85,12 +97,14 @@ function InfoRow({ label, value, mono }) {
 
 // ── Modal shell ───────────────────────────────────────────────────────────────
 
-function Modal({ children, onClose, maxWidth = 480 }) {
+function Modal({ children, onClose, maxWidth = 480, overflow = 'auto' }) {
   return (
     <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.35)', zIndex:1000,
       display:'flex', alignItems:'center', justifyContent:'center', padding:'16px' }}>
-      {/* No backdrop-close: modal may hold form input — a stray click would wipe it. */}
-      <div style={{ ...S.card, width:'100%', maxWidth, maxHeight:'90vh', overflowY:'auto',
+      {/* No backdrop-close: modal may hold form input - a stray click would wipe it.
+          overflow='visible' lets a short modal's dropdown pop-over float free instead of being
+          clipped (and triggering the modal's own scrollbar). */}
+      <div style={{ ...S.card, width:'100%', maxWidth, maxHeight:'90vh', overflow,
         boxShadow:'0 20px 60px rgba(0,0,0,.18)', padding:'24px' }}
         onClick={e => e.stopPropagation()}>
         {children}
@@ -155,7 +169,7 @@ function PaymentModal({ order, onClose, onSuccess }) {
   const fmt = n => Number(n ?? 0).toLocaleString('en-PH', { minimumFractionDigits:2, maximumFractionDigits:2 });
 
   return (
-    <Modal onClose={onClose} maxWidth={440}>
+    <Modal onClose={onClose} maxWidth={440} overflow="visible">
       <ModalHeader title="Record Payment" onClose={onClose} />
 
       <div style={{ ...S.noteInfo, marginBottom:'16px' }}>
@@ -500,18 +514,24 @@ function getAvailableStatuses(o) {
   const s = o.orderStatus;
   const isCOD = (o.paymentMethod || '').toLowerCase() === 'cod';
   if (o.isCustom) {
+    // Once any payment (downpayment or COD) has landed, "Awaiting Payment" is no longer a valid
+    // next step - the customer already paid to unlock production. Only offer it when still unpaid.
+    const paidCustom = isCOD || ['partial', 'paid'].includes(o.paymentStatus) || Number(o.downPayment) > 0;
     // Keyed by BOTH the canonical codes and the legacy ones that older orders still carry.
     // A custom order now starts at plain "pending", and this map had no entry for it - so
     // every new custom order showed "No available transitions" and could never be moved.
+    // Custom orders enter production ONLY by creating a Job Order (Job Orders module), which
+    // enforces downpayment-paid + design-approved and gives Production/QC a JO to build. So the
+    // manual dropdown does NOT offer "In Production" from pending/processing - only Cancel here.
     return ({
-      pending:             ['In Production', 'Cancelled'],
-      Pending:             ['In Production', 'Cancelled'],
-      pending_review:      ['awaiting_payment'],
-      design_approved:     ['awaiting_payment'],
-      awaiting_payment:    ['In Production'],
-      awaiting_production: ['In Production'],
-      processing:          ['In Production', 'Cancelled'],
-      Processing:          ['In Production', 'Cancelled'],
+      pending:             ['Cancelled'],
+      Pending:             ['Cancelled'],
+      pending_review:      paidCustom ? [] : ['awaiting_payment'],
+      design_approved:     paidCustom ? [] : ['awaiting_payment'],
+      awaiting_payment:    [],
+      awaiting_production: [],
+      processing:          ['Cancelled'],
+      Processing:          ['Cancelled'],
       in_production:       ['for_qc'],
       'In Production':     ['for_qc'],
       for_qc:              ['ready_for_delivery'],
@@ -559,6 +579,12 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
   const [expireErr,   setExpireErr]   = useState('');
   const [feeInput,    setFeeInput]    = useState('');
   const [savingFee,   setSavingFee]   = useState(false);
+  const [lightboxUrl, setLightboxUrl] = useState(null);
+  const [showReject,  setShowReject]  = useState(false);
+  const [rejectReason,setRejectReason]= useState('');
+  const [rejectOther, setRejectOther] = useState('');
+  const [showFix,     setShowFix]     = useState(false);
+  const [confirmApprove, setConfirmApprove] = useState(false);
   const [feeErr,      setFeeErr]      = useState('');
 
   useEffect(() => { setLo(o); setSelStatus(o.orderStatus); }, [o]);
@@ -632,18 +658,34 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
         { method:'POST', headers:{ Authorization:`Bearer ${token}` } }, 15000);
       if (!res.ok) throw new Error((await res.json().catch(()=>({}))).message || 'Failed');
       setLo(p => ({ ...p, designStatus:'approved' }));
+      setConfirmApprove(false);
+      if (onStatusUpdated) onStatusUpdated(lo.id);
+    } catch (err) { setDesignErr(err.message); }
+    finally { setDesignAct(null); }
+  };
+
+  const handleRevertApprove = async () => {
+    setDesignAct('reverting'); setDesignErr('');
+    try {
+      const res = await fetchWithTimeout(`${API_URL}/api/admin/orders/${lo.id}/revert-design`,
+        { method:'POST', headers:{ Authorization:`Bearer ${token}` } }, 15000);
+      if (!res.ok) throw new Error((await res.json().catch(()=>({}))).message || 'Failed');
+      setLo(p => ({ ...p, designStatus:'pending_review' }));
       if (onStatusUpdated) onStatusUpdated(lo.id);
     } catch (err) { setDesignErr(err.message); }
     finally { setDesignAct(null); }
   };
 
   const handleRejectDesign = async () => {
+    const reason = (rejectReason === 'Other' ? rejectOther.trim() : rejectReason).trim();
+    if (!reason) { setDesignErr('Please choose or type a reason.'); return; }
     setDesignAct('rejecting'); setDesignErr('');
     try {
       const res = await fetchWithTimeout(`${API_URL}/api/admin/orders/${lo.id}/reject-design`,
-        { method:'POST', headers:{ 'Content-Type':'application/json', Authorization:`Bearer ${token}` }, body: JSON.stringify({ reason: null }) }, 15000);
+        { method:'POST', headers:{ 'Content-Type':'application/json', Authorization:`Bearer ${token}` }, body: JSON.stringify({ reason }) }, 15000);
       if (!res.ok) throw new Error((await res.json().catch(()=>({}))).message || 'Failed');
-      setLo(p => ({ ...p, designStatus:'rejected' }));
+      setLo(p => ({ ...p, designStatus:'rejected', designRejectionReason: reason }));
+      setShowReject(false); setRejectReason(''); setRejectOther('');
       if (onStatusUpdated) onStatusUpdated(lo.id);
     } catch (err) { setDesignErr(err.message); }
     finally { setDesignAct(null); }
@@ -802,49 +844,172 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                     background: lo.designStatus==='approved' ? '#f0fdf4' : lo.designStatus==='rejected' ? '#fef2f2' : '#fff7ed',
                     color:      lo.designStatus==='approved' ? '#166534' : lo.designStatus==='rejected' ? '#991b1b' : '#c2410c',
                     border:`1px solid ${lo.designStatus==='approved'?'#bbf7d0':lo.designStatus==='rejected'?'#fecaca':'#fdba74'}` }}>
-                    {lo.designStatus==='approved' ? '✓ Approved'
-                      : lo.designStatus==='rejected' ? '✗ Rejected'
-                      : lo.designStatus==='revision_requested' ? '↩ Revision Requested'
-                      : lo.designStatus==='draft_ready' ? '⏳ Awaiting Review'
-                      : '⏳ Pending'}
+                    {lo.designStatus==='approved' ? 'Approved'
+                      : lo.designStatus==='rejected' ? 'Rejected'
+                      : lo.designStatus==='revision_requested' ? 'Revision Requested'
+                      : lo.designStatus==='draft_ready' ? 'Awaiting Review'
+                      : 'Pending'}
                   </span>
                 </div>
               )}
 
               {lo.orderStatus==='revision_requested' && lo.revisionNotes && (
                 <div style={{ ...S.note, background:'#fff7ed', border:'1px solid #fdba74', marginBottom:'8px', fontSize:'12px' }}>
-                  <span style={{ fontWeight:600, color:'#c2410c' }}>↩ Revision: </span>{lo.revisionNotes}
+                  <span style={{ fontWeight:600, color:'#c2410c' }}>Revision: </span>{lo.revisionNotes}
                 </div>
               )}
+
+              {/* Inline preview so the file can be SEEN before opening. An image renders in a
+                  sandboxed <img> (no script execution, safe even for SVG); a PDF embeds; other
+                  source formats (AI/PSD) have no browser preview, so an icon + download. */}
+              {(() => {
+                const files = (lo.items?.[0]?.designFiles?.length ? lo.items[0].designFiles.map(f => f.url) : [lo.designFilePath]).filter(Boolean);
+                if (!files.length) return null;
+                return (
+                  <div style={{ display:'flex', flexWrap:'wrap', gap:'8px', marginBottom:'8px' }}>
+                    {files.map((raw, i) => {
+                      const url = raw.startsWith('http') ? raw : `${API_URL}/storage/${raw}`;
+                      const isImg = /\.(jpe?g|png|webp|gif|avif|svg)(\?|$)/i.test(url);
+                      const isPdf = /\.pdf(\?|$)/i.test(url);
+                      // Image opens a full-screen lightbox in place; PDF embeds; other formats open in a new tab.
+                      return isImg ? (
+                        <button key={i} type="button" onClick={() => setLightboxUrl(url)} title="Click to preview"
+                          style={{ padding:0, border:'none', background:'none', cursor:'zoom-in', display:'block' }}>
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={url} alt="Customer design" style={{ width:'120px', height:'120px', objectFit:'contain', background:'#f3f4f6', borderRadius:'8px', border:'1px solid var(--border)', display:'block' }} />
+                        </button>
+                      ) : (
+                        <a key={i} href={url} target="_blank" rel="noopener noreferrer" title="Open full file"
+                          style={{ display:'block', textDecoration:'none' }}>
+                          {isPdf ? (
+                            <embed src={url} type="application/pdf" style={{ width:'160px', height:'120px', borderRadius:'8px', border:'1px solid var(--border)', pointerEvents:'none' }} />
+                          ) : (
+                            <div style={{ width:'120px', height:'120px', borderRadius:'8px', border:'1px solid var(--border)', background:'#f9fafb', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:'6px', color:'var(--gray)', fontSize:'11px', textAlign:'center', padding:'6px' }}>
+                              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                              No preview<br/>Open to download
+                            </div>
+                          )}
+                        </a>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+
+              <ImageLightbox url={lightboxUrl} onClose={() => setLightboxUrl(null)} />
 
               {lo.designFilePath && (
                 <a href={lo.designFilePath?.startsWith('http') ? lo.designFilePath : `${API_URL}/storage/${lo.designFilePath}`} target="_blank" rel="noopener noreferrer"
                   style={{ display:'inline-flex', alignItems:'center', gap:'4px', fontSize:'12px', fontWeight:600, color:'#2563eb', textDecoration:'none', marginBottom:'8px' }}>
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                  View Customer File
+                  Open full file
                 </a>
               )}
 
-              {(!lo.designStatus || lo.designStatus==='pending_review') && lo.designFilePath && (
-                <div style={{ display:'flex', gap:'6px', marginBottom:'8px' }}>
-                  <button onClick={handleApproveDesign} disabled={!!designAct}
-                    style={{ flex:1, padding:'5px 0', background:'#f0fdf4', border:'1px solid #bbf7d0', borderRadius:'6px', color:'#166534', fontSize:'12px', fontWeight:700, cursor:designAct?'not-allowed':'pointer', opacity:designAct?.6:1 }}>
-                    {designAct==='approving' ? 'Approving…' : '✓ Approve'}
+              {/* Printing instructions the customer left - the printer needs these next to the file. */}
+              {(lo.designNotes || lo.items?.[0]?.designNotes) && (
+                <div style={{ padding:'8px 10px', background:'#f9fafb', border:'1px solid var(--border)', borderRadius:'6px', fontSize:'12px', color:'var(--gray)', marginBottom:'8px', lineHeight:1.5 }}>
+                  <span style={{ fontWeight:600, color:'var(--white)' }}>Instructions: </span>{lo.designNotes || lo.items[0].designNotes}
+                </div>
+              )}
+
+              {/* Upload-order review: three choices - approve as-is, bounce back for a re-upload
+                  (with a reason), or fix it yourself and send an adjusted proof for the customer
+                  to approve (reuses the request-design proof flow below via showFix). */}
+              {(!lo.designStatus || lo.designStatus==='pending_review') && lo.designFilePath && !showReject && !showFix && !confirmApprove && (
+                <div style={{ display:'flex', gap:'6px', marginBottom:'8px', flexWrap:'wrap' }}>
+                  <button onClick={() => { setConfirmApprove(true); setDesignErr(''); }} disabled={!!designAct}
+                    style={{ flex:'1 1 30%', padding:'5px 0', background:'#f0fdf4', border:'1px solid #bbf7d0', borderRadius:'6px', color:'#166534', fontSize:'12px', fontWeight:700, cursor:designAct?'not-allowed':'pointer', opacity:designAct?.6:1 }}>
+                    Approve
                   </button>
-                  <button onClick={handleRejectDesign} disabled={!!designAct}
-                    style={{ flex:1, padding:'5px 0', background:'#fef2f2', border:'1px solid #fecaca', borderRadius:'6px', color:'#991b1b', fontSize:'12px', fontWeight:700, cursor:designAct?'not-allowed':'pointer', opacity:designAct?.6:1 }}>
-                    {designAct==='rejecting' ? 'Rejecting…' : '✗ Reject'}
+                  <button onClick={() => { setShowReject(true); setDesignErr(''); }} disabled={!!designAct}
+                    style={{ flex:'1 1 30%', padding:'5px 0', background:'#fef2f2', border:'1px solid #fecaca', borderRadius:'6px', color:'#991b1b', fontSize:'12px', fontWeight:700, cursor:designAct?'not-allowed':'pointer', opacity:designAct?.6:1 }}>
+                    Reject
+                  </button>
+                  <button onClick={() => { setShowFix(true); setDesignErr(''); }} disabled={!!designAct}
+                    style={{ flex:'1 1 100%', padding:'5px 0', background:'rgba(212,168,67,0.08)', border:'1px solid var(--gold)', borderRadius:'6px', color:'var(--gold)', fontSize:'12px', fontWeight:700, cursor:designAct?'not-allowed':'pointer', opacity:designAct?.6:1 }}>
+                    Adjust &amp; Send Proof
                   </button>
                 </div>
               )}
 
-              {lo.items?.some(i => i.designRequested) && (
+              {/* Approve is one click with a hard effect (design goes to production-ready), so it
+                  confirms first to avoid an accidental tap. */}
+              {confirmApprove && (
+                <div style={{ padding:'10px', background:'#f0fdf4', border:'1px solid #bbf7d0', borderRadius:'8px', marginBottom:'8px', display:'flex', flexDirection:'column', gap:'8px' }}>
+                  <div style={{ fontSize:'12px', color:'#166534' }}>Approve this design? It becomes ready for production and the customer is notified. You can revert only before a Job Order is created.</div>
+                  <div style={{ display:'flex', gap:'6px' }}>
+                    <button onClick={handleApproveDesign} disabled={!!designAct}
+                      style={{ flex:1, padding:'6px 0', background:'#166534', border:'none', borderRadius:'6px', color:'#fff', fontSize:'12px', fontWeight:700, cursor:designAct?'not-allowed':'pointer', opacity:designAct?.6:1 }}>
+                      {designAct==='approving' ? 'Approving...' : 'Yes, approve'}
+                    </button>
+                    <button onClick={() => { setConfirmApprove(false); setDesignErr(''); }} disabled={!!designAct}
+                      style={{ padding:'6px 10px', background:'transparent', border:'1px solid var(--border)', borderRadius:'6px', color:'var(--gray)', fontSize:'12px', cursor:'pointer' }}>
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Undo an accidental approval - allowed only while no Job Order exists yet. */}
+              {lo.designStatus === 'approved' && !lo.joId && (
+                <div style={{ display:'flex', alignItems:'center', gap:'8px', marginBottom:'8px' }}>
+                  <span style={{ fontSize:'11px', color:'var(--gray)' }}>Approved by mistake?</span>
+                  <button onClick={handleRevertApprove} disabled={!!designAct}
+                    style={{ padding:'4px 10px', background:'transparent', border:'1px solid var(--border)', borderRadius:'6px', color:'var(--gray)', fontSize:'11px', fontWeight:600, cursor:designAct?'not-allowed':'pointer', opacity:designAct?.6:1 }}>
+                    {designAct==='reverting' ? 'Reverting...' : 'Revert to review'}
+                  </button>
+                </div>
+              )}
+
+              {/* Reject with a reason - saved on the order, shown to the customer, bounces the
+                  order back so they can re-upload a corrected file. */}
+              {showReject && (
+                <div style={{ padding:'10px', background:'#fef2f2', border:'1px solid #fecaca', borderRadius:'8px', marginBottom:'8px', display:'flex', flexDirection:'column', gap:'6px' }}>
+                  <div style={{ fontSize:'12px', fontWeight:700, color:'#991b1b' }}>Why is this being rejected?</div>
+                  {REJECT_REASONS.map(r => (
+                    <label key={r} style={{ display:'flex', alignItems:'center', gap:'6px', fontSize:'12px', color:'var(--white)', cursor:'pointer' }}>
+                      <input type="radio" name="rejreason" checked={rejectReason===r} onChange={() => setRejectReason(r)} />
+                      {r}
+                    </label>
+                  ))}
+                  {rejectReason==='Other' && (
+                    <div>
+                      <textarea value={rejectOther} onChange={e => setRejectOther(e.target.value.slice(0, 200))} maxLength={200} rows={2}
+                        placeholder="Type the reason the customer will see"
+                        style={{ background:'var(--dark2)', border:'1px solid var(--border)', borderRadius:'6px', color:'var(--white)', fontSize:'12px', padding:'6px 8px', resize:'vertical', outline:'none', width:'100%', boxSizing:'border-box' }} />
+                      <div style={{ fontSize:'10px', color:'var(--gray)', textAlign:'right', marginTop:'2px' }}>{rejectOther.length}/200</div>
+                    </div>
+                  )}
+                  <div style={{ display:'flex', gap:'6px' }}>
+                    <button onClick={handleRejectDesign} disabled={!!designAct}
+                      style={{ flex:1, padding:'6px 0', background:'#991b1b', border:'none', borderRadius:'6px', color:'#fff', fontSize:'12px', fontWeight:700, cursor:designAct?'not-allowed':'pointer', opacity:designAct?.6:1 }}>
+                      {designAct==='rejecting' ? 'Sending...' : 'Send rejection'}
+                    </button>
+                    <button onClick={() => { setShowReject(false); setRejectReason(''); setRejectOther(''); setDesignErr(''); }} disabled={!!designAct}
+                      style={{ padding:'6px 10px', background:'transparent', border:'1px solid var(--border)', borderRadius:'6px', color:'var(--gray)', fontSize:'12px', cursor:'pointer' }}>
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {(lo.items?.some(i => i.designRequested) || showFix) && (
                 <div>
+                  {showFix && (
+                    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'6px' }}>
+                      <span style={{ fontSize:'11px', color:'var(--gray)' }}>Upload your adjusted design - the customer will approve it.</span>
+                      <button onClick={() => { setShowFix(false); setDraftFiles([]); }} disabled={uploading}
+                        style={{ padding:'2px 8px', background:'transparent', border:'1px solid var(--border)', borderRadius:'6px', color:'var(--gray)', fontSize:'11px', cursor:'pointer' }}>
+                        Back
+                      </button>
+                    </div>
+                  )}
                   {lo.adminDesignUrl && !draftFiles.length && (
                     <div style={{ fontSize:'11px', color:'var(--gray)', marginBottom:'6px' }}>
                       <a href={lo.adminDesignUrl} target="_blank" rel="noopener noreferrer"
-                        style={{ color:'var(--gold)', fontWeight:600, textDecoration:'none' }}>View Sent Draft ↗</a>
-                      <span style={{ marginLeft:'6px' }}>— Awaiting review</span>
+                        style={{ color:'var(--gold)', fontWeight:600, textDecoration:'none' }}>View Sent Draft</a>
+                      <span style={{ marginLeft:'6px' }}>- Awaiting review</span>
                     </div>
                   )}
                   {draftFiles.length > 0 ? (
@@ -904,7 +1069,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                 <div style={{ display:'flex', gap:'6px' }}>
                   <button onClick={handleUpdateStatus} disabled={isUpdating}
                     style={{ flex:1, padding:'6px 0', background:'var(--gold)', border:'none', borderRadius:'6px', color:'var(--dark)', fontSize:'12px', fontWeight:700, cursor:isUpdating?'not-allowed':'pointer' }}>
-                    {isUpdating ? 'Updating…' : `→ ${selStatus}`}
+                    {isUpdating ? 'Updating...' : `Set to ${selStatus}`}
                   </button>
                   <button onClick={() => { setConfirmSt(false); setSelStatus(lo.orderStatus); }}
                     style={{ padding:'6px 10px', background:'transparent', border:'1px solid var(--border)', borderRadius:'6px', color:'var(--gray)', fontSize:'12px', cursor:'pointer' }}>
@@ -915,9 +1080,19 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
               {updateErr && <div style={{ fontSize:'11px', color:'#991b1b' }}>{updateErr}</div>}
             </div>
           ) : (
-            <span style={{ fontSize:'11px', color:'var(--gray)', fontStyle:'italic' }}>
-              {['Cancelled','Returned','Delivered'].includes(lo.orderStatus) ? 'No further updates' : 'No available transitions'}
-            </span>
+            (lo.isCustom && lo.designStatus === 'approved' && !lo.joId) ? (
+              <div style={{ display:'flex', flexDirection:'column', gap:'6px' }}>
+                <span style={{ fontSize:'11px', color:'var(--gray)', fontStyle:'italic' }}>Ready for production - create a Job Order to start.</span>
+                <a href="/dashboard/business/job-orders" target="_blank" rel="noopener noreferrer"
+                  style={{ ...S.btnSmGhost, justifyContent:'center', textDecoration:'none', display:'inline-flex', alignItems:'center', gap:'6px' }}>
+                  {ICONS.plus} Create Job Order
+                </a>
+              </div>
+            ) : (
+              <span style={{ fontSize:'11px', color:'var(--gray)', fontStyle:'italic' }}>
+                {['Cancelled','Returned','Delivered'].includes(lo.orderStatus) ? 'No further updates' : 'No available transitions'}
+              </span>
+            )
           )}
         </div>
 

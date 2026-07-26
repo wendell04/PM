@@ -263,6 +263,10 @@ export default function JobOrdersPage() {
     const isCustom = o.isCustomOrder ?? o.isCustom;
     const rawStatus = String(o.orderStatus || '').toLowerCase().replace(/[\s-]+/g, '_');
     if (isCustom && PRE_APPROVAL.includes(rawStatus)) return false;
+    // designStatus is the real artwork gate (mirrors JobOrderController Gate 2). Only a custom
+    // order whose design is approved may be produced - keeps this list from showing orders that
+    // would then fail on Create Job Order.
+    if (isCustom && o.designStatus && o.designStatus !== 'approved') return false;
     // Must need a production run: customizable or made-to-order. Ready-made stocked items (e.g. a
     // plain Scrunchie) ship from stock — no Job Order. Material is still deducted at order time.
     if (!(o.items || []).some(it => it.isCustom || it.isMadeToOrder)) return false;

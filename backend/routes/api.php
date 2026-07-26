@@ -260,6 +260,7 @@ Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
     Route::get('/admin/activity-logs',           [ActivityLogController::class, 'index']);
     // ─── Design Approval ──────────────────────────────────────────────────────
     Route::post('/admin/orders/{id}/approve-design', [OrderController::class, 'approveDesign']);
+    Route::post('/admin/orders/{id}/revert-design',  [OrderController::class, 'revertDesignApproval']);
     Route::post('/admin/orders/{id}/reject-design',  [OrderController::class, 'rejectDesign']);
     Route::post('/admin/orders/{id}/upload-design',   [OrderController::class, 'adminUploadDesign']);
     Route::post('/admin/orders/{id}/approve-upload',  [OrderController::class, 'approveUploadDesign']);

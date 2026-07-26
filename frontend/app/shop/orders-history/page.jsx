@@ -11,6 +11,7 @@ import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import { useCart } from '@/app/shop/layout';
 import { normalizeStatus } from '@/lib/orderStatus';
 import PaymentPicker from '@/components/shop/PaymentPicker';
+import ImageLightbox from '@/components/shop/ImageLightbox';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
@@ -157,42 +158,41 @@ function OrderTracker({ status, paymentMethod, paymentStatus, statusHistory = []
 
   return (
     <div>
-      <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#d4a843', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '16px' }}>
+      <div style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '16px' }}>
         Order Progress
       </div>
       <div style={{ display: 'flex', alignItems: 'flex-start' }}>
         {trackSteps.map((step, idx) => {
           const isDone        = idx < currentIdx;
           const isCurrent     = idx === currentIdx;
-          const isTerminal    = step.key === 'Paid' || (step.key === 'Delivered' && !isCOD);
-          const showCheckmark = isDone || (isCurrent && isTerminal);
-          const isGreenStep   = showCheckmark && (step.key === 'Paid' || (step.key === 'Delivered' && !isCOD));
-          const stepColor     = isGreenStep ? '#4ade80' : '#d4a843';
-          const stepBgAlpha   = isGreenStep ? 'rgba(74,222,128,0.15)' : 'rgba(212,168,67,0.15)';
-          const stepGlow      = isGreenStep ? 'rgba(74,222,128,0.15)' : 'rgba(212,168,67,0.15)';
+          const GOLD          = '#d4a843';
           const ts = historyMap[step.key];
           return (
             <div key={step.key} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
+              {/* Connectors - a single hairline that fills gold as it is passed. */}
               {idx > 0 && (
-                <div style={{ position: 'absolute', top: '15px', left: 0, width: '50%', height: '2px', background: idx <= currentIdx ? '#d4a843' : 'var(--border)', transition: 'background 0.3s' }} />
+                <div style={{ position: 'absolute', top: '13px', left: 0, width: '50%', height: '2px', background: idx <= currentIdx ? GOLD : 'var(--border)' }} />
               )}
               {idx < trackSteps.length - 1 && (
-                <div style={{ position: 'absolute', top: '15px', right: 0, width: '50%', height: '2px', background: idx < currentIdx ? '#d4a843' : 'var(--border)', transition: 'background 0.3s' }} />
+                <div style={{ position: 'absolute', top: '13px', right: 0, width: '50%', height: '2px', background: idx < currentIdx ? GOLD : 'var(--border)' }} />
               )}
+              {/* Node: done = filled gold + white check, current = gold ring + gold dot,
+                  upcoming = quiet hairline circle. One accent, no glow. */}
               <div style={{
-                width: '30px', height: '30px', borderRadius: '50%', zIndex: 1,
+                width: '26px', height: '26px', borderRadius: '50%', zIndex: 1,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                background: showCheckmark ? stepBgAlpha : isCurrent ? stepColor : 'var(--border)',
-                border: (showCheckmark || isCurrent) ? `2px solid ${stepColor}` : '2px solid var(--border)',
-                color: (showCheckmark || isCurrent) ? stepColor : 'var(--gray)',
-                boxShadow: isCurrent && !showCheckmark ? `0 0 0 4px ${stepGlow}` : 'none',
-                transition: 'all 0.3s', flexShrink: 0,
+                background: isDone ? GOLD : 'var(--dark2)',
+                border: `2px solid ${isDone || isCurrent ? GOLD : 'var(--border)'}`,
+                color: isDone ? '#fff' : isCurrent ? GOLD : 'var(--gray)',
+                transition: 'all 0.25s', flexShrink: 0,
               }}>
-                {showCheckmark ? (
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                ) : step.icon}
+                {isDone
+                  ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                  : isCurrent
+                    ? <span style={{ width: 8, height: 8, borderRadius: '50%', background: GOLD }} />
+                    : step.icon}
               </div>
-              <div style={{ marginTop: '7px', textAlign: 'center', lineHeight: 1.3, fontSize: isCurrent ? '0.7rem' : '0.66rem', fontWeight: isCurrent ? 700 : 500, color: isCurrent ? stepColor : isDone ? 'var(--white)' : 'var(--gray)', maxWidth: '60px' }}>
+              <div style={{ marginTop: '8px', textAlign: 'center', lineHeight: 1.3, fontSize: '0.66rem', fontWeight: isCurrent ? 700 : 500, color: isCurrent ? GOLD : isDone ? 'var(--white)' : 'var(--gray)', maxWidth: '64px' }}>
                 {step.label}
                 {ts && (
                   <div style={{ marginTop: '2px', fontSize: '0.58rem', color: 'var(--gray)', fontWeight: 400 }}>
@@ -244,10 +244,12 @@ function CustomOrderTracker({ orderStatus, designType, designStatus, paymentStat
     if (designType === 'upload') {
       if (!paid) {
         derivedIdx = steps.findIndex(s => s.key === 'awaiting_payment');
-      } else if (designStatus === 'pending_review' || designStatus === 'rejected' || !designStatus) {
-        derivedIdx = steps.findIndex(s => s.key === 'pending_review');
-      } else {
+      } else if (designStatus === 'approved') {
+        // Only an APPROVED design advances to Production. A sent proof (draft_ready / proof_sent),
+        // a rejected file, or one still pending all stay at Review - the customer hasn't signed off.
         derivedIdx = steps.findIndex(s => s.key === 'awaiting_production');
+      } else {
+        derivedIdx = steps.findIndex(s => s.key === 'pending_review');
       }
     } else {
       // Request design normalises to 'pending' at creation too. Its first real stage is the
@@ -281,7 +283,7 @@ function CustomOrderTracker({ orderStatus, designType, designStatus, paymentStat
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
-        <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#d4a843', textTransform: 'uppercase', letterSpacing: '0.8px' }}>
+        <div style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.8px' }}>
           {designType === 'upload' ? 'Upload Design' : 'Design Request'} Progress
         </div>
         <span style={{ padding: '3px 10px', borderRadius: '999px', fontSize: '0.68rem', fontWeight: 700, background: isDelivered ? 'rgba(34,197,94,0.1)' : 'rgba(212,168,67,0.1)', color: isDelivered ? '#22c55e' : '#d4a843', border: `1px solid ${isDelivered ? 'rgba(34,197,94,0.3)' : 'rgba(212,168,67,0.3)'}` }}>
@@ -292,30 +294,32 @@ function CustomOrderTracker({ orderStatus, designType, designStatus, paymentStat
         {steps.map((step, idx) => {
           const isDone    = idx < currentIdx;
           const isCurrent = idx === currentIdx;
-          const isLastDone = isDone && idx === steps.length - 1;
+          const GOLD      = '#d4a843';
+          // Identical treatment to the ready-made OrderTracker: done = filled gold + white check,
+          // current = gold ring + gold dot, upcoming = quiet hairline circle + icon. No glow.
           return (
             <div key={step.key} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
               {idx > 0 && (
-                <div style={{ position: 'absolute', top: '12px', left: 0, width: '50%', height: '2px', background: idx <= currentIdx ? '#d4a843' : 'var(--border)' }} />
+                <div style={{ position: 'absolute', top: '13px', left: 0, width: '50%', height: '2px', background: idx <= currentIdx ? GOLD : 'var(--border)' }} />
               )}
               {idx < steps.length - 1 && (
-                <div style={{ position: 'absolute', top: '12px', right: 0, width: '50%', height: '2px', background: idx < currentIdx ? '#d4a843' : 'var(--border)' }} />
+                <div style={{ position: 'absolute', top: '13px', right: 0, width: '50%', height: '2px', background: idx < currentIdx ? GOLD : 'var(--border)' }} />
               )}
-              {(() => {
-                const isApprovalCurrent = isCurrent && step.key === 'design_approved';
-                const showCheck = isDone || isApprovalCurrent;
-                return (
-                  <div style={{ width: '24px', height: '24px', borderRadius: '50%', zIndex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: isCurrent ? (isDelivered && idx === steps.length - 1 ? '#22c55e' : isApprovalCurrent ? 'rgba(212,168,67,0.15)' : '#d4a843') : isDone ? 'rgba(212,168,67,0.15)' : 'var(--border)', border: isCurrent || isDone ? '2px solid #d4a843' : '2px solid var(--border)', boxShadow: isCurrent && !isApprovalCurrent ? '0 0 0 3px rgba(212,168,67,0.15)' : 'none', flexShrink: 0 }}>
-                    {showCheck
-                      ? <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#d4a843" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                      : isCurrent
-                      ? <span style={{ color: '#000', display: 'flex' }}>{step.icon}</span>
-                      : <span style={{ color: 'var(--gray)', display: 'flex', opacity: 0.6 }}>{step.icon}</span>
-                    }
-                  </div>
-                );
-              })()}
-              <div style={{ marginTop: '5px', fontSize: isCurrent ? '0.64rem' : '0.6rem', textAlign: 'center', lineHeight: 1.3, maxWidth: '50px', fontWeight: isCurrent ? 700 : 500, color: isCurrent ? '#d4a843' : isDone ? 'var(--white)' : 'var(--gray)' }}>
+              <div style={{
+                width: '26px', height: '26px', borderRadius: '50%', zIndex: 1,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: isDone ? GOLD : 'var(--dark2)',
+                border: `2px solid ${isDone || isCurrent ? GOLD : 'var(--border)'}`,
+                color: isDone ? '#fff' : isCurrent ? GOLD : 'var(--gray)',
+                transition: 'all 0.25s', flexShrink: 0,
+              }}>
+                {isDone
+                  ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                  : isCurrent
+                    ? <span style={{ width: 8, height: 8, borderRadius: '50%', background: GOLD }} />
+                    : step.icon}
+              </div>
+              <div style={{ marginTop: '8px', textAlign: 'center', lineHeight: 1.3, fontSize: '0.66rem', fontWeight: isCurrent ? 700 : 500, color: isCurrent ? GOLD : isDone ? 'var(--white)' : 'var(--gray)', maxWidth: '64px' }}>
                 {step.label}
               </div>
             </div>
@@ -420,6 +424,7 @@ export default function OrdersHistoryPage() {
   const [payFullToggle, setPayFullToggle] = useState(false);
   // Owner-controlled method availability (Homepage CMS -> Payment Methods). Missing = enabled.
   const [payEnabled, setPayEnabled] = useState({});
+  const [lightboxUrl, setLightboxUrl] = useState(null);
 
   useEffect(() => {
     fetch(`${API_URL}/api/storefront/content/payment_methods`)
@@ -638,9 +643,9 @@ export default function OrdersHistoryPage() {
     finally { setReorderLoading(false); }
   };
 
-  // Called by the shared PaymentPicker with (method, cardData). GCash/Maya carry no card
-  // data and no phone - they redirect to their own secure page.
-  const handlePayNow = async (method, cardData) => {
+  // Called by the shared PaymentPicker with (method, cardData). opts.designFeeOnly charges
+  // only the request-design fee (first payment); otherwise it pays the DP/balance.
+  const handlePayNow = async (method, cardData, opts = {}) => {
     if (!selectedOrder || !token || !method) return;
     setPayNowLoading(true); setPayNowError(null);
     try {
@@ -671,6 +676,7 @@ export default function OrdersHistoryPage() {
           orderId,
           paymentMethod: method,
           payFull: payFullToggle,
+          ...(opts.designFeeOnly ? { designFeeOnly: true } : {}),
           ...(method === 'card' && paymentMethodId ? { paymentMethodId } : {}),
         }),
       }, 15000);
@@ -949,9 +955,26 @@ export default function OrdersHistoryPage() {
       {modalOpen && (
         <>
         <style>{`
-          .oh-modal-outer { display:flex; flex:1; overflow:hidden; min-height:0; }
-          .oh-modal-columns { display:flex; flex:1; overflow:hidden; min-height:0; }
-          .oh-modal-right { width:265px; flex-shrink:0; overflow-y:auto; border-left:1px solid var(--border); display:flex; flex-direction:column; background:var(--dark); scrollbar-width:none; -ms-overflow-style:none; }
+          .oh-modal-outer { display:flex; flex:1; overflow:hidden; min-height:0; background:var(--dark); }
+          /* Two-card body (mirrors the admin order module): both columns are cards floating on a
+             slightly darker body, separated by a gap - not edge-to-edge panes. */
+          .oh-modal-columns { display:flex; flex:1; overflow:hidden; min-height:0; gap:14px; padding:16px; background:var(--dark); }
+          .oh-modal-left-col { border:1px solid var(--border); border-radius:14px; background:var(--dark2); scrollbar-width:thin; scrollbar-color:var(--border) transparent; }
+          .oh-modal-right { flex:1; min-width:0; overflow-y:auto; border:1px solid var(--border); border-radius:14px; display:flex; flex-direction:column; background:var(--dark2); scrollbar-width:thin; scrollbar-color:var(--border) transparent; }
+          /* Slim, self-designed scrollbar so it is clear there is more to scroll, without the chunky
+             OS default. Thumb is a quiet rounded pill; track stays invisible. */
+          .oh-modal-left-col::-webkit-scrollbar, .oh-modal-right::-webkit-scrollbar { width:8px; }
+          .oh-modal-left-col::-webkit-scrollbar-button,
+          .oh-modal-right::-webkit-scrollbar-button,
+          .oh-modal-left-col::-webkit-scrollbar-button:single-button,
+          .oh-modal-right::-webkit-scrollbar-button:single-button,
+          .oh-modal-left-col::-webkit-scrollbar-button:start,
+          .oh-modal-left-col::-webkit-scrollbar-button:end,
+          .oh-modal-right::-webkit-scrollbar-button:start,
+          .oh-modal-right::-webkit-scrollbar-button:end { display:none !important; height:0 !important; width:0 !important; background:transparent !important; }
+          .oh-modal-left-col::-webkit-scrollbar-track, .oh-modal-right::-webkit-scrollbar-track { background:transparent; }
+          .oh-modal-left-col::-webkit-scrollbar-thumb, .oh-modal-right::-webkit-scrollbar-thumb { background:var(--border); border-radius:8px; border:2px solid transparent; background-clip:content-box; }
+          .oh-modal-left-col::-webkit-scrollbar-thumb:hover, .oh-modal-right::-webkit-scrollbar-thumb:hover { background:var(--gray); background-clip:content-box; }
           /* Light mode: white panel + explicit light-grey inset cards (var(--dark) is near-white in light) */
           html.light .oh-modal-panel { --dark2:#ffffff; --dark:#eef1f4; }
           .oh-modal-outer, .oh-modal-left-col, .oh-modal-right { overscroll-behavior: contain; }
@@ -959,14 +982,15 @@ export default function OrdersHistoryPage() {
             .oh-modal-outer { overflow-y:auto; }
             .oh-modal-columns { flex-direction:column; overflow:visible; height:auto; flex:none; min-height:unset; }
             .oh-modal-left-col { overflow-y:visible !important; }
-            .oh-modal-right { width:100%; border-left:none; border-top:1px solid var(--border); flex-shrink:0; overflow-y:visible; height:auto; }
+            .oh-modal-right { width:100%; flex-shrink:0; overflow-y:visible; height:auto; }
           }
         `}</style>
         <div onClick={closeModal} style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
-          <div className="oh-modal-panel" onClick={e => e.stopPropagation()} style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '16px', width: '100%', maxWidth: '820px', maxHeight: '92vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <ImageLightbox url={lightboxUrl} onClose={() => setLightboxUrl(null)} />
+          <div className="oh-modal-panel" onClick={e => e.stopPropagation()} style={{ background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '16px', width: '100%', maxWidth: '880px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 24px 70px rgba(0,0,0,0.35)', fontFamily: 'Inter, system-ui, sans-serif' }}>
 
             {/* Modal header */}
-            <div style={{ padding: '16px 22px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', background: 'var(--dark2)', flexShrink: 0 }}>
+            <div style={{ padding: '16px 22px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', background: 'transparent', flexShrink: 0 }}>
               <div>
                 <div style={{ fontSize: '0.65rem', color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.8px', fontWeight: 600, marginBottom: '4px' }}>Order Details</div>
                 {selectedOrder && (
@@ -975,11 +999,11 @@ export default function OrdersHistoryPage() {
                       #{(selectedOrder.id ?? selectedOrder._id)?.slice(-8).toUpperCase()}
                     </span>
                     {selectedOrder.isCustomOrder ? (
-                      <span style={{ fontSize: '0.62rem', fontWeight: 700, padding: '2px 8px', borderRadius: '4px', background: 'rgba(212,168,67,0.08)', color: '#d4a843', border: '1px solid rgba(212,168,67,0.2)' }}>
+                      <span style={{ fontSize: '0.62rem', fontWeight: 700, padding: '3px 10px', borderRadius: '999px', letterSpacing: '0.03em', background: 'rgba(212,168,67,0.08)', color: '#d4a843', border: '1px solid rgba(212,168,67,0.2)' }}>
                         CUSTOM · {selectedOrder.designType === 'upload' ? 'UPLOAD DESIGN' : 'DESIGN REQUEST'}
                       </span>
                     ) : (
-                      <span style={{ fontSize: '0.62rem', fontWeight: 700, padding: '2px 8px', borderRadius: '4px', background: 'rgba(34,197,94,0.08)', color: '#16a34a', border: '1px solid rgba(34,197,94,0.25)' }}>
+                      <span style={{ fontSize: '0.62rem', fontWeight: 700, padding: '3px 10px', borderRadius: '999px', letterSpacing: '0.03em', background: 'rgba(34,197,94,0.08)', color: '#16a34a', border: '1px solid rgba(34,197,94,0.25)' }}>
                         READY-MADE
                       </span>
                     )}
@@ -1024,7 +1048,7 @@ export default function OrdersHistoryPage() {
                 <div className="oh-modal-columns" style={{ display: 'flex', flex: 1, minHeight: 0 }}>
 
                   {/* LEFT column */}
-                  <div className="oh-modal-left-col" style={{ flex: 1, overflowY: 'auto', padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: '20px', minWidth: 0, scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+                  <div className="oh-modal-left-col" style={{ flex: 1, overflowY: 'auto', padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: '20px', minWidth: 0 }}>
 
                     {/* Tracker */}
                     <div style={{ paddingBottom: '4px' }}>
@@ -1037,7 +1061,7 @@ export default function OrdersHistoryPage() {
 
                     {/* Order Info */}
                     <div style={{ borderTop: '1px solid var(--border)', paddingTop: '16px' }}>
-                      <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#d4a843', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '6px' }}>Order Info</div>
+                      <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '6px' }}>Order Info</div>
                       <div>
                         {[
                           ['Placed', formatDate(selectedOrder.createdAt)],
@@ -1053,16 +1077,51 @@ export default function OrdersHistoryPage() {
                               </span>]
                             : null,
                         ].filter(Boolean).map(([label, value]) => (
-                          <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0' }}>
-                            <span style={{ fontSize: '0.8rem', color: 'var(--gray)' }}>{label}</span>
+                          <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 0' }}>
+                            <span style={{ fontSize: '12px', color: 'var(--gray)' }}>{label}</span>
                             {typeof value === 'string'
-                              ? <span style={{ fontSize: '0.82rem', color: 'var(--white)', fontWeight: 600 }}>{value}</span>
+                              ? <span style={{ fontSize: '13px', color: 'var(--white)', fontWeight: 600 }}>{value}</span>
                               : value
                             }
                           </div>
                         ))}
                       </div>
                     </div>
+
+                    {/* The customer's own uploaded design, so they can confirm what they sent.
+                        Image renders inline (sandboxed); other formats link out. */}
+                    {selectedOrder.designType === 'upload' && (() => {
+                      const files = (selectedOrder.items?.[0]?.designFiles?.length
+                        ? selectedOrder.items[0].designFiles.map(f => f.url)
+                        : [selectedOrder.designFilePath]).filter(Boolean);
+                      if (!files.length) return null;
+                      return (
+                        <div style={{ borderTop: '1px solid var(--border)', paddingTop: '16px' }}>
+                          <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '10px' }}>Your Design</div>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                            {files.map((url, i) => {
+                              const isImg = /\.(jpe?g|png|webp|gif|avif|svg)(\?|$)/i.test(url);
+                              // Image opens a full-screen lightbox in place; other formats
+                              // (PDF/AI/PSD) open in a new tab since the browser handles those.
+                              return isImg ? (
+                                <button key={i} type="button" onClick={() => setLightboxUrl(url)} title="Click to preview"
+                                  style={{ padding: 0, border: 'none', background: 'none', cursor: 'zoom-in', display: 'block' }}>
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img src={url} alt="Your design" style={{ width: '110px', height: '110px', objectFit: 'contain', background: 'var(--dark)', borderRadius: '8px', border: '1px solid var(--border)', display: 'block' }} />
+                                </button>
+                              ) : (
+                                <a key={i} href={url} target="_blank" rel="noopener noreferrer" title="Open full file" style={{ display: 'block', textDecoration: 'none' }}>
+                                  <div style={{ width: '110px', height: '110px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--dark)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '6px', color: 'var(--gray)', fontSize: '0.68rem', textAlign: 'center', padding: '6px' }}>
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                                    Open to view
+                                  </div>
+                                </a>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })()}
 
                     {/* Design rejection + re-upload */}
                     {selectedOrder.designStatus === 'rejected' && (
@@ -1106,38 +1165,53 @@ export default function OrdersHistoryPage() {
                     {/* Admin design draft */}
                     {selectedOrder.adminDesignUrl && (
                       <div style={{ padding: '14px', background: 'rgba(212,168,67,0.03)', border: '1px solid rgba(212,168,67,0.15)', borderRadius: '10px' }}>
-                        <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#d4a843', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '12px' }}>Your Design Draft</div>
+                        <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '12px' }}>Your Design Draft</div>
+                        {/* Inline proof preview - image opens the lightbox (click to view full-screen),
+                            video plays inline (360 spin), PDF/AI/PSD are a clickable file tile. This is
+                            the ONLY viewer now; the old redundant "View Design" links were removed. */}
+                        {(() => {
+                          const urls = (selectedOrder.adminDesignUrls ?? [selectedOrder.adminDesignUrl]).filter(Boolean);
+                          if (!urls.length) return null;
+                          return (
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '12px' }}>
+                              {urls.map((url, i) => {
+                                const isVid = /\.(mp4|webm|mov|m4v|ogg)(\?|$)/i.test(url);
+                                const isImg = /\.(jpe?g|png|webp|gif|avif|svg)(\?|$)/i.test(url);
+                                if (isVid) return (
+                                  <video key={i} src={url} controls playsInline style={{ width: '190px', maxHeight: '170px', borderRadius: '8px', border: '1px solid var(--border)', background: '#000' }} />
+                                );
+                                if (isImg) return (
+                                  <button key={i} type="button" onClick={() => setLightboxUrl(url)} title="Click to preview" style={{ padding: 0, border: 'none', background: 'none', cursor: 'zoom-in', display: 'block' }}>
+                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                    <img src={url} alt="Design proof" style={{ width: '110px', height: '110px', objectFit: 'contain', background: 'var(--dark)', borderRadius: '8px', border: '1px solid var(--border)', display: 'block' }} />
+                                  </button>
+                                );
+                                return (
+                                  <a key={i} href={url} target="_blank" rel="noopener noreferrer" title="Open file" style={{ width: '110px', height: '110px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--dark)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '6px', color: '#d4a843', fontSize: '0.68rem', fontWeight: 600, textAlign: 'center', textDecoration: 'none', padding: '6px' }}>
+                                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                                    {urls.length > 1 ? `File ${i + 1}` : 'Open file'}
+                                  </a>
+                                );
+                              })}
+                            </div>
+                          );
+                        })()}
                         {selectedOrder.designStatus === 'approved' ? (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                            <span style={{ fontSize: '0.8rem', color: '#d4a843', fontWeight: 600 }}>Design approved — we'll proceed once payment is confirmed.</span>
-                            {(selectedOrder.adminDesignUrls ?? [selectedOrder.adminDesignUrl]).filter(Boolean).map((url, i, arr) => (
-                              <a key={i} href={url} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '0.8rem', color: '#d4a843', fontWeight: 600, textDecoration: 'none' }}>
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                                {arr.length > 1 ? `File ${i + 1}` : 'View Design'}
-                              </a>
-                            ))}
+                            <span style={{ fontSize: '0.8rem', color: '#d4a843', fontWeight: 600 }}>
+                              {selectedOrder.paymentStatus === 'unpaid'
+                                ? 'Design approved. Please complete your payment to begin production.'
+                                : 'Design approved. We\'ll begin production shortly; the remaining balance is due before delivery.'}
+                            </span>
                           </div>
                         ) : selectedOrder.designStatus === 'revision_requested' ? (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                            <span style={{ fontSize: '0.8rem', color: '#d4a843' }}>↩ Revision requested — we'll update the design and notify you.</span>
-                            {(selectedOrder.adminDesignUrls ?? [selectedOrder.adminDesignUrl]).filter(Boolean).map((url, i, arr) => (
-                              <a key={i} href={url} target="_blank" rel="noopener noreferrer" style={{ fontSize: '0.8rem', color: 'var(--gray)', fontWeight: 600, textDecoration: 'none' }}>
-                                {arr.length > 1 ? `View File ${i + 1}` : 'View current draft'}
-                              </a>
-                            ))}
-                            {revisionSuccess && <div style={{ fontSize: '0.75rem', color: '#22c55e' }}>✓ Revision request sent.</div>}
+                            <span style={{ fontSize: '0.8rem', color: '#d4a843' }}>Revision requested - we'll update the design and notify you.</span>
+                            {revisionSuccess && <div style={{ fontSize: '0.75rem', color: '#22c55e' }}>Revision request sent.</div>}
                           </div>
                         ) : (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                             <div style={{ fontSize: '0.8rem', color: 'var(--gray)' }}>Your design draft is ready. Please review and let us know if it looks good.</div>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                              {(selectedOrder.adminDesignUrls ?? [selectedOrder.adminDesignUrl]).filter(Boolean).map((url, i, arr) => (
-                                <a key={i} href={url} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 14px', background: 'rgba(212,168,67,0.08)', border: '1px solid rgba(212,168,67,0.2)', borderRadius: '8px', fontSize: '0.8rem', color: '#d4a843', fontWeight: 600, textDecoration: 'none' }}>
-                                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                                  {arr.length > 1 ? `View File ${i + 1}` : 'View Design Draft'}
-                                </a>
-                              ))}
-                            </div>
                             {approveDesignError && <div style={{ fontSize: '0.75rem', color: '#ef4444' }}>{approveDesignError}</div>}
                             {!showRevisionForm ? (
                               <div style={{ display: 'flex', gap: '8px' }}>
@@ -1145,7 +1219,7 @@ export default function OrdersHistoryPage() {
                                   {approveDesignLoading ? 'Approving...' : 'Approve Design'}
                                 </button>
                                 <button onClick={() => setShowRevisionForm(true)} style={{ flex: 1, padding: '9px', borderRadius: '8px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--gray)', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer' }}>
-                                  ↩ Request Changes
+                                  Request Changes
                                 </button>
                               </div>
                             ) : (
@@ -1170,7 +1244,7 @@ export default function OrdersHistoryPage() {
                     {/* Delivery Address */}
                     {selectedOrder.deliveryAddress && Object.keys(selectedOrder.deliveryAddress).length > 0 && (
                       <div style={{ borderTop: '1px solid var(--border)', paddingTop: '16px' }}>
-                        <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#d4a843', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '6px' }}>Delivery Address</div>
+                        <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '6px' }}>Delivery Address</div>
                         <div style={{ fontSize: '0.875rem', color: 'var(--white)', lineHeight: 1.6 }}>
                           {[selectedOrder.deliveryAddress.house_number, selectedOrder.deliveryAddress.street, selectedOrder.deliveryAddress.subdivision, selectedOrder.deliveryAddress.barangay, selectedOrder.deliveryAddress.city, selectedOrder.deliveryAddress.province, selectedOrder.deliveryAddress.zip].filter(Boolean).join(', ')}
                           {selectedOrder.deliveryAddress.phone && <div style={{ marginTop: '4px', fontSize: '0.8rem', color: 'var(--gray)' }}>{selectedOrder.deliveryAddress.phone}</div>}
@@ -1181,7 +1255,7 @@ export default function OrdersHistoryPage() {
                     {/* Shipment */}
                     {(selectedOrder.courierName || selectedOrder.trackingNumber) && (
                       <div>
-                        <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#d4a843', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '10px' }}>Shipment</div>
+                        <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '10px' }}>Shipment</div>
                         <div style={{ background: 'var(--dark)', borderRadius: '8px', border: '1px solid var(--border)', overflow: 'hidden' }}>
                           {selectedOrder.courierName && (
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 14px', borderBottom: selectedOrder.trackingNumber ? '1px solid var(--border)' : 'none' }}>
@@ -1207,7 +1281,7 @@ export default function OrdersHistoryPage() {
                     {/* Production */}
                     {selectedOrder.joId && (
                       <div>
-                        <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#d4a843', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '10px' }}>Production</div>
+                        <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '10px' }}>Production</div>
                         <div style={{ background: 'var(--dark)', borderRadius: '8px', border: '1px solid var(--border)', overflow: 'hidden' }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', padding: '9px 14px', borderBottom: (selectedOrder.joStatus || selectedOrder.targetCompletion) ? '1px solid var(--border)' : 'none' }}>
                             <span style={{ fontSize: '0.8rem', color: 'var(--gray)' }}>Job Order</span>
@@ -1232,7 +1306,7 @@ export default function OrdersHistoryPage() {
                     {/* Review — only after payment confirmed */}
                     {selectedOrder.orderStatus?.toLowerCase() === 'delivered' && selectedOrder.paymentStatus === 'paid' && (
                       <div>
-                        <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#d4a843', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '10px' }}>Your Review</div>
+                        <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '10px' }}>Your Review</div>
                         {reviewCheckLoading && (
                           <div style={{ height: '60px', background: 'var(--border)', borderRadius: '8px', animation: 'pulse 1.5s ease-in-out infinite' }} />
                         )}
@@ -1278,49 +1352,38 @@ export default function OrdersHistoryPage() {
                   </div>
 
                   {/* RIGHT column */}
-                  <div className="oh-modal-right" style={{ display: 'flex', flexDirection: 'column', background: 'var(--dark)' }}>
-
-                    {/* Balance-due banner (downpayment orders) */}
-                    {selectedOrder.balance > 0 && (
-                      <div style={{ margin: '14px 18px 0', padding: '10px 12px', borderRadius: '9px', background: 'rgba(239,68,68,0.07)', border: '1px solid rgba(239,68,68,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
-                        <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#ef4444', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Balance Due</span>
-                        <span style={{ fontSize: '0.95rem', fontWeight: 800, color: '#ef4444' }}>{formatPeso(selectedOrder.balance)}</span>
-                      </div>
-                    )}
+                  <div className="oh-modal-right" style={{ display: 'flex', flexDirection: 'column', background: 'var(--dark2)' }}>
 
                     {/* Items */}
                     {selectedOrder.items?.length > 0 && (
-                      <div style={{ padding: '18px 18px 14px' }}>
-                        <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#d4a843', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '14px' }}>
+                      <div style={{ padding: '14px 16px' }}>
+                        <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '10px' }}>
                           {selectedOrder.items.length} {selectedOrder.items.length === 1 ? 'Item' : 'Items'}
                         </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                           {selectedOrder.items.map((item, i) => {
                             const qty       = item.qty || item.quantity || 1;
                             const unitPrice = item.unitPrice ?? item.price ?? 0;
                             const lineTotal = item.lineTotal ?? (unitPrice * qty);
-                            const initial   = (item.productName || 'P')[0].toUpperCase();
+                            const name      = item.productName || item.product_name || 'Product';
+                            const variant   = item.variantName || item.variant_name || null;
+                            // Same px sizing as the admin order module item card (13px / 11px).
                             return (
-                              <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
-                                <div style={{ position: 'relative', flexShrink: 0 }}>
-                                  <div style={{ width: '48px', height: '48px', borderRadius: '8px', background: 'rgba(212,168,67,0.06)', border: '1px solid rgba(212,168,67,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-                                    {(item.thumbnail || item.imageUrl)
-                                      ? <img src={item.thumbnail || item.imageUrl} alt={item.productName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                                      : <span style={{ fontSize: '1.1rem', fontWeight: 800, color: '#d4a843', opacity: 0.5 }}>{initial}</span>
-                                    }
-                                  </div>
-                                  <div style={{ position: 'absolute', top: '-5px', right: '-5px', width: '18px', height: '18px', borderRadius: '50%', background: 'var(--dark2)', border: '1.5px solid var(--border)', color: 'var(--white)', fontSize: '0.6rem', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                    {qty}
-                                  </div>
+                              <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', padding: '8px', background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '6px' }}>
+                                <div style={{ width: '38px', height: '38px', borderRadius: '6px', background: (item.thumbnail || item.imageUrl) ? 'transparent' : 'rgba(212,168,67,0.06)', border: '1px solid var(--border)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                                  {(item.thumbnail || item.imageUrl)
+                                    ? <img src={item.thumbnail || item.imageUrl} alt={name} style={{ width: '38px', height: '38px', objectFit: 'cover' }} />
+                                    : <span style={{ fontSize: '0.9rem', fontWeight: 800, color: '#d4a843', opacity: 0.5 }}>{(name[0] || 'P').toUpperCase()}</span>
+                                  }
                                 </div>
                                 <div style={{ flex: 1, minWidth: 0 }}>
-                                  <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--white)', lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                    {item.productName || item.product_name || 'Product'}
-                                  </div>
-                                  {item.variantName && <div style={{ fontSize: '0.7rem', color: '#d4a843', marginTop: '2px' }}>{item.variantName}</div>}
-                                  {item.category && <div style={{ fontSize: '0.68rem', color: 'var(--gray)' }}>{item.category}</div>}
+                                  <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--white)', lineHeight: 1.3 }}>{name}</div>
+                                  {variant && <div style={{ fontSize: '11px', color: 'var(--gray)', marginTop: '1px' }}>{variant}</div>}
                                 </div>
-                                <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--white)', flexShrink: 0 }}>{formatPeso(lineTotal)}</div>
+                                <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                                  <div style={{ fontSize: '11px', color: 'var(--gray)' }}>{formatPeso(unitPrice)} ×{qty}</div>
+                                  <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--white)', marginTop: '1px' }}>{formatPeso(lineTotal)}</div>
+                                </div>
                               </div>
                             );
                           })}
@@ -1328,81 +1391,94 @@ export default function OrdersHistoryPage() {
                       </div>
                     )}
 
-                    {/* Pricing */}
-                    <div style={{ padding: '14px 18px', borderTop: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '7px' }}>
+                    {/* Pricing - same compact px scale as the admin Payment section. */}
+                    <div style={{ padding: '12px 16px', borderTop: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '5px' }}>
                       {selectedOrder.subtotal > 0 && (
                         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                          <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>Subtotal</span>
-                          <span style={{ fontSize: '0.8rem', color: 'var(--white)' }}>{formatPeso(selectedOrder.subtotal)}</span>
+                          <span style={{ fontSize: '12px', color: 'var(--gray)' }}>Subtotal</span>
+                          <span style={{ fontSize: '12px', color: 'var(--white)' }}>{formatPeso(selectedOrder.subtotal)}</span>
                         </div>
                       )}
                       <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>Shipping</span>
-                        <span style={{ fontSize: '0.8rem', color: 'var(--white)' }}>{formatPeso(selectedOrder.shippingFee ?? 0)}</span>
+                        <span style={{ fontSize: '12px', color: 'var(--gray)' }}>Shipping</span>
+                        <span style={{ fontSize: '12px', color: 'var(--white)' }}>{formatPeso(selectedOrder.shippingFee ?? 0)}</span>
                       </div>
                       {selectedOrder.discountAmount > 0 && (
                         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                          <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>Discount</span>
-                          <span style={{ fontSize: '0.8rem', color: '#22c55e' }}>-{formatPeso(selectedOrder.discountAmount)}</span>
+                          <span style={{ fontSize: '12px', color: 'var(--gray)' }}>Discount</span>
+                          <span style={{ fontSize: '12px', color: '#22c55e' }}>-{formatPeso(selectedOrder.discountAmount)}</span>
                         </div>
                       )}
                       {selectedOrder.designFeePaid && (() => {
                         const df = (selectedOrder.items ?? []).reduce((s, i) => s + (parseFloat(i.designFee) || 0), 0);
                         return df > 0 ? (
                           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                            <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>Design Fee <span style={{ color: '#f59e0b', fontSize: '0.68rem', fontWeight: 700 }}>✓ Paid</span></span>
-                            <span style={{ fontSize: '0.8rem', color: '#f59e0b' }}>{formatPeso(df)}</span>
+                            <span style={{ fontSize: '12px', color: 'var(--gray)' }}>Design Fee <span style={{ color: '#f59e0b', fontSize: '10px', fontWeight: 700 }}>Paid</span></span>
+                            <span style={{ fontSize: '12px', color: '#f59e0b' }}>{formatPeso(df)}</span>
                           </div>
                         ) : null;
                       })()}
                       {selectedOrder.requiresDownpayment && selectedOrder.downPayment > 0 && (
                         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                          <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>Down Payment</span>
-                          <span style={{ fontSize: '0.8rem', color: 'var(--white)' }}>{formatPeso(selectedOrder.downPayment)}</span>
+                          <span style={{ fontSize: '12px', color: 'var(--gray)' }}>Down Payment</span>
+                          <span style={{ fontSize: '12px', color: 'var(--white)' }}>{formatPeso(selectedOrder.downPayment)}</span>
                         </div>
                       )}
                       {selectedOrder.balance > 0 && (
                         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                          <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>Balance Due</span>
-                          <span style={{ fontSize: '0.8rem', color: '#ef4444', fontWeight: 700 }}>{formatPeso(selectedOrder.balance)}</span>
+                          <span style={{ fontSize: '12px', color: 'var(--gray)' }}>Balance Due</span>
+                          <span style={{ fontSize: '12px', color: '#ef4444', fontWeight: 700 }}>{formatPeso(selectedOrder.balance)}</span>
                         </div>
                       )}
-                      <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '10px', borderTop: '1px solid var(--border)', marginTop: '3px' }}>
-                        <span style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--white)' }}>Total</span>
-                        <span style={{ fontSize: '1.05rem', fontWeight: 800, color: '#d4a843' }}>{formatPeso(selectedOrder.totalAmount)}</span>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '8px', borderTop: '1px solid var(--border)', marginTop: '3px' }}>
+                        <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--white)' }}>Total</span>
+                        <span style={{ fontSize: '13px', fontWeight: 700, color: '#d4a843' }}>{formatPeso(selectedOrder.totalAmount)}</span>
                       </div>
                     </div>
 
+                    {/* Pay Design Fee - the FIRST payment on a request-design order, collected
+                        here (not on the product page). The goods are paid later, after the
+                        proof is approved. */}
+                    {selectedOrder.designType === 'request'
+                      && Number(selectedOrder.designFee) > 0
+                      && !selectedOrder.designFeePaid
+                      && selectedOrder.paymentStatus !== 'paid'
+                      && !['delivered','Delivered','cancelled','Cancelled','returned','Returned'].includes(selectedOrder.orderStatus)
+                      && (
+                      <div style={{ padding: '0 18px 18px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '2px' }}>Pay Design Fee</div>
+                        <div style={{ padding: '10px 12px', background: 'var(--dark)', borderRadius: '8px', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '4px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', fontWeight: 700 }}>
+                            <span style={{ color: 'var(--white)' }}>Design fee</span>
+                            <span style={{ color: '#d4a843' }}>{formatPeso(selectedOrder.designFee)}</span>
+                          </div>
+                          <span style={{ fontSize: '0.72rem', color: 'var(--gray)', lineHeight: 1.5 }}>
+                            Paid now so our designer can start. The order total is settled after you approve the proof.
+                          </span>
+                        </div>
+                        <PaymentPicker
+                          methods={['gcash', 'paymaya', 'card'].filter(m => payEnabled[m] !== false)}
+                          amount={Number(selectedOrder.designFee)}
+                          onPay={(m, c) => handlePayNow(m, c, { designFeeOnly: true })}
+                          loading={payNowLoading}
+                          error={payNowError}
+                        />
+                      </div>
+                    )}
+
                     {/* Pay Now / Pay Balance. A downpaid order sits at partial with the balance
                         still owed; without this it could never be settled, so it stuck before
-                        delivery. Hidden only once fully paid or the order is finished. */}
-                    {selectedOrder.paymentStatus !== 'paid'
+                        delivery. Hidden only once fully paid or the order is finished. Suppressed
+                        while a request-design order still owes its design fee. */}
+                    {!(selectedOrder.designType === 'request' && Number(selectedOrder.designFee) > 0 && !selectedOrder.designFeePaid)
+                      && selectedOrder.paymentStatus !== 'paid'
                       && !['delivered','Delivered','cancelled','Cancelled','returned','Returned'].includes(selectedOrder.orderStatus)
                       && (selectedOrder.orderStatus === 'awaiting_payment'
                         || selectedOrder.paymentStatus === 'partial'
                         || (selectedOrder.orderStatus === 'Pending' && selectedOrder.paymentMethod !== 'cod'))
                       && (
                       <div style={{ padding: '0 18px 18px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                        <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#d4a843', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '2px' }}>Pay Now</div>
-
-                        {selectedOrder.paymentStatus === 'partial' && selectedOrder.orderStatus !== 'awaiting_payment' && (
-                          <div style={{ padding: '10px 12px', background: 'var(--dark)', borderRadius: '8px', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '5px', marginBottom: '4px' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem' }}>
-                              <span style={{ color: 'var(--gray)' }}>Order total</span>
-                              <span style={{ color: 'var(--white)' }}>{formatPeso(selectedOrder.totalAmount)}</span>
-                            </div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem' }}>
-                              <span style={{ color: '#22c55e' }}>Already paid</span>
-                              <span style={{ color: '#22c55e' }}>-{formatPeso(selectedOrder.downPayment ?? 0)}</span>
-                            </div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', fontWeight: 700, paddingTop: '5px', borderTop: '1px solid var(--border)', marginTop: '2px' }}>
-                              <span style={{ color: 'var(--white)' }}>Balance Due</span>
-                              <span style={{ color: '#d4a843' }}>
-                                {formatPeso(selectedOrder.balance != null && selectedOrder.balance !== '' ? selectedOrder.balance : Math.max(0, (selectedOrder.totalAmount ?? 0) - (selectedOrder.downPayment ?? 0)))}
-                              </span>
-                            </div>
-                          </div>
-                        )}
+                        <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '2px' }}>Pay Now</div>
 
                         {/* Breakdown for awaiting_payment */}
                         {selectedOrder.orderStatus === 'awaiting_payment' && (
@@ -1478,7 +1554,7 @@ export default function OrdersHistoryPage() {
             </div>
 
             {/* Modal footer */}
-            <div style={{ padding: '14px 20px', borderTop: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap', background: 'var(--dark2)', flexShrink: 0 }}>
+            <div style={{ padding: '14px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap', background: 'transparent', flexShrink: 0 }}>
               <div>
                 {reorderMsg && <span style={{ fontSize: '0.8rem', color: reorderMsg.includes('Failed') ? '#ef4444' : '#22c55e', fontWeight: 600 }}>{reorderMsg}</span>}
               </div>

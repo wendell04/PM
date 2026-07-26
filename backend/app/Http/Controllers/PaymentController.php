@@ -1641,6 +1641,12 @@ class PaymentController extends Controller
                     $order->designFeePaid = true;
                     $order->designFeePaidAmount = $paidAmount;
                     // paymentStatus stays 'unpaid' — design fee is separate from order payment
+                } elseif (($order->pendingPaymentType ?? null) === 'design_fee') {
+                    // Request-design fee (first payment). Goods stay unpaid until the downpayment.
+                    $order->designFeePaid        = true;
+                    $order->designFeePaidAmount  = $paidAmount;
+                    $order->pendingPaymentType   = null;
+                    $order->pendingPaymentAmount = null;
                 } elseif (($order->pendingPaymentType ?? null) === 'downpayment') {
                     $dpAmt = (float) ($order->pendingPaymentAmount ?? $paidAmount);
                     $order->paymentStatus        = 'partial';
@@ -1811,6 +1817,13 @@ class PaymentController extends Controller
                 if ($isDesignFeeOnly) {
                     $order->designFeePaid       = true;
                     $order->designFeePaidAmount = $paidAmount;
+                } elseif (($order->pendingPaymentType ?? null) === 'design_fee') {
+                    // Request-design fee (first payment, paid from the order modal). Flips
+                    // designFeePaid; the goods stay unpaid until the downpayment after approval.
+                    $order->designFeePaid        = true;
+                    $order->designFeePaidAmount  = $paidAmount;
+                    $order->pendingPaymentType   = null;
+                    $order->pendingPaymentAmount = null;
                 } elseif (($order->pendingPaymentType ?? null) === 'downpayment') {
                     $dpAmt = (float) ($order->pendingPaymentAmount ?? $paidAmount);
                     $order->paymentStatus        = 'partial';
@@ -1905,6 +1918,12 @@ class PaymentController extends Controller
             if ($isDesignFeeOnly) {
                 $order->designFeePaid = true;
                 // paymentStatus stays 'unpaid' — design fee is separate from order payment
+            } elseif (($order->pendingPaymentType ?? null) === 'design_fee') {
+                // Request-design fee (first payment). Goods stay unpaid until the downpayment.
+                $order->designFeePaid        = true;
+                $order->designFeePaidAmount  = $paidAmount;
+                $order->pendingPaymentType   = null;
+                $order->pendingPaymentAmount = null;
             } elseif (($order->pendingPaymentType ?? null) === 'downpayment') {
                 $dpAmt = (float) ($order->pendingPaymentAmount ?? $paidAmount);
                 $order->paymentStatus        = 'partial';
@@ -2068,6 +2087,7 @@ class PaymentController extends Controller
                 'paymentMethodId' => 'nullable|string',
                 'eWalletPhone'    => 'nullable|string|max:20',
                 'payFull'         => 'nullable|boolean',
+                'designFeeOnly'   => 'nullable|boolean',
             ]);
 
             $order = Order::where('_id', $validated['orderId'])
@@ -2094,8 +2114,16 @@ class PaymentController extends Controller
             $isDP           = false;
             $dpAmount       = 0.0;
 
+            // ── Design fee - the first payment on a request-design order ───
+            // Charged from the order detail modal (not the product page). It does not settle
+            // the goods, so paymentStatus stays 'unpaid'; the confirm path just flips
+            // designFeePaid. The goods downpayment/balance is paid later, after proof approval.
+            $payDesignFee = filter_var($validated['designFeeOnly'] ?? false, FILTER_VALIDATE_BOOLEAN)
+                && (float) ($order->designFee ?? 0) > 0
+                && !($order->designFeePaid ?? false);
+
             // ── Downpayment vs full-payment resolution ────────────────────
-            if (!$payFull && $order->paymentStatus === 'unpaid') {
+            if (!$payDesignFee && !$payFull && $order->paymentStatus === 'unpaid') {
                 $dpPercent = (int) ($order->downpaymentPercent ?? 0);
                 if ($dpPercent <= 0) {
                     $firstProdId = $order->items[0]['productId'] ?? null;
@@ -2110,10 +2138,14 @@ class PaymentController extends Controller
                 }
             }
 
-            $chargeAmount   = $isDP ? $dpAmount : $amountDue;
+            $chargeAmount   = $payDesignFee ? round((float) $order->designFee, 2) : ($isDP ? $dpAmount : $amountDue);
             $amountCentavos = (int) round($chargeAmount * 100);
 
-            if ($isDP) {
+            if ($payDesignFee) {
+                $order->pendingPaymentType   = 'design_fee';
+                $order->pendingPaymentAmount = $chargeAmount;
+                $order->save();
+            } elseif ($isDP) {
                 $order->pendingPaymentType   = 'downpayment';
                 $order->pendingPaymentAmount = $dpAmount;
                 $order->save();
@@ -2196,7 +2228,13 @@ class PaymentController extends Controller
                         'paymentMethod' => $paymentType,
                         'paymentDate'   => now(),
                     ];
-                    if ($isDP) {
+                    if ($payDesignFee) {
+                        // Request-design fee (first payment). Goods stay unpaid.
+                        $updates['designFeePaid']         = true;
+                        $updates['designFeePaidAmount']   = $chargeAmount;
+                        $updates['pendingPaymentType']    = null;
+                        $updates['pendingPaymentAmount']  = null;
+                    } elseif ($isDP) {
                         $updates['paymentStatus']         = 'partial';
                         $updates['downPayment']           = $dpAmount;
                         $updates['balance']               = round((float) $order->totalAmount - $dpAmount, 2);
