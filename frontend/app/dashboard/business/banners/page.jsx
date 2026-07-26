@@ -20,6 +20,7 @@ import {
 } from '@/lib/bannerUtils';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import HeroImagePositioner from '@/components/cms/HeroImagePositioner';
+import ImageCropper from '@/components/ImageCropper';
 
 // UX limit — keeps carousel manageable regardless of storage backend
 // Safe to keep even after MongoDB migration (enforced at API level too)
@@ -37,7 +38,10 @@ const createDefaultBanner = () => ({
   scheduleStart: null,
   scheduleEnd: null,
   order: 0,
-  showOn: 'both',
+  // These banners are the /shop carousel. The landing page has its own hero in the
+  // Homepage CMS, so a banner defaulting to "both" quietly took over a page it does
+  // not own - and there is no longer a picker to correct it with.
+  showOn: 'shop',
 });
 
 // ── Calendar Helpers ────────────────────────────────────────────────────────────
@@ -342,6 +346,9 @@ export default function BannerManagementPage() {
   const { token } = useAuth();
   const fileInputRef = useRef(null);
   const carouselIntervalRef = useRef(null);
+  // isLive is derived further down; the paste handler needs it without dragging it into
+  // a dependency array that is evaluated before that line runs.
+  const isLiveRef = useRef(false);
 
   const [activePage, setActivePage] = useState('shop');
   const [banners, setBanners] = useState([]);
@@ -349,6 +356,7 @@ export default function BannerManagementPage() {
   const [editedBanner, setEditedBanner] = useState(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [dragOver, setDragOver] = useState(false);
+  const [cropSrc, setCropSrc] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [modal, setModal] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -517,18 +525,6 @@ export default function BannerManagementPage() {
     setHasUnsavedChanges(true);
   };
 
-  // Auto-saves showOn immediately — no Save button needed for display location
-  const updateShowOn = async (value) => {
-    setEditedBanner(prev => ({ ...prev, showOn: value }));
-    setBanners(prev => prev.map(b => (b._id || b.id) === activeBannerId ? { ...b, showOn: value } : b));
-    if (activeBannerId) {
-      try {
-        await apiUpdateBanner(activeBannerId, { showOn: value }, token);
-      } catch (err) {
-        console.error('Failed to update display location:', err);
-      }
-    }
-  };
 
   const discardChanges = () => {
     if (!activeBannerId) return;
@@ -611,7 +607,10 @@ export default function BannerManagementPage() {
   };
 
   // ── Image Upload ─────────────────────────────────────────────────────────────
-  const handleImageUpload = async (file) => {
+  // A banner is 1920x600 - 16:5, nothing like the square crops used elsewhere. Uploading
+  // raw meant the carousel cropped it however it liked, which is why headlines kept
+  // landing on top of the product.
+  const handleImageUpload = (file) => {
     if (!file) return;
     const validTypes = ['image/png', 'image/jpeg', 'image/webp'];
     if (!validTypes.includes(file.type)) {
@@ -622,6 +621,13 @@ export default function BannerManagementPage() {
       setModal({ type: 'error', title: 'File Too Large', message: 'Image size must be less than 5MB.' });
       return;
     }
+    setCropSrc(URL.createObjectURL(file));
+  };
+
+  const uploadCroppedBanner = async (file) => {
+    const src = cropSrc;
+    setCropSrc(null);
+    if (src?.startsWith('blob:')) URL.revokeObjectURL(src);
     try {
       setIsSubmitting(true);
       const url = await uploadBannerImage(file, token);
@@ -639,6 +645,26 @@ export default function BannerManagementPage() {
     if (file && file.type.startsWith('image/')) handleImageUpload(file);
   };
 
+  // Ctrl+V anywhere on the page. Most banner art arrives from a screenshot or a Canva
+  // copy, and saving it to disk first only to pick it again is a step for nothing.
+  useEffect(() => {
+    const onPaste = (e) => {
+      if (cropSrc) return;                       // cropper already open
+      if (isLiveRef.current) return;             // image locked while published
+      const target = e.target;
+      const tag = target?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || target?.isContentEditable) return;
+      const item = Array.from(e.clipboardData?.items ?? [])
+        .find(i => i.type?.startsWith('image/'));
+      if (!item) return;
+      const file = item.getAsFile();
+      if (file) { e.preventDefault(); handleImageUpload(file); }
+    };
+    document.addEventListener('paste', onPaste);
+    return () => document.removeEventListener('paste', onPaste);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cropSrc]);
+
   const formatDate = (dateString) => {
     if (!dateString) return 'No expiry';
     return new Date(dateString).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
@@ -653,6 +679,7 @@ export default function BannerManagementPage() {
   const goToSlide = (index) => { setCurrentSlide(index); setIsAutoPlaying(false); setTimeout(() => setIsAutoPlaying(true), 10000); };
 
   const isLive = banners.find(b => b.id === activeBannerId)?.status === 'live';
+  isLiveRef.current = isLive;
 
   if (isLoading) {
     return (
@@ -679,6 +706,16 @@ export default function BannerManagementPage() {
 
   return (
     <ErrorBoundary>
+    {cropSrc && (
+      <ImageCropper
+        src={cropSrc}
+        aspect={16 / 5}
+        outputSize={1920}
+        title="Crop banner (1920 x 600)"
+        onCancel={() => { if (cropSrc.startsWith('blob:')) URL.revokeObjectURL(cropSrc); setCropSrc(null); }}
+        onConfirm={uploadCroppedBanner}
+      />
+    )}
     <div className="banner-management-container">
       <style jsx>{`
         .banner-management-container { padding: 2rem; max-width: 1400px; margin: 0 auto; background: var(--black); min-height: 100vh; }
@@ -1166,46 +1203,11 @@ export default function BannerManagementPage() {
                 onEndChange={(value) => updateField('scheduleEnd', value)}
               />
 
-              {/* Display Location */}
-              <div className="banner-form-group" style={{ marginTop: '1.5rem' }}>
-                <label className="banner-form-label">Display Location</label>
-                <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
-                  {[
-                    { value: 'both',    label: 'Both' },
-                    { value: 'shop',    label: 'Shop only' },
-                    { value: 'landing', label: 'Landing only' },
-                  ].map(opt => {
-                    const active = (editedBanner?.showOn || 'both') === opt.value;
-                    return (
-                      <button
-                        key={opt.value}
-                        type="button"
-                        onClick={() => updateShowOn(opt.value)}
-                        style={{
-                          flex: 1,
-                          padding: '0.55rem 0.5rem',
-                          borderRadius: '7px',
-                          border: `1px solid ${active ? 'var(--gold)' : 'var(--border)'}`,
-                          background: active ? 'rgba(212,168,67,0.12)' : 'var(--dark2)',
-                          color: active ? 'var(--gold)' : 'var(--gray)',
-                          fontWeight: active ? 700 : 400,
-                          fontSize: '0.78rem',
-                          cursor: 'pointer',
-                          transition: 'all 0.18s',
-                          fontFamily: "'DM Sans', sans-serif",
-                        }}
-                      >
-                        {opt.label}
-                      </button>
-                    );
-                  })}
-                </div>
-                <p style={{ fontSize: '0.7rem', color: 'var(--gray)', marginTop: '0.5rem' }}>
-                  Saves instantly — no publish required
-                </p>
-              </div>
+              {/* Display Location removed - these banners belong to /shop only. The landing
+                  page has its own hero managed from the Homepage CMS, so offering a choice
+                  here only created two places that could disagree about the same page. */}
 
-              <div className="banner-form-group" style={{ marginTop: '1rem' }}>
+              <div className="banner-form-group" style={{ marginTop: '1.5rem' }}>
                 <label className="banner-form-label">Display Order</label>
                 <p style={{ fontSize: '0.75rem', color: 'var(--gray)', marginTop: '0.25rem' }}>
                   Use the ▲ ▼ buttons in the queue to reorder banners

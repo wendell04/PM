@@ -42,12 +42,12 @@ class OrderController extends Controller
 
     private function resolveInitialStatus($request): string
     {
-        $isCustom    = filter_var($request->input('isCustomOrder', false), FILTER_VALIDATE_BOOLEAN);
-        $designType  = $request->input('designType');
-        if ($isCustom) {
-            return $designType === 'upload' ? 'pending_review' : 'pending_design';
-        }
-        return 'Pending';
+        // Fulfillment only. The artwork stage lives in designStatus and the money in
+        // paymentStatus - keeping a design word here (pending_review / pending_design) put a
+        // non-canonical value in orderStatus that the admin transition table had no entry
+        // for, so custom orders arrived with no way to be moved. Match /api/payment/initiate,
+        // which already starts every order at canonical pending.
+        return OrderStatus::PENDING;
     }
 
     private function normalizeOrderForCustomer(Order $order): array
@@ -87,7 +87,11 @@ class OrderController extends Controller
                 'items.*.qty'                 => 'required|integer|min:1',
                 'items.*.flashSaleId'         => 'nullable|string|max:24',
                 'items.*.designUrl'           => 'nullable|string',
+                'items.*.designName'          => 'nullable|string|max:255',
                 'items.*.designNotes'         => 'nullable|string|max:2000',
+                'items.*.designFiles'         => 'nullable|array|max:5',
+                'items.*.designFiles.*.url'   => 'required_with:items.*.designFiles|string|max:600',
+                'items.*.designFiles.*.name'  => 'nullable|string|max:255',
                 'notes'                       => 'nullable|string|max:1000',
                 'paymentMethod'               => 'nullable|string|in:cod,online',
                 'deliveryAddress'             => 'nullable|array',
@@ -183,8 +187,16 @@ class OrderController extends Controller
                     'unitPrice'   => $unitPrice,
                     'lineTotal'   => $lineTotal,
                     'flashSaleId' => $flashSaleId,
-                    'designUrl'   => $item['designUrl']   ?? null,
-                    'designNotes' => $item['designNotes'] ?? null,
+                    // The full artwork context has to survive here, not just the url - the
+                    // online endpoint already carries it, and this COD path was dropping
+                    // everything else, so the same line behaved differently by payment method.
+                    'designUrl'       => $item['designUrl']   ?? null,
+                    'designName'      => $item['designName']  ?? null,
+                    'designNotes'     => $item['designNotes'] ?? null,
+                    'designFiles'     => $item['designFiles'] ?? null,
+                    'designRequested' => (bool) ($item['designRequested'] ?? false),
+                    'designFee'       => isset($item['designFee']) ? (float) $item['designFee'] : null,
+                    'designStatus'    => !empty($item['designUrl']) ? 'pending_review' : null,
                 ];
             }
 
@@ -400,6 +412,28 @@ class OrderController extends Controller
                 ];
             }
 
+            // Order-level design context, derived from the lines so a cart order behaves the
+            // same as a single one. designFilePath mirrors the first uploaded artwork; the
+            // admin's approve/reject screens and the production gate read these.
+            $anyCustom      = false;
+            $anyUploaded    = false;
+            $anyRequested   = false;
+            $firstItemThumb = null;
+            foreach ($orderItems as $oi) {
+                if (!empty($oi['isCustom']))        $anyCustom    = true;
+                if (!empty($oi['designRequested'])) $anyRequested = true;
+                if (!empty($oi['designUrl'])) {
+                    $anyUploaded    = true;
+                    $firstItemThumb = $firstItemThumb ?? $oi['designUrl'];
+                }
+            }
+            $orderIsCustom  = filter_var($request->input('isCustomOrder', false), FILTER_VALIDATE_BOOLEAN) || $anyCustom;
+            $orderDesign    = $designFilePath ?: $firstItemThumb;
+            // Uploaded artwork waits for a review; a request has nothing to review yet.
+            $orderDesignSt  = $orderDesign ? 'pending_review' : null;
+            $orderDesignTp  = $request->input('designType')
+                ?? ($anyUploaded ? 'upload' : ($anyRequested ? 'request' : null));
+
             $order = Order::create([
                 'userId'          => (string) $user->_id,
                 'userSnapshot'    => [
@@ -420,13 +454,13 @@ class OrderController extends Controller
                 'designNotes'     => isset($validated['design_notes'])
                     ? htmlspecialchars(strip_tags(trim($validated['design_notes'])), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')
                     : null,
-                'designFilePath'  => $designFilePath,
-                'designStatus'    => $designFilePath ? 'pending_review' : null,
-                'isCustomOrder'        => filter_var($request->input('isCustomOrder', false), FILTER_VALIDATE_BOOLEAN),
-                'designType'           => $request->input('designType'),
+                'designFilePath'  => $orderDesign,
+                'designStatus'    => $orderDesignSt,
+                'isCustomOrder'        => $orderIsCustom,
+                'designType'           => $orderDesignTp,
                 'requiresDownpayment'  => $requiresDownpayment,
                 'downpaymentPercent'   => $orderDownpaymentPct > 0 ? $orderDownpaymentPct : null,
-                'statusHistory'        => [['status' => $this->resolveInitialStatus($request), 'at' => now()->toISOString()]],
+                'statusHistory'        => [['status' => OrderStatus::PENDING, 'at' => now()->toISOString()]],
                 'createdAt'       => now(),
                 'updatedAt'       => now(),
             ]);

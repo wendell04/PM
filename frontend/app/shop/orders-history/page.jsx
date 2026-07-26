@@ -10,6 +10,7 @@ import { getEcho } from '@/lib/echo';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import { useCart } from '@/app/shop/layout';
 import { normalizeStatus } from '@/lib/orderStatus';
+import PaymentPicker from '@/components/shop/PaymentPicker';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
@@ -238,14 +239,24 @@ function CustomOrderTracker({ orderStatus, designType, designStatus, paymentStat
   // awaiting_payment both arrive as "pending"), so the design and payment stages have to be
   // read from their own fields - otherwise every early order rendered as a row of grey dots.
   let derivedIdx = -1;
-  if (rawIdx === -1 && designType === 'upload') {
+  if (rawIdx === -1) {
     const paid = paymentStatus === 'paid' || paymentStatus === 'partial';
-    if (!paid) {
-      derivedIdx = steps.findIndex(s => s.key === 'awaiting_payment');
-    } else if (designStatus === 'pending_review' || designStatus === 'rejected' || !designStatus) {
-      derivedIdx = steps.findIndex(s => s.key === 'pending_review');
+    if (designType === 'upload') {
+      if (!paid) {
+        derivedIdx = steps.findIndex(s => s.key === 'awaiting_payment');
+      } else if (designStatus === 'pending_review' || designStatus === 'rejected' || !designStatus) {
+        derivedIdx = steps.findIndex(s => s.key === 'pending_review');
+      } else {
+        derivedIdx = steps.findIndex(s => s.key === 'awaiting_production');
+      }
     } else {
-      derivedIdx = steps.findIndex(s => s.key === 'awaiting_production');
+      // Request design normalises to 'pending' at creation too. Its first real stage is the
+      // designer making the artwork; without this it also rendered as a row of grey dots.
+      if (designStatus === 'approved') {
+        derivedIdx = steps.findIndex(s => s.key === 'design_approved');
+      } else {
+        derivedIdx = steps.findIndex(s => s.key === 'pending_design');
+      }
     }
   }
 
@@ -627,25 +638,20 @@ export default function OrdersHistoryPage() {
     finally { setReorderLoading(false); }
   };
 
-  const handlePayNow = async () => {
-    if (!selectedOrder || !token || !payMethod) return;
-    if (payMethod === 'card') {
-      const num = payNowCardNumber.replace(/\s/g,'');
-      if (num.length < 16) { setPayNowError('Enter a valid 16-digit card number.'); return; }
-      if (!payNowCardExpiry || payNowCardExpiry.length < 4) { setPayNowError('Enter a valid expiry date (MM/YY).'); return; }
-      if (payNowCardCvc.length < 3) { setPayNowError('Enter a valid security code.'); return; }
-      if (!payNowCardName.trim()) { setPayNowError('Enter the name on your card.'); return; }
-    }
+  // Called by the shared PaymentPicker with (method, cardData). GCash/Maya carry no card
+  // data and no phone - they redirect to their own secure page.
+  const handlePayNow = async (method, cardData) => {
+    if (!selectedOrder || !token || !method) return;
     setPayNowLoading(true); setPayNowError(null);
     try {
       let paymentMethodId = null;
-      if (payMethod === 'card') {
+      if (method === 'card') {
         const publicKey = process.env.NEXT_PUBLIC_PAYMONGO_PUBLIC_KEY;
-        const [expMonth, expYear] = payNowCardExpiry.split('/');
+        const [expMonth, expYear] = (cardData?.expiry || '').split('/');
         const pmRes = await fetch('https://api.paymongo.com/v1/payment_methods', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Basic ${btoa(publicKey+':')}` },
-          body: JSON.stringify({ data: { attributes: { type: 'card', details: { card_number: payNowCardNumber.replace(/\s/g,''), exp_month: parseInt(expMonth), exp_year: parseInt('20'+expYear), cvc: payNowCardCvc }, billing: { name: payNowCardName.trim() || currentUser?.name || '', email: currentUser?.email || '', phone: '' } } } }),
+          body: JSON.stringify({ data: { attributes: { type: 'card', details: { card_number: (cardData?.number || '').replace(/\s/g,''), exp_month: parseInt(expMonth), exp_year: parseInt('20'+(expYear||'')), cvc: cardData?.cvc }, billing: { name: (cardData?.name || '').trim() || currentUser?.name || '', email: currentUser?.email || '', phone: '' } } } }),
         });
         const pmData = await pmRes.json();
         if (!pmRes.ok) {
@@ -663,10 +669,9 @@ export default function OrdersHistoryPage() {
         headers: { ...apiHeaders(token), 'Content-Type': 'application/json' },
         body: JSON.stringify({
           orderId,
-          paymentMethod: payMethod,
+          paymentMethod: method,
           payFull: payFullToggle,
-          ...((['gcash','paymaya'].includes(payMethod) && payNowEWalletPhone.trim()) ? { eWalletPhone: `+63${payNowEWalletPhone.trim()}` } : {}),
-          ...(payMethod === 'card' && paymentMethodId ? { paymentMethodId } : {}),
+          ...(method === 'card' && paymentMethodId ? { paymentMethodId } : {}),
         }),
       }, 15000);
       const data = await res.json();
@@ -1368,13 +1373,36 @@ export default function OrdersHistoryPage() {
                       </div>
                     </div>
 
-                    {/* Pay Now */}
+                    {/* Pay Now / Pay Balance. A downpaid order sits at partial with the balance
+                        still owed; without this it could never be settled, so it stuck before
+                        delivery. Hidden only once fully paid or the order is finished. */}
                     {selectedOrder.paymentStatus !== 'paid'
+                      && !['delivered','Delivered','cancelled','Cancelled','returned','Returned'].includes(selectedOrder.orderStatus)
                       && (selectedOrder.orderStatus === 'awaiting_payment'
+                        || selectedOrder.paymentStatus === 'partial'
                         || (selectedOrder.orderStatus === 'Pending' && selectedOrder.paymentMethod !== 'cod'))
                       && (
                       <div style={{ padding: '0 18px 18px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                         <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#d4a843', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '2px' }}>Pay Now</div>
+
+                        {selectedOrder.paymentStatus === 'partial' && selectedOrder.orderStatus !== 'awaiting_payment' && (
+                          <div style={{ padding: '10px 12px', background: 'var(--dark)', borderRadius: '8px', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '5px', marginBottom: '4px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem' }}>
+                              <span style={{ color: 'var(--gray)' }}>Order total</span>
+                              <span style={{ color: 'var(--white)' }}>{formatPeso(selectedOrder.totalAmount)}</span>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem' }}>
+                              <span style={{ color: '#22c55e' }}>Already paid</span>
+                              <span style={{ color: '#22c55e' }}>-{formatPeso(selectedOrder.downPayment ?? 0)}</span>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', fontWeight: 700, paddingTop: '5px', borderTop: '1px solid var(--border)', marginTop: '2px' }}>
+                              <span style={{ color: 'var(--white)' }}>Balance Due</span>
+                              <span style={{ color: '#d4a843' }}>
+                                {formatPeso(selectedOrder.balance != null && selectedOrder.balance !== '' ? selectedOrder.balance : Math.max(0, (selectedOrder.totalAmount ?? 0) - (selectedOrder.downPayment ?? 0)))}
+                              </span>
+                            </div>
+                          </div>
+                        )}
 
                         {/* Breakdown for awaiting_payment */}
                         {selectedOrder.orderStatus === 'awaiting_payment' && (
@@ -1421,74 +1449,27 @@ export default function OrdersHistoryPage() {
                           );
                         })()}
 
-                        {[
-                          { id: 'gcash',    label: 'GCash',               sub: 'Redirect to GCash',  accent: '#0066FF', logo: '/logos/Gcash-Logo-1024x1024.png' },
-                          { id: 'paymaya', label: 'Maya',                sub: 'Redirect to Maya',   accent: '#00B14F', logo: '/logos/maya logo.png' },
-                          { id: 'card',    label: 'Credit / Debit Card', sub: 'Visa or Mastercard', accent: '#9C7BE8', logo: '/logos/credit-card.svg', filterImg: true },
-                        // The owner's Homepage CMS toggles were honoured at checkout but not
-                        // here, so a method switched off was still offered when paying a
-                        // balance - and the server would then reject the payment.
-                        ].filter(opt => payEnabled[opt.id] !== false).map(opt => {
-                          const isSelected = payMethod === opt.id;
-                          const isEWallet  = opt.id === 'gcash' || opt.id === 'paymaya';
-                          const showPanel  = isEWallet && isSelected;
-                          // Auto-show the phone input when this eWallet is selected
-                          if (isEWallet && isSelected && !payNowShowEWalletPhone) {
-                            // handled by auto-show below
-                          }
+                        {/* One shared picker - same UI here as at checkout. GCash/Maya redirect
+                            (no number to enter); only a card is filled inline. */}
+                        {(() => {
+                          const isUnpaidFirst = selectedOrder.paymentStatus === 'unpaid';
+                          const dpAmt = Math.round((selectedOrder.totalAmount || 0) * (selectedOrder.downpaymentPercent || 0) / 100 * 100) / 100;
+                          const balanceAmt = selectedOrder.balance != null && selectedOrder.balance !== ''
+                            ? Number(selectedOrder.balance)
+                            : Math.max(0, (selectedOrder.totalAmount || 0) - (selectedOrder.downPayment || 0));
+                          const chargeAmount = isUnpaidFirst
+                            ? ((selectedOrder.requiresDownpayment && selectedOrder.downpaymentPercent > 0 && !payFullToggle) ? dpAmt : (selectedOrder.totalAmount || 0))
+                            : balanceAmt;
                           return (
-                            <div key={opt.id}>
-                              <div onClick={() => { setPayMethod(opt.id); setPayNowEWalletPhone(''); setPayNowShowEWalletPhone(true); }} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '7px 10px', borderRadius: '8px', cursor: 'pointer', border: `1px solid ${isSelected ? opt.accent : 'var(--border)'}`, background: isSelected ? `${opt.accent}12` : 'rgba(255,255,255,0.02)', transition: 'all 0.15s' }}>
-                                <div style={{ width: '28px', height: '28px', borderRadius: '6px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', border: `1px solid ${isSelected ? opt.accent : 'var(--border)'}`, background: isSelected ? `${opt.accent}20` : 'var(--border)' }}>
-                                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                                  <img src={opt.logo} alt={opt.label} style={{ width: 20, height: 20, objectFit: 'contain', ...(opt.filterImg ? { filter: 'brightness(0) invert(1)', opacity: isSelected ? 1 : 0.5 } : {}) }} />
-                                </div>
-                                <div style={{ flex: 1, minWidth: 0 }}>
-                                  <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--white)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{opt.label}</div>
-                                  <div style={{ fontSize: '0.62rem', color: 'var(--gray)', marginTop: '1px' }}>{opt.sub}</div>
-                                </div>
-                                <div style={{ width: '12px', height: '12px', borderRadius: '50%', flexShrink: 0, border: `2px solid ${isSelected ? opt.accent : 'var(--border)'}`, background: isSelected ? opt.accent : 'transparent', transition: 'all 0.15s' }} />
-                              </div>
-                              {showPanel && (
-                                <div style={{ marginTop: '3px', marginBottom: '6px', padding: '10px 12px', borderRadius: '8px', background: opt.id === 'gcash' ? 'rgba(0,102,255,0.04)' : 'rgba(0,177,79,0.04)', border: `1px solid ${opt.id === 'gcash' ? 'rgba(0,102,255,0.18)' : 'rgba(0,177,79,0.18)'}` }}>
-                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                                    <span style={{ fontSize: '0.68rem', fontWeight: 700, color: opt.id === 'gcash' ? '#0066FF' : '#00B14F', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{opt.id === 'gcash' ? 'GCash' : 'Maya'} number <span style={{ fontSize: '0.62rem', fontWeight: 400, color: 'var(--gray)', textTransform: 'none', letterSpacing: 0 }}>(Use a Different number?)</span></span>
-                                  </div>
-                                  <div style={{ display: 'flex', alignItems: 'center', background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '7px', overflow: 'hidden' }} onFocusCapture={e => { e.currentTarget.style.borderColor = opt.id === 'gcash' ? '#0066FF' : '#00B14F'; }} onBlurCapture={e => { e.currentTarget.style.borderColor = 'var(--border)'; }}>
-                                    <span style={{ padding: '0.55rem 0.65rem', fontSize: '0.85rem', fontFamily: 'monospace', color: 'var(--gray)', borderRight: '1px solid var(--border)', flexShrink: 0 }}>+63</span>
-                                    <input type="tel" inputMode="numeric" placeholder="9XX XXX XXXX" maxLength={12} value={fmtPHPhone(payNowEWalletPhone)} onChange={e => setPayNowEWalletPhone(e.target.value.replace(/\D/g,'').slice(0,10))} style={{ flex: 1, background: 'transparent', border: 'none', padding: '0.55rem 0.75rem', color: 'var(--white)', fontSize: '0.85rem', outline: 'none', fontFamily: 'monospace' }} />
-                                  </div>
-                                </div>
-                              )}
-                            </div>
+                            <PaymentPicker
+                              methods={['gcash', 'paymaya', 'card'].filter(m => payEnabled[m] !== false)}
+                              amount={chargeAmount}
+                              onPay={handlePayNow}
+                              loading={payNowLoading}
+                              error={payNowError}
+                            />
                           );
-                        })}
-
-                        {payMethod === 'card' && (
-                          <div style={{ marginTop: '3px', padding: '0.75rem', borderRadius: '10px', background: 'rgba(156,123,232,0.05)', border: '1px solid rgba(156,123,232,0.2)' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.6rem' }}>
-                              <span style={{ fontSize: '0.65rem', fontWeight: 700, color: 'rgba(156,123,232,0.9)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Card Details</span>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                <svg width="26" height="16" viewBox="0 0 38 24" xmlns="http://www.w3.org/2000/svg"><rect width="38" height="24" rx="4" fill="#1A1F71"/><text x="19" y="17" textAnchor="middle" fill="white" fontSize="11" fontWeight="bold" fontStyle="italic" fontFamily="Arial,sans-serif">VISA</text></svg>
-                                <svg width="26" height="16" viewBox="0 0 38 24" xmlns="http://www.w3.org/2000/svg"><rect width="38" height="24" rx="4" fill="#252525"/><circle cx="14" cy="12" r="7.5" fill="#EB001B"/><circle cx="24" cy="12" r="7.5" fill="#F79E1B"/></svg>
-                              </div>
-                            </div>
-                            <div style={{ marginBottom: '0.45rem', position: 'relative' }}>
-                              <input type="text" inputMode="numeric" placeholder="1234 1234 1234 1234" value={payNowCardNumber} onChange={e => setPayNowCardNumber(fmtCardNum(e.target.value))} style={{ width: '100%', background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '6px', padding: '0.45rem 2.2rem 0.45rem 0.6rem', color: 'var(--white)', fontSize: '0.78rem', outline: 'none', boxSizing: 'border-box', fontFamily: 'monospace', letterSpacing: '0.05em' }} onFocus={e => { e.target.style.borderColor='#9C7BE8'; }} onBlur={e => { e.target.style.borderColor='var(--border)'; }} />
-                              {cardBrand(payNowCardNumber) && <span style={{ position: 'absolute', right: '0.45rem', top: '50%', transform: 'translateY(-50%)', fontSize: '0.5rem', fontWeight: 900, color: '#9C7BE8', background: 'rgba(156,123,232,0.12)', padding: '2px 4px', borderRadius: '3px' }}>{cardBrand(payNowCardNumber)}</span>}
-                            </div>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.45rem', marginBottom: '0.45rem' }}>
-                              <input type="text" inputMode="numeric" placeholder="MM / YY" value={payNowCardExpiry} onChange={e => setPayNowCardExpiry(fmtExpiry(e.target.value))} style={{ width: '100%', background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '6px', padding: '0.45rem 0.6rem', color: 'var(--white)', fontSize: '0.78rem', outline: 'none', fontFamily: 'monospace', boxSizing: 'border-box' }} onFocus={e => { e.target.style.borderColor='#9C7BE8'; }} onBlur={e => { e.target.style.borderColor='var(--border)'; }} />
-                              <input type="text" inputMode="numeric" placeholder="CVC" maxLength={4} value={payNowCardCvc} onChange={e => setPayNowCardCvc(e.target.value.replace(/\D/g,'').slice(0,4))} style={{ width: '100%', background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '6px', padding: '0.45rem 0.6rem', color: 'var(--white)', fontSize: '0.78rem', outline: 'none', fontFamily: 'monospace', boxSizing: 'border-box' }} onFocus={e => { e.target.style.borderColor='#9C7BE8'; }} onBlur={e => { e.target.style.borderColor='var(--border)'; }} />
-                            </div>
-                            <input type="text" placeholder="Name on card" value={payNowCardName} onChange={e => setPayNowCardName(e.target.value)} style={{ width: '100%', background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '6px', padding: '0.45rem 0.6rem', color: 'var(--white)', fontSize: '0.78rem', outline: 'none', boxSizing: 'border-box' }} onFocus={e => { e.target.style.borderColor='#9C7BE8'; }} onBlur={e => { e.target.style.borderColor='var(--border)'; }} />
-                          </div>
-                        )}
-
-                        {payNowError && <div style={{ padding: '8px 12px', background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '6px', color: '#ef4444', fontSize: '0.78rem' }}>{payNowError}</div>}
-                        <button onClick={handlePayNow} disabled={payNowLoading || !payMethod} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: 'none', background: (payNowLoading || !payMethod) ? 'var(--border)' : '#d4a843', color: (payNowLoading || !payMethod) ? 'var(--gray)' : '#000', fontSize: '0.875rem', fontWeight: 700, cursor: (payNowLoading || !payMethod) ? 'not-allowed' : 'pointer', marginTop: '2px' }}>
-                          {payNowLoading ? 'Processing...' : !payMethod ? 'Select payment method' : 'Proceed to Payment'}
-                        </button>
+                        })()}
                       </div>
                     )}
                   </div>

@@ -112,6 +112,21 @@ function CollectionModal({ existing, onClose, onSave, products, token }) {
     setCropSrc(URL.createObjectURL(file));
   };
 
+  // Ctrl+V straight into the modal. Cover art usually arrives from a screenshot or a
+  // Canva copy; saving it to disk first only to pick it again is a step for nothing.
+  useEffect(() => {
+    const onPaste = (e) => {
+      if (cropSrc) return;
+      const t = e.target;
+      if (t?.tagName === 'INPUT' || t?.tagName === 'TEXTAREA' || t?.isContentEditable) return;
+      const item = Array.from(e.clipboardData?.items ?? []).find(i => i.type?.startsWith('image/'));
+      const file = item?.getAsFile();
+      if (file) { e.preventDefault(); handleImageFile(file); }
+    };
+    document.addEventListener('paste', onPaste);
+    return () => document.removeEventListener('paste', onPaste);
+  }, [cropSrc]);
+
   const uploadCropped = async (file) => {
     setImgUploading(true);
     if (cropSrc) { if (cropSrc.startsWith('blob:')) URL.revokeObjectURL(cropSrc); setCropSrc(null); }
