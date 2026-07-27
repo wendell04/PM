@@ -191,6 +191,8 @@ export default function SettingsPage() {
     shippingMode: 'courier_booked',
     shippingBaseRate: '50', shippingPerKmRate: '15',
     flatRateInsideMetro: '150', flatRateOutsideMetro: '250',
+    productionLeadDays: '5', shippingDaysMin: '2', shippingDaysMax: '4',
+    rushEnabled: true, rushLeadDays: '2', rushFee: '150',
   });
   const [isSavingShipping, setIsSavingShipping]   = useState(false);
   const [shippingError, setShippingError]         = useState('');
@@ -264,6 +266,12 @@ export default function SettingsPage() {
             designRequestFee:     d.data.designRequestFee     != null ? String(d.data.designRequestFee)     : '100',
             flatRateInsideMetro:  d.data.flatRateInsideMetro  != null ? String(d.data.flatRateInsideMetro)  : '150',
             flatRateOutsideMetro: d.data.flatRateOutsideMetro != null ? String(d.data.flatRateOutsideMetro) : '250',
+            productionLeadDays:   d.data.productionLeadDays    != null ? String(d.data.productionLeadDays)   : '5',
+            shippingDaysMin:      d.data.shippingDaysMin       != null ? String(d.data.shippingDaysMin)      : '2',
+            shippingDaysMax:      d.data.shippingDaysMax       != null ? String(d.data.shippingDaysMax)      : '4',
+            rushEnabled:          d.data.rushEnabled           != null ? !!d.data.rushEnabled                : true,
+            rushLeadDays:         d.data.rushLeadDays          != null ? String(d.data.rushLeadDays)         : '2',
+            rushFee:              d.data.rushFee               != null ? String(d.data.rushFee)              : '150',
           });
         }
       })
@@ -736,6 +744,12 @@ export default function SettingsPage() {
           shippingPerKmRate:    isFlat ? 15  : perKm,
           flatRateInsideMetro:  inside,
           flatRateOutsideMetro: outside,
+          productionLeadDays:   parseInt(shippingForm.productionLeadDays, 10) || 0,
+          shippingDaysMin:      parseInt(shippingForm.shippingDaysMin, 10) || 0,
+          shippingDaysMax:      parseInt(shippingForm.shippingDaysMax, 10) || 0,
+          rushEnabled:          !!shippingForm.rushEnabled,
+          rushLeadDays:         parseInt(shippingForm.rushLeadDays, 10) || 0,
+          rushFee:              parseFloat(shippingForm.rushFee) || 0,
         }),
       }, 15000);
       const d = await res.json();
@@ -1556,6 +1570,46 @@ export default function SettingsPage() {
                     Charged once per order when a customer asks you to create the artwork -
                     not per product. Three items sharing one design are still one fee.
                   </p>
+                </div>
+
+                {/* Delivery estimate + rush - drives the "Get by [date]" shown to customers and the
+                    rush fee/priority. Production days skip Sundays. */}
+                <div style={{ maxWidth: '560px', marginBottom: '1.25rem', padding: '1rem 1.25rem', background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '10px' }}>
+                  <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--white)', marginBottom: '0.15rem' }}>Delivery &amp; Turnaround</div>
+                  <p style={{ fontSize: '0.72rem', color: 'var(--gray)', margin: '0 0 0.9rem', lineHeight: 1.5 }}>Sets the estimated delivery date shown to customers. Production days skip Sundays.</p>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.9rem' }}>
+                    {[['productionLeadDays', 'Production (business days)', '5'], ['shippingDaysMin', 'Shipping min (days)', '2'], ['shippingDaysMax', 'Shipping max (days)', '4']].map(([key, label, ph]) => (
+                      <div key={key} style={{ flex: '1 1 140px' }}>
+                        <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--gray-light)', marginBottom: '0.3rem' }}>{label}</label>
+                        <input type="text" inputMode="numeric" maxLength={3} value={shippingForm[key] ?? ''}
+                          onChange={e => setShippingForm(f => ({ ...f, [key]: e.target.value.replace(/[^0-9]/g, '') }))}
+                          placeholder={ph}
+                          style={{ width: '100%', padding: '0.55rem 0.7rem', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--dark)', color: 'var(--white)', fontSize: '0.9rem' }} />
+                      </div>
+                    ))}
+                  </div>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.8rem', fontWeight: 600, color: 'var(--white)', cursor: 'pointer', margin: '1rem 0 0.6rem' }}>
+                    <input type="checkbox" checked={!!shippingForm.rushEnabled} onChange={e => setShippingForm(f => ({ ...f, rushEnabled: e.target.checked }))} style={{ width: 16, height: 16, accentColor: 'var(--gold)' }} />
+                    Offer a Rush option to customers
+                  </label>
+                  {shippingForm.rushEnabled && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.9rem' }}>
+                      <div style={{ flex: '1 1 160px' }}>
+                        <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--gray-light)', marginBottom: '0.3rem' }}>Rush production (days)</label>
+                        <input type="text" inputMode="numeric" maxLength={3} value={shippingForm.rushLeadDays ?? ''}
+                          onChange={e => setShippingForm(f => ({ ...f, rushLeadDays: e.target.value.replace(/[^0-9]/g, '') }))}
+                          placeholder="2"
+                          style={{ width: '100%', padding: '0.55rem 0.7rem', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--dark)', color: 'var(--white)', fontSize: '0.9rem' }} />
+                      </div>
+                      <div style={{ flex: '1 1 160px' }}>
+                        <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--gray-light)', marginBottom: '0.3rem' }}>Rush fee (₱)</label>
+                        <input type="text" inputMode="decimal" maxLength={7} value={shippingForm.rushFee ?? ''}
+                          onChange={e => setShippingForm(f => ({ ...f, rushFee: e.target.value.replace(/[^0-9.]/g, '') }))}
+                          placeholder="150.00"
+                          style={{ width: '100%', padding: '0.55rem 0.7rem', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--dark)', color: 'var(--white)', fontSize: '0.9rem' }} />
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {shippingForm.shippingMode === 'courier_booked' && (

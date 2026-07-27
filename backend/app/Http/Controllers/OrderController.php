@@ -219,6 +219,28 @@ class OrderController extends Controller
             $shippingFee  = (float) ($validated['shippingFee'] ?? 0);
             $totalAmount += $shippingFee;
 
+            // Delivery estimate + optional rush. Turnaround config lives on the store owner; the
+            // estimate is snapshotted onto the order so the promised window never shifts later.
+            $owner     = \App\Models\User::where('role', 'owner')->first() ?? \App\Models\User::where('role', 'admin')->first();
+            $prodLead  = (int)   ($owner->productionLeadDays ?? 5);
+            $shipMin   = (int)   ($owner->shippingDaysMin    ?? 2);
+            $shipMax   = (int)   ($owner->shippingDaysMax    ?? 4);
+            $rushOn    = (bool)  ($owner->rushEnabled        ?? true);
+            $rushLead  = (int)   ($owner->rushLeadDays       ?? 2);
+            $rushFee   = (float) ($owner->rushFee            ?? 150);
+
+            $isRush = $rushOn && filter_var($request->input('isRush', false), FILTER_VALIDATE_BOOLEAN);
+            if ($isRush && $rushFee > 0) { $totalAmount += $rushFee; }
+
+            $leadDays = $isRush ? $rushLead : $prodLead;
+            $addBusinessDays = function (int $days) {          // skip Sundays (Sat is a work day here)
+                $d = now();
+                while ($days > 0) { $d = $d->addDay(); if (!$d->isSunday()) { $days--; } }
+                return $d;
+            };
+            $estimatedDeliveryMin = $addBusinessDays($leadDays + $shipMin)->toIso8601String();
+            $estimatedDeliveryMax = $addBusinessDays($leadDays + $shipMax)->toIso8601String();
+
             // Handle design file upload (non-fatal)
             $designFilePath = null;
             if ($request->hasFile('design_file') && $request->file('design_file')->isValid()) {
@@ -474,6 +496,10 @@ class OrderController extends Controller
                 'designFeePaid'        => false,
                 'requiresDownpayment'  => $requiresDownpayment,
                 'downpaymentPercent'   => $orderDownpaymentPct > 0 ? $orderDownpaymentPct : null,
+                'isRush'               => $isRush,
+                'rushFee'              => $isRush ? $rushFee : null,
+                'estimatedDeliveryMin' => $estimatedDeliveryMin,
+                'estimatedDeliveryMax' => $estimatedDeliveryMax,
                 'statusHistory'        => [['status' => OrderStatus::PENDING, 'at' => now()->toISOString()]],
                 'createdAt'       => now(),
                 'updatedAt'       => now(),

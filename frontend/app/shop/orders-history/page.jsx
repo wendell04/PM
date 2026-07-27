@@ -1065,6 +1065,12 @@ export default function OrdersHistoryPage() {
                       <div>
                         {[
                           ['Placed', formatDate(selectedOrder.createdAt)],
+                          (selectedOrder.estimatedDeliveryMin && !['delivered','Delivered','cancelled','Cancelled','returned','Returned'].includes(selectedOrder.orderStatus))
+                            ? ['Est. Delivery', <span key="ed" style={{ fontSize: '13px', color: 'var(--white)', fontWeight: 600 }}>
+                                {formatDate(selectedOrder.estimatedDeliveryMin)}{selectedOrder.estimatedDeliveryMax && selectedOrder.estimatedDeliveryMax !== selectedOrder.estimatedDeliveryMin ? ` - ${formatDate(selectedOrder.estimatedDeliveryMax)}` : ''}
+                                {selectedOrder.isRush && <span style={{ marginLeft: 6, fontSize: '10px', fontWeight: 700, color: '#ef4444', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: 4, padding: '1px 5px' }}>RUSH</span>}
+                              </span>]
+                            : null,
                           (selectedOrder.paymentMethod && !(selectedOrder.paymentStatus === 'unpaid' && selectedOrder.orderStatus === 'awaiting_payment'))
                             ? ['Method', { cod: 'Cash on Delivery', gcash: 'GCash', paymaya: 'Maya', card: 'Credit / Debit Card' }[selectedOrder.paymentMethod] ?? selectedOrder.paymentMethod]
                             : null,

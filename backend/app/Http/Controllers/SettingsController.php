@@ -26,6 +26,13 @@ class SettingsController extends Controller
                 'shippingPerKmRate'    => (float) ($owner->shippingPerKmRate    ?? 15),
                 'flatRateInsideMetro'  => (float) ($owner->flatRateInsideMetro  ?? 150),
                 'flatRateOutsideMetro' => (float) ($owner->flatRateOutsideMetro ?? 250),
+                // Delivery estimate + rush (storefront shows "Get by [range]" from these).
+                'productionLeadDays'   => (int)   ($owner->productionLeadDays   ?? 5),
+                'shippingDaysMin'      => (int)   ($owner->shippingDaysMin      ?? 2),
+                'shippingDaysMax'      => (int)   ($owner->shippingDaysMax      ?? 4),
+                'rushEnabled'          => (bool)  ($owner->rushEnabled          ?? true),
+                'rushLeadDays'         => (int)   ($owner->rushLeadDays         ?? 2),
+                'rushFee'              => (float) ($owner->rushFee              ?? 150),
             ]);
         } catch (\Exception $e) {
             return $this->serverErrorResponse($e, 'Failed to retrieve public settings.');
@@ -56,6 +63,12 @@ class SettingsController extends Controller
                 'flatRateInsideMetro'  => (float) ($owner->flatRateInsideMetro  ?? 150),
                 'flatRateOutsideMetro' => (float) ($owner->flatRateOutsideMetro ?? 250),
                 'designRequestFee'     => (float) ($user->designRequestFee      ?? 100),
+                'productionLeadDays'   => (int)   ($owner->productionLeadDays   ?? 5),
+                'shippingDaysMin'      => (int)   ($owner->shippingDaysMin      ?? 2),
+                'shippingDaysMax'      => (int)   ($owner->shippingDaysMax      ?? 4),
+                'rushEnabled'          => (bool)  ($owner->rushEnabled          ?? true),
+                'rushLeadDays'         => (int)   ($owner->rushLeadDays         ?? 2),
+                'rushFee'              => (float) ($owner->rushFee              ?? 150),
             ]);
         } catch (\Exception $e) {
             return $this->serverErrorResponse($e, 'Failed to retrieve settings.');
@@ -82,6 +95,12 @@ class SettingsController extends Controller
                 'shippingPerKmRate'    => 'nullable|numeric|min:0|max:9999',
                 'flatRateInsideMetro'  => 'nullable|numeric|min:0|max:9999',
                 'flatRateOutsideMetro' => 'nullable|numeric|min:0|max:9999',
+                'productionLeadDays'   => 'nullable|integer|min:0|max:120',
+                'shippingDaysMin'      => 'nullable|integer|min:0|max:120',
+                'shippingDaysMax'      => 'nullable|integer|min:0|max:120',
+                'rushEnabled'          => 'nullable|boolean',
+                'rushLeadDays'         => 'nullable|integer|min:0|max:120',
+                'rushFee'              => 'nullable|numeric|min:0|max:99999',
             ]);
 
             if ($request->has('storeAddress'))         $owner->storeAddress         = $request->storeAddress ?? '';
@@ -94,6 +113,12 @@ class SettingsController extends Controller
             if ($request->has('shippingPerKmRate'))    $owner->shippingPerKmRate    = (float) $request->shippingPerKmRate;
             if ($request->has('flatRateInsideMetro'))  $owner->flatRateInsideMetro  = (float) $request->flatRateInsideMetro;
             if ($request->has('flatRateOutsideMetro')) $owner->flatRateOutsideMetro = (float) $request->flatRateOutsideMetro;
+            if ($request->has('productionLeadDays'))   $owner->productionLeadDays   = (int) $request->productionLeadDays;
+            if ($request->has('shippingDaysMin'))      $owner->shippingDaysMin      = (int) $request->shippingDaysMin;
+            if ($request->has('shippingDaysMax'))      $owner->shippingDaysMax      = (int) $request->shippingDaysMax;
+            if ($request->has('rushEnabled'))          $owner->rushEnabled          = (bool) $request->rushEnabled;
+            if ($request->has('rushLeadDays'))         $owner->rushLeadDays         = (int) $request->rushLeadDays;
+            if ($request->has('rushFee'))              $owner->rushFee              = (float) $request->rushFee;
             $owner->save();
 
             return $this->successResponse('Shipping settings saved.', [
@@ -106,6 +131,12 @@ class SettingsController extends Controller
                 'shippingPerKmRate'    => (float) ($owner->shippingPerKmRate    ?? 15),
                 'flatRateInsideMetro'  => (float) ($owner->flatRateInsideMetro  ?? 150),
                 'flatRateOutsideMetro' => (float) ($owner->flatRateOutsideMetro ?? 250),
+                'productionLeadDays'   => (int)   ($owner->productionLeadDays   ?? 5),
+                'shippingDaysMin'      => (int)   ($owner->shippingDaysMin      ?? 2),
+                'shippingDaysMax'      => (int)   ($owner->shippingDaysMax      ?? 4),
+                'rushEnabled'          => (bool)  ($owner->rushEnabled          ?? true),
+                'rushLeadDays'         => (int)   ($owner->rushLeadDays         ?? 2),
+                'rushFee'              => (float) ($owner->rushFee              ?? 150),
             ]);
         } catch (\Illuminate\Validation\ValidationException $e) {
             return $this->validationErrorResponse($e);
