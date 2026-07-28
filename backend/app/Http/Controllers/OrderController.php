@@ -826,6 +826,9 @@ class OrderController extends Controller
             'revisionNotes',
             'requiresDownpayment',
             'downpaymentPercent',
+            'rushFee',
+            'estimatedDeliveryMin',
+            'estimatedDeliveryMax',
         ];
     }
 
@@ -854,7 +857,13 @@ class OrderController extends Controller
                 // Courier-booked delivery fee — paid by the customer directly to the
                 // rider on delivery. Informational only: does NOT change the order total.
                 'courierFee'    => 'sometimes|numeric|min:0|max:50000',
+                // Admin can adjust the promised delivery window (e.g. production backlog); the
+                // customer is notified below when it changes.
+                'estimatedDeliveryMin' => 'sometimes|nullable|date',
+                'estimatedDeliveryMax' => 'sometimes|nullable|date',
             ]);
+
+            $prevDeliveryMax = $order->estimatedDeliveryMax ?? null;
 
             // Balance gate — a non-COD order must be fully paid before it can be released for
             // delivery/marked delivered (COD collects on delivery, so it's exempt). Casing-tolerant.
@@ -887,6 +896,30 @@ class OrderController extends Controller
             }
 
             $order->update($validated);
+
+            // Notify the customer when the promised delivery date is moved (e.g. production backlog).
+            if (array_key_exists('estimatedDeliveryMax', $validated)
+                && (string) ($validated['estimatedDeliveryMax'] ?? '') !== (string) ($prevDeliveryMax ?? '')) {
+                try {
+                    $when = $validated['estimatedDeliveryMax']
+                        ? \Carbon\Carbon::parse($validated['estimatedDeliveryMax'])->format('M j, Y')
+                        : null;
+                    Notification::create([
+                        'user_id'    => (string) $order->userId,
+                        'type'       => 'delivery_date_updated',
+                        'title'      => 'Delivery Date Updated',
+                        'message'    => 'The estimated delivery for order #' .
+                            strtoupper(substr((string) $order->_id, -8)) .
+                            ($when ? ' is now ' . $when . '.' : ' has been updated.') .
+                            ' The date is our best effort and may still shift; we will keep you posted.',
+                        'is_read'    => false,
+                        'data'       => ['orderId' => (string) $order->_id, 'estimatedDeliveryMax' => $validated['estimatedDeliveryMax'] ?? null],
+                        'created_at' => now(),
+                    ]);
+                } catch (\Exception $e) {
+                    Log::warning('adminUpdate: delivery-date notification failed', ['error' => $e->getMessage()]);
+                }
+            }
 
             // When shipping fee is updated, derive subtotal from existing data and recalculate total
             if (isset($validated['shippingFee'])) {

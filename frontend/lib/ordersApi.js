@@ -194,6 +194,9 @@ function normalizeOrder(apiOrder) {
     revisionNotes:         apiOrder.revisionNotes || null,
     requiresDownpayment:   !!apiOrder.requiresDownpayment,
     downpaymentPercent:    apiOrder.downpaymentPercent ?? null,
+    rushFee:               apiOrder.rushFee ?? null,
+    estimatedDeliveryMin:  apiOrder.estimatedDeliveryMin ?? apiOrder.estimated_delivery_min ?? null,
+    estimatedDeliveryMax:  apiOrder.estimatedDeliveryMax ?? apiOrder.estimated_delivery_max ?? null,
     bom: { verified: false, items: [] },
     timeline: [],
     jo: apiOrder.jobOrder

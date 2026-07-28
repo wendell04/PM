@@ -585,6 +585,8 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
   const [rejectOther, setRejectOther] = useState('');
   const [showFix,     setShowFix]     = useState(false);
   const [confirmApprove, setConfirmApprove] = useState(false);
+  const [delivDate,   setDelivDate]   = useState('');
+  const [savingDeliv, setSavingDeliv] = useState(false);
   const [feeErr,      setFeeErr]      = useState('');
 
   useEffect(() => { setLo(o); setSelStatus(o.orderStatus); }, [o]);
@@ -662,6 +664,23 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
       if (onStatusUpdated) onStatusUpdated(lo.id);
     } catch (err) { setDesignErr(err.message); }
     finally { setDesignAct(null); }
+  };
+
+  const fmtDeliveryInput = (iso) => { if (!iso) return ''; const d = new Date(iso); return isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10); };
+  const handleSaveDelivery = async () => {
+    const chosen = delivDate || fmtDeliveryInput(lo.estimatedDeliveryMax);
+    if (!chosen) return;
+    setSavingDeliv(true); setUpdateErr('');
+    try {
+      const iso = new Date(chosen + 'T00:00:00').toISOString();
+      const res = await fetchWithTimeout(`${API_URL}/api/admin/orders/${lo.id}`,
+        { method:'PUT', headers:{ 'Content-Type':'application/json', Authorization:`Bearer ${token}` }, body: JSON.stringify({ estimatedDeliveryMin: iso, estimatedDeliveryMax: iso }) }, 15000);
+      if (!res.ok) { const d = await res.json().catch(()=>({})); throw new Error(d.message || d.error || 'Failed'); }
+      const updated = { ...lo, estimatedDeliveryMin: iso, estimatedDeliveryMax: iso };
+      setLo(updated); setDelivDate('');
+      if (onStatusUpdated) onStatusUpdated(lo.id, updated);
+    } catch (err) { setUpdateErr(err.message || 'Failed to update delivery date'); }
+    finally { setSavingDeliv(false); }
   };
 
   const handleRevertApprove = async () => {
@@ -1093,6 +1112,34 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                 {['Cancelled','Returned','Delivered'].includes(lo.orderStatus) ? 'No further updates' : 'No available transitions'}
               </span>
             )
+          )}
+
+          {/* Delivery date - shown + editable so the admin can move the promise on a backlog.
+              Saving notifies the customer. */}
+          {!['Cancelled','Returned','Delivered'].includes(lo.orderStatus) && (
+            <>
+              <div style={S.divider} />
+              <SectionLabel>Delivery</SectionLabel>
+              <div style={{ display:'flex', flexDirection:'column', gap:'6px' }}>
+                <div style={{ fontSize:'12px', color:'var(--gray)' }}>
+                  Est. delivery:{' '}
+                  <span style={{ color:'var(--white)', fontWeight:600 }}>
+                    {lo.estimatedDeliveryMin ? new Date(lo.estimatedDeliveryMin).toLocaleDateString('en-PH',{month:'short',day:'numeric',year:'numeric'}) : '—'}
+                    {lo.estimatedDeliveryMax && lo.estimatedDeliveryMax !== lo.estimatedDeliveryMin ? ` - ${new Date(lo.estimatedDeliveryMax).toLocaleDateString('en-PH',{month:'short',day:'numeric',year:'numeric'})}` : ''}
+                  </span>
+                  {lo.isRush && <span style={{ marginLeft:6, fontSize:'10px', fontWeight:700, color:'#991b1b', background:'#fef2f2', border:'1px solid #fecaca', borderRadius:4, padding:'1px 5px' }}>RUSH</span>}
+                </div>
+                <div style={{ display:'flex', gap:'6px' }}>
+                  <input type="date" value={delivDate || fmtDeliveryInput(lo.estimatedDeliveryMax)} onChange={e => setDelivDate(e.target.value)}
+                    style={{ flex:1, padding:'6px 8px', borderRadius:'6px', border:'1px solid var(--border)', background:'var(--dark)', color:'var(--white)', fontSize:'12px' }} />
+                  <button onClick={handleSaveDelivery} disabled={savingDeliv || !(delivDate || fmtDeliveryInput(lo.estimatedDeliveryMax))}
+                    style={{ padding:'6px 12px', background:'var(--gold)', border:'none', borderRadius:'6px', color:'var(--dark)', fontSize:'12px', fontWeight:700, cursor:savingDeliv?'not-allowed':'pointer', opacity:savingDeliv?.6:1 }}>
+                    {savingDeliv ? 'Saving...' : 'Update'}
+                  </button>
+                </div>
+                <div style={{ fontSize:'10px', color:'var(--gray)' }}>Changing this notifies the customer.</div>
+              </div>
+            </>
           )}
         </div>
 
