@@ -171,6 +171,17 @@ export default function DashboardOverviewPage() {
       const [ordersJson, inventoryJson, bannersJson, returnsJson, movementsJson, salesJson] =
         await Promise.all(settled.map(safeJson));
 
+      // Surface a failed orders fetch instead of silently rendering 0. This is what made the
+      // live dashboard look empty while the data was really there - the request failed and the
+      // zero looked like real data. Now the reason is visible (and stays diagnosable on prod).
+      const ordersResult = settled[0];
+      let loadError = null;
+      if (ordersResult.status !== 'fulfilled') {
+        loadError = `Could not reach the server to load orders (${ordersResult.reason?.message || 'request failed / timed out'}). The figures below are not real - the data could not be fetched.`;
+      } else if (!ordersResult.value?.ok) {
+        loadError = `Orders did not load (HTTP ${ordersResult.value?.status ?? '?'}). The dashboard is showing 0 because the request failed, not because there are no orders.`;
+      }
+
       const inventory  = inventoryJson?.data ?? inventoryJson ?? [];
       const allOrders  = ordersJson?.data?.orders ?? ordersJson?.data ?? ordersJson?.orders ?? ordersJson ?? [];
       const orders     = Array.isArray(allOrders) ? allOrders : [];
@@ -287,7 +298,7 @@ export default function DashboardOverviewPage() {
         ssaRevResult,
         ssaQtyResult,
         loading:       false,
-        error:         null,
+        error:         loadError,
       });
     } catch (err) {
       setData(prev => ({ ...prev, loading: false, error: err.message }));
@@ -342,6 +353,16 @@ export default function DashboardOverviewPage() {
   return (
     <ErrorBoundary>
       <div className="page-content-wrapper">
+        {data.error && (
+          <div style={{ margin: '0 0 1rem', padding: '0.85rem 1rem', borderRadius: '10px',
+            background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.28)', color: '#ef4444',
+            fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <span style={{ fontWeight: 700 }}>Data did not load.</span>
+            <span style={{ color: 'var(--gray)' }}>{data.error}</span>
+            <button onClick={fetchDashboard} style={{ marginLeft: 'auto', background: 'none', border: '1px solid rgba(239,68,68,0.4)',
+              color: '#ef4444', borderRadius: '7px', padding: '5px 12px', fontWeight: 700, cursor: 'pointer', fontSize: '0.8rem' }}>Retry</button>
+          </div>
+        )}
         <DashboardOverview
           orderStats={data.orderStats}
           salesSummary={data.salesSummary}
