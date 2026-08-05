@@ -45,7 +45,12 @@ return [
         env('APP_ENV') === 'production' ? null : '#^https://[^.]+\.pages\.dev$#',
     ])),
 
-    'allowed_headers' => ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'X-XSRF-TOKEN'],
+    // 'ngrok-skip-browser-warning' is sent by several client-side admin fetches (a leftover from the
+    // ngrok era; backend is now on Railway). A custom request header forces a CORS preflight, and the
+    // preflight is rejected unless the header is listed here - which is what made the live dashboard's
+    // browser fetches fail with "Failed to fetch" while server-rendered pages worked. Kept listed so
+    // those fetches pass; the header itself is harmless and can be dropped from the frontend later.
+    'allowed_headers' => ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'X-XSRF-TOKEN', 'ngrok-skip-browser-warning'],
 
     'exposed_headers' => [],
 
