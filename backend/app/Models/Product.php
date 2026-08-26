@@ -16,6 +16,11 @@ class Product extends Model
         'bomGroupName',
         'type',
         'isCustom',
+        // Whether the plain, undecorated item can be bought as it is. Separate from `isCustom`
+        // because the two are not opposites: a totebag can be sold blank AND printed to order, from
+        // the same shelf. Treating them as one flag forced a toggle that switched the whole product
+        // from one to the other.
+        'allowPlainPurchase',
         'isMadeToOrder',
         'minOrderQty',
         'designFee',
@@ -61,6 +66,7 @@ class Product extends Model
         'inventoryId'         => ObjectId::class,
         'bomId'               => ObjectId::class,
         'isCustom'            => 'boolean',
+        'allowPlainPurchase'  => 'boolean',
         'isMadeToOrder'       => 'boolean',
         'minOrderQty'         => 'integer',
         'designFee'           => 'float',

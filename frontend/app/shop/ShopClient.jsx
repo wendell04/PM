@@ -322,7 +322,13 @@ function QuickViewModal({ product, flashSale, onClose, onToast }) {
               {(product.category || product.categoryName) && (
                 <div className="shop-qv-category">{product.category || product.categoryName}</div>
               )}
-              {product.isCustom && <span className="shop-qv-badge customizable">CUSTOMIZABLE</span>}
+              {/* "Customizable" is true of a both-ways product, but on its own it reads as a
+                  requirement - as though the only way to buy this is to design something. */}
+              {product.isCustom && (
+                <span className="shop-qv-badge customizable">
+                  {(product.allowPlainPurchase ?? false) ? 'PLAIN OR CUSTOM' : 'CUSTOMIZABLE'}
+                </span>
+              )}
             </div>
 
             {/* Name */}
@@ -432,7 +438,28 @@ function QuickViewModal({ product, flashSale, onClose, onToast }) {
             )}
 
             {/* Action buttons */}
-            {product.isCustom ? (
+            {/* A product can offer BOTH routes. Showing only "Customize" here would hide the plain
+                purchase the shop has deliberately switched on - the same half-answer the PDP used to
+                give. `allowPlainPurchase` is undefined on older products, where a custom product was
+                customise-only. */}
+            {product.isCustom && (product.allowPlainPurchase ?? false) && mode !== 'inquiry' ? (
+              <>
+                <Link
+                  href={(() => {
+                    const qs = new URLSearchParams({ qty: String(qty) });
+                    Object.entries(selVars || {}).forEach(([g, v]) => { if (v) qs.set(`v_${g}`, String(v)); });
+                    return `/shop/products/${product.slug || toSlug(product.name)}/order?${qs.toString()}`;
+                  })()}
+                  className="shop-qv-btn-cart"
+                >
+                  Customize This Product
+                </Link>
+                <button className="shop-qv-btn-checkout" disabled={isOOS} onClick={handleAdd}
+                  style={{ opacity: isOOS ? 0.5 : 1, cursor: isOOS ? 'not-allowed' : 'pointer' }}>
+                  {isOOS ? 'Out of Stock' : 'Buy it plain'}
+                </button>
+              </>
+            ) : product.isCustom ? (
               /* Straight to the order form, not the product page. Sending someone to the PDP made
                  them press the same button a second time - and it silently dropped the variant and
                  quantity they had already chosen here, so they had to pick both again. The query
@@ -677,7 +704,7 @@ function ProductCard({ product, onAddToCart, onQuickView, flashSale }) {
           {/* Customizable badge */}
           {product.isCustom && (
             <div className="shop-custom-badge">
-              Customizable
+              {(product.allowPlainPurchase ?? false) ? 'Plain or custom' : 'Customizable'}
             </div>
           )}
 

@@ -78,11 +78,33 @@ function PayBadge({ status }) {
   );
 }
 
-function TypeBadge({ isCustom }) {
-  return isCustom
-    ? <span style={{ ...S.badge, background:'#ede9fe', color:'#5b21b6', border:'1px solid var(--border)6fe', fontSize:'10px' }}>Custom</span>
-    : <span style={{ ...S.badge, background:'#f0fdf4', color:'#166534', border:'1px solid #bbf7d0', fontSize:'10px' }}>Ready Made</span>;
+/**
+ * What is actually IN this order.
+ *
+ * A single word cannot describe a cart holding a printed mug and a plain totebag, and picking one
+ * told the shop the wrong thing about half the order - it looked ready to ship when part of it still
+ * had to be made, or looked like production work when most of it was on the shelf.
+ *
+ * So it reads the LINES. Mixed says so plainly, and the per-line labels in the panel below say which
+ * is which.
+ */
+function TypeBadge({ isCustom, items }) {
+  const lines = Array.isArray(items) ? items : [];
+  const produced = lines.filter(i =>
+    i?.isCustom || i?.isMadeToOrder || i?.designUrl || i?.designFiles?.length || i?.designRequested).length;
+  const stocked = lines.length - produced;
+
+  const style = (bg, fg, br) => ({ ...S.badge, background: bg, color: fg, border: `1px solid ${br}`, fontSize: '10px' });
+
+  if (lines.length && produced > 0 && stocked > 0) {
+    return <span style={style('#fef3c7', '#92400e', '#fde68a')}>Mixed</span>;
+  }
+  if (lines.length ? produced > 0 : isCustom) {
+    return <span style={style('#ede9fe', '#5b21b6', '#ddd6fe')}>Custom</span>;
+  }
+  return <span style={style('#f0fdf4', '#166534', '#bbf7d0')}>Ready Made</span>;
 }
+
 
 function Chevron({ open }) {
   return (
@@ -668,6 +690,25 @@ function isExpired(order) {
 // this map was the stricter one, which left a failed delivery with nowhere to go.
 function getAvailableStatuses(o) {
   if (!o) return [];
+
+  // The three maps below grew mixed keys - 'Pending' next to 'pending', 'In Production' next to
+  // 'in_production' - because the vocabulary moved to canonical lowercase while older orders kept the
+  // old spellings. The custom map happened to carry both; the COD and plain maps only had the
+  // capitalised ones. So a READY-MADE order sitting at canonical 'pending' matched nothing at all and
+  // the admin was told "No available transitions" on an order that had only just been paid for.
+  //
+  // Rather than add yet more duplicate keys, look the status up under every spelling it could be
+  // written in. New statuses then work in all three maps without anyone remembering to add both.
+  const raw = o.orderStatus;
+  const pick = (map) => {
+    if (map[raw] !== undefined) return map[raw];
+    const lower = String(raw ?? '').toLowerCase().replace(/[\s-]+/g, '_');
+    if (map[lower] !== undefined) return map[lower];
+    const spaced = lower.replace(/_/g, ' ').replace(/\w/g, c => c.toUpperCase());
+    if (map[spaced] !== undefined) return map[spaced];
+    return [];
+  };
+
   const s = o.orderStatus;
   const isCOD = (o.paymentMethod || '').toLowerCase() === 'cod';
   if (o.isCustom) {
@@ -680,7 +721,7 @@ function getAvailableStatuses(o) {
     // Custom orders enter production ONLY by creating a Job Order (Job Orders module), which
     // enforces downpayment-paid + design-approved and gives Production/QC a JO to build. So the
     // manual dropdown does NOT offer "In Production" from pending/processing - only Cancel here.
-    return ({
+    return pick({
       pending:             ['Cancelled'],
       Pending:             ['Cancelled'],
       pending_review:      paidCustom ? [] : ['awaiting_payment'],
@@ -697,10 +738,10 @@ function getAvailableStatuses(o) {
       'For Delivery':      ['Delivered', 'Returned'],
       delivered:           ['Returned'],
       Delivered:           ['Returned'],
-    })[s] ?? [];
+    });
   }
   if (isCOD) {
-    return ({
+    return pick({
       Pending:        ['Processing', 'Cancelled'],
       Processing:     ['In Production', 'For Delivery', 'Cancelled'],
       'In Production': ['for_qc', 'Cancelled'],
@@ -708,14 +749,14 @@ function getAvailableStatuses(o) {
       ready_for_delivery: ['For Delivery'],
       'For Delivery': ['Delivered', 'Returned'],
       Delivered:      ['Returned'],
-    })[s] ?? [];
+    });
   }
-  return ({
+  return pick({
     Pending:        ['Processing', 'Cancelled'],
     Processing:     ['For Delivery', 'Cancelled'],
     'For Delivery': ['Delivered', 'Returned'],
     Delivered:      ['Returned'],
-  })[s] ?? [];
+  });
 }
 
 // ── Expanded Order Detail ─────────────────────────────────────────────────────
@@ -2032,6 +2073,21 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                   <div style={{ flex:1, minWidth:0 }}>
                     <div style={{ fontSize:'13px', fontWeight:600, color:'var(--white)' }}>{name}</div>
                     {variant && <div style={{ fontSize:'11px', color:'var(--gray)' }}>{variant}</div>}
+                    {/* Which route THIS line took. On a mixed order the badge above says "Mixed"
+                        and this is where the shop finds out which item is which - what has to be
+                        made, and what can simply be picked. */}
+                    {(() => {
+                      const tag =
+                        item.designRequested || item.designMode === 'request' ? null
+                        : (item.designUrl || item.designFiles?.length) ? { t: 'UPLOAD',     c: '#5b21b6', b: '#ede9fe' }
+                        : item.isMadeToOrder                            ? { t: 'MADE TO ORDER', c: '#92400e', b: '#fef3c7' }
+                        : { t: 'READY-MADE', c: '#166534', b: '#f0fdf4' };
+                      return tag ? (
+                        <span style={{ fontSize:'10px', fontWeight:700, color:tag.c, background:tag.b, borderRadius:'4px', padding:'1px 6px', display:'inline-block', marginTop:'3px' }}>
+                          {tag.t}
+                        </span>
+                      ) : null;
+                    })()}
                     {item.designRequested && (
                       <span style={{ fontSize:'10px', fontWeight:700, color:'var(--gold)', background:'#fff7ed', padding:'1px 5px', borderRadius:'3px', border:'1px solid #fdba74', marginTop:'2px', display:'inline-block' }}>Design Service</span>
                     )}
@@ -2417,7 +2473,7 @@ export default function OrdersPage() {
                           {orderNo(o)}
                         </td>
                         <td style={{ ...S.td }}>
-                          <TypeBadge isCustom={o.isCustom} />
+                          <TypeBadge isCustom={o.isCustom} items={o.items} />
                         </td>
                         <td style={{ ...S.td }}>
                           <div style={{ fontWeight:600, fontSize:'13px' }}>{o.customerName}</div>

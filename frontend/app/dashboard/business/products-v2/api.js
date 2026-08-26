@@ -48,6 +48,11 @@ export function normProduct(raw, collectionMap = {}) {
     tiers,
     collectionIds:      collectionMap[id] ?? [],
     isCustomizable:     !!(raw.isCustom),
+    // Not the opposite of customizable - both can be on. Older products have no flag, so a
+    // non-custom product is assumed plain-purchasable, which is what it already was.
+    allowPlain:         raw.allowPlainPurchase !== undefined && raw.allowPlainPurchase !== null
+                          ? !!raw.allowPlainPurchase
+                          : !raw.isCustom,
     isFeatured:         !!(raw.isFeatured),
     allowCOD:           !!(raw.allowCOD ?? true),
     isMadeToOrder:      !!(raw.isMadeToOrder),

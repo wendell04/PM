@@ -28,6 +28,11 @@ export default function ProductDetailPage() {
   const [activeImage, setActiveImage] = useState(0);
   const [selectedVariants, setSelectedVariants] = useState({});
   const [quantity, setQuantity] = useState(1);
+  // `designRequestFee` was referenced twice further down but declared nowhere in this file, so the
+  // design-request block threw a ReferenceError the moment it rendered. The product's own override is
+  // the value those lines were describing; a product with no override shows the store default, which
+  // this page does not load, so it falls back to 0 rather than inventing a figure.
+  const designRequestFee = Number(product?.designFee ?? 0) || 0;
   const [quantityInput, setQuantityInput] = useState('1');
   const [flashSale, setFlashSale] = useState(null);
   const [requestingQuote, setRequestingQuote] = useState(false);
@@ -1124,7 +1129,39 @@ export default function ProductDetailPage() {
             {token ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
 
-                {product.isCustom ? (
+                {/* Customizable and plain-purchasable are not opposites. When a product offers both,
+                    show both routes rather than making the shop toggle the product from one to the
+                    other - which is what stopped anyone customising a totebag the moment it was made
+                    available blank. `allowPlainPurchase` is undefined on older products, where a
+                    non-custom product was always plain-purchasable. */}
+                {product.isCustom && (product.allowPlainPurchase ?? false) ? (
+                  <>
+                    <button
+                      onClick={() => {
+                        if (isOutOfStock || requestingQuote) return;
+                        const qs = new URLSearchParams({ qty: String(quantity) });
+                        Object.entries(selectedVariants).forEach(([g, v]) => { if (v) qs.set(`v_${g}`, v); });
+                        router.push(`/shop/products/${id}/order?${qs.toString()}`);
+                      }}
+                      disabled={isOutOfStock}
+                      className="pdp-btn-primary"
+                      style={{ opacity: isOutOfStock ? 0.5 : 1, cursor: isOutOfStock ? 'not-allowed' : 'pointer' }}
+                    >
+                      {isOutOfStock ? 'Out of Stock' : 'Customize This Product'}
+                    </button>
+                    <button
+                      onClick={handleAddToCart}
+                      disabled={isOutOfStock}
+                      className="pdp-btn-secondary"
+                      style={{ opacity: isOutOfStock ? 0.5 : 1, cursor: isOutOfStock ? 'not-allowed' : 'pointer' }}
+                    >
+                      Buy it plain - add to cart
+                    </button>
+                    <p style={{ textAlign: 'center', fontSize: '0.75rem', color: 'var(--gray)', margin: 0, lineHeight: 1.5 }}>
+                      Plain items ship from stock. Customised ones are printed to order.
+                    </p>
+                  </>
+                ) : product.isCustom ? (
                   /* Custom product — goes to order form, not cart */
                   <>
                     <button

@@ -71,6 +71,30 @@ class OrderController extends Controller
         return 0.0;
     }
 
+    /**
+     * Is THIS LINE something we have to make?
+     *
+     * The decision used to be read off the PRODUCT: anything customizable reserved material and
+     * needed a job order. That was fine while a product was either customizable or not - but a
+     * product can now be sold plain AND customized from the same shelf, and a plain purchase of one
+     * would have reserved material, demanded a job order, and waited for a design approval that was
+     * never coming.
+     *
+     * So it is the LINE that decides. A line carrying artwork, or asking us to draw some, is made to
+     * order. A line with none is picked off the shelf, whatever the product is also capable of.
+     * `isMadeToOrder` still counts, because those are produced regardless of decoration.
+     */
+    private function lineIsProduced($product, array $item): bool
+    {
+        if ((bool) ($product->isMadeToOrder ?? false)) return true;
+
+        return !empty($item['designUrl'])
+            || !empty($item['designFiles'])
+            || !empty($item['designRequested'])
+            || ($item['designMode'] ?? null) === 'request'
+            || !empty($item['isCustom']);
+    }
+
     private function normalizeOrderForCustomer(Order $order): array
     {
         $arr                = $order->toArray();
@@ -199,7 +223,16 @@ class OrderController extends Controller
                 $orderItems[] = [
                     'productId'   => (string) $product->_id,
                     'productName' => $product->name,
-                    'isCustom'    => (bool) $product->isCustom,
+                    // What was BOUGHT, not what the product is capable of. Copying the product's
+                    // flag meant a plain purchase of a both-ways product arrived marked custom, and
+                    // every screen downstream - job orders, production, design approval - then waited
+                    // for artwork that was never coming.
+                    'isCustom'    => !empty($item['designUrl']) || !empty($item['designFiles'])
+                        || !empty($item['designRequested'])
+                        || ($item['designMode'] ?? null) === 'request'
+                        // A customise-only product has no plain route, so a line on it is custom
+                        // whether or not the artwork has been attached yet.
+                        || ((bool) $product->isCustom && !($product->allowPlainPurchase ?? false)),
                     'isMadeToOrder' => (bool) ($product->isMadeToOrder ?? false),
                     'thumbnail'   => $thumb,
                     'variantId'   => $variantId,
@@ -254,14 +287,26 @@ class OrderController extends Controller
             $rushLead  = (int)   ($owner->rushLeadDays       ?? 2);
             $rushFee   = (float) ($owner->rushFee            ?? 100);
 
-            $isRush = $rushOn && filter_var($request->input('isRush', false), FILTER_VALIDATE_BOOLEAN);
+            // Does anything on this order actually have to be MADE? A cart of stocked goods needs
+            // picking and shipping, nothing more - charging it the production lead time promised a
+            // customer eleven days for a bag already sitting on the shelf. Read from the order items
+            // that were just built, so it reflects what was bought rather than what the products are
+            // capable of.
+            $needsProduction = collect($orderItems)->contains(
+                fn ($oi) => !empty($oi['isCustom']) || !empty($oi['isMadeToOrder'])
+            );
+
+            // Rush buys priority in the production queue. With nothing to produce there is no queue
+            // to jump, so it is neither offered nor charged.
+            $isRush = $needsProduction && $rushOn
+                && filter_var($request->input('isRush', false), FILTER_VALIDATE_BOOLEAN);
             if ($isRush && $rushFee > 0) { $totalAmount += $rushFee; }
             // Rush is a REQUEST the admin confirms ("kaya ba isabay"), never an auto-guarantee. The
             // need-by date is the customer's target, subject to the production queue.
             $needByDate = $request->input('needByDate') ?: null;
             $rushStatus = $isRush ? 'requested' : null;
 
-            $leadDays = $isRush ? $rushLead : $prodLead;
+            $leadDays = !$needsProduction ? 0 : ($isRush ? $rushLead : $prodLead);
             $addBusinessDays = function (int $days) {          // skip Sundays (Sat is a work day here)
                 $d = now();
                 while ($days > 0) { $d = $d->addDay(); if (!$d->isSunday()) { $days--; } }
@@ -599,7 +644,7 @@ class OrderController extends Controller
                     if (!$bom || empty($bom->components)) continue;
                     // Made-to-order / custom items RESERVE materials now (consumed at QC pass via the
                     // Job Order). Stocked ready-made items DEDUCT now (no production step).
-                    $producedItem = (bool) ($prod->isMadeToOrder ?? false) || (bool) ($prod->isCustom ?? false);
+                    $producedItem = $this->lineIsProduced($prod, (array) $item);
                     foreach ($bom->components as $component) {
                         $rawInv = Inventory::find($component['inventoryId'] ?? null);
                         if (!$rawInv || $rawInv->isOnDemand) continue;
@@ -2003,7 +2048,7 @@ class OrderController extends Controller
                 }
 
                 if (!$bom || empty($bom->components)) continue;
-                $producedItem = (bool) ($bomProduct->isMadeToOrder ?? false) || (bool) ($bomProduct->isCustom ?? false);
+                $producedItem = $this->lineIsProduced($bomProduct, (array) $item);
                 try {
                     foreach ($bom->components as $component) {
                         $rawInv = Inventory::find($component['inventoryId'] ?? null);

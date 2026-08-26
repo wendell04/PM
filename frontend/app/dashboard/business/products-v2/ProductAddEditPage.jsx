@@ -36,7 +36,7 @@ const EMPTY_FORM = {
   pricingMode: 'fixed', price: '',
   tiers: [{ id: uid('t'), minQty: '1', maxQty: '', prices: { __base__: '' } }],
   collectionIds: [],
-  isCustomizable: false, allowCOD: true, isMadeToOrder: false,
+  isCustomizable: false, allowPlain: true, allowCOD: true, isMadeToOrder: false,
   downpaymentPct: '0', hideWhenOutOfStock: false, isPublished: false,
   isFeatured: false,
   designFee: '', minOrderQty: '1',
@@ -396,6 +396,7 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
       tiers,
       collectionIds:      product.collectionIds || [],
       isCustomizable:     product.isCustomizable ?? false,
+      allowPlain:         product.allowPlain ?? !product.isCustomizable,
       allowCOD:           product.allowCOD ?? true,
       isMadeToOrder:      product.isMadeToOrder ?? false,
       downpaymentPct:     product.downpaymentPct != null ? String(product.downpaymentPct) : '0',
@@ -683,6 +684,10 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
       type: f.type, pricingMode: f.pricingMode,
       collectionIds: f.collectionIds,
       isCustomizable: f.isCustomizable, allowCOD: f.allowCOD, isMadeToOrder: f.isMadeToOrder,
+      // Both names, because the API has historically read `isCustom` while this form has spoken
+      // `isCustomizable`.
+      isCustom: f.isCustomizable,
+      allowPlainPurchase: f.allowPlain,
       downpaymentPct: Number(f.downpaymentPct),
       hideWhenOutOfStock: f.hideWhenOutOfStock, isPublished: f.isPublished,
       isFeatured: f.isFeatured,
@@ -1281,7 +1286,16 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
               <CardTitle>Order Settings</CardTitle>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
                 <ToggleRow label="Made to Order" hint="No stock held; supplies ordered on demand" on={form.isMadeToOrder} onChange={v => setF('isMadeToOrder', v)} />
-                <ToggleRow label="Customizable" hint="Customers upload a design file" on={form.isCustomizable} onChange={v => setF('isCustomizable', v)} />
+                <ToggleRow label="Customizable" hint="Customers upload or request a design" on={form.isCustomizable} onChange={v => setF('isCustomizable', v)} />
+                {/* These are NOT opposites. A totebag can be sold blank off the shelf AND printed to
+                    order, from the same stock. Before this, making it plain meant nobody could
+                    customise it any more - one flag doing the work of two. */}
+                <ToggleRow label="Sell plain" hint="The undecorated item can be bought as it is" on={form.allowPlain} onChange={v => setF('allowPlain', v)} />
+                {!form.isCustomizable && !form.allowPlain && (
+                  <div style={{ fontSize: '11.5px', color: 'var(--st-red-fg)', marginTop: '-6px' }}>
+                    With both off there is no way to buy this product at all. Turn one on.
+                  </div>
+                )}
                 {form.isCustomizable && (
                   <Field label="Design Fee Override (P)" error={errors.designFee}>
                     <DecimalInput value={form.designFee} onChange={v => setF('designFee', v)} placeholder="Use store fee" />

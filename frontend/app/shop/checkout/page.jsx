@@ -325,10 +325,23 @@ export default function CheckoutPage() {
     : 0;
   // Order-level delivery speed (one parcel = one speed). Rush is faster + costs more, subject to the
   // shop confirming it fits the queue ("kaya ba isabay"). "Get by" ranges come from turnaround config.
-  const prodLead    = Number(storeSettings?.productionLeadDays ?? 7);
+  // Rush buys priority in the production queue. A cart of stocked goods has nothing queued, so
+  // there is nothing to jump - offering it would sell a promise the shop cannot act on and charge
+  // for it. Read from the cart lines, not the products: the same item can be bought plain.
+  const needsProduction = items.some(i =>
+    i.isCustom || i.isMadeToOrder || i.designUrl || i.designFiles?.length ||
+    i.designRequested || i.designMode === 'request' ||
+    i.product?.isMadeToOrder
+  );
+
+
+  // Zero when there is nothing to produce, so the date shown at checkout matches the one the server
+  // snapshots onto the order. A stocked cart was being quoted the full production lead - eleven days
+  // for a bag already on the shelf.
+  const prodLead    = needsProduction ? Number(storeSettings?.productionLeadDays ?? 7) : 0;
   const shipMin     = Number(storeSettings?.shippingDaysMin ?? 2);
   const shipMax     = Number(storeSettings?.shippingDaysMax ?? 4);
-  const rushEnabled = storeSettings?.rushEnabled !== false;
+  const rushEnabled = storeSettings?.rushEnabled !== false && needsProduction;
   const rushLead    = Number(storeSettings?.rushLeadDays ?? 3);
   const rushFeeAmt  = Number(storeSettings?.rushFee ?? 100);
   const addBizDays  = (n) => { const d = new Date(); d.setHours(0,0,0,0); let a = 0; while (a < n) { d.setDate(d.getDate() + 1); if (d.getDay() !== 0) a++; } return d; }; // skip Sundays
