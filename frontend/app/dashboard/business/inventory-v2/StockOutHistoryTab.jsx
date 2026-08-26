@@ -26,8 +26,8 @@ function reasonLabel(reason) {
   if (!reason) return 'Adjustment';
   return REASON_LABEL[reason] ?? String(reason)
     .replace(/[_-]+/g, ' ')
-    .replace(/\w/g, c => c.toUpperCase())
-    .replace(/Qc/g, 'QC');
+    .replace(/\b\w/g, c => c.toUpperCase())
+    .replace(/\bQc\b/g, 'QC');
 }
 
 // The rows prefix a minus themselves, so a quantity already stored negative rendered as "--1".

@@ -21,8 +21,8 @@ function outReasonLabel(reason) {
   if (!reason) return 'Adjustment';
   return OUT_REASON_LABEL[reason] ?? String(reason)
     .replace(/[_-]+/g, ' ')
-    .replace(/\w/g, c => c.toUpperCase())
-    .replace(/Qc/g, 'QC');
+    .replace(/\b\w/g, c => c.toUpperCase())
+    .replace(/\bQc\b/g, 'QC');
 }
 
 const REDUCE_REASONS = ['Damaged','Expired','Lost','Write-Off','Quality Check','Other'];

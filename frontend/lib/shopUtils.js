@@ -94,8 +94,8 @@ export function humanizeStatus(status) {
   if (!status) return '';
   return String(status)
     .replace(/[_-]+/g, ' ')
-    .replace(/\w/g, c => c.toUpperCase())
-    .replace(/Qc/g, 'QC');
+    .replace(/\b\w/g, c => c.toUpperCase())
+    .replace(/\bQc\b/g, 'QC');
 }
 
 export function StatusBadge({ status, label, tone }) {

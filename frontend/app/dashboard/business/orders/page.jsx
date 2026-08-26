@@ -704,7 +704,7 @@ function getAvailableStatuses(o) {
     if (map[raw] !== undefined) return map[raw];
     const lower = String(raw ?? '').toLowerCase().replace(/[\s-]+/g, '_');
     if (map[lower] !== undefined) return map[lower];
-    const spaced = lower.replace(/_/g, ' ').replace(/\w/g, c => c.toUpperCase());
+    const spaced = lower.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
     if (map[spaced] !== undefined) return map[spaced];
     return [];
   };
