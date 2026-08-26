@@ -3,7 +3,18 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
+import { remainingDue, paidSoFar } from '@/lib/orderBalance';
 import ErrorBoundary from '@/components/ErrorBoundary';
+import useLockBodyScroll from '@/lib/useLockBodyScroll';
+import { orderNo } from '@/lib/orderNumber';
+import { S, ICONS, SearchBar, SummaryCard, PaginationBar, EmptyState, usePagination, CustomSelect } from '../inventory-v2/shared';
+
+// Accounts receivable. Sales answers "what did we sell"; this answers "what have we collected and
+// who still owes us". The two are deliberately separate reports over the same orders.
+//
+// Ageing is measured from the order date, the standard receivable clock: an unsettled balance that
+// is 45 days old is a very different problem from one raised this morning, and a flat list of
+// debtors cannot tell you which to chase first.
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
@@ -21,18 +32,46 @@ const PAYMENT_METHODS = [
 ];
 
 const STATUS_BADGE = {
-  paid:    { bg: 'rgba(34,197,94,0.12)',  color: 'var(--green)',  label: 'Paid' },
-  partial: { bg: 'rgba(251,191,36,0.12)', color: 'var(--gold)',   label: 'Partial' },
-  unpaid:  { bg: 'rgba(239,68,68,0.12)',  color: 'var(--red)',    label: 'Unpaid' },
+  paid:    { bg: 'var(--st-green-bg)', color: 'var(--st-green-fg)', border: 'rgba(34,197,94,0.35)',  label: 'Paid' },
+  partial: { bg: 'var(--gold-subtle)', color: 'var(--gold)',        border: 'rgba(212,168,67,0.35)', label: 'Partial' },
+  unpaid:  { bg: 'var(--st-red-bg)',   color: 'var(--st-red-fg)',   border: 'rgba(239,68,68,0.35)',  label: 'Unpaid' },
 };
 
-function fmt(n) {
-  return '₱' + Number(n ?? 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
+// Ageing buckets, oldest first. `max` is inclusive; null means open-ended.
+const AGE_BUCKETS = [
+  { key: '60',   label: '60+ days',   min: 61, max: null, tone: { bg: 'var(--st-red-bg)',    fg: 'var(--st-red-fg)' } },
+  { key: '3160', label: '31-60 days', min: 31, max: 60,   tone: { bg: 'var(--st-orange-bg)', fg: 'var(--st-orange-fg)' } },
+  { key: '130',  label: '1-30 days',  min: 1,  max: 30,   tone: { bg: 'var(--gold-subtle)',  fg: 'var(--gold)' } },
+  { key: 'cur',  label: 'Current',    min: 0,  max: 0,    tone: { bg: 'var(--st-blue-bg)',   fg: 'var(--st-blue-fg)' } },
+];
 
-function fmtStatus(s) {
-  if (!s) return '—';
-  return s.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+const fmt = (n) => '₱' + Number(n ?? 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+// The stored `balance` is only written once a payment lands, so it reads 0 on an order that has been
+// billed nothing yet - and this module then skipped its own overpayment guard, which is keyed on
+// `due > 0`. Compute it from payments received instead, the same way the Orders modal does.
+const balanceOf = (o) => remainingDue(o);
+
+const customerOf = (o) =>
+  o.userSnapshot?.name || o.customerName ||
+  `${o.customer?.firstName || ''} ${o.customer?.lastName || ''}`.trim() || 'Walk-in';
+
+const ageDays = (o) => {
+  const d = new Date(o.createdAt ?? o.created_at ?? 0);
+  if (isNaN(d) || !d.getTime()) return 0;
+  const a = new Date(); a.setHours(0, 0, 0, 0);
+  const b = new Date(d); b.setHours(0, 0, 0, 0);
+  return Math.max(0, Math.round((a - b) / 86400000));
+};
+
+const bucketOf = (o) => {
+  const days = ageDays(o);
+  return AGE_BUCKETS.find(bk => days >= bk.min && (bk.max === null || days <= bk.max)) ?? AGE_BUCKETS[3];
+};
+
+function StatusBadge({ status }) {
+  const c = STATUS_BADGE[status] || STATUS_BADGE.unpaid;
+  return <span style={{ ...S.badge, background: c.bg, color: c.color, border: `1px solid ${c.border}`, fontSize: '11px' }}>{c.label}</span>;
 }
 
 export default function PaymentsPage() {
@@ -42,33 +81,29 @@ export default function PaymentsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
-  const [page, setPage] = useState(1);
-  const rpp = 15;
+  const [statusFilter, setStatusFilter] = useState('outstanding');
+  const [ageFilter, setAgeFilter] = useState('all');
 
   const [modalOrder, setModalOrder] = useState(null);
   const [payForm, setPayForm] = useState({ amount: '', method: 'cash', note: '' });
   const [paying, setPaying] = useState(false);
   const [payError, setPayError] = useState('');
   const [paySuccess, setPaySuccess] = useState('');
-
   const [historyOrder, setHistoryOrder] = useState(null);
+
+  useLockBodyScroll(!!modalOrder || !!historyOrder);
 
   const fetchOrders = useCallback(async () => {
     if (!token) return;
-    setLoading(true);
-    setError('');
+    setLoading(true); setError('');
     try {
       const res = await fetchWithTimeout(`${API_URL}/api/admin/orders`, { headers: HEADERS(token) }, 20000);
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || data.error || `Request failed (${res.status})`);
-      const list = Array.isArray(data.data) ? data.data : (Array.isArray(data) ? data : []);
-      setOrders(list);
+      setOrders(Array.isArray(data.data) ? data.data : (Array.isArray(data) ? data : []));
     } catch (err) {
       setError(err.message || 'Failed to load orders.');
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   }, [token]);
 
   useEffect(() => { fetchOrders(); }, [fetchOrders]);
@@ -76,399 +111,235 @@ export default function PaymentsPage() {
   const openRecordPayment = (order) => {
     setModalOrder(order);
     setPayForm({ amount: '', method: 'cash', note: '' });
-    setPayError('');
-    setPaySuccess('');
+    setPayError(''); setPaySuccess('');
   };
 
   const handleRecordPayment = async () => {
-    if (!payForm.amount || isNaN(Number(payForm.amount)) || Number(payForm.amount) <= 0) {
-      setPayError('Enter a valid amount greater than 0.');
+    const amt = Number(payForm.amount);
+    if (!payForm.amount || isNaN(amt) || amt <= 0) { setPayError('Enter a valid amount greater than 0.'); return; }
+    const due = balanceOf(modalOrder);
+    // Not gated on `due > 0` any more: a zero figure used to wave everything through, which is how an
+    // order with nothing owed could still be paid into.
+    if (amt > due + 0.01) {
+      setPayError(due > 0
+        ? `That is more than the outstanding balance of ${fmt(due)}.`
+        : 'This order has nothing outstanding.');
       return;
     }
-    setPaying(true);
-    setPayError('');
-    setPaySuccess('');
+    setPaying(true); setPayError(''); setPaySuccess('');
     try {
       const res = await fetchWithTimeout(
         `${API_URL}/api/admin/orders/${modalOrder._id || modalOrder.id}/record-payment`,
-        {
-          method: 'POST',
-          headers: HEADERS(token),
-          body: JSON.stringify({
-            amount: Number(payForm.amount),
-            method: payForm.method,
-            note: payForm.note.trim() || undefined,
-          }),
-        },
+        { method: 'POST', headers: HEADERS(token), body: JSON.stringify({ amount: amt, method: payForm.method, note: payForm.note.trim() || undefined }) },
         15000
       );
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || data.error || 'Failed to record payment.');
-      setPaySuccess('Payment recorded successfully.');
+      setPaySuccess('Payment recorded.');
       const updated = data.data || data;
-      setOrders(prev => prev.map(o => (o._id || o.id) === (modalOrder._id || modalOrder.id) ? { ...o, ...updated } : o));
+      const key = modalOrder._id || modalOrder.id;
+      setOrders(prev => prev.map(o => (o._id || o.id) === key ? { ...o, ...updated } : o));
       setModalOrder(prev => ({ ...prev, ...updated }));
       setPayForm({ amount: '', method: 'cash', note: '' });
-    } catch (err) {
-      setPayError(err.message);
-    } finally {
-      setPaying(false);
-    }
+    } catch (err) { setPayError(err.message); }
+    finally { setPaying(false); }
   };
 
   const filtered = orders.filter(o => {
-    const orderNum = (o.orderNumber || o.orderId || o._id || '').toString().toLowerCase();
-    const customer = (o.userSnapshot?.name || o.customerName || `${o.customer?.firstName || ''} ${o.customer?.lastName || ''}`.trim()).toLowerCase();
     const q = search.toLowerCase();
-    const matchSearch = !q || orderNum.includes(q) || customer.includes(q);
-    const matchStatus = statusFilter === 'all' || (o.paymentStatus || 'unpaid') === statusFilter;
-    return matchSearch && matchStatus;
-  });
+    const matchSearch = !q
+      || orderNo(o).toLowerCase().includes(q)
+      || String(o._id ?? o.id ?? '').toLowerCase().includes(q)
+      || customerOf(o).toLowerCase().includes(q);
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / rpp));
-  const paged = filtered.slice((page - 1) * rpp, page * rpp);
+    const st = o.paymentStatus || 'unpaid';
+    const matchStatus = statusFilter === 'all' ? true
+      : statusFilter === 'outstanding' ? balanceOf(o) > 0
+      : st === statusFilter;
 
-  const totalRevenue   = orders.reduce((s, o) => s + Number(o.totalAmount ?? 0), 0);
-  const totalCollected = orders.reduce((s, o) => s + Number(o.downPayment ?? 0), 0);
-  const totalBalance   = orders.reduce((s, o) => s + Number(o.balance ?? 0), 0);
-  const unpaidCount    = orders.filter(o => (o.paymentStatus || 'unpaid') === 'unpaid').length;
-  const partialCount   = orders.filter(o => o.paymentStatus === 'partial').length;
+    const matchAge = ageFilter === 'all' || (balanceOf(o) > 0 && bucketOf(o).key === ageFilter);
+    return matchSearch && matchStatus && matchAge;
+  }).sort((a, b) => ageDays(b) - ageDays(a));   // oldest receivable first
+
+  const { slice, page, perPage, total, setPage, setPerPage } = usePagination(filtered, 15);
+
+  const totalValue     = orders.reduce((s, o) => s + Number(o.totalAmount ?? 0), 0);
+  const totalCollected = orders.reduce((s, o) => s + paidSoFar(o), 0);
+  const outstanding    = orders.reduce((s, o) => s + balanceOf(o), 0);
+  const owing          = orders.filter(o => balanceOf(o) > 0);
+  const overdue60      = owing.filter(o => ageDays(o) >= 61).reduce((s, o) => s + balanceOf(o), 0);
+
+  const bucketTotals = AGE_BUCKETS.map(bk => ({
+    ...bk,
+    amount: owing.filter(o => bucketOf(o).key === bk.key).reduce((s, o) => s + balanceOf(o), 0),
+    count:  owing.filter(o => bucketOf(o).key === bk.key).length,
+  }));
 
   return (
     <ErrorBoundary>
-      <div style={{ maxWidth: '1320px', margin: '0 auto', padding: '2rem 1.5rem' }}>
+      <div style={S.page}>
 
-        {/* Summary cards */}
-        {!loading && !error && (
-          <div style={{ display: 'flex', gap: '12px', marginBottom: '24px', flexWrap: 'wrap' }}>
-            {[
-              { label: 'Total Order Value',   value: fmt(totalRevenue),   color: 'var(--white)' },
-              { label: 'Collected',           value: fmt(totalCollected), color: 'var(--green)' },
-              { label: 'Outstanding Balance', value: fmt(totalBalance),   color: totalBalance > 0 ? 'var(--red)' : 'var(--green)' },
-              { label: 'Unpaid Orders',       value: unpaidCount,         color: 'var(--red)' },
-              { label: 'Partial Orders',      value: partialCount,        color: 'var(--gold)' },
-            ].map(card => (
-              <div key={card.label} style={{
-                flex: '1 1 150px', padding: '16px 18px',
-                background: 'var(--dark2)', border: '1px solid var(--border)',
-                borderRadius: '12px',
-              }}>
-                <div style={{ fontSize: '0.68rem', color: 'var(--gray)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px' }}>{card.label}</div>
-                <div style={{ fontSize: '1.2rem', fontWeight: 800, color: card.color }}>{card.value}</div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Search + filter toolbar */}
-        <div style={{ display: 'flex', gap: '10px', marginBottom: '16px', flexWrap: 'wrap' }}>
-          <input
-            type="text"
-            placeholder="Search by order # or customer…"
-            value={search}
-            onChange={e => { setSearch(e.target.value); setPage(1); }}
-            style={{
-              flex: 1, minWidth: '200px', height: '38px', padding: '0 12px',
-              borderRadius: '8px', border: '1px solid var(--border)',
-              background: 'var(--dark)', color: 'var(--white)', fontSize: '0.875rem',
-              outline: 'none',
-            }}
-          />
-          <select
-            value={statusFilter}
-            onChange={e => { setStatusFilter(e.target.value); setPage(1); }}
-            style={{
-              height: '38px', padding: '0 12px', borderRadius: '8px',
-              border: '1px solid var(--border)', background: 'var(--dark)',
-              color: 'var(--white)', fontSize: '0.875rem', cursor: 'pointer',
-            }}
-          >
-            <option value="all">All Statuses</option>
-            <option value="unpaid">Unpaid</option>
-            <option value="partial">Partial</option>
-            <option value="paid">Paid</option>
-          </select>
-          <button
-            type="button" onClick={fetchOrders}
-            style={{
-              height: '38px', padding: '0 16px', borderRadius: '8px',
-              border: '1px solid var(--border)', background: 'transparent',
-              color: 'var(--gray)', cursor: 'pointer', fontSize: '0.875rem',
-              display: 'flex', alignItems: 'center', gap: '6px',
-            }}
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
-            </svg>
-            Refresh
-          </button>
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '16px' }}>
+          <SummaryCard label="Total Order Value" value={fmt(totalValue)} />
+          <SummaryCard label="Collected" value={fmt(totalCollected)} color="var(--st-green-fg)" />
+          <SummaryCard label="Outstanding" value={fmt(outstanding)} sub={`${owing.length} order${owing.length === 1 ? '' : 's'}`} color={outstanding > 0 ? 'var(--st-red-fg)' : undefined} />
+          <SummaryCard label="Over 60 Days" value={fmt(overdue60)} color={overdue60 > 0 ? 'var(--st-red-fg)' : undefined} />
         </div>
 
-        {/* Loading skeleton */}
-        {loading && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden' }}>
-            {[1,2,3,4,5].map(i => (
-              <div key={i} style={{ height: '58px', background: 'var(--dark2)', borderBottom: '1px solid var(--border)', animation: 'paySkel 1.5s ease-in-out infinite', animationDelay: `${i * 0.08}s` }} />
-            ))}
+        {/* Ageing summary - click a bucket to filter the list to it. */}
+        <div style={{ ...S.card, marginBottom: '10px', padding: '12px 16px' }}>
+          <div style={{ ...S.label, marginBottom: 8 }}>Receivables ageing (from order date)</div>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            {bucketTotals.map(bk => {
+              const active = ageFilter === bk.key;
+              return (
+                <button key={bk.key} onClick={() => { setAgeFilter(active ? 'all' : bk.key); setPage(1); }}
+                  style={{ flex: '1 1 150px', textAlign: 'left', padding: '10px 12px', borderRadius: 8, cursor: 'pointer',
+                    background: bk.amount > 0 ? bk.tone.bg : 'var(--dark2)',
+                    border: `1px solid ${active ? 'var(--gold)' : 'var(--border)'}` }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.4px', color: 'var(--gray)' }}>{bk.label}</div>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: bk.amount > 0 ? bk.tone.fg : 'var(--gray)', marginTop: 2 }}>{fmt(bk.amount)}</div>
+                  <div style={{ fontSize: 11, color: 'var(--gray)' }}>{bk.count} order{bk.count === 1 ? '' : 's'}</div>
+                </button>
+              );
+            })}
           </div>
-        )}
+        </div>
 
-        {!loading && error && (
-          <div style={{ padding: '16px', borderRadius: '12px', border: '1px solid var(--red)', background: 'rgba(239,68,68,0.08)', color: 'var(--red)', fontSize: '0.875rem' }}>
-            {error}
+        <div style={{ ...S.card, ...S.rowBetween, marginBottom: '10px', padding: '12px 16px' }}>
+          <div style={{ ...S.row, gap: '8px', flex: 1 }}>
+            <SearchBar value={search} onChange={v => { setSearch(v); setPage(1); }} placeholder="Search order or customer…" style={{ width: '240px' }} />
+            <CustomSelect value={statusFilter} onChange={v => { setStatusFilter(v); setPage(1); }} style={{ width: '170px' }}
+              options={[
+                { value: 'outstanding', label: 'Outstanding only' },
+                { value: 'all',         label: 'All orders' },
+                { value: 'unpaid',      label: 'Unpaid' },
+                { value: 'partial',     label: 'Partial' },
+                { value: 'paid',        label: 'Paid' },
+              ]} />
+            <CustomSelect value={ageFilter} onChange={v => { setAgeFilter(v); setPage(1); }} style={{ width: '150px' }}
+              options={[{ value: 'all', label: 'Any age' }, ...AGE_BUCKETS.map(b => ({ value: b.key, label: b.label }))]} />
           </div>
-        )}
+          <button onClick={fetchOrders} style={S.btnGhost}>{ICONS.reload} Refresh</button>
+        </div>
 
-        {!loading && !error && (
-          <>
-            {/* Table card */}
-            <div style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden' }}>
+        {error && <div style={{ ...S.note, background: 'var(--st-red-bg)', borderColor: 'rgba(239,68,68,0.35)', color: 'var(--st-red-fg)', marginBottom: '10px' }}>{error}</div>}
 
-              {/* Table header */}
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: '1.1fr 1.5fr 110px 110px 110px 90px 130px',
-                gap: '8px', padding: '10px 18px',
-                background: 'var(--dark3)',
-                fontSize: '0.68rem', fontWeight: 700, color: 'var(--gray)',
-                textTransform: 'uppercase', letterSpacing: '0.06em',
-                borderBottom: '1px solid var(--border)',
-              }}>
-                <span>Order</span>
-                <span>Customer</span>
-                <span>Total</span>
-                <span>Collected</span>
-                <span>Balance</span>
-                <span>Status</span>
-                <span>Actions</span>
-              </div>
+        <div style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead><tr>
+              <th style={S.th}>Order</th><th style={S.th}>Customer</th>
+              <th style={{ ...S.th, textAlign: 'right' }}>Total</th>
+              <th style={{ ...S.th, textAlign: 'right' }}>Paid</th>
+              <th style={{ ...S.th, textAlign: 'right' }}>Balance</th>
+              <th style={S.th}>Age</th><th style={S.th}>Status</th>
+              <th style={{ ...S.th, textAlign: 'right' }}>Action</th>
+            </tr></thead>
+            <tbody>
+              {loading ? (
+                <>
+                  <style>{`@keyframes pmPulse { 0%,100%{opacity:1} 50%{opacity:.5} }`}</style>
+                  {[0, 1, 2, 3].map(r => (
+                    <tr key={`sk${r}`}>{[0, 1, 2, 3, 4, 5, 6, 7].map(c => (
+                      <td key={c} style={S.td}><div style={{ height: 12, borderRadius: 4, background: 'var(--dark2)', animation: 'pmPulse 1.4s ease-in-out infinite', width: c === 1 ? '80%' : '55%' }} /></td>
+                    ))}</tr>
+                  ))}
+                </>
+              ) : slice.length === 0 ? (
+                <tr><td colSpan={8} style={{ padding: 0 }}><EmptyState message="Nothing outstanding" sub="Orders with an unpaid balance appear here." /></td></tr>
+              ) : slice.map(o => {
+                const bal = balanceOf(o);
+                const bk = bucketOf(o);
+                const days = ageDays(o);
+                return (
+                  <tr key={o._id || o.id} style={S.tr}>
+                    <td style={{ ...S.td, fontFamily: 'monospace', fontWeight: 600, fontSize: 12, color: 'var(--gold)' }}>{orderNo(o)}</td>
+                    <td style={S.td}>{customerOf(o)}</td>
+                    <td style={{ ...S.td, textAlign: 'right', fontFamily: 'monospace' }}>{fmt(o.totalAmount)}</td>
+                    <td style={{ ...S.td, textAlign: 'right', fontFamily: 'monospace', color: 'var(--st-green-fg)' }}>{fmt(paidSoFar(o))}</td>
+                    <td style={{ ...S.td, textAlign: 'right', fontFamily: 'monospace', fontWeight: 700, color: bal > 0 ? 'var(--st-red-fg)' : 'var(--gray)' }}>{fmt(bal)}</td>
+                    <td style={S.td}>
+                      {bal > 0
+                        ? <span style={{ ...S.badge, background: bk.tone.bg, color: bk.tone.fg, border: 'none', fontSize: 10, fontWeight: 700 }}>{days}d</span>
+                        : <span style={{ color: 'var(--gray)' }}>—</span>}
+                    </td>
+                    <td style={S.td}><StatusBadge status={o.paymentStatus || 'unpaid'} /></td>
+                    <td style={{ ...S.td, textAlign: 'right', whiteSpace: 'nowrap' }}>
+                      {(o.paymentHistory?.length > 0) && (
+                        <button onClick={() => setHistoryOrder(o)} style={S.btnSmGhost}>History</button>
+                      )}
+                      {bal > 0 && (
+                        <button onClick={() => openRecordPayment(o)} style={{ ...S.btnSm, marginLeft: 6 }}>Record</button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        <PaginationBar total={total} page={page} perPage={perPage} onPage={setPage} onPerPage={setPerPage} />
 
-              {paged.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '48px 16px', color: 'var(--gray)', fontSize: '0.875rem' }}>
-                  No orders match your filters.
-                </div>
-              ) : (
-                paged.map((o, idx) => {
-                  const orderId  = o._id || o.id;
-                  const orderNum = o.orderNumber || o.orderId || orderId?.slice(-8) || '—';
-                  const customer = o.userSnapshot?.name || o.customerName ||
-                    (o.customer ? `${o.customer.firstName || o.customer.name || ''} ${o.customer.lastName || ''}`.trim() : '') || '—';
-                  const status   = o.paymentStatus || 'unpaid';
-                  const badge    = STATUS_BADGE[status] || STATUS_BADGE.unpaid;
-                  const total    = Number(o.totalAmount ?? 0);
-                  const paid     = Number(o.downPayment ?? 0);
-                  const balance  = Number(o.balance ?? total);
-                  const canRecord = !['Cancelled', 'Returned'].includes(o.orderStatus) && status !== 'paid';
-                  const isCod    = o.deliveryMethod === 'cod' || o.paymentMethod === 'cod';
-
-                  return (
-                    <div
-                      key={orderId}
-                      className="pay-row"
-                      style={{
-                        display: 'grid',
-                        gridTemplateColumns: '1.1fr 1.5fr 110px 110px 110px 90px 130px',
-                        gap: '8px', padding: '13px 18px', alignItems: 'center',
-                        borderBottom: idx < paged.length - 1 ? '1px solid var(--border)' : 'none',
-                      }}
-                    >
-                      {/* Order # + status */}
-                      <div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <span style={{ fontWeight: 700, color: 'var(--white)', fontSize: '0.84rem' }}>#{orderNum}</span>
-                          {isCod && (
-                            <span style={{ fontSize: '0.6rem', fontWeight: 700, padding: '1px 5px', borderRadius: '4px', background: 'rgba(251,191,36,0.15)', color: 'var(--gold)', letterSpacing: '0.04em' }}>COD</span>
-                          )}
-                        </div>
-                        <div style={{ fontSize: '0.7rem', color: 'var(--gray)', marginTop: '2px' }}>{fmtStatus(o.orderStatus)}</div>
-                      </div>
-
-                      {/* Customer */}
-                      <div style={{ fontSize: '0.82rem', color: 'var(--white)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {customer}
-                      </div>
-
-                      {/* Total */}
-                      <div style={{ fontWeight: 600, color: 'var(--white)', fontSize: '0.84rem' }}>{fmt(total)}</div>
-
-                      {/* Collected */}
-                      <div style={{ fontWeight: 600, color: paid > 0 ? 'var(--green)' : 'var(--gray)', fontSize: '0.84rem' }}>{fmt(paid)}</div>
-
-                      {/* Balance */}
-                      <div style={{ fontWeight: 700, color: balance > 0 ? 'var(--red)' : 'var(--green)', fontSize: '0.84rem' }}>{fmt(balance)}</div>
-
-                      {/* Status badge */}
-                      <div>
-                        <span style={{
-                          fontSize: '0.67rem', fontWeight: 700, padding: '3px 9px',
-                          borderRadius: '999px', background: badge.bg, color: badge.color,
-                          textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap',
-                        }}>
-                          {badge.label}
-                        </span>
-                      </div>
-
-                      {/* Actions */}
-                      <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                        {canRecord && (
-                          <button
-                            type="button"
-                            onClick={() => openRecordPayment(o)}
-                            style={{
-                              padding: '5px 12px', borderRadius: '6px', border: 'none',
-                              background: 'var(--gold)', color: 'var(--black)', cursor: 'pointer',
-                              fontSize: '0.72rem', fontWeight: 700, whiteSpace: 'nowrap',
-                            }}
-                          >
-                            Record
-                          </button>
-                        )}
-                        {(o.paymentHistory?.length > 0) && (
-                          <button
-                            type="button"
-                            onClick={() => setHistoryOrder(o)}
-                            style={{
-                              padding: '5px 8px', borderRadius: '6px',
-                              border: '1px solid var(--border)', background: 'transparent',
-                              color: 'var(--gray)', cursor: 'pointer', lineHeight: 1,
-                            }}
-                            title="View payment history"
-                          >
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
-                            </svg>
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-
-            {/* Pagination */}
-            {filtered.length > rpp && (
-              <div style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                padding: '12px 4px', marginTop: '12px',
-                fontSize: '0.8rem', color: 'var(--gray)',
-              }}>
-                <span>{filtered.length} orders · page {page} of {totalPages}</span>
-                <div style={{ display: 'flex', gap: '6px' }}>
-                  <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1}
-                    style={{ padding: '5px 14px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--dark2)', color: page <= 1 ? 'var(--gray)' : 'var(--white)', cursor: page <= 1 ? 'not-allowed' : 'pointer', fontSize: '0.8rem' }}>‹ Prev</button>
-                  <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages}
-                    style={{ padding: '5px 14px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--dark2)', color: page >= totalPages ? 'var(--gray)' : 'var(--white)', cursor: page >= totalPages ? 'not-allowed' : 'pointer', fontSize: '0.8rem' }}>Next ›</button>
-                </div>
-              </div>
-            )}
-          </>
-        )}
-
-        {/* Record Payment Modal */}
         {modalOrder && (
-          <div style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', background: 'rgba(0,0,0,0.7)' }}>
-            <div style={{ width: '100%', maxWidth: '420px', padding: '1.5rem', background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '16px' }}>
-              <h3 style={{ margin: '0 0 4px', color: 'var(--white)', fontSize: '1.05rem', fontWeight: 700 }}>Record Payment</h3>
-              <p style={{ margin: '0 0 20px', color: 'var(--gray)', fontSize: '0.82rem' }}>
-                Order #{modalOrder.orderNumber || (modalOrder._id || '').slice(-8)} · Balance: <strong style={{ color: 'var(--red)' }}>{fmt(modalOrder.balance ?? modalOrder.totalAmount)}</strong>
+          <div onClick={() => !paying && setModalOrder(null)} style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, background: 'rgba(0,0,0,0.45)' }}>
+            <div onClick={e => e.stopPropagation()} style={{ ...S.card, width: 440, maxWidth: '100%' }}>
+              <h3 style={{ margin: '0 0 4px', fontSize: 15, fontWeight: 700, color: 'var(--white)' }}>Record Payment</h3>
+              <p style={{ margin: '0 0 14px', fontSize: 12, color: 'var(--gray)' }}>
+                {orderNo(modalOrder)} · {customerOf(modalOrder)} · outstanding{' '}
+                <strong style={{ color: 'var(--st-red-fg)' }}>{fmt(balanceOf(modalOrder))}</strong>
               </p>
 
-              <div style={{ marginBottom: '14px' }}>
-                <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px' }}>Amount (₱)</label>
-                <input
-                  type="number"
-                  min="0.01"
-                  step="0.01"
-                  value={payForm.amount}
-                  onChange={e => setPayForm(f => ({ ...f, amount: e.target.value }))}
-                  placeholder="0.00"
-                  style={{ width: '100%', height: '40px', padding: '0 12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--dark)', color: 'var(--white)', fontSize: '0.95rem', boxSizing: 'border-box', outline: 'none' }}
-                />
-              </div>
+              <label style={S.label}>Amount</label>
+              <input type="number" min="0.01" step="0.01" max={balanceOf(modalOrder) || undefined}
+                value={payForm.amount} onChange={e => setPayForm(f => ({ ...f, amount: e.target.value }))}
+                placeholder={String(balanceOf(modalOrder).toFixed(2))} style={S.input} disabled={paying} />
 
-              <div style={{ marginBottom: '14px' }}>
-                <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px' }}>Payment Method</label>
-                <select
-                  value={payForm.method}
-                  onChange={e => setPayForm(f => ({ ...f, method: e.target.value }))}
-                  style={{ width: '100%', height: '40px', padding: '0 12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--dark)', color: 'var(--white)', fontSize: '0.875rem', cursor: 'pointer' }}
-                >
-                  {PAYMENT_METHODS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
-                </select>
-              </div>
+              <label style={{ ...S.label, marginTop: 12 }}>Payment method</label>
+              <CustomSelect value={payForm.method} onChange={v => setPayForm(f => ({ ...f, method: v }))}
+                options={PAYMENT_METHODS} style={{ width: '100%' }} disabled={paying} />
 
-              <div style={{ marginBottom: '20px' }}>
-                <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px' }}>Note (optional)</label>
-                <input
-                  type="text"
-                  value={payForm.note}
-                  onChange={e => setPayForm(f => ({ ...f, note: e.target.value }))}
-                  placeholder="e.g. COD collected by rider, downpayment…"
-                  style={{ width: '100%', height: '40px', padding: '0 12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--dark)', color: 'var(--white)', fontSize: '0.875rem', boxSizing: 'border-box', outline: 'none' }}
-                />
-              </div>
+              <label style={{ ...S.label, marginTop: 12 }}>Note (optional)</label>
+              <input type="text" value={payForm.note} maxLength={200}
+                onChange={e => setPayForm(f => ({ ...f, note: e.target.value }))}
+                placeholder="e.g. COD collected by rider" style={S.input} disabled={paying} />
 
-              {payError && <div style={{ padding: '10px 12px', borderRadius: '8px', background: 'rgba(239,68,68,0.1)', color: 'var(--red)', fontSize: '0.82rem', marginBottom: '12px' }}>{payError}</div>}
-              {paySuccess && <div style={{ padding: '10px 12px', borderRadius: '8px', background: 'rgba(34,197,94,0.1)', color: 'var(--green)', fontSize: '0.82rem', marginBottom: '12px' }}>{paySuccess}</div>}
+              {payError && <div style={{ ...S.note, background: 'var(--st-red-bg)', borderColor: 'rgba(239,68,68,0.35)', color: 'var(--st-red-fg)', marginTop: 12 }}>{payError}</div>}
+              {paySuccess && <div style={{ ...S.note, background: 'var(--st-green-bg)', borderColor: 'rgba(34,197,94,0.35)', color: 'var(--st-green-fg)', marginTop: 12 }}>{paySuccess}</div>}
 
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
-                <button type="button" onClick={() => setModalOrder(null)} disabled={paying}
-                  style={{ padding: '10px 18px', borderRadius: '8px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--white)', cursor: paying ? 'not-allowed' : 'pointer', opacity: paying ? 0.6 : 1, fontSize: '0.875rem' }}>
-                  Close
-                </button>
-                <button type="button" onClick={handleRecordPayment} disabled={paying}
-                  style={{ padding: '10px 20px', borderRadius: '8px', border: 'none', background: 'var(--gold)', color: 'var(--black)', fontWeight: 700, cursor: paying ? 'not-allowed' : 'pointer', opacity: paying ? 0.7 : 1, fontSize: '0.875rem' }}>
-                  {paying ? 'Recording…' : 'Record Payment'}
-                </button>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
+                <button onClick={() => setModalOrder(null)} disabled={paying} style={S.btnGhost}>Close</button>
+                <button onClick={handleRecordPayment} disabled={paying} style={S.btnPrimary}>{paying ? 'Recording…' : 'Record Payment'}</button>
               </div>
             </div>
           </div>
         )}
 
-        {/* Payment History Modal */}
         {historyOrder && (
-          <div style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', background: 'rgba(0,0,0,0.7)' }}>
-            <div style={{ width: '100%', maxWidth: '480px', padding: '1.5rem', background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '16px', maxHeight: '80vh', overflowY: 'auto' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
-                <div>
-                  <h3 style={{ margin: '0 0 4px', color: 'var(--white)', fontSize: '1.05rem', fontWeight: 700 }}>Payment History</h3>
-                  <p style={{ margin: 0, color: 'var(--gray)', fontSize: '0.82rem' }}>
-                    Order #{historyOrder.orderNumber || (historyOrder._id || '').slice(-8)}
-                  </p>
-                </div>
-                <button type="button" onClick={() => setHistoryOrder(null)}
-                  style={{ padding: '4px 8px', borderRadius: '6px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--gray)', cursor: 'pointer', lineHeight: 1 }}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                </button>
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {(historyOrder.paymentHistory || []).map((entry, i) => (
-                  <div key={i} style={{ padding: '12px 14px', background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '10px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                      <span style={{ fontWeight: 700, color: 'var(--green)', fontSize: '0.95rem' }}>{fmt(entry.amount)}</span>
-                      <span style={{ fontSize: '0.7rem', color: 'var(--gray)', textTransform: 'uppercase', fontWeight: 600, background: 'var(--dark2)', padding: '2px 7px', borderRadius: '4px' }}>{entry.method}</span>
+          <div onClick={() => setHistoryOrder(null)} style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, background: 'rgba(0,0,0,0.45)' }}>
+            <div onClick={e => e.stopPropagation()} style={{ ...S.card, width: 460, maxWidth: '100%', maxHeight: '80vh', overflowY: 'auto' }}>
+              <h3 style={{ margin: '0 0 4px', fontSize: 15, fontWeight: 700, color: 'var(--white)' }}>Payment History</h3>
+              <p style={{ margin: '0 0 14px', fontSize: 12, color: 'var(--gray)' }}>{orderNo(historyOrder)} · {customerOf(historyOrder)}</p>
+              <div style={{ display: 'grid', gap: 8 }}>
+                {(historyOrder.paymentHistory || []).map((e, i) => (
+                  <div key={i} style={{ padding: '10px 12px', background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: 8 }}>
+                    <div style={{ ...S.rowBetween, marginBottom: 4 }}>
+                      <span style={{ fontWeight: 700, color: 'var(--st-green-fg)', fontSize: 14 }}>{fmt(e.amount)}</span>
+                      <span style={{ ...S.badge, background: 'var(--dark)', color: 'var(--gray)', border: '1px solid var(--border)', fontSize: 10, textTransform: 'uppercase' }}>{e.method}</span>
                     </div>
-                    {entry.note && <div style={{ fontSize: '0.78rem', color: 'var(--gray)', marginBottom: '4px' }}>{entry.note}</div>}
-                    <div style={{ fontSize: '0.7rem', color: 'var(--gray)', opacity: 0.7 }}>
-                      {entry.recordedBy} · {entry.recordedAt ? new Date(entry.recordedAt).toLocaleString() : '—'}
+                    {e.note && <div style={{ fontSize: 12, color: 'var(--gray)', marginBottom: 4 }}>{e.note}</div>}
+                    <div style={{ fontSize: 11, color: 'var(--gray)', opacity: 0.8 }}>
+                      {e.recordedBy ? `${e.recordedBy} · ` : ''}
+                      {(e.recordedAt || e.paidAt) ? new Date(e.recordedAt || e.paidAt).toLocaleString('en-PH') : '—'}
                     </div>
                   </div>
                 ))}
               </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 14 }}>
+                <button onClick={() => setHistoryOrder(null)} style={S.btnGhost}>Close</button>
+              </div>
             </div>
           </div>
         )}
-
-        <style>{`
-          @keyframes paySkel {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.45; }
-          }
-          .pay-row:hover {
-            background: var(--dark3) !important;
-          }
-        `}</style>
       </div>
     </ErrorBoundary>
   );

@@ -3,6 +3,28 @@ import { useState, useMemo } from 'react';
 import { S, ICONS, Field, IntegerInput, Modal, ConfirmModal, PaginationBar, SearchBar, StatusBadge, Note, EmptyState, SummaryCard, usePagination, formatCurrency, formatDate, uid, CustomSelect } from './shared';
 import { adjustStock } from './api';
 
+// "Qc Scrap" is what generic title-casing does to an acronym. These are the reasons the stock screens
+// can actually receive; anything unmapped still degrades to words rather than a raw database key.
+const OUT_REASON_LABEL = {
+  qc_scrap:             'QC Scrap',
+  qc_rework:            'QC Rework',
+  production_spoilage:  'Spoilage',
+  production:           'Production',
+  sale_reserved:        'Sale',
+  reservation_released: 'Reservation Released',
+  production_reserved:  'Reserved',
+  writeoff:             'Write-Off',
+  adjustment:           'Adjustment',
+};
+
+function outReasonLabel(reason) {
+  if (!reason) return 'Adjustment';
+  return OUT_REASON_LABEL[reason] ?? String(reason)
+    .replace(/[_-]+/g, ' ')
+    .replace(/\w/g, c => c.toUpperCase())
+    .replace(/Qc/g, 'QC');
+}
+
 const REDUCE_REASONS = ['Damaged','Expired','Lost','Write-Off','Quality Check','Other'];
 
 function StockOutModal({ open, onClose, material, currentStock, materialBatches, onConfirm }) {
@@ -151,13 +173,15 @@ export default function ActualStockTab({ materials, batches, setBatches, badOrde
         : (batches || []).filter(b => b.matId === mat.id).reduce((s, b) => s + b.remainingQty, 0);
       const pendingBOQty = (badOrders || []).filter(b => b.matId === mat.id && b.status === 'pending').reduce((s, b) => s + b.qty, 0);
       const reductionQty = (stockOuts || []).filter(s => s.matId === mat.id).reduce((s, r) => s + r.qty, 0);
+      const reservedQty  = Number(mat.reservedQty ?? 0);
       const goodsQty     = Math.max(0, actualQty - pendingBOQty);
-      const status       = actualQty === 0 ? 'out_of_stock' : actualQty <= mat.minStock ? 'low_stock' : 'in_stock';
+      const availableQty = Math.max(0, goodsQty - reservedQty);
+      const status       = availableQty === 0 ? 'out_of_stock' : availableQty <= mat.minStock ? 'low_stock' : 'in_stock';
 
       const sorted   = (batches || []).filter(b => b.matId === mat.id && b.remainingQty > 0).sort((a, b) => new Date(a.date) - new Date(b.date));
       const unitCost = sorted[0]?.unitCost ?? mat.baseCost;
 
-      return { mat, actualQty, pendingBOQty, reductionQty, goodsQty, status, unitCost, stockValue: actualQty * unitCost };
+      return { mat, actualQty, pendingBOQty, reductionQty, goodsQty, reservedQty, availableQty, status, unitCost, stockValue: actualQty * unitCost };
     });
   }, [materials, batches, badOrders, stockOuts]);
 
@@ -225,7 +249,7 @@ export default function ActualStockTab({ materials, batches, setBatches, badOrde
       </div>
 
       <Note type="info">
-        <b>Actual Stock</b> = Total physical units in warehouse (including pending Bad Orders). <b>Goods Stock</b> = Actual − Pending BOs (available to sell). Resolve BOs to update counts.
+        <b>Actual Stock</b> = physical units in the warehouse (including pending Bad Orders). <b>Reserved</b> = held by open orders, released on cancellation or consumed at QC. <b>Available</b> = Actual − Pending BOs − Reserved, and this is the number the storefront sells against.
       </Note>
 
       {/* toolbar */}
@@ -250,7 +274,7 @@ export default function ActualStockTab({ materials, batches, setBatches, badOrde
                 {[
                   {l:'SKU'},{l:'Material'},
                   {l:'Actual Stock',r:true},{l:'Pending BO',r:true},{l:'Stock Outs',r:true},
-                  {l:'Goods Stock',r:true},{l:'FIFO Cost',r:true},{l:'Value',c:true},
+                  {l:'Reserved',r:true},{l:'Available',r:true},{l:'FIFO Cost',r:true},{l:'Value',c:true},
                   {l:'Status'},{l:''},
                 ].map(h => (
                   <th key={h.l} style={{ ...S.th, textAlign: h.r ? 'right' : h.c ? 'center' : 'left' }}>{h.l}</th>
@@ -259,7 +283,7 @@ export default function ActualStockTab({ materials, batches, setBatches, badOrde
             </thead>
             <tbody>
               {slice.length === 0 ? (
-                <tr><td colSpan={10}><EmptyState message="No stock data" sub="Receive stock first." /></td></tr>
+                <tr><td colSpan={11}><EmptyState message="No stock data" sub="Receive stock first." /></td></tr>
               ) : slice.map(d => (
                 <tr key={d.mat.id} style={S.tr} onMouseEnter={e => e.currentTarget.style.background='var(--dark2)'} onMouseLeave={e => e.currentTarget.style.background=''}>
                   <td style={{ ...S.td, fontFamily:'monospace', fontSize:'12px', color:'var(--gray)' }}>{d.mat.sku}</td>
@@ -273,8 +297,13 @@ export default function ActualStockTab({ materials, batches, setBatches, badOrde
                   <td style={{ ...S.td, textAlign:'right', color: d.reductionQty > 0 ? '#b45309' : 'var(--gray)' }}>
                     {d.reductionQty > 0 ? `−${d.reductionQty}` : '0'} {d.mat.unit}
                   </td>
-                  <td style={{ ...S.td, textAlign:'right', fontWeight:600, color: d.goodsQty === 0 ? '#c62828' : d.goodsQty <= d.mat.minStock ? '#b45309' : '#2e7d32' }}>
-                    {d.goodsQty} {d.mat.unit}
+                  <td style={{ ...S.td, textAlign:'right', color: d.reservedQty > 0 ? '#b45309' : 'var(--gray)' }}
+                    title={d.reservedQty > 0 ? 'Held by open orders. Released when the order is cancelled or the material is consumed at QC.' : undefined}>
+                    {d.reservedQty > 0 ? `\u2212${d.reservedQty}` : '0'} {d.mat.unit}
+                  </td>
+                  <td style={{ ...S.td, textAlign:'right', fontWeight:700, color: d.availableQty === 0 ? '#c62828' : d.availableQty <= d.mat.minStock ? '#b45309' : '#2e7d32' }}
+                    title="What the storefront can still sell.">
+                    {d.availableQty} {d.mat.unit}
                   </td>
                   <td style={{ ...S.td, textAlign:'right' }}>{formatCurrency(d.unitCost)}</td>
                   <td style={{ ...S.td, textAlign:'center', fontWeight:600 }}>{formatCurrency(d.stockValue)}</td>
@@ -324,18 +353,19 @@ export default function ActualStockTab({ materials, batches, setBatches, badOrde
                 const mat = materials.find(m => m.id === s.matId);
                 const isProduction = s.type === 'production';
                 const isSale = s.type === 'sale';
+                const isLoss = ['qc_scrap', 'production_spoilage', 'damage', 'writeoff', 'scrap', 'lost'].includes(s.reason);
                 return (
                   <tr key={s.id} style={S.tr} onMouseEnter={e => e.currentTarget.style.background='var(--dark2)'} onMouseLeave={e => e.currentTarget.style.background=''}>
                     <td style={{ ...S.td, whiteSpace:'nowrap' }}>{formatDate(s.date)}</td>
                     <td style={{ ...S.td, fontFamily:'monospace', fontSize:'12px', color:'var(--gray)' }}>{s.ref || '—'}</td>
                     <td style={S.td}>
-                      <span style={{ background: isProduction ? '#f0f4ff' : isSale ? '#f0fdf4' : 'var(--dark2)', color: isProduction ? '#1e40af' : isSale ? '#166534' : 'var(--gray-light)', borderRadius:'5px', padding:'2px 8px', fontSize:'11px', fontWeight:600 }}>
-                        {isProduction ? 'Production' : isSale ? 'Sale' : 'Adjustment'}
+                      <span style={{ background: isProduction ? '#f0f4ff' : isSale ? '#f0fdf4' : isLoss ? '#fee2e2' : 'var(--dark2)', color: isProduction ? '#1e40af' : isSale ? '#166534' : isLoss ? '#991b1b' : 'var(--gray-light)', borderRadius:'5px', padding:'2px 8px', fontSize:'11px', fontWeight:600 }}>
+                        {isProduction ? 'Production' : isSale ? 'Sale' : isLoss ? 'Loss' : 'Adjustment'}
                       </span>
                     </td>
                     <td style={{ ...S.td, fontWeight:500 }}>{s.matName}</td>
-                    <td style={{ ...S.td, textAlign:'right', color:'#c62828', fontWeight:600 }}>−{s.qty} {mat?.unit}</td>
-                    <td style={S.td}><StatusBadge status={s.reason} label={s.reason.replace(/_/g,' ').replace(/\b\w/g, c => c.toUpperCase())} /></td>
+                    <td style={{ ...S.td, textAlign:'right', color:'#c62828', fontWeight:600 }}>−{Math.abs(Number(s.qty) || 0)} {mat?.unit}</td>
+                    <td style={S.td}><StatusBadge status={s.reason} label={outReasonLabel(s.reason)} /></td>
                     <td style={{ ...S.td, textAlign:'right', fontWeight:600, color: isProduction ? 'var(--gray-light)' : '#c62828' }}>{formatCurrency(s.totalCost)}</td>
                     <td style={{ ...S.td, fontSize:'12px', color:'var(--gray-light)' }}>{s.performedBy || <span style={{ color:'var(--gray)' }}>—</span>}</td>
                     <td style={{ ...S.td, fontSize:'12px', color:'var(--gray)', maxWidth:'200px' }}>{s.notes}</td>

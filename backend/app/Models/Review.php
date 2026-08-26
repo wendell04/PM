@@ -13,6 +13,9 @@ class Review extends Model
         'userId',
         'orderId',
         'productIds',
+        // The single product a review is about. Order-level reviews written before this
+        // existed leave it null, which is how they stay distinguishable.
+        'productId',
         'rating',
         'comment',
         'customerName',

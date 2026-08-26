@@ -575,6 +575,7 @@ const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=
       setRegisterForm({firstName:'',middleInitial:'',lastName:'',phoneNumber:'',email:'',password:'',confirmPassword:'',agreeToTerms:false});
       setErrors({});
       setVerifyError('');
+      setVerifyingExisting(false);
       setVerificationModal(true);
     } catch (err) {
       setErrors({email: 'Network error. Make sure the backend server is running.'});
@@ -847,23 +848,39 @@ const handleForgotResetPassword = async () => {
 
   // From the login screen: when login says "verify your email", resend the code and open the
   // verification modal so the user can enter it — no need to re-register.
+  // Which of the two paths opened the verification modal, so its wording can be honest.
+  const [verifyingExisting, setVerifyingExisting] = useState(false);
+
   const handleResendFromLogin = async () => {
     const email = loginForm.email.trim();
     if (!email) { setLoginErrors({ email: 'Enter your email first.' }); return; }
     setRegisteredEmail(email);
     setLoginErrors({});
+    // The result has to be checked. This used to swallow every outcome - a 429, a 500, a dead
+    // network - and then tell the customer a code was on its way. They would sit waiting for an
+    // email that was never sent, which is exactly how this surfaced.
+    let sendFailed = null;
     try {
-      await fetchWithTimeout(`${API_URL}/api/resend-code`, {
+      const res = await fetchWithTimeout(`${API_URL}/api/resend-code`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
         body: JSON.stringify({ email }),
       });
-    } catch { /* ignore — still open the modal so they can request again */ }
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        sendFailed = d.message || d.error || 'We could not send the code just now.';
+      }
+    } catch {
+      sendFailed = 'We could not reach the server. Check your connection and try again.';
+    }
+
     setModal(null);
     setVerificationCode('');
-    setVerifyError('');
-    setResendSuccess(true);
-    setResendCooldown(60);
+    setVerifyError(sendFailed ?? '');
+    // Only claim it was sent when it was.
+    setResendSuccess(!sendFailed);
+    setResendCooldown(sendFailed ? 0 : 60);
+    setVerifyingExisting(true);
     setVerificationModal(true);
     setTimeout(() => setResendSuccess(false), 5000);
   };
@@ -2496,11 +2513,24 @@ const handleForgotResetPassword = async () => {
                         </button>
                       </div>
                       {loginErrors.password && <span className="error-message">{loginErrors.password}</span>}
+                      {/* An unverified account is not really a password error, and a small gold
+                          link under one is easy to miss - which is how someone ends up retyping a
+                          password that was correct all along. It gets its own block that says what is
+                          wrong, what to do, and gives a real button to do it. Still ONE click: another
+                          modal between this and the code entry would add a step and no information. */}
                       {loginErrors.password && loginErrors.password.toLowerCase().includes('verify') && (
-                        <button type="button" className="auth-link" style={{ marginTop: '0.4rem', textAlign: 'left' }}
-                          onClick={handleResendFromLogin}>
-                          Resend verification email
-                        </button>
+                        <div style={{ marginTop: '0.6rem', padding: '0.85rem 1rem', borderRadius: '10px', background: 'rgba(212,168,67,0.08)', border: '1px solid rgba(212,168,67,0.35)' }}>
+                          <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--gold)', marginBottom: '0.25rem' }}>
+                            This account is not verified yet
+                          </div>
+                          <div style={{ fontSize: '0.78rem', color: 'var(--gray)', lineHeight: 1.55, marginBottom: '0.7rem' }}>
+                            Your password is fine. We just need to confirm this email address before you can sign in.
+                          </div>
+                          <button type="button" onClick={handleResendFromLogin}
+                            style={{ width: '100%', padding: '0.6rem', borderRadius: '8px', border: 'none', background: 'var(--gold)', color: '#000', fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer' }}>
+                            Send me a verification code
+                          </button>
+                        </div>
                       )}
                     </div>
                     <div className="auth-row">
@@ -2888,7 +2918,11 @@ const handleForgotResetPassword = async () => {
               </div>
               <div className="verify-pulse"/>
             </div>
-            <h2 className="verify-title">Account Created!</h2>
+            {/* This modal serves two paths: a fresh registration, and logging in with an account
+                that was never verified. Saying "Account Created!" in the second case is simply
+                false - nothing was created - and it sends people looking for an email that was
+                sent weeks ago, or never. */}
+            <h2 className="verify-title">{verifyingExisting ? 'Verify your email' : 'Account Created!'}</h2>
             <p className="verify-subtitle">We sent a 6-digit verification code to {registeredEmail}. Enter it below to activate your account.</p>
             <div className="verify-email-badge">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

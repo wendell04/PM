@@ -169,7 +169,13 @@ class StaffController extends Controller
             $customers = User::where('role', 'customer')
                 ->orderBy('created_at', 'desc')
                 ->get(['_id', 'firstName', 'lastName', 'email', 'avatar', 'is_verified',
-                       'login_locked_until', 'failed_login_attempts', 'unlock_requested_at', 'created_at']);
+                       'login_locked_until', 'failed_login_attempts', 'unlock_requested_at', 'created_at',
+                       // Clickwrap evidence. Recorded at registration and never edited afterwards, so
+                       // it is the only thing that can answer "what exactly did they agree to".
+                       'acceptedTermsVersion', 'acceptedTermsAt', 'acceptedTermsSnapshot', 'acceptedTermsIp',
+                       // Recorded at every login but never surfaced. "Joined" answers when someone
+                       // arrived; only this answers whether they are still here.
+                       'acceptedTermsLegacy', 'last_login_at']);
 
             $now = now();
             $result = $customers->map(fn($u) => [
@@ -183,6 +189,12 @@ class StaffController extends Controller
                 'failed_login_attempts' => (int) ($u->failed_login_attempts ?? 0),
                 'unlock_requested_at'   => $u->unlock_requested_at?->toIso8601String(),
                 'created_at'            => $u->created_at?->toIso8601String(),
+                'acceptedTermsVersion'  => $u->acceptedTermsVersion !== null ? (int) $u->acceptedTermsVersion : null,
+                'acceptedTermsAt'       => $u->acceptedTermsAt ?? null,
+                'acceptedTermsSnapshot' => $u->acceptedTermsSnapshot ?? null,
+                'acceptedTermsIp'       => $u->acceptedTermsIp ?? null,
+                'acceptedTermsLegacy'   => (bool) ($u->acceptedTermsLegacy ?? false),
+                'last_login_at'         => $u->last_login_at?->toIso8601String(),
             ]);
 
             return $this->successResponse('Customers fetched.', $result);

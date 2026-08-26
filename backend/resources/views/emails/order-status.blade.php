@@ -2,21 +2,24 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+    <meta name="color-scheme" content="light">
+    <meta name="supported-color-schemes" content="light">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Order Status Update</title>
 </head>
-<body style="margin:0;padding:0;background-color:#111111;font-family:Arial,sans-serif;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#111111;">
+<body style="margin:0;padding:0;background-color: #ffffff;font-family:Arial,sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color: #ffffff;">
     <tr>
       <td align="center" style="padding:40px 16px;">
         <table role="presentation" width="520" cellpadding="0" cellspacing="0"
-          style="max-width:520px;background-color:#1a1a1a;border-radius:12px;
+          style="max-width:520px;background-color: #ffffff;border-radius:12px;
                  border:1px solid rgba(255,255,255,0.07);overflow:hidden;">
 
           {{-- Header --}}
           <tr>
             <td style="background:linear-gradient(135deg,#b8922f,#d4a843);padding:28px 40px;text-align:center;">
-              <div style="font-size:20px;font-weight:800;color:#0f0f0f;letter-spacing:1.5px;">
+              <img src="https://res.cloudinary.com/dtwzbqrdy/image/upload/v1787227737/pmp-email-logo.png" alt="Personalize Me Prints" width="56" height="56" style="display:block;margin:0 auto 10px;width:56px;height:56px;border:0;outline:none;text-decoration:none;">
+              <div style="font-size:20px;font-weight:800;color: #0f0f0f;letter-spacing:1.5px;">
                 PERSONALIZE ME PRINTS
               </div>
               <div style="margin-top:6px;font-size:11px;color:rgba(0,0,0,0.5);letter-spacing:2px;text-transform:uppercase;">
@@ -28,23 +31,23 @@
           {{-- Body --}}
           <tr>
             <td style="padding:36px 40px;">
-              <p style="margin:0 0 6px;font-size:20px;font-weight:700;color:#f5f5f5;">
+              <p style="margin:0 0 6px;font-size:20px;font-weight:700;color: #111111;">
                 Order Status Update
               </p>
-              <p style="margin:0 0 24px;font-size:14px;color:#888;line-height:1.7;">
+              <p style="margin:0 0 24px;font-size:14px;color: #6b6b6b;line-height:1.7;">
                 Hi {{ $firstName }}, your order status has been updated.
               </p>
 
               {{-- Order ID --}}
               <table role="presentation" cellpadding="0" cellspacing="0"
-                style="background:#222;border-radius:8px;border:1px solid rgba(255,255,255,0.07);
-                       border-left:3px solid #d4a843;margin-bottom:12px;width:100%;">
+                style="background: #f7f7f5;border-radius:8px;border:1px solid rgba(255,255,255,0.07);
+                       border-left: 3px solid #d4a843;margin-bottom:12px;width:100%;">
                 <tr>
                   <td style="padding:12px 16px;">
-                    <span style="font-size:11px;color:#555;text-transform:uppercase;letter-spacing:1px;">
+                    <span style="font-size:11px;color: #6b6b6b;text-transform:uppercase;letter-spacing:1px;">
                       Order ID
                     </span><br>
-                    <strong style="font-size:15px;color:#d4a843;font-family:monospace;">
+                    <strong style="font-size:15px;color: #a67c1a;font-family:monospace;">
                       #{{ strtoupper(substr($orderId, -10)) }}
                     </strong>
                   </td>
@@ -78,13 +81,13 @@
                        border:1px solid {{ $sc['border'] }};margin-bottom:20px;width:100%;">
                 <tr>
                   <td style="padding:14px 16px;">
-                    <span style="font-size:11px;color:#555;text-transform:uppercase;letter-spacing:1px;">
+                    <span style="font-size:11px;color: #6b6b6b;text-transform:uppercase;letter-spacing:1px;">
                       Current Status
                     </span><br>
                     <strong style="font-size:16px;color:{{ $sc['color'] }};">
                       {{ $newStatus }}
                     </strong>
-                    <p style="margin:6px 0 0;font-size:13px;color:#888;line-height:1.6;">
+                    <p style="margin:6px 0 0;font-size:13px;color: #6b6b6b;line-height:1.6;">
                       {{ $statusMessage }}
                     </p>
                   </td>
@@ -93,24 +96,24 @@
 
               {{-- Order Total --}}
               <table role="presentation" cellpadding="0" cellspacing="0"
-                style="background:#222;border-radius:8px;border:1px solid rgba(255,255,255,0.07);
+                style="background: #f7f7f5;border-radius:8px;border:1px solid rgba(255,255,255,0.07);
                        margin-bottom:24px;width:100%;">
                 <tr>
                   <td style="padding:12px 16px;">
-                    <span style="font-size:11px;color:#555;text-transform:uppercase;letter-spacing:1px;">
+                    <span style="font-size:11px;color: #6b6b6b;text-transform:uppercase;letter-spacing:1px;">
                       Order Total
                     </span><br>
-                    <strong style="font-size:16px;color:#f5f5f5;">
+                    <strong style="font-size:16px;color: #111111;">
                       &#8369;{{ number_format($totalAmount, 2) }}
                     </strong>
                   </td>
                 </tr>
               </table>
 
-              <p style="margin:0;font-size:13px;color:#555;line-height:1.6;">
+              <p style="margin:0;font-size:13px;color: #6b6b6b;line-height:1.6;">
                 Questions? Contact us at
                 <a href="mailto:personalizemeprints@gmail.com"
-                  style="color:#d4a843;text-decoration:none;">
+                  style="color: #a67c1a;text-decoration:none;">
                   personalizemeprints@gmail.com
                 </a>.
               </p>
@@ -120,7 +123,7 @@
           {{-- Footer --}}
           <tr>
             <td style="padding:20px 40px;border-top:1px solid rgba(255,255,255,0.06);text-align:center;">
-              <p style="margin:0;font-size:11px;color:#444;">
+              <p style="margin:0;font-size:11px;color: #444444;">
                 &copy; {{ date('Y') }} Personalize Me Prints. All rights reserved.
               </p>
             </td>

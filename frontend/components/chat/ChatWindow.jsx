@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
+import { useScrollToLatest } from '@/lib/useScrollToLatest';
 
 const isRecentlySeen = (ts) => ts && Date.now() - new Date(ts).getTime() < 120_000;
 
@@ -14,7 +15,7 @@ const dateLabel = (ts) => {
   return d.toLocaleDateString('en-PH', { weekday: 'long', month: 'long', day: 'numeric' });
 };
 
-const ChatWindow = ({ activeConversation, messages, user, isLoading, isAdmin, onStartChat, isSending, isLoadingMessages, isLoadingConversations, addToCart, onlineUsers = new Set(), typingUsers = {} }) => {
+const ChatWindow = ({ activeConversation, messages, user, isLoading, isAdmin, onStartChat, isSending, isLoadingMessages, isLoadingConversations, addToCart, onlineUsers = new Set(), typingUsers = {}, onApproveProof, onRequestChanges, proofActionState }) => {
   const scrollRef = useRef(null);
   const [lightboxUrl, setLightboxUrl] = useState('');
   const [addedToCart, setAddedToCart] = useState({});
@@ -23,11 +24,9 @@ const ChatWindow = ({ activeConversation, messages, user, isLoading, isAdmin, on
     .filter(([uid]) => uid !== String(user?.id || user?._id || ''))
     .map(([, name]) => name);
 
-  useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
-  }, [messages, typingNames.length]);
+  // Also keyed on the active conversation: switching threads has to land at the newest message, not
+  // wherever the previous thread happened to be scrolled to.
+  useScrollToLatest(scrollRef, [messages, typingNames.length, activeConversation?._id]);
 
   if (!activeConversation) {
     if (isLoadingConversations) {
@@ -121,6 +120,93 @@ const ChatWindow = ({ activeConversation, messages, user, isLoading, isAdmin, on
     const myId = String(user?.id || user?._id || '');
     const isMe = msg.sender_id === myId;
     const msgKey = msg._id || msg.id || `msg-${idx}`;
+
+    // A design order opening a thread. The designer needs to know WHICH order is being discussed
+    // before anything else - a wall of "can you make the logo bigger" with no reference is how the
+    // wrong artwork gets revised.
+    if (msg.type === 'order_reference' && msg.metadata) {
+      const m = msg.metadata;
+      return (
+        <div key={msgKey} style={{ display: 'flex', justifyContent: isMe ? 'flex-end' : 'flex-start', padding: '4px 12px' }}>
+          <div className="quotation-card">
+            <div className="quotation-header">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#d4a843" strokeWidth="2.5"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/></svg>
+              <span className="quotation-tag">Design order</span>
+            </div>
+            {/* The same card is read by both sides, so the destination follows the reader. Sending the
+                shop to the customer's order history showed them a page built for someone else. */}
+            <a href={`${isAdmin ? '/dashboard/business/orders' : '/shop/orders-history'}?order=${m.orderId || ''}`} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none', color: 'inherit', cursor: 'pointer' }}>
+              <div className="quotation-body">
+                <div className="quotation-product" style={{ margin: 0 }}>{m.orderNo || 'Order'}</div>
+                {m.products && <div style={{ fontSize: '0.72rem', color: '#9ca3af' }}>{m.products}</div>}
+              </div>
+            </a>
+            {m.brief && (
+              <div style={{ padding: '2px 12px 6px', fontSize: '0.8rem', color: '#4b5563', lineHeight: 1.5 }}>
+                <span style={{ fontWeight: 700, color: '#6b7280' }}>Brief: </span>{m.brief}
+              </div>
+            )}
+            {msg.body && <div style={{ padding: '2px 12px 6px', fontSize: '0.82rem', color: '#4b5563' }}>{msg.body}</div>}
+
+            {/* The proof is already on screen here, so the decision belongs here too - sending the
+                customer to another page to press a button they could press now is friction with
+                nothing bought. The endpoint checks the order is theirs whichever surface calls it,
+                so the record is identical. */}
+            {m.kind === 'proof_ready' && !isAdmin && !isMe && (
+              <div style={{ padding: '2px 12px 10px' }}>
+                {Array.isArray(m.proofs) && m.proofs.length > 0 && (
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
+                    {m.proofs.slice(0, 6).map((u, n) => (
+                      <a key={n} href={u} target="_blank" rel="noopener noreferrer"
+                        style={{ width: 46, height: 46, borderRadius: 6, overflow: 'hidden', border: '1px solid #e5e7eb', background: '#000', display: 'block' }}>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={/\.(mp4|webm|mov|m4v|ogg)(\?|$)/i.test(u) ? u.replace(/\.(mp4|webm|mov|m4v|ogg)(\?|$)/i, '.jpg$2') : u}
+                          alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      </a>
+                    ))}
+                  </div>
+                )}
+                {proofActionState?.[m.orderId] === 'done' ? (
+                  <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#166534' }}>Approved - thank you.</div>
+                ) : (
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button type="button" disabled={proofActionState?.[m.orderId] === 'busy'}
+                      onClick={() => onApproveProof?.(m)}
+                      style={{ flex: 1, padding: '7px', borderRadius: 8, border: 'none', background: '#d4a843', color: '#000', fontSize: '0.76rem', fontWeight: 700, cursor: 'pointer' }}>
+                      {proofActionState?.[m.orderId] === 'busy' ? 'Approving...' : 'Approve'}
+                    </button>
+                    <button type="button" onClick={() => onRequestChanges?.(m)}
+                      style={{ flex: 1, padding: '7px', borderRadius: 8, border: '1px solid #e5e7eb', background: 'transparent', color: '#6b7280', fontSize: '0.76rem', fontWeight: 600, cursor: 'pointer' }}>
+                      Request changes
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Payment stays in the order modal: it needs the full breakdown - subtotal, shipping, the
+                design fee already paid, deposit against full - and "what was I shown when I paid" is
+                the question every payment dispute turns on. One tap away, not reproduced here. */}
+            {m.kind === 'deposit_due' && !isAdmin && (
+              <div style={{ padding: '2px 12px 10px' }}>
+                <div style={{ fontSize: '0.78rem', color: '#4b5563', lineHeight: 1.6, marginBottom: 8 }}>
+                  {m.dueNow != null && <div>Due now: <strong style={{ color: '#111' }}>{m.dueNow}</strong>{m.dueFull ? <> or pay in full <strong style={{ color: '#111' }}>{m.dueFull}</strong></> : null}</div>}
+                  {m.heldUntil && <div style={{ color: '#6b7280' }}>Held until {m.heldUntil}</div>}
+                </div>
+                <a href={`/shop/orders-history?order=${m.orderId || ''}`}
+                  style={{ display: 'block', textAlign: 'center', padding: '7px', borderRadius: 8, background: '#d4a843', color: '#000', fontSize: '0.76rem', fontWeight: 700, textDecoration: 'none' }}>
+                  Pay now
+                </a>
+              </div>
+            )}
+
+            <div className="quotation-timestamp" style={{ textAlign: isMe ? 'right' : 'left' }}>
+              {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            </div>
+          </div>
+        </div>
+      );
+    }
 
     if (msg.type === 'inquiry' && msg.metadata) {
       const m = msg.metadata;

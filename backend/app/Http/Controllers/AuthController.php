@@ -97,6 +97,21 @@ class AuthController extends Controller
                 'role'          => 'customer', // All new users are customers by default
                 'verification_code' => $hashedCode,
                 'verification_code_expires_at' => now()->addMinutes(10)->toDateTimeString(),
+
+                // PROOF OF CONSENT. A ticked box on its own proves nothing months later - the terms
+                // may well have been edited since. So the account keeps the version, the moment, and
+                // a copy of the text exactly as it read on screen. A later edit can never rewrite
+                // what this person agreed to, which is the whole point of a clickwrap record.
+                'acceptedTermsVersion'  => (int) $request->input('acceptedTermsVersion', 1),
+                'acceptedTermsAt'       => $request->input('acceptedTermsAt') ?: now()->toISOString(),
+                'acceptedTermsSnapshot' => is_array($request->input('acceptedTermsSnapshot'))
+                    ? array_map(fn ($t) => [
+                        'title' => mb_substr(strip_tags((string) ($t['title'] ?? '')), 0, 200),
+                        'body'  => mb_substr(strip_tags((string) ($t['body']  ?? '')), 0, 4000),
+                      ], array_slice($request->input('acceptedTermsSnapshot'), 0, 40))
+                    : null,
+                // Recorded because consent is evidence, and evidence needs to say where it came from.
+                'acceptedTermsIp'       => $request->ip(),
             ]);
 
             // Send the OTP AFTER the HTTP response is flushed. The account already exists at this
@@ -425,13 +440,21 @@ class AuthController extends Controller
                 return $this->errorResponse('Email already verified.', 400);
             }
 
-            // Per-user resend cooldown: 60 seconds minimum between requests
+            // Per-user resend cooldown: 60 seconds minimum between requests.
+            //
+            // This comparison was BACKWARDS. `now()->diffInSeconds($lastSent, false)` returns
+            // lastSent MINUS now, so an old code gives a large NEGATIVE number - and every negative
+            // number is below 60. The effect: resend was refused for anyone whose code was more than
+            // a minute old, which is precisely everyone who actually needs a new one. Nobody who
+            // failed to verify straight away could ever get another code, and the screen still said
+            // one had been sent.
             if ($user->verification_code_expires_at) {
                 $lastSent = \Carbon\Carbon::parse($user->verification_code_expires_at)
                                 ->subMinutes(10); // code_expires_at = sent_at + 10 min
-                if (\Carbon\Carbon::now()->diffInSeconds($lastSent, false) < 60) {
+                $secondsSince = $lastSent->diffInSeconds(\Carbon\Carbon::now(), false);
+                if ($secondsSince >= 0 && $secondsSince < 60) {
                     return $this->errorResponse(
-                        'Please wait before requesting another code.',
+                        'Please wait ' . (60 - $secondsSince) . ' more seconds before requesting another code.',
                         429
                     );
                 }

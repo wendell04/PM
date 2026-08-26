@@ -10,7 +10,28 @@ const REASON_LABEL = {
   scrap:         'Scrap',
   adjustment:    'Adjustment',
   lost:          'Lost',
+  // Written by QC. Without entries these fell through to the raw key and printed "qc_scrap".
+  qc_scrap:      'QC Scrap',
+  qc_rework:     'QC Rework',
+  production_spoilage: 'Spoilage',
+  reservation_released: 'Reservation Released',
+  restock:       'Restock',
+  return:        'Return',
+  initial:       'Opening Stock',
+  production_reserved: 'Reserved',
 };
+
+// A stray database key must never reach the screen; anything unmapped becomes words.
+function reasonLabel(reason) {
+  if (!reason) return 'Adjustment';
+  return REASON_LABEL[reason] ?? String(reason)
+    .replace(/[_-]+/g, ' ')
+    .replace(/\w/g, c => c.toUpperCase())
+    .replace(/Qc/g, 'QC');
+}
+
+// The rows prefix a minus themselves, so a quantity already stored negative rendered as "--1".
+const outQty = (q) => Math.abs(Number(q) || 0);
 
 function ReasonBadge({ reason }) {
   const colors = {
@@ -21,11 +42,14 @@ function ReasonBadge({ reason }) {
     scrap:         { bg:'#ffedd5', color:'#9a3412', border:'#fed7aa' },
     adjustment:    { bg:'var(--dark2)', color:'var(--gray-light)', border:'var(--border)' },
     lost:          { bg:'var(--dark2)', color:'var(--gray-light)', border:'var(--border)' },
+    qc_scrap:      { bg:'#fee2e2', color:'#991b1b', border:'#fecaca' },
+    qc_rework:     { bg:'#ffedd5', color:'#9a3412', border:'#fed7aa' },
+    production_spoilage: { bg:'#fee2e2', color:'#991b1b', border:'#fecaca' },
   };
   const c = colors[reason] ?? colors.adjustment;
   return (
     <span style={{ ...S.badge, background:c.bg, color:c.color, border:`1px solid ${c.border}`, fontSize:'10px' }}>
-      {REASON_LABEL[reason] ?? reason}
+      {reasonLabel(reason)}
     </span>
   );
 }
@@ -201,7 +225,7 @@ function ByOrderTab({ stockOuts, materials }) {
                                                 {so.matName || mat?.name || '—'}
                                               </td>
                                               <td style={{ padding:'7px 14px', fontSize:'12px', color:'#c62828', fontWeight:600 }}>
-                                                -{so.qty} {mat?.unit ?? 'pcs'}
+                                                -{outQty(so.qty)} {mat?.unit ?? 'pcs'}
                                               </td>
                                               <td style={{ padding:'7px 14px', fontSize:'12px', color:'var(--gray)' }}>
                                                 {so.remainingQty} {mat?.unit ?? 'pcs'}
@@ -265,7 +289,7 @@ function ByOrderTab({ stockOuts, materials }) {
                   >
                     <td style={{ ...S.td, color:'var(--gray)', fontSize:'12px', whiteSpace:'nowrap' }}>{so.date}</td>
                     <td style={{ ...S.td, fontWeight:500 }}>{so.matName || mat?.name || '—'}</td>
-                    <td style={{ ...S.td, color:'#c62828', fontWeight:600 }}>-{so.qty} {mat?.unit ?? 'pcs'}</td>
+                    <td style={{ ...S.td, color:'#c62828', fontWeight:600 }}>-{outQty(so.qty)} {mat?.unit ?? 'pcs'}</td>
                     <td style={{ ...S.td, fontFamily:'monospace', fontSize:'12px' }}>₱{so.unitCost.toFixed(2)}</td>
                     <td style={{ ...S.td }}><ReasonBadge reason={so.reason} /></td>
                     <td style={{ ...S.td, color:'var(--gray)', fontSize:'12px', maxWidth:'200px', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{so.notes || '—'}</td>
@@ -365,7 +389,7 @@ function ByMaterialTab({ stockOuts, materials }) {
                         {g.stockQty} {g.unit}
                       </td>
                       <td style={{ ...S.td, textAlign:'center', color:'#c62828', fontWeight:600, fontFamily:'monospace', fontSize:'12px' }}>
-                        -{g.totalQty} {g.unit}
+                        -{outQty(g.totalQty)} {g.unit}
                       </td>
                       <td style={{ ...S.td, textAlign:'center', fontWeight:600, color:'#166534', fontFamily:'monospace', fontSize:'12px' }}>
                         ₱{g.totalCost.toLocaleString('en-PH', { minimumFractionDigits:2 })}
@@ -394,7 +418,7 @@ function ByMaterialTab({ stockOuts, materials }) {
                                   <td style={{ padding:'7px 14px', fontSize:'11px', fontFamily:'monospace', color:'var(--gray-light)' }}>{so.ref}</td>
                                   <td style={{ padding:'7px 14px', fontSize:'12px', color:'var(--gray-light)' }}>{so.productName || '—'}</td>
                                   <td style={{ padding:'7px 14px', fontSize:'12px', color:'var(--gray)' }}>{so.customerName || '—'}</td>
-                                  <td style={{ padding:'7px 14px', fontSize:'12px', color:'#c62828', fontWeight:600 }}>-{so.qty} {g.unit}</td>
+                                  <td style={{ padding:'7px 14px', fontSize:'12px', color:'#c62828', fontWeight:600 }}>-{outQty(so.qty)} {g.unit}</td>
                                   <td style={{ padding:'7px 14px', fontSize:'12px', fontFamily:'monospace', color:'#166534' }}>₱{so.totalCost.toFixed(2)}</td>
                                   <td style={{ padding:'7px 14px' }}><ReasonBadge reason={so.reason} /></td>
                                 </tr>

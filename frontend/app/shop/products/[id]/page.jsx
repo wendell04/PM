@@ -930,7 +930,10 @@ export default function ProductDetailPage() {
                       </span>
                     </div>
                     <div style={{ marginTop: '0.5rem', height: '4px', background: 'rgba(212,168,67,0.15)', borderRadius: '2px', overflow: 'hidden' }}>
-                      <div style={{ height: '100%', width: `${Math.min(100, (displayQty / LOW) * 100)}%`, background: '#d4a843', borderRadius: '2px', transition: 'width 0.3s' }} />
+                      {/* The bar has to shrink as stock falls. Filling it from displayQty/LOW meant 10 of 10 drew a
+                            FULL gold bar under the words 'Only 10 left', which reads as plenty - the opposite of the
+                            warning it sits inside. Measure against a stocked shelf instead, so a low count looks low. */}
+                        <div style={{ height: '100%', width: `${Math.max(8, Math.min(100, (displayQty / (LOW * 3)) * 100))}%`, background: displayQty <= 3 ? '#dc2626' : '#d4a843', borderRadius: '2px', transition: 'width 0.3s' }} />
                     </div>
                   </div>
                 );

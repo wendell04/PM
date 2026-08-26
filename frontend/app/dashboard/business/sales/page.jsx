@@ -1,14 +1,16 @@
 'use client';
 
 /**
- * SALES MANAGEMENT PAGE
- * Redesigned to match the Orders / Job Orders / Production / QC / Inventory look — uses the SAME
- * inventory-v2 shared components (SummaryCard, SearchBar, PaginationBar, EmptyState, CustomSelect, S)
- * as the Orders module, so the stat cards / toolbar / table / pagination are pixel-consistent.
- * Data logic is unchanged from the previous version; three display bugs were fixed:
- *  - "Downpayment" no longer shows the full amount when an order is fully paid.
- *  - The payment breakdown shows a Shipping line so Subtotal + Shipping = Total reconciles.
- *  - (Profit/Cost is deferred to PLAN A — the cost resolver.)
+ * SALES
+ *
+ * Two views over the same filtered set. The List is transactional - find an order, see how it was
+ * settled. Reports is the management read: what came in, how much of it we kept, and whether that
+ * beats the period before.
+ *
+ * Revenue is measured excluding shipping, which is collected for the courier and is not income.
+ * Cost of goods comes from the Sale collection, where CostResolver has already walked the bill of
+ * materials for each line; the order documents carry no cost, which is why margin was missing here
+ * for so long. Margin is shown only when the two datasets describe the same population.
  */
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -40,7 +42,12 @@ function orderToRow(o) {
   const dp    = Number(o.downPayment ?? 0);
   const bal   = Number(o.balance ?? total);
   const shipping = Number(o.shippingFee ?? 0);
-  const designFee = (o.items || []).reduce((s, i) => s + Number(i.designFee ?? 0), 0);
+  // ONE design fee per order, not one per line. Every requested line carries the same fee for
+  // display, so summing them charged the order twice over: a 2-item request showed P200 and, because
+  // the subtotal is derived by subtraction, quietly moved P100 out of the goods. The order records
+  // what was actually collected - use that, and fall back to the order-level figure.
+  const designFee = Number(o.designFeePaidAmount ?? o.designFee ?? 0)
+    || (o.items || []).reduce((mx, i) => Math.max(mx, Number(i.designFee ?? 0)), 0);
   const isCancelled = (o.orderStatus || '').toLowerCase() === 'cancelled' || o.status === 'cancelled';
   return {
     id,
@@ -75,7 +82,7 @@ function orderToRow(o) {
 }
 
 // ── Expandable detail row ─────────────────────────────────────────────────────
-function OrderExpandRow({ order, colSpan }) {
+function OrderExpandRow({ order, colSpan, cost }) {
   const fullyPaid = order.status !== 'cancelled' && order.balance === 0;
   const partial   = order.downPayment > 0 && order.balance > 0;
   const label = { fontSize: '11px', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: '8px' };
@@ -94,14 +101,31 @@ function OrderExpandRow({ order, colSpan }) {
 
           <div>
             <div style={label}>Order Items</div>
-            {order.items?.length > 0 ? order.items.map((item, i) => (
-              <div key={i} style={{ marginBottom: '6px' }}>
+            {order.items?.length > 0 ? order.items.map((item, i) => {
+              // What this line cost to make, from the stock movements that name this order and
+              // product. Revenue without it is only half the story, and it is the half that flatters.
+              const key      = String(item.productId ?? '') || ('name:' + String(item.productName ?? 'unknown'));
+              const lineCost = cost?.byProduct?.[key];
+              const revenue  = (Number(item.unitPrice) || 0) * (Number(item.quantity) || 0);
+              const profit   = lineCost !== undefined ? revenue - Number(lineCost) : null;
+              return (
+              <div key={i} style={{ marginBottom: '8px' }}>
                 <div style={{ fontSize: '13px', color: 'var(--white)', fontWeight: 600 }}>{item.productName}</div>
                 <div style={{ fontSize: '12px', color: 'var(--gray)' }}>
                   {item.variant ? `${item.variant} × ${item.quantity}` : `× ${item.quantity}`} &middot; {formatPrice(item.unitPrice || 0)} each
                 </div>
+                {profit !== null && (
+                  <div style={{ fontSize: '11.5px', marginTop: '2px', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                    <span style={{ color: 'var(--gray)' }}>cost {formatPrice(lineCost)}</span>
+                    <span style={{ color: profit >= 0 ? 'var(--st-green-fg)' : '#c2410c', fontWeight: 700 }}>
+                      profit {formatPrice(profit)}
+                      {revenue > 0 && ` (${Math.round((profit / revenue) * 100)}%)`}
+                    </span>
+                  </div>
+                )}
               </div>
-            )) : (
+              );
+            }) : (
               <div style={{ fontSize: '13px', color: 'var(--gray)', fontStyle: 'italic' }}>—</div>
             )}
           </div>
@@ -119,6 +143,26 @@ function OrderExpandRow({ order, colSpan }) {
               <span style={{ color: 'var(--gray)', fontWeight: 700 }}>Total</span>
               <span style={{ color: 'var(--gold)', fontWeight: 700 }}>{formatPrice(order.totalPrice)}</span>
             </div>
+
+            {/* Shipping is collected for the courier, so it is never counted as income here. */}
+            {cost?.total !== undefined && (() => {
+              const income = (Number(order.totalPrice) || 0) - (Number(order.shipping) || 0);
+              const gp     = income - Number(cost.total);
+              return (
+                <>
+                  <div style={{ ...line, marginTop: '6px' }}>
+                    <span style={{ color: 'var(--gray)' }}>Cost of goods</span>
+                    <span style={{ color: 'var(--gray-light)' }}>{formatPrice(cost.total)}</span>
+                  </div>
+                  <div style={line}>
+                    <span style={{ color: 'var(--gray)', fontWeight: 700 }}>Gross profit</span>
+                    <span style={{ color: gp >= 0 ? 'var(--st-green-fg)' : '#c2410c', fontWeight: 700 }}>
+                      {formatPrice(gp)}{income > 0 && ` (${Math.round((gp / income) * 100)}%)`}
+                    </span>
+                  </div>
+                </>
+              );
+            })()}
             {order.status === 'cancelled' ? (
               <div style={{ fontSize: '12px', color: 'var(--gray)', marginTop: '6px' }}>Cancelled</div>
             ) : fullyPaid ? (
@@ -153,76 +197,155 @@ function OrderExpandRow({ order, colSpan }) {
   );
 }
 
-// ── Main page ─────────────────────────────────────────────────────────────────
-// ── Reports view (PLAN G) — aggregated analytics over the filtered sales ──────
-function ReportsView({ reports }) {
-  const { revenue, units, orders, aov, bestSellers, byCategory, byPayment, byMonth } = reports;
-  const maxMonthRev = Math.max(1, ...byMonth.map(x => x.revenue));
+// ── Reports view ──────────────────────────────────────────────────────────────
+// A sales report is read for three things: how much came in, how much of it we kept, and whether
+// that is better or worse than last period. Figures are right-aligned tabular numerals so columns
+// scan vertically, and every derived number states its basis in the footnote rather than being
+// dressed up in colour.
 
-  const MiniTable = ({ title, rows, cols }) => (
-    <div style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
-      <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', fontSize: '13px', fontWeight: 700, color: 'var(--white)' }}>{title}</div>
-      <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead><tr>{cols.map((c, i) => <th key={i} style={{ ...S.th, textAlign: i === 0 ? 'left' : 'right' }}>{c.label}</th>)}</tr></thead>
-          <tbody>
-            {rows.length === 0 ? (
-              <tr><td colSpan={cols.length} style={{ padding: '18px', textAlign: 'center', color: 'var(--gray)', fontSize: '13px' }}>No data</td></tr>
-            ) : rows.map((r, i) => (
-              <tr key={i} style={S.tr}>{cols.map((c, j) => <td key={j} style={{ ...S.td, textAlign: j === 0 ? 'left' : 'right' }}>{c.render(r)}</td>)}</tr>
-            ))}
-          </tbody>
-        </table>
+const num = { fontVariantNumeric: 'tabular-nums', fontFeatureSettings: '"tnum"' };
+const pct = (v) => `${(v * 100).toFixed(1)}%`;
+
+/** Period-over-period change, rendered small and muted. Absent when there is no comparable base. */
+function Delta({ current, previous, invert = false }) {
+  if (previous === null || previous === undefined || previous === 0) return null;
+  const change = (current - previous) / Math.abs(previous);
+  if (!isFinite(change)) return null;
+  const up = change >= 0;
+  const good = invert ? !up : up;
+  return (
+    <span style={{ ...num, fontSize: '11px', fontWeight: 600, color: good ? 'var(--st-green-fg)' : 'var(--st-red-fg)' }}>
+      {up ? '▲' : '▼'} {Math.abs(change * 100).toFixed(1)}%
+    </span>
+  );
+}
+
+/** A single headline figure. Deliberately plain: label, value, one line of basis, optional delta. */
+function Metric({ label, value, basis, delta, emphasis = false }) {
+  return (
+    <div style={{ flex: '1 1 170px', minWidth: '150px', padding: '14px 16px', background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '8px', borderTop: emphasis ? '2px solid var(--gold)' : '1px solid var(--border)' }}>
+      <div style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.6px', color: 'var(--gray)' }}>{label}</div>
+      <div style={{ ...num, fontSize: '20px', fontWeight: 700, color: 'var(--white)', margin: '6px 0 3px', lineHeight: 1.1 }}>{value}</div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+        {delta}
+        <span style={{ fontSize: '11px', color: 'var(--gray)' }}>{basis}</span>
       </div>
     </div>
   );
+}
+
+function Panel({ title, note, children }) {
+  return (
+    <div style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
+      <div style={{ padding: '11px 16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12 }}>
+        <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.6px', color: 'var(--white)' }}>{title}</span>
+        {note && <span style={{ fontSize: '11px', color: 'var(--gray)' }}>{note}</span>}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function DataTable({ rows, cols, empty = 'No data in this period' }) {
+  return (
+    <div style={{ overflowX: 'auto' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <thead><tr>{cols.map((c, i) => <th key={i} style={{ ...S.th, textAlign: i === 0 ? 'left' : 'right' }}>{c.label}</th>)}</tr></thead>
+        <tbody>
+          {rows.length === 0 ? (
+            <tr><td colSpan={cols.length} style={{ padding: '20px', textAlign: 'center', color: 'var(--gray)', fontSize: '13px' }}>{empty}</td></tr>
+          ) : rows.map((r, i) => (
+            <tr key={i} style={S.tr}>
+              {cols.map((c, j) => (
+                <td key={j} style={{ ...S.td, ...(j === 0 ? {} : num), textAlign: j === 0 ? 'left' : 'right' }}>{c.render(r)}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function ReportsView({ reports, hasCostData }) {
+  const { revenue, cost, profit, margin, units, orders, aov, bestSellers, byCategory, byPayment, byMonth, prev } = reports;
+  const maxMonth = Math.max(1, ...byMonth.map(x => x.revenue));
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-      <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-        <SummaryCard label="Revenue (filtered)" value={formatPrice(revenue)} sub="Goods + design fee, excl. shipping" color="var(--st-green-fg)" />
-        <SummaryCard label="Orders"             value={orders}              sub="Active in the current filter"     color="var(--st-blue-fg)" />
-        <SummaryCard label="Avg Order Value"    value={formatPrice(aov)}    sub="Revenue / orders"                 color="var(--gold)" />
-        <SummaryCard label="Units Sold"         value={units}               sub="Total item quantity"              color="var(--st-purple-fg)" />
+
+      <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+        <Metric label="Net Revenue" value={formatPrice(revenue)} basis="excl. shipping" emphasis
+          delta={<Delta current={revenue} previous={prev?.revenue} />} />
+        <Metric label="Cost of Goods" value={hasCostData ? formatPrice(cost) : 'n/a'} basis={hasCostData ? 'materials at BOM cost' : 'no cost recorded'} />
+        <Metric label="Gross Profit" value={hasCostData ? formatPrice(profit) : 'n/a'} basis={hasCostData ? 'revenue less cost' : 'needs cost data'}
+          delta={hasCostData ? <Delta current={profit} previous={prev?.profit} /> : null} />
+        <Metric label="Gross Margin" value={hasCostData ? pct(margin) : 'n/a'} basis={hasCostData ? 'profit over revenue' : 'needs cost data'} />
+        <Metric label="Orders" value={orders} basis="excludes cancelled"
+          delta={<Delta current={orders} previous={prev?.orders} />} />
+        <Metric label="Average Order" value={formatPrice(aov)} basis={`${units} unit${units === 1 ? '' : 's'} sold`}
+          delta={<Delta current={aov} previous={prev?.aov} />} />
       </div>
 
-      <div style={S.card}>
-        <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--white)', marginBottom: '12px' }}>Revenue by month</div>
-        {byMonth.length === 0 ? <div style={{ color: 'var(--gray)', fontSize: '13px' }}>No data</div> : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+      <Panel title="Revenue by month" note={byMonth.length ? `${byMonth.length} month${byMonth.length === 1 ? '' : 's'}` : null}>
+        {byMonth.length === 0 ? (
+          <div style={{ padding: '20px', color: 'var(--gray)', fontSize: '13px', textAlign: 'center' }}>No data in this period</div>
+        ) : (
+          <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: '7px' }}>
             {byMonth.map((mo, i) => (
-              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <span style={{ width: '72px', fontSize: '12px', color: 'var(--gray)' }}>{mo.name}</span>
-                <div style={{ flex: 1, height: '18px', background: 'var(--dark)', borderRadius: '4px', overflow: 'hidden' }}>
-                  <div style={{ width: `${(mo.revenue / maxMonthRev) * 100}%`, height: '100%', background: 'var(--st-green-fg)' }} />
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <span style={{ ...num, width: '64px', fontSize: '12px', color: 'var(--gray)', flexShrink: 0 }}>{mo.name}</span>
+                <div style={{ flex: 1, height: '14px', background: 'var(--dark)', borderRadius: '2px', overflow: 'hidden', display: 'flex' }}>
+                  <div title={`Revenue ${formatPrice(mo.revenue)}`} style={{ width: `${(mo.revenue / maxMonth) * 100}%`, background: 'var(--gold)' }} />
                 </div>
-                <span style={{ width: '96px', textAlign: 'right', fontSize: '12px', fontWeight: 600, color: 'var(--white)' }}>{formatPrice(mo.revenue)}</span>
+                <span style={{ ...num, width: '46px', textAlign: 'right', fontSize: '12px', color: 'var(--gray)', flexShrink: 0 }}>{mo.orders}</span>
+                <span style={{ ...num, width: '104px', textAlign: 'right', fontSize: '12px', fontWeight: 600, color: 'var(--white)', flexShrink: 0 }}>{formatPrice(mo.revenue)}</span>
               </div>
             ))}
+            <div style={{ display: 'flex', gap: '12px', marginTop: '2px', fontSize: '10px', color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '.5px' }}>
+              <span style={{ width: '64px', flexShrink: 0 }}>Month</span>
+              <span style={{ flex: 1 }} />
+              <span style={{ width: '46px', textAlign: 'right', flexShrink: 0 }}>Orders</span>
+              <span style={{ width: '104px', textAlign: 'right', flexShrink: 0 }}>Revenue</span>
+            </div>
           </div>
         )}
+      </Panel>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(330px, 1fr))', gap: '14px' }}>
+        <Panel title="Best sellers" note="top 10 by revenue">
+          <DataTable rows={bestSellers} cols={[
+            { label: 'Product', render: r => r.name },
+            { label: 'Units',   render: r => r.qty },
+            { label: 'Revenue', render: r => formatPrice(r.revenue) },
+          ]} />
+        </Panel>
+
+        <Panel title="Category performance">
+          <DataTable rows={byCategory} cols={[
+            { label: 'Category', render: r => r.name },
+            { label: 'Units',    render: r => r.qty },
+            { label: 'Revenue',  render: r => formatPrice(r.revenue) },
+            { label: 'Share',    render: r => revenue > 0 ? pct(r.revenue / revenue) : '—' },
+          ]} />
+        </Panel>
+
+        <Panel title="Settlement status" note="how the revenue is collected">
+          <DataTable rows={byPayment} cols={[
+            { label: 'Status',  render: r => STATUS_LABEL[r.name] || r.name },
+            { label: 'Orders',  render: r => r.count },
+            { label: 'Revenue', render: r => formatPrice(r.revenue) },
+          ]} />
+        </Panel>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '14px' }}>
-        <MiniTable title="Best sellers" rows={bestSellers} cols={[
-          { label: 'Product',  render: r => r.name },
-          { label: 'Qty',      render: r => r.qty },
-          { label: 'Revenue',  render: r => formatPrice(r.revenue) },
-        ]} />
-        <MiniTable title="By category" rows={byCategory} cols={[
-          { label: 'Category', render: r => r.name },
-          { label: 'Qty',      render: r => r.qty },
-          { label: 'Revenue',  render: r => formatPrice(r.revenue) },
-        ]} />
-        <MiniTable title="By payment status" rows={byPayment} cols={[
-          { label: 'Status',   render: r => r.name },
-          { label: 'Orders',   render: r => r.count },
-          { label: 'Revenue',  render: r => formatPrice(r.revenue) },
-        ]} />
-      </div>
-
-      <div style={{ fontSize: '11px', color: 'var(--gray)' }}>
-        Revenue excludes shipping (pass-through to courier). Profit reporting hooks into the Sale.cost pipeline (PLAN A) once cost flows into this view.
+      <div style={{ fontSize: '11px', color: 'var(--gray)', lineHeight: 1.6 }}>
+        Net revenue excludes shipping, which is collected on behalf of the courier and is not income.
+        Cancelled orders are excluded throughout.
+        {hasCostData
+          ? ' Cost of goods is resolved per line from the product bill of materials at the time of sale, so margin reflects what the materials actually cost rather than a list price.'
+          : ' Cost of goods is unavailable for this period, so profit and margin are not shown. Sale records carry cost only from the point the order completes.'}
+        {' '}Comparisons are against the immediately preceding period of the same length.
       </div>
     </div>
   );
@@ -231,6 +354,10 @@ function ReportsView({ reports }) {
 export default function SalesListPage() {
   const { token } = useAuth();
   const [sales, setSales] = useState([]);
+  const [saleLines, setSaleLines] = useState([]);   // Sale collection - carries cost + profit per line
+  // What each order really cost to make, from the stock movements attributed to it. Sale records only
+  // exist for POS sales, so without this every storefront order was revenue with no cost against it.
+  const [costByOrder, setCostByOrder] = useState({});
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -246,10 +373,9 @@ export default function SalesListPage() {
     async function loadData() {
       if (!token) { setError('Unable to load sales. Please refresh or log in again.'); setIsLoading(false); return; }
       setIsLoading(true); setError(null);
+      const auth = { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } };
       try {
-        const res = await fetch(`${API_URL}/api/admin/orders`, {
-          headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
-        });
+        const res = await fetch(`${API_URL}/api/admin/orders`, auth);
         const data = await res.json();
         if (!res.ok) throw new Error(data.message || data.error || 'Failed to load orders');
         const list = Array.isArray(data.data) ? data.data : (Array.isArray(data) ? data : []);
@@ -260,6 +386,21 @@ export default function SalesListPage() {
       } finally {
         setIsLoading(false);
       }
+
+      // Sale records carry the resolved cost of goods per line (CostResolver walks the BOM), which the
+      // order documents do not. Margin reporting reads from here. A failure is non-fatal: the report
+      // still renders revenue, and says plainly that cost data is unavailable.
+      try {
+        const r = await fetch(`${API_URL}/api/admin/sales?limit=10000`, auth);
+        const d = await r.json();
+        setSaleLines(r.ok && Array.isArray(d.data) ? d.data : []);
+      } catch { setSaleLines([]); }
+
+      try {
+        const r = await fetch(`${API_URL}/api/admin/orders/cost-of-goods`, auth);
+        const d = await r.json();
+        setCostByOrder(r.ok && d.data && typeof d.data === 'object' ? d.data : {});
+      } catch { setCostByOrder({}); }
     }
     loadData();
   }, [token]);
@@ -271,6 +412,29 @@ export default function SalesListPage() {
   });
 
   useEffect(() => { setSPage(1); }, [searchQuery, paymentFilter, dateFilter, customDateRange]);
+
+  // Everything the period and the search allow, BEFORE the status filter. The summary cards read from
+  // here: they were computed over ALL sales, so picking January showed an empty table above cards
+  // still reporting the whole year. They cannot read `filteredSales` either - the cards double as the
+  // status filter, and clicking "Paid" would then zero out every other card.
+  const scopedSales = useMemo(() => {
+    return sales.filter(order => {
+      const q = searchQuery.toLowerCase();
+      const matchesSearch = !q
+        || order.customerName?.toLowerCase().includes(q)
+        || order.orderNumber?.toLowerCase().includes(q);
+
+      const orderDate = new Date(order.orderDate);
+      const today = new Date(); today.setHours(0, 0, 0, 0); orderDate.setHours(0, 0, 0, 0);
+      let matchesDate = true;
+      if (dateFilter === 'today') matchesDate = orderDate.getTime() === today.getTime();
+      else if (dateFilter === 'this-week') matchesDate = orderDate >= new Date(today.getTime() - 7 * 864e5);
+      else if (dateFilter === 'this-month') matchesDate = orderDate.getMonth() === today.getMonth() && orderDate.getFullYear() === today.getFullYear();
+      else if (dateFilter === 'custom') matchesDate = orderDate.getFullYear() === customDateRange.year && orderDate.getMonth() >= customDateRange.fromMonth && orderDate.getMonth() <= customDateRange.toMonth;
+
+      return matchesSearch && matchesDate;
+    });
+  }, [sales, searchQuery, dateFilter, customDateRange]);
 
   const filteredSales = useMemo(() => {
     return sales.filter(order => {
@@ -298,10 +462,10 @@ export default function SalesListPage() {
   const pagedSales = filteredSales.slice((sPage - 1) * sRpp, sPage * sRpp);
 
   const m = useMemo(() => {
-    const active    = sales.filter(o => o.status !== 'cancelled');
+    const active    = scopedSales.filter(o => o.status !== 'cancelled');
     const paid      = active.filter(o => o.paymentStatus === 'paid' || o.balance === 0);
     const partial   = active.filter(o => o.downPayment > 0 && o.balance > 0);
-    const cancelled = sales.filter(o => o.status === 'cancelled');
+    const cancelled = scopedSales.filter(o => o.status === 'cancelled');
     const products  = new Set();
     active.forEach(o => o.items?.forEach(i => { if (i.productId) products.add(i.productId); }));
     return {
@@ -311,7 +475,66 @@ export default function SalesListPage() {
       outstanding: active.reduce((s, o) => s + (o.balance || 0), 0),
       topProductsCount: products.size,
     };
-  }, [sales]);
+  }, [scopedSales]);
+
+  // The window the current date filter describes, and the equally long window immediately before it.
+  // "All time" has no comparable base, so it returns nulls and the deltas simply do not render.
+  const periods = useMemo(() => {
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const day = 864e5;
+    let start = null, end = null;
+    if (dateFilter === 'today') { start = new Date(today); end = new Date(today.getTime() + day - 1); }
+    else if (dateFilter === 'this-week') { start = new Date(today.getTime() - 7 * day); end = new Date(today.getTime() + day - 1); }
+    else if (dateFilter === 'this-month') { start = new Date(today.getFullYear(), today.getMonth(), 1); end = new Date(today.getFullYear(), today.getMonth() + 1, 0, 23, 59, 59); }
+    else if (dateFilter === 'custom') {
+      start = new Date(customDateRange.year, customDateRange.fromMonth, 1);
+      end = new Date(customDateRange.year, customDateRange.toMonth + 1, 0, 23, 59, 59);
+    }
+    if (!start || !end) return { start: null, end: null, prevStart: null, prevEnd: null };
+    const span = end.getTime() - start.getTime();
+    return { start, end, prevStart: new Date(start.getTime() - span - 1), prevEnd: new Date(start.getTime() - 1) };
+  }, [dateFilter, customDateRange]);
+
+  // Cost of goods lives on Sale records, not on orders. Aggregating the two together is only honest
+  // when both cover the same population, so margin is withheld while a search or payment filter is
+  // narrowing the order list but not the sale lines.
+  // Real cost for the orders on screen, plus how much of that population it actually covers. A margin
+  // computed over partial coverage is not conservative, it is simply wrong - and wrong in the
+  // flattering direction, which is the worst kind.
+  const orderCost = useMemo(() => {
+    const active = filteredSales.filter(o => o.status !== 'cancelled');
+    let total = 0, covered = 0;
+    for (const o of active) {
+      const c = costByOrder[String(o.id ?? o._id ?? '')];
+      if (c === undefined) continue;
+      // The endpoint returns { total, byProduct } per order, not a bare number. Reading it as a
+      // number gave NaN, fell back to 0, and every order reported zero cost - which is why the
+      // report showed a 100% margin on goods that cost P826 to make.
+      total += Number(c.total) || 0;
+      covered += 1;
+    }
+    return { total: Math.round(total * 100) / 100, covered, population: active.length };
+  }, [filteredSales, costByOrder]);
+
+  const costWindow = useMemo(() => {
+    const inWindow = (d) => {
+      if (!periods.start) return true;
+      const t = new Date(d).getTime();
+      return t >= periods.start.getTime() && t <= periods.end.getTime();
+    };
+    const lines = saleLines.filter(l => l.status !== 'cancelled' && inWindow(l.saleDate ?? l.createdAt));
+    return {
+      cost:   lines.reduce((s, l) => s + Number(l.cost ?? 0), 0),
+      profit: lines.reduce((s, l) => s + Number(l.profit ?? 0), 0),
+      count:  lines.length,
+    };
+  }, [saleLines, periods]);
+
+  // Prefer the order-attributed figure. It is only honest when EVERY active order in the window has
+  // cost recorded; anything less mixes orders that carry cost with orders that do not, which is what
+  // made the margin read far too high.
+  const useOrderCost = orderCost.population > 0 && orderCost.covered === orderCost.population;
+  const hasCostData  = (useOrderCost || costWindow.count > 0) && !searchQuery && !paymentFilter;
 
   // ── Reports aggregation (respects the current search/date/payment filters via filteredSales) ──
   const reports = useMemo(() => {
@@ -321,6 +544,31 @@ export default function SalesListPage() {
     const units   = active.reduce((s, o) => s + (o.quantity || 0), 0);
     const orders  = active.length;
     const aov     = orders > 0 ? revenue / orders : 0;
+    // Prefer the cost attributed to these very orders. `costWindow` reads the Sale collection, which
+    // only the POS writes - against revenue counted from ALL orders, that mismatch showed a margin far
+    // higher than reality, because every storefront order contributed sales with no cost beside them.
+    const cost    = !hasCostData ? 0 : (useOrderCost ? orderCost.total : costWindow.cost);
+    const profit  = !hasCostData ? 0 : (useOrderCost ? Math.round((revenue - orderCost.total) * 100) / 100 : costWindow.profit);
+    const margin  = hasCostData && revenue > 0 ? profit / revenue : 0;
+
+    // Same measures over the preceding window, for the period-over-period deltas.
+    let prev = null;
+    if (periods.prevStart) {
+      const inPrev = sales.filter(o => {
+        if (o.status === 'cancelled') return false;
+        const t = new Date(o.orderDate).getTime();
+        return t >= periods.prevStart.getTime() && t <= periods.prevEnd.getTime();
+      });
+      const pRev = inPrev.reduce((s, o) => s + goods(o), 0);
+      const pProfit = saleLines
+        .filter(l => l.status !== 'cancelled')
+        .filter(l => {
+          const t = new Date(l.saleDate ?? l.createdAt).getTime();
+          return t >= periods.prevStart.getTime() && t <= periods.prevEnd.getTime();
+        })
+        .reduce((s, l) => s + Number(l.profit ?? 0), 0);
+      prev = { revenue: pRev, orders: inPrev.length, aov: inPrev.length ? pRev / inPrev.length : 0, profit: hasCostData ? pProfit : null };
+    }
 
     const agg = (keyer) => {
       const map = {};
@@ -354,24 +602,138 @@ export default function SalesListPage() {
     });
     const byMonth = Object.values(monMap).sort((a, b) => a.name.localeCompare(b.name));
 
-    return { revenue, units, orders, aov, bestSellers, byCategory, byPayment, byMonth };
-  }, [filteredSales]);
+    return { revenue, cost, profit, margin, units, orders, aov, bestSellers, byCategory, byPayment, byMonth, prev };
+  }, [filteredSales, sales, saleLines, periods, hasCostData, costWindow, useOrderCost, orderCost]);
 
-  const exportCsv = () => {
-    const header = ['Order Ref', 'Customer', 'Date', 'Items', 'Qty', 'Subtotal', 'Design Fee', 'Shipping', 'Total', 'Downpayment', 'Balance', 'Status'];
-    const dataRows = filteredSales.map(o => [
-      o.orderNumber, o.customerName, new Date(o.orderDate).toLocaleDateString(),
-      (o.items || []).map(i => `${i.productName} x${i.quantity}`).join('; '),
-      o.quantity, o.subtotal, o.designFee, o.shipping, o.totalPrice, o.downPayment, o.balance, o.status,
-    ]);
-    const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-    const csv = [header, ...dataRows].map(r => r.map(esc).join(',')).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  // ONE ROW PER PRODUCT LINE, not per order. The old export squashed every item into a single
+  // "Custom Mug x10; Canvas Totebag x10" cell with one subtotal, which cannot answer the only
+  // question a sales export exists for: which product actually makes money. Cost comes from the stock
+  // movements attributed to that order and product, so profit here is real rather than a list price.
+  const buildExportRows = () => {
+    const header = [
+      'Order Ref', 'Date', 'Customer', 'Product', 'Variant', 'Qty',
+      'Unit Price', 'Line Revenue', 'Unit Cost', 'Line Cost', 'Line Profit', 'Margin %',
+      'Order Total', 'Design Fee', 'Shipping', 'Payment Status',
+    ];
+
+    const n2 = (v) => Math.round((Number(v) || 0) * 100) / 100;
+
+    const dataRows = [];
+    for (const o of filteredSales) {
+      const entry  = costByOrder[String(o.id ?? o._id ?? '')] ?? null;
+      const byProd = entry?.byProduct ?? {};
+      const items  = o.items || [];
+      // Order-level values belong to the ORDER, not to each of its lines. Repeating them made the
+      // Shipping column sum to P215.78 on a single P107.89 delivery, and the Total to twice the
+      // order. They are written on the first line of each order and left blank on the rest, so every
+      // column in the file adds up to the real figure.
+      let firstLine = true;
+
+      for (const i of items) {
+        const qty       = Number(i.quantity) || 0;
+        const unitPrice = Number(i.unitPrice ?? i.price ?? 0);
+        const revenue   = n2(unitPrice * qty);
+
+        // The stock rows are keyed by productId, falling back to the name they recorded.
+        const key      = String(i.productId ?? '') || ('name:' + String(i.productName ?? 'unknown'));
+        const lineCost = byProd[key] !== undefined ? n2(byProd[key]) : null;
+        const unitCost = lineCost !== null && qty > 0 ? n2(lineCost / qty) : null;
+        const profit   = lineCost !== null ? n2(revenue - lineCost) : null;
+        const margin   = profit !== null && revenue > 0 ? n2((profit / revenue) * 100) : null;
+
+        dataRows.push([
+          o.orderNumber,
+          new Date(o.orderDate).toLocaleDateString(),
+          o.customerName,
+          i.productName ?? '',
+          i.variantName ?? i.variant ?? '',
+          qty,
+          n2(unitPrice),
+          revenue,
+          // Blank rather than 0 when there is no cost recorded. A zero here would read as "free to
+          // make" and quietly inflate every profit figure computed from this file.
+          unitCost ?? '',
+          lineCost ?? '',
+          profit   ?? '',
+          margin   ?? '',
+          firstLine ? n2(o.totalPrice) : '',
+          firstLine ? n2(o.designFee)  : '',
+          firstLine ? n2(o.shipping)   : '',
+          firstLine ? o.status         : '',
+        ]);
+        firstLine = false;
+      }
+    }
+    // A totals line, so the file answers the question without anyone building a formula. Only the
+    // columns meaningful to add appear; averaging a margin column would be wrong, so the overall
+    // margin is derived from the totals instead.
+    const sum = (idx) => dataRows.reduce((t, r) => t + (Number(r[idx]) || 0), 0);
+    const tQty = sum(5), tRev = sum(7), tCost = sum(9), tProfit = sum(10);
+    const totals = [
+      'TOTAL', '', '', '', '', tQty, '', n2(tRev), '', n2(tCost), n2(tProfit),
+      tRev > 0 ? n2((tProfit / tRev) * 100) : '', n2(sum(12)), n2(sum(13)), n2(sum(14)), '',
+    ];
+
+    return { header, dataRows, totals };
+  };
+
+  const download = (blob, filename) => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url; a.download = `sales-report-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.href = url; a.download = filename;
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  const exportCsv = () => {
+    const { header, dataRows, totals } = buildExportRows();
+    const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const csv = [header, ...dataRows, totals].map(r => r.map(esc).join(',')).join(String.fromCharCode(10));
+    download(new Blob([csv], { type: 'text/csv;charset=utf-8;' }),
+      `sales-report-${new Date().toISOString().slice(0, 10)}.csv`);
+  };
+
+  /**
+   * Excel export.
+   *
+   * CSV is plain text and cannot carry colour, so highlighting has to live in a real spreadsheet.
+   * This writes an HTML table with inline styles, which Excel opens natively and renders with
+   * formatting - no spreadsheet library added to the bundle for one report.
+   *
+   * Excel may warn that the extension does not match the format when opening. That is expected and
+   * the file is sound; the alternative was a dependency.
+   */
+  const exportExcel = () => {
+    const { header, dataRows, totals } = buildExportRows();
+    const esc = (v) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+    // Profit is the column worth scanning, so it is the one coloured - graded by MARGIN rather than
+    // amount, since a big number on a big order is not the same thing as a good one.
+    const profitStyle = (row) => {
+      const margin = Number(row[11]);
+      if (!Number.isFinite(margin)) return '';
+      if (margin >= 50) return 'background:#d9ead3;color:#0b5c25;font-weight:bold;';
+      if (margin >= 25) return 'background:#fff2cc;color:#7a5c00;font-weight:bold;';
+      return 'background:#f9d5d3;color:#8c1d18;font-weight:bold;';
+    };
+
+    const th = 'background:#1a1a1a;color:#ffffff;font-weight:bold;padding:6px;border:1px solid #444;';
+    const td = 'padding:5px;border:1px solid #ddd;';
+
+    const body = dataRows.map(r => '<tr>' + r.map((c, i) =>
+      `<td style="${td}${i === 10 ? profitStyle(r) : ''}">${esc(c)}</td>`).join('') + '</tr>').join('');
+
+    const foot = '<tr>' + totals.map(c =>
+      `<td style="${td}background:#f0f0f0;font-weight:bold;border-top:2px solid #333;">${esc(c)}</td>`).join('') + '</tr>';
+
+    const html = `<html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="utf-8"></head><body>
+      <table style="border-collapse:collapse;font-family:Calibri,sans-serif;font-size:11pt">
+        <thead><tr>${header.map(h => `<th style="${th}">${esc(h)}</th>`).join('')}</tr></thead>
+        <tbody>${body}${foot}</tbody>
+      </table></body></html>`;
+
+    download(new Blob([html], { type: 'application/vnd.ms-excel;charset=utf-8;' }),
+      `sales-report-${new Date().toISOString().slice(0, 10)}.xls`);
   };
 
   const FILTER_CARDS = [
@@ -387,10 +749,22 @@ export default function SalesListPage() {
 
   return (
     <ErrorBoundary>
-      <div style={{ padding: '1.5rem', maxWidth: '1200px', margin: '0 auto' }}>
+      <div style={S.page}>
 
-        {/* Filter stat cards */}
-        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginBottom: '12px' }}>
+        {/* Money first, then the status counts that also act as filters. Two rows rather than eight
+            equal cards, so the eye lands on revenue instead of scanning a wall of numbers. */}
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '10px' }}>
+          <SummaryCard label="Total Revenue"      value={formatPrice(m.revenue)}           sub="Excludes shipping" accent />
+          <SummaryCard label="Outstanding"        value={formatPrice(m.outstanding)}       sub="Unpaid balances"   color={m.outstanding > 0 ? 'var(--gold)' : undefined} />
+          {/* "Owed to courier" claimed the shop owes exactly this. It does not: the customer was charged
+              an ESTIMATE at checkout, and what the courier actually bills on the day will differ. What is
+              true is that this money came in for delivery and is not income, which is why Total Revenue
+              excludes it. Under Courier Booked this is zero - the rider collects from the recipient. */}
+          <SummaryCard label="Shipping Collected" value={formatPrice(m.shippingCollected)} sub="Held for delivery, not income" color="var(--st-blue-fg)" />
+          <SummaryCard label="Products Sold"      value={m.topProductsCount}               sub="Distinct products" color="var(--st-purple-fg)" />
+        </div>
+
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '14px' }}>
           {FILTER_CARDS.map(c => (
             <div key={c.id || 'all'} onClick={() => { setPaymentFilter(c.id); setSPage(1); }} style={{ cursor: 'pointer', flex: '1', minWidth: '140px' }}>
               <SummaryCard label={c.label} value={c.value}
@@ -398,14 +772,6 @@ export default function SalesListPage() {
                 color={paymentFilter === c.id ? 'var(--gold)' : (c.color || undefined)} />
             </div>
           ))}
-        </div>
-
-        {/* Analytics cards */}
-        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginBottom: '14px' }}>
-          <SummaryCard label="Total Revenue"       value={formatPrice(m.revenue)}           sub="Goods + design fee, excl. shipping" color="var(--st-green-fg)" />
-          <SummaryCard label="Shipping Collected"   value={formatPrice(m.shippingCollected)} sub="Pass-through to courier"            color="var(--st-blue-fg)" />
-          <SummaryCard label="Outstanding Balance"  value={formatPrice(m.outstanding)}       sub="Total unpaid balance"               color="var(--gold)" />
-          <SummaryCard label="Top Products"         value={m.topProductsCount}               sub="Distinct products sold"             color="var(--st-purple-fg)" />
         </div>
 
         {error && <div style={{ ...S.note, background: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b', marginBottom: '10px' }}>{error}</div>}
@@ -442,9 +808,15 @@ export default function SalesListPage() {
                 </button>
               ))}
             </div>
+            {/* Two formats because they answer different needs: CSV is the portable one that any
+                tool can read, Excel is the one a person opens and looks at. */}
             <button type="button" onClick={exportCsv}
               style={{ padding: '6px 12px', fontSize: '12px', fontWeight: 600, borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--dark)', color: 'var(--white)', cursor: 'pointer', whiteSpace: 'nowrap' }}>
               Export CSV
+            </button>
+            <button type="button" onClick={exportExcel} title="Same data, with the profit column colour-coded by margin"
+              style={{ padding: '6px 12px', fontSize: '12px', fontWeight: 600, borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--dark)', color: 'var(--white)', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+              Export Excel
             </button>
             <span style={{ fontSize: '12px', color: 'var(--gray)', whiteSpace: 'nowrap' }}>{filteredSales.length} sale{filteredSales.length !== 1 ? 's' : ''}</span>
           </div>
@@ -458,12 +830,19 @@ export default function SalesListPage() {
               <thead>
                 <tr>
                   {TH('', 0)}{TH('Order Ref', 1)}{TH('Customer', 2)}{TH('Items', 3, true)}
-                  {TH('Date', 4)}{TH('Total', 5, true)}{TH('Downpayment', 6, true)}{TH('Balance', 7, true)}{TH('Status', 8, true)}
+                  {TH('Date', 4)}{TH('Total', 5, true)}{TH('Paid', 6, true)}{TH('Balance', 7, true)}{TH('Status', 8, true)}
                 </tr>
               </thead>
               <tbody>
                 {isLoading ? (
-                  <tr><td colSpan={9} style={{ padding: '40px', textAlign: 'center', color: 'var(--gray)', fontSize: '13px' }}>Loading sales…</td></tr>
+                  <>
+                    <style>{`@keyframes pmPulse { 0%,100%{opacity:1} 50%{opacity:.5} }`}</style>
+                    {[0, 1, 2, 3, 4].map(r => (
+                      <tr key={`sk${r}`}>{Array.from({ length: 9 }).map((_, c) => (
+                        <td key={c} style={S.td}><div style={{ height: 12, borderRadius: 4, background: 'var(--dark2)', animation: 'pmPulse 1.4s ease-in-out infinite', width: c === 0 ? '16px' : c === 2 ? '80%' : '55%' }} /></td>
+                      ))}</tr>
+                    ))}
+                  </>
                 ) : filteredSales.length === 0 ? (
                   <tr><td colSpan={9}><EmptyState icon={ICONS.pkg} message={searchQuery || paymentFilter ? 'No sales found' : 'No sales records yet'} sub={searchQuery || paymentFilter ? 'Try adjusting your search or filter.' : 'Sales appear here once orders are created.'} /></td></tr>
                 ) : pagedSales.map(order => {
@@ -493,8 +872,17 @@ export default function SalesListPage() {
                         <td style={{ ...S.td, color: 'var(--gray)' }}>{new Date(order.orderDate).toLocaleDateString()}</td>
                         <td style={{ ...S.td, textAlign: 'center', fontWeight: 700, color: 'var(--gold)' }}>{formatPrice(order.totalPrice)}</td>
                         <td style={{ ...S.td, textAlign: 'center' }}>
+                          {/* The header said "Downpayment" while the cell said "Paid in full" - a word
+                              where a figure belongs, under a heading it no longer matched. The column
+                              answers one question, how much has been received, so it shows that
+                              amount and lets the Balance beside it say what is left. */}
                           {cancelled ? <span style={{ color: 'var(--gray)' }}>—</span>
-                            : fullyPaid ? <span style={{ color: 'var(--st-green-fg)', fontWeight: 600 }}>Paid in full</span>
+                            : fullyPaid ? (
+                              <>
+                                <span style={{ fontWeight: 700, color: 'var(--st-green-fg)' }}>{formatPrice(order.totalPrice)}</span>
+                                <div style={{ fontSize: '11px', color: 'var(--st-green-fg)' }}>in full</div>
+                              </>
+                            )
                             : partial ? (
                               <>
                                 <span style={{ fontWeight: 600, color: 'var(--st-green-fg)' }}>{formatPrice(order.downPayment)}</span>
@@ -509,7 +897,7 @@ export default function SalesListPage() {
                         </td>
                         <td style={{ ...S.td, textAlign: 'center' }}><StatusPill status={order.status} /></td>
                       </tr>
-                      {isExpanded && <OrderExpandRow order={order} colSpan={9} />}
+                      {isExpanded && <OrderExpandRow order={order} colSpan={9} cost={costByOrder[String(order.id ?? order._id ?? "")]} />}
                     </React.Fragment>
                   );
                 })}
@@ -523,7 +911,7 @@ export default function SalesListPage() {
         )}
         </>)}
 
-        {view === 'reports' && !isLoading && <ReportsView reports={reports} />}
+        {view === 'reports' && !isLoading && <ReportsView reports={reports} hasCostData={hasCostData} />}
       </div>
     </ErrorBoundary>
   );

@@ -62,7 +62,10 @@ class OrderStatus
             self::FOR_QC             => [self::READY_FOR_DELIVERY, self::FOR_DELIVERY, self::IN_PRODUCTION],
             self::READY_FOR_DELIVERY => [self::FOR_DELIVERY, self::CANCELLED],
             self::FOR_DELIVERY       => [self::DELIVERED, self::RETURNED],
-            self::DELIVERED          => [],
+            // A delivered order can still come back - damaged, wrong item, or refused on the
+            // doorstep after signing. Leaving this empty meant the only way to record that was to
+            // leave the order looking successfully delivered.
+            self::DELIVERED          => [self::RETURNED],
             self::CANCELLED          => [],
             self::RETURNED           => [],
         ];

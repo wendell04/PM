@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useMemo, useRef, useEffect } from 'react';
-import { getCountries, getCountryCallingCode, parsePhoneNumberFromString, AsYouType } from 'libphonenumber-js';
+import { getCountries, getCountryCallingCode, parsePhoneNumberFromString, AsYouType, getExampleNumber } from 'libphonenumber-js';
+import phoneExamples from 'libphonenumber-js/examples.mobile.json';
 import * as Flags from 'country-flag-icons/react/3x2';
 
 /** Inline SVG flag (no image request → unaffected by CSP, and renders on every OS unlike emoji). */
@@ -66,10 +67,17 @@ export default function PhoneInput({ value = '', onChange, error, defaultCountry
   };
 
   const handleNumber = (raw) => {
-    // Cap to the ITU E.164 maximum (15 digits total incl. the country code), so no country's
-    // field can accept an absurd length. Per-country exact validity is still enforced by
-    // isValidPhone on submit.
-    const maxNational = Math.max(4, 15 - getCountryCallingCode(country).length);
+    // Cap to the SELECTED COUNTRY's own length, taken from the library's example number - PH is 10
+    // digits, Singapore 8. The old cap was the generic E.164 ceiling (15 minus the country code), so
+    // a Philippine field happily accepted 13 digits and only complained on submit. A field that lets
+    // you type an impossible number and then scolds you is worse than one that cannot.
+    // Falls back to the E.164 ceiling for any country with no example in the metadata.
+    const e164Max = Math.max(4, 15 - getCountryCallingCode(country).length);
+    let maxNational = e164Max;
+    try {
+      const example = getExampleNumber(country, phoneExamples);
+      if (example?.nationalNumber) maxNational = example.nationalNumber.length;
+    } catch { /* keep the E.164 ceiling */ }
     const digits = raw.replace(/\D/g, '').slice(0, maxNational);
     // Format as the user types, using the selected country's own rules.
     const pretty = new AsYouType(country).input(digits);

@@ -6,7 +6,7 @@ import { useEffect } from 'react';
  * Full-screen image preview. Pass a url to open; onClose clears it. Backdrop-click and Esc
  * close it. Used for design-file previews so an image opens in place instead of a new tab.
  */
-export default function ImageLightbox({ url, onClose }) {
+export default function ImageLightbox({ url, onClose, kind }) {
   useEffect(() => {
     if (!url) return;
     const onKey = (e) => { if (e.key === 'Escape') onClose(); };
@@ -33,13 +33,27 @@ export default function ImageLightbox({ url, onClose }) {
           <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
         </svg>
       </button>
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={url}
-        alt="Design preview"
-        onClick={(e) => e.stopPropagation()}
-        style={{ maxWidth: '92vw', maxHeight: '88vh', objectFit: 'contain', borderRadius: 8, boxShadow: '0 20px 60px rgba(0,0,0,0.5)' }}
-      />
+      {/* Video proofs open here too, so a clip is reviewed at a size worth judging rather than in a
+          thumbnail. Detected from the URL, or forced with kind="video" for blob URLs, which carry no
+          extension to go on. */}
+      {(kind === 'video' || /\.(mp4|webm|mov|m4v|ogg)(\?|$)/i.test(url)) ? (
+        <video
+          src={url}
+          controls
+          autoPlay
+          playsInline
+          onClick={(e) => e.stopPropagation()}
+          style={{ maxWidth: '92vw', maxHeight: '88vh', borderRadius: 8, background: '#000', boxShadow: '0 20px 60px rgba(0,0,0,0.5)' }}
+        />
+      ) : (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={url}
+          alt="Design preview"
+          onClick={(e) => e.stopPropagation()}
+          style={{ maxWidth: '92vw', maxHeight: '88vh', objectFit: 'contain', borderRadius: 8, boxShadow: '0 20px 60px rgba(0,0,0,0.5)' }}
+        />
+      )}
     </div>
   );
 }

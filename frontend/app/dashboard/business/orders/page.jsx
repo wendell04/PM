@@ -3,11 +3,19 @@
 import ErrorBoundary from '../../../../components/ErrorBoundary';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { fetchAllOrdersNew, updateJobOrderStatus, deleteOrder as deleteOrderApi } from '@/lib/ordersApi';
+import { fetchAllOrdersNew, deleteOrder as deleteOrderApi } from '@/lib/ordersApi';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
-import { S, ICONS, SearchBar, SummaryCard, PaginationBar, EmptyState, usePagination, CustomSelect } from '../inventory-v2/shared';
+import { remainingDue, depositDue, paidSoFar, orderTotal } from '@/lib/orderBalance';
+import { S, ICONS, SearchBar, SummaryCard, PaginationBar, EmptyState, usePagination, CustomSelect, ConfirmModal } from '../inventory-v2/shared';
+import { DEFAULT_CUSTOM_ORDER_TERMS } from '@/lib/customOrderTerms';
+import { orderNo } from '@/lib/orderNumber';
+import { deliveryRisk, joRisk, RISK_STYLE } from '@/lib/deliveryRisk';
+import { fetchJobOrders, updateJobOrder } from '@/lib/jobOrderApi';
+import { JobOrderStatusBadge, DesignPreview, designUrl, joDocId, fmtJODate } from '@/components/dashboard/JobOrderBits';
 import { getStatusBadge } from '@/lib/utils/orderHelpers';
 import ImageLightbox from '@/components/shop/ImageLightbox';
+import ProofGallery from '@/components/shop/ProofGallery';
+import useLockBodyScroll from '@/lib/useLockBodyScroll';
 import { normalizeStatus, statusLabel, ORDER_STATUS_ORDER } from '@/lib/orderStatus';
 
 const API_URL    = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
@@ -98,6 +106,7 @@ function InfoRow({ label, value, mono }) {
 // ── Modal shell ───────────────────────────────────────────────────────────────
 
 function Modal({ children, onClose, maxWidth = 480, overflow = 'auto' }) {
+  useLockBodyScroll(true);
   return (
     <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.35)', zIndex:1000,
       display:'flex', alignItems:'center', justifyContent:'center', padding:'16px' }}>
@@ -137,7 +146,11 @@ function ModalFooter({ children }) {
 
 function PaymentModal({ order, onClose, onSuccess }) {
   const { token } = useAuth();
-  const [amount,      setAmount]      = useState('');
+  // Prefilled with what is actually left to pay. An empty box next to a wrong "Balance P0.00" is what
+  // led to the total being typed in and the design fee being collected twice.
+  const owed    = remainingDue(order);
+  const deposit = depositDue(order);
+  const [amount,      setAmount]      = useState(owed > 0 ? String(owed.toFixed(2)) : '');
   const [method,      setMethod]      = useState('cash');
   const [note,        setNote]        = useState('');
   const [error,       setError]       = useState('');
@@ -146,6 +159,12 @@ function PaymentModal({ order, onClose, onSuccess }) {
   const handleSubmit = async () => {
     const amt = parseFloat(amount);
     if (!amount || isNaN(amt) || amt <= 0) { setError('Enter a valid amount.'); return; }
+    // Overpayment is silently absorbed by the backend - the order reads as paid and the difference
+    // owed back to the customer exists nowhere. Refuse it here rather than create an invisible debt.
+    if (owed > 0 && amt > owed + 0.01) {
+      setError(`That is more than the P${owed.toLocaleString('en-PH', { minimumFractionDigits: 2 })} still owed.`);
+      return;
+    }
     setSubmitting(true);
     setError('');
     try {
@@ -174,20 +193,37 @@ function PaymentModal({ order, onClose, onSuccess }) {
 
       <div style={{ ...S.noteInfo, marginBottom:'16px' }}>
         <div style={{ fontWeight:600, marginBottom:'4px' }}>{order.customerName}</div>
-        <div style={{ display:'flex', gap:'20px', fontSize:'12px' }}>
-          <span>Total: <strong>₱{fmt(order.totalAmount ?? order.totalPrice)}</strong></span>
-          <span>Balance: <strong>₱{fmt(order.balance)}</strong></span>
+        <div style={{ display:'flex', gap:'16px', fontSize:'12px', flexWrap:'wrap' }}>
+          <span>Total: <strong>₱{fmt(orderTotal(order))}</strong></span>
+          <span>Paid: <strong>₱{fmt(paidSoFar(order))}</strong></span>
+          <span style={{ color: owed > 0 ? '#c2410c' : '#166534' }}>
+            Remaining: <strong>₱{fmt(owed)}</strong>
+          </span>
         </div>
       </div>
 
       <div style={S.col}>
         <div>
           <div style={S.label}>Amount *</div>
-          <input type="number" min="0.01" step="0.01" value={amount}
+          <input type="number" min="0.01" step="0.01" max={owed > 0 ? owed : undefined} value={amount}
             onChange={e => { setAmount(e.target.value); setError(''); }}
             onKeyDown={e => ['e','E','+','-'].includes(e.key) && e.preventDefault()}
             placeholder="0.00"
             style={{ ...S.input, marginTop:'4px', ...(error ? { border:'1px solid #e05252' } : {}) }} />
+          {owed > 0 && (
+            <div style={{ display:'flex', gap:'6px', marginTop:'6px' }}>
+              <button type="button" onClick={() => { setAmount(owed.toFixed(2)); setError(''); }}
+                style={{ ...S.btnSmGhost, flex:1, justifyContent:'center' }}>
+                Full ₱{fmt(owed)}
+              </button>
+              {deposit > 0 && deposit < owed && (
+                <button type="button" onClick={() => { setAmount(deposit.toFixed(2)); setError(''); }}
+                  style={{ ...S.btnSmGhost, flex:1, justifyContent:'center' }}>
+                  {order.downpaymentPercent}% ₱{fmt(deposit)}
+                </button>
+              )}
+            </div>
+          )}
           {error && <div style={S.errText}>{error}</div>}
         </div>
         <div>
@@ -248,7 +284,7 @@ function ArchiveModal({ orderId, onClose, onArchived }) {
       <p style={{ fontSize:'13px', color:'var(--gray-light)', lineHeight:1.6 }}>
         Archive order{' '}
         <span style={{ fontFamily:'monospace', fontWeight:700, color:'#c2410c' }}>
-          #{String(orderId).slice(-8).toUpperCase()}
+          {orderNo(orderId)}
         </span>?{' '}
         The order will be hidden but kept for records. You can restore it later via the Archived filter.
       </p>
@@ -265,11 +301,32 @@ function ArchiveModal({ orderId, onClose, onArchived }) {
 
 // ── JO Queuing Modal ──────────────────────────────────────────────────────────
 
+// Priority queue of REAL job orders. It used to infer one job order per order from the order list,
+// which broke as soon as a mixed order produced several, and its Start button posted the human code
+// ("JOB-001") to an endpoint keyed by document id - a silent 404 every time.
 function JOQueueModal({ orders, token, onClose, onJOUpdated, onPrintJO }) {
   const today = new Date(); today.setHours(0,0,0,0);
+  const [jos, setJos] = useState([]);
+  const [loadingJos, setLoadingJos] = useState(true);
+  const [busyId, setBusyId] = useState(null);
+  const [qErr, setQErr] = useState('');
 
-  const joOrders = orders
-    .filter(o => o.downPayment > 0 && o.orderStatus === 'In Production' && o.joStatus !== 'Completed')
+  const loadJos = useCallback(async () => {
+    setLoadingJos(true); setQErr('');
+    try {
+      const data = await fetchJobOrders(token);
+      setJos(Array.isArray(data) ? data : []);
+    } catch (e) { setQErr(e.message || 'Could not load job orders'); setJos([]); }
+    finally { setLoadingJos(false); }
+  }, [token]);
+
+  useEffect(() => { loadJos(); }, [loadJos]);
+
+  // Order lookup so each job order can still show who it is for.
+  const orderById = Object.fromEntries((orders || []).map(o => [String(o.id ?? o._id), o]));
+
+  const joOrders = jos
+    .filter(j => !['QC_Passed', 'Completed', 'Cancelled'].includes(j.joStatus))
     .sort((a, b) => {
       const tA = a.targetCompletion ? new Date(a.targetCompletion) : null;
       const tB = b.targetCompletion ? new Date(b.targetCompletion) : null;
@@ -281,6 +338,17 @@ function JOQueueModal({ orders, token, onClose, onJOUpdated, onPrintJO }) {
       if (a.isRush && !b.isRush) return -1; if (!a.isRush && b.isRush) return 1;
       return dA - dB;
     });
+
+  const startJo = async (j) => {
+    const id = joDocId(j);
+    setBusyId(id); setQErr('');
+    try {
+      await updateJobOrder(token, id, { joStatus: 'In Progress' });
+      await loadJos();
+      onJOUpdated(String(j.orderId), 'In Progress');
+    } catch (e) { setQErr(e.message || 'Could not start this job order'); }
+    finally { setBusyId(null); }
+  };
 
   return (
     <Modal onClose={onClose} maxWidth={820}>
@@ -299,31 +367,46 @@ function JOQueueModal({ orders, token, onClose, onJOUpdated, onPrintJO }) {
         ))}
       </div>
 
-      {joOrders.length === 0
-        ? <EmptyState message="No active job orders" sub="Orders in production will appear here." />
+      {qErr && <div style={{ ...S.note, background:'var(--st-red-bg)', borderColor:'rgba(239,68,68,0.35)', color:'var(--st-red-fg)', marginBottom:'10px' }}>{qErr}</div>}
+
+      {loadingJos
+        ? <div style={{ display:'grid', gap:'8px' }}>
+            <style>{`@keyframes pmPulse { 0%,100%{opacity:1} 50%{opacity:.5} }`}</style>
+            {[0,1,2].map(i => <div key={i} style={{ height:64, borderRadius:10, background:'var(--dark2)', animation:'pmPulse 1.4s ease-in-out infinite' }} />)}
+          </div>
+        : joOrders.length === 0
+        ? <EmptyState message="No active job orders" sub="Job orders appear here once created from a paid, design-approved order." />
         : (
           <div style={S.col}>
-            {joOrders.map(o => {
-              const target   = o.targetCompletion ? new Date(o.targetCompletion) : null;
+            {joOrders.map(j => {
+              const jid      = joDocId(j);
+              const ord      = orderById[String(j.orderId)];
+              const target   = j.targetCompletion ? new Date(j.targetCompletion) : null;
               const daysLeft = target ? Math.ceil((target - today)/86400000) : null;
               const isLate   = target && target < today;
               const isUrgent = !isLate && daysLeft !== null && daysLeft <= 2;
-              const border   = isLate ? '#fca5a5' : o.isRush ? '#fdba74' : isUrgent ? '#fde68a' : 'var(--border)';
+              const border   = isLate ? '#fca5a5' : j.isRush ? '#fdba74' : isUrgent ? '#fde68a' : 'var(--border)';
+              const busy     = busyId === jid;
 
               return (
-                <div key={o.id} style={{ ...S.card, border:`2px solid ${border}`, padding:'14px 18px',
+                <div key={jid} style={{ ...S.card, border:`2px solid ${border}`, padding:'14px 18px',
                   display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:'16px', alignItems:'center' }}>
-                  <div>
-                    <div style={{ fontSize:'11px', color:'var(--gray)', fontFamily:'monospace', marginBottom:'3px' }}>{o.joId || 'No JO assigned'}</div>
-                    <div style={{ fontWeight:700, fontSize:'13px', color:'var(--white)' }}>{o.customerName}</div>
-                    <div style={{ fontSize:'12px', color:'var(--gray)', marginTop:'2px' }}>{o.productName} × {o.quantity}</div>
+                  <div style={{ display:'flex', gap:'10px', alignItems:'center' }}>
+                    <DesignPreview path={j.product?.thumbnail || j.designFilePath} size={40} />
+                    <div style={{ minWidth:0 }}>
+                      <div style={{ fontSize:'11px', color:'var(--gray)', fontFamily:'monospace', marginBottom:'3px' }}>{j.joId}</div>
+                      <div style={{ fontWeight:700, fontSize:'13px', color:'var(--white)' }}>{ord?.customerName ?? (j.orderId ? orderNo(j.orderId) : '-')}</div>
+                      <div style={{ fontSize:'12px', color:'var(--gray)', marginTop:'2px' }}>
+                        {j.product?.name}{j.product?.variant ? ` - ${j.product.variant}` : ''} x {j.product?.quantity ?? 1}
+                      </div>
+                    </div>
                   </div>
                   <div style={{ textAlign:'center' }}>
                     {isLate
                       ? <span style={{ ...S.badge, background:'#fef2f2', color:'#991b1b', border:'1px solid #fecaca' }}>
-                          DELAYED — {Math.abs(daysLeft)}d late
+                          DELAYED - {Math.abs(daysLeft)}d late
                         </span>
-                      : o.isRush
+                      : j.isRush
                         ? <span style={{ ...S.badge, background:'#fff7ed', color:'#c2410c', border:'1px solid #fdba74' }}>RUSH</span>
                         : <span style={{ ...S.badge, background:'var(--dark2)', color:'var(--gray-light)', border:'1px solid var(--border)' }}>Standard</span>
                     }
@@ -335,14 +418,10 @@ function JOQueueModal({ orders, token, onClose, onJOUpdated, onPrintJO }) {
                     )}
                   </div>
                   <div style={{ display:'flex', gap:'6px', justifyContent:'flex-end', alignItems:'center' }}>
-                    <StatusBadge status={o.joStatus || 'Queued'} />
-                    <button onClick={() => onPrintJO(o)} style={S.btnSmGhost}>Print</button>
-                    {o.joStatus !== 'In Progress' && (
-                      <button style={S.btnSm} onClick={async () => {
-                        if (!o.joId) return;
-                        await updateJobOrderStatus(o.joId, 'In Progress', token).catch(() => {});
-                        onJOUpdated(o.id, 'In Progress');
-                      }}>Start</button>
+                    <JobOrderStatusBadge status={j.joStatus} />
+                    {ord && <button onClick={() => onPrintJO(ord, j)} style={S.btnSmGhost}>Print</button>}
+                    {j.joStatus === 'Queued' && (
+                      <button disabled={busy} style={S.btnSm} onClick={() => startJo(j)}>{busy ? 'Saving…' : 'Start'}</button>
                     )}
                   </div>
                 </div>
@@ -360,9 +439,22 @@ function JOQueueModal({ orders, token, onClose, onJOUpdated, onPrintJO }) {
 
 // ── Print JO Modal ────────────────────────────────────────────────────────────
 
-function PrintJOModal({ order, onClose }) {
+// The physical sheet that goes to the shop floor. It used to carry only the header details, so the
+// operator got a page that never showed the artwork to print or the materials to pull. When a job
+// order is supplied its approved design and BOM snapshot are printed with it.
+function PrintJOModal({ order, jobOrder = null, onClose }) {
   const [description,   setDescription]   = useState('');
   const [designImages,  setDesignImages]  = useState([]);
+
+  const jo       = jobOrder || {};
+  const joCode   = jo.joId || order.joId || 'PENDING';
+  const joTarget = jo.targetCompletion || order.targetCompletion || null;
+  const joRush   = jo.isRush ?? order.isRush;
+  const prodName = jo.product?.name || order.productName || '';
+  const prodVar  = jo.product?.variant || order.variant || 'N/A';
+  const prodQty  = jo.product?.quantity ?? order.quantity;
+  const artwork  = designUrl(jo.designFilePath);
+  const bom      = Array.isArray(jo.bomSnapshot) ? jo.bomSnapshot : [];
 
   const addFiles = files => {
     Array.from(files).forEach(file => {
@@ -387,8 +479,67 @@ function PrintJOModal({ order, onClose }) {
           <p style="margin:0;font-size:12px;white-space:pre-wrap">${esc(description)}</p></div>`
       : '';
 
+    // Two different things, and the sheet needs both. The PROOF says what the finished item should
+    // look like; the PRODUCTION FILE is what actually goes to the machine. Printing only the proof was
+    // handing the operator a picture they cannot print, and printing only the file leaves them nothing
+    // to check the result against.
+    const isPrintableImg = artwork && /\.(jpe?g|png|webp|gif|avif|svg)(\?|$)/i.test(artwork);
+    const prodFiles = Array.isArray(jo.productionFiles) ? jo.productionFiles : [];
+
+    const proofHtml = artwork
+      ? `<div style="flex:1;min-width:0;padding:12px;border:1px solid #999;border-radius:8px">
+          <h3 style="margin:0 0 8px;font-size:11px;text-transform:uppercase;color:#555;letter-spacing:.5px">Approved proof - result should match this</h3>
+          ${isPrintableImg
+            ? `<img src="${artwork}" style="max-width:100%;max-height:260px;height:auto;border:1px solid #ccc;border-radius:4px;display:block"/>`
+            : `<div style="font-size:12px"><a href="${artwork}">${esc(artwork)}</a></div>`}
+        </div>`
+      : '';
+
+    const prodHtml = prodFiles.length
+      ? `<div style="flex:1;min-width:0;padding:12px;border:2px solid #059669;border-radius:8px">
+          <h3 style="margin:0 0 8px;font-size:11px;text-transform:uppercase;color:#059669;letter-spacing:.5px">Production artwork - print this</h3>
+          ${prodFiles.map(f => `
+            <div style="font-size:12px;margin-bottom:6px;word-break:break-all">
+              <strong>${esc(String(f.name || 'file'))}</strong>
+              ${f.note ? `<div style="color:#555">${esc(String(f.note))}</div>` : ''}
+              <a href="${f.url}">${esc(String(f.url))}</a>
+            </div>`).join('')}
+        </div>`
+      : `<div style="flex:1;min-width:0;padding:12px;border:2px dashed #b45309;border-radius:8px;font-size:12px;color:#b45309">
+          <strong>No production artwork attached.</strong><br/>
+          The proof is a mockup and cannot be printed. Do not start until the print-ready file is on this job order.
+        </div>`;
+
+    const artHtml = (proofHtml || prodHtml)
+      ? `<div style="margin:20px 0;display:flex;gap:12px;align-items:flex-start">${proofHtml}${prodHtml}</div>
+         ${jo.designNotes ? `<div style="margin:-8px 0 16px;font-size:12px"><strong>Design notes:</strong> ${esc(String(jo.designNotes))}</div>` : ''}`
+      : `<div style="margin:20px 0;padding:12px;border:2px dashed #999;border-radius:8px;font-size:12px;color:#777">
+          No artwork is attached to this job order. Do not start production until the approved design is available.
+        </div>`;
+
+    // Materials to pull, as a tickable checklist.
+    const bomHtml = bom.length
+      ? `<div style="margin:20px 0;padding:15px;border:2px solid #333;border-radius:8px">
+          <h3 style="margin:0 0 10px;font-size:13px;text-transform:uppercase;border-bottom:2px solid #000;padding-bottom:5px">Materials To Pull</h3>
+          <table style="width:100%;border-collapse:collapse;font-size:12px">
+            <thead><tr>
+              <th style="text-align:left;padding:5px 4px;border-bottom:1px solid #999;width:24px"></th>
+              <th style="text-align:left;padding:5px 4px;border-bottom:1px solid #999">Material</th>
+              <th style="text-align:right;padding:5px 4px;border-bottom:1px solid #999">Qty needed</th>
+            </tr></thead>
+            <tbody>
+              ${bom.map(m => `<tr>
+                <td style="padding:5px 4px;border-bottom:1px solid #eee">&#9744;</td>
+                <td style="padding:5px 4px;border-bottom:1px solid #eee">${esc(String(m.name ?? ''))}</td>
+                <td style="padding:5px 4px;border-bottom:1px solid #eee;text-align:right;font-weight:700">${esc(String(m.totalQty ?? ''))} ${esc(String(m.unit ?? ''))}</td>
+              </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>`
+      : '';
+
     const w = window.open('','','width=800,height=600');
-    w.document.write(`<html><head><title>JO — ${order.joId||'PENDING'}</title>
+    w.document.write(`<html><head><title>JO - ${joCode}</title>
       <style>*{box-sizing:border-box}body{font-family:Arial,sans-serif;margin:20px;color:#000}
       h2{text-align:center;letter-spacing:2px;margin:0 0 4px}
       .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:16px 0}
@@ -399,10 +550,13 @@ function PrintJOModal({ order, onClose }) {
         <h2>PERSONALIZE ME</h2>
         <div style="text-align:center;font-size:11px;color:#555;letter-spacing:1px;margin-bottom:16px">Job Order for Production</div>
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-          <div><div class="label">JO ID</div><div style="font-size:20px;font-weight:700">${order.joId||'PENDING'}</div></div>
-          <div style="padding:6px 16px;border:2px solid ${order.isRush?'#dc2626':'#059669'};border-radius:20px;font-weight:700;font-size:12px;color:${order.isRush?'#dc2626':'#059669'};text-transform:uppercase">${order.isRush?'RUSH ORDER':'STANDARD'}</div>
+          <div>
+            <div class="label">JO ID</div><div style="font-size:20px;font-weight:700">${joCode}</div>
+            <div style="font-size:11px;color:#555;margin-top:2px">Order ${orderNo(order)}</div>
+          </div>
+          <div style="padding:6px 16px;border:2px solid ${joRush?'#dc2626':'#059669'};border-radius:20px;font-weight:700;font-size:12px;color:${joRush?'#dc2626':'#059669'};text-transform:uppercase">${joRush?'RUSH ORDER':'STANDARD'}</div>
         </div>
-        ${order.targetCompletion ? `<div style="margin-bottom:12px"><div class="label">Target Completion</div><div class="val">${new Date(order.targetCompletion).toLocaleDateString('en-PH',{weekday:'long',year:'numeric',month:'long',day:'numeric'})}</div></div>` : ''}
+        ${joTarget ? `<div style="margin-bottom:12px"><div class="label">Target Completion</div><div class="val">${new Date(joTarget).toLocaleDateString('en-PH',{weekday:'long',year:'numeric',month:'long',day:'numeric'})}</div></div>` : ''}
         <div class="sep"></div>
         <div><div class="label">Customer</div><div class="val">${esc(order.customerName)}</div>
         <div style="font-size:12px;color:#555;margin-top:2px">${esc(order.customerContact||'')} ${order.customerEmail?'· '+esc(order.customerEmail):''}</div></div>
@@ -410,13 +564,13 @@ function PrintJOModal({ order, onClose }) {
         <div style="padding:12px;border:2px solid #d97706;border-radius:6px;margin:12px 0">
           <div class="label" style="color:#d97706;border-bottom:1px solid #d97706;padding-bottom:4px;margin-bottom:10px">Product Specifications</div>
           <div class="grid">
-            <div><div class="label">Product</div><div class="val">${esc(order.productName||'')}</div></div>
+            <div><div class="label">Product</div><div class="val">${esc(prodName)}</div></div>
             <div><div class="label">Category</div><div class="val">${esc(order.category||'')}</div></div>
-            <div><div class="label">Variant</div><div class="val">${esc(order.variant||'N/A')}</div></div>
-            <div><div class="label">Quantity</div><div style="font-size:22px;font-weight:700;color:#d97706">${order.quantity} pcs</div></div>
+            <div><div class="label">Variant</div><div class="val">${esc(prodVar)}</div></div>
+            <div><div class="label">Quantity</div><div style="font-size:22px;font-weight:700;color:#d97706">${prodQty} pcs</div></div>
           </div>
         </div>
-        ${imgsHtml}${descHtml}
+        ${artHtml}${bomHtml}${imgsHtml}${descHtml}
         <div style="margin-top:24px;padding-top:12px;border-top:1px solid #ccc;font-size:10px;color:#777">
           Printed: ${new Date().toLocaleDateString('en-PH',{year:'numeric',month:'long',day:'numeric',hour:'2-digit',minute:'2-digit'})}
           &nbsp;·&nbsp; Internal Production Document
@@ -429,7 +583,7 @@ function PrintJOModal({ order, onClose }) {
 
   return (
     <Modal onClose={onClose} maxWidth={600}>
-      <ModalHeader title={`Print Job Order — ${order.joId || 'PENDING'}`} onClose={onClose} />
+      <ModalHeader title={`Print Job Order - ${joCode}`} onClose={onClose} />
 
       <div style={{ ...S.col, gap:'16px' }}>
         <div style={{ ...S.card, background:'var(--dark2)', padding:'12px 16px' }}>
@@ -463,7 +617,7 @@ function PrintJOModal({ order, onClose }) {
               : (
                 <div>
                   <div style={{ fontSize:'13px', color:'var(--gray-light)', marginBottom:'4px' }}>Click to upload design images</div>
-                  <div style={{ fontSize:'11px', color:'var(--gray)' }}>PNG, JPG — multiple supported</div>
+                  <div style={{ fontSize:'11px', color:'var(--gray)' }}>PNG, JPG - multiple supported</div>
                 </div>
               )
             }
@@ -509,6 +663,9 @@ function isExpired(order) {
 
 // ── Status transition map ─────────────────────────────────────────────────────
 
+// A courier that could not deliver brings the goods back BEFORE anyone received them, so "Returned"
+// has to be reachable from For Delivery - not only from Delivered. The backend already allowed it;
+// this map was the stricter one, which left a failed delivery with nowhere to go.
 function getAvailableStatuses(o) {
   if (!o) return [];
   const s = o.orderStatus;
@@ -536,8 +693,10 @@ function getAvailableStatuses(o) {
       'In Production':     ['for_qc'],
       for_qc:              ['ready_for_delivery'],
       ready_for_delivery:  ['For Delivery'],
-      for_delivery:        ['Delivered'],
-      'For Delivery':      ['Delivered'],
+      for_delivery:        ['Delivered', 'Returned'],
+      'For Delivery':      ['Delivered', 'Returned'],
+      delivered:           ['Returned'],
+      Delivered:           ['Returned'],
     })[s] ?? [];
   }
   if (isCOD) {
@@ -547,19 +706,148 @@ function getAvailableStatuses(o) {
       'In Production': ['for_qc', 'Cancelled'],
       for_qc:         ['ready_for_delivery'],
       ready_for_delivery: ['For Delivery'],
-      'For Delivery': ['Delivered'],
-      Delivered:      o.paymentStatus === 'paid' ? [] : ['Returned'],
+      'For Delivery': ['Delivered', 'Returned'],
+      Delivered:      ['Returned'],
     })[s] ?? [];
   }
   return ({
     Pending:        ['Processing', 'Cancelled'],
     Processing:     ['For Delivery', 'Cancelled'],
-    'For Delivery': ['Delivered'],
+    'For Delivery': ['Delivered', 'Returned'],
     Delivered:      ['Returned'],
   })[s] ?? [];
 }
 
 // ── Expanded Order Detail ─────────────────────────────────────────────────────
+
+// Thumbnails for files chosen but not yet sent. Without this the owner clicks "Send 1 File" on
+// faith and only discovers what actually went out once the customer has already seen it. Object URLs
+// are revoked when the selection changes so the blobs do not leak.
+// The only thing worth refusing: a file with neither a MIME type nor an extension. Nothing
+// downstream - not the browser, not Cloudinary - can classify it, so it stores as something that
+// will never play back. Everything else uploads; Cloudinary serves a browser-friendly copy.
+function isUnidentifiable(file) {
+  return !file.type && !/\.[a-z0-9]{2,5}$/i.test(file.name);
+}
+
+/** Split a picked batch into what we can accept and what we must refuse. */
+function screenFiles(files) {
+  const accepted = files.filter(f => !isUnidentifiable(f));
+  const rejected = files.filter(isUnidentifiable).map(f => f.name);
+  const note = rejected.length
+    ? `${rejected.join(', ')} has no file extension, so it cannot be recognised. Rename it with its proper extension and try again.`
+    : '';
+  return { accepted, note };
+}
+
+function DraftFilePreview({ files = [], onRemove, onOpen }) {
+  const [urls, setUrls] = useState([]);
+  const [thumbs, setThumbs] = useState({});       // captured first frames, keyed by tile index
+  const liveUrls = useRef([]);
+
+  // Draw the clip's first frame onto a canvas so the tile shows the artwork rather than a generic
+  // marker - the same thing Explorer shows. Only possible when the browser can decode the file; for
+  // anything it cannot, the tile keeps its plain video badge.
+  const captureThumb = (url, i) => {
+    const v = document.createElement('video');
+    v.muted = true; v.preload = 'metadata'; v.src = url;
+    const bail = setTimeout(() => { v.src = ''; }, 6000);
+    v.onloadeddata = () => {
+      try { v.currentTime = Math.min(0.1, (v.duration || 1) / 10); } catch { /* seek unsupported */ }
+    };
+    v.onseeked = () => {
+      clearTimeout(bail);
+      try {
+        const c = document.createElement('canvas');
+        c.width = v.videoWidth || 160; c.height = v.videoHeight || 120;
+        c.getContext('2d').drawImage(v, 0, 0, c.width, c.height);
+        setThumbs(prev => ({ ...prev, [i]: c.toDataURL('image/jpeg', 0.7) }));
+      } catch { /* tainted or undecodable - leave the badge */ }
+      v.src = '';
+    };
+    v.onerror = () => clearTimeout(bail);
+  };
+
+  // Object URLs must NOT be revoked in the effect's own cleanup. React re-runs effects in
+  // development (mount, clean up, mount again), so revoking there tears down the URL the element is
+  // still reading from - a video streams progressively and dies mid-load, which showed as a preview
+  // that appeared for a moment and then vanished. Revoke the PREVIOUS batch when the files change,
+  // and everything on unmount.
+  useEffect(() => {
+    liveUrls.current.forEach(URL.revokeObjectURL);
+    const made = files.map(f => ({ url: URL.createObjectURL(f), file: f }));
+    liveUrls.current = made.map(m => m.url);
+    setUrls(made);
+    setThumbs({});
+    made.forEach((m, i) => { if (m.file.type.startsWith('video/')) captureThumb(m.url, i); });
+  }, [files]);
+
+  useEffect(() => () => { liveUrls.current.forEach(URL.revokeObjectURL); }, []);
+
+  if (!files.length) return null;
+
+  return (
+    <div style={{ display:'flex', flexWrap:'wrap', gap:'8px', marginBottom:'6px' }}>
+      {urls.map((m, i) => {
+        const isImg = /^image\//.test(m.file.type);
+        const isVid = /^video\//.test(m.file.type);
+        const kb = m.file.size > 1048576
+          ? `${(m.file.size / 1048576).toFixed(1)} MB`
+          : `${Math.max(1, Math.round(m.file.size / 1024))} KB`;
+        return (
+          <div key={i} style={{ width:'92px' }}>
+            <div style={{ position:'relative', width:'92px', height:'92px', borderRadius:'8px', overflow:'hidden', border:'1px solid var(--border)', background:'var(--dark2)', display:'flex', alignItems:'center', justifyContent:'center' }}>
+              {isImg ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={m.url} alt={m.file.name} onClick={() => onOpen?.(m.url, 'image')}
+                  title="Click to enlarge"
+                  style={{ width:'100%', height:'100%', objectFit:'contain', cursor:'zoom-in' }} />
+              ) : isVid ? (
+                // Decoding a clip just to fill a 92px tile is wasted work and it is what made the
+                // strip sit there loading. The tile appears instantly; the video is only fetched
+                // once it is actually asked for.
+                (
+                  <button type="button" onClick={() => onOpen?.(m.url, 'video')} title="Click to watch"
+                    style={{ position:'relative', width:'100%', height:'100%', border:'none', padding:0, background:'var(--dark)', cursor:'pointer', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:'4px', color:'var(--gold)', overflow:'hidden' }}>
+                    {thumbs[i] ? (
+                      <>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={thumbs[i]} alt="" style={{ position:'absolute', inset:0, width:'100%', height:'100%', objectFit:'cover' }} />
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="1.8"
+                          style={{ position:'relative', filter:'drop-shadow(0 1px 3px rgba(0,0,0,.8))' }}>
+                          <circle cx="12" cy="12" r="10" /><polygon points="10 8 16 12 10 16" fill="#fff" stroke="none" />
+                        </svg>
+                      </>
+                    ) : (
+                      <>
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                          <circle cx="12" cy="12" r="10" /><polygon points="10 8 16 12 10 16" fill="currentColor" stroke="none" />
+                        </svg>
+                        <span style={{ fontSize:'9px', fontWeight:700, letterSpacing:'.4px' }}>VIDEO</span>
+                      </>
+                    )}
+                  </button>
+                )
+              ) : (
+                <span style={{ fontSize:'10px', fontWeight:700, color:'var(--gold)' }}>
+                  {(m.file.name.split('.').pop() || 'FILE').toUpperCase()}
+                </span>
+              )}
+              {onRemove && (
+                <button type="button" onClick={() => onRemove(i)} aria-label={`Remove ${m.file.name}`}
+                  style={{ position:'absolute', top:'2px', right:'2px', width:'18px', height:'18px', borderRadius:'50%', border:'none', background:'rgba(0,0,0,0.65)', color:'#fff', cursor:'pointer', fontSize:'12px', lineHeight:1, display:'flex', alignItems:'center', justifyContent:'center' }}>x</button>
+              )}
+            </div>
+            <div title={m.file.name} style={{ fontSize:'10px', color:'var(--gray)', marginTop:'3px', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+              {m.file.name}
+            </div>
+            <div style={{ fontSize:'9px', color:'var(--gray)', opacity:.75 }}>{kb}</div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
   const fmt = n => Number(n ?? 0).toLocaleString('en-PH', { minimumFractionDigits:2, maximumFractionDigits:2 });
@@ -580,17 +868,89 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
   const [feeInput,    setFeeInput]    = useState('');
   const [savingFee,   setSavingFee]   = useState(false);
   const [lightboxUrl, setLightboxUrl] = useState(null);
+  const [lightboxKind, setLightboxKind] = useState(null);
+  const [showApproved, setShowApproved] = useState(false);
   const [showReject,  setShowReject]  = useState(false);
   const [rejectReason,setRejectReason]= useState('');
   const [rejectOther, setRejectOther] = useState('');
   const [showFix,     setShowFix]     = useState(false);
   const [confirmApprove, setConfirmApprove] = useState(false);
+  // Which custom line the admin is acting on (per-item design, Option 2 mixed cart).
+  const [activeItemIdx, setActiveItemIdx] = useState(0);
+  const [showProof, setShowProof] = useState(false);   // T&C acceptance proof panel
   const [delivDate,   setDelivDate]   = useState('');
   const [savingDeliv, setSavingDeliv] = useState(false);
   const [feeErr,      setFeeErr]      = useState('');
+  // Every job order of this order. A mixed cart makes one per printable item, so reading the single
+  // `joId` field showed only the first and hid the rest.
+  const [jobOrders,   setJobOrders]   = useState([]);
+  const [joBusyId,    setJoBusyId]    = useState(null);
 
-  useEffect(() => { setLo(o); setSelStatus(o.orderStatus); }, [o]);
-  useEffect(() => { setFeeInput(o.courierFee != null && Number(o.courierFee) > 0 ? String(o.courierFee) : ''); }, [o]);
+  // Keyed on the order id, not the object. The list refreshes on a timer, and keying on `o` meant
+  // each refresh rebuilt this panel from list data - discarding a proof that had just been uploaded.
+  // Actions inside the panel merge their own fresh copy, so nothing is lost by ignoring the refresh.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { setLo(o); setSelStatus(o.orderStatus); }, [o.id]);
+
+  const loadJobOrders = useCallback(async () => {
+    const oid = o._id ?? o.id;
+    if (!token || !oid) return;
+    try {
+      const data = await fetchJobOrders(token, { orderId: String(oid) });
+      setJobOrders(Array.isArray(data) ? data : []);
+    } catch { setJobOrders([]); }
+  }, [token, o._id, o.id]);
+
+  useEffect(() => { loadJobOrders(); }, [loadJobOrders]);
+
+  // Advance one job order from the order screen. The old shortcut passed the human code ("JOB-001")
+  // to an endpoint that looks up by document id, so it always 404'd - and the error was swallowed.
+  // One click here starts real work or hands the batch to the next station, from a compact row in a
+  // busy panel. Neither is easy to undo, so both ask first.
+  const [joConfirm, setJoConfirm] = useState(null);
+  const JO_COPY = {
+    'In Progress': { title: 'Start this job?',            body: 'Production begins and the reserved material is committed to it.', label: 'Start' },
+    'QC_Pending':  { title: 'Send to quality control?',   body: 'The batch leaves the bench and QC decides what passes. Anything rejected comes back to be remade.', label: 'Send to QC' },
+  };
+
+  const advanceJO = async (jo, joStatus) => {
+    const id = joDocId(jo);
+    setJoBusyId(id);
+    try {
+      await updateJobOrder(token, id, { joStatus });
+      setJoConfirm(null);
+      await loadJobOrders();
+      const fresh = await refetchOrder();
+      if (fresh) setLo(fresh);
+    } catch (e) { setUpdateErr(e.message || 'Could not update the job order.'); }
+    finally { setJoBusyId(null); }
+  };
+
+  // Re-read this order after a job order moves, so orderStatus/joStatus reflect the aggregate.
+  const refetchOrder = async () => {
+    const oid = o._id ?? o.id;
+    try {
+      const res = await fetchWithTimeout(`${API_URL}/api/admin/orders/${oid}`, { headers: { Authorization:`Bearer ${token}` } }, 15000);
+      if (!res.ok) return null;
+      const j = await res.json();
+      return j?.data ?? j?.order ?? null;
+    } catch { return null; }
+  };
+  // Both of these reset work-in-progress, so they must fire only when a DIFFERENT order is opened.
+  // Keyed on the whole `o` object they fired on every parent re-render - and since one of them calls
+  // setDraftFiles([]), any background refresh silently threw away files that were staged but not yet
+  // sent. That is why attachments vanished after a few seconds regardless of type.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { setFeeInput(o.courierFee != null && Number(o.courierFee) > 0 ? String(o.courierFee) : ''); }, [o.id]);
+  // Default the per-item design controls to the first custom line whenever the order opens.
+  useEffect(() => {
+    const first = (o.items || []).findIndex(it => it.isCustom || it.designRequested || it.designUrl || it.designName || it.adminDesignUrl);
+    setActiveItemIdx(first >= 0 ? first : 0);
+    setShowReject(false); setShowFix(false); setConfirmApprove(false); setDraftFiles([]); setShowProof(false);
+    // Intentionally keyed on the order id alone: re-running this on every `o.items` change would
+    // clear staged files again, which is the bug this is fixing.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [o.id]);
 
   const handleSaveCourierFee = async () => {
     const val = parseFloat(feeInput);
@@ -632,13 +992,51 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
   const target   = lo.targetCompletion ? new Date(lo.targetCompletion) : null;
   const daysLeft = target ? Math.ceil((target - today)/86400000) : null;
   const isLate   = target && target < today;
-  const available = getAvailableStatuses(lo);
+  const availableRaw = getAvailableStatuses(lo);
+
+  // The stage is only blocked while money is genuinely outstanding. COD collects on delivery, so it
+  // is never "awaiting payment" in this sense.
+  // How long finished goods have been sitting unpaid. Personalised stock cannot be resold, so this is
+  // the number that decides whether to keep chasing or to write the order off - and without it the
+  // order simply disappears into the list.
+  const readySince = lo.readyAt ? Math.floor((Date.now() - new Date(lo.readyAt).getTime()) / 86400000) : null;
+
+  const awaitingMoney = ['awaiting_payment', 'ready_for_delivery'].includes(lo.orderStatus)
+    && lo.paymentStatus !== 'paid'
+    && String(lo.paymentMethod || '').toLowerCase() !== 'cod'
+    && remainingDue(lo) > 0;
+
+  // QC decides when an order is ready, not the status box. Offering "Ready for Delivery" while jobs
+  // are still on the bench let the whole inspection be skipped with one click, and the order would
+  // then be dragged back to In Production by the next QC sync anyway.
+  const openJobs = jobOrders.filter(j => !['QC_Passed', 'Completed', 'Cancelled'].includes(j.joStatus));
+  const available = openJobs.length > 0
+    ? availableRaw.filter(st => !['ready_for_delivery', 'for_delivery', 'delivered',
+                                 'Ready for Delivery', 'For Delivery', 'Delivered'].includes(st))
+    : availableRaw;
+
+  // Job Order coverage. Each printable item needs its own job order, so "already job-ordered" is not
+  // "a joId exists" - it is "every printable item has a live job order".
+  const printableItems = (lo.items || []).filter(it => it.isCustom || it.isMadeToOrder).length;
+  const liveJobOrders  = jobOrders.filter(j => j.joStatus !== 'Cancelled').length;
+  const jobOrdersMissing = Math.max(0, printableItems - liveJobOrders);
+  const hasAnyJobOrder = liveJobOrders > 0;
+
+  const [returnReason,   setReturnReason]   = useState('');
+  const [returnOther,    setReturnOther]    = useState('');
+  const [returnSellable, setReturnSellable] = useState(false);
 
   const handleUpdateStatus = async () => {
     if (!selStatus || selStatus === lo.orderStatus) return;
     setIsUpdating(true); setUpdateErr(''); setConfirmSt(false);
     try {
       const payload = selStatus === 'Paid' ? { paymentStatus:'paid' } : { orderStatus: selStatus };
+      // A return needs two facts nothing else records: why the goods came back, and whether they are
+      // sellable. Without the second, ready-made stock the shop physically has is written off.
+      if (String(selStatus).toLowerCase() === 'returned') {
+        payload.returnReason = returnReason === 'Other' ? returnOther.trim() : returnReason;
+        payload.restock      = returnSellable;
+      }
       const res = await fetchWithTimeout(`${API_URL}/api/admin/orders/${lo.id}`, {
         method:'PUT', headers:{ 'Content-Type':'application/json', Authorization:`Bearer ${token}` },
         body: JSON.stringify(payload),
@@ -653,15 +1051,24 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
     finally { setIsUpdating(false); }
   };
 
+  // Each design action targets the selected line (itemIndex) and the backend returns the order with
+  // the re-synced aggregate - merge it so both the item's status and the overall design badge update.
+  const mergeLo = (data) => {
+    const u = data?.data ?? data?.order ?? data;
+    if (!u || (!u.items && !u.designStatus && !u.orderStatus)) return;
+    setLo(p => ({ ...p, ...u, id: p.id }));
+  };
+
   const handleApproveDesign = async () => {
     setDesignAct('approving'); setDesignErr('');
     try {
       const res = await fetchWithTimeout(`${API_URL}/api/admin/orders/${lo.id}/approve-design`,
-        { method:'POST', headers:{ Authorization:`Bearer ${token}` } }, 15000);
-      if (!res.ok) throw new Error((await res.json().catch(()=>({}))).message || 'Failed');
-      setLo(p => ({ ...p, designStatus:'approved' }));
+        { method:'POST', headers:{ 'Content-Type':'application/json', Authorization:`Bearer ${token}` }, body: JSON.stringify({ itemIndex: activeItemIdx }) }, 15000);
+      const data = await res.json().catch(()=>({}));
+      if (!res.ok) throw new Error(data.message || 'Failed');
+      mergeLo(data);
       setConfirmApprove(false);
-      if (onStatusUpdated) onStatusUpdated(lo.id);
+      if (onStatusUpdated) onStatusUpdated(lo.id, data?.data ?? data?.order ?? data);
     } catch (err) { setDesignErr(err.message); }
     finally { setDesignAct(null); }
   };
@@ -683,14 +1090,67 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
     finally { setSavingDeliv(false); }
   };
 
+  // The shop confirms a rush REQUEST ("kaya ba isabay"). Decline waives + credits the rush fee.
+  const handleRushDecision = async (decision) => {
+    setSavingDeliv(true); setUpdateErr('');
+    try {
+      const res = await fetchWithTimeout(`${API_URL}/api/admin/orders/${lo.id}/rush-decision`,
+        { method:'POST', headers:{ 'Content-Type':'application/json', Authorization:`Bearer ${token}` }, body: JSON.stringify({ decision }) }, 15000);
+      const data = await res.json().catch(()=>({}));
+      if (!res.ok) throw new Error(data.message || 'Failed');
+      const u = data.data ?? data;
+      setLo(p => ({ ...p, rushStatus: u.rushStatus ?? decision, isRush: u.isRush ?? p.isRush, rushFee: u.rushFee ?? p.rushFee, totalAmount: u.totalAmount ?? p.totalAmount, balance: u.balance ?? p.balance }));
+      if (onStatusUpdated) onStatusUpdated(lo.id, data?.data ?? data?.order ?? data);
+    } catch (err) { setUpdateErr(err.message || 'Failed to update rush.'); }
+    finally { setSavingDeliv(false); }
+  };
+
+  const [reminding,  setReminding]  = useState(false);
+  const [remindMsg,  setRemindMsg]  = useState(null);
+
+  // Disposal at the end of the holding period. Two presses, and the figures are shown before the
+  // second - writing off finished goods is not something to do from a single button.
+  const [writingOff,  setWritingOff]  = useState(false);
+  const [woConfirm,   setWoConfirm]   = useState(false);
+  const [woErr,       setWoErr]       = useState('');
+
+  const handleWriteOff = async () => {
+    setWritingOff(true); setWoErr('');
+    try {
+      const res = await fetchWithTimeout(`${API_URL}/api/admin/orders/${lo.id}/write-off`,
+        { method:'POST', headers:{ 'Content-Type':'application/json', Authorization:`Bearer ${token}` },
+          body: JSON.stringify({}) }, 15000);
+      const data = await res.json().catch(()=>({}));
+      if (!res.ok) throw new Error(data.message || 'Could not write off this order.');
+      setLo(p => ({ ...p, orderStatus:'cancelled', isArchived:true, writeOff:data.data ?? data }));
+      setWoConfirm(false);
+      if (onStatusUpdated) onStatusUpdated(lo.id, { orderStatus:'cancelled' });
+    } catch (err) { setWoErr(err.message); }
+    finally { setWritingOff(false); }
+  };
+
+  const handleRemindBalance = async () => {
+    setReminding(true); setRemindMsg(null);
+    try {
+      const res = await fetchWithTimeout(`${API_URL}/api/admin/orders/${lo.id}/remind-balance`,
+        { method:'POST', headers:{ Authorization:`Bearer ${token}` } }, 15000);
+      const data = await res.json().catch(()=>({}));
+      if (!res.ok) throw new Error(data.message || 'Failed to send the reminder.');
+      setRemindMsg({ ok:true, text:'Reminder sent to the customer, in the bell and in your chat.' });
+    } catch (err) {
+      setRemindMsg({ ok:false, text: err.message });
+    } finally { setReminding(false); }
+  };
+
   const handleRevertApprove = async () => {
     setDesignAct('reverting'); setDesignErr('');
     try {
       const res = await fetchWithTimeout(`${API_URL}/api/admin/orders/${lo.id}/revert-design`,
         { method:'POST', headers:{ Authorization:`Bearer ${token}` } }, 15000);
-      if (!res.ok) throw new Error((await res.json().catch(()=>({}))).message || 'Failed');
-      setLo(p => ({ ...p, designStatus:'pending_review' }));
-      if (onStatusUpdated) onStatusUpdated(lo.id);
+      const data = await res.json().catch(()=>({}));
+      if (!res.ok) throw new Error(data.message || 'Failed');
+      mergeLo(data);
+      if (onStatusUpdated) onStatusUpdated(lo.id, data?.data ?? data?.order ?? data);
     } catch (err) { setDesignErr(err.message); }
     finally { setDesignAct(null); }
   };
@@ -701,43 +1161,147 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
     setDesignAct('rejecting'); setDesignErr('');
     try {
       const res = await fetchWithTimeout(`${API_URL}/api/admin/orders/${lo.id}/reject-design`,
-        { method:'POST', headers:{ 'Content-Type':'application/json', Authorization:`Bearer ${token}` }, body: JSON.stringify({ reason }) }, 15000);
-      if (!res.ok) throw new Error((await res.json().catch(()=>({}))).message || 'Failed');
-      setLo(p => ({ ...p, designStatus:'rejected', designRejectionReason: reason }));
+        { method:'POST', headers:{ 'Content-Type':'application/json', Authorization:`Bearer ${token}` }, body: JSON.stringify({ reason, itemIndex: activeItemIdx }) }, 15000);
+      const data = await res.json().catch(()=>({}));
+      if (!res.ok) throw new Error(data.message || 'Failed');
+      mergeLo(data);
       setShowReject(false); setRejectReason(''); setRejectOther('');
-      if (onStatusUpdated) onStatusUpdated(lo.id);
+      if (onStatusUpdated) onStatusUpdated(lo.id, data?.data ?? data?.order ?? data);
     } catch (err) { setDesignErr(err.message); }
     finally { setDesignAct(null); }
   };
 
   const handleUploadDesign = async (files) => {
     if (!files.length) return;
+
+    // The file is relayed browser -> our server -> Cloudinary, so a proof video takes far longer than
+    // an ordinary request. 30s was cutting off uploads that were still in flight, which left the file
+    // sitting staged with no explanation. Two minutes, and the server gives up first (100s) so the
+    // failure arrives as a real message rather than a silent client timeout.
+    const oversize = files.find(f => f.size > 50 * 1024 * 1024);
+    if (oversize) {
+      setDesignErr(`"${oversize.name}" is over the 50 MB limit. Compress it or send a shorter clip.`);
+      return;
+    }
+
     setUploading(true); setDesignErr('');
     try {
       const form = new FormData();
       files.forEach(f => form.append('design[]', f));
+      form.append('itemIndex', String(activeItemIdx));
+      // A shared artwork lands on every product it covers in one send, instead of the owner
+      // uploading the identical proof once per line.
+      (uploadTargets ?? [activeItemIdx]).forEach(i => form.append('itemIndexes[]', String(i)));
       const res = await fetchWithTimeout(`${API_URL}/api/admin/orders/${lo.id}/upload-design`,
-        { method:'POST', headers:{ Authorization:`Bearer ${token}` }, body: form }, 30000);
-      if (!res.ok) throw new Error((await res.json().catch(()=>({}))).message || 'Upload failed');
-      const data = await res.json();
-      const adminDesignUrl = data.order?.adminDesignUrl ?? data.adminDesignUrl ?? null;
-      setLo(p => ({ ...p, adminDesignUrl, orderStatus:'proof_sent', designStatus:'draft_ready' }));
-      setDraftFiles([]);
-      if (onStatusUpdated) onStatusUpdated(lo.id);
+        { method:'POST', headers:{ Authorization:`Bearer ${token}` }, body: form },
+        // The server relays each file to Cloudinary in turn, allowing 100s apiece. A flat 120s here
+        // therefore only ever covered ONE file - send two and the browser gave up while the server
+        // was still working on the second, surfacing as a bare "Failed to fetch". Budget per file,
+        // and keep the client's ceiling above the server's so the failure arrives explained.
+        60000 + files.length * 110000,
+        // Never retry: the body is a consumed stream and a resend would upload the proof twice.
+        0);
+      const data = await res.json().catch(()=>({}));
+      if (!res.ok) throw new Error(data.message || 'Upload failed');
+      const updated = data?.data ?? data?.order ?? data;
+      mergeLo(data);
+      setDraftFiles([]); setShowFix(false);
+      // Hand the parent the order we just got back. Calling this WITHOUT it made the list refetch
+      // instead, and when that returned it replaced this panel's state through the `o` prop - which
+      // threw away the proof we had merged a moment earlier and put the previous one back on screen.
+      // That was the "it reverts to the old upload" the owner kept hitting.
+      if (onStatusUpdated) onStatusUpdated(lo.id, updated);
     } catch (err) { setDesignErr(err.message); }
     finally { setUploading(false); }
   };
 
   const hasDesignWork = lo.isCustom || lo.items?.some(i => i.designRequested);
+  // Per-item design (Option 2): the custom lines the admin can act on, and the selected one's fields.
+  const designItems = (lo.items || []).map((it, idx) => ({ it, idx })).filter(({ it }) => it.isCustom || it.designRequested || it.designUrl || it.designName || it.adminDesignUrl);
+  const ai = lo.items?.[activeItemIdx] ?? {};
+  const aiStatus = ai.designStatus ?? (designItems.length <= 1 ? lo.designStatus : null) ?? null;
+  const aiFiles = (ai.designFiles?.length ? ai.designFiles.map(f => f.url) : [ai.designUrl]).filter(Boolean);
+  // A proof can be several files. Reading only adminDesignUrl showed the owner one tile after
+  // sending two, while the customer - who already reads the plural field - saw both. Prefer the
+  // array, fall back to the single legacy field for proofs sent before it existed.
+  // Request lines are one section (one artwork); each upload is its own, being a distinct file.
+  const designSections = (() => {
+    const reqs = designItems.filter(({ it }) => it.designRequested || (!it.designUrl && !it.designFiles?.length));
+    const ups  = designItems.filter(({ it }) => !(it.designRequested || (!it.designUrl && !it.designFiles?.length)));
+    const out = [];
+    if (reqs.length) out.push({
+      key: 'request', request: true, entries: reqs, indices: reqs.map(e => e.idx),
+      label: reqs.length > 1 ? `Design request (${reqs.length} products)` : `${reqs[0].it.productName || 'Item'} (Request)`,
+    });
+    ups.forEach(e => out.push({
+      key: `upload_${e.idx}`, request: false, entries: [e], indices: [e.idx],
+      label: `${e.it.productName || `Item ${e.idx + 1}`} (Upload)`,
+    }));
+    return out;
+  })();
+  const activeSection = designSections.find(sec => sec.indices.includes(activeItemIdx)) ?? designSections[0];
+  const uploadTargets = activeSection?.indices ?? [activeItemIdx];
+
+  const [reviewLinkState, setReviewLinkState] = useState(null);
+  const sendReviewLink = async () => {
+    setReviewLinkState('sending');
+    try {
+      const res = await fetchWithTimeout(`${API_URL}/api/chat/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          recipient_id: String(lo.userId ?? lo.user_id ?? ''),
+          type: 'order_reference',
+          order_id: String(lo.id ?? lo._id ?? ''),
+          body: 'Your proof is ready. Open the order to approve it or ask for changes.',
+          metadata: {
+            orderId: String(lo.id ?? lo._id ?? ''),
+            orderNo: lo.orderNumber ?? lo.orderNo ?? 'Order',
+            products: (activeSection?.entries ?? []).map(({ it }) => it.productName).filter(Boolean).join(', '),
+          },
+        }),
+      }, 15000);
+      setReviewLinkState(res.ok ? 'sent' : 'error');
+    } catch { setReviewLinkState('error'); }
+  };
+  // One mockup per product, plus room for a detail shot or a clip. A flat five was fine for a single
+  // mug and far too few once one artwork covered a totebag, a keychain, a cap and a shirt.
+  const maxDraftFiles = Math.min(10, Math.max(5, uploadTargets.length + 3));
+
+  const aiProofs = (
+    ai.adminDesignUrls?.length ? ai.adminDesignUrls
+      : ai.adminDesignUrl ? [ai.adminDesignUrl]
+      : designItems.length <= 1 ? (lo.adminDesignUrls?.length ? lo.adminDesignUrls : [lo.adminDesignUrl])
+      : []
+  ).filter(Boolean);
+  const aiProof = aiProofs[0] ?? null;
+  const aiReason = ai.designRejectionReason ?? (designItems.length <= 1 ? lo.designRejectionReason : null) ?? null;
+  const aiRequested = !!ai.designRequested || (!ai.designUrl && !ai.designFiles?.length);
+  const aiHasFile = aiFiles.length > 0;
+  const aiNotes = ai.designNotes ?? (designItems.length <= 1 ? lo.designNotes : null);
+  const statusLabel = (st) => st==='approved'?'Approved':st==='rejected'?'Rejected':st==='revision_requested'?'Revision Requested':st==='draft_ready'||st==='proof_sent'?'Awaiting Review':st==='pending_design'?'Designing':st==='pending_review'?'Under Review':'Pending';
 
   return (
     <div style={{ padding:'16px 20px', background:'var(--dark2)', borderBottom:'1px solid var(--border)' }}>
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'16px' }}>
 
-        {/* LEFT — customer + design (if custom) + status */}
+        {/* LEFT - customer + design (if custom) + status */}
         <div style={{ ...S.card, padding:'14px 16px', display:'flex', flexDirection:'column' }}>
 
           <SectionLabel>Customer</SectionLabel>
+          {/* The name stays on a sale because it is a financial record; the contact details are wiped.
+              Saying so beats leaving staff to discover it by trying to ring a number that is gone. */}
+          {lo.customerDeleted && (
+            <div style={{ marginBottom:'6px', padding:'7px 10px', borderRadius:'7px', background:'var(--dark2)', border:'1px solid var(--border)' }}>
+              <div style={{ fontSize:'10px', fontWeight:700, color:'var(--gray)', textTransform:'uppercase', letterSpacing:'.5px' }}>
+                Account deleted
+              </div>
+              <div style={{ fontSize:'11.5px', color:'var(--gray-light)', marginTop:'2px', lineHeight:1.5 }}>
+                This customer deleted their account. The name is kept as part of the sales record; their
+                contact details were removed and they cannot be reached here.
+              </div>
+            </div>
+          )}
           <div style={{ fontWeight:700, fontSize:'14px', color:'var(--white)', marginBottom:'3px' }}>{lo.customerName}</div>
           {lo.customerContact && <div style={{ fontSize:'12px', color:'var(--gray)' }}>{lo.customerContact}</div>}
           {lo.customerEmail   && <div style={{ fontSize:'12px', color:'var(--gray)', marginBottom:'4px' }}>{lo.customerEmail}</div>}
@@ -765,7 +1329,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
               {typeof lo.deliveryAddress === 'object' && lo.deliveryAddress.lat && lo.deliveryAddress.lng && (
                 <div style={{ marginTop:'8px' }}>
                   <div style={{ fontSize:'11px', color:'var(--gray)', marginBottom:'5px' }}>
-                    Pinned drop-off — open this exact spot to book your courier (Lalamove / Grab / etc.):
+                    Pinned drop-off - open this exact spot to book your courier (Lalamove / Grab / etc.):
                   </div>
                   <div style={{ display:'flex', gap:'6px', flexWrap:'wrap', alignItems:'center' }}>
                     <a href={`https://www.google.com/maps/search/?api=1&query=${lo.deliveryAddress.lat},${lo.deliveryAddress.lng}`}
@@ -787,7 +1351,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                 </div>
               )}
 
-              {/* Courier-booked delivery fee — paid by customer to the rider on delivery */}
+              {/* Courier-booked delivery fee - paid by customer to the rider on delivery */}
               {!(Number(lo.shippingFee) > 0) && (
                 <div style={{ marginTop:'10px', padding:'10px 12px', background:'var(--dark2)', border:'1px solid var(--border)', borderRadius:'8px' }}>
                   <div style={{ fontSize:'11px', fontWeight:600, color:'var(--gray-light)', marginBottom:'2px' }}>Delivery fee (paid by customer to rider)</div>
@@ -829,52 +1393,102 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
             </>
           )}
 
-          {lo.joId && (
-            <>
-              <div style={S.divider} />
-              <SectionLabel>Job Order</SectionLabel>
-              <div style={{ display:'flex', alignItems:'center', gap:'8px', flexWrap:'wrap', marginBottom:'4px' }}>
-                <span style={{ fontFamily:'monospace', fontWeight:700, fontSize:'13px', color:'var(--white)' }}>{lo.joId}</span>
-                <StatusBadge status={lo.joStatus || 'Queued'} />
-                {lo.isRush && <span style={{ ...S.badge, background:'#fff7ed', color:'#c2410c', border:'1px solid #fdba74', fontSize:'10px' }}>RUSH</span>}
-              </div>
-              {target && (
-                <div style={{ fontSize:'12px', color: isLate ? '#991b1b' : 'var(--gray)' }}>
-                  Due {target.toLocaleDateString('en-PH', { month:'short', day:'numeric', year:'numeric' })}
-                  {daysLeft !== null && (
-                    <span style={{ fontWeight:600, marginLeft:'6px' }}>
-                      {isLate ? `· ${Math.abs(daysLeft)}d overdue` : `· ${daysLeft}d left`}
-                    </span>
-                  )}
+          {jobOrders.length > 0 && (() => {
+            const open = jobOrders.filter(j => !['QC_Passed', 'Completed', 'Cancelled'].includes(j.joStatus)).length;
+            return (
+              <>
+                <div style={S.divider} />
+                <SectionLabel>
+                  {jobOrders.length > 1 ? `Job Orders (${jobOrders.length})` : 'Job Order'}
+                </SectionLabel>
+                {jobOrders.length > 1 && (
+                  <div style={{ fontSize:'11px', color:'var(--gray)', marginBottom:'8px' }}>
+                    One per printable item. This order is released for delivery only when all of them pass QC
+                    {open > 0 ? ` (${open} still open).` : '.'}
+                  </div>
+                )}
+                <div style={{ display:'grid', gap:'8px' }}>
+                  {jobOrders.map(j => {
+                    const jid = joDocId(j);
+                    const busy = joBusyId === jid;
+                    const jrisk = joRisk(j);
+                    return (
+                      <div key={jid} style={{ display:'flex', alignItems:'center', gap:'10px', padding:'8px 10px', borderRadius:'8px', background:'var(--dark2)', border:'1px solid var(--border)' }}>
+                        <DesignPreview path={j.product?.thumbnail || j.designFilePath} size={38} />
+                        <div style={{ flex:1, minWidth:0 }}>
+                          <div style={{ display:'flex', alignItems:'center', gap:'6px', flexWrap:'wrap' }}>
+                            <span style={{ fontFamily:'monospace', fontWeight:700, fontSize:'12px', color:'var(--white)' }}>{j.joId}</span>
+                            <JobOrderStatusBadge status={j.joStatus} />
+                            {j.isRush && <span style={{ ...S.badge, background:'#fff7ed', color:'#c2410c', border:'1px solid #fdba74', fontSize:'10px' }}>RUSH</span>}
+                            {jrisk && <span style={{ ...S.badge, ...RISK_STYLE[jrisk.color], fontSize:'9px', fontWeight:700 }}>{jrisk.label}</span>}
+                          </div>
+                          <div style={{ fontSize:'11px', color:'var(--gray)', marginTop:'2px' }}>
+                            {j.product?.name}{j.product?.variant ? ` - ${j.product.variant}` : ''} x{j.product?.quantity ?? 1}
+                            {j.targetCompletion ? ` · due ${fmtJODate(j.targetCompletion)}` : ''}
+                          </div>
+                        </div>
+                        {j.joStatus === 'Queued' && (
+                          <button disabled={busy} onClick={() => setJoConfirm({ jo: j, to: 'In Progress' })} style={S.btnSmGhost}>{busy ? 'Saving…' : 'Start'}</button>
+                        )}
+                        {j.joStatus === 'In Progress' && (
+                          <button disabled={busy} onClick={() => setJoConfirm({ jo: j, to: 'QC_Pending' })} style={S.btnSmGhost}>{busy ? 'Saving…' : 'Send to QC'}</button>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
-              )}
-            </>
-          )}
+              </>
+            );
+          })()}
 
-          {/* Design workflow — custom orders only */}
+          {/* Design workflow - custom orders only */}
           {hasDesignWork && (
             <>
               <div style={S.divider} />
               <SectionLabel>Design</SectionLabel>
 
-              {lo.designStatus && (
-                <div style={{ marginBottom:'8px' }}>
-                  <span style={{ ...S.badge, fontSize:'11px',
-                    background: lo.designStatus==='approved' ? '#f0fdf4' : lo.designStatus==='rejected' ? '#fef2f2' : '#fff7ed',
-                    color:      lo.designStatus==='approved' ? '#166534' : lo.designStatus==='rejected' ? '#991b1b' : '#c2410c',
-                    border:`1px solid ${lo.designStatus==='approved'?'#bbf7d0':lo.designStatus==='rejected'?'#fecaca':'#fdba74'}` }}>
-                    {lo.designStatus==='approved' ? 'Approved'
-                      : lo.designStatus==='rejected' ? 'Rejected'
-                      : lo.designStatus==='revision_requested' ? 'Revision Requested'
-                      : lo.designStatus==='draft_ready' ? 'Awaiting Review'
-                      : 'Pending'}
-                  </span>
+              {/* Per-item selector - pick which custom line to review (mixed cart, Option 2). */}
+              {designSections.length > 1 && (
+                <div style={{ display:'flex', flexWrap:'wrap', gap:'6px', marginBottom:'8px' }}>
+                  {designSections.map(sec => {
+                    const active = sec.indices.includes(activeItemIdx);
+                    const done = sec.entries.every(({ it }) => it.designStatus === 'approved');
+                    return (
+                      <button key={sec.key} onClick={() => { setActiveItemIdx(sec.indices[0]); setShowReject(false); setShowFix(false); setConfirmApprove(false); setDraftFiles([]); setDesignErr(''); }}
+                        style={{ padding:'4px 10px', borderRadius:'999px', border:`1px solid ${active?'var(--gold)':done?'#bbf7d0':'var(--border)'}`, background: active?'rgba(212,168,67,0.1)':'transparent', color: active?'var(--gold)':'var(--gray)', fontSize:'11px', fontWeight:700, cursor:'pointer' }}>
+                        {sec.label}{done ? ' - approved' : ''}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              {activeSection?.request && activeSection.indices.length > 1 && (
+                <div style={{ ...S.note, marginBottom:'8px', fontSize:'11px' }}>
+                  Covers {activeSection.indices.length} products - {activeSection.entries.map(({ it }) => it.productName).filter(Boolean).join(', ')}. What you send here goes to all of them.
                 </div>
               )}
 
-              {lo.orderStatus==='revision_requested' && lo.revisionNotes && (
+              {(activeSection?.entries?.length ?? 0) > 0 && (
+                <div style={{ display:'flex', flexWrap:'wrap', gap:'6px', marginBottom:'8px' }}>
+                  {activeSection.entries.map(({ it, idx }) => {
+                    const st = it.designStatus ?? (activeSection.indices.length === 1 ? aiStatus : null);
+                    if (!st) return null;
+                    return (
+                      <span key={idx} style={{ ...S.badge, fontSize:'11px',
+                        background: st==='approved' ? '#f0fdf4' : st==='rejected' ? '#fef2f2' : '#fff7ed',
+                        color:      st==='approved' ? '#166534' : st==='rejected' ? '#991b1b' : '#c2410c',
+                        border:`1px solid ${st==='approved'?'#bbf7d0':st==='rejected'?'#fecaca':'#fdba74'}` }}>
+                        {designItems.length > 1 ? `${it.productName || 'Item'}: ` : ''}{statusLabel(st)}
+                        {Number(it.revisionCount ?? 0) > 0 && ` - rev ${it.revisionCount}`}
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
+
+              {aiStatus==='revision_requested' && (ai.revisionNotes || lo.revisionNotes) && (
                 <div style={{ ...S.note, background:'#fff7ed', border:'1px solid #fdba74', marginBottom:'8px', fontSize:'12px' }}>
-                  <span style={{ fontWeight:600, color:'#c2410c' }}>Revision: </span>{lo.revisionNotes}
+                  <span style={{ fontWeight:600, color:'#c2410c' }}>Revision: </span>{ai.revisionNotes || lo.revisionNotes}
                 </div>
               )}
 
@@ -882,7 +1496,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                   sandboxed <img> (no script execution, safe even for SVG); a PDF embeds; other
                   source formats (AI/PSD) have no browser preview, so an icon + download. */}
               {(() => {
-                const files = (lo.items?.[0]?.designFiles?.length ? lo.items[0].designFiles.map(f => f.url) : [lo.designFilePath]).filter(Boolean);
+                const files = aiFiles;
                 if (!files.length) return null;
                 return (
                   <div style={{ display:'flex', flexWrap:'wrap', gap:'8px', marginBottom:'8px' }}>
@@ -915,10 +1529,10 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                 );
               })()}
 
-              <ImageLightbox url={lightboxUrl} onClose={() => setLightboxUrl(null)} />
+              <ImageLightbox url={lightboxUrl} kind={lightboxKind} onClose={() => { setLightboxUrl(null); setLightboxKind(null); }} />
 
-              {lo.designFilePath && (
-                <a href={lo.designFilePath?.startsWith('http') ? lo.designFilePath : `${API_URL}/storage/${lo.designFilePath}`} target="_blank" rel="noopener noreferrer"
+              {aiHasFile && (
+                <a href={aiFiles[0]?.startsWith('http') ? aiFiles[0] : `${API_URL}/storage/${aiFiles[0]}`} target="_blank" rel="noopener noreferrer"
                   style={{ display:'inline-flex', alignItems:'center', gap:'4px', fontSize:'12px', fontWeight:600, color:'#2563eb', textDecoration:'none', marginBottom:'8px' }}>
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
                   Open full file
@@ -926,16 +1540,16 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
               )}
 
               {/* Printing instructions the customer left - the printer needs these next to the file. */}
-              {(lo.designNotes || lo.items?.[0]?.designNotes) && (
+              {aiNotes && (
                 <div style={{ padding:'8px 10px', background:'#f9fafb', border:'1px solid var(--border)', borderRadius:'6px', fontSize:'12px', color:'var(--gray)', marginBottom:'8px', lineHeight:1.5 }}>
-                  <span style={{ fontWeight:600, color:'var(--white)' }}>Instructions: </span>{lo.designNotes || lo.items[0].designNotes}
+                  <span style={{ fontWeight:600, color:'var(--white)' }}>Instructions: </span>{aiNotes}
                 </div>
               )}
 
-              {/* Upload-order review: three choices - approve as-is, bounce back for a re-upload
+              {/* Upload-line review: three choices - approve as-is, bounce back for a re-upload
                   (with a reason), or fix it yourself and send an adjusted proof for the customer
                   to approve (reuses the request-design proof flow below via showFix). */}
-              {(!lo.designStatus || lo.designStatus==='pending_review') && lo.designFilePath && !showReject && !showFix && !confirmApprove && (
+              {aiStatus==='pending_review' && aiHasFile && !aiRequested && !showReject && !showFix && !confirmApprove && (
                 <div style={{ display:'flex', gap:'6px', marginBottom:'8px', flexWrap:'wrap' }}>
                   <button onClick={() => { setConfirmApprove(true); setDesignErr(''); }} disabled={!!designAct}
                     style={{ flex:'1 1 30%', padding:'5px 0', background:'#f0fdf4', border:'1px solid #bbf7d0', borderRadius:'6px', color:'#166534', fontSize:'12px', fontWeight:700, cursor:designAct?'not-allowed':'pointer', opacity:designAct?.6:1 }}>
@@ -971,7 +1585,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
               )}
 
               {/* Undo an accidental approval - allowed only while no Job Order exists yet. */}
-              {lo.designStatus === 'approved' && !lo.joId && (
+              {aiStatus === 'approved' && !hasAnyJobOrder && (
                 <div style={{ display:'flex', alignItems:'center', gap:'8px', marginBottom:'8px' }}>
                   <span style={{ fontSize:'11px', color:'var(--gray)' }}>Approved by mistake?</span>
                   <button onClick={handleRevertApprove} disabled={!!designAct}
@@ -1013,7 +1627,34 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                 </div>
               )}
 
-              {(lo.items?.some(i => i.designRequested) || showFix) && (
+              {/* The approved proof is the record of what the customer agreed to, so it stays on screen
+                  after approval - production checks its output against this, and a dispute later turns
+                  on being able to see it. The upload controls below are still hidden once approved. */}
+              {aiStatus === 'approved' && aiProofs.length > 0 && showApproved && (
+                <div style={{ marginBottom:'10px' }}>
+                  <div style={{ fontSize:'11px', color:'var(--gray)', marginBottom:'6px', display:'flex', alignItems:'center', gap:'8px' }}>
+                    <span style={{ color:'var(--white)', fontWeight:600 }}>Approved proof</span>
+                    <span>- what the customer signed off. Click a file to view it full size.</span>
+                    <button type="button" onClick={() => setShowApproved(false)}
+                      style={{ marginLeft:'auto', background:'transparent', border:'none', color:'var(--gray)', fontSize:'11px', cursor:'pointer', textDecoration:'underline' }}>
+                      Hide
+                    </button>
+                  </div>
+                  <ProofGallery urls={aiProofs.map(designUrl)} tiles compact
+                    onOpen={(u, kind) => { setLightboxKind(kind); setLightboxUrl(u); }} />
+                </div>
+              )}
+
+              {/* Collapsed by default once approved: the panel is long and the proof has done its job by
+                  then. One click brings it back when someone needs to check what was agreed. */}
+              {aiStatus === 'approved' && aiProofs.length > 0 && !showApproved && (
+                <button type="button" onClick={() => setShowApproved(true)}
+                  style={{ ...S.btnSmGhost, marginBottom:'8px', fontSize:'11px', padding:'4px 10px' }}>
+                  Show approved design
+                </button>
+              )}
+
+              {(aiRequested || showFix) && aiStatus !== 'approved' && (
                 <div>
                   {showFix && (
                     <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'6px' }}>
@@ -1024,21 +1665,62 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                       </button>
                     </div>
                   )}
-                  {lo.adminDesignUrl && !draftFiles.length && (
-                    <div style={{ fontSize:'11px', color:'var(--gray)', marginBottom:'6px' }}>
-                      <a href={lo.adminDesignUrl} target="_blank" rel="noopener noreferrer"
-                        style={{ color:'var(--gold)', fontWeight:600, textDecoration:'none' }}>View Sent Draft</a>
-                      <span style={{ marginLeft:'6px' }}>- Awaiting review</span>
+                  {/* Show the proof that actually went out, not just a link to it. Waiting until the
+                      customer approves before you can see what you sent is too late to catch a mistake. */}
+                  {aiProofs.length > 0 && !draftFiles.length && (
+                    <div style={{ marginBottom:'10px' }}>
+                      <div style={{ fontSize:'11px', color:'var(--gray)', lineHeight:1.6, marginBottom:'6px' }}>
+                        <div style={{ color:'var(--white)', fontWeight:600 }}>
+                          {aiProofs.length > 1 ? `Proof sent - ${aiProofs.length} files` : 'Proof sent'}
+                        </div>
+                        <div>Awaiting the customer&apos;s review. Click a file to view it full size.</div>
+                      </div>
+                      <ProofGallery urls={aiProofs.map(designUrl)} tiles compact
+                        onOpen={(u, kind) => { setLightboxKind(kind); setLightboxUrl(u); }} />
+                      <button type="button" onClick={sendReviewLink} disabled={reviewLinkState === 'sending'}
+                        style={{ ...S.btnGhost, marginTop:'8px', fontSize:'11px', padding:'5px 10px',
+                          cursor: reviewLinkState === 'sending' ? 'wait' : 'pointer' }}>
+                        {reviewLinkState === 'sent' ? 'Link sent to chat'
+                          : reviewLinkState === 'sending' ? 'Sending...'
+                          : reviewLinkState === 'error' ? 'Could not send - try again'
+                          : 'Send review link to chat'}
+                      </button>
                     </div>
                   )}
                   {draftFiles.length > 0 ? (
                     <div style={{ display:'flex', flexDirection:'column', gap:'4px' }}>
-                      <div style={{ fontSize:'11px', color:'var(--gray)' }}>{draftFiles.length} file{draftFiles.length>1?'s':''} ready</div>
+                      <DraftFilePreview files={draftFiles}
+                        onRemove={i => setDraftFiles(prev => prev.filter((_, xi) => xi !== i))}
+                        onOpen={(url, kind) => { setLightboxKind(kind); setLightboxUrl(url); }} />
+                      <div style={{ fontSize:'11px', color:'var(--gray)' }}>
+                        {draftFiles.length} of {maxDraftFiles} file{draftFiles.length>1?'s':''} ready to send
+                        {uploading && ' - video proofs can take a minute, please keep this open'}
+                      </div>
                       <div style={{ display:'flex', gap:'6px' }}>
                         <button onClick={() => handleUploadDesign(draftFiles)} disabled={uploading}
                           style={{ flex:1, padding:'5px 0', background:'var(--gold)', border:'none', borderRadius:'6px', color:'var(--dark)', fontSize:'12px', fontWeight:700, cursor:uploading?'not-allowed':'pointer', opacity:uploading?.6:1 }}>
-                          {uploading ? 'Sending…' : `Send ${draftFiles.length} File${draftFiles.length>1?'s':''}`}
+                          {uploading
+                            ? `Uploading ${(draftFiles.reduce((n,f)=>n+f.size,0)/1048576).toFixed(1)} MB…`
+                            : `Send ${draftFiles.length} File${draftFiles.length>1?'s':''}`}
                         </button>
+                        {/* Staging a file used to be a one-shot decision - Send or start over. Let more
+                            be added to the same batch, up to the five the endpoint accepts. */}
+                        {draftFiles.length < 5 && (
+                          <label style={{ cursor: uploading ? 'not-allowed' : 'pointer' }}>
+                            <div style={{ padding:'5px 10px', background:'transparent', border:'1px solid var(--gold)', borderRadius:'6px', color:'var(--gold)', fontSize:'12px', fontWeight:700, whiteSpace:'nowrap', opacity: uploading ? .5 : 1 }}>
+                              + Add more
+                            </div>
+                            <input type="file" accept="image/*,video/*,.pdf,.ai,.psd,.svg" multiple disabled={uploading} style={{ display:'none' }}
+                              onChange={async e => {
+                                const picked = Array.from(e.target.files ?? []);
+                                e.target.value = '';
+                                if (!picked.length) return;
+                                const { accepted, note } = screenFiles(picked);
+                                setDesignErr(note);
+                                setDraftFiles(prev => [...prev, ...accepted].slice(0, maxDraftFiles));
+                              }} />
+                          </label>
+                        )}
                         <button onClick={() => setDraftFiles([])} disabled={uploading}
                           style={{ padding:'5px 10px', background:'transparent', border:'1px solid var(--border)', borderRadius:'6px', color:'var(--gray)', fontSize:'12px', cursor:'pointer' }}>
                           Cancel
@@ -1052,7 +1734,15 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                         Upload Draft
                       </div>
                       <input type="file" accept="image/*,video/*,.pdf,.ai,.psd,.svg" multiple style={{ display:'none' }}
-                        onChange={e => { const f=Array.from(e.target.files??[]).slice(0,5); if(f.length) setDraftFiles(f); e.target.value=''; }} />
+                        onChange={async e => {
+                          const picked = Array.from(e.target.files ?? []).slice(0, maxDraftFiles);
+                          e.target.value = '';
+                          if (!picked.length) return;
+                          setDesignErr('');
+                          const { accepted, note } = screenFiles(picked);
+                          setDesignErr(note);
+                          if (accepted.length) setDraftFiles(accepted);
+                        }} />
                     </label>
                   )}
                 </div>
@@ -1064,10 +1754,90 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
           {/* Update Status */}
           <div style={S.divider} />
           <SectionLabel>Update Status</SectionLabel>
+
+          {/* A reason nobody can read is a reason nobody collected. This is the only signal that
+              separates a pricing problem from a delivery-time problem from a change of mind. */}
+          {lo.cancelledReason && (
+            <div style={{ marginBottom:'8px', padding:'8px 10px', borderRadius:'7px', background:'rgba(239,68,68,0.06)', border:'1px solid rgba(239,68,68,0.2)' }}>
+              <div style={{ fontSize:'10px', fontWeight:700, color:'#991b1b', textTransform:'uppercase', letterSpacing:'.5px' }}>
+                Cancelled by {lo.cancelledBy === 'customer' ? 'the customer' : 'the shop'}
+              </div>
+              <div style={{ fontSize:'12px', color:'var(--gray-light)', marginTop:'3px' }}>{lo.cancelledReason}</div>
+            </div>
+          )}
           {['pending_design','revision_requested'].includes(lo.orderStatus) ? (
             <span style={{ fontSize:'11px', color:'var(--gray)', fontStyle:'italic' }}>Managed via design upload above</span>
-          ) : ['awaiting_payment','ready_for_delivery'].includes(lo.orderStatus) ? (
-            <span style={{ fontSize:'11px', color:'var(--gray)', fontStyle:'italic' }}>Waiting for customer payment</span>
+          ) : awaitingMoney ? (
+            <div style={{ display:'flex', flexDirection:'column', gap:'6px' }}>
+              {/* This used to hide the whole control at ready_for_delivery whether or not the money
+                  had arrived - so an order settled in cash stayed frozen with nothing on offer, and
+                  the only thing the shop could still do about an unpaid one was Archive it. */}
+              <span style={{ fontSize:'11px', color:'var(--gray)', fontStyle:'italic' }}>
+                Waiting for ₱{fmt(remainingDue(lo))} from the customer. It cannot be dispatched until
+                that clears - use Send payment reminder, or cancel it below.
+              </span>
+              {readySince !== null && (
+                <span style={{ fontSize:'11px', fontWeight:700,
+                  color: readySince >= 14 ? '#c2410c' : readySince >= 7 ? '#b45309' : 'var(--gray)' }}>
+                  Finished goods held for {readySince} day{readySince === 1 ? '' : 's'}
+                  {readySince >= 14 && ' - these cannot be resold. Decide whether to keep holding them.'}
+                </span>
+              )}
+
+              {readySince !== null && readySince >= 7 && !lo.writeOff && (
+                !woConfirm ? (
+                  <button onClick={() => { setWoErr(''); setWoConfirm(true); }}
+                    style={{ ...S.btnSmGhost, justifyContent:'center', color:'#c2410c' }}>
+                    Write off and archive
+                  </button>
+                ) : (
+                  <div style={{ padding:'10px', borderRadius:'7px', background:'rgba(239,68,68,0.05)', border:'1px solid rgba(239,68,68,0.25)' }}>
+                    <div style={{ fontSize:'11.5px', color:'var(--gray-light)', lineHeight:1.6, marginBottom:'8px' }}>
+                      The goods are disposed of and the order is closed. You keep the
+                      <strong style={{ color:'var(--gold)' }}> ₱{fmt(paidSoFar(lo))} </strong>
+                      already paid, and the
+                      <strong style={{ color:'#c2410c' }}> ₱{fmt(remainingDue(lo))} </strong>
+                      balance is never collected. The cost of what was made is recorded as a loss so
+                      the forfeited deposit does not read as profit.
+                    </div>
+                    {woErr && <div style={{ fontSize:'11px', color:'#991b1b', marginBottom:'6px' }}>{woErr}</div>}
+                    <div style={{ display:'flex', gap:'6px' }}>
+                      <button onClick={handleWriteOff} disabled={writingOff}
+                        style={{ flex:1, padding:'6px 0', background:'#c2410c', border:'none', borderRadius:'6px', color:'#fff', fontSize:'12px', fontWeight:700, cursor: writingOff ? 'not-allowed' : 'pointer' }}>
+                        {writingOff ? 'Writing off...' : 'Yes, write it off'}
+                      </button>
+                      <button onClick={() => setWoConfirm(false)}
+                        style={{ padding:'6px 10px', background:'transparent', border:'1px solid var(--border)', borderRadius:'6px', color:'var(--gray)', fontSize:'12px', cursor:'pointer' }}>
+                        Keep holding
+                      </button>
+                    </div>
+                  </div>
+                )
+              )}
+              {availableRaw.includes('cancelled') && (
+                <button onClick={() => { setSelStatus('cancelled'); setConfirmSt(true); }}
+                  style={{ ...S.btnSmGhost, justifyContent:'center', color:'var(--st-red-fg)' }}>
+                  Cancel this order
+                </button>
+              )}
+              {confirmSt && selStatus === 'cancelled' && (
+                <div style={{ display:'flex', gap:'6px' }}>
+                  <button onClick={handleUpdateStatus} disabled={isUpdating}
+                    style={{ flex:1, padding:'6px 0', background:'#c2410c', border:'none', borderRadius:'6px', color:'#fff', fontSize:'12px', fontWeight:700, cursor:isUpdating?'not-allowed':'pointer' }}>
+                    {isUpdating ? 'Cancelling...' : 'Yes, cancel the order'}
+                  </button>
+                  <button onClick={() => { setConfirmSt(false); setSelStatus(lo.orderStatus); }}
+                    style={{ padding:'6px 10px', background:'transparent', border:'1px solid var(--border)', borderRadius:'6px', color:'var(--gray)', fontSize:'12px', cursor:'pointer' }}>
+                    Keep it
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : openJobs.length > 0 && available.length === 0 ? (
+            <span style={{ fontSize:'11px', color:'var(--gray)', fontStyle:'italic' }}>
+              {openJobs.length} job order{openJobs.length > 1 ? 's' : ''} still open. This order is released for
+              delivery by Quality Control, once every one of them passes.
+            </span>
           ) : available.length > 0 ? (
             <div style={{ display:'flex', flexDirection:'column', gap:'6px' }}>
               <CustomSelect
@@ -1078,6 +1848,38 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                   ...available.map(s => ({ value: s, label: getStatusBadge(s).label })),
                 ]}
               />
+              {String(selStatus).toLowerCase() === 'returned' && (
+                <div style={{ padding:'10px', borderRadius:'7px', border:'1px solid var(--border)', display:'flex', flexDirection:'column', gap:'7px' }}>
+                  <span style={{ fontSize:'11px', fontWeight:700, color:'var(--gray)', textTransform:'uppercase', letterSpacing:'.5px' }}>Why did it come back?</span>
+                  <div style={{ display:'flex', flexWrap:'wrap', gap:'5px' }}>
+                    {['Nobody received it', 'Refused on delivery', 'Wrong address', 'Damaged in transit', 'Wrong item sent', 'Other'].map(r => (
+                      <button key={r} type="button" onClick={() => setReturnReason(r)}
+                        style={{ padding:'4px 9px', borderRadius:'999px', fontSize:'11px', cursor:'pointer',
+                          border:`1px solid ${returnReason === r ? 'var(--gold)' : 'var(--border)'}`,
+                          background: returnReason === r ? 'rgba(212,168,67,0.1)' : 'transparent',
+                          color: returnReason === r ? 'var(--gold)' : 'var(--gray)',
+                          fontWeight: returnReason === r ? 700 : 500 }}>{r}</button>
+                    ))}
+                  </div>
+                  {returnReason === 'Other' && (
+                    <input type="text" value={returnOther} maxLength={200}
+                      onChange={e => setReturnOther(e.target.value.slice(0, 200))}
+                      placeholder="What happened?"
+                      style={{ ...S.input, fontSize:'12px' }} />
+                  )}
+                  <label style={{ display:'flex', alignItems:'flex-start', gap:'7px', fontSize:'11.5px', color:'var(--gray-light)', cursor:'pointer' }}>
+                    <input type="checkbox" checked={returnSellable}
+                      onChange={e => setReturnSellable(e.target.checked)} style={{ marginTop:'2px' }} />
+                    <span>
+                      The goods came back sellable - put ready-made items back in stock.
+                      <span style={{ display:'block', color:'var(--gray)', marginTop:'2px' }}>
+                        Personalised items are never restocked; they carry the customer&apos;s design.
+                      </span>
+                    </span>
+                  </label>
+                </div>
+              )}
+
               {!confirmSt ? (
                 <button onClick={() => selStatus !== lo.orderStatus && setConfirmSt(true)}
                   disabled={selStatus === lo.orderStatus}
@@ -1099,9 +1901,13 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
               {updateErr && <div style={{ fontSize:'11px', color:'#991b1b' }}>{updateErr}</div>}
             </div>
           ) : (
-            (lo.isCustom && lo.designStatus === 'approved' && !lo.joId) ? (
+            (lo.isCustom && lo.designStatus === 'approved' && jobOrdersMissing > 0) ? (
               <div style={{ display:'flex', flexDirection:'column', gap:'6px' }}>
-                <span style={{ fontSize:'11px', color:'var(--gray)', fontStyle:'italic' }}>Ready for production - create a Job Order to start.</span>
+                <span style={{ fontSize:'11px', color:'var(--gray)', fontStyle:'italic' }}>
+                  {hasAnyJobOrder
+                    ? `${jobOrdersMissing} item${jobOrdersMissing > 1 ? 's' : ''} on this order still has no job order.`
+                    : 'Ready for production - create a Job Order to start.'}
+                </span>
                 <a href="/dashboard/business/job-orders" target="_blank" rel="noopener noreferrer"
                   style={{ ...S.btnSmGhost, justifyContent:'center', textDecoration:'none', display:'inline-flex', alignItems:'center', gap:'6px' }}>
                   {ICONS.plus} Create Job Order
@@ -1124,11 +1930,31 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                 <div style={{ fontSize:'12px', color:'var(--gray)' }}>
                   Est. delivery:{' '}
                   <span style={{ color:'var(--white)', fontWeight:600 }}>
-                    {lo.estimatedDeliveryMin ? new Date(lo.estimatedDeliveryMin).toLocaleDateString('en-PH',{month:'short',day:'numeric',year:'numeric'}) : '—'}
+                    {lo.estimatedDeliveryMin ? new Date(lo.estimatedDeliveryMin).toLocaleDateString('en-PH',{month:'short',day:'numeric',year:'numeric'}) : '-'}
                     {lo.estimatedDeliveryMax && lo.estimatedDeliveryMax !== lo.estimatedDeliveryMin ? ` - ${new Date(lo.estimatedDeliveryMax).toLocaleDateString('en-PH',{month:'short',day:'numeric',year:'numeric'})}` : ''}
                   </span>
                   {lo.isRush && <span style={{ marginLeft:6, fontSize:'10px', fontWeight:700, color:'#991b1b', background:'#fef2f2', border:'1px solid #fecaca', borderRadius:4, padding:'1px 5px' }}>RUSH</span>}
                 </div>
+                {lo.needByDate && (
+                  <div style={{ fontSize:'12px', color:'var(--gray)' }}>
+                    Customer needs by:{' '}
+                    <span style={{ color:'#c2410c', fontWeight:700 }}>{new Date(lo.needByDate).toLocaleDateString('en-PH',{month:'short',day:'numeric',year:'numeric'})}</span>
+                  </div>
+                )}
+                {/* Rush is a REQUEST - the shop decides if it can fit it in ("kaya ba isabay"). */}
+                {lo.rushStatus === 'requested' && (
+                  <div style={{ padding:'10px', background:'#fff7ed', border:'1px solid #fdba74', borderRadius:'8px', display:'flex', flexDirection:'column', gap:'8px' }}>
+                    <div style={{ fontSize:'12px', fontWeight:700, color:'#c2410c' }}>Rush requested (+₱{Number(lo.rushFee ?? 0).toLocaleString('en-PH')}) - can you fit it in?</div>
+                    <div style={{ display:'flex', gap:'6px' }}>
+                      <button onClick={() => handleRushDecision('accepted')} disabled={savingDeliv}
+                        style={{ flex:1, padding:'6px 0', background:'#166534', border:'none', borderRadius:'6px', color:'#fff', fontSize:'12px', fontWeight:700, cursor:savingDeliv?'not-allowed':'pointer', opacity:savingDeliv?.6:1 }}>Accept rush</button>
+                      <button onClick={() => handleRushDecision('declined')} disabled={savingDeliv}
+                        style={{ flex:1, padding:'6px 0', background:'transparent', border:'1px solid #fecaca', borderRadius:'6px', color:'#991b1b', fontSize:'12px', fontWeight:700, cursor:savingDeliv?'not-allowed':'pointer', opacity:savingDeliv?.6:1 }}>Decline (waive fee)</button>
+                    </div>
+                  </div>
+                )}
+                {lo.rushStatus === 'accepted' && <div style={{ fontSize:'11px', fontWeight:700, color:'#166534' }}>Rush accepted - prioritise this order.</div>}
+                {lo.rushStatus === 'declined' && <div style={{ fontSize:'11px', color:'var(--gray)' }}>Rush declined - standard schedule, fee waived.</div>}
                 <div style={{ display:'flex', gap:'6px' }}>
                   <input type="date" value={delivDate || fmtDeliveryInput(lo.estimatedDeliveryMax)} onChange={e => setDelivDate(e.target.value)}
                     style={{ flex:1, padding:'6px 8px', borderRadius:'6px', border:'1px solid var(--border)', background:'var(--dark)', color:'var(--white)', fontSize:'12px' }} />
@@ -1141,15 +1967,56 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
               </div>
             </>
           )}
+
+          {/* Clickwrap ACCEPTANCE PROOF - the evidence to show if a customer disputes. Records who
+              agreed, the exact date/time, the version, and the EXACT clause text they accepted. */}
+          {lo.agreedToTerms ? (
+            <div style={{ marginTop:'10px' }}>
+              <div style={{ display:'flex', alignItems:'center', gap:'6px', fontSize:'11px', color:'#166534', fontWeight:700 }}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#166534" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                Accepted the Custom Order Terms{lo.termsVersion ? ` (v${lo.termsVersion})` : ''}
+                <button onClick={() => setShowProof(s => !s)} style={{ marginLeft:'auto', background:'none', border:'1px solid var(--border)', borderRadius:'6px', color:'var(--gold)', fontSize:'10px', fontWeight:700, padding:'2px 8px', cursor:'pointer' }}>
+                  {showProof ? 'Hide proof' : 'View proof'}
+                </button>
+              </div>
+              {showProof && (() => {
+                const clauses = (Array.isArray(lo.agreedTermsSnapshot) && lo.agreedTermsSnapshot.length) ? lo.agreedTermsSnapshot : DEFAULT_CUSTOM_ORDER_TERMS;
+                const snapshotted = Array.isArray(lo.agreedTermsSnapshot) && lo.agreedTermsSnapshot.length;
+                return (
+                  <div style={{ marginTop:'8px', padding:'10px 12px', background:'#f0fdf4', border:'1px solid #bbf7d0', borderRadius:'8px', fontSize:'11px', color:'var(--gray)' }}>
+                    <div style={{ display:'grid', gridTemplateColumns:'auto 1fr', gap:'2px 10px', marginBottom:'8px' }}>
+                      <span style={{ fontWeight:700, color:'var(--white)' }}>Customer:</span><span>{lo.customerName || lo.userSnapshot?.name || '-'}{(lo.customerEmail || lo.userSnapshot?.email) ? ` (${lo.customerEmail || lo.userSnapshot?.email})` : ''}</span>
+                      <span style={{ fontWeight:700, color:'var(--white)' }}>Accepted:</span><span>{lo.agreedAt ? new Date(lo.agreedAt).toLocaleString('en-PH',{year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '-'}</span>
+                      <span style={{ fontWeight:700, color:'var(--white)' }}>Version:</span><span>v{lo.termsVersion ?? 1}</span>
+                      <span style={{ fontWeight:700, color:'var(--white)' }}>Method:</span><span>Clickwrap - ticked "I have read and agree" and could not place the order without it.</span>
+                    </div>
+                    <div style={{ fontWeight:700, color:'var(--white)', marginBottom:'4px' }}>Exact terms accepted{snapshotted ? '' : ' (current version - no snapshot on this order)'}:</div>
+                    <div style={{ display:'flex', flexDirection:'column', gap:'6px', maxHeight:'200px', overflowY:'auto' }}>
+                      {clauses.map((c, i) => (
+                        <div key={i}>
+                          <span style={{ fontWeight:700, color:'#166534' }}>{i+1}. {c.title}</span>
+                          <div style={{ lineHeight:1.5 }}>{c.body}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+          ) : (
+            (lo.isCustom || lo.items?.some(i => i.isCustom)) && (
+              <div style={{ marginTop:'10px', fontSize:'11px', color:'#c2410c' }}>No recorded T&C acceptance on this order.</div>
+            )
+          )}
         </div>
 
-        {/* RIGHT — order items + payment */}
+        {/* RIGHT - order items + payment */}
         <div style={{ ...S.card, padding:'14px 16px' }}>
           <SectionLabel>Order</SectionLabel>
 
           <div style={{ display:'flex', flexDirection:'column', gap:'8px', marginBottom:'12px', paddingBottom:'12px', borderBottom:'1px solid var(--border)' }}>
             {(Array.isArray(lo.items) && lo.items.length > 0 ? lo.items : []).map((item, i) => {
-              const name    = item.productName || item.product_name || '—';
+              const name    = item.productName || item.product_name || '-';
               const variant = item.variantName || item.variant_name || null;
               const unit    = Number(item.unitPrice ?? 0);
               const qty     = Number(item.qty ?? item.quantity ?? 1);
@@ -1201,7 +2068,11 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
           {/* balance is only written once a payment lands, so an unpaid order reported
               ₱0.00 owing on a ₱1,057.88 order. Derive it when it has never been set. */}
           {(() => {
-            const paid  = Number(lo.downPayment ?? 0);
+            // Every peso received, not just the deposit. `downPayment` is untouched by a design fee,
+            // so an order that had paid its P100 still reported "Paid P0.00" beside a payment history
+            // showing that exact P100.
+            const history = (lo.paymentHistory ?? []).reduce((t, x) => t + (Number(x.amount) || 0), 0);
+            const paid  = Math.max(Number(lo.downPayment ?? 0), history);
             const total = Number(lo.totalAmount ?? lo.totalPrice ?? 0);
             const owing = lo.balance != null && lo.balance !== ''
               ? Number(lo.balance)
@@ -1213,6 +2084,22 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                   <span style={{ color:'var(--gray)' }}>Balance</span>
                   <span style={{ fontWeight:700, color: owing <= 0 ? '#166534' : '#c2410c' }}>₱{fmt(owing)}</span>
                 </div>
+
+                {/* The automatic balance notice fires once, when the last job passes QC. Without a way
+                    to send it again the only follow-up was typing in the chat by hand. */}
+                {owing > 0 && String(lo.paymentMethod || '').toLowerCase() !== 'cod' && (
+                  <div style={{ marginTop: 8 }}>
+                    <button type="button" onClick={handleRemindBalance} disabled={reminding}
+                      style={{ ...S.btnSmGhost, width: '100%', opacity: reminding ? 0.6 : 1 }}>
+                      {reminding ? 'Sending...' : 'Send payment reminder'}
+                    </button>
+                    {remindMsg && (
+                      <div style={{ fontSize: 11, marginTop: 5, color: remindMsg.ok ? '#166534' : '#c2410c' }}>
+                        {remindMsg.text}
+                      </div>
+                    )}
+                  </div>
+                )}
               </>
             );
           })()}
@@ -1223,7 +2110,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
               <SectionLabel>Payment History</SectionLabel>
               {lo.paymentHistory.map((p, i) => (
                 <div key={i} style={{ display:'flex', justifyContent:'space-between', fontSize:'11px', padding:'2px 0' }}>
-                  <span style={{ color:'var(--gray)' }}>{p.method}{p.note ? ` — ${p.note}` : ''}</span>
+                  <span style={{ color:'var(--gray)' }}>{p.method}{p.note ? ` - ${p.note}` : ''}</span>
                   <span style={{ color:'#166534', fontWeight:600 }}>+₱{fmt(p.amount)}</span>
                 </div>
               ))}
@@ -1248,7 +2135,21 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
         )}
         {expireErr && <span style={{ fontSize:'11px', color:'#991b1b' }}>{expireErr}</span>}
       </div>
+
+      <ConfirmModal
+        open={!!joConfirm}
+        onClose={() => setJoConfirm(null)}
+        onConfirm={() => joConfirm && advanceJO(joConfirm.jo, joConfirm.to)}
+        loading={!!joBusyId}
+        confirmStyle="primary"
+        title={joConfirm ? JO_COPY[joConfirm.to]?.title : ''}
+        confirmLabel={joConfirm ? JO_COPY[joConfirm.to]?.label : 'Confirm'}
+        message={joConfirm
+          ? `${joConfirm.jo.joId} - ${joConfirm.jo.product?.productName || joConfirm.jo.product?.name || 'this item'}. ${JO_COPY[joConfirm.to]?.body ?? ''}`
+          : ''}
+      />
     </div>
+
   );
 }
 
@@ -1297,6 +2198,34 @@ export default function OrdersPage() {
 
   useEffect(() => { if (token) fetchOrders(); }, [token, fetchOrders]);
 
+  // An open row means someone is working in it - uploading a proof, approving, editing a date. The
+  // background refresh must not run underneath them. `skipPollRef` was already here but nothing ever
+  // set it true, so the guard did nothing.
+  useEffect(() => { skipPollRef.current = expandedId !== null; }, [expandedId]);
+
+  // Deep link from a chat card or a notification. Opens that order's row once the list has it, then
+  // clears the param so a later Back or refresh does not reopen what was just closed. Guarded so it
+  // only ever fires once - otherwise every poll would fight the owner for control of the row.
+  const deepLinkedRef = useRef(null);
+  useEffect(() => {
+    if (!orders.length || typeof window === 'undefined') return;
+    const wanted = new URLSearchParams(window.location.search).get('order');
+    if (!wanted || deepLinkedRef.current === wanted) return;
+    const idOf = (o) => {
+      const raw = o?.id ?? o?._id;
+      if (!raw) return '';
+      return typeof raw === 'object' ? String(raw.$oid ?? raw) : String(raw);
+    };
+    const match = orders.find(o => idOf(o) === String(wanted));
+    if (!match) return;
+    deepLinkedRef.current = wanted;
+    setExpandedId(match.id);
+    window.history.replaceState({}, '', window.location.pathname);
+    requestAnimationFrame(() => {
+      document.getElementById(`order-row-${match.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+  }, [orders]);
+
   useEffect(() => {
     if (!token) return;
     pollRef.current = setInterval(() => {
@@ -1314,7 +2243,10 @@ export default function OrdersPage() {
       (o.id || '').toLowerCase().includes(q) ||
       (o.productName || '').toLowerCase().includes(q);
 
-    const matchStatus = statusFilter === 'all' || normalizeStatus(o.orderStatus) === statusFilter;
+    // 'needs_attention' is not a stored status - it is the derived delivery-promise risk.
+    const matchStatus = statusFilter === 'all' ? true
+      : statusFilter === 'needs_attention' ? !!deliveryRisk(o)
+      : normalizeStatus(o.orderStatus) === statusFilter;
     const matchPay    = payFilter === 'all' || o.paymentStatus === payFilter;
 
     let matchDate = true;
@@ -1345,6 +2277,8 @@ export default function OrdersPage() {
     forDelivery:  countBy('for_delivery'),
     delivered:    countBy('delivered'),
     cancelled:    countBy('cancelled'),
+    // Orders whose delivery promise is late or about to be missed (derived, not stored).
+    needsAttention: orders.filter(o => !!deliveryRisk(o)).length,
   };
 
   const { slice, page, perPage, total, setPage, setPerPage } = usePagination(filtered);
@@ -1357,7 +2291,7 @@ export default function OrdersPage() {
     <ErrorBoundary>
       <div style={S.page}>
 
-        {/* Summary cards — click to filter */}
+        {/* Summary cards - click to filter */}
         <div style={{ display:'flex', gap:'10px', flexWrap:'wrap', marginBottom:'16px' }}>
           {[
             { label:'Total Orders',   value:counts.all,          id:'all'           },
@@ -1366,12 +2300,13 @@ export default function OrdersPage() {
             { label:'For Delivery',   value:counts.forDelivery,   id:'for_delivery'  },
             { label:'Delivered',      value:counts.delivered,     id:'delivered'     },
             { label:'Cancelled',      value:counts.cancelled,     id:'cancelled'     },
+            { label:'Needs Attention',value:counts.needsAttention,id:'needs_attention', alert:true },
           ].map(c => (
             <div key={c.id} onClick={() => { setStatusFilter(c.id); setPage(1); }}
               style={{ cursor:'pointer', flex:'1', minWidth:'100px' }}>
               <SummaryCard label={c.label} value={c.value}
                 accent={statusFilter === c.id}
-                color={statusFilter === c.id ? 'var(--gold)' : undefined} />
+                color={statusFilter === c.id ? 'var(--gold)' : (c.alert && c.value > 0 ? 'var(--st-red-fg)' : undefined)} />
             </div>
           ))}
         </div>
@@ -1467,7 +2402,7 @@ export default function OrdersPage() {
                   const isArch = !!o.isArchived;
                   return (
                     <React.Fragment key={o.id}>
-                      <tr style={{ ...S.tr, cursor:'pointer',
+                      <tr id={`order-row-${o.id}`} style={{ ...S.tr, cursor:'pointer',
                         background: isOpen ? 'var(--dark2)' : isArch ? 'var(--dark2)' : undefined,
                         opacity: isArch ? 0.65 : 1,
                         borderBottom: isOpen ? 'none' : undefined }}
@@ -1479,7 +2414,7 @@ export default function OrdersPage() {
                           <Chevron open={isOpen} />
                         </td>
                         <td style={{ ...S.td, fontFamily:'monospace', fontWeight:700, fontSize:'12px', color:'var(--gold)', whiteSpace:'nowrap' }}>
-                          #{String(o.id ?? '').slice(-8).toUpperCase()}
+                          {orderNo(o)}
                         </td>
                         <td style={{ ...S.td }}>
                           <TypeBadge isCustom={o.isCustom} />
@@ -1500,12 +2435,18 @@ export default function OrdersPage() {
                           <StatusBadge status={o.orderStatus} />
                           {isArch && <span style={{ ...S.badge, fontSize:'10px', background:'var(--st-gray-bg)', color:'var(--st-gray-fg)', border:'1px solid var(--border)', marginLeft:'4px' }}>Archived</span>}
                           {isExpired(o) && <span style={{ ...S.badge, fontSize:'10px', background:'var(--st-orange-bg)', color:'var(--st-orange-fg)', border:'1px solid rgba(251,146,60,0.35)', marginLeft:'4px' }}>Expired</span>}
+                          {(() => {
+                            // The delivery promise used to lapse silently. Surface it on the row.
+                            const risk = deliveryRisk(o);
+                            if (!risk) return null;
+                            return <span title={risk.reason} style={{ ...S.badge, ...RISK_STYLE[risk.color], fontSize:'10px', fontWeight:700, marginLeft:'4px' }}>{risk.label}</span>;
+                          })()}
                         </td>
                         <td style={{ ...S.td, textAlign:'center' }}>
                           <PayBadge status={o.paymentStatus} />
                         </td>
                         <td style={{ ...S.td, fontSize:'11px', color:'var(--gray)', whiteSpace:'nowrap' }}>
-                          {o.createdAt ? new Date(o.createdAt).toLocaleDateString('en-PH', { month:'short', day:'numeric', year:'numeric' }) : '—'}
+                          {o.createdAt ? new Date(o.createdAt).toLocaleDateString('en-PH', { month:'short', day:'numeric', year:'numeric' }) : '-'}
                         </td>
                       </tr>
 
@@ -1564,12 +2505,12 @@ export default function OrdersPage() {
             token={token}
             onClose={() => setShowJOQueue(false)}
             onJOUpdated={(id, status) => setOrders(prev => prev.map(o => o.id === id ? { ...o, joStatus:status } : o))}
-            onPrintJO={o => { setPrintTarget(o); setShowJOQueue(false); }}
+            onPrintJO={(o, jo = null) => { setPrintTarget({ order: o, jobOrder: jo }); setShowJOQueue(false); }}
           />
         )}
 
         {printTarget && (
-          <PrintJOModal order={printTarget} onClose={() => setPrintTarget(null)} />
+          <PrintJOModal order={printTarget.order} jobOrder={printTarget.jobOrder} onClose={() => setPrintTarget(null)} />
         )}
 
       </div>

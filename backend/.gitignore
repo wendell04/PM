@@ -18,6 +18,9 @@
 /public/storage
 /storage/*.key
 /storage/pail
+# Database exports. These are plain-text dumps of live collections - users.json alone carries
+# password hashes, api_token, totp_secret and reset_token - so they must never be committed.
+/storage/backups
 /vendor
 Homestead.json
 Homestead.yaml

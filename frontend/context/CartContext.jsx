@@ -133,9 +133,16 @@ export function CartProvider({ children }) {
         ...(designData?.files?.length ? { designFiles: designData.files } : {}),
         ...(designData?.notes ? { designNotes: designData.notes } : {}),
         ...(designData?.mode ? { designMode: designData.mode } : {}),
+        // T&C acceptance travels with the line (accepted on the product page for this mode's terms).
+        ...(designData?.termsVersion != null ? { termsVersion: designData.termsVersion } : {}),
+        ...(designData?.termsSnapshot ? { termsSnapshot: designData.termsSnapshot } : {}),
+        ...(designData?.termsAgreedAt ? { termsAgreedAt: designData.termsAgreedAt } : {}),
         ...(flashSaleId != null ? { flashSaleId: String(flashSaleId) } : {}),
       };
 
+      // A cart can now hold any mix of ready-made, upload-design and request-design lines. Each line
+      // carries its own designMode + design data (per-item design tracking), so the checkout and the
+      // order detail modal drive each line through its own design path. No same-type restriction.
       let updatedItems = [...cartItems];
       updatedItems.push(newItem);
 

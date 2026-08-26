@@ -1184,9 +1184,17 @@
   gap: 4px;
 }
 
-.cw-messages::-webkit-scrollbar       { width: 3px; }
-.cw-messages::-webkit-scrollbar-track { background: transparent; }
-.cw-messages::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 999px; }
+/* The thumb was white at 10% opacity on a white panel - invisible, and only 3px wide even if it had
+   not been. Wide enough to grab and dark enough to see, with the stepper arrows removed: Chrome only
+   draws those once a scrollbar is styled at all, and they are useless at this size. */
+.cw-messages::-webkit-scrollbar        { width: 8px; }
+.cw-messages::-webkit-scrollbar-track  { background: transparent; }
+.cw-messages::-webkit-scrollbar-thumb  { background: rgba(0,0,0,0.22); border-radius: 999px; border: 2px solid transparent; background-clip: content-box; }
+.cw-messages::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.38); background-clip: content-box; }
+.cw-messages::-webkit-scrollbar-button { display: none; height: 0; width: 0; }
+.cw-messages::-webkit-scrollbar-corner { background: transparent; }
+/* Firefox has no stepper arrows to remove and takes its own two properties. */
+.cw-messages { scrollbar-width: thin; scrollbar-color: rgba(0,0,0,0.22) transparent; }
 
 .cw-thread-start {
   text-align: center;

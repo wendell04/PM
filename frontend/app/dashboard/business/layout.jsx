@@ -1200,13 +1200,12 @@ export default function BusinessDashboardLayout({ children }) {
                     )}
                   </div>
 
-                  {/* Panel body â€” hidden scrollbar */}
+                  {/* Panel body. The scrollbar used to be hidden outright, so a list of 59
+                      notifications gave the reader no sign there was anything below the fold. */}
                   <div
                     style={{
                       overflowY: "auto",
                       flex: 1,
-                      scrollbarWidth: "none",
-                      msOverflowStyle: "none",
                     }}
                   >
                     {notifLoading ? (

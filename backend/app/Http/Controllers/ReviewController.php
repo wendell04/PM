@@ -25,6 +25,8 @@ class ReviewController extends Controller
             'userId'       => (string) ($raw['userId'] ?? ''),
             'orderId'      => (string) ($raw['orderId'] ?? ''),
             'productIds'   => isset($raw['productIds']) ? array_map('strval', (array) $raw['productIds']) : [],
+            // Which single product this review is about; null on older order-level reviews.
+            'productId'    => isset($raw['productId']) ? (string) $raw['productId'] : null,
             'rating'       => (int) ($raw['rating'] ?? 0),
             'comment'      => (string) ($raw['comment'] ?? ''),
             'customerName' => (string) ($raw['customerName'] ?? ''),
@@ -44,12 +46,19 @@ class ReviewController extends Controller
             $order = Order::where('_id', $orderId)->where('userId', (string) $user->_id)->first();
             if (!$order) return $this->notFoundResponse('Order');
 
-            $review = Review::where('orderId', $orderId)->first();
-            if (!$review) {
-                return response()->json(['success' => true, 'data' => null], 200);
+            // Every review on this order, because an order can now hold one per product. The page
+            // needs the whole set to know which items are done and which are still waiting.
+            $reviews = Review::where('orderId', $orderId)->get();
+            if ($reviews->isEmpty()) {
+                return response()->json(['success' => true, 'data' => null, 'reviews' => []], 200);
             }
 
-            return $this->successResponse('Review fetched', $this->serializeReview($review));
+            return response()->json([
+                'success' => true,
+                // `data` stays the first one so anything still expecting a single object works.
+                'data'    => $this->serializeReview($reviews->first()),
+                'reviews' => $reviews->map(fn ($r) => $this->serializeReview($r))->values(),
+            ], 200);
         } catch (\Exception $e) {
             return $this->serverErrorResponse($e);
         }
@@ -70,28 +79,41 @@ class ReviewController extends Controller
                 return $this->errorResponse('You can only review delivered orders.', 422);
             }
 
-            $existing = Review::where('orderId', $orderId)->first();
-            if ($existing) {
-                return $this->errorResponse('You have already reviewed this order.', 422);
-            }
-
             $validated = $request->validate([
-                'rating'  => 'required|integer|min:1|max:5',
-                'comment' => 'required|string|min:5|max:2000',
+                'rating'    => 'required|integer|min:1|max:5',
+                'comment'   => 'required|string|min:5|max:2000',
+                // Which product this is about. One review used to cover the whole order and was
+                // attached to EVERY product in it, so a bad totebag dragged down the mug's rating and
+                // the product page showed a score that was partly about something else entirely.
+                'productId' => 'nullable|string|max:64',
             ]);
 
-            $productIds = collect($order->items ?? [])
-                ->pluck('productId')
-                ->filter()
-                ->unique()
-                ->values()
-                ->toArray();
+            $orderProductIds = collect($order->items ?? [])
+                ->pluck('productId')->filter()->unique()->values()->toArray();
+
+            $productId = $validated['productId'] ?? null;
+            if ($productId !== null && !in_array($productId, $orderProductIds, true)) {
+                return $this->errorResponse('That product is not part of this order.', 422);
+            }
+
+            // One review per product per order. Older order-level reviews carry no productId, so they
+            // still block a second order-level review and are left exactly as they are.
+            $existing = Review::where('orderId', $orderId)
+                ->where('productId', $productId)
+                ->first();
+            if ($existing) {
+                return $this->errorResponse('You have already reviewed this item.', 422);
+            }
+
+            // Kept for anything still reading the old shape; a per-product review names one product.
+            $productIds = $productId !== null ? [$productId] : $orderProductIds;
 
             $comment = htmlspecialchars(strip_tags(trim($validated['comment'])), ENT_QUOTES, 'UTF-8');
 
             $review = Review::create([
                 'userId'       => (string) $user->_id,
                 'orderId'      => $orderId,
+                'productId'    => $productId,
                 'productIds'   => $productIds,
                 'rating'       => (int) $validated['rating'],
                 'comment'      => $comment,

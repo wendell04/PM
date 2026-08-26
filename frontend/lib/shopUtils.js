@@ -5,7 +5,7 @@ export const STATUS_MAP = {
   // Standard order statuses (OrderController)
   Pending:              { label: 'Pending',              tone: 'amber' },
   'In Production':      { label: 'In Production',        tone: 'blue' },
-  'For QC':             { label: 'For QC',               tone: 'purple' },
+  'For QC':             { label: 'Quality Check',         tone: 'purple' },
   'For Delivery':       { label: 'For Delivery',         tone: 'blue' },
   Delivered:            { label: 'Delivered',            tone: 'green' },
   Returned:             { label: 'Returned',             tone: 'red' },
@@ -17,6 +17,17 @@ export const STATUS_MAP = {
   Queued:               { label: 'Queued',               tone: 'amber' },
   'In Progress':        { label: 'In Progress',          tone: 'blue' },
   Completed:            { label: 'Completed',            tone: 'green' },
+  QC_Pending:           { label: 'Quality Check',         tone: 'purple' },
+  QC_Passed:            { label: 'QC Passed',             tone: 'green' },
+  QC_Failed:            { label: 'QC Failed',             tone: 'red' },
+  // Fulfillment stages that had no entry: ready = packed and waiting, for_delivery = with the courier.
+  ready_for_delivery:   { label: 'Ready for Delivery',    tone: 'blue' },
+  for_delivery:         { label: 'Out for Delivery',      tone: 'blue' },
+  // designStatus values, which reach the same badge
+  draft_ready:          { label: 'Proof Ready',           tone: 'amber' },
+  rejected:             { label: 'Rejected',              tone: 'red' },
+  approved:             { label: 'Approved',              tone: 'green' },
+  downpayment_paid:     { label: 'Downpayment Paid',      tone: 'green' },
   // Custom order statuses
   pending_review:       { label: 'Under Review',         tone: 'gray' },
   awaiting_payment:     { label: 'Awaiting Payment',     tone: 'amber' },
@@ -26,7 +37,7 @@ export const STATUS_MAP = {
   design_approved:      { label: 'Design Approved',      tone: 'green' },
   awaiting_production:  { label: 'Awaiting Production',  tone: 'amber' },
   in_production:        { label: 'In Production',        tone: 'blue' },
-  for_qc:               { label: 'For QC',               tone: 'purple' },
+  for_qc:               { label: 'Quality Check',         tone: 'purple' },
   ready_for_pickup:     { label: 'Ready for Pickup',     tone: 'blue' },
   shipped:              { label: 'Shipped',              tone: 'blue' },
 };
@@ -54,6 +65,8 @@ const STATUS_KEY_MAP = {
   'awaiting_production':  'awaiting_production',
   'in_production':        'in_production',
   'for_qc':               'for_qc',
+  'ready_for_delivery':   'ready_for_delivery',
+  'for_delivery':         'for_delivery',
   'ready_for_pickup':     'ready_for_pickup',
   'shipped':              'shipped',
 };
@@ -68,13 +81,26 @@ export function normalizeOrderStatus(status) {
  * Status chip. Pass a `status` (mapped via STATUS_MAP) or an explicit `label`+`tone`
  * for things that aren't order statuses (e.g. quotes).
  *
- * Borderless — flat tint + dark text, matching the quote cards. This only reads correctly
+ * Borderless - flat tint + dark text, matching the quote cards. This only reads correctly
  * on a pure-white card (--dark in light mode); on --dark2 (#f5f7fa) the grey tint (#f3f4f6)
  * is the same value as the card and the chip disappears.
  */
+/**
+ * Last resort for a status no map has heard of. Unmapped values used to reach the customer verbatim,
+ * underscores and all ("ready_for_delivery"), so a new backend value now degrades to something
+ * readable rather than leaking a database key onto the page.
+ */
+export function humanizeStatus(status) {
+  if (!status) return '';
+  return String(status)
+    .replace(/[_-]+/g, ' ')
+    .replace(/\w/g, c => c.toUpperCase())
+    .replace(/Qc/g, 'QC');
+}
+
 export function StatusBadge({ status, label, tone }) {
   const key = normalizeOrderStatus(status);
-  const s = STATUS_MAP[key] || { label: key ?? '—', tone: 'gray' };
+  const s = STATUS_MAP[key] || { label: humanizeStatus(key), tone: 'gray' };
   // Deliberately simple, consistent scheme for the customer's order/quote cards: GREEN only when
   // delivered/completed, RED when cancelled/returned/refunded/declined, GREY for everything else
   // (no amber/blue/purple). Overrides the per-status tone + any explicit tone on purpose.
@@ -100,14 +126,14 @@ export function StatusBadge({ status, label, tone }) {
 }
 
 export function formatDate(dateStr) {
-  if (!dateStr) return '—';
+  if (!dateStr) return '-';
   return new Date(dateStr).toLocaleDateString('en-US', {
     month: 'short', day: 'numeric', year: 'numeric',
   });
 }
 
 export function formatTimestamp(dateStr) {
-  if (!dateStr) return '—';
+  if (!dateStr) return '-';
   return new Date(dateStr).toLocaleDateString('en-US', {
     month: 'short', day: 'numeric', year: 'numeric',
     hour: '2-digit', minute: '2-digit',
@@ -115,7 +141,7 @@ export function formatTimestamp(dateStr) {
 }
 
 export function formatPeso(n) {
-  if (n == null) return '—';
+  if (n == null) return '-';
   return `₱${Number(n).toLocaleString('en-PH', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,

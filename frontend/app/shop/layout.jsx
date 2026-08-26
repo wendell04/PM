@@ -66,6 +66,23 @@ function toLayoutItem(item) {
 }
 
 // Convert Layout format → MongoDB format
+// A cart that has been sitting in a browser can have been written by any past version of this app.
+// The guest cart was posted to /cart/merge exactly as found, so a line saved before `lineTotal`
+// existed made the whole merge fail validation - and the customer silently lost the cart they built
+// before signing in. Anything read back out of storage is normalised first.
+function normaliseStoredItem(raw) {
+  const qty = Math.max(1, parseInt(raw?.qty, 10) || 1);
+  const unitPrice = Number(raw?.unitPrice ?? raw?.price ?? 0) || 0;
+  return {
+    ...raw,
+    qty,
+    unitPrice,
+    lineTotal: Number(raw?.lineTotal) || Math.round(qty * unitPrice * 100) / 100,
+    productId: raw?.productId ?? raw?.product?.id ?? raw?.product?._id,
+    productName: raw?.productName ?? raw?.product?.name ?? '',
+  };
+}
+
 function toMongoItem(item) {
   const unitPrice = item.unitPrice || item.product?.flatPrice || item.product?.price || 0;
   const qty = Math.max(1, parseInt(item.qty) || 1);
@@ -589,7 +606,7 @@ export default function ShopLayout({ children }) {
     try {
       const guestCart = localStorage.getItem('pmp_guest_cart');
       if (guestCart) {
-        const guestItems = JSON.parse(guestCart);
+        const guestItems = (JSON.parse(guestCart) || []).map(normaliseStoredItem);
         if (guestItems && guestItems.length > 0) {
           const mergedCart = await mergeCart(guestItems, getToken());
           // Update both cart systems
@@ -640,7 +657,7 @@ export default function ShopLayout({ children }) {
     try {
       const guestCart = localStorage.getItem('pmp_guest_cart');
       if (guestCart) {
-        const guestItems = JSON.parse(guestCart);
+        const guestItems = (JSON.parse(guestCart) || []).map(normaliseStoredItem);
         if (guestItems && guestItems.length > 0) {
           const mergedCart = await mergeCart(guestItems, getToken());
           // Update both cart systems

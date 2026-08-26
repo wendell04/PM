@@ -11,6 +11,26 @@ use Illuminate\Support\Facades\Cache;
 
 class InventoryReturnController extends Controller
 {
+
+    /**
+     * What one unit of this material actually costs.
+     *
+     * `averageCost` is NULL on this data - the real figure lives in lastUnitCost / baseCost / the
+     * FIFO batch. Reading it alone logged every movement at P0.00, which makes cost of goods, profit
+     * and margin fiction. Same fallback order the BOM screens use.
+     */
+    private function unitCostOf($inv): float
+    {
+        $c = (float) ($inv->lastUnitCost ?: $inv->averageCost ?: $inv->baseCost ?: 0);
+        if ($c > 0) return $c;
+
+        foreach (($inv->batches ?? []) as $b) {
+            $bc = (float) ($b['unitCost'] ?? 0);
+            if ($bc > 0) return $bc;
+        }
+        return 0.0;
+    }
+
     /**
      * GET /api/admin/returns
      * Returns all bad-order (supplier receiving issue) records ordered by createdAt DESC.
@@ -117,8 +137,8 @@ class InventoryReturnController extends Controller
                 'batchId'       => $validated['batchId'] ?? null,
                 'damageType'    => $validated['damageType'],
                 'quantity'      => $qty,
-                'unitCost'      => (float) ($inventory->averageCost ?? 0),
-                'totalLoss'     => (float) ($inventory->averageCost ?? 0) * $qty,
+                'unitCost'      => $this->unitCostOf($inventory),
+                'totalLoss'     => $this->unitCostOf($inventory) * $qty,
                 'status'        => $validated['status'] ?? 'pending',
                 'notes'         => htmlspecialchars(strip_tags(trim($validated['notes'] ?? '')), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
                 'resolvedAt'    => null,

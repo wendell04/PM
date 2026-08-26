@@ -15,12 +15,10 @@ class InventoryController extends Controller
 {
     private function bustInventoryListCache(): void
     {
-        $uid = auth()->id();
-        if ($uid === null) {
-            return;
-        }
-        $k = 'inventory_list_ver_'.$uid;
-        Cache::put($k, (int) Cache::get($k, 0) + 1, 86400);
+        // Kept for explicit call sites; the Inventory model also bumps this on every save, so a
+        // reservation made by a customer now invalidates the admin's list too. The key is global
+        // because the data is: one warehouse, not one per signed-in user.
+        Cache::increment('inventory_list_ver');
     }
 
     /**
@@ -137,7 +135,7 @@ class InventoryController extends Controller
     public function index(Request $request)
     {
         try {
-            $ver = (int) Cache::get('inventory_list_ver_'.auth()->id(), 0);
+            $ver = (int) Cache::get('inventory_list_ver', 0);
             $filterSig = md5(json_encode([
                 'category' => $request->query('category'),
                 'search' => $request->query('search'),

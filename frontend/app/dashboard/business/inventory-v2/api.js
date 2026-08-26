@@ -42,6 +42,13 @@ export function normInventory(item) {
     minStock: Number(item.minStockLevel ?? 0),
     leadTime: Number(item.leadTimeDays ?? 7),
     stockQty: Number(item.stockQty ?? 0),
+    // The API selects these, but the normalizer used to drop them - so `mat.reservedQty` was
+    // undefined everywhere, freeStock() silently returned the GROSS stock, and every screen that
+    // claims to net off open orders was quietly reporting full capacity. The Catalog said
+    // "100 can build" on a mug with 10 already held for an order.
+    reservedQty: Number(item.reservedQty ?? 0),
+    consumedQty: Number(item.consumedQty ?? 0),
+    badOrderQty: Number(item.badOrderQty ?? 0),
   };
   return { mat, batches };
 }

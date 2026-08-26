@@ -12,6 +12,7 @@ class JobOrder extends Model
     protected $fillable = [
         'joId',
         'orderId',
+        'itemIndex',
         'product',
         'targetCompletion',
         'isRush',
@@ -20,8 +21,14 @@ class JobOrder extends Model
         'notes',
         'designNotes',
         'designFilePath',
+        'designFilePaths',
+        'productionFiles',
+        'spoilage',
+        'materialsPulled',
         'adminComment',
         'qcResult',
+        'qcHistory',
+        'acceptedQty',
         'materialsConsumed',
         'bomSnapshot',
         'bomVerified',
@@ -31,12 +38,19 @@ class JobOrder extends Model
     ];
 
     protected $casts = [
-        'product'           => 'array',
+        // FlexibleArray, not 'array': these fields exist in the collection both as native Mongo arrays
+        // and as JSON strings, and the built-in cast throws on the former. See the cast for detail.
+        'product'           => \App\Casts\FlexibleArray::class,
         'targetCompletion'  => 'datetime',
         'isRush'            => 'boolean',
-        'qcResult'          => 'array',
-        'materialsConsumed' => 'array',
-        'bomSnapshot'       => 'array',
+        'designFilePaths'   => \App\Casts\FlexibleArray::class,
+        'productionFiles'   => \App\Casts\FlexibleArray::class,
+        'spoilage'          => \App\Casts\FlexibleArray::class,
+        'materialsPulled'   => \App\Casts\FlexibleArray::class,
+        'qcResult'          => \App\Casts\FlexibleArray::class,
+        'qcHistory'         => \App\Casts\FlexibleArray::class,
+        'materialsConsumed' => \App\Casts\FlexibleArray::class,
+        'bomSnapshot'       => \App\Casts\FlexibleArray::class,
         'bomVerified'       => 'boolean',
         'cancelledAt'       => 'datetime',
         'createdAt'         => 'datetime',
@@ -47,7 +61,11 @@ class JobOrder extends Model
         'joStatus'          => 'Queued',
         'isRush'            => false,
         'bomVerified'       => false,
-        'materialsConsumed' => [],
+        // Default values for 'array'-cast attributes must be the ENCODED form. A raw PHP [] here
+        // reaches the cast as an array, json_decode() rejects it, and serialising the model throws -
+        // which took down the entire job order list with "Failed to fetch job orders" for every
+        // document created without an explicit materialsConsumed.
+        'materialsConsumed' => '[]',
     ];
 
     public function order()

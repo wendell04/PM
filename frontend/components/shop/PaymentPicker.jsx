@@ -33,7 +33,7 @@ function fmtExpiry(v) {
   return d.length >= 3 ? `${d.slice(0, 2)}/${d.slice(2)}` : d;
 }
 
-export default function PaymentPicker({ methods = ['gcash', 'paymaya', 'card'], amount = 0, onPay, loading = false, error = null, ctaLabel }) {
+export default function PaymentPicker({ methods = ['gcash', 'paymaya', 'card'], amount = 0, onPay, loading = false, error = null, ctaLabel, ctaStyle }) {
   const [selected, setSelected] = useState(null);
   const [card, setCard] = useState({ number: '', expiry: '', cvc: '', name: '' });
   const [localErr, setLocalErr] = useState(null);
@@ -122,6 +122,7 @@ export default function PaymentPicker({ methods = ['gcash', 'paymaya', 'card'], 
           background: loading ? 'var(--border)' : 'var(--gold, #d4a843)',
           color: loading ? 'var(--gray)' : '#000', fontSize: '0.9rem', fontWeight: 800,
           cursor: loading ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
+          ...ctaStyle,
         }}
       >
         {loading ? 'Processing...' : (ctaLabel || `Pay ${peso(amount)}`)}

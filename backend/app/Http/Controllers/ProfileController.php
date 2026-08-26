@@ -214,7 +214,37 @@ class ProfileController extends Controller
             $user->password           = Hash::make(Str::random(64));
             $user->save();
 
-            // Revoke all Sanctum tokens — logs out all devices
+            // The ORDER keeps its own copy of the buyer, taken at checkout - anonymising the account
+            // never touched it. That copy has to be handled with a distinction:
+            //
+            //   The NAME stays. A sale is a financial record the shop is required to keep (BIR: ten
+            //   years), and the buyer's identity is part of it. RA 10173 permits exactly this - it
+            //   allows retention where another law requires it.
+            //
+            //   The EMAIL and PHONE go. Nothing about proving a sale happened requires being able to
+            //   contact the person afterwards, so keeping them is retention without a reason.
+            //
+            // The order is also flagged, so staff can see at a glance why this customer cannot be
+            // reached rather than trying and wondering.
+            try {
+                foreach (Order::where('userId', $userId)->get() as $o) {
+                    $snap = $o->userSnapshot ?? [];
+                    $o->userSnapshot = [
+                        'name'  => $snap['name'] ?? 'Deleted User',
+                        'email' => null,
+                        'phone' => null,
+                    ];
+                    $o->customerDeleted   = true;
+                    $o->customerDeletedAt = now();
+                    $o->save();
+                }
+            } catch (\Throwable $e) {
+                Log::warning('Order snapshot scrub failed on account deletion', [
+                    'userId' => $userId, 'error' => $e->getMessage(),
+                ]);
+            }
+
+            // Revoke all Sanctum tokens - logs out all devices
             $user->tokens()->delete();
 
             Log::info('Customer account anonymized (RA 10173).', [

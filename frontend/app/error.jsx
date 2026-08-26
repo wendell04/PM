@@ -29,6 +29,21 @@ export default function Error({ error, reset }) {
       <p style={{ fontSize: '0.875rem', color: '#888', margin: 0, textAlign: 'center', maxWidth: '360px' }}>
         An unexpected error occurred. You can try again or return to the home page.
       </p>
+
+      {/* In development, show what actually failed. A boundary that only ever says "something went
+          wrong" costs more time than the bug does - the message is right there and hiding it means
+          reading it out of a console nobody has open. Production still gets the generic line. */}
+      {process.env.NODE_ENV !== 'production' && (error?.message || error?.digest) && (
+        <pre style={{
+          maxWidth: '90vw', overflowX: 'auto', textAlign: 'left', fontSize: '0.75rem',
+          color: '#e05252', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)',
+          borderRadius: '8px', padding: '10px 12px', margin: 0, whiteSpace: 'pre-wrap',
+        }}>
+          {error?.message}
+          {error?.digest ? '\n\ndigest: ' + error.digest : ''}
+          {error?.stack ? '\n\n' + String(error.stack).split('\n').slice(1, 6).join('\n') : ''}
+        </pre>
+      )}
       <div style={{ display: 'flex', gap: '12px' }}>
         <button
           onClick={reset}

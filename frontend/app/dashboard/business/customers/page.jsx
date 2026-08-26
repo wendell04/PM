@@ -4,7 +4,11 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
+import useLockBodyScroll from '@/lib/useLockBodyScroll';
 import ErrorBoundary from '@/components/ErrorBoundary';
+// The same components every other module is built from, so Customers stops being the one screen with
+// its own hand-rolled cards, search box and pager.
+import { S, ICONS, SummaryCard, SearchBar, PaginationBar, EmptyState, CustomSelect } from '../inventory-v2/shared';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
@@ -47,7 +51,12 @@ export default function CustomersPage() {
   const [filter, setFilter] = useState('all'); // all | locked | unlock_requested
   const [unlockActing, setUnlockActing] = useState({});
   const [page, setPage] = useState(1);
-  const rpp = 15;
+  // Which customer's consent record is open. Read-only - evidence is not something to edit.
+  const [termsProof, setTermsProof] = useState(null);
+  useLockBodyScroll(!!termsProof);
+  // Adjustable now that the shared pager offers the choice, instead of a constant the reader
+  // cannot change when a long list needs scanning.
+  const [rpp, setRpp] = useState(15);
 
   const isPrivileged = ['admin', 'owner'].includes(currentUser?.role);
 
@@ -101,14 +110,21 @@ export default function CustomersPage() {
     const matchSearch = !q ||
       `${c.firstName} ${c.lastName}`.toLowerCase().includes(q) ||
       c.email.toLowerCase().includes(q);
+    // The two new options answer questions the owner actually has: who still has not verified, and
+    // whose consent was never captured. Both were only findable by eye before.
     const matchFilter =
       filter === 'all' ||
       (filter === 'locked' && c.is_locked) ||
-      (filter === 'unlock_requested' && c.unlock_requested_at);
+      (filter === 'unlock_requested' && c.unlock_requested_at) ||
+      (filter === 'unverified' && !c.is_verified) ||
+      (filter === 'no_terms' && !c.acceptedTermsAt) ||
+      // A year is the point where a customer has plainly stopped coming back. Two years is the
+      // deletion threshold; this is the one that is actionable while they can still be won back.
+      (filter === 'dormant' && (!c.last_login_at ||
+        (Date.now() - new Date(c.last_login_at).getTime()) / 86400000 >= 365));
     return matchSearch && matchFilter;
   });
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / rpp));
   const paged = filtered.slice((page - 1) * rpp, page * rpp);
 
   if (currentUser && !isPrivileged) return null;
@@ -117,20 +133,17 @@ export default function CustomersPage() {
     <ErrorBoundary>
       <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '2rem 1.5rem' }}>
 
-        {/* Summary stats */}
+        {/* Summary stats - the same SummaryCard every other module uses. `S` also names the
+            shadowing hazard this block had: the map parameter was `s`, which is the shared style
+            object's name everywhere else in the codebase. */}
         {!loading && !error && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px', marginBottom: '24px' }}>
-            {[
-              { label: 'Total Customers', value: customers.length,                          color: 'var(--white)' },
-              { label: 'Locked',          value: customers.filter(c => c.is_locked).length,  color: 'var(--red)'   },
-              { label: 'Unlock Requests', value: unlockRequests.length,                      color: 'var(--gold)'  },
-              { label: 'Unverified',      value: customers.filter(c => !c.is_verified).length, color: 'var(--gray)' },
-            ].map(s => (
-              <div key={s.label} style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '10px', padding: '14px 18px' }}>
-                <div style={{ fontSize: '1.5rem', fontWeight: 800, color: s.color, lineHeight: 1.1 }}>{s.value}</div>
-                <div style={{ fontSize: '0.78rem', color: 'var(--gray)', marginTop: '3px' }}>{s.label}</div>
-              </div>
-            ))}
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '24px' }}>
+            <SummaryCard label="Total Customers" value={customers.length} accent />
+            <SummaryCard label="Locked" value={customers.filter(c => c.is_locked).length}
+              color={customers.some(c => c.is_locked) ? 'var(--st-red-fg)' : undefined} />
+            <SummaryCard label="Unlock Requests" value={unlockRequests.length}
+              color={unlockRequests.length > 0 ? 'var(--gold)' : undefined} />
+            <SummaryCard label="Unverified" value={customers.filter(c => !c.is_verified).length} />
           </div>
         )}
 
@@ -275,39 +288,31 @@ export default function CustomersPage() {
 
         {/* Search + Filter bar */}
         <div style={{ display: 'flex', gap: '12px', marginBottom: '20px', flexWrap: 'wrap' }}>
-          <input
-            type="text"
-            placeholder="Search by name or email..."
+          <SearchBar
             value={search}
-            onChange={e => { setSearch(e.target.value); setPage(1); }}
-            style={{
-              flex: 1, minWidth: '200px', height: '40px', padding: '0 12px',
-              borderRadius: '8px', border: '1px solid var(--border)',
-              background: 'var(--dark)', color: 'var(--white)', fontSize: '0.875rem',
-            }}
+            onChange={v => { setSearch(v); setPage(1); }}
+            placeholder="Search by name or email..."
+            style={{ flex: 1, minWidth: '200px' }}
           />
-          <select
-            value={filter}
-            onChange={e => { setFilter(e.target.value); setPage(1); }}
-            style={{
-              height: '40px', padding: '0 12px', borderRadius: '8px',
-              border: '1px solid var(--border)', background: 'var(--dark)',
-              color: 'var(--white)', fontSize: '0.875rem', cursor: 'pointer',
-            }}
-          >
-            <option value="all">All Customers</option>
-            <option value="locked">Locked Accounts</option>
-            <option value="unlock_requested">Unlock Requested</option>
-          </select>
-          <button
-            type="button"
-            onClick={fetchCustomers}
-            style={{
-              height: '40px', padding: '0 16px', borderRadius: '8px',
-              border: '1px solid var(--border)', background: 'transparent',
-              color: 'var(--white)', fontSize: '0.875rem', cursor: 'pointer',
-            }}
-          >Refresh</button>
+          {/* The native select was the last one on this screen - it renders with the OS chrome and
+              ignores the theme, which is exactly why every other module uses CustomSelect. */}
+          <div style={{ minWidth: '190px' }}>
+            <CustomSelect
+              value={filter}
+              onChange={v => { setFilter(v); setPage(1); }}
+              options={[
+                { value: 'all',               label: 'All customers' },
+                { value: 'locked',            label: 'Locked accounts' },
+                { value: 'unlock_requested',  label: 'Unlock requested' },
+                { value: 'unverified',        label: 'Unverified' },
+                { value: 'no_terms',          label: 'No terms record' },
+                { value: 'dormant',           label: 'Quiet over a year' },
+              ]}
+            />
+          </div>
+          <button type="button" onClick={fetchCustomers} style={{ ...S.btnSmGhost, height: '40px' }}>
+            Refresh
+          </button>
         </div>
 
         {/* Customer count */}
@@ -365,10 +370,20 @@ export default function CustomersPage() {
               }}>
                 <Avatar customer={c} size={42} />
 
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                    <span style={{ fontWeight: 700, color: 'var(--white)', fontSize: '0.9rem' }}>
-                      {`${c.firstName} ${c.lastName}`.trim() || '—'}
+                <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', minWidth: 0 }}>
+                    {/* A name is user input, and the field caps are generous. Without a hard limit
+                        here one long name pushed its card out over the neighbouring column and off
+                        the page. Truncated with the full value on hover. */}
+                    <span
+                      title={`${c.firstName ?? ''} ${c.lastName ?? ''}`.trim()}
+                      style={{
+                        fontWeight: 700, color: 'var(--white)', fontSize: '0.9rem',
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                        maxWidth: '100%', display: 'block',
+                      }}
+                    >
+                      {`${c.firstName ?? ''} ${c.lastName ?? ''}`.trim() || '-'}
                     </span>
                     {c.is_locked && (
                       <span style={{
@@ -392,12 +407,54 @@ export default function CustomersPage() {
                       }}>Unverified</span>
                     )}
                   </div>
-                  <div style={{ fontSize: '0.78rem', color: 'var(--gray)', marginTop: '3px' }}>{c.email}</div>
-                  {c.created_at && (
-                    <div style={{ fontSize: '0.7rem', color: 'var(--gray)', marginTop: '2px', opacity: 0.7 }}>
-                      Joined {new Date(c.created_at).toLocaleDateString()}
-                    </div>
-                  )}
+                  <div title={c.email} style={{ fontSize: '0.78rem', color: 'var(--gray)', marginTop: '3px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.email}</div>
+                  {/* "Joined" answers when they arrived. Only "last seen" answers whether they are
+                      still here - which is the question behind churn, win-back, and any future
+                      inactivity policy, since that clock resets every time someone logs in. */}
+                  <div style={{ fontSize: '0.7rem', color: 'var(--gray)', marginTop: '2px', opacity: 0.75, display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    {c.created_at && <span>Joined {new Date(c.created_at).toLocaleDateString()}</span>}
+                    {(() => {
+                      if (!c.last_login_at) return <span>Never signed in</span>;
+                      const days = Math.floor((Date.now() - new Date(c.last_login_at).getTime()) / 86400000);
+                      const label = days === 0 ? 'today' : days === 1 ? 'yesterday' : `${days} days ago`;
+                      return (
+                        <span style={{ color: days >= 365 ? '#c2410c' : days >= 90 ? '#b45309' : 'var(--gray)' }}>
+                          Last seen {label}
+                        </span>
+                      );
+                    })()}
+                  </div>
+
+                  {/* Clickwrap evidence. A ticked box proves nothing once the terms have been
+                      edited, so what is shown here is the copy taken at the moment they agreed. */}
+                  <div style={{ fontSize: '0.7rem', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                    {c.acceptedTermsAt ? (
+                      <>
+                        {/* Three states, not two. An account that agreed before the wording was ever
+                            captured is not the same as one with a full record, and flattening them
+                            would quietly overstate what the shop can actually produce. */}
+                        <span style={{ color: c.acceptedTermsLegacy ? 'var(--gold)' : 'var(--st-green-fg)' }}>
+                          {c.acceptedTermsLegacy
+                            ? `Agreed at registration ${new Date(c.acceptedTermsAt).toLocaleDateString()} - wording not recorded`
+                            : `Terms v${c.acceptedTermsVersion ?? 1} accepted ${new Date(c.acceptedTermsAt).toLocaleDateString()}`}
+                        </span>
+                        {Array.isArray(c.acceptedTermsSnapshot) && c.acceptedTermsSnapshot.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => setTermsProof(c)}
+                            style={{ padding: '1px 7px', borderRadius: '999px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--gold)', fontSize: '0.68rem', fontWeight: 700, cursor: 'pointer' }}
+                          >
+                            View what they agreed to
+                          </button>
+                        )}
+                      </>
+                    ) : (
+                      /* Accounts created before consent was recorded. Saying "none recorded" is the
+                         honest answer; showing nothing would let it pass for agreement. */
+                      <span style={{ color: 'var(--gray)' }}>No terms record on this account</span>
+                    )}
+                  </div>
+
                 </div>
 
                 <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
@@ -442,22 +499,14 @@ export default function CustomersPage() {
 
             {/* Pagination */}
             {filtered.length > rpp && (
-              <div style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                padding: '10px 16px', border: '1px solid var(--border)', borderRadius: '10px',
-                fontSize: '0.8rem', color: 'var(--gray)', flexWrap: 'wrap', gap: '8px',
-              }}>
-                <span>{filtered.length} total · page {page} of {totalPages}</span>
-                <div style={{ display: 'flex', gap: '6px' }}>
-                  <button
-                    onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1}
-                    style={{ padding: '4px 12px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--dark)', color: page <= 1 ? 'var(--gray)' : 'var(--white)', cursor: page <= 1 ? 'not-allowed' : 'pointer' }}
-                  >‹ Prev</button>
-                  <button
-                    onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages}
-                    style={{ padding: '4px 12px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--dark)', color: page >= totalPages ? 'var(--gray)' : 'var(--white)', cursor: page >= totalPages ? 'not-allowed' : 'pointer' }}
-                  >Next ›</button>
-                </div>
+              <div style={{ marginTop: '4px' }}>
+                <PaginationBar
+                  total={filtered.length}
+                  page={page}
+                  perPage={rpp}
+                  onPage={setPage}
+                  onPerPage={n => { setRpp(n); setPage(1); }}
+                />
               </div>
             )}
           </div>
@@ -469,7 +518,59 @@ export default function CustomersPage() {
             50% { opacity: 0.4; }
           }
         `}</style>
+
+      {/* The record itself. Deliberately read-only and deliberately verbatim: the value of this
+          screen is that it shows the wording as it stood that day, not as it reads now. */}
+      {termsProof && (
+        <div
+          onClick={() => setTermsProof(null)}
+          style={{ position: 'fixed', inset: 0, zIndex: 1200, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '14px', width: '100%', maxWidth: '620px', maxHeight: '85vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
+          >
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)' }}>
+              <div style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--white)' }}>
+                Terms accepted by {`${termsProof.firstName ?? ''} ${termsProof.lastName ?? ''}`.trim() || termsProof.email}
+              </div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--gray)', marginTop: '4px' }}>
+                Version {termsProof.acceptedTermsVersion ?? 1}
+                {termsProof.acceptedTermsAt && ` on ${new Date(termsProof.acceptedTermsAt).toLocaleString()}`}
+                {termsProof.acceptedTermsIp && ` from ${termsProof.acceptedTermsIp}`}
+              </div>
+            </div>
+
+            <div style={{ padding: '16px 20px', overflowY: 'auto', flex: 1 }}>
+              <p style={{ fontSize: '0.75rem', color: 'var(--gray)', margin: '0 0 14px', lineHeight: 1.6 }}>
+                This is the wording that was on screen when this account was created. Later edits to the
+                registration terms do not change it.
+              </p>
+              {(termsProof.acceptedTermsSnapshot ?? []).map((t, i) => (
+                <div key={i} style={{ marginBottom: '14px' }}>
+                  <div style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--white)', marginBottom: '4px' }}>
+                    {i + 1}. {t.title}
+                  </div>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--gray-light)', lineHeight: 1.65 }}>{t.body}</div>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                onClick={() => setTermsProof(null)}
+                style={{ padding: '8px 18px', borderRadius: '8px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--gray)', fontSize: '0.82rem', cursor: 'pointer' }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       </div>
     </ErrorBoundary>
+
+
   );
 }

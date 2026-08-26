@@ -208,14 +208,24 @@ class ChatController extends Controller
 
             $metadata = null;
             if ($request->type === 'order_reference' && $request->order_id) {
-                $order = Order::find($request->order_id);
+                // Keep what the sender put on the card and add the authoritative order fields on top.
+                // This used to REPLACE the metadata with a different set of key names (order_id /
+                // order_number), which the card does not read - so every design-order card arrived
+                // blank, showing the fallback word "Order" with no products, no figures and no link.
+                $client = is_array($request->metadata) ? $request->metadata : [];
+                $order  = Order::find($request->order_id);
+                $metadata = $client;
                 if ($order) {
-                    $metadata = [
-                        'order_id' => $order->_id,
-                        'order_number' => $order->orderNumber ?? substr($order->_id, -8),
-                        'status' => $order->status,
-                        'total' => $order->totalAmount,
-                    ];
+                    $metadata = array_merge($client, [
+                        'orderId'  => (string) $order->_id,
+                        'orderNo'  => $order->orderNumber ?? $order->orderNo ?? 'ORD-' . strtoupper(substr((string) $order->_id, -8)),
+                        'status'   => $order->orderStatus ?? $order->status ?? null,
+                        'total'    => $order->totalAmount,
+                        'products' => $client['products'] ?? implode(', ', array_values(array_filter(array_map(
+                            fn ($i) => $i['productName'] ?? null,
+                            $order->items ?? []
+                        )))),
+                    ]);
                 }
             } elseif ($request->type === 'quotation' && $request->metadata) {
                 $m = $request->metadata;

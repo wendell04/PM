@@ -433,7 +433,18 @@ function QuickViewModal({ product, flashSale, onClose, onToast }) {
 
             {/* Action buttons */}
             {product.isCustom ? (
-              <Link href={`/shop/products/${product.slug || toSlug(product.name)}`} className="shop-qv-btn-cart" onClick={onClose}>
+              /* Straight to the order form, not the product page. Sending someone to the PDP made
+                 them press the same button a second time - and it silently dropped the variant and
+                 quantity they had already chosen here, so they had to pick both again. The query
+                 carries them across exactly as the PDP's own button does. */
+              <Link
+                href={(() => {
+                  const qs = new URLSearchParams({ qty: String(qty) });
+                  Object.entries(selVars || {}).forEach(([g, v]) => { if (v) qs.set(`v_${g}`, String(v)); });
+                  return `/shop/products/${product.slug || toSlug(product.name)}/order?${qs.toString()}`;
+                })()}
+                className="shop-qv-btn-cart"
+              >
                 Customize This Product
               </Link>
             ) : mode === 'inquiry' ? (

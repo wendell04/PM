@@ -6,6 +6,9 @@ import Image from 'next/image';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
+import { DEFAULT_CUSTOM_ORDER_TERMS } from '@/lib/customOrderTerms';
+import { DEFAULT_REGISTRATION_TERMS } from '@/lib/registrationTerms';
+import { CustomSelect } from './../inventory-v2/shared';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import ImageCropper from '@/components/ImageCropper';
 
@@ -194,6 +197,16 @@ export default function SettingsPage() {
     productionLeadDays: '5', shippingDaysMin: '2', shippingDaysMax: '4',
     rushEnabled: true, rushLeadDays: '2', rushFee: '150',
   });
+  const [termsRows, setTermsRows]                       = useState([]);
+  const [settingsTermsVersion, setSettingsTermsVersion] = useState(1);
+  const [savingTerms, setSavingTerms]                   = useState(false);
+  const [termsMsg, setTermsMsg]                         = useState('');
+  // Registration terms - a separate document accepted at a separate moment, so it gets its own
+  // state and its own version rather than sharing the custom-order one.
+  const [regTermsRows, setRegTermsRows]                 = useState([]);
+  const [regTermsVersion, setRegTermsVersion]           = useState(1);
+  const [savingRegTerms, setSavingRegTerms]             = useState(false);
+  const [regTermsMsg, setRegTermsMsg]                   = useState('');
   const [isSavingShipping, setIsSavingShipping]   = useState(false);
   const [shippingError, setShippingError]         = useState('');
   const [shippingSuccess, setShippingSuccess]     = useState('');
@@ -250,7 +263,9 @@ export default function SettingsPage() {
 
   // ── Load shipping settings ────────────────────────────────
   useEffect(() => {
-    if (!token || activeTab !== 'shipping') return;
+    // Both tabs read this payload: Shipping for the rates and fees, Terms for the clauses. Gating it
+    // on 'shipping' alone left the Terms tab with nothing to show.
+    if (!token || !['shipping', 'terms'].includes(activeTab)) return;
     fetchWithTimeout(`${API_URL}/api/admin/settings`, { headers: { Authorization: `Bearer ${token}` } }, 10000)
       .then(r => r.json())
       .then(d => {
@@ -264,6 +279,13 @@ export default function SettingsPage() {
             shippingBaseRate:     d.data.shippingBaseRate     != null ? String(d.data.shippingBaseRate)     : '50',
             shippingPerKmRate:    d.data.shippingPerKmRate    != null ? String(d.data.shippingPerKmRate)    : '15',
             designRequestFee:     d.data.designRequestFee     != null ? String(d.data.designRequestFee)     : '100',
+            freeRevisions:        d.data.freeRevisions        != null ? String(d.data.freeRevisions)        : '3',
+            extraRevisionFee:     d.data.extraRevisionFee     != null ? String(d.data.extraRevisionFee)     : '50',
+            maxRevisions:         d.data.maxRevisions         != null ? String(d.data.maxRevisions)         : '5',
+            depositDueDays:       d.data.depositDueDays       != null ? String(d.data.depositDueDays)       : '7',
+            unpaidOrderDays:      d.data.unpaidOrderDays      != null ? String(d.data.unpaidOrderDays)      : '3',
+            unpaidReadyHoldDays:  d.data.unpaidReadyHoldDays  != null ? String(d.data.unpaidReadyHoldDays)  : '14',
+            refundDays:           d.data.refundDays           != null ? String(d.data.refundDays)           : '7',
             flatRateInsideMetro:  d.data.flatRateInsideMetro  != null ? String(d.data.flatRateInsideMetro)  : '150',
             flatRateOutsideMetro: d.data.flatRateOutsideMetro != null ? String(d.data.flatRateOutsideMetro) : '250',
             productionLeadDays:   d.data.productionLeadDays    != null ? String(d.data.productionLeadDays)   : '5',
@@ -271,8 +293,53 @@ export default function SettingsPage() {
             shippingDaysMax:      d.data.shippingDaysMax       != null ? String(d.data.shippingDaysMax)      : '4',
             rushEnabled:          d.data.rushEnabled           != null ? !!d.data.rushEnabled                : true,
             rushLeadDays:         d.data.rushLeadDays          != null ? String(d.data.rushLeadDays)         : '2',
-            rushFee:              d.data.rushFee               != null ? String(d.data.rushFee)              : '150',
+            rushFee:              d.data.rushFee               != null ? String(d.data.rushFee)              : '100',
           });
+          // Pre-fill the editor with the built-in defaults when nothing is saved, so the owner SEES
+          // and can edit the exact clauses shown to customers (instead of them living only in code).
+          // A saved set wins, but any NEW built-in clause the owner has never seen is appended
+          // rather than silently withheld. Without this, a term added in a later release would only
+          // ever reach shops that had not yet customised their terms - which is precisely the shops
+          // least likely to need protecting. Matched on title, so an edited clause is left alone and a
+          // deliberately deleted one only returns if its title is gone entirely.
+          const saved = Array.isArray(d.data.customOrderTerms) && d.data.customOrderTerms.length
+            ? d.data.customOrderTerms.map(t => ({ title: t.title ?? '', body: t.body ?? '', mode: t.mode ?? 'both' }))
+            : null;
+          if (!saved) {
+            setTermsRows(DEFAULT_CUSTOM_ORDER_TERMS.map(t => ({ title: t.title, body: t.body, mode: t.mode })));
+          } else {
+            const have = new Set(saved.map(t => (t.title || '').trim().toLowerCase()));
+            const missing = DEFAULT_CUSTOM_ORDER_TERMS
+              .filter(t => !have.has(t.title.trim().toLowerCase()))
+              .map(t => ({ title: t.title, body: t.body, mode: t.mode }));
+            setTermsRows([...saved, ...missing]);
+          }
+
+          // Registration terms ride along on the same fetch, so no extra request. Loaded outside the
+          // branch above: whether the CUSTOM-ORDER terms happen to be customised says nothing about
+          // whether the registration ones are, and nesting it there meant they only ever loaded for
+          // shops that had never touched their terms.
+          // Seeded from the built-in text when the shop has saved nothing, so the editor opens with
+          // the clauses customers are ACTUALLY seeing rather than an empty box that hides them.
+          // Same treatment the custom-order terms already get: a clause added in a later release is
+          // merged into what the shop has saved, rather than being withheld from every shop that has
+          // ever pressed Save. Matched on title, so an edited clause is left alone and a deliberately
+          // deleted one only returns if its title is gone entirely.
+          const savedRegRows = Array.isArray(d.data.registrationTerms) && d.data.registrationTerms.length
+            ? d.data.registrationTerms.map(t => ({ title: t.title ?? '', body: t.body ?? '' }))
+            : null;
+
+          if (!savedRegRows) {
+            setRegTermsRows(DEFAULT_REGISTRATION_TERMS.map(t => ({ title: t.title, body: t.body })));
+          } else {
+            const haveReg = new Set(savedRegRows.map(t => (t.title || '').trim().toLowerCase()));
+            const missingReg = DEFAULT_REGISTRATION_TERMS
+              .filter(t => !haveReg.has(t.title.trim().toLowerCase()))
+              .map(t => ({ title: t.title, body: t.body }));
+            setRegTermsRows([...savedRegRows, ...missingReg]);
+          }
+          setRegTermsVersion(Number(d.data.registrationTermsVersion ?? 1));
+          setSettingsTermsVersion(Number(d.data.termsVersion ?? 1));
         }
       })
       .catch(() => {});
@@ -455,7 +522,9 @@ export default function SettingsPage() {
         setCurrentUser(prev => ({ ...prev, totp_confirmed: true, two_factor_enabled: true }));
       }
       setTwoFactorEnabled(true);
-      setTwoFactorMethod('totp');
+      // `setTwoFactorMethod` was called here but never declared, and nothing reads a
+      // `twoFactorMethod` state anywhere in this file - a leftover from an earlier shape. It threw a
+      // ReferenceError the moment anyone finished TOTP setup, on the last line of enabling 2FA.
     } catch (err) {
       setTotpError(err.message || 'Failed to verify code.');
     } finally {
@@ -710,6 +779,46 @@ export default function SettingsPage() {
   };
 
   // ── Save shipping settings ────────────────────────────────
+  const handleSaveTerms = async () => {
+    setTermsMsg('');
+    const clean = termsRows.map(t => ({ title: (t.title || '').trim(), body: (t.body || '').trim(), mode: t.mode || 'both' })).filter(t => t.title && t.body);
+    setSavingTerms(true);
+    try {
+      const res = await fetchWithTimeout(`${API_URL}/api/admin/settings/terms`, {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ customOrderTerms: clean }),
+      }, 15000);
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.message || 'Failed to save terms.');
+      setTermsRows((d.data?.customOrderTerms ?? clean).map(t => ({ title: t.title ?? '', body: t.body ?? '', mode: t.mode ?? 'both' })));
+      setSettingsTermsVersion(Number(d.data?.termsVersion ?? settingsTermsVersion));
+      setTermsMsg('Terms saved.');
+    } catch (err) { setTermsMsg(err.message || 'Failed to save terms.'); }
+    finally { setSavingTerms(false); }
+  };
+
+  const handleSaveRegTerms = async () => {
+    setRegTermsMsg('');
+    const clean = regTermsRows
+      .map(t => ({ title: (t.title || '').trim(), body: (t.body || '').trim() }))
+      .filter(t => t.title && t.body);
+    setSavingRegTerms(true);
+    try {
+      const res = await fetchWithTimeout(`${API_URL}/api/admin/settings/registration-terms`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ registrationTerms: clean }),
+      }, 15000);
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.message || 'Failed to save registration terms.');
+      setRegTermsRows((d.data?.registrationTerms ?? clean).map(t => ({ title: t.title ?? '', body: t.body ?? '' })));
+      setRegTermsVersion(Number(d.data?.registrationTermsVersion ?? regTermsVersion));
+      setRegTermsMsg('Registration terms saved.');
+    } catch (err) { setRegTermsMsg(err.message || 'Failed to save registration terms.'); }
+    finally { setSavingRegTerms(false); }
+  };
+
   const handleSaveShipping = async () => {
     setShippingError('');
     setShippingSuccess('');
@@ -740,6 +849,13 @@ export default function SettingsPage() {
           storeLng:             shippingForm.storeLng,
           shippingMode:         shippingForm.shippingMode,
           designRequestFee:     parseFloat(shippingForm.designRequestFee) || 0,
+          freeRevisions:        Math.min(10, Math.max(0, parseInt(shippingForm.freeRevisions, 10) || 0)),
+          extraRevisionFee:     Math.min(99999, Math.max(0, parseFloat(shippingForm.extraRevisionFee) || 0)),
+          maxRevisions:         Math.min(20, Math.max(1, parseInt(shippingForm.maxRevisions, 10) || 1)),
+          depositDueDays:       Math.min(60, Math.max(1, parseInt(shippingForm.depositDueDays, 10) || 1)),
+          unpaidOrderDays:      Math.min(60, Math.max(1, parseInt(shippingForm.unpaidOrderDays, 10) || 1)),
+          unpaidReadyHoldDays:  Math.min(180, Math.max(1, parseInt(shippingForm.unpaidReadyHoldDays, 10) || 14)),
+          refundDays:           Math.min(60,  Math.max(1, parseInt(shippingForm.refundDays, 10) || 7)),
           shippingBaseRate:     isFlat ? 50  : base,
           shippingPerKmRate:    isFlat ? 15  : perKm,
           flatRateInsideMetro:  inside,
@@ -845,6 +961,10 @@ export default function SettingsPage() {
               { id: 'security', label: 'Security' },
               { id: 'business', label: 'Business' },
               { id: 'shipping', label: 'Shipping' },
+              // Its own tab, not a sidebar entry: the sidebar is the daily work rail (orders, POS,
+              // production) and putting rarely-touched configuration in it dilutes the things people
+              // actually reach for. Settings is where configuration lives.
+              { id: 'terms', label: 'Terms & Policies' },
               { id: 'notifications', label: 'Notifications' },
               { id: 'appearance', label: 'Appearance' },
             ].map(({ id, label }) => (
@@ -1550,68 +1670,9 @@ export default function SettingsPage() {
                   })}
                 </div>
 
-                {/* One fee for the artwork, set once for the whole store. A design costs
-                    what it costs to draw - it is not worth more because it ends up on a
-                    mug rather than a totebag - so this is charged ONCE per order however
-                    many customised products share the same artwork. A product can still
-                    override it for genuinely harder work. */}
-                <div style={{ maxWidth: '480px', marginBottom: '1.25rem' }}>
-                  <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: 'var(--gray-light)', marginBottom: '0.35rem' }}>
-                    Design fee (₱)
-                  </label>
-                  <input
-                    type="text" inputMode="decimal" maxLength={7}
-                    value={shippingForm.designRequestFee ?? ''}
-                    onChange={e => setShippingForm(f => ({ ...f, designRequestFee: e.target.value.replace(/[^0-9.]/g, '') }))}
-                    placeholder="100.00"
-                    style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--dark2)', color: 'var(--white)', fontSize: '0.9rem' }}
-                  />
-                  <p style={{ fontSize: '0.72rem', color: 'var(--gray)', margin: '0.35rem 0 0', lineHeight: 1.5 }}>
-                    Charged once per order when a customer asks you to create the artwork -
-                    not per product. Three items sharing one design are still one fee.
-                  </p>
-                </div>
-
-                {/* Delivery estimate + rush - drives the "Get by [date]" shown to customers and the
-                    rush fee/priority. Production days skip Sundays. */}
-                <div style={{ maxWidth: '560px', marginBottom: '1.25rem', padding: '1rem 1.25rem', background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '10px' }}>
-                  <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--white)', marginBottom: '0.15rem' }}>Delivery &amp; Turnaround</div>
-                  <p style={{ fontSize: '0.72rem', color: 'var(--gray)', margin: '0 0 0.9rem', lineHeight: 1.5 }}>Sets the estimated delivery date shown to customers. Production days skip Sundays.</p>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.9rem' }}>
-                    {[['productionLeadDays', 'Production (business days)', '5'], ['shippingDaysMin', 'Shipping min (days)', '2'], ['shippingDaysMax', 'Shipping max (days)', '4']].map(([key, label, ph]) => (
-                      <div key={key} style={{ flex: '1 1 140px' }}>
-                        <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--gray-light)', marginBottom: '0.3rem' }}>{label}</label>
-                        <input type="text" inputMode="numeric" maxLength={3} value={shippingForm[key] ?? ''}
-                          onChange={e => setShippingForm(f => ({ ...f, [key]: e.target.value.replace(/[^0-9]/g, '') }))}
-                          placeholder={ph}
-                          style={{ width: '100%', padding: '0.55rem 0.7rem', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--dark)', color: 'var(--white)', fontSize: '0.9rem' }} />
-                      </div>
-                    ))}
-                  </div>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.8rem', fontWeight: 600, color: 'var(--white)', cursor: 'pointer', margin: '1rem 0 0.6rem' }}>
-                    <input type="checkbox" checked={!!shippingForm.rushEnabled} onChange={e => setShippingForm(f => ({ ...f, rushEnabled: e.target.checked }))} style={{ width: 16, height: 16, accentColor: 'var(--gold)' }} />
-                    Offer a Rush option to customers
-                  </label>
-                  {shippingForm.rushEnabled && (
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.9rem' }}>
-                      <div style={{ flex: '1 1 160px' }}>
-                        <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--gray-light)', marginBottom: '0.3rem' }}>Rush production (days)</label>
-                        <input type="text" inputMode="numeric" maxLength={3} value={shippingForm.rushLeadDays ?? ''}
-                          onChange={e => setShippingForm(f => ({ ...f, rushLeadDays: e.target.value.replace(/[^0-9]/g, '') }))}
-                          placeholder="2"
-                          style={{ width: '100%', padding: '0.55rem 0.7rem', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--dark)', color: 'var(--white)', fontSize: '0.9rem' }} />
-                      </div>
-                      <div style={{ flex: '1 1 160px' }}>
-                        <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--gray-light)', marginBottom: '0.3rem' }}>Rush fee (₱)</label>
-                        <input type="text" inputMode="decimal" maxLength={7} value={shippingForm.rushFee ?? ''}
-                          onChange={e => setShippingForm(f => ({ ...f, rushFee: e.target.value.replace(/[^0-9.]/g, '') }))}
-                          placeholder="150.00"
-                          style={{ width: '100%', padding: '0.55rem 0.7rem', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--dark)', color: 'var(--white)', fontSize: '0.9rem' }} />
-                      </div>
-                    </div>
-                  )}
-                </div>
-
+                {/* The fields each mode needs, sitting with the toggle that chooses it. They used
+                    to render after the terms editor, which put Base Rate and Per km Rate inside
+                    the Custom Order Terms card. */}
                 {shippingForm.shippingMode === 'courier_booked' && (
                   <div style={{ maxWidth: '560px', padding: '1rem 1.25rem', background: 'rgba(212,168,67,0.06)', border: '1px solid rgba(212,168,67,0.2)', borderRadius: '10px', fontSize: '0.82rem', color: 'var(--gray-light)', lineHeight: 1.6 }}>
                     <div style={{ fontWeight: 700, color: 'var(--gold)', marginBottom: '0.4rem' }}>No system-calculated shipping fee</div>
@@ -1680,71 +1741,371 @@ export default function SettingsPage() {
                     </div>
                   </div>
                 )}
+
+                </div>
               </div>
 
-              {/* Feedback + Save */}
-              {shippingError && (
-                <div style={{
-                  padding: '0.75rem 1rem', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)',
-                  borderRadius: '8px', color: 'var(--red)', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem',
-                }}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-                  </svg>
-                  {shippingError}
+              {/* Custom Orders */}
+              <div style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden', marginBottom: '1.25rem' }}>
+                <div style={{ padding: '0.875rem 1.25rem', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--gray-light)" strokeWidth="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                  <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--white)' }}>Custom Orders</span>
+                  <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>- What a design costs, and how long a customer has to pay.</span>
                 </div>
-              )}
-              {shippingSuccess && (
-                <div style={{
-                  padding: '0.75rem 1rem', background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)',
-                  borderRadius: '8px', color: 'var(--green)', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem',
-                }}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
-                  </svg>
-                  {shippingSuccess}
-                </div>
-              )}
+                <div style={{ padding: '1.5rem' }}>
 
-              <div style={{
-                display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '0.75rem',
-                background: 'var(--dark2)', border: '1px solid var(--border)',
-                borderRadius: '12px', padding: '1rem 1.25rem', flexWrap: 'wrap',
-              }}>
-                <span style={{ fontSize: '0.78rem', color: 'var(--gray)', marginRight: 'auto' }}>
-                  Changes apply to checkout immediately after saving.
-                </span>
-                <button
-                  type="button"
-                  onClick={handleSaveShipping}
-                  disabled={isSavingShipping}
-                  style={{
-                    padding: '0.7rem 1.75rem',
-                    background: isSavingShipping ? 'var(--dark3)' : 'var(--gold)',
-                    border: 'none', borderRadius: '8px',
-                    color: isSavingShipping ? 'var(--gray)' : 'var(--black)',
-                    fontSize: '0.875rem', fontWeight: 700,
-                    cursor: isSavingShipping ? 'not-allowed' : 'pointer',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem',
-                  }}
-                >
-                  {isSavingShipping ? (
-                    <><span className="spinner" />Saving...</>
-                  ) : (
-                    <>
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
-                        <polyline points="17 21 17 13 7 13 7 21"/>
-                        <polyline points="7 3 7 8 15 8"/>
-                      </svg>
-                      Save Shipping Settings
-                    </>
+                {/* Design fees, revisions and payment deadlines were living inside the Shipping card.
+                    Nothing about them is a shipping setting; a card that holds everything is a card
+                    nobody can scan. */}
+
+                {/* One fee for the artwork, set once for the whole store. A design costs
+                    what it costs to draw - it is not worth more because it ends up on a
+                    mug rather than a totebag - so this is charged ONCE per order however
+                    many customised products share the same artwork. A product can still
+                    override it for genuinely harder work. */}
+                <div style={{ maxWidth: '480px', marginBottom: '1.25rem' }}>
+                  <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: 'var(--gray-light)', marginBottom: '0.35rem' }}>
+                    Design fee (₱)
+                  </label>
+                  <input
+                    type="text" inputMode="decimal" maxLength={7}
+                    value={shippingForm.designRequestFee ?? ''}
+                    onChange={e => setShippingForm(f => ({ ...f, designRequestFee: e.target.value.replace(/[^0-9.]/g, '') }))}
+                    placeholder="100.00"
+                    style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--dark2)', color: 'var(--white)', fontSize: '0.9rem' }}
+                  />
+                  <p style={{ fontSize: '0.72rem', color: 'var(--gray)', margin: '0.35rem 0 0', lineHeight: 1.5 }}>
+                    Charged once per order when a customer asks you to create the artwork -
+                    not per product. Three items sharing one design are still one fee.
+                  </p>
+                </div>
+
+                {/* Revisions are what actually protect the designer's time - the design fee alone does
+                    not, because without a cap one paid order can be sent back forever. These figures
+                    are quoted verbatim on the order page and inside the Custom Order Terms, so
+                    changing them here changes what the customer is promised everywhere. */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '0.75rem', maxWidth: '480px', marginBottom: '1.25rem' }}>
+                  {[
+                    { key: 'freeRevisions',    label: 'Free revisions',     ph: '3',  max: 2, hint: 'Rounds included in the design fee.' },
+                    { key: 'extraRevisionFee', label: 'Extra revision (₱)', ph: '50', max: 7, hint: 'Charged per round after the free ones, added to the order balance.' },
+                    { key: 'maxRevisions',     label: 'Max revisions',      ph: '5',  max: 2, hint: 'Hard stop. Past this the customer is sent to chat.' },
+                  ].map(f => (
+                    <div key={f.key}>
+                      <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: 'var(--gray-light)', marginBottom: '0.35rem' }}>{f.label}</label>
+                      <input
+                        type="text" inputMode="decimal" maxLength={f.max}
+                        value={shippingForm[f.key] ?? ''}
+                        onChange={e => setShippingForm(v => ({ ...v, [f.key]: e.target.value.replace(/[^0-9.]/g, '') }))}
+                        placeholder={f.ph}
+                        style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--dark2)', color: 'var(--white)', fontSize: '0.9rem', boxSizing: 'border-box' }}
+                      />
+                      <p style={{ fontSize: '0.7rem', color: 'var(--gray)', margin: '0.3rem 0 0', lineHeight: 1.45 }}>{f.hint}</p>
+                    </div>
+                  ))}
+                </div>
+
+                <div style={{ maxWidth: '480px', marginBottom: '1.25rem' }}>
+                  <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: 'var(--gray-light)', marginBottom: '0.35rem' }}>
+                    Days to pay the deposit
+                  </label>
+                  <input
+                    type="text" inputMode="numeric" maxLength={2}
+                    value={shippingForm.depositDueDays ?? ''}
+                    onChange={e => setShippingForm(f => ({ ...f, depositDueDays: e.target.value.replace(/[^0-9]/g, '') }))}
+                    placeholder="7"
+                    style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--dark2)', color: 'var(--white)', fontSize: '0.9rem', boxSizing: 'border-box' }}
+                  />
+                  <p style={{ fontSize: '0.72rem', color: 'var(--gray)', margin: '0.35rem 0 0', lineHeight: 1.5 }}>
+                    How long an approved proof is held once the customer approves it. After this the order lapses and the reserved stock goes back.
+                  </p>
+                </div>
+
+                {/* Separate from the one above: this catches orders that were placed and then never paid
+                    for at all. They hold stock just as hard as an approved order does, and nothing else
+                    in the system ever lets go of it. Orders whose design fee HAS cleared are exempt -
+                    the designer is working and the customer has already paid. */}
+                <div style={{ maxWidth: '480px', marginBottom: '1.25rem' }}>
+                  <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: 'var(--gray-light)', marginBottom: '0.35rem' }}>
+                    Days before an unpaid order lapses
+                  </label>
+                  <input
+                    type="text" inputMode="numeric" maxLength={2}
+                    value={shippingForm.unpaidOrderDays ?? ''}
+                    onChange={e => setShippingForm(f => ({ ...f, unpaidOrderDays: e.target.value.replace(/[^0-9]/g, '') }))}
+                    placeholder="3"
+                    style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--dark2)', color: 'var(--white)', fontSize: '0.9rem', boxSizing: 'border-box' }}
+                  />
+                  <p style={{ fontSize: '0.72rem', color: 'var(--gray)', margin: '0.35rem 0 0', lineHeight: 1.5 }}>
+                    An order with no payment at all is cancelled after this and its reserved stock returns. Orders that have paid the design fee are never touched.
+                  </p>
+                </div>
+
+
+                {/* The other end of the story: the goods are MADE and the balance never arrived.
+                    Personalised stock cannot be resold, so this is a holding period ending in
+                    disposal, not a refund window - and the T&C quotes both numbers, which is why they
+                    are settings rather than words typed into the clauses. */}
+                <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', maxWidth: '560px', marginBottom: '1.25rem' }}>
+                  <div style={{ flex: '1 1 200px' }}>
+                    <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: 'var(--gray-light)', marginBottom: '0.4rem' }}>
+                      Days to hold finished goods
+                    </label>
+                    <input
+                      type="text" inputMode="numeric" maxLength={3}
+                      value={shippingForm.unpaidReadyHoldDays ?? ''}
+                      onChange={e => setShippingForm(f => ({ ...f, unpaidReadyHoldDays: e.target.value.replace(/[^0-9]/g, '') }))}
+                      placeholder="14"
+                      style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--dark)', color: 'var(--white)', fontSize: '0.875rem', boxSizing: 'border-box' }}
+                    />
+                    <p style={{ fontSize: '0.72rem', color: 'var(--gray)', margin: '0.35rem 0 0', lineHeight: 1.5 }}>
+                      How long a finished order waits for its balance. Reminders go out on a schedule, the last naming this deadline. Nothing is cancelled automatically - you decide.
+                    </p>
+                  </div>
+                  <div style={{ flex: '1 1 200px' }}>
+                    <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: 'var(--gray-light)', marginBottom: '0.4rem' }}>
+                      Days to pay a refund
+                    </label>
+                    <input
+                      type="text" inputMode="numeric" maxLength={2}
+                      value={shippingForm.refundDays ?? ''}
+                      onChange={e => setShippingForm(f => ({ ...f, refundDays: e.target.value.replace(/[^0-9]/g, '') }))}
+                      placeholder="7"
+                      style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--dark)', color: 'var(--white)', fontSize: '0.875rem', boxSizing: 'border-box' }}
+                    />
+                    <p style={{ fontSize: '0.72rem', color: 'var(--gray)', margin: '0.35rem 0 0', lineHeight: 1.5 }}>
+                      Working days to return an approved refund. The terms quote this, so it binds you - promise what you can keep.
+                    </p>
+                  </div>
+                </div>
+
+                </div>
+              </div>
+
+              {/* Delivery Promise */}
+              <div style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden', marginBottom: '1.25rem' }}>
+                <div style={{ padding: '0.875rem 1.25rem', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--gray-light)" strokeWidth="2"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+                  <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--white)' }}>Delivery Promise</span>
+                  <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>- The "Get by" date customers see, and rush handling.</span>
+                </div>
+                <div style={{ padding: '1.5rem' }}>
+
+                {/* Drives the "Get by [date]" shown to customers and the rush fee/priority.
+                    Production days skip Sundays. */}
+                <div style={{ maxWidth: '560px', marginBottom: '1.25rem', padding: '1rem 1.25rem', background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '10px' }}>
+                  <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--white)', marginBottom: '0.15rem' }}>Delivery &amp; Turnaround</div>
+                  <p style={{ fontSize: '0.72rem', color: 'var(--gray)', margin: '0 0 0.9rem', lineHeight: 1.5 }}>Sets the estimated delivery date shown to customers. Production days skip Sundays.</p>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.9rem' }}>
+                    {[['productionLeadDays', 'Production (business days)', '5'], ['shippingDaysMin', 'Shipping min (days)', '2'], ['shippingDaysMax', 'Shipping max (days)', '4']].map(([key, label, ph]) => (
+                      <div key={key} style={{ flex: '1 1 140px' }}>
+                        <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--gray-light)', marginBottom: '0.3rem' }}>{label}</label>
+                        <input type="text" inputMode="numeric" maxLength={3} value={shippingForm[key] ?? ''}
+                          onChange={e => setShippingForm(f => ({ ...f, [key]: e.target.value.replace(/[^0-9]/g, '') }))}
+                          placeholder={ph}
+                          style={{ width: '100%', padding: '0.55rem 0.7rem', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--dark)', color: 'var(--white)', fontSize: '0.9rem' }} />
+                      </div>
+                    ))}
+                  </div>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.8rem', fontWeight: 600, color: 'var(--white)', cursor: 'pointer', margin: '1rem 0 0.6rem' }}>
+                    <input type="checkbox" checked={!!shippingForm.rushEnabled} onChange={e => setShippingForm(f => ({ ...f, rushEnabled: e.target.checked }))} style={{ width: 16, height: 16, accentColor: 'var(--gold)' }} />
+                    Offer a Rush option to customers
+                  </label>
+                  {shippingForm.rushEnabled && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.9rem' }}>
+                      <div style={{ flex: '1 1 160px' }}>
+                        <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--gray-light)', marginBottom: '0.3rem' }}>Rush production (days)</label>
+                        <input type="text" inputMode="numeric" maxLength={3} value={shippingForm.rushLeadDays ?? ''}
+                          onChange={e => setShippingForm(f => ({ ...f, rushLeadDays: e.target.value.replace(/[^0-9]/g, '') }))}
+                          placeholder="2"
+                          style={{ width: '100%', padding: '0.55rem 0.7rem', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--dark)', color: 'var(--white)', fontSize: '0.9rem' }} />
+                      </div>
+                      <div style={{ flex: '1 1 160px' }}>
+                        <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--gray-light)', marginBottom: '0.3rem' }}>Rush fee (₱)</label>
+                        <input type="text" inputMode="decimal" maxLength={7} value={shippingForm.rushFee ?? ''}
+                          onChange={e => setShippingForm(f => ({ ...f, rushFee: e.target.value.replace(/[^0-9.]/g, '') }))}
+                          placeholder="150.00"
+                          style={{ width: '100%', padding: '0.55rem 0.7rem', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--dark)', color: 'var(--white)', fontSize: '0.9rem' }} />
+                      </div>
+                    </div>
                   )}
-                </button>
+                </div>
+
+                </div>
               </div>
-              </div>
+
             </div>
 
+          )}
+
+          {/* ── Terms & Policies ──────────────────────────────────────────────────────────────
+              Both sets of clauses in one place. They used to live in two different worlds: the
+              custom-order terms buried inside the Shipping card, and the registration terms written
+              as literal JSX in RegisterForm where nobody could edit them. */}
+          {activeTab === 'terms' && (
+            <div>
+
+              {/* Custom order terms - shown at checkout, accepted before payment. */}
+              <div style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden', marginBottom: '1.25rem' }}>
+                <div style={{ padding: '0.875rem 1.25rem', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--gray-light)" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                  <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--white)' }}>Custom Order Terms</span>
+                  <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>- Accepted at checkout, before paying.</span>
+                  <span style={{ marginLeft: 'auto', fontSize: '0.7rem', color: 'var(--gray)' }}>v{settingsTermsVersion}</span>
+                </div>
+                <div style={{ padding: '1.5rem' }}>
+                  <p style={{ fontSize: '0.78rem', color: 'var(--gray)', margin: '0 0 1rem', lineHeight: 1.6, maxWidth: '620px' }}>
+                    Placeholders are filled from the shipping settings, so a clause always quotes the
+                    number actually in force: designRequestFee, freeRevisions, extraRevisionFee,
+                    maxRevisions, depositDueDays, unpaidReadyHoldDays, refundDays. Write them in curly
+                    braces. Saving bumps the version, and every order records the version it was placed
+                    under, so editing these can never rewrite what someone already agreed to.
+                  </p>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', maxWidth: '620px' }}>
+                    {termsRows.map((t, i) => (
+                      <div key={i} style={{ border: '1px solid var(--border)', borderRadius: '8px', padding: '0.75rem', background: 'var(--dark)' }}>
+                        <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem', flexWrap: 'wrap' }}>
+                          <input
+                            value={t.title}
+                            onChange={e => setTermsRows(rows => rows.map((x, j) => j === i ? { ...x, title: e.target.value.slice(0, 120) } : x))}
+                            placeholder="Clause title"
+                            maxLength={120}
+                            style={{ flex: '1 1 220px', padding: '0.5rem 0.65rem', borderRadius: '7px', border: '1px solid var(--border)', background: 'var(--dark2)', color: 'var(--white)', fontSize: '0.82rem', fontWeight: 600 }}
+                          />
+                          {/* Which design flow the clause applies to. A file-quality warning is
+                              meaningless to someone who asked US to draw it. */}
+                          <select
+                            value={t.mode || 'both'}
+                            onChange={e => setTermsRows(rows => rows.map((x, j) => j === i ? { ...x, mode: e.target.value } : x))}
+                            style={{ padding: '0.5rem 0.65rem', borderRadius: '7px', border: '1px solid var(--border)', background: 'var(--dark2)', color: 'var(--white)', fontSize: '0.78rem' }}
+                          >
+                            <option value="both">Both flows</option>
+                            <option value="upload">Uploaded design only</option>
+                            <option value="request">Design request only</option>
+                          </select>
+                          <button
+                            type="button"
+                            onClick={() => setTermsRows(rows => rows.filter((_, j) => j !== i))}
+                            title="Remove this clause"
+                            style={{ padding: '0.5rem 0.7rem', borderRadius: '7px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--st-red-fg)', fontSize: '0.78rem', cursor: 'pointer' }}
+                          >
+                            Remove
+                          </button>
+                        </div>
+                        <textarea
+                          value={t.body}
+                          onChange={e => setTermsRows(rows => rows.map((x, j) => j === i ? { ...x, body: e.target.value.slice(0, 2000) } : x))}
+                          placeholder="What the customer is agreeing to"
+                          maxLength={2000}
+                          rows={3}
+                          style={{ width: '100%', padding: '0.55rem 0.7rem', borderRadius: '7px', border: '1px solid var(--border)', background: 'var(--dark2)', color: 'var(--white)', fontSize: '0.8rem', lineHeight: 1.55, resize: 'vertical', boxSizing: 'border-box' }}
+                        />
+                        <div style={{ fontSize: '0.68rem', color: 'var(--gray)', textAlign: 'right', marginTop: '0.2rem' }}>{(t.body || '').length}/2000</div>
+                      </div>
+                    ))}
+                    {termsRows.length === 0 && (
+                      <p style={{ fontSize: '0.8rem', color: 'var(--gray)', fontStyle: 'italic', margin: 0 }}>
+                        No clauses saved, so customers see the built-in defaults. Add one to take control of the wording.
+                      </p>
+                    )}
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <button
+                      type="button"
+                      onClick={() => setTermsRows(rows => [...rows, { title: '', body: '', mode: 'both' }])}
+                      style={{ padding: '0.5rem 1rem', borderRadius: '8px', border: '1px solid var(--gold)', background: 'transparent', color: 'var(--gold)', fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer' }}
+                    >
+                      + Add clause
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSaveTerms}
+                      disabled={savingTerms}
+                      style={{ padding: '0.5rem 1rem', borderRadius: '8px', border: 'none', background: 'var(--gold)', color: '#000', fontSize: '0.8rem', fontWeight: 700, cursor: savingTerms ? 'not-allowed' : 'pointer', opacity: savingTerms ? 0.6 : 1 }}
+                    >
+                      {savingTerms ? 'Saving...' : 'Save Terms'}
+                    </button>
+                    {termsMsg && <span style={{ fontSize: '0.78rem', color: 'var(--gray-light)' }}>{termsMsg}</span>}
+                  </div>
+                </div>
+              </div>
+
+              {/* Registration terms - accepted at ACCOUNT CREATION, a different moment and a
+                  different audience from the custom-order terms. */}
+              <div style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden', marginBottom: '1.25rem' }}>
+                <div style={{ padding: '0.875rem 1.25rem', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--gray-light)" strokeWidth="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
+                  <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--white)' }}>Registration Terms</span>
+                  <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>- Accepted when someone creates an account.</span>
+                  <span style={{ marginLeft: 'auto', fontSize: '0.7rem', color: 'var(--gray)' }}>v{regTermsVersion}</span>
+                </div>
+                <div style={{ padding: '1.5rem' }}>
+                  <p style={{ fontSize: '0.78rem', color: 'var(--gray)', margin: '0 0 1rem', lineHeight: 1.6, maxWidth: '620px' }}>
+                    These were written into the sign-up form itself, so changing a word needed a deploy
+                    and nothing recorded which wording anyone had accepted. Each new account now stores
+                    the version and a copy of the text as it read that day.
+                  </p>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', maxWidth: '620px' }}>
+                    {regTermsRows.map((t, i) => (
+                      <div key={i} style={{ border: '1px solid var(--border)', borderRadius: '8px', padding: '0.75rem', background: 'var(--dark)' }}>
+                        <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem', flexWrap: 'wrap' }}>
+                          <input
+                            value={t.title}
+                            onChange={e => setRegTermsRows(rows => rows.map((x, j) => j === i ? { ...x, title: e.target.value.slice(0, 120) } : x))}
+                            placeholder="Section title"
+                            maxLength={120}
+                            style={{ flex: '1 1 260px', padding: '0.5rem 0.65rem', borderRadius: '7px', border: '1px solid var(--border)', background: 'var(--dark2)', color: 'var(--white)', fontSize: '0.82rem', fontWeight: 600 }}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setRegTermsRows(rows => rows.filter((_, j) => j !== i))}
+                            style={{ padding: '0.5rem 0.7rem', borderRadius: '7px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--st-red-fg)', fontSize: '0.78rem', cursor: 'pointer' }}
+                          >
+                            Remove
+                          </button>
+                        </div>
+                        <textarea
+                          value={t.body}
+                          onChange={e => setRegTermsRows(rows => rows.map((x, j) => j === i ? { ...x, body: e.target.value.slice(0, 4000) } : x))}
+                          placeholder="The text of this section"
+                          maxLength={4000}
+                          rows={4}
+                          style={{ width: '100%', padding: '0.55rem 0.7rem', borderRadius: '7px', border: '1px solid var(--border)', background: 'var(--dark2)', color: 'var(--white)', fontSize: '0.8rem', lineHeight: 1.55, resize: 'vertical', boxSizing: 'border-box' }}
+                        />
+                        <div style={{ fontSize: '0.68rem', color: 'var(--gray)', textAlign: 'right', marginTop: '0.2rem' }}>{(t.body || '').length}/4000</div>
+                      </div>
+                    ))}
+                    {regTermsRows.length === 0 && (
+                      <p style={{ fontSize: '0.8rem', color: 'var(--gray)', fontStyle: 'italic', margin: 0 }}>
+                        Nothing saved yet, so the sign-up form shows its built-in text. Add sections to take control of it.
+                      </p>
+                    )}
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <button
+                      type="button"
+                      onClick={() => setRegTermsRows(rows => [...rows, { title: '', body: '' }])}
+                      style={{ padding: '0.5rem 1rem', borderRadius: '8px', border: '1px solid var(--gold)', background: 'transparent', color: 'var(--gold)', fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer' }}
+                    >
+                      + Add section
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSaveRegTerms}
+                      disabled={savingRegTerms}
+                      style={{ padding: '0.5rem 1rem', borderRadius: '8px', border: 'none', background: 'var(--gold)', color: '#000', fontSize: '0.8rem', fontWeight: 700, cursor: savingRegTerms ? 'not-allowed' : 'pointer', opacity: savingRegTerms ? 0.6 : 1 }}
+                    >
+                      {savingRegTerms ? 'Saving...' : 'Save Registration Terms'}
+                    </button>
+                    {regTermsMsg && <span style={{ fontSize: '0.78rem', color: 'var(--gray-light)' }}>{regTermsMsg}</span>}
+                  </div>
+                </div>
+              </div>
+
+            </div>
           )}
 
           {activeTab === 'notifications' && (

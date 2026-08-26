@@ -1191,8 +1191,19 @@ export default function CustomerProfilePage() {
     );
   }
 
+  // Rendering nothing left a logged-out visitor staring at an empty page inside the shop chrome -
+  // header, footer, and a blank middle - with no way to tell whether it had failed or was working.
+  // The guard effect above can also miss: it waits on `localUser` too, and a stale copy of that in
+  // storage keeps it from ever firing. So this both says what is happening and makes it happen.
   if (!currentUser) {
-    return null;
+    if (typeof window !== 'undefined') {
+      window.location.replace('/');
+    }
+    return (
+      <div style={{ minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <span style={{ fontSize: '0.85rem', color: 'var(--gray)' }}>Signing you out...</span>
+      </div>
+    );
   }
 
   return (
@@ -2779,8 +2790,10 @@ export default function CustomerProfilePage() {
                   </div>{/* end password card inner padding */}
                 </div>{/* end password card */}
 
-                {/* Active Sessions card */}
-                <div style={{ border: "1px solid var(--border)", borderRadius: "12px", overflow: "hidden" }}>
+                {/* Active Sessions card. The margin is on the card rather than a gap on the parent
+                    because the 2FA card below sits flush against it otherwise, reading as one control
+                    with two headings. */}
+                <div style={{ border: "1px solid var(--border)", borderRadius: "12px", overflow: "hidden", marginBottom: "1.25rem" }}>
                   <div style={{ padding: "0.75rem 1.25rem", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "0.75rem" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gray-light)" strokeWidth="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
@@ -3100,7 +3113,10 @@ export default function CustomerProfilePage() {
                       <span style={{ fontSize: '0.875rem', fontWeight: 700, color: 'rgba(239,68,68,0.9)' }}>Delete Account</span>
                     </div>
                     <p style={{ margin: '0 0 0.5rem', fontSize: '0.78rem', color: 'var(--gray)', lineHeight: 1.5 }}>
-                      Removes your personal info. You won't be able to log in again.
+                      Removes your personal info. You won&apos;t be able to log in again.
+                      {' '}Your past orders stay in our records with your name on them, because a
+                      completed sale is a record we are required by law to keep. Your phone number,
+                      email and saved addresses are deleted.
                     </p>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.375rem' }}>
                       {[

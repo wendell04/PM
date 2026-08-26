@@ -213,13 +213,25 @@ export default function CartPage() {
     setSelectedItems(new Set());
   };
 
-  // Order-level DP: if ANY selected item requires DP, apply the highest DP% to the full order total
-  const dpPercent = selectedCartItems
-    .filter(i => i.requiresDownpayment)
-    .reduce((max, i) => Math.max(max, i.downpaymentPercent ?? 50), 0);
-  const dpRequired = dpPercent > 0;
-  const dpAmountDue = dpRequired ? Math.round(selectedTotal * dpPercent / 100 * 100) / 100 : selectedTotal;
-  const dpRemaining = dpRequired ? Math.round((selectedTotal - dpAmountDue) * 100) / 100 : 0;
+  // Per-line "due now" preview - the same rule checkout applies, so cart and checkout agree. Every
+  // made-to-order line pays its own DP% (upload AND request alike); a ready-made / no-DP line pays full.
+  // The design fee is separate. Shipping is added at checkout.
+  const lineDpPct = (i) => {
+    const pct = Number(i.downpaymentPercent ?? 0);
+    const requires = !!i.requiresDownpayment || pct > 0;
+    return requires ? (pct > 0 ? pct : 50) : 0;
+  };
+  const goodsDueNow = selectedCartItems.reduce((sum, i) => {
+    const pct = lineDpPct(i);
+    return sum + (pct > 0 ? Math.round(i.lineTotal * pct / 100 * 100) / 100 : i.lineTotal);
+  }, 0);
+  const dpAmountDue = Math.round((goodsDueNow + selectedDesignFee) * 100) / 100;
+  const dpRemaining = Math.round((selectedTotal - dpAmountDue) * 100) / 100;
+  const dpRequired  = dpRemaining > 0;
+  // Show a single "X%" only when EVERY selected line shares the same DP% (> 0). If percents differ, or a
+  // full-paid/ready-made line is mixed in, "due now" is not a flat percent of the total - show no %.
+  const allPcts    = selectedCartItems.map(i => lineDpPct(i));
+  const dpPercent  = allPcts.length && allPcts.every(p => p === allPcts[0] && p > 0) ? allPcts[0] : null;
 
   async function handlePlaceOrder() {
     if (isCheckingOut) return;
@@ -314,6 +326,10 @@ export default function CartPage() {
           designRequested: designRequested,
           designMode:      choice?.mode ?? i.designMode ?? null,
           designFee:       designRequested ? designFee : null,
+          // Carry the T&C acceptance (accepted per mode on the product page) to checkout for proof.
+          termsVersion:    i.termsVersion ?? null,
+          termsSnapshot:   i.termsSnapshot ?? null,
+          termsAgreedAt:   i.termsAgreedAt ?? null,
         };
       }),
       notes,
@@ -322,6 +338,9 @@ export default function CartPage() {
 
     try {
       sessionStorage.setItem('checkout_payload', JSON.stringify(payload));
+      // Remember exactly which lines are being bought. On success only these leave the cart -
+      // emptying the whole thing threw away items the customer had deliberately left unticked.
+      sessionStorage.setItem('checkout_line_ids', JSON.stringify(selectedCartItems.map(i => i.lineId).filter(Boolean)));
       router.push('/shop/checkout');
     } finally {
       setIsCheckingOut(false);
@@ -331,14 +350,18 @@ export default function CartPage() {
   // ── Empty cart ──────────────────────────────────────────────────────────────
   if (!isCartLoading && enrichedCart.length === 0) {
     return (
-      <div className="shop-container" style={{ maxWidth: 640, margin: '0 auto', padding: '3rem 1rem', textAlign: 'center' }}>
-        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#d1d5db" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z" />
-          <line x1="3" y1="6" x2="21" y2="6" /><path d="M16 10a4 4 0 0 1-8 0" />
-        </svg>
-        <p style={{ fontWeight: 700, margin: '10px 0 6px' }}>Your cart is empty</p>
-        <p style={{ color: '#6b7280', fontSize: '.88rem', marginBottom: 16 }}>Browse the shop and add something you like.</p>
-        <Link href="/shop" style={{ color: '#2563eb', fontWeight: 700, textDecoration: 'none' }}>Browse products &rarr;</Link>
+      <div className="shop-container" style={{ maxWidth: 900, margin: '0 auto', padding: '2.5rem 1rem', fontFamily: "'Outfit', sans-serif" }}>
+        <div style={{ textAlign: 'center', padding: '5rem 1.5rem', border: '1px dashed rgba(212,168,67,0.15)', borderRadius: '16px', background: 'rgba(212,168,67,0.02)' }}>
+          <div style={{ width: '72px', height: '72px', borderRadius: '50%', margin: '0 auto 20px', background: 'rgba(212,168,67,0.06)', border: '1px solid rgba(212,168,67,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="rgba(212,168,67,0.5)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+          </div>
+          <div style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--white)', marginBottom: '8px' }}>Your cart is empty</div>
+          <div style={{ fontSize: '0.875rem', color: 'var(--gray)', marginBottom: '24px', lineHeight: 1.6 }}>Browse the shop and add something you like.</div>
+          <Link href="/shop" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '10px 24px', borderRadius: '8px', background: 'var(--gold)', color: '#000', fontWeight: 700, fontSize: '0.875rem', textDecoration: 'none' }}>
+            Browse products
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><polyline points="12 5 19 12 12 19"/></svg>
+          </Link>
+        </div>
       </div>
     );
   }
@@ -448,9 +471,15 @@ export default function CartPage() {
                             <span style={{ color: '#6b7280', fontSize: '.76rem' }}>
                               {item.qty} &times; {formatPeso(item.unitPrice)}
                             </span>
-                            {item.requiresDownpayment && (
+                            {/* Per-line deposit indicator: exact % for a downpayment item, or "Pay in full"
+                                for a ready-made / no-deposit item (e.g. Scrunchie) - so the total is clear. */}
+                            {lineDpPct(item) > 0 ? (
                               <span style={{ background: '#fef3c7', color: '#92400e', border: '1px solid #fde68a', borderRadius: 999, padding: '1px 7px', fontSize: '.62rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.04em' }}>
-                                Downpayment
+                                {lineDpPct(item)}% deposit
+                              </span>
+                            ) : (
+                              <span style={{ background: '#f0fdf4', color: '#166534', border: '1px solid #bbf7d0', borderRadius: 999, padding: '1px 7px', fontSize: '.62rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.04em' }}>
+                                Pay in full
                               </span>
                             )}
                           </div>
@@ -608,19 +637,37 @@ export default function CartPage() {
               <span style={{ fontWeight: 900, fontSize: '1.05rem' }}>{formatPeso(selectedTotal)}</span>
             </div>
 
-            {dpRequired && (
+            {/* A cart with a design request pays the design fee alone - the goods are paid after the
+                proof is approved. Quoting a deposit here contradicted the checkout that follows and
+                showed the customer a figure they were never going to be charged. */}
+            {designLines.length > 0 ? (
               <div style={{ marginTop: 10, padding: '9px 11px', borderRadius: 10, background: '#f9fafb', border: '1px solid #e5e7eb', display: 'flex', flexDirection: 'column', gap: 5 }}>
-                <span style={{ fontSize: '.76rem', fontWeight: 800 }}>{dpPercent}% downpayment required</span>
+                <span style={{ fontSize: '.76rem', fontWeight: 800 }}>You pay the design fee first</span>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '.8rem' }}>
                   <span style={{ color: '#6b7280' }}>Due now</span>
+                  <span style={{ fontWeight: 700 }}>{formatPeso(selectedDesignFee)}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '.78rem', color: '#6b7280' }}>
+                  <span>After you approve the proof</span>
+                  <span>{formatPeso(Math.max(0, selectedTotal - selectedDesignFee))} + delivery</span>
+                </div>
+                <span style={{ fontSize: '.72rem', color: '#6b7280', lineHeight: 1.5, borderTop: '1px solid #e5e7eb', paddingTop: 6 }}>
+                  The design fee is non-refundable - it pays for the designer&apos;s time. You see the artwork before you pay for the goods.
+                </span>
+              </div>
+            ) : dpRequired && (
+              <div style={{ marginTop: 10, padding: '9px 11px', borderRadius: 10, background: '#f9fafb', border: '1px solid #e5e7eb', display: 'flex', flexDirection: 'column', gap: 5 }}>
+                <span style={{ fontSize: '.76rem', fontWeight: 800 }}>{dpPercent ? `${dpPercent}% downpayment required` : 'Downpayment required'}</span>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '.8rem' }}>
+                  <span style={{ color: '#6b7280' }}>Due now (excl. shipping)</span>
                   <span style={{ fontWeight: 700 }}>{formatPeso(dpAmountDue)}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '.78rem', color: '#6b7280' }}>
-                  <span>Balance on completion</span>
+                  <span>Balance later</span>
                   <span>{formatPeso(dpRemaining)}</span>
                 </div>
                 <span style={{ fontSize: '.72rem', color: '#6b7280', lineHeight: 1.5, borderTop: '1px solid #e5e7eb', paddingTop: 6 }}>
-                  Your cart contains custom items, so production starts once the downpayment clears.
+                  Due now is the deposit on your items (ready-made items in full). The remaining balance is collected before delivery.
                 </span>
               </div>
             )}

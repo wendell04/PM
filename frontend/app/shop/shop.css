@@ -313,9 +313,7 @@
         .shop-cart-popup-items {
           max-height: 280px;
           overflow-y: auto;
-          scrollbar-width: none;
         }
-        .shop-cart-popup-items::-webkit-scrollbar { display: none; }
         .shop-cart-popup-item {
           display: flex;
           gap: 0.75rem;
@@ -488,9 +486,7 @@
         .shop-notif-panel-body {
           overflow-y: auto;
           flex: 1;
-          scrollbar-width: none;
         }
-        .shop-notif-panel-body::-webkit-scrollbar { display: none; }
 
         .shop-notif-empty {
           padding: 2.5rem 1.25rem;
@@ -3849,7 +3845,6 @@ details.shop-footer-col > .shop-footer-pay-grid { display: flex; }
   top: 24px;
   max-height: calc(100vh - 48px);
   overflow-y: auto;
-  scrollbar-width: none;
   border-radius: 14px;
   background: #1c1c1c;
   border: 1px solid rgba(255,255,255,0.1);

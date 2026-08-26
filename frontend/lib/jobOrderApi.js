@@ -65,6 +65,31 @@ export async function createJobOrder(token, payload) {
 }
 
 /**
+ * Batch create — one job order per selected printable item of a mixed order.
+ * @param {string} token
+ * @param {Object} payload — { orderId, items:[{itemIndex, product}], targetCompletion, isRush, notes }
+ * @returns {Array} the created job orders
+ */
+export async function createJobOrdersBatch(token, payload) {
+  const res = await fetchWithTimeout(`${API_URL}/api/admin/job-orders/batch`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  }, 20000);
+  if (res.status === 401) throw new Error('Unauthorized');
+  if (!res.ok) {
+    const d = await res.json().catch(() => ({}));
+    throw new Error(d.message || 'Failed to create job orders');
+  }
+  const data = await res.json();
+  return data.data ?? data ?? [];
+}
+
+/**
  * Update a job order (status, targetCompletion, isRush,
  *                      assignedTo, notes)
  */
@@ -89,23 +114,77 @@ export async function updateJobOrder(token, id, payload) {
 }
 
 /**
- * Fetch schedule (non-completed JOs in date range)
- * @param {string} token
- * @param {Object} range — { startDate, endDate } YYYY-MM-DD strings
+ * Delete a job order (guarded server-side to Queued/Cancelled — test/junk cleanup).
  */
-export async function fetchJobOrderSchedule(token, range = {}) {
-  const params = new URLSearchParams();
-  if (range.startDate) params.append('startDate', range.startDate);
-  if (range.endDate)   params.append('endDate',   range.endDate);
-  const url = `${API_URL}/api/admin/job-orders/schedule${params.toString() ? `?${params}` : ''}`;
-  const res = await fetchWithTimeout(url, {
+export async function deleteJobOrder(token, id) {
+  const res = await fetchWithTimeout(`${API_URL}/api/admin/job-orders/${id}`, {
+    method: 'DELETE',
     headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
-  }, 20000);
+  }, 15000);
   if (res.status === 401) throw new Error('Unauthorized');
+  if (res.status === 404) throw new Error('Job order not found');
   if (!res.ok) {
     const d = await res.json().catch(() => ({}));
-    throw new Error(d.message || 'Failed to fetch schedule');
+    throw new Error(d.message || 'Failed to delete job order');
   }
-  const data = await res.json();
-  return data.data ?? data ?? [];
+  return true;
+}
+
+
+/**
+ * Attach print-ready artwork to a job order.
+ *
+ * Distinct from the customer's proof: the proof is a picture of the finished product for approval,
+ * this is the file the machine consumes - a DTF layout at the right size, mirrored, with bleed - and
+ * it differs per item even when the artwork is shared. The timeout scales with the batch because each
+ * file is relayed to Cloudinary in turn.
+ */
+export async function uploadProductionFiles(token, id, files, note) {
+  const form = new FormData();
+  Array.from(files).forEach(f => form.append('files[]', f));
+  if (note) form.append('note', note);
+
+  const res = await fetchWithTimeout(`${API_URL}/api/admin/job-orders/${id}/production-files`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+    body: form,
+  }, 60000 + files.length * 110000, 0);
+
+  if (res.status === 401) throw new Error('Unauthorized');
+  const d = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(d.message || 'Failed to upload production files');
+  return d.data ?? d;
+}
+
+export async function deleteProductionFile(token, id, index) {
+  const res = await fetchWithTimeout(`${API_URL}/api/admin/job-orders/${id}/production-files/${index}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+  }, 15000);
+  if (res.status === 401) throw new Error('Unauthorized');
+  const d = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(d.message || 'Failed to remove file');
+  return d.data ?? d;
+}
+
+/**
+ * Report material ruined on the shop floor, against the job that ruined it.
+ *
+ * `kind` is required rather than inferred: normal spoilage is an expected rate that belongs in the
+ * job's cost, abnormal spoilage is a mistake that is deliberately kept out of it.
+ *
+ * `materials` says WHICH components were actually lost. Spoilage at different stages destroys
+ * different things - a mug that breaks before printing costs a mug and nothing else - so deducting the
+ * whole BOM every time would write off material still sitting on the shelf.
+ */
+export async function reportSpoilage(token, id, { quantity, kind, reason, materials }) {
+  const res = await fetchWithTimeout(`${API_URL}/api/admin/job-orders/${id}/spoilage`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, Accept: 'application/json' },
+    body: JSON.stringify({ quantity, kind, reason, materials }),
+  }, 20000);
+  if (res.status === 401) throw new Error('Unauthorized');
+  const d = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(d.message || d.error || 'Failed to record spoilage');
+  return d.data ?? d;
 }

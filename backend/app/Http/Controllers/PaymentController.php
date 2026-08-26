@@ -411,25 +411,42 @@ class PaymentController extends Controller
                     // included), otherwise validated stock is never actually deducted.
                     $bom = $this->resolveBom($bomProd, $item['variantId'] ?? null);
                     if ($bom && !empty($bom->components)) {
+                        // Made-to-order / custom items RESERVE materials now (consumed at QC pass via the
+                        // Job Order). Stocked ready-made items DEDUCT now (no production step). This MUST
+                        // match OrderController@store — deducting stockQty here for a produced item would
+                        // double-deduct, because submitQC subtracts it again on QC pass.
+                        $producedItem = (bool) ($bomProd->isMadeToOrder ?? false) || (bool) ($bomProd->isCustom ?? false);
                         foreach ($bom->components as $component) {
                             $rawInv = Inventory::find($component['inventoryId'] ?? null);
                             if (!$rawInv || $rawInv->isOnDemand) continue;
                             $deductQty = (int) round(($component['qty'] ?? 0) * ($item['qty'] ?? 1));
                             if ($deductQty <= 0) continue;
-                            $updatedRaw = DB::connection('mongodb')->getCollection('inventories')
-                                ->findOneAndUpdate(
-                                    ['_id' => new \MongoDB\BSON\ObjectId((string) $rawInv->_id)],
-                                    ['$inc' => ['stockQty' => -$deductQty]],
-                                    ['returnDocument' => \MongoDB\Operation\FindOneAndUpdate::RETURN_DOCUMENT_AFTER]
-                                );
-                            $newRawQty = (int) ($updatedRaw->stockQty ?? max(0, ($rawInv->stockQty ?? 0) - $deductQty));
-                            StockHistory::create([
-                                'inventoryId' => (string) $rawInv->_id, 'quantity' => $deductQty,
-                                'remainingQty' => $newRawQty, 'unitCost' => $rawInv->averageCost ?? 0,
-                                'totalCost' => 0, 'reason' => 'sale_reserved', 'type' => 'deduction',
-                                'performedBy' => 'system', 'remarks' => 'Order: ' . (string) $order->_id,
-                                'createdAt' => now(),
-                            ]);
+                            if ($producedItem) {
+                                $rawInv->reservedQty = (int) ($rawInv->reservedQty ?? 0) + $deductQty;
+                                $rawInv->save();
+                                StockHistory::create([
+                                    'inventoryId' => (string) $rawInv->_id, 'quantity' => $deductQty,
+                                    'remainingQty' => (int) ($rawInv->stockQty ?? 0), 'unitCost' => $rawInv->averageCost ?? 0,
+                                    'totalCost' => 0, 'reason' => 'production_reserved', 'type' => 'reservation',
+                                    'performedBy' => 'system', 'remarks' => 'Reserved for production: ' . (string) $order->_id,
+                                    'createdAt' => now(),
+                                ]);
+                            } else {
+                                $updatedRaw = DB::connection('mongodb')->getCollection('inventories')
+                                    ->findOneAndUpdate(
+                                        ['_id' => new \MongoDB\BSON\ObjectId((string) $rawInv->_id)],
+                                        ['$inc' => ['stockQty' => -$deductQty]],
+                                        ['returnDocument' => \MongoDB\Operation\FindOneAndUpdate::RETURN_DOCUMENT_AFTER]
+                                    );
+                                $newRawQty = (int) ($updatedRaw->stockQty ?? max(0, ($rawInv->stockQty ?? 0) - $deductQty));
+                                StockHistory::create([
+                                    'inventoryId' => (string) $rawInv->_id, 'quantity' => $deductQty,
+                                    'remainingQty' => $newRawQty, 'unitCost' => $rawInv->averageCost ?? 0,
+                                    'totalCost' => 0, 'reason' => 'sale_reserved', 'type' => 'deduction',
+                                    'performedBy' => 'system', 'remarks' => 'Order: ' . (string) $order->_id,
+                                    'createdAt' => now(),
+                                ]);
+                            }
                         }
                     }
                 } catch (\Exception $bomErr) {
@@ -553,6 +570,63 @@ class PaymentController extends Controller
         }
     }
 
+
+    /**
+     * DELETE /api/payment/cancel-pending/{orderId}
+     *
+     * The success page calls this when a payment never completes, but the route did not exist - the
+     * 404 was swallowed by a .catch(), so every abandoned checkout left an order sitting in `pending`
+     * still HOLDING its reserved stock. Nothing released it until the unpaid sweeper ran days later,
+     * and in the meantime the shop could not sell material it actually had.
+     *
+     * It cancels rather than deletes. The order genuinely happened, the customer may well see the
+     * attempt in their history, and a silent delete would leave nothing to explain where the
+     * reservation went.
+     */
+    public function cancelPending(Request $request, $orderId)
+    {
+        try {
+            $user = $request->user();
+            if (!$user) return $this->unauthorizedResponse();
+
+            $order = Order::where('_id', $orderId)->where('userId', (string) $user->_id)->first();
+            if (!$order) return $this->notFoundResponse('Order');
+
+            // Only an order where NOTHING was ever received may be swept away like this. A design fee
+            // already paid, a deposit, any history at all - and this is a real order that needs a
+            // person to decide, not a cleanup call fired by a redirect.
+            $received = collect($order->paymentHistory ?? [])->sum(fn ($p) => (float) ($p['amount'] ?? 0));
+            $untouched = $received <= 0
+                && empty($order->designFeePaid)
+                && in_array($order->paymentStatus ?? 'unpaid', ['unpaid', '', null], true)
+                && in_array(OrderStatus::normalize($order->orderStatus), [OrderStatus::PENDING, 'awaiting_payment'], true);
+
+            if (!$untouched) {
+                return $this->errorResponse('This order has activity on it and cannot be cleared automatically.', 422);
+            }
+
+            if (OrderStatus::normalize($order->orderStatus) === OrderStatus::CANCELLED) {
+                return $this->successResponse('Already cleared.', ['orderStatus' => $order->orderStatus]);
+            }
+
+            $order->orderStatus     = OrderStatus::CANCELLED;
+            $order->cancelledBy     = 'system';
+            $order->cancelledReason = 'Payment was not completed.';
+            $order->cancelledAt     = now();
+            $order->updatedAt       = now();
+            $order->save();
+
+            // The whole point: give the material back.
+            app(OrderController::class)->releaseReservationsFor($order);
+
+            return $this->successResponse('Pending order cleared and stock released.', [
+                'orderStatus' => $order->orderStatus,
+            ]);
+        } catch (\Exception $e) {
+            return $this->serverErrorResponse($e, 'Failed to clear the pending order.');
+        }
+    }
+
     /**
      * POST /api/payment/initiate
      *
@@ -596,6 +670,10 @@ class PaymentController extends Controller
                 // was shown ₱528.94 and charged the full ₱1,057.88.
                 'isDownpayment'               => 'nullable|boolean',
                 'downpaymentPercent'          => 'nullable|integer|min:1|max:100',
+                // Exact per-line first payment from checkout (ready-made full + upload DP + design
+                // fee, with requested-design goods deferred). When present it wins over a blanket
+                // percent so a mixed cart charges each line by its own rule.
+                'firstPaymentAmount'          => 'nullable|numeric|min:0',
                 'designType'                  => 'nullable|string|in:upload,request',
                 'items.*.designRequested'     => 'nullable|boolean',
                 'items.*.designFee'           => 'nullable|numeric|min:0',
@@ -717,6 +795,24 @@ class PaymentController extends Controller
             $shippingFee  = (float) ($validated['shippingFee'] ?? 0);
             $totalAmount += $shippingFee;
 
+            // Rush is a REQUEST the admin confirms; the need-by date is the customer's target. The
+            // online path never recorded these before, so a cart/rush order lost its rush entirely.
+            $owner       = User::where('role', 'owner')->first() ?? User::where('role', 'admin')->first();
+            $rushOn      = (bool)  ($owner->rushEnabled ?? true);
+            $rushFeeAmt  = (float) ($owner->rushFee ?? 100);
+            $isRush      = $rushOn && filter_var($request->input('isRush', false), FILTER_VALIDATE_BOOLEAN);
+            if ($isRush && $rushFeeAmt > 0) { $totalAmount += $rushFeeAmt; }
+            $needByDate  = $request->input('needByDate') ?: null;
+            $rushStatus  = $isRush ? 'requested' : null;
+            $prodLead    = (int) ($owner->productionLeadDays ?? 5);
+            $rushLead    = (int) ($owner->rushLeadDays ?? 2);
+            $shipMinD    = (int) ($owner->shippingDaysMin ?? 2);
+            $shipMaxD    = (int) ($owner->shippingDaysMax ?? 4);
+            $leadDays    = $isRush ? $rushLead : $prodLead;
+            $addBiz      = function (int $days) { $d = now(); while ($days > 0) { $d = $d->addDay(); if (!$d->isSunday()) { $days--; } } return $d; };
+            $estDelivMin = $addBiz($leadDays + $shipMinD)->toIso8601String();
+            $estDelivMax = $addBiz($leadDays + $shipMaxD)->toIso8601String();
+
             // ── Voucher ───────────────────────────────────────────────
             $discountAmount = 0.0;
             $appliedVoucher = null;
@@ -827,7 +923,14 @@ class PaymentController extends Controller
             // the webhook reads pendingPaymentType/Amount to record a partial payment.
             $payDownpaymentNow = filter_var($request->input('isDownpayment', false), FILTER_VALIDATE_BOOLEAN);
             $dpPctRequested    = (int) $request->input('downpaymentPercent', 0);
-            $takesDownpayment  = $payDownpaymentNow && $dpPctRequested > 0 && $dpPctRequested < 100;
+            $explicitFirst     = $request->input('firstPaymentAmount');
+            $explicitFirst     = is_numeric($explicitFirst) ? round((float) $explicitFirst, 2) : null;
+            // The exact per-line first payment from checkout wins over a blanket percent. It applies
+            // only when it really is a partial (0 < first < total); otherwise fall back to the percent.
+            $firstPayment = ($explicitFirst !== null && $explicitFirst > 0 && $explicitFirst < $totalAmount)
+                ? $explicitFirst
+                : (($dpPctRequested > 0 && $dpPctRequested < 100) ? round($totalAmount * $dpPctRequested / 100, 2) : null);
+            $takesDownpayment  = $payDownpaymentNow && $firstPayment !== null;
 
             $isCustomOrder = filter_var($request->input('isCustomOrder', false), FILTER_VALIDATE_BOOLEAN) || $anyCustom;
             // Uploaded artwork waits for the store to check it. Requested artwork has
@@ -861,11 +964,23 @@ class PaymentController extends Controller
                 'designFee'            => $orderDesignFee > 0 ? $orderDesignFee : null,
                 'requiresDownpayment'  => $requiresDownpayment,
                 'downpaymentPercent'   => $orderDownpaymentPct > 0 ? $orderDownpaymentPct : null,
+                'isRush'               => $isRush,
+                'rushFee'              => $isRush ? $rushFeeAmt : null,
+                'rushStatus'           => $rushStatus,
+                'needByDate'           => $needByDate,
+                'estimatedDeliveryMin' => $estDelivMin,
+                'estimatedDeliveryMax' => $estDelivMax,
+                // Clickwrap T&C acceptance (the online path recorded NONE before, so paid orders had
+                // no proof). Snapshot the exact clauses the customer agreed to, not just the version.
+                'agreedToTerms'        => filter_var($request->input('agreedToTerms', false), FILTER_VALIDATE_BOOLEAN),
+                'agreedAt'             => filter_var($request->input('agreedToTerms', false), FILTER_VALIDATE_BOOLEAN) ? ($request->input('agreedAt') ?: now()->toIso8601String()) : null,
+                'termsVersion'         => $request->input('termsVersion') !== null ? (int) $request->input('termsVersion') : null,
+                'agreedTermsSnapshot'  => is_array($request->input('agreedTermsSnapshot')) ? $request->input('agreedTermsSnapshot') : null,
                 // Tells the webhook this payment settles only part of the order, so it
                 // records paymentStatus = partial with a real remaining balance instead of
                 // marking a half-paid order as fully paid.
                 'pendingPaymentType'   => $takesDownpayment ? 'downpayment' : null,
-                'pendingPaymentAmount' => $takesDownpayment ? round($totalAmount * $dpPctRequested / 100, 2) : null,
+                'pendingPaymentAmount' => $takesDownpayment ? $firstPayment : null,
                 'statusHistory'        => [['status' => $this->resolveCustomOrderStatus($request), 'at' => now()->toISOString()]],
                 'createdAt'       => now(),
                 'updatedAt'       => now(),
@@ -976,11 +1091,12 @@ class PaymentController extends Controller
                 );
             }
 
-            // Charge what the customer was shown. A downpayment order takes its percentage
-            // now; the balance is collected later against the same order.
+            // Charge what the customer was shown. A downpayment order takes its exact first payment
+            // now (per-line: ready-made full + upload DP + design fee); the balance is collected
+            // later against the same order.
             $chargeAmount = $isDesignFeeOnly
                 ? $designFeeTotal
-                : ($takesDownpayment ? round($totalAmount * $dpPctRequested / 100, 2) : $totalAmount);
+                : ($takesDownpayment ? $firstPayment : $totalAmount);
             $amountCentavos = (int) round($chargeAmount * 100);
 
 
@@ -1648,10 +1764,13 @@ class PaymentController extends Controller
                     $order->pendingPaymentType   = null;
                     $order->pendingPaymentAmount = null;
                 } elseif (($order->pendingPaymentType ?? null) === 'downpayment') {
+                    // Everything already received counts, not just this deposit. A request-design
+                    // order paid its design fee first, and ignoring that re-billed the customer for it.
+                    $alreadyPaid = collect($order->paymentHistory ?? [])->sum('amount');
                     $dpAmt = (float) ($order->pendingPaymentAmount ?? $paidAmount);
                     $order->paymentStatus        = 'partial';
                     $order->downPayment          = $dpAmt;
-                    $order->balance              = round($orderTotal - $dpAmt, 2);
+                    $order->balance              = round(max(0, $orderTotal - $alreadyPaid - $dpAmt), 2);
                     $order->pendingPaymentType   = null;
                     $order->pendingPaymentAmount = null;
                     if ($order->isCustomOrder && $order->orderStatus === 'awaiting_payment') {
@@ -1664,7 +1783,10 @@ class PaymentController extends Controller
                     if ($order->isCustomOrder && $order->orderStatus === 'awaiting_payment') {
                         $order->orderStatus = 'awaiting_production';
                     }
-                    if ($order->isCustomOrder && $order->orderStatus === 'ready_for_delivery') {
+                    // The isCustomOrder guard meant a READY-MADE order that settled its balance
+                    // stayed frozen at Ready for Delivery. Whether the goods were personalised has
+                    // nothing to do with whether the money arrived.
+                    if ($order->orderStatus === 'ready_for_delivery') {
                         $order->orderStatus = 'for_delivery';
                     }
                 }
@@ -1672,12 +1794,17 @@ class PaymentController extends Controller
                 $order->paymentMethod           = $paymentMethod;
                 $order->paymongoPaymentId       = $paymentId;
                 $order->paymongoReferenceNumber = $referenceNum;
-                $order->paymentHistory          = [[
+                // Append. Replacing the array wiped any earlier payment on the order - on a
+                // request-design order that is the design fee, which then vanished from the
+                // customer's receipt and from every balance computed off the history afterwards.
+                $prior   = $order->paymentHistory ?? [];
+                $prior[] = [
                     'amount'    => $paidAmount,
                     'method'    => $paymentMethod ?? 'online',
                     'note'      => 'Online payment via PayMongo' . ($referenceNum ? " ({$referenceNum})" : ''),
                     'paidAt'    => now()->toDateTimeString(),
-                ]];
+                ];
+                $order->paymentHistory          = $prior;
                 $order->updatedAt               = now();
                 $order->save();
 
@@ -1758,7 +1885,12 @@ class PaymentController extends Controller
             if (!$user) return $this->unauthorizedResponse();
 
             $validated = $request->validate([
-                'orderId' => 'required|string|regex:/^[a-f0-9]{24}$/i',
+                'orderId'  => 'required|string|regex:/^[a-f0-9]{24}$/i',
+                // PayMongo puts the intent id in the success URL. Ignoring it and reading only the
+                // order's stored paymongoIntentId meant a SECOND payment on the same order verified
+                // the FIRST intent again - so the balance payment was never recorded and the receipt
+                // rendered the state from one payment ago.
+                'intentId' => 'nullable|string|max:120',
             ]);
 
             $order = Order::where('_id', $validated['orderId'])
@@ -1771,7 +1903,9 @@ class PaymentController extends Controller
                 return $this->successResponse('Already paid.', ['paymentStatus' => 'paid']);
             }
 
-            $intentId  = $order->paymongoIntentId ?? null;
+            // The id the customer was actually redirected with wins: it names THIS payment. The
+            // stored one is only a fallback for a page opened without it.
+            $intentId  = $validated['intentId'] ?? ($order->paymongoIntentId ?? null);
             $sessionId = $order->paymongoLinkId   ?? null;
 
             if (!$intentId && !$sessionId) {
@@ -1807,11 +1941,32 @@ class PaymentController extends Controller
                 $totalAmount     = (float) ($order->totalAmount ?? 0);
                 $isDesignFeeOnly = (bool) ($order->isDesignFeeOnly ?? false);
 
-                if ($isDesignFeeOnly && ($order->designFeePaid ?? false)) {
-                    return $this->successResponse('Design fee already confirmed.', [
+                // `isDesignFeeOnly` describes how the order STARTED, not what it is forever: it is
+                // written at checkout and never cleared. Returning early on it meant that once the
+                // design fee was confirmed, every later verification for the SAME order stopped here -
+                // so the deposit paid after proof approval was never recorded, no matter how many times
+                // the page retried. Only bail out when there is genuinely nothing else in flight.
+                // Guessing "is there anything else in flight" was still wrong: a BALANCE payment
+                // leaves pendingPaymentType empty too, so the final payment on a request-design order
+                // hit this and was never recorded - the customer paid and the receipt showed the state
+                // from one payment ago.
+                // The only honest test of "already handled" is whether THIS intent is already in the
+                // history. It names one payment; the order's general state cannot tell them apart.
+                $alreadyRecorded = collect($order->paymentHistory ?? [])
+                    ->contains(fn ($pmt) => $intentId && str_contains((string) ($pmt['note'] ?? ''), (string) $intentId));
+
+                if ($alreadyRecorded) {
+                    return $this->successResponse('This payment is already recorded.', [
                         'paymentStatus' => $order->paymentStatus,
-                        'designFeePaid' => true,
+                        'designFeePaid' => (bool) ($order->designFeePaid ?? false),
                     ]);
+                }
+
+                // `isDesignFeeOnly` describes how the order STARTED and is never cleared, so it may
+                // only be trusted while the design fee is still unpaid. Once it has been collected,
+                // any further payment on this order is for the goods.
+                if (!empty($order->pendingPaymentType) || ($order->designFeePaid ?? false)) {
+                    $isDesignFeeOnly = false;
                 }
 
                 if ($isDesignFeeOnly) {
@@ -1825,10 +1980,13 @@ class PaymentController extends Controller
                     $order->pendingPaymentType   = null;
                     $order->pendingPaymentAmount = null;
                 } elseif (($order->pendingPaymentType ?? null) === 'downpayment') {
+                    // Everything already received counts, not just this deposit. A request-design
+                    // order paid its design fee first, and ignoring that re-billed the customer for it.
+                    $alreadyPaid = collect($order->paymentHistory ?? [])->sum('amount');
                     $dpAmt = (float) ($order->pendingPaymentAmount ?? $paidAmount);
                     $order->paymentStatus        = 'partial';
                     $order->downPayment          = $dpAmt;
-                    $order->balance              = round($totalAmount - $dpAmt, 2);
+                    $order->balance              = round(max(0, $totalAmount - $alreadyPaid - $dpAmt), 2);
                     $order->pendingPaymentType   = null;
                     $order->pendingPaymentAmount = null;
                     if ($order->isCustomOrder && $order->orderStatus === 'awaiting_payment') {
@@ -1841,12 +1999,19 @@ class PaymentController extends Controller
                     if ($order->isCustomOrder && $order->orderStatus === 'awaiting_payment') {
                         $order->orderStatus = 'awaiting_production';
                     }
-                    if ($order->isCustomOrder && $order->orderStatus === 'ready_for_delivery') {
+                    // The isCustomOrder guard meant a READY-MADE order that settled its balance
+                    // stayed frozen at Ready for Delivery. Whether the goods were personalised has
+                    // nothing to do with whether the money arrived.
+                    if ($order->orderStatus === 'ready_for_delivery') {
                         $order->orderStatus = 'for_delivery';
                     }
                 }
                 $history   = $order->paymentHistory ?? [];
-                $history[] = ['amount' => $paidAmount, 'method' => $paymentMethod, 'note' => 'Payment confirmed via PayMongo Checkout Session (' . $sessionId . ')', 'paidAt' => now()->toDateTimeString()];
+                $payFor = $isDesignFeeOnly ? 'design_fee'
+                    : (($order->paymentStatus ?? '') === 'paid' && count($order->paymentHistory ?? []) > 0 ? 'balance'
+                    : (($order->paymentStatus ?? '') === 'partial' ? 'downpayment' : 'payment'));
+
+                $history[] = ['amount' => $paidAmount, 'method' => $paymentMethod, 'type' => $payFor, 'note' => 'Payment confirmed via PayMongo Checkout Session (' . $sessionId . ')', 'paidAt' => now()->toDateTimeString()];
                 $order->paymentDate       = now();
                 $order->paymentMethod     = $paymentMethod;
                 $order->paymongoPaymentId = $paymentId;
@@ -1908,11 +2073,27 @@ class PaymentController extends Controller
             $paidAmount    = round((float) ($intentData['attributes']['amount'] ?? ($totalAmount * 100)) / 100, 2);
             $isDesignFeeOnly = (bool) ($order->isDesignFeeOnly ?? false);
 
-            if ($isDesignFeeOnly && ($order->designFeePaid ?? false)) {
-                return $this->successResponse('Design fee already confirmed.', [
+            // THE PATH GCASH ACTUALLY TAKES. The session branch above carries the identical guard,
+            // and fixing only that one changed nothing - a card or GCash payment lands here.
+            // "Nothing else in flight" was never a safe proxy for "already handled": a BALANCE
+            // payment leaves pendingPaymentType empty too, so the final payment on a request-design
+            // order bailed out here and was never recorded. The only honest test is whether THIS
+            // intent is already in the history - it names one payment; the order's general state
+            // cannot tell one payment from another.
+            $alreadyRecorded = collect($order->paymentHistory ?? [])
+                ->contains(fn ($pmt) => $intentId && str_contains((string) ($pmt['note'] ?? ''), (string) $intentId));
+
+            if ($alreadyRecorded) {
+                return $this->successResponse('This payment is already recorded.', [
                     'paymentStatus' => $order->paymentStatus,
-                    'designFeePaid' => true,
+                    'designFeePaid' => (bool) ($order->designFeePaid ?? false),
                 ]);
+            }
+
+            // The flag describes how the order STARTED and is never cleared, so it may only be
+            // trusted while the design fee is still unpaid.
+            if (!empty($order->pendingPaymentType) || ($order->designFeePaid ?? false)) {
+                $isDesignFeeOnly = false;
             }
 
             if ($isDesignFeeOnly) {
@@ -1925,10 +2106,11 @@ class PaymentController extends Controller
                 $order->pendingPaymentType   = null;
                 $order->pendingPaymentAmount = null;
             } elseif (($order->pendingPaymentType ?? null) === 'downpayment') {
+                $alreadyPaid = collect($order->paymentHistory ?? [])->sum('amount');
                 $dpAmt = (float) ($order->pendingPaymentAmount ?? $paidAmount);
                 $order->paymentStatus        = 'partial';
                 $order->downPayment          = $dpAmt;
-                $order->balance              = round($totalAmount - $dpAmt, 2);
+                $order->balance              = round(max(0, $totalAmount - $alreadyPaid - $dpAmt), 2);
                 $order->pendingPaymentType   = null;
                 $order->pendingPaymentAmount = null;
                 if ($order->isCustomOrder && $order->orderStatus === 'awaiting_payment') {
@@ -1941,12 +2123,19 @@ class PaymentController extends Controller
                 if ($order->isCustomOrder && $order->orderStatus === 'awaiting_payment') {
                     $order->orderStatus = 'awaiting_production';
                 }
-                if ($order->isCustomOrder && $order->orderStatus === 'ready_for_delivery') {
+                if ($order->orderStatus === 'ready_for_delivery') {
                     $order->orderStatus = 'for_delivery';
                 }
             }
             $history   = $order->paymentHistory ?? [];
-            $history[] = ['amount' => $paidAmount, 'method' => $paymentMethod, 'note' => 'Payment confirmed via PayMongo (' . $intentId . ')', 'paidAt' => now()->toDateTimeString()];
+            // What this payment was FOR. The note only ever carried the gateway reference, so the
+            // receipt had to guess from position - and on a request-design order the FIRST payment is
+            // the design fee, which is exactly the guess that goes wrong.
+            $payFor = $isDesignFeeOnly ? 'design_fee'
+                : (($order->paymentStatus ?? '') === 'paid' && count($order->paymentHistory ?? []) > 0 ? 'balance'
+                : (($order->paymentStatus ?? '') === 'partial' ? 'downpayment' : 'payment'));
+
+            $history[] = ['amount' => $paidAmount, 'method' => $paymentMethod, 'type' => $payFor, 'note' => 'Payment confirmed via PayMongo (' . $intentId . ')', 'paidAt' => now()->toDateTimeString()];
             $order->paymentDate       = now();
             $order->paymentMethod     = $paymentMethod;
             $order->paymongoPaymentId = $paymentId;
@@ -2133,7 +2322,7 @@ class PaymentController extends Controller
                     }
                 }
                 if ($dpPercent > 0) {
-                    $dpAmount = round((float) ($order->totalAmount ?? 0) * $dpPercent / 100, 2);
+                    $dpAmount = round($amountDue * $dpPercent / 100, 2);
                     $isDP     = true;
                 }
             }
@@ -2221,6 +2410,8 @@ class PaymentController extends Controller
                 $redirectUrl  = $attachData['attributes']['next_action']['redirect']['url'] ?? null;
 
                 $order->paymongoIntentId = $intentId;
+                // Drop the other reference so verifyIntent cannot pick up a previous payment's.
+                $order->paymongoLinkId   = null;
                 $order->save();
 
                 if ($intentStatus === 'succeeded') {
@@ -2237,7 +2428,7 @@ class PaymentController extends Controller
                     } elseif ($isDP) {
                         $updates['paymentStatus']         = 'partial';
                         $updates['downPayment']           = $dpAmount;
-                        $updates['balance']               = round((float) $order->totalAmount - $dpAmount, 2);
+                        $updates['balance']               = round($amountDue - $dpAmount, 2);
                         $updates['pendingPaymentType']    = null;
                         $updates['pendingPaymentAmount']  = null;
                         if ($order->isCustomOrder && $order->orderStatus === 'awaiting_payment') {
@@ -2248,7 +2439,7 @@ class PaymentController extends Controller
                         if ($order->isCustomOrder && $order->orderStatus === 'awaiting_payment') {
                             $updates['orderStatus'] = 'awaiting_production';
                         }
-                        if ($order->isCustomOrder && $order->orderStatus === 'ready_for_delivery') {
+                        if ($order->orderStatus === 'ready_for_delivery') {
                             $updates['orderStatus'] = 'for_delivery';
                         }
                     }
@@ -2312,7 +2503,10 @@ class PaymentController extends Controller
 
             $sessionId = data_get($pmJson, 'data.id');
             if ($sessionId) {
-                $order->paymongoLinkId = $sessionId;
+                $order->paymongoLinkId   = $sessionId;
+                // Same reason: a card payment earlier in this order's life leaves an intent id behind,
+                // and verifyIntent prefers it - which pointed the check at the wrong payment entirely.
+                $order->paymongoIntentId = null;
                 $order->save();
             }
 

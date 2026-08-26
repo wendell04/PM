@@ -14,6 +14,13 @@ class User extends Authenticatable
     protected $collection = 'users';
 
     protected $fillable = [
+        // Clickwrap evidence, written once at registration and never edited afterwards.
+        'acceptedTermsVersion', 'acceptedTermsAt', 'acceptedTermsSnapshot', 'acceptedTermsIp',
+        'acceptedTermsLegacy',
+        // Owner-editable clauses shown at account creation, plus their version.
+        'registrationTerms', 'registrationTermsVersion', 'registrationTermsUpdatedAt',
+        // Holding period and refund window quoted by the custom-order terms.
+        'unpaidReadyHoldDays', 'refundDays',
         'firstName',
         'middleInitial',
         'lastName',

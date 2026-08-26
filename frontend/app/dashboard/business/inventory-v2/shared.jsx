@@ -1,5 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
+import useLockBodyScroll from '@/lib/useLockBodyScroll';
 // ── shared.jsx — inventory-v2 shared components ───────────────────────────────
 
 // ── Styles ────────────────────────────────────────────────────────────────────
@@ -145,15 +147,38 @@ export function Note({ type = 'warn', children }) {
 export function CustomSelect({ value, onChange, options = [], placeholder = 'Select…', style, error, disabled, emptyLabel, searchable = false }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
-  const ref = useRef(null);
+  const [pos, setPos] = useState(null);
+  const wrapRef = useRef(null);
+  const btnRef = useRef(null);
+  const menuRef = useRef(null);
   const searchRef = useRef(null);
+
+  // Fixed-position popover in a portal so a dropdown inside a scrollable modal is not clipped by
+  // the modal's overflow. Opens upward when there is not enough room below.
+  const computePos = useCallback(() => {
+    const el = btnRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - r.bottom;
+    const openUp = spaceBelow < 240 && r.top > spaceBelow;
+    const maxHeight = Math.min(288, Math.max(140, (openUp ? r.top : spaceBelow) - 12));
+    setPos({ left: r.left, width: r.width, top: r.bottom + 3, bottom: window.innerHeight - r.top + 3, maxHeight, openUp });
+  }, []);
 
   useEffect(() => {
     if (!open) return;
-    const h = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
-    document.addEventListener('mousedown', h);
-    return () => document.removeEventListener('mousedown', h);
-  }, [open]);
+    computePos();
+    const reflow = () => computePos();
+    const onDown = e => { if (!wrapRef.current?.contains(e.target) && !menuRef.current?.contains(e.target)) setOpen(false); };
+    window.addEventListener('scroll', reflow, true);
+    window.addEventListener('resize', reflow);
+    document.addEventListener('mousedown', onDown);
+    return () => {
+      window.removeEventListener('scroll', reflow, true);
+      window.removeEventListener('resize', reflow);
+      document.removeEventListener('mousedown', onDown);
+    };
+  }, [open, computePos]);
 
   useEffect(() => { if (!open) setQuery(''); }, [open]);
   useEffect(() => { if (open && searchable) { const t = setTimeout(() => searchRef.current?.focus(), 0); return () => clearTimeout(t); } }, [open, searchable]);
@@ -164,36 +189,14 @@ export function CustomSelect({ value, onChange, options = [], placeholder = 'Sel
   const q = query.trim().toLowerCase();
   const visible = (searchable && q) ? normalized.filter(o => String(o.label).toLowerCase().includes(q)) : normalized;
 
-  return (
-    <div ref={ref} style={{ position: 'relative', ...(style ?? {}) }}>
-      <button type="button" disabled={!!disabled}
-        onClick={() => !disabled && setOpen(p => !p)}
-        style={{
-          width: '100%', textAlign: 'left',
-          background: disabled ? 'var(--dark2)' : 'var(--dark)',
-          border: `1px solid ${error ? '#e05252' : open ? 'var(--gold)' : 'var(--border)'}`,
-          borderRadius: '6px', padding: '7px 30px 7px 10px',
-          fontSize: '13px', color: (hasValue && selected) ? 'var(--white)' : 'var(--gray)',
-          cursor: disabled ? 'not-allowed' : 'pointer',
-          outline: 'none', lineHeight: '1.5',
-          boxSizing: 'border-box', whiteSpace: 'nowrap',
-          overflow: 'hidden', textOverflow: 'ellipsis',
-        }}>
-        {(hasValue && selected) ? selected.label : placeholder}
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
-          stroke={open ? 'var(--gold)' : 'var(--gray)'} strokeWidth="2.5"
-          style={{ position: 'absolute', right: '9px', top: '50%',
-            transform: `translateY(-50%) rotate(${open ? 180 : 0}deg)`,
-            transition: 'transform .15s', pointerEvents: 'none', flexShrink: 0 }}>
-          <polyline points="6 9 12 15 18 9" />
-        </svg>
-      </button>
-      {open && (
-        <div style={{
-          position: 'absolute', top: 'calc(100% + 3px)', left: 0, right: 0, zIndex: 500,
+  const menu = (open && pos && typeof document !== 'undefined') ? createPortal(
+    (
+        <div ref={menuRef} style={{
+          position: 'fixed', left: pos.left, width: pos.width, zIndex: 3000,
+          ...(pos.openUp ? { bottom: pos.bottom } : { top: pos.top }),
           background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '8px',
           boxShadow: '0 8px 24px rgba(0,0,0,0.25)',
-          maxHeight: '288px', overflowY: 'auto',
+          maxHeight: pos.maxHeight, overflowY: 'auto',
         }}>
           {searchable && (
             <div style={{ position: 'sticky', top: 0, zIndex: 1, background: 'var(--dark)', padding: '8px', borderBottom: '1px solid var(--border)' }}>
@@ -233,7 +236,35 @@ export function CustomSelect({ value, onChange, options = [], placeholder = 'Sel
             </div>
           )}
         </div>
-      )}
+    ),
+    document.body
+  ) : null;
+
+  return (
+    <div ref={wrapRef} style={{ position: 'relative', ...(style ?? {}) }}>
+      <button ref={btnRef} type="button" disabled={!!disabled}
+        onClick={() => !disabled && setOpen(p => !p)}
+        style={{
+          width: '100%', textAlign: 'left',
+          background: disabled ? 'var(--dark2)' : 'var(--dark)',
+          border: `1px solid ${error ? '#e05252' : open ? 'var(--gold)' : 'var(--border)'}`,
+          borderRadius: '6px', padding: '7px 30px 7px 10px',
+          fontSize: '13px', color: (hasValue && selected) ? 'var(--white)' : 'var(--gray)',
+          cursor: disabled ? 'not-allowed' : 'pointer',
+          outline: 'none', lineHeight: '1.5',
+          boxSizing: 'border-box', whiteSpace: 'nowrap',
+          overflow: 'hidden', textOverflow: 'ellipsis',
+        }}>
+        {(hasValue && selected) ? selected.label : placeholder}
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
+          stroke={open ? 'var(--gold)' : 'var(--gray)'} strokeWidth="2.5"
+          style={{ position: 'absolute', right: '9px', top: '50%',
+            transform: `translateY(-50%) rotate(${open ? 180 : 0}deg)`,
+            transition: 'transform .15s', pointerEvents: 'none', flexShrink: 0 }}>
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+      </button>
+      {menu}
     </div>
   );
 }
@@ -266,6 +297,7 @@ export function StatusBadge({ status, label }) {
 // stock-in, etc.) and an accidental backdrop click would wipe everything typed. Only the
 // X button and footer buttons close. Pass closeOnBackdrop for throwaway/read-only dialogs.
 export function Modal({ open, onClose, title, width = 520, children, footer, closeOnBackdrop = false }) {
+  useLockBodyScroll(open);
   if (!open) return null;
   return (
     <div

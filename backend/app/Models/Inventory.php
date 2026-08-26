@@ -33,6 +33,19 @@ class Inventory extends Model
         'updatedAt' => 'datetime',
     ];
 
+    /**
+     * Bumping the cached list version from each controller that moves stock is a losing game: eleven
+     * files touch stockQty or reservedQty today, and the twelfth will forget. The model is the one
+     * place every write must pass through, so it is the only honest place to invalidate from.
+     */
+    protected static function booted(): void
+    {
+        $bust = fn () => \Illuminate\Support\Facades\Cache::increment('inventory_list_ver');
+
+        static::saved($bust);
+        static::deleted($bust);
+    }
+
     protected $indexes = [
         ['key' => ['isActive'   => 1]],
         ['key' => ['isOnDemand' => 1]],

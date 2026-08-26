@@ -29,3 +29,22 @@ export async function submitWalkInOrder(token, payload) {
   }
   return data;
 }
+
+/**
+ * What can actually be built right now, per variant.
+ *
+ * Reuses the endpoint the quotation modal already relies on: it returns every variant with its own
+ * `canBuild` count, derived from each material's stock minus what is already reserved. `canBuild` is
+ * null when nothing constrains it (every material is bought per order), which is not the same as
+ * zero and must not be treated as "out of stock".
+ */
+export async function fetchProductAvailability(token, productId) {
+  const res = await fetchWithTimeout(
+    `${API_URL}/api/admin/products/${productId}/bom-components`,
+    { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } },
+    15000
+  );
+  if (!res.ok) return { hasBom: false, variants: [] };
+  const data = await res.json().catch(() => ({}));
+  return data.data ?? { hasBom: false, variants: [] };
+}

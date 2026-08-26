@@ -18,6 +18,8 @@ use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 use App\Models\ActivityLog;
 use App\Models\Notification;
+use App\Models\Conversation;
+use App\Models\Message;
 use App\Models\Voucher;
 use App\Models\FlashSale;
 use App\Models\BillOfMaterial;
@@ -48,6 +50,25 @@ class OrderController extends Controller
         // for, so custom orders arrived with no way to be moved. Match /api/payment/initiate,
         // which already starts every order at canonical pending.
         return OrderStatus::PENDING;
+    }
+
+    /**
+     * What one unit of this material actually costs.
+     *
+     * `averageCost` is NULL on this data - the real figure lives in lastUnitCost / baseCost / the
+     * FIFO batch. Reading it alone logged every movement at P0.00, which makes cost of goods, profit
+     * and margin fiction. Same fallback order the BOM screens use.
+     */
+    private function unitCostOf($inv): float
+    {
+        $c = (float) ($inv->lastUnitCost ?: $inv->averageCost ?: $inv->baseCost ?: 0);
+        if ($c > 0) return $c;
+
+        foreach (($inv->batches ?? []) as $b) {
+            $bc = (float) ($b['unitCost'] ?? 0);
+            if ($bc > 0) return $bc;
+        }
+        return 0.0;
     }
 
     private function normalizeOrderForCustomer(Order $order): array
@@ -196,7 +217,11 @@ class OrderController extends Controller
                     'designFiles'     => $item['designFiles'] ?? null,
                     'designRequested' => (bool) ($item['designRequested'] ?? false),
                     'designFee'       => isset($item['designFee']) ? (float) $item['designFee'] : null,
-                    'designStatus'    => !empty($item['designUrl']) ? 'pending_review' : null,
+                    // Per-item design state (Option 2): an uploaded file waits for review, a
+                    // requested design waits for the shop to draw it, a ready-made line has none.
+                    'designStatus'    => !empty($item['designUrl'])
+                        ? 'pending_review'
+                        : (filter_var($item['designRequested'] ?? false, FILTER_VALIDATE_BOOLEAN) ? 'pending_design' : null),
                 ];
             }
 
@@ -227,10 +252,14 @@ class OrderController extends Controller
             $shipMax   = (int)   ($owner->shippingDaysMax    ?? 4);
             $rushOn    = (bool)  ($owner->rushEnabled        ?? true);
             $rushLead  = (int)   ($owner->rushLeadDays       ?? 2);
-            $rushFee   = (float) ($owner->rushFee            ?? 150);
+            $rushFee   = (float) ($owner->rushFee            ?? 100);
 
             $isRush = $rushOn && filter_var($request->input('isRush', false), FILTER_VALIDATE_BOOLEAN);
             if ($isRush && $rushFee > 0) { $totalAmount += $rushFee; }
+            // Rush is a REQUEST the admin confirms ("kaya ba isabay"), never an auto-guarantee. The
+            // need-by date is the customer's target, subject to the production queue.
+            $needByDate = $request->input('needByDate') ?: null;
+            $rushStatus = $isRush ? 'requested' : null;
 
             $leadDays = $isRush ? $rushLead : $prodLead;
             $addBusinessDays = function (int $days) {          // skip Sundays (Sat is a work day here)
@@ -440,7 +469,7 @@ class OrderController extends Controller
                     'invId'       => (string) $inv->_id,
                     'qty'         => $qty,
                     'newStockQty' => (int) ($updated->stockQty ?? 0),
-                    'unitCost'    => (float) ($inv->averageCost ?? 0),
+                    'unitCost'    => $this->unitCostOf($inv),
                     'productId'   => (string) $prod->_id,
                     'productName' => $prod->name ?? '',
                 ];
@@ -478,6 +507,10 @@ class OrderController extends Controller
                 'items'           => $orderItems,
                 'totalAmount'     => $totalAmount,
                 'shippingFee'     => $shippingFee,
+                // Snapshot how shipping was charged AT THE TIME. A zero fee means two different
+                // things - free delivery, or the recipient pays the rider - and without this an old
+                // receipt would silently re-label itself the day the owner changes the setting.
+                'shippingMode'    => $owner->shippingMode ?? 'courier_booked',
                 'discountAmount'  => $discountAmount > 0 ? $discountAmount : null,
                 'voucherCode'     => $appliedVoucher?->code ?? null,
                 'orderStatus'     => $this->resolveInitialStatus($request),
@@ -498,8 +531,16 @@ class OrderController extends Controller
                 'downpaymentPercent'   => $orderDownpaymentPct > 0 ? $orderDownpaymentPct : null,
                 'isRush'               => $isRush,
                 'rushFee'              => $isRush ? $rushFee : null,
+                'rushStatus'           => $rushStatus,
+                'needByDate'           => $needByDate,
                 'estimatedDeliveryMin' => $estimatedDeliveryMin,
                 'estimatedDeliveryMax' => $estimatedDeliveryMax,
+                // Clickwrap acceptance recorded for proof (which terms version, when).
+                'agreedToTerms'        => filter_var($request->input('agreedToTerms', false), FILTER_VALIDATE_BOOLEAN),
+                'agreedAt'             => filter_var($request->input('agreedToTerms', false), FILTER_VALIDATE_BOOLEAN) ? ($request->input('agreedAt') ?: now()->toIso8601String()) : null,
+                'termsVersion'         => $request->input('termsVersion') !== null ? (int) $request->input('termsVersion') : null,
+                // Exact clauses agreed to (snapshot), so the proof survives even if the terms change later.
+                'agreedTermsSnapshot'  => is_array($request->input('agreedTermsSnapshot')) ? $request->input('agreedTermsSnapshot') : null,
                 'statusHistory'        => [['status' => OrderStatus::PENDING, 'at' => now()->toISOString()]],
                 'createdAt'       => now(),
                 'updatedAt'       => now(),
@@ -571,7 +612,7 @@ class OrderController extends Controller
                                 'inventoryId'  => (string) $rawInv->_id,
                                 'quantity'     => $deductQty,
                                 'remainingQty' => (int) ($rawInv->stockQty ?? 0),
-                                'unitCost'     => $rawInv->averageCost ?? 0,
+                                'unitCost'     => $this->unitCostOf($rawInv),
                                 'totalCost'    => 0,
                                 'reason'       => 'production_reserved',
                                 'type'         => 'reservation',
@@ -732,6 +773,239 @@ class OrderController extends Controller
 
     // ─── Admin Only ───────────────────────────────────────────────────────────
 
+
+    /**
+     * POST /api/admin/orders/{id}/remind-balance
+     *
+     * The automatic balance-due notice fires once, at the moment the last job passes QC. If the
+     * customer misses it there was no way to follow up except typing in the chat by hand, so the
+     * owner had a finished order sitting on a shelf with no lever to pull.
+     *
+     * Sends to BOTH surfaces deliberately: the bell is easy to miss, the chat is where this customer
+     * has been talking all along. Rate limited because a reminder that arrives twice an hour reads as
+     * harassment, not service.
+     */
+    public function remindBalance(Request $request, $id)
+    {
+        try {
+            if (!$this->hasPermission($request, 'orders')) {
+                return $this->forbiddenResponse();
+            }
+
+            $order = Order::find($id);
+            if (!$order) return $this->notFoundResponse('Order');
+
+            if (strtolower((string) ($order->paymentMethod ?? '')) === 'cod') {
+                return $this->errorResponse('This is a cash-on-delivery order - there is nothing to settle in advance.', 422);
+            }
+
+            $paid    = max((float) ($order->downPayment ?? 0), collect($order->paymentHistory ?? [])->sum(fn ($p) => (float) ($p['amount'] ?? 0)));
+            $balance = round(max(0, (float) ($order->totalAmount ?? 0) - $paid), 2);
+            if (($order->paymentStatus ?? '') === 'paid' || $balance <= 0) {
+                return $this->errorResponse('This order has no outstanding balance.', 422);
+            }
+
+            $last = $order->balanceReminderAt ? \Carbon\Carbon::parse($order->balanceReminderAt) : null;
+            if ($last && $last->diffInHours(now()) < 6) {
+                return $this->errorResponse(
+                    'A reminder was already sent ' . $last->diffForHumans() . '. You can send another after 6 hours.', 429);
+            }
+
+            $ref  = $order->orderNumber ?: ('ORD-' . strtoupper(substr((string) $order->_id, -8)));
+            $text = 'Your order ' . $ref . ' is finished and ready to go. There is a remaining balance of P'
+                  . number_format($balance, 2) . '. Once it is settled we will release the order for delivery.';
+
+            \App\Models\Notification::create([
+                'user_id'    => (string) $order->userId,
+                'type'       => 'balance_due_before_delivery',
+                'title'      => 'Balance Due - Order Ready',
+                'message'    => $text,
+                'is_read'    => false,
+                'data'       => ['orderId' => (string) $order->_id, 'balance' => $balance],
+                'created_at' => now(),
+            ]);
+
+            $this->postOrderChat($order, $text, $ref, $balance);
+
+            $order->balanceReminderAt = now();
+            $order->save();
+
+            return $this->successResponse('Reminder sent to the customer.', ['balance' => $balance]);
+        } catch (\Exception $e) {
+            return $this->serverErrorResponse($e, 'Failed to send the reminder.');
+        }
+    }
+
+    /**
+     * Drop a line into the customer's existing thread. Best effort: a chat that cannot be reached
+     * must not fail the reminder, because the notification has already been written.
+     */
+    private function postOrderChat(Order $order, string $text, string $ref, float $balance): void
+    {
+        try {
+            $customerId = (string) $order->userId;
+            if ($customerId === '') return;
+
+            $conversation = \App\Models\Conversation::where('participants', $customerId)->get()
+                ->first(fn ($c) => count(array_map('strval', $c->participants ?? [])) === 2);
+            if (!$conversation) return;
+
+            $admin = auth()->user();
+            $msg = \App\Models\Message::create([
+                'conversation_id' => (string) $conversation->_id,
+                'sender_id'       => $admin?->_id,
+                'sender_name'     => trim(($admin->firstName ?? '') . ' ' . ($admin->lastName ?? '')) ?: 'Personalize Me Prints',
+                'body'            => $text,
+                'type'            => 'text',
+                'metadata'        => ['order_reference' => [
+                    'orderId' => (string) $order->_id, 'orderNo' => $ref, 'balance' => $balance, 'kind' => 'balance_due',
+                ]],
+                'is_read'         => false,
+            ]);
+
+            $conversation->update(['last_message' => $text, 'last_message_at' => now()]);
+            try { broadcast(new \App\Events\MessageSent($msg))->toOthers(); } catch (\Throwable) {}
+        } catch (\Throwable $e) {
+            Log::warning('Balance reminder chat post failed', ['order' => (string) $order->_id, 'error' => $e->getMessage()]);
+        }
+    }
+
+
+    /**
+     * POST /api/admin/orders/{id}/write-off
+     *
+     * The end of the holding period. The goods are made, the customer never paid the balance, and
+     * personalised stock cannot be sold to anyone else - so this is a real loss that has to be
+     * recorded, not an order that quietly disappears.
+     *
+     * Without it the shop archives the order and the forfeited deposit looks like pure profit, while
+     * ten mugs it is about to throw away appear nowhere. The cost of those goods is knowable because
+     * every QC movement now carries its orderId.
+     */
+    public function writeOffOrder(Request $request, $id)
+    {
+        try {
+            if (!$this->hasPermission($request, 'orders')) {
+                return $this->forbiddenResponse();
+            }
+
+            $order = Order::find($id);
+            if (!$order) return $this->notFoundResponse('Order');
+
+            if (!empty($order->writeOff)) {
+                return $this->errorResponse('This order has already been written off.', 422);
+            }
+
+            $status = OrderStatus::normalize($order->orderStatus);
+            if (!in_array($status, [OrderStatus::READY_FOR_DELIVERY, OrderStatus::FOR_DELIVERY], true)) {
+                return $this->errorResponse('Only a finished order that was never collected can be written off.', 422);
+            }
+
+            $paid = collect($order->paymentHistory ?? [])->sum(fn ($p) => (float) ($p['amount'] ?? 0));
+            $owed = round(max(0, (float) ($order->totalAmount ?? 0) - $paid), 2);
+            if ($owed <= 0) {
+                return $this->errorResponse('This order is fully paid - there is nothing to forfeit.', 422);
+            }
+
+            // What the goods actually cost to make. Every QC consumption and scrap row carries this
+            // order's id, so the figure is the real one rather than an estimate.
+            $goodsCost = (float) StockHistory::where('orderId', (string) $order->_id)
+                ->where('type', 'deduction')
+                ->get()
+                ->sum(fn ($h) => (float) ($h->totalCost ?? 0));
+
+            $writeOff = [
+                'goodsCost'    => round($goodsCost, 2),
+                'depositKept'  => round($paid, 2),
+                'balanceLost'  => $owed,
+                // Positive means the forfeited deposit covered the build; negative is a real hole.
+                'netPosition'  => round($paid - $goodsCost, 2),
+                'reason'       => trim((string) $request->input('reason', '')) ?: 'Unclaimed after the holding period.',
+                'at'           => now()->toISOString(),
+                'by'           => trim(($request->user()->firstName ?? '') . ' ' . ($request->user()->lastName ?? '')) ?: 'Shop',
+            ];
+
+            $order->writeOff        = $writeOff;
+            $order->orderStatus     = OrderStatus::CANCELLED;
+            $order->cancelledBy     = 'shop';
+            $order->cancelledReason = $writeOff['reason'] . ' Deposit forfeited under the holding period.';
+            $order->cancelledAt     = now();
+            $order->isArchived      = true;
+            $order->archivedAt      = now();
+            $order->updatedAt       = now();
+            $order->save();
+
+            // Materials were consumed at QC, so nothing returns to stock. What is missing is a record
+            // that finished goods were destroyed - otherwise the loss exists only in the owner's head.
+            try {
+                StockHistory::create([
+                    'inventoryId'  => null,
+                    'quantity'     => 0,
+                    'remainingQty' => 0,
+                    'unitCost'     => 0,
+                    'totalCost'    => round($goodsCost, 2),
+                    'reason'       => 'unclaimed_writeoff',
+                    'type'         => 'deduction',
+                    'performedBy'  => $writeOff['by'],
+                    'orderId'      => (string) $order->_id,
+                    'customerName' => $order->userSnapshot['name'] ?? null,
+                    'remarks'      => 'Finished goods disposed of, unclaimed. ' . $writeOff['reason'],
+                    'createdAt'    => now(),
+                ]);
+            } catch (\Throwable $e) {
+                Log::warning('write-off history failed', ['order' => (string) $order->_id, 'error' => $e->getMessage()]);
+            }
+
+            return $this->successResponse('Order written off and archived.', $writeOff);
+        } catch (\Exception $e) {
+            return $this->serverErrorResponse($e, 'Failed to write off the order.');
+        }
+    }
+
+
+    /**
+     * GET /api/admin/orders/cost-of-goods
+     *
+     * What each order actually cost to make, keyed by order id.
+     *
+     * The Sales report measured REVENUE from orders but COST from the Sale collection, and only the
+     * POS writes Sale records - so every storefront order contributed revenue with no cost and the
+     * gross margin came out far too high. The figures are knowable now that each QC consumption and
+     * scrap row carries its orderId, so this reads the real thing.
+     *
+     * One aggregate rather than a query per order, because this is called for a whole reporting
+     * window at a time.
+     */
+    public function orderCostOfGoods(Request $request)
+    {
+        try {
+            if (!$this->hasPermission($request, 'orders')) {
+                return $this->forbiddenResponse();
+            }
+
+            $rows = StockHistory::where('type', 'deduction')
+                ->whereNotNull('orderId')
+                ->get(['orderId', 'productId', 'productName', 'totalCost']);
+
+            // Per PRODUCT as well as per order. A sales export that lumps every line of an order into
+            // one number cannot answer the question the owner actually has: which product makes money.
+            $byOrder = [];
+            foreach ($rows as $r) {
+                $key  = (string) $r->orderId;
+                $cost = (float) ($r->totalCost ?? 0);
+                $pid  = (string) ($r->productId ?? '') ?: ('name:' . (string) ($r->productName ?? 'unknown'));
+
+                if (!isset($byOrder[$key])) $byOrder[$key] = ['total' => 0, 'byProduct' => []];
+                $byOrder[$key]['total'] = round($byOrder[$key]['total'] + $cost, 2);
+                $byOrder[$key]['byProduct'][$pid] = round(($byOrder[$key]['byProduct'][$pid] ?? 0) + $cost, 2);
+            }
+
+            return $this->successResponse('Cost of goods fetched.', $byOrder);
+        } catch (\Exception $e) {
+            return $this->serverErrorResponse($e, 'Failed to fetch cost of goods.');
+        }
+    }
+
     /**
      * GET /api/admin/orders
      * Returns all orders for the admin dashboard.
@@ -797,6 +1071,9 @@ class OrderController extends Controller
             'paymentHistory',
             'notes',
             'joId',
+            // A mixed order produces one job order per printable item, so the admin screens need the
+            // whole set, not just the first. 'joId' stays for older screens that still read it.
+            'joIds',
             'joStatus',
             'isRush',
             'targetCompletion',
@@ -819,6 +1096,9 @@ class OrderController extends Controller
             'designFee',
             'designFeePaid',
             'designFeePaidAmount',
+            'paymentDueAt',
+            'revisionCount',
+            'revisionFees',
             'designRejectionReason',
             'designFiles',
             'adminDesignUrl',
@@ -827,8 +1107,14 @@ class OrderController extends Controller
             'requiresDownpayment',
             'downpaymentPercent',
             'rushFee',
+            'rushStatus',
+            'needByDate',
             'estimatedDeliveryMin',
             'estimatedDeliveryMax',
+            'agreedTermsSnapshot',
+            'agreedToTerms',
+            'agreedAt',
+            'termsVersion',
         ];
     }
 
@@ -869,6 +1155,18 @@ class OrderController extends Controller
             // delivery/marked delivered (COD collects on delivery, so it's exempt). Casing-tolerant.
             if (isset($validated['orderStatus'])) {
                 $targetNorm = OrderStatus::normalize($validated['orderStatus']);
+                // QC decides readiness. Jumping the order past its open job orders skips inspection
+                // entirely, and the next QC sync would drag it back to In Production anyway.
+                if (in_array($targetNorm, [OrderStatus::READY_FOR_DELIVERY, OrderStatus::FOR_DELIVERY, OrderStatus::DELIVERED], true)) {
+                    $openJobs = \App\Models\JobOrder::where('orderId', (string) $order->_id)->get()
+                        ->filter(fn ($j) => !in_array($j->joStatus, ['QC_Passed', 'Completed', 'Cancelled'], true));
+                    if ($openJobs->isNotEmpty()) {
+                        return response()->json(['message' =>
+                            $openJobs->count() . ' job order(s) have not passed QC yet. The order is released for delivery by Quality Control.',
+                        ], 422);
+                    }
+                }
+
                 if (in_array($targetNorm, [OrderStatus::FOR_DELIVERY, OrderStatus::DELIVERED], true)) {
                     $isCOD = strtolower((string) ($order->paymentMethod ?? '')) === 'cod';
                     if (!$isCOD && ($order->paymentStatus ?? '') !== 'paid') {
@@ -970,6 +1268,32 @@ class OrderController extends Controller
             }
 
             // Log activity if status changed
+            // Balance-due-before-delivery reminder when an admin moves the order to Ready for Delivery.
+            if (isset($validated['orderStatus']) && $oldStatus !== $order->orderStatus
+                && OrderStatus::normalize($order->orderStatus) === OrderStatus::READY_FOR_DELIVERY) {
+                $rfdCOD     = strtolower((string) ($order->paymentMethod ?? '')) === 'cod';
+                $rfdBalance = $order->balance !== null && $order->balance !== ''
+                    ? (float) $order->balance
+                    : max(0, (float) ($order->totalAmount ?? 0) - (float) ($order->downPayment ?? 0));
+                if (!$rfdCOD && ($order->paymentStatus ?? '') !== 'paid' && $rfdBalance > 0) {
+                    try {
+                        Notification::create([
+                            'user_id'    => (string) $order->userId,
+                            'type'       => 'balance_due_before_delivery',
+                            'title'      => 'Ready Soon - Balance Due',
+                            'message'    => 'Your order #' . strtoupper(substr((string) $order->_id, -8)) .
+                                ' is ready. Please settle the remaining balance of P' . number_format($rfdBalance, 2) .
+                                ' in My Orders so we can release it for delivery.',
+                            'is_read'    => false,
+                            'data'       => ['orderId' => (string) $order->_id, 'balance' => $rfdBalance],
+                            'created_at' => now(),
+                        ]);
+                    } catch (\Exception $e) {
+                        Log::warning('adminUpdate: balance-due notification failed', ['error' => $e->getMessage()]);
+                    }
+                }
+            }
+
             if (isset($validated['orderStatus']) && $oldStatus !== $order->orderStatus) {
                 try {
                     $adminUser = $request->user();
@@ -1208,8 +1532,8 @@ class OrderController extends Controller
                 'inventoryId'  => (string) $inventory->_id,
                 'quantity'     => $qty,
                 'remainingQty' => $inventory->stockQty,
-                'unitCost'     => $inventory->averageCost ?? 0,
-                'totalCost'    => ($inventory->averageCost ?? 0) * $qty,
+                'unitCost'     => $this->unitCostOf($inventory),
+                'totalCost'    => $this->unitCostOf($inventory) * $qty,
                 'reason'       => $reason,
                 'type'         => 'deduction',
                 'orderId'      => $orderId,
@@ -1228,8 +1552,8 @@ class OrderController extends Controller
                     'quantity'     => -$qty,
                     'stockBefore'  => $inventory->stockQty + $qty,
                     'stockAfter'   => $inventory->stockQty,
-                    'unitCost'     => (float) ($inventory->averageCost ?? 0),
-                    'totalCost'    => (float) (($inventory->averageCost ?? 0) * $qty),
+                    'unitCost'     => $this->unitCostOf($inventory),
+                    'totalCost'    => (float) ($this->unitCostOf($inventory) * $qty),
                     'remarks'      => $orderId ? "Order: {$orderId}" : '',
                     'performedBy'  => 'system',
                     'createdAt'    => now(),
@@ -1294,8 +1618,8 @@ class OrderController extends Controller
                 'quantity'     => -$qty,
                 'stockBefore'  => $newStock + $qty,
                 'stockAfter'   => $newStock,
-                'unitCost'     => (float) ($inventory->averageCost ?? 0),
-                'totalCost'    => (float) (($inventory->averageCost ?? 0) * $qty),
+                'unitCost'     => $this->unitCostOf($inventory),
+                'totalCost'    => (float) ($this->unitCostOf($inventory) * $qty),
                 'remarks'      => $orderId ? "Order: {$orderId}" : '',
                 'performedBy'  => 'system',
                 'createdAt'    => now(),
@@ -1523,7 +1847,13 @@ class OrderController extends Controller
 
             // Handle return: restore inventory
             if ($newStatus === OrderStatus::RETURNED && $oldStatus !== OrderStatus::RETURNED) {
-                $this->restoreInventoryOnReturn($order);
+                // Why it came back is the difference between a courier problem, a quality problem and
+                // a customer who changed their mind - and only the log tells them apart later.
+                $order->returnReason = trim((string) $request->input('returnReason', '')) ?: null;
+                $order->returnedAt   = now();
+                $order->save();
+
+                $this->restoreInventoryOnReturn($order, filter_var($request->input('restock', false), FILTER_VALIDATE_BOOLEAN));
             }
 
             // Log activity
@@ -1587,6 +1917,15 @@ class OrderController extends Controller
      * Restores product inventory when an order is cancelled.
      * Mirrors the immediate deduction done in store().
      */
+    /**
+     * Public door onto the same release, for callers outside this controller (the payment page's
+     * abandoned-checkout cleanup). Kept as a wrapper so the release logic itself stays in one place.
+     */
+    public function releaseReservationsFor(Order $order): void
+    {
+        $this->restoreStockOnCancel($order);
+    }
+
     private function restoreStockOnCancel(Order $order): void
     {
         try {
@@ -1613,7 +1952,7 @@ class OrderController extends Controller
                     'inventoryId'  => (string) $inv->_id,
                     'quantity'     => $qty,
                     'remainingQty' => $newQty,
-                    'unitCost'     => $inv->averageCost ?? 0,
+                    'unitCost'     => $this->unitCostOf($inv),
                     'totalCost'    => 0,
                     'reason'       => 'order_cancelled',
                     'type'         => 'adjustment',
@@ -1630,7 +1969,7 @@ class OrderController extends Controller
                         'quantity'     => $qty,
                         'stockBefore'  => $newQty - $qty,
                         'stockAfter'   => $newQty,
-                        'unitCost'     => (float) ($inv->averageCost ?? 0),
+                        'unitCost'     => $this->unitCostOf($inv),
                         'totalCost'    => 0.0,
                         'remarks'      => 'Order cancelled: ' . (string) $order->_id,
                         'performedBy'  => 'system',
@@ -1679,7 +2018,7 @@ class OrderController extends Controller
                                 'inventoryId'  => (string) $rawInv->_id,
                                 'quantity'     => $qty,
                                 'remainingQty' => (int) ($rawInv->stockQty ?? 0),
-                                'unitCost'     => $rawInv->averageCost ?? 0,
+                                'unitCost'     => $this->unitCostOf($rawInv),
                                 'totalCost'    => 0,
                                 'reason'       => 'reservation_released',
                                 'type'         => 'reservation',
@@ -1705,7 +2044,7 @@ class OrderController extends Controller
                             'inventoryId'  => (string) $rawInv->_id,
                             'quantity'     => $qty,
                             'remainingQty' => $newQty,
-                            'unitCost'     => $rawInv->averageCost ?? 0,
+                            'unitCost'     => $this->unitCostOf($rawInv),
                             'totalCost'    => 0,
                             'reason'       => 'order_cancelled',
                             'type'         => 'adjustment',
@@ -1741,11 +2080,13 @@ class OrderController extends Controller
     private function cancelLinkedJobOrder(Order $order): void
     {
         try {
-            $jobOrder = \App\Models\JobOrder::where('orderId', (string) $order->_id)
+            // A multi-item order has one job order per item — cancel ALL of them that are still
+            // in-flight, not just the first, or the rest orphan in Production/QC.
+            $jobOrders = \App\Models\JobOrder::where('orderId', (string) $order->_id)
                 ->whereIn('joStatus', ['Queued', 'In Progress'])
-                ->first();
+                ->get();
 
-            if ($jobOrder) {
+            foreach ($jobOrders as $jobOrder) {
                 $jobOrder->joStatus  = 'Cancelled';
                 $jobOrder->updatedAt = now();
                 $jobOrder->save();
@@ -1767,11 +2108,21 @@ class OrderController extends Controller
      * Restores inventory stock when an Order is returned.
      * Mirrors the deduction done in completeOrder().
      */
-    private function restoreInventoryOnReturn(Order $order): void
+    /**
+     * Goods have physically come back.
+     *
+     * The old version restocked NOTHING and only logged, on the reasoning that printed material is
+     * gone. True for a personalised item - a mug with someone's name on it can never be sold again,
+     * so a return is a total loss. But it is wrong for a plain READY-MADE line that came back
+     * unopened: that is ordinary sellable stock, and refusing to return it quietly writes off goods
+     * the shop still physically has.
+     *
+     * So the split is by what the item IS, plus a human judgement on condition. `$restock` is the
+     * inspector saying the goods arrived sellable; without it nothing goes back, because "returned"
+     * does not mean "undamaged".
+     */
+    private function restoreInventoryOnReturn(Order $order, bool $restock = false): void
     {
-        // Raw materials consumed during printing are physically gone.
-        // We do NOT restore stockQty — that would corrupt inventory data.
-        // We only log the return event to StockHistory for audit purposes.
         try {
             foreach ($order->items as $item) {
                 $product = Product::find($item['productId']);
@@ -1780,12 +2131,26 @@ class OrderController extends Controller
                 $inventory = Inventory::find($product->inventoryId);
                 if (!$inventory || $inventory->isOnDemand) continue;
 
+                // Personalised or made-to-order goods carry the customer's design and cannot be
+                // resold, whatever condition they came back in.
+                $personalised = (bool) ($product->isCustom ?? false) || (bool) ($product->isMadeToOrder ?? false)
+                    || !empty($item['isCustom']) || !empty($item['designUrl']) || !empty($item['designFiles'])
+                    || !empty($item['designRequested']);
+
+                if ($restock && !$personalised) {
+                    $qty = (int) ($item['qty'] ?? 0);
+                    if ($qty > 0) {
+                        Inventory::where('_id', $inventory->_id)->update(['$inc' => ['stockQty' => $qty]]);
+                        $inventory->refresh();
+                    }
+                }
+
                 StockHistory::create([
                     'inventoryId'  => (string) $inventory->_id,
                     'quantity'     => $item['qty'],
                     'remainingQty' => $inventory->stockQty ?? 0,
-                    'unitCost'     => $inventory->averageCost ?? 0,
-                    'totalCost'    => ($inventory->averageCost ?? 0) * $item['qty'],
+                    'unitCost'     => $this->unitCostOf($inventory),
+                    'totalCost'    => $this->unitCostOf($inventory) * $item['qty'],
                     'reason'       => 'customer_return',
                     'type'         => 'adjustment',
                     'performedBy'  => 'system',
@@ -1886,6 +2251,21 @@ class OrderController extends Controller
 
             // Recalculate downPayment as sum of all recorded payments
             $totalPaid = collect($history)->sum('amount');
+
+            // Refuse to take more than is owed. The screens guard this, but a guard that only exists
+            // in the UI is not a guard - and the failure here is silent and expensive: the order reads
+            // as fully paid, `downPayment` exceeds the total, and the money owed BACK to the customer
+            // is recorded nowhere at all. There is no refund flow to discover it later.
+            $orderTotal = (float) ($order->totalAmount ?? $order->totalPrice ?? 0);
+            $paidBefore = $totalPaid - (float) $validated['amount'];
+            $owedBefore = round($orderTotal - $paidBefore, 2);
+            if ((float) $validated['amount'] > $owedBefore + 0.01) {
+                return response()->json([
+                    'error' => $owedBefore > 0
+                        ? 'That is more than the ' . number_format($owedBefore, 2) . ' still owed on this order.'
+                        : 'This order has nothing outstanding.',
+                ], 422);
+            }
             $balance   = max(0, (float) ($order->totalAmount ?? 0) - $totalPaid);
 
             $order->paymentHistory = $history;
@@ -1908,6 +2288,110 @@ class OrderController extends Controller
      * POST /api/admin/orders/{id}/approve-design
      * Owner approves the customer's uploaded design.
      */
+    /**
+     * Recompute the order-level design mirror from the per-item design states (Option 2 mixed cart).
+     * The order's Design node is "approved" only when EVERY custom item is approved; otherwise it
+     * reflects the least-advanced item so the admin and customer still see design work is pending.
+     * Order-level fields stay in sync so the production gate and trackers keep working unchanged.
+     */
+    private function syncDesignAggregate(Order $order): void
+    {
+        $statuses = [];
+        foreach (($order->items ?? []) as $it) {
+            // designFiles counts too. Today the configurator always mirrors the first upload into
+            // designUrl, so this holds - but if that ever stops, an uploaded line would drop out of
+            // the aggregate entirely and the order could reach "approved" with artwork nobody saw.
+            $isCustom = ($it['isCustom'] ?? false) || !empty($it['designRequested'])
+                || !empty($it['designUrl']) || !empty($it['designFiles']);
+            $st = $it['designStatus'] ?? null;
+            if ($isCustom && $st !== null && $st !== '') $statuses[] = $st;
+        }
+        if (empty($statuses)) return; // no per-item design state - leave the order-level value alone
+
+        $allApproved = count(array_filter($statuses, fn($s) => $s === 'approved')) === count($statuses);
+        if ($allApproved) {
+            $order->designStatus = 'approved';
+            return;
+        }
+        // Not all approved - surface the most blocking / least-advanced state.
+        foreach (['rejected', 'revision_requested', 'pending_review', 'pending_design', 'draft_ready', 'proof_sent'] as $p) {
+            if (in_array($p, $statuses, true)) { $order->designStatus = $p; return; }
+        }
+        $order->designStatus = 'pending_review';
+    }
+
+    /** Apply a per-item design status change and re-sync the order aggregate. Returns false if the
+     *  itemIndex is present but invalid. Leaves order-level handling to the caller when null. */
+    private function applyItemDesignStatus(Order $order, $itemIndex, string $status, array $extra = []): bool
+    {
+        if ($itemIndex === null || !is_numeric($itemIndex)) return true; // order-level path
+        $items = $order->items ?? [];
+        $idx   = (int) $itemIndex;
+        if (!isset($items[$idx])) return false;
+        $items[$idx]['designStatus'] = $status;
+        foreach ($extra as $k => $v) { $items[$idx][$k] = $v; }
+        $order->items = array_values($items);
+        $this->syncDesignAggregate($order);
+        return true;
+    }
+
+    /**
+     * POST /api/admin/orders/{id}/rush-decision  { decision: accepted|declined }
+     * The shop confirms a rush REQUEST ("kaya ba isabay"). Declining waives + credits the rush fee.
+     */
+    public function rushDecision(Request $request, $id)
+    {
+        try {
+            $user = $request->user();
+            if (!$user || !in_array($user->role, ['admin', 'owner'])) return $this->unauthorizedResponse();
+            $validated = $request->validate(['decision' => 'required|string|in:accepted,declined']);
+            $order = Order::find($id);
+            if (!$order) return $this->notFoundResponse('Order');
+            if (!($order->isRush ?? false) && ($order->rushStatus ?? null) !== 'requested') {
+                return $this->errorResponse('This order has no pending rush request.', 422);
+            }
+            $decision = $validated['decision'];
+            if ($decision === 'accepted') {
+                $order->rushStatus = 'accepted';
+            } else {
+                // Decline: waive the rush fee - drop it from the total and re-derive the balance so a
+                // customer who already paid it in the downpayment is credited.
+                $rushFee = (float) ($order->rushFee ?? 0);
+                if ($rushFee > 0) {
+                    $order->totalAmount = round(max(0, (float) ($order->totalAmount ?? 0) - $rushFee), 2);
+                    if ($order->balance !== null && $order->balance !== '') {
+                        $order->balance = round(max(0, (float) $order->balance - $rushFee), 2);
+                    }
+                }
+                $order->rushStatus = 'declined';
+                $order->isRush = false;
+                $order->rushFee = null;
+            }
+            $order->updatedAt = now();
+            $order->save();
+
+            try {
+                Notification::create([
+                    'user_id' => (string) $order->userId,
+                    'type'    => 'rush_' . $decision,
+                    'title'   => $decision === 'accepted' ? 'Rush Confirmed' : 'Rush Not Available',
+                    'message' => 'Order #' . strtoupper(substr((string) $order->_id, -8)) . ($decision === 'accepted'
+                        ? ' - we can meet your rush request. Thank you!'
+                        : ' - we could not fit your rush timeline, so it follows the standard schedule and the rush fee was waived.'),
+                    'is_read' => false,
+                    'data'    => ['orderId' => (string) $order->_id, 'rushStatus' => $order->rushStatus],
+                    'created_at' => now(),
+                ]);
+            } catch (\Exception $e) { Log::warning('rushDecision: notify failed', ['error' => $e->getMessage()]); }
+
+            return $this->successResponse('Rush ' . $decision . '.', $order);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return $this->validationErrorResponse($e);
+        } catch (\Exception $e) {
+            return $this->serverErrorResponse($e, 'Failed to update rush decision.');
+        }
+    }
+
     public function approveDesign(Request $request, $id)
     {
         try {
@@ -1921,15 +2405,22 @@ class OrderController extends Controller
                 return $this->notFoundResponse('Order');
             }
 
-            if (!$order->designFilePath && !$order->designNotes) {
+            if (!$order->designFilePath && !$order->designNotes && empty($order->items)) {
                 return $this->errorResponse('This order has no design to approve.', 422);
             }
 
-            $order->designStatus = 'approved';
-            // An order submitted for review has not been paid yet - approving the artwork
-            // is what unlocks payment. Without this it stayed parked in review and the
-            // customer was never given anything to pay.
-            $awaitingPayment = ($order->paymentStatus ?? 'unpaid') === 'unpaid';
+            // Per-item approve (mixed cart): approve just this line, then re-sync the aggregate so
+            // the order only advances once every custom item is approved.
+            $itemIndex = $request->input('itemIndex');
+            if (!$this->applyItemDesignStatus($order, $itemIndex, 'approved')) {
+                return $this->errorResponse('Invalid item.', 422);
+            }
+            if ($itemIndex === null || !is_numeric($itemIndex)) {
+                $order->designStatus = 'approved';
+            }
+            // An order submitted for review has not been paid yet - approving the artwork is what
+            // unlocks payment. Only unlock once the order aggregate is fully approved.
+            $awaitingPayment = ($order->paymentStatus ?? 'unpaid') === 'unpaid' && $order->designStatus === 'approved';
             if ($awaitingPayment) {
                 $order->orderStatus = 'awaiting_payment';
             }
@@ -2018,7 +2509,18 @@ class OrderController extends Controller
                 return $this->errorResponse('This design is locked - a Job Order was already created. Cancel the Job Order first.', 422);
             }
 
+            // Send every custom line back too so the per-item cards match the order-level revert:
+            // a line with a proof returns to draft_ready (re-approve), an uploaded file to review.
+            $items = $order->items ?? [];
+            foreach ($items as $k => $it) {
+                $isCustom = ($it['isCustom'] ?? false) || !empty($it['designRequested']) || !empty($it['designUrl']);
+                if ($isCustom && ($it['designStatus'] ?? null) === 'approved') {
+                    $items[$k]['designStatus'] = !empty($it['adminDesignUrl']) ? 'draft_ready' : 'pending_review';
+                }
+            }
+            $order->items = array_values($items);
             $order->designStatus = 'pending_review';
+            $this->syncDesignAggregate($order);
             // approveDesign parks an unpaid order at awaiting_payment; undo exactly that.
             if ($order->orderStatus === 'awaiting_payment') {
                 $order->orderStatus = OrderStatus::PENDING;
@@ -2062,7 +2564,8 @@ class OrderController extends Controller
             }
 
             $validated = $request->validate([
-                'reason' => 'nullable|string|max:500',
+                'reason'    => 'nullable|string|max:500',
+                'itemIndex' => 'nullable|integer|min:0',
             ]);
 
             $order = Order::find($id);
@@ -2070,13 +2573,21 @@ class OrderController extends Controller
                 return $this->notFoundResponse('Order');
             }
 
-            if (!$order->designFilePath && !$order->designNotes) {
+            if (!$order->designFilePath && !$order->designNotes && empty($order->items)) {
                 return $this->errorResponse('This order has no design to reject.', 422);
             }
 
             $reason = $validated['reason'] ?? null;
 
-            $order->designStatus = 'rejected';
+            // Per-item reject (mixed cart): reject just this line and record its own reason, then
+            // re-sync the aggregate so the whole order reflects the block.
+            $itemIndex = $request->input('itemIndex');
+            if (!$this->applyItemDesignStatus($order, $itemIndex, 'rejected', ['designRejectionReason' => $reason])) {
+                return $this->errorResponse('Invalid item.', 422);
+            }
+            if ($itemIndex === null || !is_numeric($itemIndex)) {
+                $order->designStatus = 'rejected';
+            }
             // Persist the reason on the order so the customer sees it inline in the order
             // detail modal, not only in the notification bell.
             $order->designRejectionReason = $reason;
@@ -2162,15 +2673,40 @@ class OrderController extends Controller
                 return $this->notFoundResponse('Order');
             }
 
-            if ($order->orderStatus !== 'Pending') {
+            // The check used to be `!== 'Pending'` with a capital P, but the canonical value is
+            // lowercase 'pending' - so this rejected every order and the customer could never cancel
+            // anything, at any stage. Normalise first.
+            $status = OrderStatus::normalize($order->orderStatus);
+
+            // A job order means material has been pulled and work has begun. Past that point a
+            // cancellation is a negotiation about what was already made, not something to self-serve,
+            // so it goes to the shop instead.
+            $hasWork = \App\Models\JobOrder::where('orderId', (string) $order->_id)
+                ->get()->contains(fn ($j) => $j->joStatus !== 'Cancelled');
+
+            $selfCancellable = in_array($status, [
+                OrderStatus::PENDING, 'awaiting_payment', 'pending_design', 'pending_review',
+            ], true) && !$hasWork;
+
+            if (!$selfCancellable) {
                 return $this->errorResponse(
-                    'This order can no longer be cancelled. Only Pending orders can be cancelled.',
+                    $hasWork
+                        ? 'This order is already being made, so it cannot be cancelled here. Message the shop and they will tell you what can still be stopped.'
+                        : 'This order can no longer be cancelled on its own. Message the shop to arrange it.',
                     422
                 );
             }
 
-            $order->orderStatus = 'Cancelled';
-            $order->updatedAt   = now();
+            // Why an order was cancelled is the only thing that tells the shop whether this is a
+            // pricing problem, a delivery-time problem, or a change of mind. Cancelling with no
+            // record of the reason throws that away every single time.
+            $reason = trim((string) $request->input('reason', ''));
+
+            $order->orderStatus     = OrderStatus::CANCELLED;
+            $order->cancelledBy     = 'customer';
+            $order->cancelledReason = $reason !== '' ? mb_substr($reason, 0, 500) : null;
+            $order->cancelledAt     = now();
+            $order->updatedAt    = now();
             $order->save();
 
             // Restore inventory reserved at order creation
@@ -2317,8 +2853,19 @@ class OrderController extends Controller
                 }
             }
 
+            // Per-item re-upload (mixed cart): replace this line's artwork and send it back to review,
+            // clearing its own rejection reason, then re-sync the aggregate.
+            $itemIndex = $request->input('itemIndex');
+            if (!$this->applyItemDesignStatus($order, $itemIndex, 'pending_review', [
+                    'designUrl'             => $designFilePath,
+                    'designRejectionReason' => null,
+                ])) {
+                return $this->errorResponse('Invalid item.', 422);
+            }
+            if ($itemIndex === null || !is_numeric($itemIndex)) {
+                $order->designStatus = 'pending_review';
+            }
             $order->designFilePath        = $designFilePath;
-            $order->designStatus          = 'pending_review';
             $order->designRejectionReason = null;
 
             if (!empty(trim($validated['design_notes'] ?? ''))) {
@@ -2392,19 +2939,64 @@ class OrderController extends Controller
                 return $this->notFoundResponse('Order');
             }
 
-            if (!$order->adminDesignUrl) {
+            $itemIndex = $request->input('itemIndex');
+            $perItem   = $itemIndex !== null && is_numeric($itemIndex);
+            if (!$perItem && !$order->adminDesignUrl) {
                 return $this->errorResponse('No design draft available for this order.', 422);
             }
 
             $history              = $order->statusHistory ?? [];
             $history[]            = ['status' => 'design_approved', 'at' => now()->toISOString()];
-            $order->designStatus  = 'approved';
-            $order->orderStatus   = 'design_approved';
+            // Per-item approve of a proof (mixed cart): approve this line, then re-sync. The order
+            // only moves to design_approved once every custom item is approved.
+            if (!$this->applyItemDesignStatus($order, $itemIndex, 'approved')) {
+                return $this->errorResponse('Invalid item.', 422);
+            }
+            if (!$perItem) {
+                $order->designStatus  = 'approved';
+            }
+            $awaitingPayment = false;
+            if ($order->designStatus === 'approved') {
+                // Only the design fee has been collected so far on a request-design order, so the
+                // goods are still owed. Move to awaiting_payment - that is the state the customer's
+                // "Pay Now" panel keys on - and give them a window to settle before the hold lapses.
+                $awaitingPayment = ($order->paymentStatus ?? 'unpaid') === 'unpaid';
+                $order->orderStatus = $awaitingPayment ? 'awaiting_payment' : 'design_approved';
+                if ($awaitingPayment) {
+                    $dueDays = (int) (User::where('role', 'owner')->first()->depositDueDays ?? 7);
+                    $order->paymentDueAt = now()->addDays(max(1, $dueDays));
+                }
+            }
             $order->statusHistory = $history;
             $order->updatedAt     = now();
             $order->save();
 
-            try { broadcast(new \App\Events\OrderStatusUpdated((string) $order->_id, 'design_approved', null)); } catch (\Throwable) {}
+            try { broadcast(new \App\Events\OrderStatusUpdated((string) $order->_id, $awaitingPayment ? 'awaiting_payment' : 'design_approved', null)); } catch (\Throwable) {}
+
+            // The moment the goods fall due is the moment to say so, in the place the customer is
+            // already looking. The card carries the figures but not the checkout: paying needs the
+            // full breakdown, and "what was I shown when I paid" is what every payment dispute turns
+            // on - so the button opens the order rather than reproducing it here.
+            if ($awaitingPayment) {
+                $paidSoFar = collect($order->paymentHistory ?? [])->sum('amount');
+                $owed      = max(0, round((float) ($order->totalAmount ?? 0) - $paidSoFar, 2));
+                $pct       = (int) ($order->downpaymentPercent ?? 0);
+                $deposit   = $pct > 0 ? round($owed * $pct / 100, 2) : $owed;
+                $peso      = fn($n) => 'P' . number_format((float) $n, 2);
+
+                $this->postOrderCardToChat(
+                    $order,
+                    'deposit_due',
+                    'Thanks for approving. The goods are due now - production starts once this clears.',
+                    [
+                        'dueNow'    => $pct > 0 ? $peso($deposit) . " ({$pct}%)" : $peso($owed),
+                        'dueFull'   => $pct > 0 ? $peso($owed) : null,
+                        'heldUntil' => $order->paymentDueAt
+                            ? \Carbon\Carbon::parse($order->paymentDueAt)->format('M j, Y')
+                            : null,
+                    ]
+                );
+            }
 
             try {
                 $admins = User::whereIn('role', ['admin', 'owner'])->get();
@@ -2450,18 +3042,74 @@ class OrderController extends Controller
                 return $this->errorResponse('No design draft available for this order.', 422);
             }
 
+            // A revision request with no explanation tells the designer nothing - they would have to
+            // guess what to change, or message the customer to ask. Require it.
             $validated = $request->validate([
-                'notes' => 'nullable|string|max:2000',
+                'notes'     => 'required|string|min:5|max:1000',
+                'itemIndex' => 'nullable|integer|min:0',
+            ], [
+                'notes.required' => 'Please describe what you would like changed.',
+                'notes.min'      => 'Please give a little more detail about what to change.',
             ]);
+
+            $revNotes = isset($validated['notes'])
+                ? htmlspecialchars(strip_tags(trim($validated['notes'])), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')
+                : null;
+
+            // Revisions are what actually protect the designer's time - the design fee alone does not,
+            // because without a cap one P100 order can be sent back forever. A couple of rounds come
+            // with the fee; past that each round is billed onto the order, and a hard ceiling stops an
+            // endless loop from ever forming.
+            $owner            = User::where('role', 'owner')->first();
+            $freeRevisions    = max(0, (int) ($owner->freeRevisions    ?? 3));
+            $extraRevisionFee = max(0, (float) ($owner->extraRevisionFee ?? 50));
+            $maxRevisions     = max($freeRevisions, (int) ($owner->maxRevisions ?? 5));
+
+            $itemIndex = $request->input('itemIndex');
+            $items     = $order->items ?? [];
+            $isLine    = is_numeric($itemIndex) && isset($items[(int) $itemIndex]);
+            $usedSoFar = $isLine
+                ? (int) ($items[(int) $itemIndex]['revisionCount'] ?? 0)
+                : (int) ($order->revisionCount ?? 0);
+
+            if ($usedSoFar >= $maxRevisions) {
+                return $this->errorResponse(
+                    "This item has had {$usedSoFar} revisions, which is the most we can take online. Message us in chat and we will sort it out with you directly.",
+                    422
+                );
+            }
+
+            $thisRound  = $usedSoFar + 1;
+            $chargeable = $thisRound > $freeRevisions ? $extraRevisionFee : 0.0;
 
             $history               = $order->statusHistory ?? [];
             $history[]             = ['status' => 'revision_requested', 'at' => now()->toISOString()];
-            $order->designStatus   = 'revision_requested';
+            // Per-item revision (mixed cart): send just this line back for a new proof.
+            if (!$this->applyItemDesignStatus($order, $itemIndex, 'revision_requested', [
+                    'revisionNotes' => $revNotes,
+                    'revisionCount' => $thisRound,
+                ])) {
+                return $this->errorResponse('Invalid item.', 422);
+            }
+            if (!$isLine) {
+                $order->revisionCount = $thisRound;
+            }
+
+            // Billed onto the order rather than collected up front: a separate P50 checkout costs more
+            // in gateway fees and friction than it recovers, and the goods are still unpaid anyway.
+            if ($chargeable > 0) {
+                $order->revisionFees  = round((float) ($order->revisionFees ?? 0) + $chargeable, 2);
+                $order->totalAmount   = round((float) ($order->totalAmount ?? 0) + $chargeable, 2);
+                if ($order->balance !== null && $order->balance !== '') {
+                    $order->balance = round((float) $order->balance + $chargeable, 2);
+                }
+            }
+            if ($itemIndex === null || !is_numeric($itemIndex)) {
+                $order->designStatus   = 'revision_requested';
+            }
             $order->orderStatus    = 'revision_requested';
             $order->statusHistory  = $history;
-            $order->revisionNotes  = isset($validated['notes'])
-                ? htmlspecialchars(strip_tags(trim($validated['notes'])), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')
-                : null;
+            $order->revisionNotes  = $revNotes;
             $order->updatedAt      = now();
             $order->save();
 
@@ -2493,6 +3141,94 @@ class OrderController extends Controller
         }
     }
 
+
+
+    /**
+     * A display copy of a proof: watermarked and capped in size.
+     *
+     * The artwork is not handed over until the order is paid, and a proof good enough to print is a
+     * proof good enough to take to a cheaper printer. The width cap is the real protection - 900px
+     * looks fine on a phone and prints badly at any useful size - with the text there to make the
+     * intent unambiguous. Non-Cloudinary URLs, and any already carrying a transformation, pass through
+     * untouched rather than being guessed at.
+     */
+    private function watermarkedProof(?string $url): ?string
+    {
+        if (!$url || !str_contains($url, 'res.cloudinary.com') || !str_contains($url, '/upload/')) {
+            return $url;
+        }
+        if (preg_match('#/upload/(w_|q_|l_text|f_|vc_)#', $url)) {
+            return $url;
+        }
+        $isVideo = (bool) preg_match('/\.(mp4|webm|mov|m4v|ogg)(\?|$)/i', $url);
+        $tx = $isVideo
+            ? 'w_720,c_limit/q_auto:eco'
+            : 'w_900,c_limit/q_auto:eco/l_text:Arial_52_bold:PROOF%20ONLY,co_rgb:9a9a9a,o_42,a_-30/fl_layer_apply,g_center';
+
+        return str_replace('/upload/', "/upload/{$tx}/", $url);
+    }
+
+    /**
+     * Post an order card into the customer's chat thread.
+     *
+     * Best-effort by design: a chat failure must never roll back the order write that triggered it.
+     * The card carries only what it needs to render and to act - the order id, what it covers, and
+     * the figures - because a chat message is a pointer to the order, never a second copy of it.
+     */
+    private function postOrderCardToChat(Order $order, string $kind, string $body, array $extra = []): void
+    {
+        try {
+            $customerId = (string) ($order->userId ?? '');
+            if ($customerId === '') return;
+
+            $shop = User::whereIn('role', ['admin', 'owner'])->first();
+            if (!$shop) return;
+            $shopId = (string) $shop->_id;
+
+            // Conversations are keyed by a `participants` array, so reuse the existing thread with
+            // this customer rather than starting a parallel one they would have to notice.
+            $conversation = Conversation::where('participants', $customerId)
+                ->where('participants', $shopId)
+                ->first();
+
+            if (!$conversation) {
+                $conversation = Conversation::create([
+                    'participants'    => [$customerId, $shopId],
+                    'last_message'    => $body,
+                    'last_message_at' => now(),
+                    'is_active'       => true,
+                ]);
+            }
+
+            Message::create([
+                'conversation_id' => (string) $conversation->_id,
+                'sender_id'       => $shopId,
+                'sender_name'     => trim(($shop->firstName ?? '') . ' ' . ($shop->lastName ?? '')) ?: 'Personalize Me Prints',
+                'type'            => 'order_reference',
+                'body'            => $body,
+                'metadata'        => array_merge([
+                    'kind'     => $kind,
+                    'orderId'  => (string) $order->_id,
+                    // Same shape the storefront shows everywhere else. Falling back to the bare word 'Order'
+                    // is what put a card in the customer's chat with no reference on it at all.
+                    'orderNo'  => $order->orderNumber ?? $order->orderNo ?? ('ORD-' . strtoupper(substr((string) $order->_id, -8))),
+                    'products' => implode(', ', array_values(array_filter(array_map(
+                        fn($i) => $i['productName'] ?? null,
+                        $order->items ?? []
+                    )))),
+                ], $extra),
+                'is_read'         => false,
+            ]);
+
+            $conversation->update([
+                'last_message'    => $body,
+                'last_message_at' => now(),
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('postOrderCardToChat failed', ['kind' => $kind, 'error' => $e->getMessage()]);
+        }
+    }
+
     /**
      * POST /api/admin/orders/{id}/upload-design
      * Admin uploads a design draft for a design-service order.
@@ -2514,6 +3250,18 @@ class OrderController extends Controller
                 return response()->json(['message' => 'At least one design file is required.'], 422);
             }
 
+            // The design fee buys the designer's time, so nothing leaves the studio until it has
+            // cleared. A part-paid or fully paid order has already covered it, whatever route the
+            // money took. Orders with no design fee at all (the customer supplied artwork) are
+            // unaffected - there is no designer time to protect.
+            $feeDue = (float) ($order->designFee ?? 0);
+            $goodsPaid = in_array($order->paymentStatus ?? 'unpaid', ['partial', 'paid'], true);
+            if ($feeDue > 0 && !($order->designFeePaid ?? false) && !$goodsPaid) {
+                return response()->json([
+                    'message' => 'The design fee has not been paid yet. The customer pays it before we send a proof.',
+                ], 422);
+            }
+
             $cloudName    = config('services.cloudinary.cloud_name');
             $uploadPreset = config('services.cloudinary.upload_preset');
 
@@ -2530,13 +3278,41 @@ class OrderController extends Controller
                 if ($file->getSize() > 50 * 1024 * 1024) {
                     return response()->json(['message' => 'Each file must be under 50 MB.'], 422);
                 }
-                $response = Http::attach(
-                    'file',
-                    file_get_contents($file->getPathname()),
-                    $file->getClientOriginalName()
-                )->post("https://api.cloudinary.com/v1_1/{$cloudName}/auto/upload", [
-                    'upload_preset' => $uploadPreset,
-                    'folder'        => 'pmp-admin-designs',
+                // The file travels twice: browser to here, then here to Cloudinary. A short proof
+                // video easily outruns Laravel's default 30s HTTP timeout on that second hop.
+                // 100s here sits deliberately UNDER the client's own timeout, so a slow upload comes
+                // back as a real error instead of the browser giving up on a request that is still
+                // running - which looked like the file "coming back" with nothing explained.
+                // Timed so a slow upload can be diagnosed instead of guessed at: the log separates
+                // reading the file off disk from the Cloudinary round trip, which tells us whether
+                // the delay is ours or theirs. Cloudinary processes video on upload, so a short clip
+                // can take far longer than an image many times its size.
+                $tRead  = microtime(true);
+                $bytes  = file_get_contents($file->getPathname());
+                $readMs = round((microtime(true) - $tRead) * 1000);
+
+                $tUp = microtime(true);
+                $response = Http::timeout(100)
+                    ->connectTimeout(15)
+                    ->attach('file', $bytes, $file->getClientOriginalName())
+                    ->post("https://api.cloudinary.com/v1_1/{$cloudName}/auto/upload", [
+                        'upload_preset' => $uploadPreset,
+                        'folder'        => 'pmp-admin-designs',
+                    ]);
+                $upMs = round((microtime(true) - $tUp) * 1000);
+
+                // Deliberately warning level: this project runs LOG_LEVEL=warning, so info entries are
+                // discarded and instrumentation written at info level never appears.
+                Log::warning('adminUploadDesign result', [
+                    'file'          => $file->getClientOriginalName(),
+                    'mime'          => $file->getMimeType(),
+                    'sizeKB'        => round($file->getSize() / 1024),
+                    'cloudinaryHop' => $upMs . 'ms',
+                    'ok'            => $response->successful(),
+                    // The two fields that decide whether the clip can be transcoded on delivery.
+                    'resource_type' => $response->json()['resource_type'] ?? null,
+                    'format'        => $response->json()['format'] ?? null,
+                    'secure_url'    => $response->json()['secure_url'] ?? null,
                 ]);
 
                 if (!$response->successful()) {
@@ -2552,9 +3328,31 @@ class OrderController extends Controller
 
             $history                = $order->statusHistory ?? [];
             $history[]              = ['status' => 'proof_sent', 'at' => now()->toISOString()];
+            // Per-item proof (mixed cart): attach the proof to this line and mark it draft_ready,
+            // then re-sync the aggregate. Order-level adminDesignUrl is still mirrored so existing
+            // single-design screens keep working.
+            // One artwork can cover several products, so a single upload can land on several lines.
+            // `itemIndexes` carries that set; `itemIndex` remains for a single line and for anything
+            // still calling the old shape.
+            $itemIndexes = $request->input('itemIndexes');
+            $targets = is_array($itemIndexes) && count($itemIndexes)
+                ? array_values(array_filter($itemIndexes, 'is_numeric'))
+                : [$request->input('itemIndex')];
+
+            foreach ($targets as $target) {
+                if (!$this->applyItemDesignStatus($order, $target, 'draft_ready', [
+                        'adminDesignUrl'  => $adminDesignUrl,
+                        'adminDesignUrls' => $adminDesignUrls,
+                    ])) {
+                    return $this->errorResponse('Invalid item.', 422);
+                }
+            }
+            $itemIndex = $targets[0] ?? null;
+            if ($itemIndex === null || !is_numeric($itemIndex)) {
+                $order->designStatus = 'draft_ready';
+            }
             $order->adminDesignUrl  = $adminDesignUrl;
             $order->adminDesignUrls = $adminDesignUrls;
-            $order->designStatus   = 'draft_ready';
             $order->orderStatus    = 'proof_sent';
             $order->statusHistory  = $history;
             $order->updatedAt      = now();
@@ -2598,6 +3396,23 @@ class OrderController extends Controller
             } catch (\Exception $logErr) {
                 Log::warning('ActivityLog write failed (adminUploadDesign)', ['error' => $logErr->getMessage()]);
             }
+
+            $this->postOrderCardToChat(
+                $order,
+                'proof_ready',
+                'Your proof is ready. Approve it here, or ask for changes.',
+                [
+                    'proofs'    => array_map(fn ($u) => $this->watermarkedProof($u), array_slice($adminDesignUrls, 0, 6)),
+                    // EVERY line this proof covered, not just the first. One send can land on several
+                    // products, and a card carrying a single index gave the customer one Approve button
+                    // for a proof that spanned two - approving one and silently leaving the other.
+                    'itemIndexes' => array_values(array_filter(array_map(
+                        fn ($t) => is_numeric($t) ? (int) $t : null,
+                        $targets
+                    ), fn ($t) => $t !== null)),
+                    'itemIndex' => is_numeric($itemIndex) ? (int) $itemIndex : null,
+                ]
+            );
 
             return $this->successResponse('Design draft uploaded. Customer has been notified.', $order);
 

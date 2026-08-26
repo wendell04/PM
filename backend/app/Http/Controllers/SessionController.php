@@ -17,9 +17,25 @@ class SessionController extends Controller
             $user = $request->user();
             $currentTokenId = $user->currentAccessToken()->id;
 
+            // Only tokens that can still sign anyone in. Sanctum expires them (24h by default, see
+            // SANCTUM_TOKEN_EXPIRATION) but nothing deleted the rows, so this listed every login ever
+            // made - months of dead sessions with a Revoke button that achieves nothing, because the
+            // token stopped working long ago. It read as "12 devices are logged in" when the true
+            // answer was one.
+            $ttlMinutes = config('sanctum.expiration');
+            $cutoff = $ttlMinutes ? now()->subMinutes((int) $ttlMinutes) : null;
+
             $tokens = $user->tokens()
                 ->orderBy('last_used_at', 'desc')
                 ->get()
+                ->filter(function ($token) use ($cutoff) {
+                    // A token's own expires_at wins where one was set per-role at login.
+                    if ($token->expires_at) return $token->expires_at->isFuture();
+                    if (!$cutoff) return true;
+                    $seen = $token->last_used_at ?? $token->created_at;
+                    return $seen && $seen->greaterThan($cutoff);
+                })
+                ->values()
                 ->map(function ($token) use ($currentTokenId) {
                     return [
                         'id'           => $token->id,

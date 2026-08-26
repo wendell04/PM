@@ -9,6 +9,7 @@ import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import '@/app/shop/shop.css';
 import { applyVoucher } from '@/lib/voucherApi';
 import { useTheme } from '@/contexts/ThemeContext';
+import { DEFAULT_CUSTOM_ORDER_TERMS } from '@/lib/customOrderTerms';
 
 const AddressBook = dynamic(() => import('@/components/profile/AddressBook'), { ssr: false });
 
@@ -110,6 +111,13 @@ export default function CheckoutPage() {
 
   // Pay in full option for downpayment orders
   const [payFull, setPayFull] = useState(false);
+  // Delivery speed is ONE order-level choice (one parcel = one speed). Rush costs more + is faster,
+  // subject to the shop's confirmation. An optional exact "need by" date can accompany a Rush.
+  const [rush, setRush] = useState(false);
+  const [needByDate, setNeedByDate] = useState('');
+  // Clickwrap T&C acceptance recorded at the purchase moment (the order-creating step), so every
+  // custom order carries proof - not just the product page.
+  const [showTerms, setShowTerms] = useState(false);
 
   // Shipping fee
   const [storeSettings, setStoreSettings]   = useState(null);
@@ -315,7 +323,33 @@ export default function CheckoutPage() {
           .map(i => Number(i.designFee) || 0),
       )
     : 0;
-  const grandTotal      = total + designFee + (shippingFeeAmt ?? 0);
+  // Order-level delivery speed (one parcel = one speed). Rush is faster + costs more, subject to the
+  // shop confirming it fits the queue ("kaya ba isabay"). "Get by" ranges come from turnaround config.
+  const prodLead    = Number(storeSettings?.productionLeadDays ?? 7);
+  const shipMin     = Number(storeSettings?.shippingDaysMin ?? 2);
+  const shipMax     = Number(storeSettings?.shippingDaysMax ?? 4);
+  const rushEnabled = storeSettings?.rushEnabled !== false;
+  const rushLead    = Number(storeSettings?.rushLeadDays ?? 3);
+  const rushFeeAmt  = Number(storeSettings?.rushFee ?? 100);
+  const addBizDays  = (n) => { const d = new Date(); d.setHours(0,0,0,0); let a = 0; while (a < n) { d.setDate(d.getDate() + 1); if (d.getDay() !== 0) a++; } return d; }; // skip Sundays
+  const getByRange  = (lead) => {
+    const f = (d) => d.toLocaleDateString('en-PH', { month: 'short', day: 'numeric' });
+    const a = addBizDays(lead + shipMin), b = addBizDays(lead + shipMax);
+    return a.getTime() === b.getTime() ? f(a) : `${f(a)} - ${f(b)}`;
+  };
+  const isRush      = rushEnabled && rush;
+  const rushCharge  = isRush ? rushFeeAmt : 0;
+  // Earliest an optional need-by date may be - no same/next day; at least the rush lead (min 2 biz days).
+  const minNeedByStr = addBizDays(Math.max(2, rushLead)).toISOString().slice(0, 10);
+  // The latest a Standard order arrives. A need-by date on/after this fits Standard (no rush needed).
+  const standardEtaMax = addBizDays(prodLead + shipMax);
+  // Picking a date auto-sets the speed: sooner than Standard can make it -> Rush; otherwise Standard.
+  const onPickNeedBy = (val) => {
+    setNeedByDate(val);
+    if (val) setRush(new Date(val + 'T23:59:59') < standardEtaMax);
+  };
+
+  const grandTotal      = total + designFee + rushCharge + (shippingFeeAmt ?? 0);
 
   // Order-level downpayment: if ANY item requires DP, apply the highest DP% to the full order total
   const downpaymentPercent = items
@@ -324,23 +358,71 @@ export default function CheckoutPage() {
     // downpayment required - and with COD still on the table.
     .filter(i => i.requiresDownpayment ?? i.product?.requiresDownpayment)
     .reduce((max, i) => Math.max(max, i.downpaymentPercent ?? i.product?.downpaymentPercent ?? 50), 0);
-  // Every custom line is a requested design and none has artwork yet, so there is nothing
-  // to produce and nothing to charge for the goods. Only the designer's fee is collected
-  // now; the order total is paid from the order detail modal once the proof is approved.
-  const customItems = items.filter(i => i.isCustom);
-  const designFeeOnly = customItems.length > 0
-    && customItems.every(i => (i.designMode === 'request' || i.designRequested) && !i.designUrl)
-    && designFee > 0;
+  // Per-line "pay now" for the goods, so a mixed cart charges each line by its own rule instead
+  // of one blanket percent on everything:
+  //   - a requested design defers its goods (no artwork yet) - only the design fee is due now;
+  //   - a downpayment line pays its own DP% (or full when Pay in full is chosen);
+  //   - a ready-made line pays in full.
+  // The design fee and shipping are always collected once, now. The rest is the balance, settled
+  // from the order detail modal (upload goods balance + requested-design goods after approval).
+  const isReqLine = (i) => (i.designMode === 'request' || i.designRequested) && !i.designUrl;
+  // A line takes a deposit when the product asks for one - either the flag is set OR a percent is
+  // configured (a percent > 0 alone means downpayment, even if the boolean was never saved).
+  const lineDpPct = (i) => {
+    const pct = Number(i.downpaymentPercent ?? i.product?.downpaymentPercent ?? 0);
+    const requires = !!(i.requiresDownpayment ?? i.product?.requiresDownpayment) || pct > 0;
+    return requires ? (pct > 0 ? pct : 50) : 0;
+  };
+  // Every made-to-order line pays its OWN downpayment now (upload AND request alike - one order = one
+  // consistent deposit). When all lines share a percent this equals that percent of the goods total;
+  // when they differ (e.g. mug 50% + mousepad 30%) it is the exact per-line sum. The design fee is
+  // separate (paid once, in full). Request goods are NO LONGER deferred.
+  const goodsPayNow = items.reduce((sum, i) => {
+    const g = i.unitPrice * i.qty;
+    const pct = lineDpPct(i);
+    if (pct > 0 && !payFull) return sum + Math.round(g * pct / 100 * 100) / 100;
+    return sum + g;                                     // ready-made / no-DP / Pay-in-full -> full line
+  }, 0);
 
-  const downpaymentRequired = !designFeeOnly && downpaymentPercent > 0;
+  const customItems = items.filter(i => i.isCustom);
+  // Request-design orders collect the design fee ALONE at checkout. The customer has not seen any
+  // artwork yet, so this is the moment they are least committed - asking for a goods deposit here is
+  // both the highest point of abandonment and a refund we would owe if they turn the proof down, and
+  // there is no refund flow. The fee is non-refundable and covers the designer's time, so if they
+  // walk after seeing the proof nothing is lost: make-to-order means no material was bought either.
+  // The goods deposit is collected after the proof is approved.
+  // If ANY line wants a design the whole order follows this route - one rule beats splitting a cart's
+  // money down two paths.
+  const designFeeOnly = wantsDesign && designFee > 0;
+
+  // The T&C was accepted per item on the product page (each mode has its own terms). That acceptance
+  // TRAVELS with the cart line - no second prompt here. We aggregate the lines' snapshots into one
+  // order-level proof (union of the exact clauses each item agreed to).
+  const termsItems = customItems.filter(i => i.termsSnapshot || i.termsVersion != null);
+  const termsAgreed = termsItems.length > 0;
+  const termsVersion = termsItems[0]?.termsVersion ?? storeSettings?.termsVersion ?? 1;
+  const agreedTermsSnapshot = (() => {
+    const seen = new Set(); const out = [];
+    termsItems.forEach(i => (i.termsSnapshot || []).forEach(c => {
+      if (c?.title && !seen.has(c.title)) { seen.add(c.title); out.push({ title: c.title, body: c.body, mode: c.mode || 'both' }); }
+    }));
+    return out;
+  })();
+  const termsAgreedAt = termsItems.map(i => i.termsAgreedAt).filter(Boolean).sort()[0] || null;
+
   const amountDue = designFeeOnly
-    ? designFee
-    : (downpaymentRequired && !payFull)
-      ? Math.round(grandTotal * downpaymentPercent / 100 * 100) / 100
-      : grandTotal;
-  const remainingBalance = designFeeOnly
-    ? Math.round((grandTotal - designFee) * 100) / 100
-    : (downpaymentRequired && !payFull) ? Math.round((grandTotal - amountDue) * 100) / 100 : 0;
+    ? Math.max(0, Math.round(designFee * 100) / 100)
+    : Math.max(0, Math.round((goodsPayNow + designFee + rushCharge + (shippingFeeAmt ?? 0) - voucherDiscount) * 100) / 100);
+  const remainingBalance = Math.max(0, Math.round((grandTotal - amountDue) * 100) / 100);
+  // "Downpayment" here means the CURRENT selection does not settle the whole order (drives the payload
+  // + COD gating). It flips to false when Pay-in-Full clears the balance - correct, but the deposit UI
+  // must NOT vanish then or the customer can't switch back. So the box/toggle use a separate "eligible"
+  // flag that ignores the current payFull choice.
+  const downpaymentRequired = !designFeeOnly && remainingBalance > 0;
+  const eligibleForDeposit = designFeeOnly || items.some(i => isReqLine(i) || lineDpPct(i) > 0);
+  // Single "X%" only when every line shares the same deposit percent; otherwise per-line (mixed).
+  const allDpPcts   = items.map(i => lineDpPct(i));
+  const dpUniformPct = allDpPcts.length && allDpPcts.every(p => p === allDpPcts[0] && p > 0) ? allDpPcts[0] : null;
 
   const cartAllowsCOD = items.every(i => (i.allowCOD ?? i.product?.allowCOD ?? true) !== false);
 
@@ -581,6 +663,15 @@ export default function CheckoutPage() {
         formData.append('paymentMethod', paymentMethod);
         if (appliedVoucher?.code) formData.append('voucherCode', appliedVoucher.code);
         formData.append('shippingFee', String(shippingFeeAmt ?? 0));
+        formData.append('isRush', String(isRush));
+        if (isRush) formData.append('rushFee', String(rushCharge));
+        if (isRush && needByDate) formData.append('needByDate', needByDate);
+        if (termsAgreed) {
+          formData.append('agreedToTerms', 'true');
+          formData.append('termsVersion', String(termsVersion));
+          formData.append('agreedTermsSnapshot', JSON.stringify(agreedTermsSnapshot));
+          if (termsAgreedAt) formData.append('agreedAt', termsAgreedAt);
+        }
         fetchBody = formData;
         fetchHeaders = {
           Authorization: `Bearer ${token}`,
@@ -592,6 +683,10 @@ export default function CheckoutPage() {
           design_notes: designNotes || null,
           paymentMethod,
           shippingFee: shippingFeeAmt ?? 0,
+          isRush,
+          ...(isRush ? { rushFee: rushCharge } : {}),
+          ...(isRush && needByDate ? { needByDate } : {}),
+          ...(termsAgreed ? { agreedToTerms: true, termsVersion, agreedTermsSnapshot, ...(termsAgreedAt ? { agreedAt: termsAgreedAt } : {}) } : {}),
           ...(appliedVoucher?.code ? { voucherCode: appliedVoucher.code } : {}),
         });
         fetchHeaders = {
@@ -629,9 +724,15 @@ export default function CheckoutPage() {
           paymentMethodId,
           eWalletPhone: eWalletPhone.trim() ? `+63${eWalletPhone.trim()}` : null,
           shippingFee: shippingFeeAmt ?? 0,
+          isRush,
+          ...(isRush ? { rushFee: rushCharge } : {}),
+          ...(isRush && needByDate ? { needByDate } : {}),
+          ...(termsAgreed ? { agreedToTerms: true, termsVersion, agreedTermsSnapshot, ...(termsAgreedAt ? { agreedAt: termsAgreedAt } : {}) } : {}),
           ...(appliedVoucher?.code ? { voucherCode: appliedVoucher.code } : {}),
           ...(designFeeOnly ? { isDesignFeeOnly: true, isCustomOrder: true, designType: 'request' } : {}),
-          ...(downpaymentRequired && !payFull ? { isDownpayment: true, downpaymentPercent } : {}),
+          // firstPaymentAmount is the exact per-line "pay now" figure the customer sees, so the
+          // backend charges that instead of a single percent applied to the whole order.
+          ...(downpaymentRequired ? { isDownpayment: true, downpaymentPercent, firstPaymentAmount: amountDue } : {}),
         });
         const onlineHeaders = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
 
@@ -944,8 +1045,20 @@ export default function CheckoutPage() {
                       {item.product.name}
                       {item.variantName && <span style={{ fontWeight: 500, color: 'var(--gray)' }}> - {item.variantName}</span>}
                     </div>
-                    <div style={{ color: 'var(--gray)', fontSize: '0.76rem', marginTop: 3 }}>
-                      {item.qty} × ₱{Number(item.unitPrice).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap', marginTop: 3 }}>
+                      <span style={{ color: 'var(--gray)', fontSize: '0.76rem' }}>
+                        {item.qty} × ₱{Number(item.unitPrice).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
+                      {/* Per-line deposit indicator so a mixed cart (e.g. mug 50%, mousepad 30%, scrunchie full) is clear. */}
+                      {lineDpPct(item) > 0 ? (
+                        <span style={{ background: 'rgba(245,158,11,0.12)', color: '#b45309', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 999, padding: '1px 7px', fontSize: '.62rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.04em' }}>
+                          {lineDpPct(item)}% deposit
+                        </span>
+                      ) : (
+                        <span style={{ background: 'rgba(34,197,94,0.1)', color: '#16a34a', border: '1px solid rgba(34,197,94,0.25)', borderRadius: 999, padding: '1px 7px', fontSize: '.62rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.04em' }}>
+                          Pay in full
+                        </span>
+                      )}
                     </div>
                   </div>
                   <div style={{ fontWeight: 800, fontSize: '0.92rem', whiteSpace: 'nowrap', color: 'var(--white)' }}>
@@ -1173,6 +1286,63 @@ export default function CheckoutPage() {
         </div>
       </div>}
 
+      {/* SECTION 4C — Delivery speed (order-level Standard / Rush). Same card + toggle design language
+          as the cart and the per-product custom page. */}
+      {rushEnabled && (
+        <div className="checkout-card" style={{ display: 'flex', flexDirection: 'column', gap: '0.7rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 700, fontSize: '0.92rem' }}>
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="2"><rect x="1" y="3" width="15" height="13" rx="1"/><path d="M16 8h4l3 3v5h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+            Delivery speed
+          </div>
+          {[{ key: false, label: 'Standard', lead: prodLead, fee: 0 }, { key: true, label: 'Rush', lead: rushLead, fee: rushFeeAmt }].map(opt => {
+            const active = rush === opt.key;
+            // Choosing a speed directly clears any specific date (the two are alternative ways in).
+            return (
+              <button key={String(opt.key)} type="button" onClick={() => { setRush(opt.key); setNeedByDate(''); }}
+                style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', padding: '11px 14px', borderRadius: '10px', border: `1.5px solid ${active ? 'var(--gold)' : 'var(--border)'}`, background: active ? 'rgba(212,168,67,0.08)' : 'transparent', cursor: 'pointer', textAlign: 'left', transition: 'all .15s' }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <span style={{ width: 16, height: 16, borderRadius: '50%', border: `2px solid ${active ? 'var(--gold)' : 'var(--border)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    {active && <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--gold)' }} />}
+                  </span>
+                  <span style={{ display: 'flex', flexDirection: 'column' }}>
+                    <span style={{ fontSize: '0.88rem', fontWeight: 700, color: active ? 'var(--gold)' : 'var(--white, #111)' }}>{opt.label}</span>
+                    <span style={{ fontSize: '0.74rem', color: 'var(--gray)' }}>Get by {getByRange(opt.lead)}</span>
+                  </span>
+                </span>
+                <span style={{ fontSize: '0.85rem', fontWeight: 800, color: opt.fee > 0 ? 'var(--gold)' : 'var(--gray)' }}>{opt.fee > 0 ? `+₱${opt.fee.toLocaleString('en-PH')}` : 'Free'}</span>
+              </button>
+            );
+          })}
+
+          {/* Optional exact deadline. Picking a date auto-sets the speed above: sooner than Standard can
+              make it -> Rush; otherwise Standard (no fee). The native "dd/mm/yyyy" is hidden. */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>Need it by a specific date?</span>
+            <label onClick={(e) => { const inp = e.currentTarget.querySelector('input[type="date"]'); try { inp?.showPicker(); } catch { inp?.focus(); } }}
+              style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 8, border: `1.5px solid ${needByDate ? 'var(--gold)' : 'var(--border)'}`, borderRadius: '9px', background: 'var(--dark2, #f9fafb)', padding: '7px 11px', cursor: 'pointer', minWidth: 140 }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="2" style={{ flexShrink: 0 }}><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+              <span style={{ fontSize: '0.82rem', fontWeight: 600, color: needByDate ? 'var(--white, #111)' : 'var(--gray)', flex: 1 }}>
+                {needByDate ? new Date(needByDate).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Pick a date'}
+              </span>
+              {needByDate && <button type="button" onClick={(e) => { e.preventDefault(); e.stopPropagation(); setNeedByDate(''); }} title="Clear" style={{ position: 'relative', zIndex: 2, background: 'none', border: 'none', color: 'var(--gray)', cursor: 'pointer', fontSize: '1rem', lineHeight: 1 }}>&times;</button>}
+              <input type="date" value={needByDate} min={minNeedByStr} onChange={e => onPickNeedBy(e.target.value)}
+                style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0, margin: 0, padding: 0, border: 'none', cursor: 'pointer' }} />
+            </label>
+            <span style={{ fontSize: '0.7rem', color: 'var(--gray)' }}>(optional)</span>
+          </div>
+          {needByDate && !isRush && (
+            <div style={{ fontSize: '0.75rem', color: '#16a34a', lineHeight: 1.5 }}>
+              Standard delivery fits this date - no rush fee.
+            </div>
+          )}
+          {isRush && (
+            <div style={{ padding: '9px 12px', borderRadius: '9px', background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.3)' }}>
+              <span style={{ fontSize: '0.75rem', color: '#b45309', lineHeight: 1.5 }}>Rush is <strong>subject to our confirmation</strong> based on our current queue. If we cannot make it, we will notify you.</span>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* SECTION 5 — Order Summary */}
       <div className="checkout-card checkout-summary-card">
         <div className="checkout-summary-row">
@@ -1213,6 +1383,17 @@ export default function CheckoutPage() {
             return <span className="checkout-shipping-note">—</span>;
           })()}
         </div>
+        {isRush && rushCharge > 0 && (
+          <div className="checkout-summary-row">
+            <span>
+              Rush fee
+              <span style={{ display: 'block', fontSize: '.7rem', opacity: .7 }}>
+                Faster than standard - subject to confirmation
+              </span>
+            </span>
+            <span style={{ color: 'var(--gold)' }}>₱{rushCharge.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+          </div>
+        )}
         <div className="checkout-divider" />
 
         {/* Voucher Code */}
@@ -1298,19 +1479,19 @@ export default function CheckoutPage() {
             </span>
           </div>
         )}
-        {downpaymentRequired && (
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '6px', padding: '8px 10px', background: 'rgba(212,168,67,0.08)', borderRadius: '8px', border: '1px solid rgba(212,168,67,0.2)' }}>
+        {eligibleForDeposit && (
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', marginTop: '6px', padding: '8px 10px', background: 'rgba(212,168,67,0.08)', borderRadius: '8px', border: '1px solid rgba(212,168,67,0.2)' }}>
             <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--gold)' }}>Due Now</span>
             <span style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--gold)' }}>₱{amountDue.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
             {designFeeOnly && (
               <span style={{ display: 'block', width: '100%', fontSize: '0.72rem', color: 'var(--gray)', marginTop: 4, lineHeight: 1.5 }}>
-                Design fee only. The ₱{remainingBalance.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} order total is paid from My Orders once you approve the proof.
+                Design fee only, and it is non-refundable - it pays for the designer&apos;s time. The remaining ₱{remainingBalance.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (goods + delivery) is paid from My Orders once you approve the proof, so you see the artwork before you pay for the order.
               </span>
             )}
           </div>
         )}
 
-        {downpaymentRequired && (
+        {eligibleForDeposit && !designFeeOnly && (
           <div style={{
             marginTop: '0.75rem',
             padding: '0.75rem 1rem',
@@ -1328,17 +1509,17 @@ export default function CheckoutPage() {
             </svg>
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--gold)', marginBottom: '0.2rem' }}>
-                Downpayment Required
+                {dpUniformPct ? `${dpUniformPct}% Downpayment` : 'Downpayment Required'}{dpUniformPct ? '' : ' (mixed rates)'}
               </div>
               <div style={{ fontSize: '0.75rem', color: 'rgba(212,168,67,0.75)', lineHeight: 1.5 }}>
-                {payFull ? (
+                {payFull && remainingBalance === 0 ? (
                   <>You&apos;re paying the <strong>full amount of ₱{grandTotal.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong> upfront. No balance on completion.</>
                 ) : (
-                  <>Some items require a downpayment. You&apos;ll pay{' '}
+                  <>You&apos;ll pay{' '}
                   <strong>₱{amountDue.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>{' '}
-                  now ({downpaymentPercent}%). The remaining{' '}
+                  now (deposit on your items{designFee > 0 ? ' + the design fee' : ''}; ready-made items in full). The remaining{' '}
                   <strong>₱{remainingBalance.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>{' '}
-                  is collected on completion. COD is not available.</>
+                  is collected before delivery. COD is not available.</>
                 )}
               </div>
               <div style={{ display: 'flex', gap: '8px', marginTop: '0.6rem' }}>
@@ -1347,7 +1528,7 @@ export default function CheckoutPage() {
                   onClick={() => setPayFull(false)}
                   style={{ padding: '4px 12px', borderRadius: '999px', fontSize: '0.7rem', fontWeight: 700, cursor: 'pointer', border: '1px solid rgba(212,168,67,0.5)', background: !payFull ? 'var(--gold)' : 'transparent', color: !payFull ? '#000' : 'var(--gold)' }}
                 >
-                  Pay {downpaymentPercent}% Now
+                  Pay Deposit Now
                 </button>
                 <button
                   type="button"
@@ -1681,6 +1862,17 @@ export default function CheckoutPage() {
         )}
       </div>
 
+      {/* T&C was accepted per item on the product page and travels with the line - no re-prompt.
+          A read-only note lets the customer review exactly what they accepted. */}
+      {termsAgreed && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', margin: '0.5rem 0', fontSize: '0.8rem', color: 'var(--gray)', lineHeight: 1.5 }}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.5"><path d="M20 6 9 17l-5-5"/></svg>
+          <span>You accepted the{' '}
+            <button type="button" onClick={() => setShowTerms(true)} style={{ background: 'none', border: 'none', padding: 0, color: 'var(--gold)', fontWeight: 700, textDecoration: 'underline', cursor: 'pointer', fontSize: 'inherit' }}>Custom Order Terms</button>{' '}when you added these items.
+          </span>
+        </div>
+      )}
+
       {/* SECTION 7 — Place Order Button */}
       {error && (
         <div className="checkout-error">
@@ -1707,6 +1899,30 @@ export default function CheckoutPage() {
           paymentMethod === 'cod' ? 'Place Order' : paymentMethod === 'gcash' ? 'Pay with GCash' : paymentMethod === 'paymaya' ? 'Pay with Maya' : 'Pay with Card'
         )}
       </button>
+
+      {/* Custom Order Terms modal (the exact clauses being agreed to + recorded). */}
+      {showTerms && (
+        <div onClick={() => setShowTerms(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 4000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: 'var(--dark2, #fff)', color: 'var(--white, #111)', borderRadius: '14px', maxWidth: 560, width: '100%', maxHeight: '80vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem 1.25rem', borderBottom: '1px solid var(--border)' }}>
+              <strong style={{ fontSize: '1rem' }}>Custom Order Terms</strong>
+              <button onClick={() => setShowTerms(false)} style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', fontSize: '1.2rem' }}>&times;</button>
+            </div>
+            <div style={{ padding: '1.25rem', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.9rem' }}>
+              {agreedTermsSnapshot.map((t, i) => (
+                <div key={i}>
+                  <div style={{ fontWeight: 700, color: 'var(--gold)', fontSize: '0.9rem', marginBottom: '3px' }}>{i + 1}. {t.title}</div>
+                  <div style={{ fontSize: '0.82rem', color: 'var(--gray)', lineHeight: 1.55 }}>{t.body}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.85rem 1.25rem', borderTop: '1px solid var(--border)' }}>
+              <span style={{ fontSize: '0.72rem', color: 'var(--gray)' }}>Terms v{termsVersion} - accepted when you added these items</span>
+              <button onClick={() => setShowTerms(false)} style={{ padding: '8px 18px', background: 'var(--gold)', border: 'none', borderRadius: '8px', color: '#000', fontWeight: 700, cursor: 'pointer', fontSize: '0.85rem' }}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <p className="checkout-disclaimer">
         {paymentMethod === 'cod'

@@ -511,7 +511,7 @@ function StockBreakdown({ product, boms, materials }) {
         for (const item of bom.items || []) {
           const mat = matMap[item.matId];
           if (!mat) continue;
-          const can = item.qty > 0 ? Math.floor(mat.stockQty / item.qty) : Infinity;
+          const can = item.qty > 0 ? Math.floor(freeStock(mat) / item.qty) : Infinity;
           if (can < bottleneckMin) { bottleneckMin = can; bottleneckId = item.matId; }
         }
 
@@ -538,7 +538,7 @@ function StockBreakdown({ product, boms, materials }) {
                 {(bom.items || []).map((item, ii) => {
                   const mat    = matMap[item.matId];
                   if (!mat) return null;
-                  const can    = item.qty > 0 ? Math.floor(mat.stockQty / item.qty) : Infinity;
+                  const can    = item.qty > 0 ? Math.floor(freeStock(mat) / item.qty) : Infinity;
                   const isLimit = item.matId === bottleneckId;
                   const c      = can === 0 ? '#c62828' : can <= 10 ? '#b45309' : '#1a7f3c';
                   return (
@@ -547,7 +547,12 @@ function StockBreakdown({ product, boms, materials }) {
                         {isLimit && <span style={{ fontSize:'9px', fontWeight:700, background:'#fde8e8', color:'#c62828', border:'1px solid #fca5a5', borderRadius:'3px', padding:'1px 4px', marginRight:'5px', textTransform:'uppercase' }}>limit</span>}
                         {mat.name}
                       </td>
-                      <td style={{ padding:'4px 8px', fontSize:'12px', color:'var(--gray-light)' }}>{mat.stockQty} {mat.unit}</td>
+                      <td style={{ padding:'4px 8px', fontSize:'12px', color:'var(--gray-light)' }}>
+                        {freeStock(mat)} {mat.unit}
+                        {Number(mat.reservedQty ?? 0) > 0 && (
+                          <span style={{ color:'#b45309', fontSize:'11px' }}> ({mat.reservedQty} held)</span>
+                        )}
+                      </td>
                       <td style={{ padding:'4px 8px', fontSize:'12px', color:'var(--gray)' }}>{item.qty} {mat.unit}</td>
                       <td style={{ padding:'4px 8px', fontSize:'12px', fontWeight:600, color:c }}>{can}</td>
                     </tr>
@@ -565,13 +570,20 @@ function StockBreakdown({ product, boms, materials }) {
   );
 }
 
+// Availability is stock MINUS what open orders already hold. Counting raw stockQty made this screen
+// say "100 can build" while the storefront said "Only 10 left" off the same materials, with nothing on
+// either page to explain the gap - the reservations were invisible here.
+export function freeStock(mat) {
+  return Math.max(0, Number(mat?.stockQty ?? 0) - Number(mat?.reservedQty ?? 0));
+}
+
 function calcProducible(bom, matMap) {
   if (!bom?.items?.length) return 0;
   let min = Infinity;
   for (const item of bom.items) {
     const mat = matMap[item.matId];
     if (!mat) continue;
-    const can = item.qty > 0 ? Math.floor(mat.stockQty / item.qty) : Infinity;
+    const can = item.qty > 0 ? Math.floor(freeStock(mat) / item.qty) : Infinity;
     if (can < min) min = can;
   }
   return min === Infinity ? 0 : min;

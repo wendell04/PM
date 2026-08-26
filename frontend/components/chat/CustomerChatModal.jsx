@@ -2,9 +2,12 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import ChatInput from './ChatInput';
+import { useScrollToLatest } from '@/lib/useScrollToLatest';
 import { getMessages, sendMessage, markAsRead, sendHeartbeat, getConversations } from '../../lib/chatApi';
 import { getEcho } from '../../lib/echo';
 import './chat.css';
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
 const isRecentlySeen = (ts) => ts && Date.now() - new Date(ts).getTime() < 120_000;
 
@@ -35,6 +38,52 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
   const [open, setOpen] = useState(false);
   const [view, setView] = useState('home');
   const [conversations, setConversations] = useState([]);
+  // Approving from the card is the same call the order modal makes - the endpoint verifies the order
+  // belongs to this customer, so the record is identical whichever surface asks.
+  // This widget runs on the storefront, so it has no notion of an admin - but the shop owner browses
+  // their own site, and an order card there was sending them to /shop/orders-history, which lists only
+  // orders THEY placed. A card about a customer's order therefore opened an empty page.
+  // The destination follows the VIEWER, not the surface: the dashboard lists every order including the
+  // owner's own test purchases, so it is always the right place for an admin.
+  const isStaff = ['admin', 'owner'].includes(user?.role);
+  const orderHref = (id) =>
+    `${isStaff ? '/dashboard/business/orders' : '/shop/orders-history'}?order=${id || ''}`;
+
+  // Proof thumbnails opened in a new tab, which dumps the customer onto a raw Cloudinary URL and out
+  // of the conversation they were in. Preview in place instead.
+  const [preview, setPreview] = useState(null);
+  useEffect(() => {
+    if (!preview) return;
+    const onKey = (e) => { if (e.key === 'Escape') setPreview(null); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [preview]);
+
+  const [proofAction, setProofAction] = useState({});
+  const approveProofFromChat = async (m) => {
+    const oid = m?.orderId;
+    if (!oid) return;
+    setProofAction(p => ({ ...p, [oid]: 'busy' }));
+    try {
+      // One proof can cover several products, so Approve here means approve all of them - that is what
+      // the card offers and what the button reads as. Anyone wanting to accept one product and send
+      // another back opens the order, where the decision is per line.
+      const targets = Array.isArray(m.itemIndexes) && m.itemIndexes.length
+        ? m.itemIndexes
+        : [m.itemIndex ?? null];
+
+      let ok = true;
+      for (const idx of targets) {
+        const res = await fetch(`${API_URL}/api/orders/my/${oid}/approve-admin-design`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify(idx != null ? { itemIndex: idx } : {}),
+        });
+        if (!res.ok) ok = false;
+      }
+      setProofAction(p => ({ ...p, [oid]: ok ? 'done' : 'error' }));
+    } catch { setProofAction(p => ({ ...p, [oid]: 'error' })); }
+  };
   const [activeConv, setActiveConv] = useState(null);
   const [messages, setMessages] = useState([]);
   const [isSending, setIsSending] = useState(false);
@@ -48,13 +97,12 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
   const scrollRef = useRef(null);
   const pendingFaqRef = useRef(null);
   const pendingCardRef = useRef(null);
+  const pendingOrderRef = useRef(null);
   const lastInquiryRef = useRef({ key: '', at: 0 });
 
-  useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
-  }, [messages, Object.keys(typingUsers).length]);
+  // Also keyed on the active conversation: switching threads has to land at the newest message, not
+  // wherever the previous thread happened to be scrolled to.
+  useScrollToLatest(scrollRef, [messages, Object.keys(typingUsers).length, activeConv?._id, open, view]);
 
   // Keep ref in sync — used in loadConversations to avoid stale closure
   useEffect(() => { activeConvRef.current = activeConv; }, [activeConv]);
@@ -251,6 +299,18 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
   // Auto-send FAQ question once chat view is ready
   useEffect(() => {
     if (view !== 'chat' || !activeConv) return;
+    if (pendingOrderRef.current) {
+      const oc = pendingOrderRef.current;
+      pendingOrderRef.current = null;
+      // Same guard as the inquiry card: the support_auto to real-conversation switch re-fires this
+      // effect, and without it the designer gets the same order posted twice.
+      const okey = `order_${oc.orderId || oc.orderNo || ''}`;
+      const onow = Date.now();
+      if (lastInquiryRef.current.key === okey && onow - lastInquiryRef.current.at < 6000) return;
+      lastInquiryRef.current = { key: okey, at: onow };
+      handleSendMessage({ body: oc.body || 'Hi! I have a question about my design order.', type: 'order_reference', order_id: oc.orderId, metadata: oc, conversation_id: activeConv._id });
+      return;
+    }
     if (pendingCardRef.current) {
       const card = pendingCardRef.current;
       pendingCardRef.current = null;
@@ -302,7 +362,10 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
     const handleOpenChat = (e) => {
       if (!token) { onRequestLogin?.(); return; }
       const card = e.detail?.inquiryCard;
-      if (card) {
+      const orderCard = e.detail?.orderCard;
+      if (orderCard) {
+        pendingOrderRef.current = orderCard;
+      } else if (card) {
         pendingCardRef.current = card;
       } else if (e.detail?.message) {
         pendingFaqRef.current = e.detail.message;
@@ -504,6 +567,87 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
                         );
                       }
 
+                      // The shop's proof and deposit cards. Without this branch the customer saw only
+                      // the body text - no artwork, no link, no way to act - which is the whole point
+                      // of sending it into the conversation.
+                      if (msg.type === 'order_reference' && msg.metadata) {
+                        const m = msg.metadata;
+                        const busy = proofAction[m.orderId];
+                        return (
+                          <div key={msgKey} style={{ display: 'flex', justifyContent: isMe ? 'flex-end' : 'flex-start' }}>
+                            <div className="quotation-card">
+                              <div className="quotation-header">
+                                <span className="quotation-tag">{m.kind === 'deposit_due' ? 'Deposit due' : 'Design order'}</span>
+                              </div>
+                              <div className="quotation-body">
+                                <div className="quotation-product" style={{ margin: 0 }}>{m.orderNo || 'Order'}</div>
+                                {m.products && <div style={{ fontSize: '0.72rem', color: '#9ca3af' }}>{m.products}</div>}
+                              </div>
+                              {msg.body && <div style={{ padding: '2px 12px 6px', fontSize: '0.82rem', color: '#4b5563' }}>{msg.body}</div>}
+
+                              {/* Every order card is a pointer to an order, so it always offers the way
+                                  there. Without this a card the customer sent themselves was a dead end. */}
+                              {!m.kind && m.orderId && (
+                                <div style={{ padding: '0 12px 10px' }}>
+                                  <a href={orderHref(m.orderId)}
+                                    style={{ fontSize: '0.76rem', fontWeight: 700, color: '#b8922f', textDecoration: 'none' }}>
+                                    View order
+                                  </a>
+                                </div>
+                              )}
+
+                              {m.kind === 'proof_ready' && !isMe && (
+                                <div style={{ padding: '2px 12px 10px' }}>
+                                  {Array.isArray(m.proofs) && m.proofs.length > 0 && (
+                                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
+                                      {m.proofs.slice(0, 6).map((u, n) => (
+                                        <button key={n} type="button" title="Click to preview"
+                                          onClick={() => setPreview(u)}
+                                          style={{ width: 46, height: 46, padding: 0, borderRadius: 6, overflow: 'hidden', border: '1px solid #e5e7eb', background: '#000', display: 'block', cursor: 'zoom-in' }}>
+                                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                                          <img src={/\.(mp4|webm|mov|m4v|ogg)(\?|$)/i.test(u) ? u.replace(/\.(mp4|webm|mov|m4v|ogg)(\?|$)/i, '.jpg$2') : u}
+                                            alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                        </button>
+                                      ))}
+                                    </div>
+                                  )}
+                                  {busy === 'done' ? (
+                                    <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#166534' }}>Approved - thank you.</div>
+                                  ) : (
+                                    <>
+                                      <div style={{ display: 'flex', gap: 6 }}>
+                                        <button type="button" disabled={busy === 'busy'} onClick={() => approveProofFromChat(m)}
+                                          style={{ flex: 1, padding: '7px', borderRadius: 8, border: 'none', background: '#d4a843', color: '#000', fontSize: '0.76rem', fontWeight: 700, cursor: busy === 'busy' ? 'wait' : 'pointer' }}>
+                                          {busy === 'busy' ? 'Approving...' : 'Approve'}
+                                        </button>
+                                        <a href={orderHref(m.orderId)}
+                                          style={{ flex: 1, textAlign: 'center', padding: '7px', borderRadius: 8, border: '1px solid #e5e7eb', color: '#6b7280', fontSize: '0.76rem', fontWeight: 600, textDecoration: 'none' }}>
+                                          Request changes
+                                        </a>
+                                      </div>
+                                      {busy === 'error' && <div style={{ fontSize: '0.72rem', color: '#ef4444', marginTop: 6 }}>Could not approve from here - open the order and try again.</div>}
+                                    </>
+                                  )}
+                                </div>
+                              )}
+
+                              {m.kind === 'deposit_due' && (
+                                <div style={{ padding: '2px 12px 10px' }}>
+                                  <div style={{ fontSize: '0.78rem', color: '#4b5563', lineHeight: 1.6, marginBottom: 8 }}>
+                                    {m.dueNow && <div>Due now: <strong style={{ color: '#111' }}>{m.dueNow}</strong>{m.dueFull ? <> or in full <strong style={{ color: '#111' }}>{m.dueFull}</strong></> : null}</div>}
+                                    {m.heldUntil && <div style={{ color: '#6b7280' }}>Held until {m.heldUntil}</div>}
+                                  </div>
+                                  <a href={orderHref(m.orderId)}
+                                    style={{ display: 'block', textAlign: 'center', padding: '7px', borderRadius: 8, background: '#d4a843', color: '#000', fontSize: '0.76rem', fontWeight: 700, textDecoration: 'none' }}>
+                                    Pay now
+                                  </a>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      }
+
                       if (msg.type === 'inquiry' && msg.metadata) {
                         const m = msg.metadata;
                         return (
@@ -640,6 +784,36 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
                 onTyping={handleTyping}
               />
             </>
+          )}
+        </div>
+      )}
+
+      {/* In-place preview. A new tab would have dropped the customer onto a bare Cloudinary URL and out
+          of the conversation; this keeps them where they were. Backdrop and Esc both close. */}
+      {preview && (
+        <div
+          onClick={() => setPreview(null)}
+          role="presentation"
+          style={{
+            position: 'fixed', inset: 0, zIndex: 100000, background: 'rgba(0,0,0,0.82)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
+          }}
+        >
+          <button type="button" onClick={() => setPreview(null)} aria-label="Close preview"
+            style={{
+              position: 'absolute', top: 16, right: 18, width: 34, height: 34, borderRadius: '50%',
+              border: 'none', background: 'rgba(255,255,255,0.15)', color: '#fff', fontSize: 18,
+              cursor: 'pointer', lineHeight: 1,
+            }}>
+            &times;
+          </button>
+          {/\.(mp4|webm|mov|m4v|ogg)(\?|$)/i.test(preview) ? (
+            <video src={preview} controls autoPlay playsInline onClick={e => e.stopPropagation()}
+              style={{ maxWidth: '92vw', maxHeight: '86vh', borderRadius: 8, background: '#000' }} />
+          ) : (
+            /* eslint-disable-next-line @next/next/no-img-element */
+            <img src={preview} alt="Design proof" onClick={e => e.stopPropagation()}
+              style={{ maxWidth: '92vw', maxHeight: '86vh', objectFit: 'contain', borderRadius: 8 }} />
           )}
         </div>
       )}

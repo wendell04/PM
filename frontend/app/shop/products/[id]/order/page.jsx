@@ -7,6 +7,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import { uploadDesignFile } from '@/lib/orderRequestApi';
 import { useCart } from '@/context/CartContext';
+import useLockBodyScroll from '@/lib/useLockBodyScroll';
+import { DEFAULT_CUSTOM_ORDER_TERMS, renderTermsBody } from '@/lib/customOrderTerms';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
@@ -49,6 +51,11 @@ const ACCEPTED_RE = /\.(jpe?g|png|webp|pdf|ai|psd|svg)$/i;
 // so every read has to go through this (matches the product page).
 const optValue = (opt) => (typeof opt === 'string' ? opt : (opt?.value ?? opt?.label ?? ''));
 const optLabel = (opt) => (typeof opt === 'string' ? opt : (opt?.label ?? opt?.value ?? ''));
+
+// Custom-order terms the customer must accept before ordering (own wording, not copied).
+// mode: which design flow the clause applies to - 'both', 'upload' (customer file), or 'request'
+// (we design it). The storefront shows only clauses for the chosen mode + 'both'.
+const CUSTOM_ORDER_TERMS = DEFAULT_CUSTOM_ORDER_TERMS;
 
 // Two shapes exist in the data. Older products carry an explicit `combo` map per
 // combination; the current product editor writes flat `{id, name}` rows instead.
@@ -140,6 +147,12 @@ function CustomOrderInner() {
   const [requestSubmitted, setRequestSubmitted] = useState(false);
   const [storeSettings, setStoreSettings]     = useState(null);
   const [shippingFeeAmt, setShippingFeeAmt]   = useState(null);
+  const [rush, setRush]                       = useState(false);
+  const [agreedTerms, setAgreedTerms]         = useState(false);
+  const [showTerms, setShowTerms]             = useState(false);
+  const [termsScrolled, setTermsScrolled]     = useState(false);
+  const [pendingMode, setPendingMode]         = useState(null);
+  useLockBodyScroll(showTerms || !!pendingMode || failedModal || verifyingPayment);
   // Owner-controlled method availability (Homepage CMS → Payment Methods). Missing key = enabled.
   const [payEnabled, setPayEnabled]           = useState({});
   const [addingToCart, setAddingToCart]       = useState(false);
@@ -284,6 +297,48 @@ function CustomOrderInner() {
   const unitPrice = getUnitPrice(product, quantity, selectedVariants);
   const designFee = designMode === 'request' ? (product?.designFee ?? 0) : 0;
   const lineTotal = (unitPrice ?? 0) * quantity;
+
+  // Delivery speed (turnaround). Config is global (store owner); Rush costs more + is faster.
+  const prodLeadDays = Number(storeSettings?.productionLeadDays ?? 5);
+  const shipMinDays  = Number(storeSettings?.shippingDaysMin ?? 2);
+  const shipMaxDays  = Number(storeSettings?.shippingDaysMax ?? 4);
+  const rushEnabled  = !!(storeSettings?.rushEnabled ?? false);
+  const rushLeadDays = Number(storeSettings?.rushLeadDays ?? 2);
+  const rushFeeAmt   = Number(storeSettings?.rushFee ?? 0);
+  const rushActive   = rush && rushEnabled;
+  const rushCharge   = rushActive ? rushFeeAmt : 0;
+  // Custom-order T&C - owner-editable via CMS; fall back to the built-in defaults if none set.
+  // Show only the clauses for the chosen mode (+ 'both'); a clause with no mode counts as 'both'.
+  const activeTermsMode = designMode || (isInquiry ? 'request' : 'both');
+  const revFree = Number(storeSettings?.freeRevisions ?? 3);
+  const revFee  = Number(storeSettings?.extraRevisionFee ?? 50);
+  const revMax  = Number(storeSettings?.maxRevisions ?? 5);
+  // Same merge as the Settings editor: a saved set wins, but a built-in clause the owner has never
+  // seen is still shown. A fee the customer was never told about has no basis, and the revision charge
+  // is exactly that kind of fee - better to over-disclose than to bill on a term nobody published.
+  const rawTerms = (() => {
+    const saved = storeSettings?.customOrderTerms?.length ? storeSettings.customOrderTerms : null;
+    const base = saved
+      ? [...saved, ...CUSTOM_ORDER_TERMS.filter(d =>
+          !saved.some(t => (t.title || '').trim().toLowerCase() === d.title.trim().toLowerCase()))]
+      : CUSTOM_ORDER_TERMS;
+    return base.map(c => ({ ...c, body: renderTermsBody(c.body, storeSettings) }));
+  })();
+  const activeClauses = rawTerms.filter(t => !t.mode || t.mode === 'both' || t.mode === activeTermsMode);
+  const terms = activeClauses.map(t => [t.title, t.body]);
+  // The exact clauses for THIS mode - carried with the cart line as the acceptance snapshot/proof.
+  const termsSnapshot = activeClauses.map(t => ({ title: t.title, body: t.body, mode: t.mode || 'both' }));
+  const termsVersion = storeSettings?.termsVersion ?? 1;
+  // "Get by" date = today + (production + shipping) business days, skipping Sundays.
+  const addBizDays = (n) => { const d = new Date(); let added = 0; while (added < n) { d.setDate(d.getDate() + 1); if (d.getDay() !== 0) added += 1; } return d; };
+  const fmtGetBy = (d) => d.toLocaleDateString('en-PH', { month: 'short', day: 'numeric' });
+  const getByRange = (lead) => {
+    const a = fmtGetBy(addBizDays(lead + shipMinDays));
+    const b = fmtGetBy(addBizDays(lead + shipMaxDays));
+    return a === b ? a : `${a} - ${b}`;
+  };
+
+  // Rush is chosen at checkout now, so the product-page total never includes a rush fee.
   const grandTotal = lineTotal + designFee + (shippingFeeAmt ?? 0);
   const downpaymentRequired = product?.requiresDownpayment ?? false;
   const downpaymentPercent = product?.downpaymentPercent ?? 50;
@@ -399,6 +454,10 @@ function CustomOrderInner() {
         requiresDownpayment: product.requiresDownpayment ?? false,
         downpaymentPercent:  product.downpaymentPercent ?? null,
         allowCOD:            product.allowCOD ?? true,
+        // T&C acceptance carried with the line (accepted here for this mode's terms).
+        termsVersion,
+        termsSnapshot,
+        termsAgreedAt:       new Date().toISOString(),
       }],
       notes: '',
       fromCart: false,
@@ -411,6 +470,26 @@ function CustomOrderInner() {
       setSubmitError('Could not open checkout. Please try again.');
     }
   }
+
+  // Each design mode has its OWN terms (upload vs request differ), so the customer accepts the right
+  // terms here when they pick a mode. That acceptance travels with the cart line to checkout - no
+  // second prompt there. Switching modes re-consents to the new mode's terms.
+  const applyMode = (mode) => {
+    setDesignMode(mode);
+    setAgreedTerms(false);
+    setTermsScrolled(false);
+    setShowTerms(true);
+  };
+  const handlePickMode = (mode) => {
+    if (mode === designMode) return;
+    if (designMode) { setPendingMode(mode); return; }
+    applyMode(mode);
+  };
+
+  // A custom line can be ordered once its design intent is set: an uploaded design needs its file,
+  // a requested design needs nothing yet (the shop draws it after checkout). Quote inquiries have
+  // their own Submit button and never hit the cart.
+  const canOrder = !isInquiry && (designMode === 'request' || (designMode === 'upload' && !!designFileUrl));
 
   // Puts the configured item - artwork and all - into the ordinary cart. From here it is a
   // normal line that happens to carry a design, which is what makes a mug and a totebag
@@ -445,11 +524,15 @@ function CustomOrderInner() {
           files: uploadedFiles.map(f => ({ url: f.url, name: f.name })),
           notes: designNotes.trim() || null,
           mode:  designMode,
+          // Carry the T&C acceptance with the line (accepted here for this mode's terms).
+          termsVersion,
+          termsSnapshot,
+          termsAgreedAt: new Date().toISOString(),
         },
       );
       setAddedToCart(true);
-    } catch {
-      setSubmitError('Could not add to cart. Please try again.');
+    } catch (err) {
+      setSubmitError(err?.message || 'Could not add to cart. Please try again.');
     } finally {
       setAddingToCart(false);
     }
@@ -558,6 +641,9 @@ function CustomOrderInner() {
             items: [orderItem],
             deliveryAddress,
             shippingFee: shippingFeeAmt ?? 0,
+            isRush: rushActive,
+            agreedToTerms: agreedTerms,
+            termsVersion,
             isCustomOrder: true,
             designType: 'upload',
             designNotes: designNotes.trim() || null,
@@ -592,6 +678,9 @@ function CustomOrderInner() {
             items: [orderItem],
             deliveryAddress,
             shippingFee: shippingFeeAmt ?? 0,
+            isRush: rushActive,
+            agreedToTerms: agreedTerms,
+            termsVersion,
             isCustomOrder: true,
             designType: 'request',
             paymentMethod: 'online',
@@ -607,6 +696,9 @@ function CustomOrderInner() {
         items: [orderItem],
         deliveryAddress,
         shippingFee: shippingFeeAmt ?? 0,
+        isRush: rushActive,
+        agreedToTerms: agreedTerms,
+        termsVersion,
         isCustomOrder: true,
         designType: designMode,
         ...(designMode === 'request'
@@ -682,12 +774,39 @@ function CustomOrderInner() {
     </div>
   );
 
-  if (loading) return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--dark1)' }}>
-      <div style={{ width: 32, height: 32, border: '3px solid rgba(212,168,67,0.2)', borderTopColor: '#D4A843', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-    </div>
-  );
+  if (loading) {
+    const bar = (extra) => ({ background: 'var(--dark2)', borderRadius: 8, animation: 'pmPulse 1.4s ease-in-out infinite', ...extra });
+    const card = { background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: 14, padding: 20, display: 'flex', flexDirection: 'column', gap: 12 };
+    return (
+      <div style={{ minHeight: '100vh', background: 'var(--dark1)', color: 'var(--white)', padding: '2rem 1rem 4rem', fontFamily: "'Outfit', sans-serif" }}>
+        <style>{`@keyframes pmPulse { 0%,100%{opacity:1} 50%{opacity:.5} }`}</style>
+        <div style={{ maxWidth: 1000, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div style={bar({ width: 120, height: 14 })} />
+          <div style={bar({ width: 260, height: 30 })} />
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,340px)', gap: 16, alignItems: 'start' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <div style={card}>
+                <div style={bar({ width: '40%', height: 14 })} />
+                <div style={bar({ width: '70%', height: 22 })} />
+                <div style={bar({ width: '55%', height: 16 })} />
+              </div>
+              <div style={{ ...card, flexDirection: 'row', gap: 12 }}>
+                <div style={bar({ flex: 1, height: 96 })} />
+                <div style={bar({ flex: 1, height: 96 })} />
+              </div>
+            </div>
+            <div style={card}>
+              <div style={bar({ width: '60%', height: 18 })} />
+              <div style={bar({ height: 44 })} />
+              <div style={bar({ height: 60 })} />
+              <div style={bar({ height: 60 })} />
+              <div style={bar({ width: '80%', height: 22 })} />
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (failedModal) return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: '20px' }}>
@@ -736,6 +855,51 @@ function CustomOrderInner() {
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--dark1)', color: 'var(--white)', padding: '2rem 1rem 4rem', fontFamily: "'Outfit', sans-serif" }}>
+      {showTerms && (
+        <div onClick={() => setShowTerms(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 9998, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '16px', maxWidth: '560px', width: '100%', maxHeight: '85vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: 'var(--white)' }}>Custom Order Terms</h3>
+              <button onClick={() => setShowTerms(false)} aria-label="Close" style={{ background: 'none', border: 'none', color: 'var(--gray)', cursor: 'pointer', display: 'flex' }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
+            <div
+              ref={el => { if (el && el.scrollHeight - el.clientHeight < 24) setTermsScrolled(true); }}
+              onScroll={e => { const el = e.currentTarget; if (el.scrollHeight - el.scrollTop - el.clientHeight < 24) setTermsScrolled(true); }}
+              style={{ padding: '16px 20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {terms.map(([title, body], i) => (
+                <div key={i}>
+                  <div style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--gold)', marginBottom: '2px' }}>{i + 1}. {title}</div>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--gray)', lineHeight: 1.55 }}>{body}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{ padding: '14px 20px', borderTop: '1px solid var(--border)', display: 'flex', gap: '8px', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '0.72rem', color: 'var(--gray)' }}>{termsScrolled ? `Terms v${termsVersion}` : 'Scroll down to read all terms'}</span>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button onClick={() => setShowTerms(false)} style={{ padding: '8px 16px', background: 'transparent', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--gray)', fontSize: '0.85rem', cursor: 'pointer' }}>Close</button>
+                <button onClick={() => { setAgreedTerms(true); setShowTerms(false); }} disabled={!termsScrolled}
+                  style={{ padding: '8px 16px', background: 'var(--gold)', border: 'none', borderRadius: '8px', color: '#000', fontSize: '0.85rem', fontWeight: 700, cursor: termsScrolled ? 'pointer' : 'not-allowed', opacity: termsScrolled ? 1 : 0.5 }}>I Agree</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {pendingMode && (
+        <div onClick={() => setPendingMode(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 9998, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '14px', maxWidth: '380px', width: '100%', padding: '22px' }}>
+            <h3 style={{ margin: '0 0 8px', fontSize: '1rem', fontWeight: 800, color: 'var(--white)' }}>Switch design mode?</h3>
+            <p style={{ margin: '0 0 18px', fontSize: '0.85rem', color: 'var(--gray)', lineHeight: 1.6 }}>
+              You are switching to <strong style={{ color: 'var(--white)' }}>{pendingMode === 'upload' ? 'Upload a design' : 'Request a design'}</strong>. You&apos;ll need to review and accept the Custom Order Terms again.
+            </p>
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button onClick={() => setPendingMode(null)} style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--gray)', fontSize: '0.85rem', cursor: 'pointer', fontFamily: "'Outfit', sans-serif" }}>Cancel</button>
+              <button onClick={() => { const m = pendingMode; setPendingMode(null); applyMode(m); }} style={{ flex: 1, padding: '10px', borderRadius: '8px', border: 'none', background: 'var(--gold)', color: '#000', fontSize: '0.85rem', fontWeight: 700, cursor: 'pointer', fontFamily: "'Outfit', sans-serif" }}>Switch</button>
+            </div>
+          </div>
+        </div>
+      )}
       <style>{`
         @keyframes spin { to { transform: rotate(360deg); } }
         .custom-order-grid { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,340px); gap: 16px; align-items: start; }
@@ -812,7 +976,7 @@ function CustomOrderInner() {
               <h2 style={{ fontSize: '0.74rem', fontWeight: 800, letterSpacing: '0.03em', textTransform: 'uppercase', color: '#6b7280', marginBottom: '0.85rem' }}>Your design</h2>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '1.25rem' }}>
-                <button onClick={() => setDesignMode('upload')}
+                <button onClick={() => handlePickMode('upload')}
                   style={{ padding: '1.25rem', borderRadius: '10px', border: `1.5px solid ${designMode === 'upload' ? 'var(--gold)' : 'var(--border)'}`, background: designMode === 'upload' ? 'rgba(212,168,67,0.08)' : 'transparent', cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s', color: 'var(--white)' }}>
                   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={designMode === 'upload' ? '#D4A843' : 'var(--gray)'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block', marginBottom: '0.6rem' }}>
                     <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
@@ -821,7 +985,7 @@ function CustomOrderInner() {
                   <p style={{ fontSize: '0.75rem', color: 'var(--gray)', margin: 0 }}>Upload your file (JPG, PNG, PDF, AI)</p>
                 </button>
 
-                <button onClick={() => setDesignMode('request')}
+                <button onClick={() => handlePickMode('request')}
                   style={{ padding: '1.25rem', borderRadius: '10px', border: `1.5px solid ${designMode === 'request' ? 'var(--gold)' : 'var(--border)'}`, background: designMode === 'request' ? 'rgba(212,168,67,0.08)' : 'transparent', cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s', color: 'var(--white)' }}>
                   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={designMode === 'request' ? '#D4A843' : 'var(--gray)'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block', marginBottom: '0.6rem' }}>
                     <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
@@ -1098,11 +1262,16 @@ function CustomOrderInner() {
             <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: '12px', padding: '1.15rem' }}>
 
               <div style={{ display: 'flex', gap: '0.875rem', marginBottom: '1.25rem', paddingBottom: '1rem', borderBottom: '1px solid var(--border)' }}>
-                {(product.thumbnail || product.images?.[0]) && (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={product.thumbnail || product.images[0]} alt={product.name}
-                    style={{ width: 56, height: 56, borderRadius: '8px', objectFit: 'cover', flexShrink: 0 }} />
-                )}
+                {(() => {
+                  // Show the SELECTED variant's image (e.g. Ceramic White) when there is one, not the
+                  // generic product thumbnail. Same resolution as the order item's thumbnail above.
+                  const img = (combo?.id && product.variantImageUrls?.[combo.id]) || combo?.imageUrl || product.thumbnail || product.images?.[0] || null;
+                  return img ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={img} alt={variantLabel ? `${product.name} - ${variantLabel}` : product.name}
+                      style={{ width: 56, height: 56, borderRadius: '8px', objectFit: 'cover', flexShrink: 0 }} />
+                  ) : null;
+                })()}
                 <div style={{ minWidth: 0 }}>
                   <p style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{product.name}</p>
                   {variantLabel && <p style={{ fontSize: '0.78rem', color: 'var(--gray)', margin: '0 0 4px' }}>{variantLabel}</p>}
@@ -1127,6 +1296,16 @@ function CustomOrderInner() {
                       <span style={{ color: 'var(--gold)' }}>+{fmt(designFee)}</span>
                     </div>
                   )}
+                  {/* Delivery is now chosen ONCE for the whole order at CHECKOUT (pick your need-by
+                      date there; a Rush option appears if it is earlier than standard). Here we only
+                      show the standard estimate so the product page has no separate rush selector. */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', padding: '8px 0', borderTop: '1px solid var(--border)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem' }}>
+                      <span style={{ color: 'var(--gray)' }}>Estimated delivery</span>
+                      <span style={{ color: 'var(--white)', fontWeight: 600 }}>{getByRange(prodLeadDays)}</span>
+                    </div>
+                    <span style={{ fontSize: '0.72rem', color: 'var(--gray)', lineHeight: 1.5 }}>Need it sooner? Choose Standard or Rush at checkout.</span>
+                  </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
                     <span style={{ color: 'var(--gray)' }}>Shipping</span>
                     {shippingFeeAmt !== null
@@ -1161,7 +1340,7 @@ function CustomOrderInner() {
                     <span style={{ color: 'var(--gold)', fontWeight: 800 }}>{fmt(designFee)}</span>
                   </div>
                   <div style={{ fontSize: '0.75rem', color: 'var(--gray)', lineHeight: 1.6 }}>
-                    This is all you pay now. The order total is paid after you approve the proof.
+                    Charged once at checkout with the rest of your cart. The goods are paid after you approve the proof.
                   </div>
                 </div>
               )}
@@ -1169,6 +1348,14 @@ function CustomOrderInner() {
               {designMode === 'request' && !isInquiry && (
                 <div style={{ padding: '0.75rem', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border)', borderRadius: '8px', marginBottom: '1rem', fontSize: '0.75rem', color: 'var(--gray)', lineHeight: 1.6 }}>
                   Our designer will send a proof via chat within 24–48 hrs. Production starts once you approve.
+                  {/* Said here, before the order exists, rather than only in the terms behind a link. A
+                      customer who first meets the revision limit while asking for a fourth change reads
+                      it as a penalty; one who was told up front reads it as the deal. Figures come from
+                      shop settings, so the owner sets them once. */}
+                  <div style={{ marginTop: '0.5rem', paddingTop: '0.5rem', borderTop: '1px solid var(--border)' }}>
+                    Includes <strong style={{ color: 'var(--white)' }}>{revFree}</strong> revision round{revFree === 1 ? '' : 's'}. Each further round costs{' '}
+                    <strong style={{ color: 'var(--gold)' }}>₱{revFee.toLocaleString('en-PH')}</strong>, up to {revMax} rounds in total. The design fee is non-refundable.
+                  </div>
                 </div>
               )}
 
@@ -1178,41 +1365,37 @@ function CustomOrderInner() {
                 </div>
               )}
 
-              {/* Add to cart is always the primary: it is what lets a mug and a totebag
-                  share one delivery fee, one design fee and one checkout. */}
-              {((designMode === 'upload' && designFileUrl) || designMode === 'request') && !isInquiry && (
-                <button onClick={handleAddToCart} disabled={placing || addingToCart}
+              {/* Custom-order T&C - accepted here (per mode) and carried with the line to checkout. */}
+              {(designMode === 'upload' || designMode === 'request' || isInquiry) && (
+                <label style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', margin: '0 0 0.85rem', cursor: 'pointer', fontSize: '0.8rem', color: 'var(--gray)', lineHeight: 1.5 }}>
+                  <input type="checkbox" checked={agreedTerms} onChange={e => setAgreedTerms(e.target.checked)} style={{ width: 16, height: 16, accentColor: 'var(--gold)', flexShrink: 0, marginTop: 1 }} />
+                  <span>I have read and agree to the{' '}
+                    <button type="button" onClick={() => { setTermsScrolled(false); setShowTerms(true); }} style={{ background: 'none', border: 'none', padding: 0, color: 'var(--gold)', fontWeight: 700, textDecoration: 'underline', cursor: 'pointer', fontSize: 'inherit' }}>Custom Order Terms</button>.
+                  </span>
+                </label>
+              )}
+
+              {/* Add to cart - upload (with file) OR request. A custom line is just an ordinary cart
+                  line carrying its own design, so a ready-made tumbler, an uploaded mug and a
+                  requested tote can share one delivery fee and one checkout. The design fee (request)
+                  and the downpayment are worked out at checkout from what the cart holds. */}
+              {canOrder && (
+                <button onClick={handleAddToCart} disabled={placing || addingToCart || !agreedTerms}
                   style={{ width: '100%', padding: '0.9rem', background: addingToCart ? 'rgba(212,168,67,0.55)' : 'var(--gold)',
                     color: '#000', border: 'none', borderRadius: '10px', fontWeight: 800, fontSize: '0.95rem',
-                    cursor: addingToCart ? 'wait' : 'pointer', fontFamily: "'Outfit', sans-serif" }}>
+                    cursor: (addingToCart ? 'wait' : (!agreedTerms ? 'not-allowed' : 'pointer')), fontFamily: "'Outfit', sans-serif", opacity: !agreedTerms ? 0.5 : 1 }}>
                   {addingToCart ? 'Adding...' : addedToCart ? 'Added to cart' : 'Add to cart'}
                 </button>
               )}
 
-              {/* The "just this one" action, labelled by what it actually charges. An
-                  uploaded design has artwork, so the goods can be bought. A requested
-                  design has none - only the designer's fee is payable yet. */}
-              {designMode === 'upload' && designFileUrl && !isInquiry && (
-                <button onClick={handleBuyNow} disabled={placing || addingToCart}
+              {/* Buy it now - the single-item shortcut that lands in the SAME checkout as the cart.
+                  Works for upload and request alike; the checkout charges each line by its own rule. */}
+              {canOrder && (
+                <button onClick={handleBuyNow} disabled={placing || addingToCart || !agreedTerms}
                   style={{ width: '100%', padding: '0.85rem', marginTop: '0.6rem', background: 'transparent',
                     color: 'var(--gold)', border: '1.5px solid var(--gold)', borderRadius: '10px', fontWeight: 800,
-                    fontSize: '0.9rem', cursor: 'pointer', fontFamily: "'Outfit', sans-serif" }}>
+                    fontSize: '0.9rem', cursor: !agreedTerms ? 'not-allowed' : 'pointer', fontFamily: "'Outfit', sans-serif", opacity: !agreedTerms ? 0.5 : 1 }}>
                   Buy it now
-                </button>
-              )}
-
-              {designMode === 'request' && !isInquiry && (
-                <button onClick={handleSubmit} disabled={placing}
-                  style={{ width: '100%', padding: '0.85rem', marginTop: '0.6rem', background: 'transparent',
-                    color: 'var(--gold)', border: '1.5px solid var(--gold)', borderRadius: '10px', fontWeight: 800,
-                    fontSize: '0.9rem', cursor: placing ? 'wait' : 'pointer', fontFamily: "'Outfit', sans-serif",
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-                  {placing ? (
-                    <>
-                      <div style={{ width: 15, height: 15, border: '2px solid rgba(212,168,67,0.25)', borderTopColor: 'var(--gold)', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
-                      Submitting...
-                    </>
-                  ) : 'Submit Design Request'}
                 </button>
               )}
 
@@ -1231,14 +1414,14 @@ function CustomOrderInner() {
                   payment, before production - which is what Vistaprint and Printful do.
                   Quote requests keep their own button because they have no price to pay. */}
               {isInquiry && (
-                <button onClick={handleSubmit} disabled={placing}
+                <button onClick={handleSubmit} disabled={placing || !agreedTerms}
                   style={{ width: '100%', padding: isInquiry ? '0.9rem' : '0.75rem', marginTop: isInquiry ? 0 : '0.6rem',
                     background: isInquiry ? (placing ? 'rgba(212,168,67,0.55)' : 'var(--gold)') : 'transparent',
                     color: isInquiry ? '#000' : 'var(--gray)',
                     border: isInquiry ? 'none' : '1px solid var(--border)',
                     borderRadius: '10px', fontWeight: isInquiry ? 800 : 600, fontSize: isInquiry ? '0.95rem' : '0.82rem',
-                    cursor: placing ? 'wait' : 'pointer', fontFamily: "'Outfit', sans-serif",
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                    cursor: placing ? 'wait' : (!agreedTerms ? 'not-allowed' : 'pointer'), fontFamily: "'Outfit', sans-serif",
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', opacity: !agreedTerms ? 0.5 : 1 }}>
                   {placing ? (
                     <>
                       <div style={{ width: 16, height: 16, border: '2px solid rgba(0,0,0,0.2)', borderTopColor: '#000', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />

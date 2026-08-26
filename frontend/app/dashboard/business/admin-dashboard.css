@@ -243,10 +243,29 @@ input[type="number"] {
   flex-direction: column;
   gap: 0.5rem;
   overflow-y: auto;
-  scrollbar-width: none;
 }
+
+/* The nav used to hide its scrollbar, which is fine until the wheel stops working - then there is
+   nothing left to drag and the lower half of the menu is unreachable. A slim slider costs a few
+   pixels and is the only way down without a wheel. Slightly narrower than the app-wide one so it
+   does not crowd a 255px rail. */
 .sidebar-nav::-webkit-scrollbar {
-  display: none;
+  width: 8px;
+}
+.sidebar-nav::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.16);
+  border-radius: 6px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+  min-height: 32px;
+}
+.sidebar-nav:hover::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.3);
+  background-clip: content-box;
+}
+.sidebar-nav::-webkit-scrollbar-thumb:hover {
+  background: var(--gold);
+  background-clip: content-box;
 }
 
 .sidebar-nav-item {
@@ -571,7 +590,7 @@ input[type="number"] {
   justify-content: space-between;
   padding: 0 1.25rem;
   position: sticky;
-  top: var(--offline-banner-h, 0px);
+  top: 0;
   z-index: 100;
   width: 100%;
   box-sizing: border-box;
@@ -1588,21 +1607,6 @@ input[type="text"][inputMode="numeric"] {
   display: block;
   box-sizing: border-box;
   scrollbar-width: thin;
-  scrollbar-color: var(--gold) var(--dark2);
-}
-
-.tier-table-wrap::-webkit-scrollbar {
-  height: 6px;
-}
-
-.tier-table-wrap::-webkit-scrollbar-track {
-  background: var(--dark2);
-  border-radius: 0 0 10px 10px;
-}
-
-.tier-table-wrap::-webkit-scrollbar-thumb {
-  background: var(--gold);
-  border-radius: 10px;
 }
 
 .tier-table {
@@ -1996,25 +2000,6 @@ input[type="text"][inputMode="numeric"] {
   overflow-y: auto;
   display: flex; flex-direction: column;
   scrollbar-width: thin;
-  scrollbar-color: var(--gold) var(--dark2);
-}
-
-.preview-modal::-webkit-scrollbar {
-  width: 8px;
-}
-
-.preview-modal::-webkit-scrollbar-track {
-  background: var(--dark2);
-  border-radius: 4px;
-}
-
-.preview-modal::-webkit-scrollbar-thumb {
-  background: var(--gold);
-  border-radius: 4px;
-}
-
-.preview-modal::-webkit-scrollbar-thumb:hover {
-  background: var(--gold-dark);
 }
 .preview-modal-header { padding: 1.5rem 1.5rem 1rem; border-bottom: 1px solid var(--border); position: relative; }
 .preview-modal-title { font-family: inherit; font-size: 1.1rem; font-weight: 700; color: var(--white); margin-bottom: 0.25rem; }
@@ -2890,27 +2875,8 @@ input[type="text"][inputMode="numeric"] {
   overflow-y: auto;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
   scrollbar-width: thin;
-  scrollbar-color: var(--gold) var(--dark2);
   padding: 0 1.5rem 1.5rem;
   box-sizing: border-box;
-}
-
-.modal-content::-webkit-scrollbar {
-  width: 8px;
-}
-
-.modal-content::-webkit-scrollbar-track {
-  background: var(--dark2);
-  border-radius: 4px;
-}
-
-.modal-content::-webkit-scrollbar-thumb {
-  background: var(--gold);
-  border-radius: 4px;
-}
-
-.modal-content::-webkit-scrollbar-thumb:hover {
-  background: var(--gold-dark);
 }
 
 .modal-content-sm {
@@ -3338,24 +3304,6 @@ input[type="text"][inputMode="numeric"] {
 
 .profile-modal.profile-modal--slide [style*="grid-template-columns: 1fr 1fr"] {
   grid-template-columns: 1fr !important;
-}
-
-.profile-modal::-webkit-scrollbar {
-  width: 8px;
-}
-
-.profile-modal::-webkit-scrollbar-track {
-  background: var(--dark2);
-  border-radius: 0 12px 12px 0;
-}
-
-.profile-modal::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 4px;
-}
-
-.profile-modal::-webkit-scrollbar-thumb:hover {
-  background: var(--gold);
 }
 
 @keyframes slideUp {
@@ -4238,5 +4186,5 @@ html.light .skeleton-table-header {
   background-size: 200% 100%;
 }
 
-/* ── Admin notification panel body: hide scrollbar (WebKit) ── */
-.admin-notif-body::-webkit-scrollbar { display: none; }
+/* The admin notification body used to hide its scrollbar entirely, which left a list of 59
+   with nothing to say more was below the fold. It now inherits the app-wide slider. */

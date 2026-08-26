@@ -22,6 +22,27 @@ class CartController extends Controller
      * GET /api/cart
      * Get verified user's cart from MongoDB
      */
+
+    /**
+     * Fill in what the client did not send.
+     *
+     * `lineTotal` is qty x unitPrice - the server can always work it out, so it is accepted as
+     * optional and derived here rather than rejecting an otherwise valid cart over it.
+     */
+    private function withLineTotals(array $items): array
+    {
+        return array_map(function ($i) {
+            $qty  = max(1, (int) ($i['qty'] ?? 1));
+            $unit = (float) ($i['unitPrice'] ?? 0);
+            $i['qty']       = $qty;
+            $i['unitPrice'] = $unit;
+            $i['lineTotal'] = isset($i['lineTotal']) && $i['lineTotal'] !== null
+                ? (float) $i['lineTotal']
+                : round($qty * $unit, 2);
+            return $i;
+        }, $items);
+    }
+
     public function index(Request $request)
     {
         try {
@@ -70,7 +91,11 @@ class CartController extends Controller
                 'items.*.productName' => 'required|string',
                 'items.*.qty' => 'required|integer|min:1',
                 'items.*.unitPrice' => 'required|numeric|min:0',
-                'items.*.lineTotal' => 'required|numeric|min:0',
+                // Derivable from qty x unitPrice, so requiring it rejects an otherwise perfectly good cart
+                // over a field the server can work out itself. A cart saved by an older version of the
+                // app had none, and the whole merge failed - losing everything the customer had added
+                // before signing in.
+                'items.*.lineTotal' => 'nullable|numeric|min:0',
                 'items.*.variantId' => 'nullable|string',
                 'items.*.variantName' => 'nullable|string',
                 'items.*.image' => 'nullable|string',
@@ -103,14 +128,14 @@ class CartController extends Controller
 
             if ($cart) {
                 // Update existing cart
-                $cart->items = $validated['items'];
+                $cart->items = $this->withLineTotals($validated['items']);
                 $cart->updatedAt = now();
                 $cart->save();
             } else {
                 // Create new cart
                 $cart = Cart::create([
                     'userId' => (string) $user->_id,
-                    'items' => $validated['items'],
+                    'items' => $this->withLineTotals($validated['items']),
                     'updatedAt' => now(),
                 ]);
             }
@@ -145,7 +170,11 @@ class CartController extends Controller
                 'items.*.productName' => 'required|string',
                 'items.*.qty' => 'required|integer|min:1',
                 'items.*.unitPrice' => 'required|numeric|min:0',
-                'items.*.lineTotal' => 'required|numeric|min:0',
+                // Derivable from qty x unitPrice, so requiring it rejects an otherwise perfectly good cart
+                // over a field the server can work out itself. A cart saved by an older version of the
+                // app had none, and the whole merge failed - losing everything the customer had added
+                // before signing in.
+                'items.*.lineTotal' => 'nullable|numeric|min:0',
                 'items.*.variantId' => 'nullable|string',
                 'items.*.variantName' => 'nullable|string',
                 'items.*.image' => 'nullable|string',
@@ -174,7 +203,7 @@ class CartController extends Controller
                 'items.*.flashSaleId' => 'nullable|string',
             ]);
 
-            $guestItems = $validated['items'];
+            $guestItems = $this->withLineTotals($validated['items']);
 
             // Get or create user's cart
             $cart = Cart::getByUserId((string) $user->_id);
@@ -194,13 +223,25 @@ class CartController extends Controller
             foreach ($guestItems as $guestItem) {
                 $foundIndex = null;
 
-                // Find matching item by productId and variantId
-                foreach ($mergedItems as $index => $item) {
-                    $item = (array) $item;
-                    if ($item['productId'] === $guestItem['productId'] &&
-                        ($item['variantId'] ?? null) === ($guestItem['variantId'] ?? null)) {
-                        $foundIndex = $index;
-                        break;
+                // Match on productId + variantId ONLY for lines that carry no artwork. Two Ceramic
+                // White mugs are the same product, but if one has the customer's own file and the
+                // other is a design request they are NOT the same line - merging them collapsed the
+                // pair into qty 2 and silently kept whichever design came first, so the customer paid
+                // for two of something they never asked for. A line with a design is always unique.
+                $carriesDesign = static function (array $i): bool {
+                    return !empty($i['designUrl']) || !empty($i['designFiles'])
+                        || !empty($i['designRequested']) || ($i['designMode'] ?? null) === 'request';
+                };
+
+                if (!$carriesDesign((array) $guestItem)) {
+                    foreach ($mergedItems as $index => $item) {
+                        $item = (array) $item;
+                        if ($carriesDesign($item)) continue;
+                        if ($item['productId'] === $guestItem['productId'] &&
+                            ($item['variantId'] ?? null) === ($guestItem['variantId'] ?? null)) {
+                            $foundIndex = $index;
+                            break;
+                        }
                     }
                 }
 

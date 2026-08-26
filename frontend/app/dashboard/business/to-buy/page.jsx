@@ -82,13 +82,7 @@ export default function ToBuyPage() {
 
   return (
     <div style={{ ...S.page, padding: '24px' }}>
-      <div style={{ ...S.rowBetween, marginBottom: '18px' }}>
-        <div>
-          <h1 style={{ fontSize: '20px', fontWeight: 700, margin: 0 }}>To Buy</h1>
-          <p style={{ fontSize: '13px', color: 'var(--gray)', margin: '4px 0 0' }}>
-            Materials short for orders already paid for. Buy these, then record them in Stock In.
-          </p>
-        </div>
+      <div style={{ ...S.rowBetween, marginBottom: '18px', justifyContent: 'flex-end' }}>
         <button type="button" onClick={load} style={S.btnGhost}>Refresh</button>
       </div>
 

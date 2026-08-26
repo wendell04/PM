@@ -72,6 +72,7 @@ Route::get('/user', function (Request $request) {
 })->middleware('auth:sanctum');
 
 // ─── Public Store Settings ───────────────────────────────────────────────────
+Route::get('/public/registration-terms', [SettingsController::class, 'publicRegistrationTerms']);
 Route::get('/public/settings', [SettingsController::class, 'public']);
 
 // ─── Products (Public — no auth required) ────────────────────────────────────
@@ -155,6 +156,7 @@ Route::middleware(['auth:sanctum', 'isAdmin:owner,admin'])->group(function () {
     Route::get('/admin/settings',                   [SettingsController::class, 'show']);
     Route::put('/admin/settings',                   [SettingsController::class, 'update']);
     Route::put('/admin/settings/shipping',          [SettingsController::class, 'shippingUpdate']);
+    Route::put('/admin/settings/terms',             [SettingsController::class, 'termsUpdate']);
 
     Route::get('/admin/role-permissions',            [RolePermissionController::class, 'index']);
     Route::post('/admin/role-permissions',           [RolePermissionController::class, 'store']);
@@ -182,6 +184,7 @@ Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
 
     // ─── Order Stats ──────────────────────────────────────────────────────────
     Route::get('/admin/orders/stats',            [OrderController::class, 'stats']);
+    Route::get('/admin/orders/cost-of-goods',    [OrderController::class, 'orderCostOfGoods']);
 
     // ─── Dashboard & reports (stubs — see AdminAnalyticsController) ───────────
     Route::get('/admin/dashboard/stats',         [AdminAnalyticsController::class, 'dashboardStats']);
@@ -251,16 +254,22 @@ Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
 
     // ─── Job Orders ───────────────────────────────────────────────────────────
     Route::get('/admin/job-orders',              [JobOrderController::class, 'index']);
-    Route::get('/admin/job-orders/schedule',     [JobOrderController::class, 'schedule']);
     Route::get('/admin/job-orders/{id}',         [JobOrderController::class, 'show']);
     Route::post('/admin/job-orders',             [JobOrderController::class, 'store']);
+    Route::post('/admin/job-orders/batch',       [JobOrderController::class, 'storeBatch']);
     Route::put('/admin/job-orders/{id}',         [JobOrderController::class, 'update']);
+    Route::delete('/admin/job-orders/{id}',      [JobOrderController::class, 'destroy']);
 
     // ─── Activity Logs ────────────────────────────────────────────────────────
     Route::get('/admin/activity-logs',           [ActivityLogController::class, 'index']);
     // ─── Design Approval ──────────────────────────────────────────────────────
     Route::post('/admin/orders/{id}/approve-design', [OrderController::class, 'approveDesign']);
     Route::post('/admin/orders/{id}/revert-design',  [OrderController::class, 'revertDesignApproval']);
+    Route::post('/admin/orders/{id}/rush-decision',   [OrderController::class, 'rushDecision']);
+    Route::post('/admin/orders/{id}/remind-balance', [OrderController::class, 'remindBalance']);
+    Route::post('/admin/orders/{id}/write-off',      [OrderController::class, 'writeOffOrder']);
+    Route::post('/admin/settings/registration-terms', [SettingsController::class, 'registrationTermsUpdate']);
+    Route::delete('/payment/cancel-pending/{orderId}', [PaymentController::class, 'cancelPending']);
     Route::post('/admin/orders/{id}/reject-design',  [OrderController::class, 'rejectDesign']);
     Route::post('/admin/orders/{id}/upload-design',   [OrderController::class, 'adminUploadDesign']);
     Route::post('/admin/orders/{id}/approve-upload',  [OrderController::class, 'approveUploadDesign']);
@@ -311,6 +320,9 @@ Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
     Route::delete('/admin/bom/{id}',                  [BillOfMaterialController::class, 'destroy']);
 
     // ─── QC Endpoint ───────────────────────────────────────────────────────────────────────────
+    Route::post('/admin/job-orders/{id}/spoilage',                    [JobOrderController::class, 'reportSpoilage']);
+    Route::post('/admin/job-orders/{id}/production-files',            [JobOrderController::class, 'uploadProductionFiles']);
+    Route::delete('/admin/job-orders/{id}/production-files/{index}', [JobOrderController::class, 'deleteProductionFile']);
     Route::post('/admin/job-orders/{id}/qc',          [JobOrderController::class, 'submitQC']);
 
     // ─── Admin notifications (aliases — same handlers as /api/notifications) ────

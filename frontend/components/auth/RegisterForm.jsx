@@ -5,6 +5,7 @@ import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import Turnstile from '@/components/Turnstile';
 import { PasswordGuide } from '@/components/auth/PasswordGuide';
 import PhoneInput, { isValidPhone } from '@/components/auth/PhoneInput';
+import { DEFAULT_REGISTRATION_TERMS } from '@/lib/registrationTerms';
 // The .auth-* modal/field styles live here. Importing them from the shared form means every host
 // (landing, shop, product pages) renders an identical modal — the shop layout only loaded shop.css,
 // which has no auth styles, so its modal looked off. This file is entirely class-scoped (no global
@@ -77,6 +78,27 @@ export default function RegisterForm({ onSuccess, onSwitchToLogin, theme = 'ligh
   const [tncRead, setTncRead] = useState(false);
   const tncContentRef = useRef(null);
   const [turnstileToken, setTurnstileToken] = useState('');
+
+  // The clauses the shop is actually showing today, plus the version, so the account records exactly
+  // which wording was accepted. Falls back to the built-in text if the fetch fails - a sign-up must
+  // never be blocked by a settings call, but it must never present terms it cannot identify either.
+  const [terms, setTerms] = useState(DEFAULT_REGISTRATION_TERMS);
+  const [termsVersion, setTermsVersion] = useState(1);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetchWithTimeout(`${API_URL}/api/public/registration-terms`, {}, 10000);
+        const d = await res.json();
+        if (cancelled || !res.ok) return;
+        const rows = d.data?.registrationTerms;
+        if (Array.isArray(rows) && rows.length) setTerms(rows);
+        setTermsVersion(Number(d.data?.registrationTermsVersion ?? 1));
+      } catch { /* built-in text stands */ }
+    })();
+    return () => { cancelled = true; };
+  }, []);
   const turnstileRef = useRef(null);
 
   // Reset the read-gate each time the terms open; if the text is short enough that it
@@ -169,6 +191,11 @@ export default function RegisterForm({ onSuccess, onSwitchToLogin, theme = 'ligh
           password: formData.password,
           password_confirmation: formData.confirmPassword,
           turnstileToken,
+          // Proof of consent. A ticked box on its own proves nothing later - what matters is WHICH
+          // wording was on screen, so the version and a copy of the text go with it.
+          acceptedTermsVersion: termsVersion,
+          acceptedTermsSnapshot: terms.map(t => ({ title: t.title, body: t.body })),
+          acceptedTermsAt: new Date().toISOString(),
         }),
       }, 15000);
 
@@ -313,24 +340,12 @@ export default function RegisterForm({ onSuccess, onSwitchToLogin, theme = 'ligh
             </div>
             <StepIndicator step={2} />
             <div className="tnc-content" ref={tncContentRef} onScroll={handleTncScroll}>
-              <p><strong>1. Acceptance of Terms</strong></p>
-              <p>By creating an account with Personalize Me Prints, you agree to comply with and be bound by these Terms and Conditions. If you do not agree with any part of these terms, please do not use our services.</p>
-              <p><strong>2. Account Registration</strong></p>
-              <p>You must provide accurate and complete information when registering for an account. You are responsible for maintaining the confidentiality of your account credentials and for all activities that occur under your account.</p>
-              <p><strong>3. Product Quality</strong></p>
-              <p>We strive to provide high-quality custom printing services. All products are subject to quality inspection before shipment. We are not responsible for damages caused by improper use or handling of printed products.</p>
-              <p><strong>4. Intellectual Property</strong></p>
-              <p>You warrant that any designs or content you upload for printing do not infringe upon any third-party rights. You grant us a non-exclusive license to use your designs solely for the purpose of fulfilling your order.</p>
-              <p><strong>5. Payment and Pricing</strong></p>
-              <p>All prices are subject to change without notice. Payment is required before production begins. We reserve the right to refuse any order for any reason.</p>
-              <p><strong>6. Shipping and Delivery</strong></p>
-              <p>Delivery times are estimates and not guaranteed. We are not responsible for delays caused by shipping carriers or customs processing.</p>
-              <p><strong>7. Returns and Refunds</strong></p>
-              <p>Due to the custom nature of our products, all sales are final. We will only accept returns or provide refunds for products that are damaged or significantly different from the approved proof.</p>
-              <p><strong>8. Limitation of Liability</strong></p>
-              <p>Personalize Me Prints shall not be liable for any indirect, incidental, or consequential damages arising from the use of our products or services.</p>
-              <p><strong>9. Changes to Terms</strong></p>
-              <p>We reserve the right to modify these terms at any time. Changes will be effective immediately upon posting on our website. Your continued use of our services after any changes constitutes acceptance of the new terms.</p>
+              {terms.map((t, i) => (
+                <div key={i}>
+                  <p><strong>{i + 1}. {t.title}</strong></p>
+                  <p>{t.body}</p>
+                </div>
+              ))}
             </div>
             {!tncRead && (
               <div style={{ padding: '0.5rem 1.5rem 0', fontSize: '0.78rem', color: 'var(--gold)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
