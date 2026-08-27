@@ -56,11 +56,18 @@ export default function ProductsV2() {
 
       const httpImages = (formData.images || []).filter(u => typeof u === 'string' && /^https?:\/\//.test(u));
 
+      // WARNING: this hand-lists every field, and ProductAddEditPage builds its own object too. A
+      // field added there but not here is silently discarded - the save succeeds, the toast says
+      // "updated", and the value never reaches the API. Add to BOTH. (Better still, collapse the two
+      // into one builder; left alone here so this stays a fix and not a refactor.)
       const payload = {
         name:                formData.name,
         description:         formData.description || '',
         priceType:           formData.pricingMode,
         isCustom:            formData.isCustomizable,
+        // Not the opposite of isCustom - both can be true. Missing here is what made the "Sell
+        // plain" toggle appear to do nothing: the form sent it, this object dropped it.
+        allowPlainPurchase:  formData.allowPlainPurchase,
         isMadeToOrder:       formData.isMadeToOrder,
         requiresDownpayment: Number(formData.downpaymentPct) > 0,
         downpaymentPercent:  Number(formData.downpaymentPct) || null,
@@ -90,6 +97,10 @@ export default function ProductsV2() {
             )
           : {},
         trackInventory:       true,
+        // Dropped the same way, and worth more than it looks: with no BOM this is the only figure
+        // Reports has to work out profit from, so losing it silently reports every such sale as
+        // pure margin.
+        cost:                 (formData.cost !== '' && formData.cost != null) ? Number(formData.cost) : null,
         allowCOD:             formData.allowCOD,
         hideWhenOutOfStock:   formData.hideWhenOutOfStock,
         isFeatured:           formData.isFeatured,
