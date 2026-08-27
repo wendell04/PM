@@ -694,7 +694,7 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
       // `isCustomizable`.
       isCustom: f.isCustomizable,
       allowPlainPurchase: f.allowPlain,
-      downpaymentPct: Number(f.downpaymentPct),
+      downpaymentPct: (!f.isCustomizable && !f.isMadeToOrder) ? 0 : Number(f.downpaymentPct),
       hideWhenOutOfStock: f.hideWhenOutOfStock, isPublished: f.isPublished,
       isFeatured: f.isFeatured,
       designFee: f.isCustomizable && f.designFee ? Number(f.designFee) : 0,
@@ -1354,20 +1354,36 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
                 <ToggleRow label="COD Available" hint="Cash on delivery allowed" on={form.allowCOD} onChange={v => setF('allowCOD', v)} />
                 {form.isCustomizable && form.allowCOD && Number(form.downpaymentPct) <= 0 && (
                   <div style={{ background: '#fef9c3', border: '1px solid #fcd34d', borderRadius: '6px', padding: '8px 12px', fontSize: '12px', color: '#92400e', lineHeight: 1.5 }}>
-                    ⚠ COD without a downpayment is high-risk for custom orders. Consider setting a downpayment % below.
+                    Warning: COD without a downpayment is high-risk for custom orders. Consider setting a downpayment % below.
                   </div>
                 )}
                 <ToggleRow label="Feature on Homepage" hint="Shows in Best Sellers on the landing page" on={form.isFeatured} onChange={v => setF('isFeatured', v)} />
-                <Field label="Downpayment Required (%)" error={errors.downpaymentPct}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <IntegerInput value={form.downpaymentPct} onChange={v => setF('downpaymentPct', v)}
-                      max={100} placeholder="0"
-                      style={{ ...(errors.downpaymentPct ? S.inputErr : S.input), width: '70px' }} />
-                    <span style={{ fontSize: '11px', color: 'var(--gray)' }}>
-                      {Number(form.downpaymentPct) === 0 ? 'No DP required' : `${form.downpaymentPct}% on approval`}
-                    </span>
-                  </div>
-                </Field>
+                {/* A deposit buys the shop protection against work started on something it cannot
+                    resell. An item taken off the shelf carries none of that risk, so asking for one
+                    only splits a simple sale into two payments - which is how a ready-made totebag
+                    ended up demanding 50% up front and stalling. */}
+                {(!form.isCustomizable && !form.isMadeToOrder) ? (
+                  <Field label="Downpayment Required (%)">
+                    <div style={{ fontSize: '11.5px', color: 'var(--gray)', lineHeight: 1.5 }}>
+                      Not available on a ready-made product. It ships from stock, so there is nothing
+                      to protect with a deposit - the customer pays once, in full.
+                      <span style={{ display: 'block', marginTop: '3px' }}>
+                        Turn on Customizable or Made to Order to charge one.
+                      </span>
+                    </div>
+                  </Field>
+                ) : (
+                  <Field label="Downpayment Required (%)" error={errors.downpaymentPct}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <IntegerInput value={form.downpaymentPct} onChange={v => setF('downpaymentPct', v)}
+                        max={100} placeholder="0"
+                        style={{ ...(errors.downpaymentPct ? S.inputErr : S.input), width: '70px' }} />
+                      <span style={{ fontSize: '11px', color: 'var(--gray)' }}>
+                        {Number(form.downpaymentPct) === 0 ? 'No DP required' : `${form.downpaymentPct}% on approval`}
+                      </span>
+                    </div>
+                  </Field>
+                )}
                 <Field label="Minimum Order Qty (MOQ)">
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <IntegerInput value={form.minOrderQty} onChange={v => setF('minOrderQty', v)}
@@ -1377,7 +1393,7 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
                   </div>
                   {form.isCustomizable && Number(form.minOrderQty) <= 1 && (
                     <div style={{ marginTop: '6px', fontSize: '11px', color: '#b45309', background: '#fef9c3', border: '1px solid #fcd34d', borderRadius: '4px', padding: '5px 8px' }}>
-                      ⚠ Customizable products typically require a minimum order. Set an MOQ to protect against unprofitable single-unit orders.
+                      Warning: customizable products typically require a minimum order. Set an MOQ to protect against unprofitable single-unit orders.
                     </div>
                   )}
                 </Field>

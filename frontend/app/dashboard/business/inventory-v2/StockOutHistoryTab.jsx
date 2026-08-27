@@ -63,12 +63,77 @@ function ChevronIcon({ open }) {
   );
 }
 
+// 'system' is what the writer stores when no person clicked anything - an online order
+// deducting stock on its own. Shown raw it reads like an internal code and invites the
+// question the owner asked: why does it say system?
+export const performedByLabel = (v) =>
+  !v || String(v).toLowerCase() === 'system' ? 'Online order' : v;
+
+// ── Date range ────────────────────────────────────────────────────────────────
+// Stock-out history only grows. Without a range the newest rows are buried under months of movement
+// within a few weeks of trading, and paging back to find one is not a search anyone completes.
+export const DATE_RANGES = [
+  { value: 'all',    label: 'All time' },
+  { value: '7',      label: 'Last 7 days' },
+  { value: '15',     label: 'Last 15 days' },
+  { value: '30',     label: 'Last 30 days' },
+  { value: 'month',  label: 'This month' },
+  { value: 'last',   label: 'Last month' },
+  { value: 'custom', label: 'Custom range' },
+];
+
+// Compares by CALENDAR DAY, not by instant. A row stamped this morning is inside "last 7 days" no
+// matter the hour, and a custom range that ends today includes today.
+export function inDateRange(dateStr, range, from, to) {
+  if (!dateStr || range === 'all') return true;
+  const d = new Date(dateStr);
+  if (isNaN(d)) return true;
+  const day = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+  if (range === 'custom') {
+    if (from && day < new Date(from + 'T00:00:00')) return false;
+    if (to   && day > new Date(to   + 'T00:00:00')) return false;
+    return true;
+  }
+  if (range === 'month') return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+  if (range === 'last') {
+    const lm = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    return d.getFullYear() === lm.getFullYear() && d.getMonth() === lm.getMonth();
+  }
+  const days = Number(range);
+  if (!days) return true;
+  const cutoff = new Date(today);
+  cutoff.setDate(cutoff.getDate() - (days - 1));
+  return day >= cutoff;
+}
+
+export function DateRangeFilter({ range, setRange, from, setFrom, to, setTo }) {
+  return (
+    <>
+      <CustomSelect value={range} onChange={setRange} options={DATE_RANGES} style={{ width: '160px' }} />
+      {range === 'custom' && (
+        <>
+          <input type="date" value={from} max={to || undefined} onChange={e => setFrom(e.target.value)}
+            style={{ ...S.input, width: '150px' }} aria-label="From date" />
+          <input type="date" value={to} min={from || undefined} onChange={e => setTo(e.target.value)}
+            style={{ ...S.input, width: '150px' }} aria-label="To date" />
+        </>
+      )}
+    </>
+  );
+}
+
 // ── By Order Tab ──────────────────────────────────────────────────────────────
 
 function ByOrderTab({ stockOuts, materials }) {
   const [search,    setSearch]    = useState('');
   const [expanded,  setExpanded]  = useState(null);
   const [expandedProduct, setExpandedProduct] = useState({});
+  const [range, setRange] = useState('all');
+  const [from,  setFrom]  = useState('');
+  const [to,    setTo]    = useState('');
 
   const matMap = useMemo(() => {
     const m = {};
@@ -115,10 +180,12 @@ function ByOrderTab({ stockOuts, materials }) {
 
   const q = search.toLowerCase();
   const filteredOrders = orders.filter(o =>
-    !q ||
-    o.customerName.toLowerCase().includes(q) ||
-    o.orderId.toLowerCase().includes(q) ||
-    Object.values(o.products).some(p => p.productName.toLowerCase().includes(q))
+    inDateRange(o.date, range, from, to) && (
+      !q ||
+      o.customerName.toLowerCase().includes(q) ||
+      o.orderId.toLowerCase().includes(q) ||
+      Object.values(o.products).some(p => p.productName.toLowerCase().includes(q))
+    )
   );
 
   const { slice, page, perPage, total, setPage, setPerPage } = usePagination(filteredOrders);
@@ -143,6 +210,7 @@ function ByOrderTab({ stockOuts, materials }) {
 
       <div style={{ ...S.card, ...S.rowBetween }}>
         <SearchBar value={search} onChange={setSearch} placeholder="Search order, customer, product…" style={{ width:'280px' }} />
+        <DateRangeFilter range={range} setRange={setRange} from={from} setFrom={setFrom} to={to} setTo={setTo} />
         <span style={{ fontSize:'12px', color:'var(--gray)' }}>{total} order{total !== 1 ? 's' : ''}</span>
       </div>
 
@@ -309,6 +377,9 @@ function ByOrderTab({ stockOuts, materials }) {
 function ByMaterialTab({ stockOuts, materials }) {
   const [search,   setSearch]   = useState('');
   const [expanded, setExpanded] = useState(null);
+  const [range, setRange] = useState('all');
+  const [from,  setFrom]  = useState('');
+  const [to,    setTo]    = useState('');
 
   const matMap = useMemo(() => {
     const m = {};
@@ -318,7 +389,7 @@ function ByMaterialTab({ stockOuts, materials }) {
 
   const groups = useMemo(() => {
     const m = {};
-    (stockOuts || []).forEach(so => {
+    (stockOuts || []).filter(so => inDateRange(so.date, range, from, to)).forEach(so => {
       if (!m[so.matId]) {
         m[so.matId] = {
           matId:      so.matId,
@@ -335,7 +406,7 @@ function ByMaterialTab({ stockOuts, materials }) {
       m[so.matId].records.push(so);
     });
     return Object.values(m).sort((a, b) => b.totalQty - a.totalQty);
-  }, [stockOuts, matMap]);
+  }, [stockOuts, matMap, range, from, to]);
 
   const q = search.toLowerCase();
   const filtered = groups.filter(g => !q || g.matName.toLowerCase().includes(q));
@@ -356,6 +427,7 @@ function ByMaterialTab({ stockOuts, materials }) {
 
       <div style={{ ...S.card, ...S.rowBetween }}>
         <SearchBar value={search} onChange={setSearch} placeholder="Search material…" style={{ width:'240px' }} />
+        <DateRangeFilter range={range} setRange={setRange} from={from} setFrom={setFrom} to={to} setTo={setTo} />
         <span style={{ fontSize:'12px', color:'var(--gray)' }}>{total} material{total !== 1 ? 's' : ''}</span>
       </div>
 

@@ -740,6 +740,21 @@ class ProductController extends Controller
             $validated['priceTiers'] = $validated['priceTiers'] ?? [];
             $validated['variantPrices'] = $validated['variantPrices'] ?? [];
             $validated['createdAt'] = now();
+            // A deposit protects work started on something the shop cannot resell. Nothing is started
+            // for an item that ships off the shelf, so a ready-made product cannot carry one - and
+            // enforcing it here means a stale percentage on a product later switched to ready-made is
+            // cleared rather than left to split a simple sale into two payments.
+            $willBeCustom = array_key_exists('isCustom', $validated)
+                ? (bool) $validated['isCustom']
+                : (bool) ($product->isCustom ?? false);
+            $willBeMTO = array_key_exists('isMadeToOrder', $validated)
+                ? (bool) $validated['isMadeToOrder']
+                : (bool) ($product->isMadeToOrder ?? false);
+            if (!$willBeCustom && !$willBeMTO) {
+                $validated['requiresDownpayment'] = false;
+                $validated['downpaymentPercent']  = 0;
+            }
+
             $validated['updatedAt'] = now();
 
             $validated['bomId'] = isset($validated['bomId']) && $validated['bomId'] !== ''

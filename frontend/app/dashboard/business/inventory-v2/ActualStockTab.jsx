@@ -1,6 +1,7 @@
 'use client';
 import { useState, useMemo } from 'react';
 import { S, ICONS, Field, IntegerInput, Modal, ConfirmModal, PaginationBar, SearchBar, StatusBadge, Note, EmptyState, SummaryCard, usePagination, formatCurrency, formatDate, uid, CustomSelect } from './shared';
+import { DateRangeFilter, inDateRange, performedByLabel } from './StockOutHistoryTab';
 import { adjustStock } from './api';
 
 // "Qc Scrap" is what generic title-casing does to an acronym. These are the reasons the stock screens
@@ -224,9 +225,13 @@ export default function ActualStockTab({ materials, batches, setBatches, badOrde
   // stock out history search + filter
   const [histSearch,     setHistSearch]     = useState('');
   const [histTypeFilter, setHistTypeFilter] = useState('All');
+  const [histRange,      setHistRange]      = useState('all');
+  const [histFrom,       setHistFrom]       = useState('');
+  const [histTo,         setHistTo]         = useState('');
   const sortedOuts = useMemo(() => [...(stockOuts || [])].sort((a,b) => new Date(b.date) - new Date(a.date)), [stockOuts]);
   const filteredOuts = useMemo(() => {
     let list = sortedOuts;
+    if (histRange !== 'all') list = list.filter(s => inDateRange(s.date, histRange, histFrom, histTo));
     if (histTypeFilter !== 'All') list = list.filter(s => s.type === histTypeFilter.toLowerCase());
     if (!histSearch.trim()) return list;
     const q = histSearch.toLowerCase();
@@ -235,7 +240,7 @@ export default function ActualStockTab({ materials, batches, setBatches, badOrde
       s.reason?.toLowerCase().includes(q) ||
       s.ref?.toLowerCase().includes(q)
     );
-  }, [sortedOuts, histSearch, histTypeFilter]);
+  }, [sortedOuts, histSearch, histTypeFilter, histRange, histFrom, histTo]);
   const { slice: hSlice, page: hPage, perPage: hPerPage, total: hTotal, setPage: setHPage, setPerPage: setHPerPage } = usePagination(filteredOuts);
 
   return (
@@ -326,6 +331,7 @@ export default function ActualStockTab({ materials, batches, setBatches, badOrde
       <div style={{ ...S.card, ...S.rowBetween }}>
         <div style={{ display:'flex', gap:'8px', flexWrap:'wrap' }}>
           <SearchBar value={histSearch} onChange={setHistSearch} placeholder="Search material, reason, or ref…" style={{ width:'260px' }} />
+          <DateRangeFilter range={histRange} setRange={setHistRange} from={histFrom} setFrom={setHistFrom} to={histTo} setTo={setHistTo} />
           <CustomSelect value={histTypeFilter} onChange={setHistTypeFilter}
             options={['All','Sale','Adjustment','Production']}
             style={{ width:'140px' }} />
@@ -367,7 +373,7 @@ export default function ActualStockTab({ materials, batches, setBatches, badOrde
                     <td style={{ ...S.td, textAlign:'right', color:'#c62828', fontWeight:600 }}>−{Math.abs(Number(s.qty) || 0)} {mat?.unit}</td>
                     <td style={S.td}><StatusBadge status={s.reason} label={outReasonLabel(s.reason)} /></td>
                     <td style={{ ...S.td, textAlign:'right', fontWeight:600, color: isProduction ? 'var(--gray-light)' : '#c62828' }}>{formatCurrency(s.totalCost)}</td>
-                    <td style={{ ...S.td, fontSize:'12px', color:'var(--gray-light)' }}>{s.performedBy || <span style={{ color:'var(--gray)' }}>—</span>}</td>
+                    <td style={{ ...S.td, fontSize:'12px', color:'var(--gray-light)' }}>{performedByLabel(s.performedBy)}</td>
                     <td style={{ ...S.td, fontSize:'12px', color:'var(--gray)', maxWidth:'200px' }}>{s.notes}</td>
                   </tr>
                 );
