@@ -1,4 +1,5 @@
 'use client';
+import { PLAIN_OR_CUSTOM_ENABLED } from '@/lib/featureFlags';
 
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
@@ -1134,7 +1135,7 @@ export default function ProductDetailPage() {
                     other - which is what stopped anyone customising a totebag the moment it was made
                     available blank. `allowPlainPurchase` is undefined on older products, where a
                     non-custom product was always plain-purchasable. */}
-                {product.isCustom && (product.allowPlainPurchase ?? false) ? (
+                {PLAIN_OR_CUSTOM_ENABLED && product.isCustom && (product.allowPlainPurchase ?? false) ? (
                   <>
                     <button
                       onClick={() => {

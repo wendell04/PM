@@ -1,4 +1,5 @@
 'use client';
+import { PLAIN_OR_CUSTOM_ENABLED } from '@/lib/featureFlags';
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { uploadImage } from '@/lib/productApi';
@@ -396,7 +397,9 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
       tiers,
       collectionIds:      product.collectionIds || [],
       isCustomizable:     product.isCustomizable ?? false,
-      allowPlain:         product.allowPlain ?? !product.isCustomizable,
+      allowPlain:         PLAIN_OR_CUSTOM_ENABLED
+                            ? (product.allowPlain ?? !product.isCustomizable)
+                            : !product.isCustomizable,
       allowCOD:           product.allowCOD ?? true,
       isMadeToOrder:      product.isMadeToOrder ?? false,
       downpaymentPct:     product.downpaymentPct != null ? String(product.downpaymentPct) : '0',
@@ -1290,11 +1293,15 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
                 {/* These are NOT opposites. A totebag can be sold blank off the shelf AND printed to
                     order, from the same stock. Before this, making it plain meant nobody could
                     customise it any more - one flag doing the work of two. */}
-                <ToggleRow label="Sell plain" hint="The undecorated item can be bought as it is" on={form.allowPlain} onChange={v => setF('allowPlain', v)} />
-                {!form.isCustomizable && !form.allowPlain && (
-                  <div style={{ fontSize: '11.5px', color: 'var(--st-red-fg)', marginTop: '-6px' }}>
-                    With both off there is no way to buy this product at all. Turn one on.
-                  </div>
+                {PLAIN_OR_CUSTOM_ENABLED && (
+                  <>
+                    <ToggleRow label="Sell plain" hint="The undecorated item can be bought as it is" on={form.allowPlain} onChange={v => setF('allowPlain', v)} />
+                    {!form.isCustomizable && !form.allowPlain && (
+                      <div style={{ fontSize: '11.5px', color: 'var(--st-red-fg)', marginTop: '-6px' }}>
+                        With both off there is no way to buy this product at all. Turn one on.
+                      </div>
+                    )}
+                  </>
                 )}
                 {form.isCustomizable && (
                   <Field label="Design Fee Override (P)" error={errors.designFee}>

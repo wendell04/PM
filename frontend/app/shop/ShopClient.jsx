@@ -1,4 +1,5 @@
 'use client';
+import { PLAIN_OR_CUSTOM_ENABLED } from '@/lib/featureFlags';
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -326,7 +327,7 @@ function QuickViewModal({ product, flashSale, onClose, onToast }) {
                   requirement - as though the only way to buy this is to design something. */}
               {product.isCustom && (
                 <span className="shop-qv-badge customizable">
-                  {(product.allowPlainPurchase ?? false) ? 'PLAIN OR CUSTOM' : 'CUSTOMIZABLE'}
+                  {(PLAIN_OR_CUSTOM_ENABLED && (product.allowPlainPurchase ?? false)) ? 'PLAIN OR CUSTOM' : 'CUSTOMIZABLE'}
                 </span>
               )}
             </div>
@@ -442,7 +443,7 @@ function QuickViewModal({ product, flashSale, onClose, onToast }) {
                 purchase the shop has deliberately switched on - the same half-answer the PDP used to
                 give. `allowPlainPurchase` is undefined on older products, where a custom product was
                 customise-only. */}
-            {product.isCustom && (product.allowPlainPurchase ?? false) && mode !== 'inquiry' ? (
+            {PLAIN_OR_CUSTOM_ENABLED && product.isCustom && (product.allowPlainPurchase ?? false) && mode !== 'inquiry' ? (
               <>
                 <Link
                   href={(() => {
@@ -704,7 +705,7 @@ function ProductCard({ product, onAddToCart, onQuickView, flashSale }) {
           {/* Customizable badge */}
           {product.isCustom && (
             <div className="shop-custom-badge">
-              {(product.allowPlainPurchase ?? false) ? 'Plain or custom' : 'Customizable'}
+              {(PLAIN_OR_CUSTOM_ENABLED && (product.allowPlainPurchase ?? false)) ? 'Plain or custom' : 'Customizable'}
             </div>
           )}
 
