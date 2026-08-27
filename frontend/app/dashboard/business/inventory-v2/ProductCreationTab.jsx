@@ -100,10 +100,12 @@ export default function ProductCreationTab({ boms, setBoms, materials, batches, 
         unitCost:     batchList[0]?.unitCost ?? (mat?.baseCost ?? 0),
       };
     });
+    // No variantName at all, rather than an empty one. This tab builds standalone product BOMs,
+    // and Laravel converts '' to null in-flight, so sending the key was sending a value the API is
+    // right to reject.
     const payload = {
       productName:      form.productName.trim(),
       productGroupName: form.productName.trim(),
-      variantName:      '',
       components,
     };
     setSaving(true);

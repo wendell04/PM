@@ -96,7 +96,10 @@ class BillOfMaterialController extends Controller
             $validated = $request->validate([
                 'productName'      => 'required|string|max:255',
                 'productGroupName' => 'required|string|max:255',
-                'variantName'      => 'required|string|max:255',
+                // A standalone product BOM has no variant. Laravel turns the '' the form sends into
+                // null before validation, so 'required|string' rejected every save from the Product
+                // Creation tab - create and edit alike.
+                'variantName'      => 'nullable|string|max:255',
                 'variantCombo'     => 'nullable|array',
                 'components'       => 'required|array|min:1',
                 'components.*.inventoryId'  => 'required|string',
@@ -122,7 +125,7 @@ class BillOfMaterialController extends Controller
                 'sku'              => $sku,
                 'productName'      => $validated['productName'],
                 'productGroupName' => $validated['productGroupName'],
-                'variantName'      => $validated['variantName'],
+                'variantName'      => $validated['variantName'] ?? '',
                 'variantCombo'     => $validated['variantCombo'] ?? [],
                 'components'       => $validated['components'],
                 'totalCost'        => round($totalCost, 4),
@@ -159,7 +162,7 @@ class BillOfMaterialController extends Controller
             $validated = $request->validate([
                 'productName'      => 'sometimes|string|max:255',
                 'productGroupName' => 'sometimes|string|max:255',
-                'variantName'      => 'sometimes|string|max:255',
+                'variantName'      => 'sometimes|nullable|string|max:255',
                 'variantCombo'     => 'nullable|array',
                 'components'       => 'sometimes|array|min:1',
                 'components.*.inventoryId'  => 'required_with:components|string',

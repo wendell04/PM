@@ -10,7 +10,17 @@ async function req(path, token, opts = {}) {
     },
   });
   const json = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(json.message ?? `HTTP ${res.status}`);
+  if (!res.ok) {
+    // The API already names the offending fields; this used to read json.message alone and show a
+    // bare "Validation failed", which says nothing a person can act on and turns a one-glance fix
+    // into an investigation.
+    const detail = json.errors && typeof json.errors === 'object'
+      ? Object.entries(json.errors)
+          .map(([field, msgs]) => `${field}: ${Array.isArray(msgs) ? msgs.join(' ') : msgs}`)
+          .join(' | ')
+      : '';
+    throw new Error(detail ? `${json.message ?? 'Request failed'} - ${detail}` : (json.message ?? `HTTP ${res.status}`));
+  }
   return json.data !== undefined ? json.data : json;
 }
 
