@@ -949,6 +949,29 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
   // One click here starts real work or hands the batch to the next station, from a compact row in a
   // busy panel. Neither is easy to undo, so both ask first.
   const [joConfirm, setJoConfirm] = useState(null);
+  // A status change is the one thing on this screen that reaches the CUSTOMER: it emails them and,
+  // at the far end, closes the sale. So each one says what it will actually do rather than a bare
+  // "Are you sure?", which teaches people to click through without reading.
+  const STATUS_COPY = {
+    processing:         { title: 'Accept this order?',       label: 'Accept order',       body: 'The customer is told you have accepted their order and started work.' },
+    in_production:      { title: 'Move to production?',      label: 'Move to production', body: 'The order moves to the production floor.' },
+    for_qc:             { title: 'Send to quality control?', label: 'Send to QC',         body: 'Quality control decides what passes. Anything rejected comes back to be remade.' },
+    ready_for_delivery: { title: 'Mark ready for delivery?', label: 'Mark ready',         body: 'The order is packed and waiting for the courier.' },
+    for_delivery:       { title: 'Send this out?',           label: 'Send it out',        body: 'The customer is notified that their order is on the way.' },
+    delivered:          { title: 'Mark as delivered?',       label: 'Mark delivered',     body: 'This closes the sale. It counts as revenue in Reports, the customer is asked to leave a review, and the only way back is to mark the order Returned.', danger: true },
+    returned:           { title: 'Mark as returned?',        label: 'Mark returned',      body: 'The sale is reversed. If you ticked that the goods came back sellable, ready-made items go back into stock. Personalised items never do.', danger: true },
+    cancelled:          { title: 'Cancel this order?',       label: 'Yes, cancel it',     body: 'Reserved material is released back to stock and the customer is notified. Any deposit is handled under the cancellation terms they accepted. This cannot be undone.', danger: true },
+    awaiting_payment:   { title: 'Ask for payment?',         label: 'Request payment',    body: 'The customer is asked to pay before this goes any further.' },
+  };
+  const statusCopy = (v) => {
+    const k = String(v ?? '').toLowerCase().replace(/[\s-]+/g, '_');
+    return STATUS_COPY[k] ?? {
+      title: 'Update this order?',
+      label: `Set to ${getStatusBadge(v).label}`,
+      body: `This moves the order to ${getStatusBadge(v).label} and notifies the customer.`,
+    };
+  };
+
   const JO_COPY = {
     'In Progress': { title: 'Start this job?',            body: 'Production begins and the reserved material is committed to it.', label: 'Start' },
     'QC_Pending':  { title: 'Send to quality control?',   body: 'The batch leaves the bench and QC decides what passes. Anything rejected comes back to be remade.', label: 'Send to QC' },
@@ -1069,7 +1092,10 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
 
   const handleUpdateStatus = async () => {
     if (!selStatus || selStatus === lo.orderStatus) return;
-    setIsUpdating(true); setUpdateErr(''); setConfirmSt(false);
+    // The modal stays open until this SUCCEEDS. Closing it up front left the admin looking at an
+    // unchanged screen for up to 15 seconds with no sign anything was happening, and if the request
+    // failed the confirmation was already gone.
+    setIsUpdating(true); setUpdateErr('');
     try {
       const payload = selStatus === 'Paid' ? { paymentStatus:'paid' } : { orderStatus: selStatus };
       // A return needs two facts nothing else records: why the goods came back, and whether they are
@@ -1087,6 +1113,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
         ? { ...lo, paymentStatus:'paid' }
         : { ...lo, orderStatus: selStatus };
       setLo(updated);
+      setConfirmSt(false);
       if (onStatusUpdated) onStatusUpdated(lo.id, updated);
     } catch (err) { setUpdateErr(err.message || 'Update failed'); }
     finally { setIsUpdating(false); }
@@ -1861,18 +1888,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                   Cancel this order
                 </button>
               )}
-              {confirmSt && selStatus === 'cancelled' && (
-                <div style={{ display:'flex', gap:'6px' }}>
-                  <button onClick={handleUpdateStatus} disabled={isUpdating}
-                    style={{ flex:1, padding:'6px 0', background:'#c2410c', border:'none', borderRadius:'6px', color:'#fff', fontSize:'12px', fontWeight:700, cursor:isUpdating?'not-allowed':'pointer' }}>
-                    {isUpdating ? 'Cancelling...' : 'Yes, cancel the order'}
-                  </button>
-                  <button onClick={() => { setConfirmSt(false); setSelStatus(lo.orderStatus); }}
-                    style={{ padding:'6px 10px', background:'transparent', border:'1px solid var(--border)', borderRadius:'6px', color:'var(--gray)', fontSize:'12px', cursor:'pointer' }}>
-                    Keep it
-                  </button>
-                </div>
-              )}
+              {/* Confirmation is a modal now - see the ConfirmModal at the end of this component. */}
             </div>
           ) : openJobs.length > 0 && available.length === 0 ? (
             <span style={{ fontSize:'11px', color:'var(--gray)', fontStyle:'italic' }}>
@@ -1921,24 +1937,14 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                 </div>
               )}
 
-              {!confirmSt ? (
-                <button onClick={() => selStatus !== lo.orderStatus && setConfirmSt(true)}
-                  disabled={selStatus === lo.orderStatus}
-                  style={{ ...S.btnSmGhost, justifyContent:'center', opacity: selStatus===lo.orderStatus?.5:1, cursor: selStatus===lo.orderStatus?'not-allowed':'pointer' }}>
-                  Update Status
-                </button>
-              ) : (
-                <div style={{ display:'flex', gap:'6px' }}>
-                  <button onClick={handleUpdateStatus} disabled={isUpdating}
-                    style={{ flex:1, padding:'6px 0', background:'var(--gold)', border:'none', borderRadius:'6px', color:'var(--dark)', fontSize:'12px', fontWeight:700, cursor:isUpdating?'not-allowed':'pointer' }}>
-                    {isUpdating ? 'Updating...' : `Set to ${selStatus}`}
-                  </button>
-                  <button onClick={() => { setConfirmSt(false); setSelStatus(lo.orderStatus); }}
-                    style={{ padding:'6px 10px', background:'transparent', border:'1px solid var(--border)', borderRadius:'6px', color:'var(--gray)', fontSize:'12px', cursor:'pointer' }}>
-                    Cancel
-                  </button>
-                </div>
-              )}
+              {/* One button, one modal. The old version swapped this button in place for a "Set to X"
+                  confirm, so a double-click landed on the confirm and fired it - the exact accident
+                  the step was there to prevent. */}
+              <button onClick={() => selStatus !== lo.orderStatus && setConfirmSt(true)}
+                disabled={selStatus === lo.orderStatus}
+                style={{ ...S.btnSmGhost, justifyContent:'center', opacity: selStatus===lo.orderStatus?.5:1, cursor: selStatus===lo.orderStatus?'not-allowed':'pointer' }}>
+                Update Status
+              </button>
               {updateErr && <div style={{ fontSize:'11px', color:'#991b1b' }}>{updateErr}</div>}
             </div>
           ) : (
@@ -2191,6 +2197,19 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
         )}
         {expireErr && <span style={{ fontSize:'11px', color:'#991b1b' }}>{expireErr}</span>}
       </div>
+
+      <ConfirmModal
+        open={confirmSt && selStatus !== lo.orderStatus}
+        onClose={() => { setConfirmSt(false); setSelStatus(lo.orderStatus); }}
+        onConfirm={handleUpdateStatus}
+        loading={isUpdating}
+        title={statusCopy(selStatus).title}
+        confirmLabel={statusCopy(selStatus).label}
+        confirmStyle={statusCopy(selStatus).danger ? 'danger' : 'primary'}
+        message={updateErr
+          ? `${updateErr}. Nothing was changed - the order is still ${getStatusBadge(lo.orderStatus).label}.`
+          : `${lo.orderRef || 'This order'}: ${statusCopy(selStatus).body}`}
+      />
 
       <ConfirmModal
         open={!!joConfirm}
