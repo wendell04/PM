@@ -647,7 +647,10 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
       let min = Infinity;
       for (const item of bom.items || []) {
         const mat   = materials.find(m => m.id === item.matId);
-        const total = mat?.stockQty ?? 0;
+        // Net of what is already promised to open orders. stockQty alone is what is on the shelf,
+        // not what is free, so this said "can produce 30" while the storefront - which does subtract
+        // reservations - offered fewer, and the same product disagreed with itself.
+        const total = Math.max(0, (mat?.stockQty ?? 0) - (mat?.reservedQty ?? 0));
         const can   = Math.floor(total / (item.qty || 1));
         if (can < min) min = can;
       }
