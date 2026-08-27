@@ -1618,10 +1618,16 @@ class OrderController extends Controller
             $deduct = min($batchQty, $remaining);
             $batch['remainingQty'] = $batchQty - $deduct;
             $remaining -= $deduct;
+            // A batch recorded without a unit cost used to price the sale at zero, and zero cost is
+            // not "unknown" to Reports - it is pure profit. A ready-made sale showed a cost of goods
+            // of P0.00 against a material carrying a base cost of P32. Fall back to what the item
+            // itself knows rather than booking it free.
+            $batchCost = (float) ($batch['unitCost'] ?? 0);
+            if ($batchCost <= 0) $batchCost = $this->unitCostOf($inventory);
             $batchDeductions[] = [
                 'batchId'  => $batch['batchId'] ?? null,
                 'qty'      => $deduct,
-                'unitCost' => $batch['unitCost'] ?? 0,
+                'unitCost' => $batchCost,
             ];
         }
         unset($batch);

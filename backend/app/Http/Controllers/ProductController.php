@@ -27,9 +27,19 @@ class ProductController extends Controller
         $variantAvailableQty = null;
 
         // ── Multi-variant BOM product (bomGroupName) ──────────────────────────
-        if (!empty($product->bomGroupName)) {
+        // This branch finds BOMs by NAME, and a name is editable. Renaming a BOM in Master Data
+        // therefore used to orphan every product still holding the old one: the query returned
+        // nothing, this branch still claimed the product, and availability quietly became zero -
+        // in-stock goods showing as sold out with nothing on any screen to say why.
+        // Matching nothing now means "not this branch", so the per-combination bomId lookup below
+        // takes over, and that one is keyed on an id no rename can change.
+        $groupBoms = !empty($product->bomGroupName)
+            ? \App\Models\BillOfMaterial::where('productGroupName', $product->bomGroupName)->get()
+            : collect();
+
+        if ($groupBoms->count() > 0) {
             try {
-                $boms = \App\Models\BillOfMaterial::where('productGroupName', $product->bomGroupName)->get();
+                $boms = $groupBoms;
                 $variantCanProduce  = [];
                 $variantAvailableQty = [];
 
