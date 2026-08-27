@@ -724,6 +724,7 @@ class JobOrderController extends Controller
                     $take = (int) round($per * $rejected);
                     if ($take <= 0) continue;
 
+                    $lineCost = $this->drawFromBatches($inv, $take);
                     $inv->stockQty = max(0, (int) ($inv->stockQty ?? 0) - $take);
                     $inv->save();
                     try {
@@ -731,8 +732,10 @@ class JobOrderController extends Controller
                             'inventoryId'  => (string) $inv->_id,
                             'quantity'     => -$take,
                             'remainingQty' => (int) ($inv->stockQty ?? 0),
-                            'unitCost'     => $this->unitCostOf($inv),
-                            'totalCost'    => round($this->unitCostOf($inv) * $take, 2),
+                            // From the batches actually drawn, not a headline average - scrap is
+                            // charged at what the scrapped units really cost.
+                            'unitCost'     => $take > 0 ? round($lineCost / $take, 4) : 0,
+                            'totalCost'    => round($lineCost, 2),
                             'reason'       => 'qc_scrap',
                             ...$attribution,
                             // Stock Out History filters on type='deduction' and reads the note from
@@ -772,6 +775,7 @@ class JobOrderController extends Controller
                         if ($consumeQty <= 0) continue;
 
                         // Deduct stockQty and reservedQty, increment consumedQty
+                        $lineCost = $this->drawFromBatches($inventory, (int) round($consumeQty));
                         $inventory->stockQty    = max(0, ($inventory->stockQty    ?? 0) - $consumeQty);
                         $inventory->reservedQty = max(0, ($inventory->reservedQty ?? 0) - $consumeQty);
                         $inventory->consumedQty = ($inventory->consumedQty ?? 0) + $consumeQty;
@@ -782,8 +786,8 @@ class JobOrderController extends Controller
                             'inventoryId'  => (string) $inventory->_id,
                             'quantity'     => $consumeQty,
                             'remainingQty' => $inventory->stockQty,
-                            'unitCost'     => $this->unitCostOf($inventory),
-                            'totalCost'    => $this->unitCostOf($inventory) * $consumeQty,
+                            'unitCost'     => $consumeQty > 0 ? round($lineCost / $consumeQty, 4) : 0,
+                            'totalCost'    => round($lineCost, 2),
                             'reason'       => 'production',
                             'type'         => 'deduction',
                             ...$attribution,
@@ -954,6 +958,53 @@ class JobOrderController extends Controller
      * the cost of goods came out as zero, which makes profit and margin fiction.
      * Same fallback order the BOM screens already use, plus the batch as a last resort.
      */
+    /**
+     * Draw qty out of the batch ledger, oldest batch first, and return what it actually cost.
+     *
+     * Every stock write in this controller moved stockQty alone and never touched batches, so the two
+     * drifted apart with each QC pass. Master Data sums batch remainingQty, Product Stock reads
+     * stockQty, and the same material read 50 on one screen and 30 on the other. Worse than the
+     * mismatch: the low-stock and out-of-stock counters read the inflated number so they stopped
+     * warning, and FIFO costing kept pricing sales from batches that were physically empty.
+     *
+     * Does not save - the caller does, so one write carries both the batch and the stockQty change.
+     */
+    private function drawFromBatches($inv, int $qty): float
+    {
+        $qty = max(0, $qty);
+        if ($qty <= 0) return 0.0;
+
+        $batches = $inv->batches ?? [];
+        if (!is_array($batches) || !count($batches)) {
+            return $this->unitCostOf($inv) * $qty;
+        }
+
+        usort($batches, fn ($x, $y) => strtotime($x['dateReceived'] ?? '0') <=> strtotime($y['dateReceived'] ?? '0'));
+
+        $left = $qty;
+        $cost = 0.0;
+        foreach ($batches as &$batch) {
+            if ($left <= 0) break;
+            $have = (int) ($batch['remainingQty'] ?? $batch['goodQty'] ?? 0);
+            if ($have <= 0) continue;
+            $take = min($have, $left);
+            $batch['remainingQty'] = $have - $take;
+            $cost += $take * (float) ($batch['unitCost'] ?? 0);
+            $left -= $take;
+        }
+        unset($batch);
+
+        $inv->batches = $batches;
+
+        // Whatever the ledger could not cover still left the shelf. Pricing it at the item's own cost
+        // is a guess, but recording it free is a lie, and free is what Reports would believe.
+        if ($left > 0) {
+            $cost += $left * $this->unitCostOf($inv);
+        }
+
+        return $cost;
+    }
+
     private function unitCostOf($inv): float
     {
         $c = (float) ($inv->lastUnitCost ?: $inv->averageCost ?: $inv->baseCost ?: 0);
@@ -1080,6 +1131,7 @@ class JobOrderController extends Controller
                 $take = (int) round($per * $qty);
                 if ($take <= 0) continue;
 
+                $lineCost = $this->drawFromBatches($inv, $take);
                 $inv->stockQty = max(0, (int) ($inv->stockQty ?? 0) - $take);
                 $inv->save();
                 $consumed[] = ['inventoryId' => (string) $inv->_id, 'name' => $inv->name, 'qty' => $take];
@@ -1089,8 +1141,8 @@ class JobOrderController extends Controller
                         'inventoryId'  => (string) $inv->_id,
                         'quantity'     => -$take,
                         'remainingQty' => (int) ($inv->stockQty ?? 0),
-                        'unitCost'     => $this->unitCostOf($inv),
-                        'totalCost'    => round($this->unitCostOf($inv) * $take, 2),
+                        'unitCost'     => $take > 0 ? round($lineCost / $take, 4) : 0,
+                        'totalCost'    => round($lineCost, 2),
                         'reason'       => 'production_spoilage',
                         'reference'    => $jo->joId,
                         'note'         => ucfirst($validated['kind']) . ' spoilage: ' . $reason,
