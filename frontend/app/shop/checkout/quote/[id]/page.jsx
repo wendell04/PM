@@ -1,4 +1,5 @@
 'use client';
+import NoImage from '@/components/NoImage';
 
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
@@ -279,7 +280,7 @@ export default function QuoteCheckoutPage() {
                   {li.thumbnail
                     /* eslint-disable-next-line @next/next/no-img-element */
                     ? <img src={li.thumbnail} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                    : <span style={{ color: '#9ca3af', fontSize: '.6rem' }}>No image</span>}
+                    : <NoImage size={22} />}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontWeight: 700, fontSize: '.84rem', lineHeight: 1.3 }}>

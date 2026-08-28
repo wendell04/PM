@@ -1,4 +1,5 @@
 'use client';
+import NoImage from '@/components/NoImage';
 import { fileExtLabel } from '@/lib/shopUtils';
 import { cloudinaryThumb } from '@/lib/cloudinaryImage';
 
@@ -461,20 +462,7 @@ export default function CartPage() {
                       {item.product.images?.[0]
                         /* eslint-disable-next-line @next/next/no-img-element */
                         ? <img src={item.product.images[0]} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                        : (
-                          /* The same picture-frame mark the shop grid uses. Two different
-                             placeholders for one missing image reads as two different problems -
-                             and the bare words look like an error where the icon reads as an
-                             absence, which is what it is. Text alone is also unreadable at this
-                             size once the thumbnail shrinks on mobile. */
-                          <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
-                            stroke="#9ca3af" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"
-                            role="img" aria-label="No image">
-                            <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-                            <circle cx="8.5" cy="8.5" r="1.5" />
-                            <polyline points="21 15 16 10 5 21" />
-                          </svg>
-                        )}
+                        : <NoImage size={22} />}
                     </Link>
 
                     <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 7 }}>

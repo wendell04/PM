@@ -1,4 +1,5 @@
 'use client';
+import NoImage from '@/components/NoImage';
 import { PLAIN_OR_CUSTOM_ENABLED } from '@/lib/featureFlags';
 
 import { useState, useEffect, useRef } from 'react';
@@ -1194,7 +1195,7 @@ export default function ShopClient({
                     />
                   ) : (
                     <div className="shop-carousel-bg-image shop-carousel-placeholder">
-                      <span>No Image</span>
+                      <NoImage size={40} />
                     </div>
                   )}
                   {/* Only show overlay if there's text to protect */}

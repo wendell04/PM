@@ -1,4 +1,5 @@
 'use client';
+import NoImage from '@/components/NoImage';
 
 /**
  * BANNER MANAGEMENT PAGE
@@ -957,7 +958,7 @@ export default function BannerManagementPage() {
                     <button className="banner-order-btn" onClick={(e) => { e.stopPropagation(); moveBanner(banners.indexOf(banner), 1); }} disabled={index === filteredBanners.length - 1 || isSubmitting} title="Move down">▼</button>
                   </div>
                   <div className="banner-item-thumbnail">
-                    {banner.image ? <Image src={banner.image} alt={banner.name} width={48} height={48} style={{ objectFit: "cover" }} unoptimized /> : <span>No Image</span>}
+                    {banner.image ? <Image src={banner.image} alt={banner.name} width={48} height={48} style={{ objectFit: "cover" }} unoptimized /> : <NoImage size={22} />}
                   </div>
                   <div className="banner-item-info">
                     <div className="banner-item-header">
@@ -1062,7 +1063,7 @@ export default function BannerManagementPage() {
                   <div key={banner.id} className={`banner-preview-slide ${index === currentSlide ? 'active' : 'inactive'}`}>
                     {displayBanner.image
                       ? <Image src={displayBanner.image} alt={displayBanner.name} className="banner-preview-image" fill style={{ objectFit: "cover" }} unoptimized />
-                      : <div style={{ width: '100%', height: '100%', background: 'var(--dark3)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--gray)' }}>No Image</div>
+                      : <div style={{ width: '100%', height: '100%', background: 'var(--dark3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><NoImage size={40} color="var(--gray)" /></div>
                     }
                     <div className="banner-preview-overlay"></div>
                     {(displayBanner.headline || displayBanner.subtext || displayBanner.ctaLabel) && (

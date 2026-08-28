@@ -1,4 +1,5 @@
 'use client';
+import NoImage from '@/components/NoImage';
 import { PLAIN_OR_CUSTOM_ENABLED } from '@/lib/featureFlags';
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
@@ -232,7 +233,7 @@ function StorefrontPreview({ name, description, thumbnail, priceRange, variantCo
                 <circle cx="8.5" cy="8.5" r="1.5"/>
                 <polyline points="21 15 16 10 5 21"/>
               </svg>
-              <div style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>No image</div>
+              <NoImage size={28} color="var(--gray)" />
             </div>
           )}
           {isCustomizable && (
