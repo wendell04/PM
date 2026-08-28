@@ -720,8 +720,16 @@ export default function SalesListPage() {
     const th = 'background:#1a1a1a;color:#ffffff;font-weight:bold;padding:6px;border:1px solid #444;';
     const td = 'padding:5px;border:1px solid #ddd;';
 
-    const body = dataRows.map(r => '<tr>' + r.map((c, i) =>
-      `<td style="${td}${i === 10 ? profitStyle(r) : ''}">${esc(c)}</td>`).join('') + '</tr>').join('');
+    // A heavier rule where the order ref changes. On a multi-item order the reader was left working
+    // out by eye where one order stopped and the next began - and the order-level columns, written on
+    // the first line only, read as though the second line had no shipping rather than sharing the
+    // first line's. One line does the whole job; nothing else about the layout needs to move.
+    const body = dataRows.map((r, idx) => {
+      const startsOrder = idx === 0 || r[0] !== dataRows[idx - 1][0];
+      const edge = startsOrder ? 'border-top:2px solid #333;' : '';
+      return '<tr>' + r.map((c, i) =>
+        `<td style="${td}${edge}${i === 10 ? profitStyle(r) : ''}">${esc(c)}</td>`).join('') + '</tr>';
+    }).join('');
 
     const foot = '<tr>' + totals.map(c =>
       `<td style="${td}background:#f0f0f0;font-weight:bold;border-top:2px solid #333;">${esc(c)}</td>`).join('') + '</tr>';

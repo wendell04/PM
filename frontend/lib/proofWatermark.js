@@ -45,6 +45,15 @@ export function watermarkedProof(url) {
   // Already transformed - do not stack a second set on top.
   if (/\/upload\/(w_|q_|l_text|f_|vc_)/.test(url)) return url;
 
+  // A raw asset - PDF, AI, PSD - is served byte-for-byte and accepts no transformation. Its URL still
+  // contains /upload/, so without this the resize and the overlay get spliced into a path Cloudinary
+  // rejects, and a proof that was merely unprotected becomes a proof that will not open at all.
+  //
+  // The honest consequence: a PDF proof goes out at full resolution with no mark on it. There is no
+  // way to downscale one here, so if that matters the shop should send a JPEG preview for approval
+  // and keep the PDF for production.
+  if (/\/raw\/upload\//.test(url)) return url;
+
   const tx = VIDEO_EXT.test(url) ? VIDEO_TX : IMAGE_TX;
   return url.replace(UPLOAD, `${UPLOAD}${tx}/`);
 }

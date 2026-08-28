@@ -1,4 +1,5 @@
 'use client';
+import { cloudinaryThumb } from '@/lib/cloudinaryImage';
 
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
@@ -78,6 +79,9 @@ function LoginRequiredModal({ isOpen, onClose }) {
 }
 
 export default function CartPage() {
+  // Which cart lines have their attachment list expanded. Keyed by line, so opening one
+  // does not open every other multi-file item on the page.
+  const [openFiles, setOpenFiles] = useState({});
   const router = useRouter();
   const { cartItems, isCartLoading, updateQty, removeFromCart, bulkRemove } = useCart();
   const { token } = useAuth();
@@ -504,21 +508,72 @@ export default function CartPage() {
                               href={designHref} target="_blank" rel="noopener noreferrer"
                               style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, marginRight: 'auto', textDecoration: 'none' }}
                             >
-                              <span style={{ width: 34, height: 34, borderRadius: 7, overflow: 'hidden', background: '#fff', border: '1px solid #bbf7d0', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                              <span style={{ width: 34, height: 34, borderRadius: 7, overflow: 'hidden', background: '#fff', border: '1px solid #bbf7d0', flexShrink: 0,
+                                display: (fileCount > 1 && openFiles[item.key]) ? 'none' : 'flex', alignItems: 'center', justifyContent: 'center' }}>
                                 {IMAGE_RE.test(designHref)
                                   /* eslint-disable-next-line @next/next/no-img-element */
-                                  ? <img src={designHref} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                  ? <img src={cloudinaryThumb(designHref, 96)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                                   : <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#166534" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>}
                               </span>
                               <span style={{ minWidth: 0 }}>
-                                <span style={{ display: 'block', fontSize: '.76rem', fontWeight: 700, color: '#166534' }}>
+                                <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '.76rem', fontWeight: 700, color: '#166534' }}>
                                   {fileCount} file{fileCount === 1 ? '' : 's'} attached
+                                  {fileCount > 1 && (
+                                    /* The summary line named the first file and cut the rest off mid-word,
+                                       so a customer with five attachments could see one and had no way to
+                                       check the others without leaving the cart. */
+                                    <span
+                                      role="button" tabIndex={0}
+                                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); setOpenFiles(p => ({ ...p, [item.key]: !p[item.key] })); }}
+                                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); setOpenFiles(p => ({ ...p, [item.key]: !p[item.key] })); } }}
+                                      title={openFiles[item.key] ? 'Hide the file list' : 'Show all files'}
+                                      style={{ display: 'inline-flex', cursor: 'pointer', color: '#166534', opacity: .75 }}
+                                    >
+                                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+                                        style={{ transform: openFiles[item.key] ? 'rotate(180deg)' : 'none', transition: 'transform .18s' }}>
+                                        <polyline points="6 9 12 15 18 9" />
+                                      </svg>
+                                    </span>
+                                  )}
                                 </span>
-                                <span style={{ display: 'block', fontSize: '.7rem', color: '#166534', opacity: .8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                  {fileCount > 1
-                                    ? item.designFiles.map(f => f.name || fileNameFromUrl(f.url)).join(', ')
-                                    : (item.designName || fileNameFromUrl(designHref))}
-                                </span>
+                                {(fileCount <= 1 || !openFiles[item.key]) ? (
+                                  <span style={{ display: 'block', fontSize: '.7rem', color: '#166534', opacity: .8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    {fileCount > 1
+                                      ? item.designFiles.map(f => f.name || fileNameFromUrl(f.url)).join(', ')
+                                      : (item.designName || fileNameFromUrl(designHref))}
+                                  </span>
+                                ) : (
+                                  /* Each file its own row and its own link - the collapsed line is one
+                                     anchor covering all of them, which opens only the first. */
+                                  <span style={{ display: 'block', marginTop: 4 }}>
+                                    {item.designFiles.map((f, fi) => (
+                                      <a
+                                        key={fi}
+                                        href={f.url} target="_blank" rel="noopener noreferrer"
+                                        onClick={(e) => e.stopPropagation()}
+                                        style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '3px 0',
+                                          textDecoration: 'none', minWidth: 0 }}
+                                      >
+                                        {/* Its own tile per row. One shared icon beside a stack of names says
+                                            nothing about which file is which - and when four of five are
+                                            artwork, the thumbnail IS the identifying detail. */}
+                                        <span style={{ width: 26, height: 26, borderRadius: 6, overflow: 'hidden',
+                                          background: '#fff', border: '1px solid #bbf7d0', flexShrink: 0,
+                                          display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                          {IMAGE_RE.test(f.url)
+                                            /* eslint-disable-next-line @next/next/no-img-element */
+                                            ? <img src={cloudinaryThumb(f.url, 80)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                            : <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#166534" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>}
+                                        </span>
+                                        <span style={{ fontSize: '.7rem', color: '#166534', opacity: .9,
+                                          textDecoration: 'underline', overflow: 'hidden',
+                                          textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                          {f.name || fileNameFromUrl(f.url)}
+                                        </span>
+                                      </a>
+                                    ))}
+                                  </span>
+                                )}
                               </span>
                             </a>
                           ) : (

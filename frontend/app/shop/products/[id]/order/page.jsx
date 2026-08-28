@@ -1275,7 +1275,7 @@ function CustomOrderInner() {
                 <div style={{ minWidth: 0 }}>
                   <p style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{product.name}</p>
                   {variantLabel && <p style={{ fontSize: '0.78rem', color: 'var(--gray)', margin: '0 0 4px' }}>{variantLabel}</p>}
-                  <div style={{ display: 'inline-flex', background: 'rgba(212,168,67,0.12)', color: 'var(--gold)', borderRadius: '999px', padding: '1px 8px', fontSize: '0.6rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Customizable</div>
+                  <div style={{ display: 'inline-flex', background: 'rgba(212,168,67,0.12)', color: 'var(--gold)', borderRadius: '999px', padding: '1px 8px', fontSize: '0.6rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Print to order</div>
                 </div>
               </div>
 

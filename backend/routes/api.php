@@ -106,7 +106,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/orders/my',                            [OrderController::class, 'myOrders']);
     Route::get('/orders/my/{id}',                       [OrderController::class, 'myOrderShow']);
     Route::post('/orders/my/{id}/cancel',               [OrderController::class, 'cancelMyOrder']);
-    Route::post('/orders/my/{id}/reupload-design',       [OrderController::class, 'reuploadDesign']);
+    Route::post('/orders/my/{id}/reupload-design',       [OrderController::class, 'reuploadDesign'])->middleware('throttle:20,1');
     Route::post('/orders/my/{id}/approve-admin-design', [OrderController::class, 'approveAdminDesign']);
     Route::post('/orders/my/{id}/request-revision',     [OrderController::class, 'requestDesignRevision']);
     Route::post('/orders',                              [OrderController::class, 'store']);
@@ -361,7 +361,10 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::post('/order-requests',                [OrderRequestController::class, 'store']);
     Route::get('/my/order-requests',              [OrderRequestController::class, 'myRequests']);
-    Route::post('/order-requests/upload-design',  [OrderRequestController::class, 'uploadDesign']);
+    // Uploads are the only unauthenticated-cost endpoint the shop has: every accepted file is
+// Cloudinary storage and bandwidth the shop pays for, and nothing else here caps how fast a
+// logged-in account can push them. 20/minute is far above any real customer attaching artwork.
+    Route::post('/order-requests/upload-design',  [OrderRequestController::class, 'uploadDesign'])->middleware('throttle:20,1');
     Route::post('/order-requests/my/{id}/cancel', [ShopOrderRequestController::class, 'cancel']);
 
     // ─── Shop Order Tracking (Customer) ──────────────────────────────────────

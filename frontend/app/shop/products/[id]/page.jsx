@@ -633,7 +633,7 @@ export default function ProductDetailPage() {
                 )}
                 {product.isCustom && (
                   <div style={{ position: 'absolute', top: '0.75rem', right: '0.75rem', zIndex: 3, background: '#D4A843', color: '#000', fontSize: '0.65rem', fontWeight: 700, padding: '4px 10px', borderRadius: '6px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                    Customizable
+                    Print to order
                   </div>
                 )}
                 {displayImages[activeImage] ? (

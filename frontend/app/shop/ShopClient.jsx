@@ -327,7 +327,7 @@ function QuickViewModal({ product, flashSale, onClose, onToast }) {
                   requirement - as though the only way to buy this is to design something. */}
               {product.isCustom && (
                 <span className="shop-qv-badge customizable">
-                  {(PLAIN_OR_CUSTOM_ENABLED && (product.allowPlainPurchase ?? false)) ? 'PLAIN OR CUSTOM' : 'CUSTOMIZABLE'}
+                  {(PLAIN_OR_CUSTOM_ENABLED && (product.allowPlainPurchase ?? false)) ? 'PLAIN OR CUSTOM' : 'PRINT TO ORDER'}
                 </span>
               )}
             </div>
@@ -705,7 +705,7 @@ function ProductCard({ product, onAddToCart, onQuickView, flashSale }) {
           {/* Customizable badge */}
           {product.isCustom && (
             <div className="shop-custom-badge">
-              {(PLAIN_OR_CUSTOM_ENABLED && (product.allowPlainPurchase ?? false)) ? 'Plain or custom' : 'Customizable'}
+              {(PLAIN_OR_CUSTOM_ENABLED && (product.allowPlainPurchase ?? false)) ? 'Plain or custom' : 'Print to order'}
             </div>
           )}
 

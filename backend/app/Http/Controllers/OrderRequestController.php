@@ -781,11 +781,22 @@ class OrderRequestController extends Controller
             ], 500);
         }
 
+        // `auto` classifies a PDF as an IMAGE resource, because Cloudinary can rasterise and
+        // transform one. The delivered URL is then /image/upload/....pdf, which returns 401 until PDF
+        // delivery is enabled on the account and, once enabled, serves a derived asset rather than the
+        // bytes the customer uploaded - so the browser reports "Failed to load PDF document" on a file
+        // that is perfectly valid. Artwork must come back byte-identical: it goes to the printer.
+        //
+        // `raw` stores and serves the original untouched. Only the formats Cloudinary genuinely treats
+        // as images stay on the image pipeline, where thumbnails and transforms are worth having.
+        $ext          = strtolower($validated['design']->getClientOriginalExtension());
+        $resourceType = in_array($ext, ['jpg', 'jpeg', 'png', 'webp', 'gif', 'svg'], true) ? 'image' : 'raw';
+
         $response = Http::attach(
             'file',
             file_get_contents($validated['design']->getPathname()),
             $validated['design']->getClientOriginalName()
-        )->post("https://api.cloudinary.com/v1_1/{$cloudName}/auto/upload", [
+        )->post("https://api.cloudinary.com/v1_1/{$cloudName}/{$resourceType}/upload", [
             'upload_preset' => $uploadPreset,
             'folder'        => 'pmp-designs',
         ]);
