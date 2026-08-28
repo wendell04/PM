@@ -1,4 +1,5 @@
 'use client';
+import { fileExtLabel } from '@/lib/shopUtils';
 import { cloudinaryThumb } from '@/lib/cloudinaryImage';
 
 import { useState, useEffect, useMemo, useRef } from 'react';
@@ -568,7 +569,7 @@ export default function CartPage() {
                                           {IMAGE_RE.test(f.url)
                                             /* eslint-disable-next-line @next/next/no-img-element */
                                             ? <img src={cloudinaryThumb(f.url, 80)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                                            : <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#166534" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>}
+                                            : <span style={{ fontSize: '7.5px', fontWeight: 800, color: '#166534', letterSpacing: '.02em' }}>{fileExtLabel(f.url, 'FILE')}</span>}
                                         </span>
                                         <span style={{ fontSize: '.7rem', color: '#166534', opacity: .9,
                                           textDecoration: 'underline', overflow: 'hidden',

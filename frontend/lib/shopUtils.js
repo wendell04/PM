@@ -147,3 +147,20 @@ export function formatPeso(n) {
     maximumFractionDigits: 2,
   })}`;
 }
+
+// The extension, upper-cased, for a tile that cannot show a picture of itself.
+//
+// A generic document icon tells the reader only that this is not an image - which they can already
+// see. Whether it is a PDF they can open in the browser or an AI file that will download and want
+// Illustrator is the thing they actually need before clicking, and it is three characters.
+//
+// Query strings and Cloudinary's version segment are stripped first; anything with no usable
+// extension keeps the generic word rather than showing a fragment of a filename.
+export function fileExtLabel(url, fallback = 'FILE') {
+  const clean = String(url ?? '').split(/[?#]/)[0];
+  const name  = clean.substring(clean.lastIndexOf('/') + 1);
+  const dot   = name.lastIndexOf('.');
+  if (dot <= 0) return fallback;
+  const ext = name.slice(dot + 1);
+  return /^[a-z0-9]{1,5}$/i.test(ext) ? ext.toUpperCase() : fallback;
+}

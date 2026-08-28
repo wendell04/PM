@@ -1,4 +1,5 @@
 'use client';
+import { fileExtLabel } from '@/lib/shopUtils';
 import { cloudinaryThumb } from '@/lib/cloudinaryImage';
 
 // One stage plus a thumbnail strip, for reviewing the design files sent on an order.
@@ -163,7 +164,7 @@ function Thumb({ url, size, active, onClick, title }) {
         // eslint-disable-next-line @next/next/no-img-element
         <img src={cloudinaryThumb(url, 160)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
       ) : (
-        <span style={{ display: 'flex', width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', color: 'var(--gold)', fontSize: '0.55rem', fontWeight: 700 }}>FILE</span>
+        <span style={{ display: 'flex', width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', color: 'var(--gold)', fontSize: '0.55rem', fontWeight: 700 }}>{fileExtLabel(url)}</span>
       )}
     </button>
   );
