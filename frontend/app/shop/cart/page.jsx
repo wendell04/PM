@@ -509,7 +509,7 @@ export default function CartPage() {
                               style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, marginRight: 'auto', textDecoration: 'none' }}
                             >
                               <span style={{ width: 34, height: 34, borderRadius: 7, overflow: 'hidden', background: '#fff', border: '1px solid #bbf7d0', flexShrink: 0,
-                                display: (fileCount > 1 && openFiles[item.key]) ? 'none' : 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                display: (fileCount > 1 && openFiles[item.lineId]) ? 'none' : 'flex', alignItems: 'center', justifyContent: 'center' }}>
                                 {IMAGE_RE.test(designHref)
                                   /* eslint-disable-next-line @next/next/no-img-element */
                                   ? <img src={cloudinaryThumb(designHref, 96)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
@@ -524,19 +524,19 @@ export default function CartPage() {
                                        check the others without leaving the cart. */
                                     <span
                                       role="button" tabIndex={0}
-                                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); setOpenFiles(p => ({ ...p, [item.key]: !p[item.key] })); }}
-                                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); setOpenFiles(p => ({ ...p, [item.key]: !p[item.key] })); } }}
-                                      title={openFiles[item.key] ? 'Hide the file list' : 'Show all files'}
+                                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); setOpenFiles(p => ({ ...p, [item.lineId]: !p[item.lineId] })); }}
+                                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); setOpenFiles(p => ({ ...p, [item.lineId]: !p[item.lineId] })); } }}
+                                      title={openFiles[item.lineId] ? 'Hide the file list' : 'Show all files'}
                                       style={{ display: 'inline-flex', cursor: 'pointer', color: '#166534', opacity: .75 }}
                                     >
                                       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
-                                        style={{ transform: openFiles[item.key] ? 'rotate(180deg)' : 'none', transition: 'transform .18s' }}>
+                                        style={{ transform: openFiles[item.lineId] ? 'rotate(180deg)' : 'none', transition: 'transform .18s' }}>
                                         <polyline points="6 9 12 15 18 9" />
                                       </svg>
                                     </span>
                                   )}
                                 </span>
-                                {(fileCount <= 1 || !openFiles[item.key]) ? (
+                                {(fileCount <= 1 || !openFiles[item.lineId]) ? (
                                   <span style={{ display: 'block', fontSize: '.7rem', color: '#166534', opacity: .8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                     {fileCount > 1
                                       ? item.designFiles.map(f => f.name || fileNameFromUrl(f.url)).join(', ')

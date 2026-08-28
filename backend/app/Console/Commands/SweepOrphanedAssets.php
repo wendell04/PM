@@ -66,7 +66,11 @@ class SweepOrphanedAssets extends Command
         foreach (DB::connection('mongodb')->getMongoDB()->listCollectionNames() as $name) {
             foreach (DB::connection('mongodb')->collection($name)->raw()->find() as $doc) {
                 $scanned++;
-                $json = json_encode($doc);
+                // Slashes UNescaped, or the /upload/ pattern below never matches: json_encode turns
+                // every URL slash into \/ by default, so res.cloudinary.com/.../upload/ reads as
+                // res.cloudinary.com\/...\/upload\/ and preg_match_all captures nothing - every
+                // referenced asset would then look orphaned.
+                $json = json_encode($doc, JSON_UNESCAPED_SLASHES);
                 if (!$json || !str_contains($json, 'res.cloudinary.com')) continue;
                 // public_id is everything after /upload/ (and any transformation or version segment),
                 // minus the extension - the same id the delete endpoint takes.
@@ -216,10 +220,14 @@ class SweepOrphanedAssets extends Command
         // ── 5. Delete ─────────────────────────────────────────────────────────
         $deleted = 0; $failed = 0;
         foreach (array_slice($orphans, 0, $limit) as $o) {
+            // Admin API delete, not the Upload API's destroy. Both remove an asset, but they
+            // authenticate differently: destroy expects a signed request (api_key + timestamp + a
+            // computed signature), while the Admin API takes the same basic auth the listing above
+            // already uses. Reaching for destroy here would have failed on credentials rather than on
+            // anything to do with the asset - and only when someone finally ran it with --force.
             $res = Http::withBasicAuth($key, $secret)
-                ->asForm()
-                ->post("https://api.cloudinary.com/v1_1/{$cloud}/resources/{$o['type']}/upload/destroy", [
-                    'public_id' => $o['id'],
+                ->delete("https://api.cloudinary.com/v1_1/{$cloud}/resources/{$o['type']}/upload", [
+                    'public_ids' => [$o['id']],
                 ]);
 
             if ($res->successful()) { $deleted++; }

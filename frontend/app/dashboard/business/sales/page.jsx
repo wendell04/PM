@@ -711,7 +711,9 @@ export default function SalesListPage() {
     // amount, since a big number on a big order is not the same thing as a good one.
     const profitStyle = (row) => {
       const margin = Number(row[11]);
-      if (!Number.isFinite(margin)) return '';
+      // An un-costed order writes '' here, and Number('') is 0, not NaN - so without the empty check
+      // a blank margin slips past isFinite and gets painted red as a loss. Missing data, not a loss.
+      if (row[11] === '' || !Number.isFinite(margin)) return '';
       if (margin >= 50) return 'background:#d9ead3;color:#0b5c25;font-weight:bold;';
       if (margin >= 25) return 'background:#fff2cc;color:#7a5c00;font-weight:bold;';
       return 'background:#f9d5d3;color:#8c1d18;font-weight:bold;';

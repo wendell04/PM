@@ -841,8 +841,8 @@ function DraftFilePreview({ files = [], onRemove, onOpen }) {
             <div style={{ position:'relative', width:'92px', height:'92px', borderRadius:'8px', overflow:'hidden', border:'1px solid var(--border)', background:'var(--dark2)', display:'flex', alignItems:'center', justifyContent:'center' }}>
               {isImg ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                {/* Thumbnail to look at; the click still opens the original, because that is the
-                    file the shop has to inspect before it prints. */}
+                // Thumbnail to look at; the click still opens the original, because that is the
+                // file the shop has to inspect before it prints.
                 <img src={cloudinaryThumb(m.url, 320)} alt={m.file.name} onClick={() => onOpen?.(m.url, 'image')}
                   title="Click to enlarge"
                   style={{ width:'100%', height:'100%', objectFit:'contain', cursor:'zoom-in' }} />
