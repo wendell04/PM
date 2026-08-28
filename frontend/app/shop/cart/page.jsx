@@ -430,9 +430,14 @@ export default function CartPage() {
                 const designHref = item.designUrl ?? choice?.url ?? null;
                 const fileCount = item.designFiles?.length || (designHref ? 1 : 0);
 
+                // The same expression React uses to tell these rows apart. lineId is not guaranteed -
+                // the key falls back to the index for a reason - and keying the expander on lineId
+                // alone would put every such row under `undefined`, so one chevron would open them
+                // all. That is the bug the review just found here; this is the half of it left over.
+                const fileKey = item.lineId ?? idx;
                 return (
                   <div
-                    key={item.lineId ?? idx}
+                    key={fileKey}
                     style={{
                       display: 'flex', gap: 12, padding: '14px 0',
                       borderTop: idx > 0 ? '1px solid #f3f4f6' : 'none',
@@ -509,7 +514,7 @@ export default function CartPage() {
                               style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, marginRight: 'auto', textDecoration: 'none' }}
                             >
                               <span style={{ width: 34, height: 34, borderRadius: 7, overflow: 'hidden', background: '#fff', border: '1px solid #bbf7d0', flexShrink: 0,
-                                display: (fileCount > 1 && openFiles[item.lineId]) ? 'none' : 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                display: (fileCount > 1 && openFiles[fileKey]) ? 'none' : 'flex', alignItems: 'center', justifyContent: 'center' }}>
                                 {IMAGE_RE.test(designHref)
                                   /* eslint-disable-next-line @next/next/no-img-element */
                                   ? <img src={cloudinaryThumb(designHref, 96)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
@@ -524,19 +529,19 @@ export default function CartPage() {
                                        check the others without leaving the cart. */
                                     <span
                                       role="button" tabIndex={0}
-                                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); setOpenFiles(p => ({ ...p, [item.lineId]: !p[item.lineId] })); }}
-                                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); setOpenFiles(p => ({ ...p, [item.lineId]: !p[item.lineId] })); } }}
-                                      title={openFiles[item.lineId] ? 'Hide the file list' : 'Show all files'}
+                                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); setOpenFiles(p => ({ ...p, [fileKey]: !p[fileKey] })); }}
+                                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); setOpenFiles(p => ({ ...p, [fileKey]: !p[fileKey] })); } }}
+                                      title={openFiles[fileKey] ? 'Hide the file list' : 'Show all files'}
                                       style={{ display: 'inline-flex', cursor: 'pointer', color: '#166534', opacity: .75 }}
                                     >
                                       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
-                                        style={{ transform: openFiles[item.lineId] ? 'rotate(180deg)' : 'none', transition: 'transform .18s' }}>
+                                        style={{ transform: openFiles[fileKey] ? 'rotate(180deg)' : 'none', transition: 'transform .18s' }}>
                                         <polyline points="6 9 12 15 18 9" />
                                       </svg>
                                     </span>
                                   )}
                                 </span>
-                                {(fileCount <= 1 || !openFiles[item.lineId]) ? (
+                                {(fileCount <= 1 || !openFiles[fileKey]) ? (
                                   <span style={{ display: 'block', fontSize: '.7rem', color: '#166534', opacity: .8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                     {fileCount > 1
                                       ? item.designFiles.map(f => f.name || fileNameFromUrl(f.url)).join(', ')
