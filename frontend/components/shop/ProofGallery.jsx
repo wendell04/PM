@@ -1,4 +1,5 @@
 'use client';
+import { cloudinaryThumb } from '@/lib/cloudinaryImage';
 
 // One stage plus a thumbnail strip, for reviewing the design files sent on an order.
 //
@@ -155,12 +156,12 @@ function Thumb({ url, size, active, onClick, title }) {
       {vid ? (
         <>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          {poster ? <img src={poster} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : null}
+          {poster ? <img src={cloudinaryThumb(poster, 160)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : null}
           <span style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: size > 60 ? 18 : 13, textShadow: '0 1px 4px rgba(0,0,0,0.9)' }}>{'▶'}</span>
         </>
       ) : isImage(url) ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+        <img src={cloudinaryThumb(url, 160)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
       ) : (
         <span style={{ display: 'flex', width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', color: 'var(--gold)', fontSize: '0.55rem', fontWeight: 700 }}>FILE</span>
       )}

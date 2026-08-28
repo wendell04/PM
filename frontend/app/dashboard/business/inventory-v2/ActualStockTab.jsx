@@ -374,7 +374,18 @@ export default function ActualStockTab({ materials, batches, setBatches, badOrde
                     <td style={S.td}><StatusBadge status={s.reason} label={outReasonLabel(s.reason)} /></td>
                     <td style={{ ...S.td, textAlign:'right', fontWeight:600, color: isProduction ? 'var(--gray-light)' : '#c62828' }}>{formatCurrency(s.totalCost)}</td>
                     <td style={{ ...S.td, fontSize:'12px', color:'var(--gray-light)' }}>{performedByLabel(s.performedBy)}</td>
-                    <td style={{ ...S.td, fontSize:'12px', color:'var(--gray)', maxWidth:'200px' }}>{s.notes}</td>
+                    {/* One line, hover for the rest. The note is an audit record and has to stay whole
+                        in the data, but a row that grows to four lines because of it pushes every
+                        other row off the screen - and the leading "Order: <id>" repeats what the
+                        Reference column already shows two columns to the left. */}
+                    <td style={{ ...S.td, fontSize:'12px', color:'var(--gray)', maxWidth:'220px' }}>
+                      <span
+                        title={s.notes || ''}
+                        style={{ display:'block', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}
+                      >
+                        {String(s.notes ?? '').replace(/^Order:\s*\S+\s*\|?\s*/i, '') || (s.notes ? '-' : '')}
+                      </span>
+                    </td>
                   </tr>
                 );
               })}
