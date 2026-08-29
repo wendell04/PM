@@ -1,4 +1,6 @@
 'use client';
+import { optionGroupsOf, defaultOptionSelection, selectedOptionList, optionsUnitAdd, optionsOrderAdd, withOptionSuffix } from '@/lib/shopUtils';
+import NoImage from '@/components/NoImage';
 
 import { useState, useEffect, useRef, Suspense } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
@@ -115,6 +117,7 @@ function CustomOrderInner() {
   const [loadError, setLoadError] = useState(null);
 
   const [selectedVariants, setSelectedVariants] = useState({});
+  const [selectedOptions, setSelectedOptions] = useState({});
   const [quantity, setQuantity] = useState(1);
   const [quantityInput, setQuantityInput] = useState('1');
 
@@ -294,7 +297,18 @@ function CustomOrderInner() {
   // Inquiry (quotation) products have no computable price — they go through the quote flow
   // (request now, owner sends a quote, customer pays it later), never a direct ₱0 checkout.
   const isInquiry = (product?.priceType ?? product?.pricingMode) === 'inquiry';
-  const unitPrice = getUnitPrice(product, quantity, selectedVariants);
+  // Seeded from the product rather than left blank: production needs an answer, not an omission.
+  useEffect(() => {
+    if (product) setSelectedOptions(defaultOptionSelection(product));
+  }, [product]);
+
+  const optionGroups  = product ? optionGroupsOf(product) : [];
+  const optionUnitAdd = product ? optionsUnitAdd(product, selectedOptions) : 0;
+  const optionOrderAdd= product ? optionsOrderAdd(product, selectedOptions) : 0;
+  const chosenOptions = product ? selectedOptionList(product, selectedOptions) : [];
+
+  // Per piece, matching the PDP: the extra cut is extra work on every unit.
+  const unitPrice = getUnitPrice(product, quantity, selectedVariants) + optionUnitAdd;
   const designFee = designMode === 'request' ? (product?.designFee ?? 0) : 0;
   const lineTotal = (unitPrice ?? 0) * quantity;
 
@@ -354,7 +368,10 @@ function CustomOrderInner() {
       : 0;
   const selectedAddress = addresses.find(a => a.id === selectedAddressId) ?? null;
   const combo = product ? resolveCombo(product, selectedVariants) : null;
-  const variantLabel = combo?.label ?? (Object.values(selectedVariants).join(', ') || null);
+  const baseVariantLabel = combo?.label ?? (Object.values(selectedVariants).join(', ') || null);
+  // The option joins the label, so it travels with the order to the job order and the receipt
+  // without a new field on any of them.
+  const variantLabel = product ? withOptionSuffix(baseVariantLabel, product, selectedOptions) : baseVariantLabel;
 
   const uploading     = designFiles.some(f => f.uploading);
   const uploadedFiles = designFiles.filter(f => f.url);
@@ -1266,11 +1283,20 @@ function CustomOrderInner() {
                   // Show the SELECTED variant's image (e.g. Ceramic White) when there is one, not the
                   // generic product thumbnail. Same resolution as the order item's thumbnail above.
                   const img = (combo?.id && product.variantImageUrls?.[combo.id]) || combo?.imageUrl || product.thumbnail || product.images?.[0] || null;
+                  // A product with no picture returned null here, so the box disappeared and the
+                  // name slid left - the card changed shape depending on whether someone had got
+                  // round to uploading a photo. The frame is part of the layout; only its contents
+                  // are conditional.
                   return img ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={img} alt={variantLabel ? `${product.name} - ${variantLabel}` : product.name}
                       style={{ width: 56, height: 56, borderRadius: '8px', objectFit: 'cover', flexShrink: 0 }} />
-                  ) : null;
+                  ) : (
+                    <div style={{ width: 56, height: 56, borderRadius: '8px', flexShrink: 0, background: '#f1f3f5',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <NoImage size={24} />
+                    </div>
+                  );
                 })()}
                 <div style={{ minWidth: 0 }}>
                   <p style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{product.name}</p>

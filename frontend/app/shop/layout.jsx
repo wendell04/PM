@@ -1,4 +1,5 @@
 'use client';
+import NoImage from '@/components/NoImage';
 // TwoFactorModal imported for inline 2FA — no page redirect needed
 import TwoFactorModal from '@/components/auth/TwoFactorModal';
 // Shared with the landing page so the sign-up form (fields, CAPTCHA, password rules, T&C) is identical.
@@ -1296,6 +1297,17 @@ export default function ShopLayout({ children }) {
                   onChange={handleSearchChange}
                   onFocus={() => setSearchFocused(true)}
                   onBlur={() => setSearchFocused(false)}
+                  onKeyDown={e => {
+                    // The box is in the navbar on every page, but only the shop grid listens for the
+                    // pmp_search event - so on a product page, the cart or the checkout, typing here
+                    // did nothing at all. Enter now carries the query to the place that can answer it.
+                    if (e.key !== 'Enter') return;
+                    const q = searchQuery.trim();
+                    if (!q) return;
+                    e.preventDefault();
+                    searchRef.current?.blur();
+                    router.push('/shop?q=' + encodeURIComponent(q));
+                  }}
                 />
                 {searchQuery && (
                   <button
@@ -1834,7 +1846,9 @@ export default function ShopLayout({ children }) {
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={item.image} alt={item.productName} className="shop-cart-popup-img" />
                     ) : (
-                      <div className="shop-cart-popup-img-placeholder" />
+                      <div className="shop-cart-popup-img-placeholder">
+                        <NoImage size={20} />
+                      </div>
                     )}
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div className="shop-cart-popup-item-name">{item.productName}</div>

@@ -164,3 +164,63 @@ export function fileExtLabel(url, fallback = 'FILE') {
   const ext = name.slice(dot + 1);
   return /^[a-z0-9]{1,5}$/i.test(ext) ? ext.toUpperCase() : fallback;
 }
+
+// ── Product options ───────────────────────────────────────────────────────────
+// An option changes HOW an item is made, not what it is made of, so it carries no BOM and does not
+// divide the stock. It reaches the order by joining the variant name and adding to the unit price -
+// both of which every screen from the cart to the Job Order already carries. Threading a separate
+// field through the cart context, the cart API, checkout, order creation and the JO snapshot would
+// buy a structured value nobody reads yet, at the cost of five places that could go wrong.
+export function optionGroupsOf(product) {
+  const gs = product?.optionGroups;
+  return Array.isArray(gs) ? gs.filter(g => g?.name && Array.isArray(g.options) && g.options.length) : [];
+}
+
+// The default is the FIRST option of each group, not "none": a sticker is always cut somehow, and a
+// blank choice would reach production as an unanswered question.
+export function defaultOptionSelection(product) {
+  const sel = {};
+  for (const g of optionGroupsOf(product)) sel[g.id] = g.options[0]?.id ?? null;
+  return sel;
+}
+
+export function selectedOptionList(product, selection) {
+  const out = [];
+  for (const g of optionGroupsOf(product)) {
+    const opt = g.options.find(o => o.id === selection?.[g.id]);
+    if (opt) out.push({
+      group: g.name,
+      label: opt.label,
+      priceAdd: Number(opt.priceAdd) || 0,
+      priceMode: opt.priceMode === 'order' ? 'order' : 'unit',
+      imageUrl: opt.imageUrl || null,
+    });
+  }
+  return out;
+}
+
+// Two ways an option can cost money, and they are not interchangeable.
+//
+//   per piece  - extra work on every unit. A tighter cut takes longer on each sticker.
+//   per order  - paid once, however many are made. A die has to be cut before the first sticker
+//                and never again, so charging it per piece bills a 100-piece order a hundred dies.
+//
+// Getting this wrong is not a rounding error; it is the difference between P5 and P500 on the same
+// job, so the two are kept apart all the way through rather than summed into one number early.
+export function optionsUnitAdd(product, selection) {
+  return selectedOptionList(product, selection)
+    .filter(o => o.priceMode !== 'order')
+    .reduce((t, o) => t + o.priceAdd, 0);
+}
+
+export function optionsOrderAdd(product, selection) {
+  return selectedOptionList(product, selection)
+    .filter(o => o.priceMode === 'order')
+    .reduce((t, o) => t + o.priceAdd, 0);
+}
+
+export function withOptionSuffix(variantName, product, selection) {
+  const labels = selectedOptionList(product, selection).map(o => o.label);
+  if (!labels.length) return variantName;
+  return [variantName, ...labels].filter(Boolean).join(' \u00b7 ');
+}

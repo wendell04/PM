@@ -76,6 +76,9 @@ export default function ProductsV2() {
         designTemplates:     formData.designTemplates ?? [],
         minOrderQty:         Number(formData.minOrderQty) || 1,
         bomId:               formData.type === 'standalone' ? (formData.bomId || null) : null,
+        // Options travel for every product type, not just multi-variant: a standalone sticker can
+        // still offer a cut choice.
+        optionGroups:        formData.optionGroups ?? [],
         variantGroups:       formData.type === 'multi-variant'
           ? [{ name: 'Variant', options: formData.variants.map(v => v.name) }]
           : [],

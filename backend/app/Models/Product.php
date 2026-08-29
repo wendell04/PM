@@ -34,6 +34,12 @@ class Product extends Model
         'images',
         'thumbnail',
         'variantGroups',
+        // Choices that change HOW an item is made, not WHAT it is made of: cut type, finish, corner
+        // style. Deliberately separate from variantGroups, which are keyed to a BOM and to stock -
+        // a different cut is the same sheet, so folding these together would split one stock figure
+        // into combinations that do not exist.
+        // Shape: [{ id, name, options: [{ id, label, priceAdd }] }]
+        'optionGroups',
         'combinations',
         'priceType',
         'price',

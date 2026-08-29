@@ -872,6 +872,13 @@ export default function ShopClient({
     return () => window.removeEventListener('pmp_search', handleSearch);
   }, []);
 
+  // Someone who pressed Enter in the navbar search on another page arrives here with ?q= - the event
+  // above never reached this component, because it was not mounted when the event fired.
+  useEffect(() => {
+    const q = searchParams.get('q');
+    if (q) setSearchQuery(q);
+  }, [searchParams]);
+
   // Read logged-in user for greeting
   const [shopUser, setShopUser] = useState(null);
   useEffect(() => {

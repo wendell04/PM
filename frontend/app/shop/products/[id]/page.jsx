@@ -1,5 +1,7 @@
 'use client';
+import { cloudinaryThumb } from '@/lib/cloudinaryImage';
 import { PLAIN_OR_CUSTOM_ENABLED } from '@/lib/featureFlags';
+import { optionGroupsOf, defaultOptionSelection, selectedOptionList, optionsUnitAdd, optionsOrderAdd, withOptionSuffix } from '@/lib/shopUtils';
 
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
@@ -28,6 +30,7 @@ export default function ProductDetailPage() {
   const [error, setError] = useState(null);
   const [activeImage, setActiveImage] = useState(0);
   const [selectedVariants, setSelectedVariants] = useState({});
+  const [selectedOptions, setSelectedOptions] = useState({});
   const [quantity, setQuantity] = useState(1);
   // `designRequestFee` was referenced twice further down but declared nowhere in this file, so the
   // design-request block threw a ReferenceError the moment it rendered. The product's own override is
@@ -323,7 +326,7 @@ export default function ProductDetailPage() {
         { ...product, flatPrice: effectivePrice, thumbnail: variantImage ?? product.thumbnail },
         quantity,
         comboId,
-        resolveVariantName(selectedVariants),
+        withOptionSuffix(resolveVariantName(selectedVariants), product, selectedOptions),
         flashSale ? (flashSale.id ?? flashSale._id ?? null) : null,
         null
       );
@@ -467,15 +470,35 @@ export default function ProductDetailPage() {
   const isOutOfStock = effectiveMaxQty === 0 && !product?.isMadeToOrder;
 
   // Computed values
-  const totalPrice = product
+  const baseTotalPrice = product
     ? computePrice(product, quantity, selectedVariants)
     : null;
-  const unitPrice = product
+  // The option rides on every piece, so it multiplies with the quantity the same way the unit price
+  // does. Adding it once to the total would quote a 100-piece order the price of a single extra cut.
+  // The per-piece part multiplies with quantity; the per-order part is added once, whatever the
+  // quantity - that is the whole reason the two are tracked separately.
+  const totalPrice = baseTotalPrice === null
+    ? null
+    : baseTotalPrice + optionUnitAdd * quantity + optionOrderAdd;
+  const baseUnitPrice = product
     ? getUnitPrice(product, quantity, selectedVariants)
     : null;
+  // Per piece, not per order: the extra cut is extra work on every sticker, not once on the job.
+  const unitPrice = baseUnitPrice === null ? null : baseUnitPrice + optionUnitAdd;
   const priceRange = product ? getPriceRange(product) : null;
   const tiers = product ? getTiers(product) : [];
   const sortedTiers = [...tiers].sort((a, b) => (parseInt(a.minQty) || 0) - (parseInt(b.minQty) || 0));
+
+  // Seeded from the product, not left empty: a sticker is always cut somehow, and an unanswered
+  // choice would reach production as a question rather than an instruction.
+  useEffect(() => {
+    if (product) setSelectedOptions(defaultOptionSelection(product));
+  }, [product]);
+
+  const optionGroups   = product ? optionGroupsOf(product) : [];
+  const optionUnitAdd  = product ? optionsUnitAdd(product, selectedOptions) : 0;
+  const optionOrderAdd = product ? optionsOrderAdd(product, selectedOptions) : 0;
+  const chosenOptions  = product ? selectedOptionList(product, selectedOptions) : [];
 
   const activeComboId = product ? resolveCombinationId(selectedVariants) : null;
   const variantImage = (() => {
@@ -998,6 +1021,63 @@ export default function ProductDetailPage() {
                 </div>
               ))
             )}
+
+            {/* Options - a choice about how it is made. Same picker language as the variants above,
+                because to the customer they are the same kind of decision; what differs is behind
+                the screen, where these do not touch stock or the bill of materials. */}
+            {optionGroups.map(group => (
+              <div key={group.id}>
+                <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--gray)',
+                  textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '0.5rem' }}>
+                  {group.name}
+                </div>
+                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  {group.options.map(opt => {
+                    const isSelected = selectedOptions[group.id] === opt.id;
+                    const add = Number(opt.priceAdd) || 0;
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => setSelectedOptions(p => ({ ...p, [group.id]: opt.id }))}
+                        aria-pressed={isSelected}
+                        style={{
+                          display: 'inline-flex', alignItems: 'center',
+                          padding: '0.4rem 0.875rem',
+                          borderRadius: '8px', cursor: 'pointer',
+                          fontSize: '0.875rem', fontWeight: 600,
+                          border: isSelected ? '2px solid var(--gold)' : '1px solid var(--border)',
+                          background: isSelected ? 'var(--gold)' : 'var(--dark2)',
+                          color: isSelected ? '#000' : 'var(--white)',
+                          transition: 'all 0.15s',
+                        }}
+                      >
+                        {/* A thumbnail where one is set: the difference between a kisscut and a
+                            diecut is visible in a second and unexplainable in a sentence. */}
+                        {opt.imageUrl && (
+                          /* eslint-disable-next-line @next/next/no-img-element */
+                          <img src={cloudinaryThumb(opt.imageUrl, 64)} alt=""
+                            style={{ width: 22, height: 22, borderRadius: 4, objectFit: 'cover',
+                              marginRight: '0.45rem', verticalAlign: 'middle',
+                              border: '1px solid rgba(0,0,0,.15)' }} />
+                        )}
+                        {opt.label}
+                        {/* Shown only when it costs something, and it says WHICH kind of charge -
+                            "+₱350" on a hundred-piece order means one thing per piece and quite
+                            another per order. A "+₱0.00" on every free option is noise that stops
+                            the one that does cost from standing out. */}
+                        {add > 0 && (
+                          <span style={{ marginLeft: '0.4rem', fontSize: '0.78em', opacity: 0.85 }}>
+                            +₱{add.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                            {opt.priceMode === 'order' ? ' / order' : ''}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
 
 
             {/* Quantity input — hidden when out of stock, and for inquiry (qty is set in the quote) */}

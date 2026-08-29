@@ -63,8 +63,13 @@ class SweepOrphanedAssets extends Command
         $referenced = [];
         $scanned    = 0;
 
-        foreach (DB::connection('mongodb')->getMongoDB()->listCollectionNames() as $name) {
-            foreach (DB::connection('mongodb')->collection($name)->raw()->find() as $doc) {
+        // selectCollection, not the Eloquent-style ->collection() helper: that lives on the query
+        // builder, not on the Connection, and calling it here reached __call and died inside the
+        // driver. The command had never actually run - a review reads code, it does not execute it.
+        $mongo = DB::connection('mongodb')->getMongoDB();
+
+        foreach ($mongo->listCollectionNames() as $name) {
+            foreach ($mongo->selectCollection($name)->find() as $doc) {
                 $scanned++;
                 // Slashes UNescaped, or the /upload/ pattern below never matches: json_encode turns
                 // every URL slash into \/ by default, so res.cloudinary.com/.../upload/ reads as

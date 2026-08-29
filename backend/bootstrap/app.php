@@ -30,7 +30,12 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withExceptions(function (Exceptions $exceptions): void {
         // Forward unhandled exceptions to Sentry (no-op if DSN not configured)
         $exceptions->report(function (\Throwable $e) {
-            if (app()->bound('sentry') && app('sentry')->getHub()->getClient()) {
+            // app('sentry') IS the Hub - it has getClient(), not getHub(). The old call threw
+            // "Call to undefined method Sentry\State\Hub::getHub()" from inside the reporter, so
+            // every exception was replaced by a fatal error in the code meant to report it. The real
+            // failure never reached the log or the response; what surfaced was this one, or the
+            // generic "An unexpected error occurred" the renderer falls back to.
+            if (app()->bound('sentry') && app('sentry')->getClient()) {
                 \Sentry\captureException($e);
             }
         })->stop();

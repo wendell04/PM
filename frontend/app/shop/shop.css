@@ -335,6 +335,11 @@
           border-radius: 8px;
           background: #f0f0f0;
           flex-shrink: 0;
+          /* It holds the no-image mark now, rather than being a bare grey square that reads as a
+             thumbnail still loading. */
+          display: flex;
+          align-items: center;
+          justify-content: center;
         }
         .shop-cart-popup-item-name {
           font-size: 0.85rem;

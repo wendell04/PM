@@ -27,6 +27,12 @@ const LIBRARY_IMAGES = [
 
 const EMPTY_VARIANT = () => ({ id: uid('v'), name: '', bomId: '', price: '' });
 
+// An option changes HOW the item is made, not what it is made of - cut, finish, corner style. It
+// carries no BOM and no stock of its own, because a different cut is the same sheet.
+// priceAdd is left blank for the common case; blank means free and shows no badge to the customer.
+const EMPTY_OPTION       = () => ({ id: uid('o'), label: '', priceAdd: '', priceMode: 'unit', imageUrl: '' });
+const EMPTY_OPTION_GROUP = () => ({ id: uid('og'), name: '', options: [EMPTY_OPTION(), EMPTY_OPTION()] });
+
 function emptyTier(keys) {
   return { id: uid('t'), minQty: '1', maxQty: '', prices: keys.reduce((a, k) => ({ ...a, [k]: '' }), {}) };
 }
@@ -39,6 +45,7 @@ const EMPTY_FORM = {
   tiers: [{ id: uid('t'), minQty: '1', maxQty: '', prices: { __base__: '' } }],
   collectionIds: [],
   isCustomizable: false, allowPlain: true, allowCOD: true, isMadeToOrder: false,
+  optionGroups: [],
   downpaymentPct: '0', hideWhenOutOfStock: false, isPublished: false,
   isFeatured: false,
   designFee: '', minOrderQty: '1',
@@ -398,6 +405,7 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
       tiers,
       collectionIds:      product.collectionIds || [],
       isCustomizable:     product.isCustomizable ?? false,
+      optionGroups:       Array.isArray(product.optionGroups) ? product.optionGroups : [],
       allowPlain:         PLAIN_OR_CUSTOM_ENABLED
                             ? (product.allowPlain ?? !product.isCustomizable)
                             : !product.isCustomizable,
@@ -434,6 +442,32 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
   };
 
   const removeImage = (i) => setF('images', form.images.filter((_, j) => j !== i));
+
+  // ── Option groups ───────────────────────────────────────────────────────────
+  const [optionUploading, setOptionUploading] = useState(null);
+
+  const uploadOptionImage = async (gi, oi, file) => {
+    if (!file) return;
+    const key = gi + ':' + oi;
+    setOptionUploading(key);
+    try {
+      const result = await uploadImage(await compressImage(file), 'pmp-options', token);
+      patchOption(gi, oi, 'imageUrl', result.url);
+    } catch {
+      setErrors(p => ({ ...p, optionGroups: 'That image would not upload. Try another file.' }));
+    } finally {
+      setOptionUploading(null);
+    }
+  };
+
+  const setGroups = (fn) => setF('optionGroups', fn(form.optionGroups || []));
+  const addGroup    = ()      => setGroups(gs => [...gs, EMPTY_OPTION_GROUP()]);
+  const removeGroup = (gi)    => setGroups(gs => gs.filter((_, i) => i !== gi));
+  const patchGroup  = (gi, k, v) => setGroups(gs => gs.map((g, i) => i === gi ? { ...g, [k]: v } : g));
+  const addOption   = (gi)    => setGroups(gs => gs.map((g, i) => i === gi ? { ...g, options: [...g.options, EMPTY_OPTION()] } : g));
+  const removeOption= (gi, oi)=> setGroups(gs => gs.map((g, i) => i === gi ? { ...g, options: g.options.filter((_, j) => j !== oi) } : g));
+  const patchOption = (gi, oi, k, v) => setGroups(gs => gs.map((g, i) =>
+    i === gi ? { ...g, options: g.options.map((o, j) => j === oi ? { ...o, [k]: v } : o) } : g));
 
   const routeUploaded = (url, target) => {
     if (target === 'product') {
@@ -694,6 +728,23 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
       // Both names, because the API has historically read `isCustom` while this form has spoken
       // `isCustomizable`.
       isCustom: f.isCustomizable,
+      // Blank price means free - stored as 0 so the storefront never has to guess what an empty
+      // string meant, and empty rows are dropped rather than shipped as unnamed buttons.
+      optionGroups: (f.optionGroups || [])
+        .map(g => ({
+          id: g.id,
+          name: (g.name || '').trim(),
+          options: (g.options || [])
+            .filter(o => (o.label || '').trim())
+            .map(o => ({
+            id: o.id,
+            label: o.label.trim(),
+            priceAdd: Number(o.priceAdd) || 0,
+            priceMode: o.priceMode === 'order' ? 'order' : 'unit',
+            imageUrl: (o.imageUrl || '').trim() || null,
+          })),
+        }))
+        .filter(g => g.name && g.options.length),
       allowPlainPurchase: f.allowPlain,
       downpaymentPct: (!f.isCustomizable && !f.isMadeToOrder) ? 0 : Number(f.downpaymentPct),
       hideWhenOutOfStock: f.hideWhenOutOfStock, isPublished: f.isPublished,
@@ -1097,6 +1148,91 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
                     })}
                   </div>
                 )}
+              </div>
+            </Card>
+
+            {/* Options - choices that change how it is made, not what it is made of */}
+            <Card>
+              <CardTitle>Options</CardTitle>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <Note>
+                  A choice the customer makes that does not change the material - cut type, finish,
+                  corner style. It carries no BOM and does not divide the stock, because a different
+                  cut is the same sheet. Leave the price blank when the option costs nothing extra,
+                  and add a picture where the difference is easier to see than to describe.
+                </Note>
+
+                {(form.optionGroups || []).map((g, gi) => (
+                  <div key={g.id} style={{ border: '1px solid var(--border)', borderRadius: '8px', padding: '12px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end' }}>
+                      <Field label="Group name" style={{ flex: 1 }}>
+                        <input value={g.name} maxLength={60} placeholder="Cut"
+                          onChange={e => patchGroup(gi, 'name', e.target.value)} style={S.input} />
+                      </Field>
+                      <button onClick={() => removeGroup(gi)} style={{ ...S.btnSmDanger, marginBottom: '2px' }}
+                        title="Remove this group">{ICONS.trash}</button>
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      <div style={{ display: 'flex', gap: '8px', fontSize: '11px', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '.4px' }}>
+                        <span style={{ flex: 1 }}>Option</span>
+                        <span style={{ width: '96px' }}>Adds (₱)</span>
+                        <span style={{ width: '124px' }}>Charged</span>
+                        <span style={{ width: '38px' }}>Pic</span>
+                        <span style={{ width: '30px' }} />
+                      </div>
+                      {g.options.map((o, oi) => (
+                        <div key={o.id} style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                          <input value={o.label} maxLength={60} placeholder="Kisscut"
+                            onChange={e => patchOption(gi, oi, 'label', e.target.value)}
+                            style={{ ...S.input, flex: 1 }} />
+                          <DecimalInput value={o.priceAdd} placeholder="free"
+                            onChange={v => patchOption(gi, oi, 'priceAdd', v)}
+                            style={{ ...S.input, width: '96px' }} />
+                          {/* Per piece or per order. A die is cut once however many stickers follow,
+                              so charging it per piece bills a 100-piece job for a hundred dies. */}
+                          <CustomSelect
+                            value={o.priceMode || 'unit'}
+                            onChange={v => patchOption(gi, oi, 'priceMode', v)}
+                            options={[
+                              { value: 'unit',  label: 'per piece' },
+                              { value: 'order', label: 'per order' },
+                            ]}
+                            style={{ width: '124px' }}
+                          />
+                          <label style={{ width: '38px', height: '38px', borderRadius: '6px',
+                            border: '1px dashed var(--border)', display: 'flex', alignItems: 'center',
+                            justifyContent: 'center', cursor: 'pointer', overflow: 'hidden',
+                            flexShrink: 0, background: 'var(--dark2)' }}
+                            title={o.imageUrl ? 'Replace this picture' : 'Add a picture of this option'}>
+                            {optionUploading === (gi + ':' + oi)
+                              ? <span style={{ fontSize: '10px', color: 'var(--gray)' }}>...</span>
+                              : o.imageUrl
+                                /* eslint-disable-next-line @next/next/no-img-element */
+                                ? <img src={o.imageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                : <span style={{ fontSize: '15px', color: 'var(--gray)' }}>+</span>}
+                            <input type="file" accept="image/*" style={{ display: 'none' }}
+                              onChange={e => { uploadOptionImage(gi, oi, e.target.files?.[0]); e.target.value = ''; }} />
+                          </label>
+                          <button onClick={() => removeOption(gi, oi)}
+                            disabled={g.options.length <= 1}
+                            style={{ ...S.btnSmGhost, width: '30px', padding: 0, justifyContent: 'center',
+                              opacity: g.options.length <= 1 ? .4 : 1 }}
+                            title={g.options.length <= 1 ? 'A group needs at least one option' : 'Remove'}>
+                            {ICONS.x ?? '\u00d7'}
+                          </button>
+                        </div>
+                      ))}
+                      <button onClick={() => addOption(gi)} style={{ ...S.btnSm, alignSelf: 'flex-start' }}>
+                        {ICONS.plus} Add option
+                      </button>
+                    </div>
+                  </div>
+                ))}
+
+                <button onClick={addGroup} style={{ ...S.btnSm, alignSelf: 'flex-start' }}>
+                  {ICONS.plus} Add option group
+                </button>
               </div>
             </Card>
 
