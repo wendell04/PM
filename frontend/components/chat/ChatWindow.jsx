@@ -1,6 +1,8 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
+import { cloudinaryThumb } from '@/lib/cloudinaryImage';
+import PhotoLightbox from './PhotoLightbox';
 import { useScrollToLatest } from '@/lib/useScrollToLatest';
 
 const isRecentlySeen = (ts) => ts && Date.now() - new Date(ts).getTime() < 120_000;
@@ -17,7 +19,12 @@ const dateLabel = (ts) => {
 
 const ChatWindow = ({ activeConversation, messages, user, isLoading, isAdmin, onStartChat, isSending, isLoadingMessages, isLoadingConversations, addToCart, onlineUsers = new Set(), typingUsers = {}, onApproveProof, onRequestChanges, proofActionState }) => {
   const scrollRef = useRef(null);
-  const [lightboxUrl, setLightboxUrl] = useState('');
+  const [lightboxIdx, setLightboxIdx] = useState(null);
+  // Every photo in the thread, in the order it was sent. Built here so the viewer can move between
+  // them - opening one picture in isolation is not how a set of references gets read.
+  const photoUrls = (messages || [])
+    .filter(m => m.type === 'image' && m.file_url)
+    .map(m => m.file_url);
   const [addedToCart, setAddedToCart] = useState({});
 
   const typingNames = Object.entries(typingUsers)
@@ -341,12 +348,52 @@ const ChatWindow = ({ activeConversation, messages, user, isLoading, isAdmin, on
     return (
       <div key={msgKey} className={`bubble ${isMe ? 'me' : 'them'}`}
         style={msg.pending ? { opacity: 0.6 } : msg.failed ? { opacity: 0.7 } : undefined}>
-        {msg.type === 'image' && msg.file_url ? (
+        {/* A document has nothing to look at, so it gets a card that names it and opens it -
+            the one thing a reader can usefully do with a PDF in a conversation. */}
+        {msg.type === 'file' && msg.file_url ? (
+          <div style={{ marginBottom: '8px' }}>
+            {(() => {
+              const fname = msg.metadata?.name || 'Attachment';
+              const ext = (fname.split('.').pop() || 'FILE').toUpperCase().slice(0, 4);
+              const kb = msg.metadata?.size
+                ? (msg.metadata.size < 1024 * 1024
+                    ? Math.round(msg.metadata.size / 1024) + ' KB'
+                    : (msg.metadata.size / (1024 * 1024)).toFixed(1) + ' MB')
+                : null;
+              return (
+                <a href={msg.file_url} target="_blank" rel="noopener noreferrer"
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '10px',
+                    padding: '10px 12px', borderRadius: '10px', maxWidth: '280px',
+                    background: 'rgba(212,168,67,0.08)', border: '1px solid rgba(212,168,67,0.25)',
+                    textDecoration: 'none', color: 'inherit',
+                  }}>
+                  <div style={{
+                    width: '34px', height: '34px', borderRadius: '7px', flexShrink: 0,
+                    background: 'rgba(212,168,67,0.15)', display: 'flex',
+                    alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#d4a843" strokeWidth="1.8">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/>
+                    </svg>
+                  </div>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ fontSize: '0.78rem', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{fname}</div>
+                    <div style={{ fontSize: '0.68rem', opacity: 0.65, marginTop: '1px' }}>{ext}{kb ? ' - ' + kb : ''}</div>
+                  </div>
+                </a>
+              );
+            })()}
+          </div>
+        ) : msg.type === 'image' && msg.file_url ? (
           <div style={{ display: 'block', overflow: 'hidden', borderRadius: '10px', marginBottom: '8px', lineHeight: 0 }}>
+            {/* The bubble is 260px wide and was loading the whole 3 MB photo to fill it. Fifteen
+                references in a collage thread meant 45 MB every time anyone opened the thread.
+                The lightbox still opens the untouched original - only the bubble is scaled. */}
             <img
-              src={msg.file_url}
+              src={cloudinaryThumb(msg.file_url, 520)}
               alt=""
-              onClick={() => setLightboxUrl(msg.file_url)}
+              onClick={() => setLightboxIdx(photoUrls.indexOf(msg.file_url))}
               style={{ display: 'block', width: '100%', maxWidth: '260px', height: 'auto', cursor: 'zoom-in', borderRadius: '10px' }}
             />
           </div>
@@ -439,39 +486,12 @@ const ChatWindow = ({ activeConversation, messages, user, isLoading, isAdmin, on
         </div>
       </div>
 
-      {lightboxUrl && (
-        <div
-          onClick={() => setLightboxUrl('')}
-          style={{
-            position: 'fixed', inset: 0, zIndex: 9999,
-            background: 'rgba(0,0,0,0.92)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            cursor: 'zoom-out',
-          }}
-        >
-          <img
-            src={lightboxUrl}
-            alt=""
-            onClick={e => e.stopPropagation()}
-            style={{ maxWidth: '90vw', maxHeight: '90vh', objectFit: 'contain', borderRadius: '10px', cursor: 'default' }}
-          />
-          <button
-            type="button"
-            onClick={() => setLightboxUrl('')}
-            style={{
-              position: 'absolute', top: '16px', right: '16px',
-              background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.2)',
-              color: '#fff', cursor: 'pointer',
-              width: '40px', height: '40px', borderRadius: '50%',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-            </svg>
-          </button>
-        </div>
-      )}
+      <PhotoLightbox
+        urls={photoUrls}
+        index={lightboxIdx}
+        onIndexChange={setLightboxIdx}
+        onClose={() => setLightboxIdx(null)}
+      />
     </>
   );
 };

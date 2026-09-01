@@ -158,7 +158,7 @@ class ChatController extends Controller
                 'conversation_id' => 'nullable|string',
                 'recipient_id'    => 'nullable|string',
                 'body'            => 'nullable|string|max:2000',
-                'type'            => 'required|in:text,image,order_reference,quotation,inquiry',
+                'type'            => 'required|in:text,image,file,order_reference,quotation,inquiry',
                 'file_url'        => 'nullable|string',
                 'order_id'        => 'nullable|string',
                 'metadata'        => 'nullable|array',
@@ -176,6 +176,18 @@ class ChatController extends Controller
                         return response()->json(['status' => 'error', 'message' => 'No admin available'], 404);
                     }
                     $recipientId = (string)$admin->_id;
+                }
+
+                // This is a shop, not a social network: a customer talks to the shop and the shop
+                // talks back. recipient_id was free-form, so one customer could open a thread with
+                // another and message them unsolicited - a channel nobody asked for and nobody
+                // moderates. Staff keep the run of the place; customers reach the shop only.
+                $isStaff = in_array($user->role ?? null, ['admin', 'owner'], true);
+                if (!$isStaff) {
+                    $recipient = User::find($recipientId);
+                    if (!$recipient || !in_array($recipient->role ?? null, ['admin', 'owner'], true)) {
+                        return $this->errorResponse('You can only start a conversation with the shop.', 403);
+                    }
                 }
 
                 $participants = [(string)$user->_id, (string)$recipientId];
@@ -204,6 +216,16 @@ class ChatController extends Controller
             $conversation = Conversation::find($conversationId);
             if (!$conversation) {
                 return $this->notFoundResponse('Conversation');
+            }
+
+            // show() checked this and store() did not, which meant reading someone else's thread was
+            // refused while writing into it was not: any signed-in account could post a message into
+            // any conversation by supplying its id. Same rule as show(), for the same reason.
+            $senderId     = (string) ($user->_id ?? $user->id ?? '');
+            $participants = array_map('strval', $conversation->participants ?? []);
+            if (!in_array($senderId, $participants, true)
+                && !in_array($user->role ?? null, ['admin', 'owner'], true)) {
+                return $this->unauthorizedResponse();
             }
 
             $metadata = null;
@@ -237,6 +259,21 @@ class ChatController extends Controller
                     'deliveryFee' => floatval($m['deliveryFee'] ?? 0),
                     'note'        => $m['note'] ?? '',
                     'total'       => floatval($m['total'] ?? 0),
+                ];
+            } elseif ($request->type === 'file' && $request->metadata) {
+                // Without this branch $metadata stayed null and the card fell back to the word
+                // "Attachment" - the file arrived with its name thrown away.
+                $m    = $request->metadata;
+                $name = (string) ($m['name'] ?? '');
+                // basename() first: a name is a label here, never a path, and "../../x.pdf" should
+                // not read as one anywhere it is later echoed or used to build a filename.
+                $name = basename(str_replace(['\\', "\0"], ['/', ''], $name));
+                // Control characters include the right-to-left override used to disguise an
+                // extension - "evilexe.[U+202E]fdp.txt" renders as "eviltxt.pdf". Strip them.
+                $name = preg_replace('/[\p{C}]/u', '', $name);
+                $metadata = [
+                    'name' => mb_substr($name, 0, 120) ?: 'Attachment',
+                    'size' => isset($m['size']) ? (int) $m['size'] : null,
                 ];
             } elseif ($request->type === 'inquiry' && $request->metadata) {
                 $m = $request->metadata;
@@ -309,7 +346,16 @@ class ChatController extends Controller
     public function uploadImage(Request $request)
     {
         try {
-            $request->validate(['image' => 'required|image|max:5120']);
+            // A document is not artwork. This accepts one so a customer can ask a question about a
+            // file - "will this fit?" - which until now they could only do by taking a screenshot,
+            // something Messenger has always let them do. What gets printed still travels the design
+            // upload, where it is checked and tied to an order.
+            $request->validate([
+                // No SVG. It is XML that may carry script, and it is the one "image" format a
+                // browser will execute when opened directly - which the file card invites.
+                // Nothing is lost: a customer sending a reference photo has never needed one.
+                'image' => 'required|file|mimes:jpg,jpeg,png,webp,gif,pdf,ai,psd,doc,docx|max:10240',
+            ]);
 
             $cloudName    = config('services.cloudinary.cloud_name');
             $uploadPreset = config('services.cloudinary.upload_preset');
@@ -318,22 +364,37 @@ class ChatController extends Controller
                 return $this->errorResponse('Image uploads are not configured.', 500);
             }
 
-            $file     = $request->file('image');
+            $file = $request->file('image');
+
+            // Same split the design upload makes: Cloudinary treats a PDF as an image it may
+            // rasterise, and the delivered file then is not the one that was sent. `raw` returns the
+            // original bytes untouched, which is the only useful thing to do with a document.
+            $ext          = strtolower($file->getClientOriginalExtension());
+            $isImage      = in_array($ext, ['jpg', 'jpeg', 'png', 'webp', 'gif'], true);
+            $resourceType = $isImage ? 'image' : 'raw';
+
             $response = Http::timeout(55)->attach(
                 'file',
                 fopen($file->getRealPath(), 'r'),
                 $file->getClientOriginalName(),
                 ['Content-Type' => $file->getMimeType()]
-            )->post("https://api.cloudinary.com/v1_1/{$cloudName}/image/upload", [
+            )->post("https://api.cloudinary.com/v1_1/{$cloudName}/{$resourceType}/upload", [
                 'upload_preset' => $uploadPreset,
                 'folder'        => 'pmp-chat',
             ]);
 
             if ($response->successful()) {
-                return $this->successResponse('Image uploaded.', ['url' => $response->json('secure_url')]);
+                return $this->successResponse('File uploaded.', [
+                    'url'  => $response->json('secure_url'),
+                    // Cloudinary names the stored file itself, so without this the reader would see
+                    // a random string where the document's name should be.
+                    'name' => $file->getClientOriginalName(),
+                    'kind' => $isImage ? 'image' : 'file',
+                    'size' => $file->getSize(),
+                ]);
             }
 
-            return $this->errorResponse('Failed to upload image.', 500);
+            return $this->errorResponse($response->json('error.message') ?: 'Failed to upload file.', 502);
         } catch (\Illuminate\Validation\ValidationException $e) {
             return $this->validationErrorResponse($e);
         } catch (\Exception $e) {
@@ -361,6 +422,20 @@ class ChatController extends Controller
     {
         try {
             $user = $request->user();
+            // Same participant rule as show() and store(). Without it anyone could clear the unread
+            // state on a conversation they are not in - not a leak, but it lets a stranger hide the
+            // fact that a message is waiting, which is the one thing the badge exists to say.
+            $conversation = Conversation::find($id);
+            if (!$conversation) {
+                return $this->notFoundResponse('Conversation');
+            }
+            $readerId     = (string) ($user->_id ?? $user->id ?? '');
+            $participants = array_map('strval', $conversation->participants ?? []);
+            if (!in_array($readerId, $participants, true)
+                && !in_array($user->role ?? null, ['admin', 'owner'], true)) {
+                return $this->unauthorizedResponse();
+            }
+
             Message::where('conversation_id', $id)
                 ->where('sender_id', '!=', $user->_id)
                 ->where('is_read', false)

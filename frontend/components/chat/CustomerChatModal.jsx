@@ -3,6 +3,8 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import ChatInput from './ChatInput';
 import { useScrollToLatest } from '@/lib/useScrollToLatest';
+import { cloudinaryThumb } from '@/lib/cloudinaryImage';
+import PhotoLightbox from './PhotoLightbox';
 import { getMessages, sendMessage, markAsRead, sendHeartbeat, getConversations } from '../../lib/chatApi';
 import { getEcho } from '../../lib/echo';
 import './chat.css';
@@ -52,6 +54,9 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
   // Proof thumbnails opened in a new tab, which dumps the customer onto a raw Cloudinary URL and out
   // of the conversation they were in. Preview in place instead.
   const [preview, setPreview] = useState(null);
+  // Chat photos get their own album and their own viewer. `preview` still serves the proof cards,
+  // which are a single deliberate image rather than a set to be flipped through.
+  const [chatPhotoIdx, setChatPhotoIdx] = useState(null);
   useEffect(() => {
     if (!preview) return;
     const onKey = (e) => { if (e.key === 'Escape') setPreview(null); };
@@ -86,6 +91,8 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
   };
   const [activeConv, setActiveConv] = useState(null);
   const [messages, setMessages] = useState([]);
+  // Same album the admin side builds: every photo in this thread, in the order it was sent.
+  const chatPhotoUrls = messages.filter(m => m.type === 'image' && m.file_url).map(m => m.file_url);
   const [isSending, setIsSending] = useState(false);
   const [isLoadingMsgs, setIsLoadingMsgs] = useState(false);
   const [isLoadingConvs, setIsLoadingConvs] = useState(false);
@@ -559,10 +566,57 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
                       const isMe = msg.sender_id === myId;
                       const msgKey = msg._id || `msg-${idx}`;
 
+                      if (msg.type === 'file' && msg.file_url) {
+                        return (
+                          <div key={msgKey} style={{ display: 'flex', justifyContent: isMe ? 'flex-end' : 'flex-start' }}>
+                            {(() => {
+                          const fname = msg.metadata?.name || 'Attachment';
+                          const ext = (fname.split('.').pop() || 'FILE').toUpperCase().slice(0, 4);
+                          const kb = msg.metadata?.size
+                            ? (msg.metadata.size < 1024 * 1024
+                                ? Math.round(msg.metadata.size / 1024) + ' KB'
+                                : (msg.metadata.size / (1024 * 1024)).toFixed(1) + ' MB')
+                            : null;
+                          return (
+                            <a href={msg.file_url} target="_blank" rel="noopener noreferrer"
+                              style={{
+                                display: 'flex', alignItems: 'center', gap: '10px',
+                                padding: '10px 12px', borderRadius: '10px', maxWidth: '280px',
+                                background: 'rgba(212,168,67,0.08)', border: '1px solid rgba(212,168,67,0.25)',
+                                textDecoration: 'none', color: 'inherit',
+                              }}>
+                              <div style={{
+                                width: '34px', height: '34px', borderRadius: '7px', flexShrink: 0,
+                                background: 'rgba(212,168,67,0.15)', display: 'flex',
+                                alignItems: 'center', justifyContent: 'center',
+                              }}>
+                                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#d4a843" strokeWidth="1.8">
+                                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/>
+                                </svg>
+                              </div>
+                              <div style={{ minWidth: 0, flex: 1 }}>
+                                <div style={{ fontSize: '0.78rem', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{fname}</div>
+                                <div style={{ fontSize: '0.68rem', opacity: 0.65, marginTop: '1px' }}>{ext}{kb ? ' - ' + kb : ''}</div>
+                              </div>
+                            </a>
+                          );
+                        })()}
+                          </div>
+                        );
+                      }
+
                       if (msg.type === 'image' && msg.file_url) {
                         return (
                           <div key={msgKey} style={{ display: 'flex', justifyContent: isMe ? 'flex-end' : 'flex-start' }}>
-                            <img src={msg.file_url} alt="" style={{ maxWidth: '65%', borderRadius: '10px', border: '1px solid var(--border)' }} />
+                            {/* Scaled for the bubble and clickable into the lightbox this modal already
+                                had for proofs. A photo the customer could not open was the one thing
+                                the admin side could do and this side could not. */}
+                            <img
+                              src={cloudinaryThumb(msg.file_url, 520)}
+                              alt=""
+                              onClick={() => setChatPhotoIdx(chatPhotoUrls.indexOf(msg.file_url))}
+                              style={{ maxWidth: '65%', borderRadius: '10px', border: '1px solid var(--border)', cursor: 'zoom-in', display: 'block' }}
+                            />
                           </div>
                         );
                       }
@@ -790,6 +844,13 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
 
       {/* In-place preview. A new tab would have dropped the customer onto a bare Cloudinary URL and out
           of the conversation; this keeps them where they were. Backdrop and Esc both close. */}
+      <PhotoLightbox
+        urls={chatPhotoUrls}
+        index={chatPhotoIdx}
+        onIndexChange={setChatPhotoIdx}
+        onClose={() => setChatPhotoIdx(null)}
+      />
+
       {preview && (
         <div
           onClick={() => setPreview(null)}
