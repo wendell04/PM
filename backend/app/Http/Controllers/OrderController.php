@@ -280,12 +280,15 @@ class OrderController extends Controller
             // Delivery estimate + optional rush. Turnaround config lives on the store owner; the
             // estimate is snapshotted onto the order so the promised window never shifts later.
             $owner     = \App\Models\User::where('role', 'owner')->first() ?? \App\Models\User::where('role', 'admin')->first();
-            $prodLead  = (int)   ($owner->productionLeadDays ?? 5);
-            $shipMin   = (int)   ($owner->shippingDaysMin    ?? 2);
-            $shipMax   = (int)   ($owner->shippingDaysMax    ?? 4);
+            $prodLead  = (int)   ($owner->productionLeadDays ?? 3);
+            $shipMin   = (int)   ($owner->shippingDaysMin    ?? 1);
+            $shipMax   = (int)   ($owner->shippingDaysMax    ?? 2);
             $rushOn    = (bool)  ($owner->rushEnabled        ?? true);
-            $rushLead  = (int)   ($owner->rushLeadDays       ?? 2);
-            $rushFee   = (float) ($owner->rushFee            ?? 100);
+            $rushLead  = (int)   ($owner->rushLeadDays       ?? 1);
+            // 150 to match SettingsController, which is what the settings screen and the public
+            // settings endpoint both report. A different fallback here meant the order was billed a
+            // fee the customer was never shown.
+            $rushFee   = (float) ($owner->rushFee            ?? 150);
 
             // Does anything on this order actually have to be MADE? A cart of stocked goods needs
             // picking and shipping, nothing more - charging it the production lead time promised a
@@ -314,6 +317,21 @@ class OrderController extends Controller
             };
             $estimatedDeliveryMin = $addBusinessDays($leadDays + $shipMin)->toIso8601String();
             $estimatedDeliveryMax = $addBusinessDays($leadDays + $shipMax)->toIso8601String();
+
+            // The date picker enforces a minimum client-side, but a request built by hand skips it
+            // entirely - and this is the one field that becomes a promise the shop is held to. A
+            // needByDate earlier than what production and shipping can actually deliver is dropped
+            // rather than stored, the same way an out-of-range value from any other form field would
+            // be rejected rather than trusted.
+            if ($needByDate) {
+                try {
+                    if (\Carbon\Carbon::parse($needByDate)->lt(\Carbon\Carbon::parse($estimatedDeliveryMin)->startOfDay())) {
+                        $needByDate = null;
+                    }
+                } catch (\Throwable) {
+                    $needByDate = null;
+                }
+            }
 
             // Handle design file upload (non-fatal)
             $designFilePath = null;
@@ -2384,6 +2402,121 @@ class OrderController extends Controller
         $order->items = array_values($items);
         $this->syncDesignAggregate($order);
         return true;
+    }
+
+    /**
+     * POST /api/orders/my/{id}/restart-design-job
+     * The customer is past the revision cap and still wants changes. "Treated as a new design
+     * job, back to base price" only means something if the new job carries the same terms as the
+     * first one - the design fee that buys a few free rounds, not a bare re-charge with nothing
+     * included. So this mirrors what the original design fee bought: it re-bills designRequestFee
+     * and resets the round counter to zero, rather than leaving the customer paying full price for
+     * every round of a job that is, on paper, brand new.
+     */
+    public function restartDesignJob(Request $request, $id)
+    {
+        try {
+            $user = $this->getAuthUser($request);
+            if (!$user) return $this->unauthorizedResponse();
+
+            $order = Order::find($id);
+            if (!$order || (string) $order->userId !== (string) $user->_id) {
+                return $this->notFoundResponse('Order');
+            }
+
+            if (!$order->adminDesignUrl) {
+                return $this->errorResponse('No design draft available for this order.', 422);
+            }
+
+            $validated = $request->validate([
+                'notes'     => 'required|string|min:5|max:1000',
+                'itemIndex' => 'nullable|integer|min:0',
+            ], [
+                'notes.required' => 'Please describe what the new design should do differently.',
+                'notes.min'      => 'Please give a little more detail.',
+            ]);
+            $notes = htmlspecialchars(strip_tags(trim($validated['notes'])), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+
+            $owner        = User::where('role', 'owner')->first();
+            $maxRevisions = max(0, (int) ($owner->maxRevisions ?? 5));
+            $designFee    = max(0, (float) ($owner->designRequestFee ?? 100));
+
+            $itemIndex = $request->input('itemIndex');
+            $items     = $order->items ?? [];
+            $isLine    = is_numeric($itemIndex) && isset($items[(int) $itemIndex]);
+            $usedSoFar = $isLine
+                ? (int) ($items[(int) $itemIndex]['revisionCount'] ?? 0)
+                : (int) ($order->revisionCount ?? 0);
+
+            // Restarting is only a real "new job" once the customer has actually used up what the
+            // first one bought. Allowing it earlier would let the cap be skipped for free by anyone
+            // who just prefers to pay ₱100 rather than describe changes to the current draft.
+            if ($usedSoFar < $maxRevisions) {
+                return $this->errorResponse(
+                    "This item still has revisions left ({$usedSoFar} of {$maxRevisions} used). Use \"Request changes\" instead.",
+                    422
+                );
+            }
+
+            $history   = $order->statusHistory ?? [];
+            $history[] = ['status' => 'design_job_restarted', 'at' => now()->toISOString()];
+
+            // Same reset the original job started from: zero rounds used, waiting on a fresh proof.
+            if (!$this->applyItemDesignStatus($order, $itemIndex, 'pending_design', [
+                    'revisionCount'  => 0,
+                    'revisionNotes'  => $notes,
+                    'adminDesignUrl' => null,
+                ])) {
+                return $this->errorResponse('Invalid item.', 422);
+            }
+            if (!$isLine) {
+                $order->revisionCount  = 0;
+                $order->designStatus   = 'pending_design';
+                $order->adminDesignUrl = null;
+            }
+
+            if ($designFee > 0) {
+                $order->designRestartFees = round((float) ($order->designRestartFees ?? 0) + $designFee, 2);
+                $order->totalAmount       = round((float) ($order->totalAmount ?? 0) + $designFee, 2);
+                if ($order->balance !== null && $order->balance !== '') {
+                    $order->balance = round((float) $order->balance + $designFee, 2);
+                }
+            }
+
+            $order->orderStatus   = 'pending_design';
+            $order->statusHistory = $history;
+            $order->revisionNotes = $notes;
+            $order->updatedAt     = now();
+            $order->save();
+
+            try {
+                $admins = User::whereIn('role', ['admin', 'owner'])->get();
+                foreach ($admins as $admin) {
+                    Notification::create([
+                        'user_id'    => (string) $admin->_id,
+                        'type'       => 'design_job_restarted',
+                        'title'      => 'New Design Job Requested',
+                        'message'    => 'Customer restarted the design for order #' .
+                            strtoupper(substr((string) $order->_id, -8)) .
+                            ' (₱' . number_format($designFee, 2) . ' charged): ' . substr($notes, 0, 100),
+                        'is_read'    => false,
+                        'data'       => ['orderId' => (string) $order->_id],
+                        'created_at' => now(),
+                    ]);
+                }
+            } catch (\Exception $notifErr) {
+                Log::warning('restartDesignJob: notification failed', ['error' => $notifErr->getMessage()]);
+            }
+
+            return $this->successResponse(
+                'New design job started. We will send a fresh proof.',
+                $this->normalizeOrderForCustomer($order)
+            );
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return $this->validationErrorResponse($e);
+        } catch (\Exception $e) {
+            return $this->serverErrorResponse($e, 'Failed to restart the design job.');
+        }
     }
 
     /**

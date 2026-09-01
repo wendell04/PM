@@ -109,6 +109,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/orders/my/{id}/reupload-design',       [OrderController::class, 'reuploadDesign'])->middleware('throttle:20,1');
     Route::post('/orders/my/{id}/approve-admin-design', [OrderController::class, 'approveAdminDesign']);
     Route::post('/orders/my/{id}/request-revision',     [OrderController::class, 'requestDesignRevision']);
+    Route::post('/orders/my/{id}/restart-design-job',  [OrderController::class, 'restartDesignJob'])->middleware('throttle:10,1');
     Route::post('/orders',                              [OrderController::class, 'store']);
 
     // ─── Reviews (Customer) ───────────────────────────────────────────────────
@@ -145,8 +146,11 @@ Route::middleware('auth:sanctum')->group(function () {
     // ─── Chat ────────────────────────────────────────────────────────────────
     Route::get('/chat/conversations',             [ChatController::class, 'index']);
     Route::get('/chat/conversations/{id}',        [ChatController::class, 'show']);
-    Route::post('/chat/messages',                 [ChatController::class, 'store']);
-    Route::post('/chat/upload-image',             [ChatController::class, 'uploadImage']);
+    // Unthrottled, these were a free flood: messages cost a database write and a broadcast, and
+    // every upload costs Cloudinary storage that is never reclaimed. The limits are well above
+    // what a person types or attaches and well below what a script would.
+    Route::post('/chat/messages',                 [ChatController::class, 'store'])->middleware('throttle:60,1');
+    Route::post('/chat/upload-image',             [ChatController::class, 'uploadImage'])->middleware('throttle:30,1');
     Route::patch('/chat/conversations/{id}/read', [ChatController::class, 'markAsRead']);
     Route::patch('/chat/heartbeat',              [ChatController::class, 'heartbeat']);
 });

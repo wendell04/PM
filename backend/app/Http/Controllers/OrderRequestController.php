@@ -766,6 +766,18 @@ class OrderRequestController extends Controller
             return $this->unauthorizedResponse();
         }
 
+        // A file over PHP's upload_max_filesize never arrives - PHP discards it and leaves only an
+        // error code behind, so `required|file` fails as though nothing was attached. Said plainly
+        // here, because "the design field is required" describes a file the customer can see.
+        // Not hasFile() - that calls isValidFile(), which rejects a dropped upload for having an
+        // empty temp path, so the guard would never have run on the one case it exists for.
+        $attempted = $request->file('design');
+        if (is_object($attempted) && $attempted->getError() === UPLOAD_ERR_INI_SIZE) {
+            return response()->json([
+                'message' => 'That file is too large for the server to accept. Please send one under 10 MB.',
+            ], 422);
+        }
+
         $validated = Validator::make($request->all(), [
             // webp was missing here while the storefront offered it, so a .webp passed the
             // browser check and then failed on upload with no useful explanation.
@@ -812,9 +824,16 @@ class OrderRequestController extends Controller
             ]);
         }
 
+        // Cloudinary states its reason; repeating it beats replacing it, because "failed" sent the
+        // customer back to retry a file that was refused for a fixed reason - size, format, account.
+        Log::warning('Cloudinary design upload failed', [
+            'status' => $response->status(),
+            'body'   => $response->body(),
+        ]);
+
         return response()->json([
-            'message' => 'Failed to upload design.',
-        ], 500);
+            'message' => $response->json('error.message') ?: 'Failed to upload design.',
+        ], 502);
     }
 
     /**

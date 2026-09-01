@@ -22,12 +22,19 @@ class SettingsController extends Controller
                 'storeLat'             => $owner->storeLat              ?? null,
                 'storeLng'             => $owner->storeLng              ?? null,
                 'shippingMode'         => $owner->shippingMode          ?? 'courier_booked',
-                'shippingBaseRate'     => (float) ($owner->shippingBaseRate     ?? 50),
-                'shippingPerKmRate'    => (float) ($owner->shippingPerKmRate    ?? 15),
+                // Modelled on how motorcycle courier apps (Lalamove, Grab) actually price a ride in
+                // Metro Manila: a base fare, a per-km rate for a short first stretch, then a lower
+                // per-km rate beyond it. A single flat per-km rate across the whole trip was a shape
+                // no real courier prices with - short deliveries came out a little expensive relative
+                // to long ones, because nothing captured the tapering real pricing has.
+                'shippingBaseRate'     => (float) ($owner->shippingBaseRate     ?? 49),
+                'shippingPerKmRate'    => (float) ($owner->shippingPerKmRate    ?? 6),
+                'shippingPerKmRateFar' => (float) ($owner->shippingPerKmRateFar ?? 5),
+                'shippingTierKm'       => (float) ($owner->shippingTierKm       ?? 5),
                 'flatRateInsideMetro'  => (float) ($owner->flatRateInsideMetro  ?? 150),
                 'flatRateOutsideMetro' => (float) ($owner->flatRateOutsideMetro ?? 250),
                 // Delivery estimate + rush (storefront shows "Get by [range]" from these).
-                'productionLeadDays'   => (int)   ($owner->productionLeadDays   ?? 5),
+                'productionLeadDays'   => (int)   ($owner->productionLeadDays   ?? 3),
                 'depositDueDays'       => (int)   ($owner->depositDueDays       ?? 7),
                 'unpaidOrderDays'      => (int)   ($owner->unpaidOrderDays      ?? 3),
                 // How long a FINISHED order is held while the balance goes unpaid. Personalised goods
@@ -40,10 +47,10 @@ class SettingsController extends Controller
                 'freeRevisions'        => (int)   ($owner->freeRevisions        ?? 3),
                 'extraRevisionFee'     => (float) ($owner->extraRevisionFee     ?? 50),
                 'maxRevisions'         => (int)   ($owner->maxRevisions         ?? 5),
-                'shippingDaysMin'      => (int)   ($owner->shippingDaysMin      ?? 2),
-                'shippingDaysMax'      => (int)   ($owner->shippingDaysMax      ?? 4),
+                'shippingDaysMin'      => (int)   ($owner->shippingDaysMin      ?? 1),
+                'shippingDaysMax'      => (int)   ($owner->shippingDaysMax      ?? 2),
                 'rushEnabled'          => (bool)  ($owner->rushEnabled          ?? true),
-                'rushLeadDays'         => (int)   ($owner->rushLeadDays         ?? 2),
+                'rushLeadDays'         => (int)   ($owner->rushLeadDays         ?? 1),
                 'rushFee'              => (float) ($owner->rushFee              ?? 150),
                 // Custom-order T&C the storefront gates ordering on (owner-editable; version is
                 // recorded on the order when the customer accepts).
@@ -78,12 +85,14 @@ class SettingsController extends Controller
                 'storeLat'             => $owner->storeLat              ?? null,
                 'storeLng'             => $owner->storeLng              ?? null,
                 'shippingMode'         => $owner->shippingMode          ?? 'courier_booked',
-                'shippingBaseRate'     => (float) ($owner->shippingBaseRate     ?? 50),
-                'shippingPerKmRate'    => (float) ($owner->shippingPerKmRate    ?? 15),
+                'shippingBaseRate'     => (float) ($owner->shippingBaseRate     ?? 49),
+                'shippingPerKmRate'    => (float) ($owner->shippingPerKmRate    ?? 6),
+                'shippingPerKmRateFar' => (float) ($owner->shippingPerKmRateFar ?? 5),
+                'shippingTierKm'       => (float) ($owner->shippingTierKm       ?? 5),
                 'flatRateInsideMetro'  => (float) ($owner->flatRateInsideMetro  ?? 150),
                 'flatRateOutsideMetro' => (float) ($owner->flatRateOutsideMetro ?? 250),
                 'designRequestFee'     => (float) ($user->designRequestFee      ?? 100),
-                'productionLeadDays'   => (int)   ($owner->productionLeadDays   ?? 5),
+                'productionLeadDays'   => (int)   ($owner->productionLeadDays   ?? 3),
                 'depositDueDays'       => (int)   ($owner->depositDueDays       ?? 7),
                 'unpaidOrderDays'      => (int)   ($owner->unpaidOrderDays      ?? 3),
                 // How long a FINISHED order is held while the balance goes unpaid. Personalised goods
@@ -96,10 +105,10 @@ class SettingsController extends Controller
                 'freeRevisions'        => (int)   ($owner->freeRevisions        ?? 3),
                 'extraRevisionFee'     => (float) ($owner->extraRevisionFee     ?? 50),
                 'maxRevisions'         => (int)   ($owner->maxRevisions         ?? 5),
-                'shippingDaysMin'      => (int)   ($owner->shippingDaysMin      ?? 2),
-                'shippingDaysMax'      => (int)   ($owner->shippingDaysMax      ?? 4),
+                'shippingDaysMin'      => (int)   ($owner->shippingDaysMin      ?? 1),
+                'shippingDaysMax'      => (int)   ($owner->shippingDaysMax      ?? 2),
                 'rushEnabled'          => (bool)  ($owner->rushEnabled          ?? true),
-                'rushLeadDays'         => (int)   ($owner->rushLeadDays         ?? 2),
+                'rushLeadDays'         => (int)   ($owner->rushLeadDays         ?? 1),
                 'rushFee'              => (float) ($owner->rushFee              ?? 150),
                 // Custom-order T&C the storefront gates ordering on (owner-editable; version is
                 // recorded on the order when the customer accepts).
@@ -133,6 +142,8 @@ class SettingsController extends Controller
                 'shippingMode'         => 'nullable|string|in:distance,flat,courier_booked',
                 'shippingBaseRate'     => 'nullable|numeric|min:0|max:9999',
                 'shippingPerKmRate'    => 'nullable|numeric|min:0|max:9999',
+                'shippingPerKmRateFar' => 'nullable|numeric|min:0|max:9999',
+                'shippingTierKm'       => 'nullable|numeric|min:0|max:200',
                 'flatRateInsideMetro'  => 'nullable|numeric|min:0|max:9999',
                 'flatRateOutsideMetro' => 'nullable|numeric|min:0|max:9999',
                 'productionLeadDays'   => 'nullable|integer|min:0|max:120',
@@ -158,6 +169,8 @@ class SettingsController extends Controller
             if ($request->has('shippingMode'))         $owner->shippingMode         = $request->shippingMode ?? 'courier_booked';
             if ($request->has('shippingBaseRate'))     $owner->shippingBaseRate     = (float) $request->shippingBaseRate;
             if ($request->has('shippingPerKmRate'))    $owner->shippingPerKmRate    = (float) $request->shippingPerKmRate;
+            if ($request->has('shippingPerKmRateFar')) $owner->shippingPerKmRateFar = (float) $request->shippingPerKmRateFar;
+            if ($request->has('shippingTierKm'))       $owner->shippingTierKm       = (float) $request->shippingTierKm;
             if ($request->has('flatRateInsideMetro'))  $owner->flatRateInsideMetro  = (float) $request->flatRateInsideMetro;
             if ($request->has('flatRateOutsideMetro')) $owner->flatRateOutsideMetro = (float) $request->flatRateOutsideMetro;
             if ($request->has('productionLeadDays'))   $owner->productionLeadDays   = (int) $request->productionLeadDays;
@@ -185,7 +198,7 @@ class SettingsController extends Controller
                 'shippingPerKmRate'    => (float) ($owner->shippingPerKmRate    ?? 15),
                 'flatRateInsideMetro'  => (float) ($owner->flatRateInsideMetro  ?? 150),
                 'flatRateOutsideMetro' => (float) ($owner->flatRateOutsideMetro ?? 250),
-                'productionLeadDays'   => (int)   ($owner->productionLeadDays   ?? 5),
+                'productionLeadDays'   => (int)   ($owner->productionLeadDays   ?? 3),
                 'depositDueDays'       => (int)   ($owner->depositDueDays       ?? 7),
                 'unpaidOrderDays'      => (int)   ($owner->unpaidOrderDays      ?? 3),
                 // How long a FINISHED order is held while the balance goes unpaid. Personalised goods
@@ -198,10 +211,10 @@ class SettingsController extends Controller
                 'freeRevisions'        => (int)   ($owner->freeRevisions        ?? 3),
                 'extraRevisionFee'     => (float) ($owner->extraRevisionFee     ?? 50),
                 'maxRevisions'         => (int)   ($owner->maxRevisions         ?? 5),
-                'shippingDaysMin'      => (int)   ($owner->shippingDaysMin      ?? 2),
-                'shippingDaysMax'      => (int)   ($owner->shippingDaysMax      ?? 4),
+                'shippingDaysMin'      => (int)   ($owner->shippingDaysMin      ?? 1),
+                'shippingDaysMax'      => (int)   ($owner->shippingDaysMax      ?? 2),
                 'rushEnabled'          => (bool)  ($owner->rushEnabled          ?? true),
-                'rushLeadDays'         => (int)   ($owner->rushLeadDays         ?? 2),
+                'rushLeadDays'         => (int)   ($owner->rushLeadDays         ?? 1),
                 'rushFee'              => (float) ($owner->rushFee              ?? 150),
             ]);
         } catch (\Illuminate\Validation\ValidationException $e) {

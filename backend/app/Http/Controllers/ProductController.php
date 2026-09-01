@@ -650,8 +650,16 @@ class ProductController extends Controller
                 'optionGroups'      => 'nullable|array|max:4',
                 'optionGroups.*.name'              => 'required_with:optionGroups|string|max:60',
                 'optionGroups.*.options'           => 'required_with:optionGroups|array|min:1|max:12',
+                // Every nested key needs its own rule. validate() returns ONLY the paths it was
+                // given rules for, so an unlisted key is silently dropped between the request and
+                // the database - which looked like two options sharing an id, and therefore two
+                // buttons both drawing themselves as selected.
+                'optionGroups.*.id'                => 'nullable|string|max:40',
+                'optionGroups.*.options.*.id'      => 'nullable|string|max:40',
                 'optionGroups.*.options.*.label'   => 'required|string|max:60',
                 'optionGroups.*.options.*.priceAdd'=> 'nullable|numeric|min:0|max:100000',
+                'optionGroups.*.options.*.priceMode'=> 'nullable|string|in:unit,order',
+                'optionGroups.*.options.*.imageUrl'=> 'nullable|string|max:600',
                 'combinations'      => 'nullable|array',
                 'trackInventory'    => 'boolean',
                 'stock'             => 'nullable|integer|min:0',
@@ -837,8 +845,16 @@ class ProductController extends Controller
                 'optionGroups'      => 'nullable|array|max:4',
                 'optionGroups.*.name'              => 'required_with:optionGroups|string|max:60',
                 'optionGroups.*.options'           => 'required_with:optionGroups|array|min:1|max:12',
+                // Every nested key needs its own rule. validate() returns ONLY the paths it was
+                // given rules for, so an unlisted key is silently dropped between the request and
+                // the database - which looked like two options sharing an id, and therefore two
+                // buttons both drawing themselves as selected.
+                'optionGroups.*.id'                => 'nullable|string|max:40',
+                'optionGroups.*.options.*.id'      => 'nullable|string|max:40',
                 'optionGroups.*.options.*.label'   => 'required|string|max:60',
                 'optionGroups.*.options.*.priceAdd'=> 'nullable|numeric|min:0|max:100000',
+                'optionGroups.*.options.*.priceMode'=> 'nullable|string|in:unit,order',
+                'optionGroups.*.options.*.imageUrl'=> 'nullable|string|max:600',
                 'combinations'      => 'nullable|array',
                 'trackInventory'    => 'boolean',
                 'stock'             => 'nullable|integer|min:0',

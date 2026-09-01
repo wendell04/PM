@@ -30,6 +30,18 @@ Broadcast::channel('conversation.{conversationId}', function ($user, $conversati
         || in_array($user->role ?? null, ['admin', 'owner']);
 });
 
+// Private channel for one order's live status. OrderStatusUpdated broadcasts here and My Orders
+// subscribes, but no rule was ever declared - and an undeclared private channel is refused for
+// everyone, so the live status update has never once arrived. Declaring it fixes the silence and
+// authorises it in the same stroke: the customer who owns the order, or the shop.
+Broadcast::channel('order.{orderId}', function ($user, $orderId) {
+    $order = \App\Models\Order::find($orderId);
+    if (!$order) return false;
+
+    return (string) ($order->userId ?? '') === (string) ($user->_id ?? $user->id ?? '')
+        || in_array($user->role ?? null, ['admin', 'owner'], true);
+});
+
 // Private admin chat channel (for global message broadcasts to all admins)
 Broadcast::channel('admin.chat', function ($user) {
     return in_array($user->role ?? null, ['admin', 'owner']);
