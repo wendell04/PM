@@ -1,5 +1,5 @@
 'use client';
-import { optionGroupsOf, defaultOptionSelection, selectedOptionList, optionsUnitAdd, optionsOrderAdd, withOptionSuffix } from '@/lib/shopUtils';
+import { optionGroupsOf, defaultOptionSelection, selectedOptionList, optionsUnitAdd, optionsOrderAdd, withOptionSuffix, optionKey, groupKey } from '@/lib/shopUtils';
 import NoImage from '@/components/NoImage';
 
 import { useState, useEffect, useRef, Suspense } from 'react';
@@ -11,6 +11,14 @@ import { uploadDesignFile } from '@/lib/orderRequestApi';
 import { useCart } from '@/context/CartContext';
 import useLockBodyScroll from '@/lib/useLockBodyScroll';
 import { DEFAULT_CUSTOM_ORDER_TERMS, renderTermsBody } from '@/lib/customOrderTerms';
+
+const METRO_CITIES = ['Manila', 'Quezon City', 'Caloocan', 'Las Piñas', 'Makati', 'Malabon', 'Mandaluyong', 'Marikina', 'Muntinlupa', 'Navotas', 'Parañaque', 'Pasay', 'Pasig', 'Pateros', 'San Juan', 'Taguig', 'Valenzuela'];
+function isMetroManila(city, province) {
+  const p = (province || '').toLowerCase();
+  const c = (city || '').toLowerCase();
+  return p.includes('metro manila') || p.includes('ncr') || p.includes('national capital')
+    || METRO_CITIES.some(m => c.includes(m.toLowerCase()));
+}
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
@@ -147,6 +155,9 @@ function CustomOrderInner() {
   const [verifyingPayment, setVerifyingPayment] = useState(false);
   const [pendingVerifyId, setPendingVerifyId] = useState(null);
   const [submitError, setSubmitError] = useState(null);
+  // Read from the CMS, never hardcoded - the owner changes their page and this follows. The footer
+  // has the URL baked in, which is why it would quietly point at the wrong place after a rename.
+  const [shopFacebook, setShopFacebook] = useState(null);
   const [requestSubmitted, setRequestSubmitted] = useState(false);
   const [storeSettings, setStoreSettings]     = useState(null);
   const [shippingFeeAmt, setShippingFeeAmt]   = useState(null);
@@ -244,6 +255,18 @@ function CustomOrderInner() {
           });
           setSelectedVariants(initial);
         }
+
+        // Same treatment for the options, and read from the URL only - nothing is defaulted here
+        // either. Arriving without a choice means the customer never made one, and the order page is
+        // not the place to invent it.
+        const optInit = {};
+        optionGroupsOf(p).forEach((g, gi) => {
+          const gk = groupKey(g, gi);
+          const fromUrl = searchParams.get(`o_${gk}`);
+          const valid = g.options.map((o, oi) => optionKey(o, oi));
+          if (fromUrl && valid.includes(fromUrl)) optInit[gk] = fromUrl;
+        });
+        setSelectedOptions(optInit);
       })
       .catch(() => setLoadError('Product not found.'))
       .finally(() => setLoading(false));
@@ -256,13 +279,33 @@ function CustomOrderInner() {
       .catch(() => {});
   }, []);
 
+  // A shop can be set to Flat Rate or Courier Booked, and this page used to ignore that entirely -
+  // charging a fabricated distance-based figure regardless. Mirrors the three-mode branch checkout
+  // already has, so the two screens can no longer disagree about what shipping costs.
+  const courierBooked = !storeSettings?.shippingMode || storeSettings.shippingMode === 'courier_booked';
+
   useEffect(() => {
     const addr = addresses.find(a => a.id === selectedAddressId) ?? null;
+
+    if (courierBooked) { setShippingFeeAmt(null); return; }
+
+    if (storeSettings?.shippingMode === 'flat') {
+      if (!addr) { setShippingFeeAmt(null); return; }
+      const fee = isMetroManila(addr.city, addr.province)
+        ? (storeSettings.flatRateInsideMetro  ?? 150)
+        : (storeSettings.flatRateOutsideMetro ?? 250);
+      setShippingFeeAmt(fee);
+      return;
+    }
+
     if (!storeSettings?.storeLat || !storeSettings?.storeLng || !addr?.lat || !addr?.lng) {
       setShippingFeeAmt(null);
       return;
     }
-    const { storeLat, storeLng, shippingBaseRate = 50, shippingPerKmRate = 15 } = storeSettings;
+    const {
+      storeLat, storeLng,
+      shippingBaseRate = 49, shippingPerKmRate = 6, shippingPerKmRateFar = 5, shippingTierKm = 5,
+    } = storeSettings;
     fetch(
       `https://router.project-osrm.org/route/v1/driving/${storeLng},${storeLat};${addr.lng},${addr.lat}?overview=false`
     )
@@ -270,13 +313,19 @@ function CustomOrderInner() {
       .then(d => {
         const distM = d.routes?.[0]?.distance ?? null;
         if (distM !== null) {
-          setShippingFeeAmt(Math.round((shippingBaseRate + shippingPerKmRate * distM / 1000) * 100) / 100);
+          const distKm = distM / 1000;
+          // Tiered like a real motorcycle courier fare (base + a steeper first-tier per-km rate,
+          // then a lower one beyond) - see checkout/page.jsx for the same formula and why.
+          const nearKm = Math.min(distKm, shippingTierKm);
+          const farKm  = Math.max(0, distKm - shippingTierKm);
+          const fee    = shippingBaseRate + shippingPerKmRate * nearKm + shippingPerKmRateFar * farKm;
+          setShippingFeeAmt(Math.round(fee * 100) / 100);
         } else {
           setShippingFeeAmt(null);
         }
       })
       .catch(() => setShippingFeeAmt(null));
-  }, [selectedAddressId, addresses, storeSettings]);
+  }, [selectedAddressId, addresses, storeSettings, courierBooked]);
 
   useEffect(() => {
     if (!token) return;
@@ -297,10 +346,6 @@ function CustomOrderInner() {
   // Inquiry (quotation) products have no computable price — they go through the quote flow
   // (request now, owner sends a quote, customer pays it later), never a direct ₱0 checkout.
   const isInquiry = (product?.priceType ?? product?.pricingMode) === 'inquiry';
-  // Seeded from the product rather than left blank: production needs an answer, not an omission.
-  useEffect(() => {
-    if (product) setSelectedOptions(defaultOptionSelection(product));
-  }, [product]);
 
   const optionGroups  = product ? optionGroupsOf(product) : [];
   const optionUnitAdd = product ? optionsUnitAdd(product, selectedOptions) : 0;
@@ -310,14 +355,17 @@ function CustomOrderInner() {
   // Per piece, matching the PDP: the extra cut is extra work on every unit.
   const unitPrice = getUnitPrice(product, quantity, selectedVariants) + optionUnitAdd;
   const designFee = designMode === 'request' ? (product?.designFee ?? 0) : 0;
-  const lineTotal = (unitPrice ?? 0) * quantity;
+  // The per-order charge sits outside the multiplication - it is paid once however many are made,
+  // so folding it into unitPrice would bill it per piece and folding it out of the total would
+  // lose it entirely.
+  const lineTotal = (unitPrice ?? 0) * quantity + optionOrderAdd;
 
   // Delivery speed (turnaround). Config is global (store owner); Rush costs more + is faster.
-  const prodLeadDays = Number(storeSettings?.productionLeadDays ?? 5);
-  const shipMinDays  = Number(storeSettings?.shippingDaysMin ?? 2);
-  const shipMaxDays  = Number(storeSettings?.shippingDaysMax ?? 4);
+  const prodLeadDays = Number(storeSettings?.productionLeadDays ?? 3);
+  const shipMinDays  = Number(storeSettings?.shippingDaysMin ?? 1);
+  const shipMaxDays  = Number(storeSettings?.shippingDaysMax ?? 2);
   const rushEnabled  = !!(storeSettings?.rushEnabled ?? false);
-  const rushLeadDays = Number(storeSettings?.rushLeadDays ?? 2);
+  const rushLeadDays = Number(storeSettings?.rushLeadDays ?? 1);
   const rushFeeAmt   = Number(storeSettings?.rushFee ?? 0);
   const rushActive   = rush && rushEnabled;
   const rushCharge   = rushActive ? rushFeeAmt : 0;
@@ -392,6 +440,13 @@ function CustomOrderInner() {
     });
   }
 
+  useEffect(() => {
+    fetch(`${API_URL}/api/storefront/content/contact`)
+      .then(r => r.json())
+      .then(d => { if (d?.data?.facebook) setShopFacebook(d.data.facebook); })
+      .catch(() => {});
+  }, []);
+
   async function handleFilesSelect(fileList) {
     const picked = Array.from(fileList || []);
     if (!picked.length) return;
@@ -426,9 +481,15 @@ function CustomOrderInner() {
         setDesignFiles(prev => prev.map(f => f.key === entry.key
           ? { ...f, url, name: name ?? f.name, uploading: false, file: null }
           : f));
-      } catch {
+      } catch (err) {
+        // The catch used to discard err and tell everyone to try again - the same sentence for a
+        // file too large, a format refused, an expired session and a service that was down. Only
+        // one of those is worth retrying, so the customer was being sent to repeat a failure.
         removeDesignFile(entry.key);
-        setSubmitError(`Could not upload ${entry.name}. Please try again.`);
+        const why = err?.message && !/^Failed to upload design file$/i.test(err.message)
+          ? err.message
+          : 'Please try again.';
+        setSubmitError(`${entry.name}: ${why}`);
       }
     }
   }
@@ -945,10 +1006,10 @@ function CustomOrderInner() {
                   here rather than asked again. "Change" goes back to that picker. */}
               {product.variantGroups?.length > 0 && (
                 <div style={{ marginBottom: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-                  {product.variantGroups.map(group => {
+                  {product.variantGroups.map((group, gi) => {
                     const chosen = group.options?.find(o => optValue(o) === selectedVariants[group.id]);
                     return (
-                      <div key={group.id} style={{ display: 'flex', alignItems: 'baseline', gap: '0.6rem' }}>
+                      <div key={group.id ?? group.name ?? gi} style={{ display: 'flex', alignItems: 'baseline', gap: '0.6rem' }}>
                         <p style={{ fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--gray)', margin: 0, minWidth: '90px' }}>{group.name}</p>
                         <p style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--white)', margin: 0 }}>
                           {chosen ? optLabel(chosen) : '—'}
@@ -956,6 +1017,21 @@ function CustomOrderInner() {
                       </div>
                     );
                   })}
+                  {/* Confirmed here, chosen on the product page - the same treatment the variant
+                      gets, because to the customer they were the same kind of decision. */}
+                  {chosenOptions.map((o, i) => (
+                    <div key={i} style={{ display: 'flex', alignItems: 'baseline', gap: '0.6rem' }}>
+                      <p style={{ fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--gray)', margin: 0, minWidth: '90px' }}>{o.group}</p>
+                      <p style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--white)', margin: 0 }}>
+                        {o.label}
+                        {o.priceAdd > 0 && (
+                          <span style={{ fontWeight: 500, color: 'var(--gray)', fontSize: '0.8rem' }}>
+                            {'  +' + fmt(o.priceAdd)}{o.priceMode === 'order' ? ' once' : ' / pc'}
+                          </span>
+                        )}
+                      </p>
+                    </div>
+                  ))}
                   <Link
                     href={`/shop/products/${id}`}
                     style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--gold)', textDecoration: 'none' }}
@@ -1316,6 +1392,14 @@ function CustomOrderInner() {
                     <span style={{ color: 'var(--gray)' }}>{fmt(unitPrice ?? 0)} × {quantity} pc{quantity > 1 ? 's' : ''}</span>
                     <span>{fmt(lineTotal)}</span>
                   </div>
+                  {/* Shown on its own line rather than buried in the unit price, so the reader can
+                      see it is not multiplied - the same reason the design fee has its own line. */}
+                  {chosenOptions.filter(o => o.priceMode === 'order' && o.priceAdd > 0).map((o, i) => (
+                    <div key={'oo' + i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
+                      <span style={{ color: 'var(--gray)' }}>{o.label} <span style={{ opacity: 0.7 }}>once</span></span>
+                      <span style={{ color: 'var(--gold)' }}>+{fmt(o.priceAdd)}</span>
+                    </div>
+                  ))}
                   {designMode === 'request' && designFee > 0 && (
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
                       <span style={{ color: 'var(--gray)' }}>Design fee</span>
@@ -1342,6 +1426,22 @@ function CustomOrderInner() {
                     <span>Total</span>
                     <span>{fmt(grandTotal)}</span>
                   </div>
+                  {/* "Billed separately" above says shipping is missing; this says why and what to
+                      expect, the same note checkout shows - so a customer who reads this on the
+                      product page and checkout later is not told two different things. */}
+                  {courierBooked && (
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem', marginTop: '4px', padding: '10px 12px', background: 'rgba(212,168,67,0.07)', border: '1px solid rgba(212,168,67,0.2)', borderRadius: '8px' }}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="2" style={{ flexShrink: 0, marginTop: '2px' }}>
+                        <rect x="1" y="3" width="15" height="13"/><path d="M16 8h4l3 3v5h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/>
+                      </svg>
+                      <span style={{ fontSize: '0.72rem', color: 'var(--gray-light)', lineHeight: 1.5 }}>
+                        Total above excludes delivery. We book a third-party courier (Lalamove / Grab) to your
+                        pinned location after your order is confirmed, then send you the exact fee in chat -
+                        usually paid in cash to the rider or the seller. The fee can vary with the size of
+                        your order.
+                      </span>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -1354,8 +1454,8 @@ function CustomOrderInner() {
 
               {designMode === 'upload' && !isInquiry && (
                 <div style={{ padding: '0.875rem', background: 'rgba(96,165,250,0.08)', border: '1px solid rgba(96,165,250,0.2)', borderRadius: '10px', marginBottom: '1rem', fontSize: '0.78rem', color: 'var(--gray)', lineHeight: 1.6 }}>
-                  <strong style={{ color: '#60a5fa', display: 'block', marginBottom: '4px' }}>We check your file before printing</strong>
-                  Your artwork is reviewed before production starts. If anything is not print-ready we message you in chat first - nothing gets printed wrong.
+                  <strong style={{ color: '#60a5fa', display: 'block', marginBottom: '4px' }}>You approve a proof before we print</strong>
+                  We send you a proof - a mockup showing exactly how your artwork will look. Nothing goes to production until you approve it. If something is not right you can ask for changes or send a replacement file at no extra cost, and if the file cannot be used at all, we refund what you paid.
                 </div>
               )}
 
@@ -1391,6 +1491,34 @@ function CustomOrderInner() {
                 </div>
               )}
 
+              {/* The checkbox and both buttons vanish under !canOrder, and disappearing silently
+                  reads as broken rather than as "not yet". This names the one thing still missing,
+                  in the same slot the controls will occupy once it is supplied. */}
+              {!canOrder && !isInquiry && (
+                <div style={{ padding: '0.75rem', marginBottom: '1rem', textAlign: 'center', fontSize: '0.82rem', color: 'var(--gray)', fontWeight: 600 }}>
+                  {!designMode
+                    ? 'Choose how you\u2019d like to provide your design to continue.'
+                    : designMode === 'upload' && uploading
+                      ? 'Uploading your file\u2026'
+                      : 'Attach your design file to continue.'}
+                </div>
+              )}
+
+              {/* Offered as a way to ask, not a way to order. A custom order is where the questions
+                  are - will my file work, can you do this size - and a customer who cannot ask
+                  simply leaves. It sits below the real actions and says "not sure", because a link
+                  that reads as an alternative checkout would move the agreement to a place the
+                  order cannot see, which is the thing this system exists to stop. */}
+              {shopFacebook && !addedToCart && (
+                <p style={{ textAlign: 'center', fontSize: '0.75rem', color: 'var(--gray)', margin: '0 0 0.85rem', lineHeight: 1.6 }}>
+                  Not sure about your file or size?{' '}
+                  <a href={shopFacebook} target="_blank" rel="noopener noreferrer"
+                    style={{ color: 'var(--gold)', fontWeight: 700, textDecoration: 'underline' }}>
+                    Message us on Facebook
+                  </a>
+                </p>
+              )}
+
               {/* Custom-order T&C - accepted here (per mode) and carried with the line to checkout. */}
               {(designMode === 'upload' || designMode === 'request' || isInquiry) && (
                 <label style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', margin: '0 0 0.85rem', cursor: 'pointer', fontSize: '0.8rem', color: 'var(--gray)', lineHeight: 1.5 }}>
@@ -1404,19 +1532,24 @@ function CustomOrderInner() {
               {/* Add to cart - upload (with file) OR request. A custom line is just an ordinary cart
                   line carrying its own design, so a ready-made tumbler, an uploaded mug and a
                   requested tote can share one delivery fee and one checkout. The design fee (request)
-                  and the downpayment are worked out at checkout from what the cart holds. */}
-              {canOrder && (
+                  and the downpayment are worked out at checkout from what the cart holds.
+                  Both this and Buy it now disappear once the line is added - each custom line
+                  carries its own uploaded artwork, so a second click here cannot mean "add one
+                  more of the same" the way a plain catalog item would: it would need its own
+                  file. A spent "Added to cart" button that stayed clickable was inviting a second,
+                  silently duplicate line instead of saying what to do next. */}
+              {canOrder && !addedToCart && (
                 <button onClick={handleAddToCart} disabled={placing || addingToCart || !agreedTerms}
                   style={{ width: '100%', padding: '0.9rem', background: addingToCart ? 'rgba(212,168,67,0.55)' : 'var(--gold)',
                     color: '#000', border: 'none', borderRadius: '10px', fontWeight: 800, fontSize: '0.95rem',
                     cursor: (addingToCart ? 'wait' : (!agreedTerms ? 'not-allowed' : 'pointer')), fontFamily: "'Outfit', sans-serif", opacity: !agreedTerms ? 0.5 : 1 }}>
-                  {addingToCart ? 'Adding...' : addedToCart ? 'Added to cart' : 'Add to cart'}
+                  {addingToCart ? 'Adding...' : 'Add to cart'}
                 </button>
               )}
 
               {/* Buy it now - the single-item shortcut that lands in the SAME checkout as the cart.
                   Works for upload and request alike; the checkout charges each line by its own rule. */}
-              {canOrder && (
+              {canOrder && !addedToCart && (
                 <button onClick={handleBuyNow} disabled={placing || addingToCart || !agreedTerms}
                   style={{ width: '100%', padding: '0.85rem', marginTop: '0.6rem', background: 'transparent',
                     color: 'var(--gold)', border: '1.5px solid var(--gold)', borderRadius: '10px', fontWeight: 800,
@@ -1425,12 +1558,31 @@ function CustomOrderInner() {
                 </button>
               )}
 
+              {/* Added: the line is done, so the two live choices are "check out now" or "keep
+                  shopping" - not "press this again", which is what the old single button implied. */}
+              {addedToCart && !isInquiry && (
+                <div style={{ padding: '0.75rem', marginBottom: '0.6rem', background: 'transparent',
+                  border: '1.5px solid var(--gold)', borderRadius: '10px', color: 'var(--gold)',
+                  fontWeight: 700, fontSize: '0.88rem', textAlign: 'center' }}>
+                  Added to cart
+                </div>
+              )}
+
               {addedToCart && !isInquiry && (
                 <Link href="/shop/cart"
-                  style={{ display: 'block', width: '100%', textAlign: 'center', padding: '0.8rem', marginTop: '0.6rem',
+                  style={{ display: 'block', width: '100%', textAlign: 'center', padding: '0.9rem',
+                    background: 'var(--gold)', color: '#000', border: 'none', borderRadius: '10px',
+                    fontWeight: 800, fontSize: '0.95rem', textDecoration: 'none' }}>
+                  Go to cart and check out
+                </Link>
+              )}
+
+              {addedToCart && !isInquiry && (
+                <Link href="/shop"
+                  style={{ display: 'block', width: '100%', textAlign: 'center', padding: '0.85rem', marginTop: '0.6rem',
                     background: 'transparent', color: 'var(--gold)', border: '1.5px solid var(--gold)', borderRadius: '10px',
                     fontWeight: 800, fontSize: '0.9rem', textDecoration: 'none' }}>
-                  Go to cart and check out
+                  Continue shopping
                 </Link>
               )}
 

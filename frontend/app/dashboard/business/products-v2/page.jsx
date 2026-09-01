@@ -1,5 +1,6 @@
 'use client';
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { S, ICONS, ConfirmModal, PaginationBar, SearchBar, SummaryCard, ToastContainer, useToast, usePagination, formatCurrency, CustomSelect } from '../inventory-v2/shared';
 import { loadProductsAndCollections, createProduct, updateProduct, deleteProduct, toggleProductPublish, updateCollection } from './api';
@@ -46,8 +47,21 @@ export default function ProductsV2() {
     refresh().catch(e => toast(e.message || 'Failed to load.', 'error')).finally(() => setLoading(false));
   }, [token]);
 
-  const openAdd  = () => { setFormTarget(null); setView('form'); };
-  const openEdit = (p) => { setFormTarget(p);   setView('form'); };
+  // Which product is open lives in the URL, not only in React state. It was state alone, so a reload
+  // - or a shared link, or the back button - threw the editor away and dropped the reader back on the
+  // list, having lost their place in a catalogue of 24.
+  const router       = useRouter();
+  const pathname     = usePathname();
+  const searchParams = useSearchParams();
+
+  const goto = (params) => {
+    const q = params ? '?' + params : '';
+    router.replace(pathname + q, { scroll: false });
+  };
+
+  const openAdd  = () => { setFormTarget(null); setView('form'); goto('new=1'); };
+  const openEdit = (p) => { setFormTarget(p);   setView('form'); goto('edit=' + encodeURIComponent(p.id)); };
+  const closeForm = () => { setFormTarget(null); setView('list'); goto(''); };
 
   const handleSave = async (data) => {
     try {
@@ -80,7 +94,9 @@ export default function ProductsV2() {
         // still offer a cut choice.
         optionGroups:        formData.optionGroups ?? [],
         variantGroups:       formData.type === 'multi-variant'
-          ? [{ name: 'Variant', options: formData.variants.map(v => v.name) }]
+          // A stable id, not just a name - `v_undefined` was showing up in shop URLs because
+          // every read site keys off group.id, and this was the only place that ever wrote one.
+          ? [{ id: 'variant', name: 'Variant', options: formData.variants.map(v => v.name) }]
           : [],
         combinations:        formData.type === 'multi-variant'
           ? formData.variants.map(v => ({
@@ -163,7 +179,7 @@ export default function ProductsV2() {
       ]);
 
       await refresh();
-      setView('list');
+      closeForm();
     } catch (e) {
       toast(e.message || 'Failed to save.', 'error');
     } finally {
@@ -185,9 +201,32 @@ export default function ProductsV2() {
       const label = p.name || '';
       if (p.thumbnail) map.set(p.thumbnail, { id: p.thumbnail, url: p.thumbnail, label });
       (p.images || []).forEach(u => { if (u && typeof u === 'string') map.set(u, { id: u, url: u, label }); });
+      // Option pictures belong in the picker too. They are uploaded from the Options card and were
+      // reachable from nowhere else afterwards - so a cut diagram that would have made a fine
+      // thumbnail had to be uploaded a second time to be usable as one. The picker is a place to
+      // FIND an image, not a definition of what the gallery contains.
+      (p.optionGroups || []).forEach(g =>
+        (g.options || []).forEach(o => {
+          if (o?.imageUrl) map.set(o.imageUrl, { id: o.imageUrl, url: o.imageUrl, label: label + ' - ' + (o.label || 'option') });
+        }));
     });
     return [...map.values()];
   }, [products]);
+
+  // Restore whatever the URL asks for, once the catalogue has actually loaded - the id means nothing
+  // until there is a product to match it against.
+  useEffect(() => {
+    if (loading) return;
+    const editId = searchParams.get('edit');
+    const isNew  = searchParams.get('new');
+    if (editId) {
+      const found = products.find(p => String(p.id) === String(editId));
+      // A link to a product that has since been deleted lands on the list rather than an empty form.
+      if (found) { setFormTarget(found); setView('form'); return; }
+    }
+    if (isNew) { setFormTarget(null); setView('form'); return; }
+    setView('list');
+  }, [loading, products, searchParams]);
 
   const filtered = useMemo(() => {
     let list = products;
@@ -313,7 +352,7 @@ export default function ProductsV2() {
           collections={collections}
           existingImages={existingImages}
           onSave={handleSave}
-          onCancel={() => setView('list')}
+          onCancel={closeForm}
         />
         <ToastContainer toasts={toasts} dismiss={dismiss} />
       </div>

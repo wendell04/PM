@@ -4,6 +4,7 @@
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
+import NoImage from '@/components/NoImage';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import { getStorefrontBanners } from '@/lib/bannerUtils';
 import { useAuth } from '@/contexts/AuthContext';
@@ -1942,10 +1943,14 @@ const handleForgotResetPassword = async () => {
                       onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.boxShadow = '0 10px 30px rgba(0,0,0,0.18)'; e.currentTarget.style.borderColor = 'rgba(212,168,67,0.4)'; }}
                       onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.borderColor = 'var(--border)'; }}
                     >
+                      {/* NoImage rather than a sixth hand-drawn placeholder: this card carried its
+                          own faint-gold version, so a product with no picture looked washed out here
+                          and like a proper empty frame everywhere else - one absence reading as two
+                          different problems, which is what the shared component exists to stop. */}
                       <div style={{ aspectRatio: '1 / 1', background: 'var(--dark)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
                         {img
                           ? <img src={img} alt={p.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                          : <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="rgba(212,168,67,0.35)" strokeWidth="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>}
+                          : <NoImage size={36} />}
                       </div>
                       <div style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: '4px', flex: 1 }}>
                         <div style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--white)', lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</div>

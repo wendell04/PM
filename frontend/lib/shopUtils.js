@@ -171,23 +171,42 @@ export function fileExtLabel(url, fallback = 'FILE') {
 // both of which every screen from the cart to the Job Order already carries. Threading a separate
 // field through the cart context, the cart API, checkout, order creation and the JO snapshot would
 // buy a structured value nobody reads yet, at the cost of five places that could go wrong.
+// Identity for a group and an option, falling back when the stored record has no id.
+//
+// Rows written before ids were persisted have none at all - and comparing two undefineds is true, so
+// EVERY button in a group drew itself as the selected one. Falling back to the name means old
+// products keep working without anyone re-saving them, and it fails safe: two options with the same
+// label in one group is already a mistake the owner can see.
+export function optionKey(opt, i = 0) {
+  return String(opt?.id ?? opt?.label ?? i);
+}
+
+export function groupKey(g, i = 0) {
+  return String(g?.id ?? g?.name ?? i);
+}
+
 export function optionGroupsOf(product) {
   const gs = product?.optionGroups;
   return Array.isArray(gs) ? gs.filter(g => g?.name && Array.isArray(g.options) && g.options.length) : [];
 }
 
-// The default is the FIRST option of each group, not "none": a sticker is always cut somehow, and a
-// blank choice would reach production as an unanswered question.
-export function defaultOptionSelection(product) {
-  const sel = {};
-  for (const g of optionGroupsOf(product)) sel[g.id] = g.options[0]?.id ?? null;
-  return sel;
+// Nothing is preselected, deliberately. A cut that arrives at the bench because it was the first
+// button in the list is not a decision anybody made, and the cost of getting it wrong is a reprint -
+// so the customer is asked, and the order cannot be placed until they answer.
+export function defaultOptionSelection() {
+  return {};
+}
+
+// Which groups still have no answer. Empty means the order is complete.
+export function unansweredOptionGroups(product, selection) {
+  return optionGroupsOf(product).filter((g, gi) => !selection?.[groupKey(g, gi)]);
 }
 
 export function selectedOptionList(product, selection) {
   const out = [];
-  for (const g of optionGroupsOf(product)) {
-    const opt = g.options.find(o => o.id === selection?.[g.id]);
+  optionGroupsOf(product).forEach((g, gi) => {
+    const gk  = groupKey(g, gi);
+    const opt = g.options.find((o, oi) => optionKey(o, oi) === selection?.[gk]);
     if (opt) out.push({
       group: g.name,
       label: opt.label,
@@ -195,7 +214,7 @@ export function selectedOptionList(product, selection) {
       priceMode: opt.priceMode === 'order' ? 'order' : 'unit',
       imageUrl: opt.imageUrl || null,
     });
-  }
+  });
   return out;
 }
 

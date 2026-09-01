@@ -98,13 +98,19 @@ export default function CartPage() {
   const [designChoices, setDesignChoices] = useState({});
   // Store-level design fee, so the cart quotes the same number checkout will charge.
   const [storeDesignFee, setStoreDesignFee] = useState(0);
+  // ...and the shipping mode, because "Calculated at checkout" is only true for two of the three.
+  const [shippingMode, setShippingMode] = useState(null);
   const removeTimerRef = useRef(null);
 
   useEffect(() => {
     let alive = true;
     fetch(`${API_URL}/api/public/settings`)
       .then(r => r.json())
-      .then(d => { if (alive) setStoreDesignFee(Number(d?.data?.designRequestFee) || 0); })
+      .then(d => {
+        if (!alive) return;
+        setStoreDesignFee(Number(d?.data?.designRequestFee) || 0);
+        setShippingMode(d?.data?.shippingMode ?? 'courier_booked');
+      })
       .catch(() => {});
     return () => { alive = false; };
   }, []);
@@ -688,10 +694,27 @@ export default function CartPage() {
                   <span style={{ whiteSpace: 'nowrap' }}>{formatPeso(selectedDesignFee)}</span>
                 </div>
               )}
+              {/* Under Courier Booked there is nothing to calculate at checkout either - the fee is
+                  quoted after the order, once a courier is actually booked. Promising a figure at
+                  checkout that never appears there is the kind of small lie a customer notices. */}
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: '.8rem' }}>
                 <span style={{ color: '#6b7280' }}>Shipping</span>
-                <span style={{ color: '#6b7280', textAlign: 'right' }}>Calculated at checkout</span>
+                <span style={{ color: '#6b7280', textAlign: 'right' }}>
+                  {shippingMode === 'courier_booked' ? 'Arranged after order' : 'Calculated at checkout'}
+                </span>
               </div>
+              {shippingMode === 'courier_booked' && (
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 8, padding: '9px 11px', background: 'rgba(212,168,67,0.07)', border: '1px solid rgba(212,168,67,0.2)', borderRadius: 8 }}>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#d4a843" strokeWidth="2" style={{ flexShrink: 0, marginTop: 2 }}>
+                    <rect x="1" y="3" width="15" height="13"/><path d="M16 8h4l3 3v5h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/>
+                  </svg>
+                  <span style={{ fontSize: '.72rem', color: '#6b7280', lineHeight: 1.5 }}>
+                    Delivery is not included in this total. We book a third-party courier after your
+                    order is confirmed and send you the fee in chat - usually paid in cash to the rider
+                    or the seller. It can vary with the size of your order.
+                  </span>
+                </div>
+              )}
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #e5e7eb', marginTop: 10, paddingTop: 10 }}>

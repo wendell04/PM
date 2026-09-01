@@ -1,7 +1,7 @@
 'use client';
 import { cloudinaryThumb } from '@/lib/cloudinaryImage';
 import { PLAIN_OR_CUSTOM_ENABLED } from '@/lib/featureFlags';
-import { optionGroupsOf, defaultOptionSelection, selectedOptionList, optionsUnitAdd, optionsOrderAdd, withOptionSuffix } from '@/lib/shopUtils';
+import { optionGroupsOf, defaultOptionSelection, selectedOptionList, optionsUnitAdd, optionsOrderAdd, withOptionSuffix, unansweredOptionGroups, optionKey, groupKey } from '@/lib/shopUtils';
 
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
@@ -470,6 +470,18 @@ export default function ProductDetailPage() {
   const isOutOfStock = effectiveMaxQty === 0 && !product?.isMadeToOrder;
 
   // Computed values
+  // Declared before the price maths below reads them. `const` is not hoisted, so a use above the
+  // declaration throws at render - and neither the parser nor the linter can see it, because it is a
+  // runtime rule about order, not a syntax or scope error.
+  const optionGroups   = product ? optionGroupsOf(product) : [];
+  const optionUnitAdd  = product ? optionsUnitAdd(product, selectedOptions) : 0;
+  const optionOrderAdd = product ? optionsOrderAdd(product, selectedOptions) : 0;
+  const chosenOptions  = product ? selectedOptionList(product, selectedOptions) : [];
+  // Whichever chosen option carries a picture takes the main frame. Selecting and looking are then
+  // one gesture on one target - a lightbox on the little thumbnail would put "choose this" and
+  // "show me this" on the same click, and the reader would get whichever one they did not mean.
+  const optionImage = chosenOptions.find(o => o.imageUrl)?.imageUrl ?? null;
+
   const baseTotalPrice = product
     ? computePrice(product, quantity, selectedVariants)
     : null;
@@ -495,10 +507,13 @@ export default function ProductDetailPage() {
     if (product) setSelectedOptions(defaultOptionSelection(product));
   }, [product]);
 
-  const optionGroups   = product ? optionGroupsOf(product) : [];
-  const optionUnitAdd  = product ? optionsUnitAdd(product, selectedOptions) : 0;
-  const optionOrderAdd = product ? optionsOrderAdd(product, selectedOptions) : 0;
-  const chosenOptions  = product ? selectedOptionList(product, selectedOptions) : [];
+  // Nothing is preselected, so an unanswered group blocks the order rather than sending a guess to
+  // the bench. Named in the message: "choose an option" makes the reader hunt for which one.
+  const unanswered     = product ? unansweredOptionGroups(product, selectedOptions) : [];
+  const optionsPending = unanswered.length > 0;
+  const optionsPrompt  = optionsPending
+    ? `Choose ${unanswered.map(g => g.name).join(' and ')} to continue.`
+    : null;
 
   const activeComboId = product ? resolveCombinationId(selectedVariants) : null;
   const variantImage = (() => {
@@ -524,9 +539,24 @@ export default function ProductDetailPage() {
     <div style={{ padding: '2rem 1rem',
       maxWidth: '1100px', margin: '0 auto' }}>
 
-      {/* Back button */}
+      {/* Back button. It used to always push('/shop'), which threw away wherever the reader actually
+          came from - the landing page, a collection, a search, or a filtered shop they had scrolled
+          halfway down. Going back through history restores all of that for free.
+
+          But history is only safe to walk when the step behind us is our own. A product link opened
+          from Google or a chat app has that site behind it, and "Back to Products" must never be the
+          control that ejects someone off the shop. So: same-origin referrer, or a referrer-less entry
+          that has since navigated in-app (the SPA case, where referrer stays empty), means go back.
+          A foreign referrer, or a cold deep link with nothing behind it, falls back to /shop. */}
       <button
-        onClick={() => router.push('/shop')}
+        onClick={() => {
+          const sameOrigin = typeof document !== 'undefined'
+            && document.referrer.startsWith(window.location.origin);
+          const inAppSpaHop = typeof document !== 'undefined'
+            && document.referrer === '' && window.history.length > 1;
+          if (sameOrigin || inAppSpaHop) router.back();
+          else router.push('/shop');
+        }}
         style={{
           background: 'none', border: 'none',
           color: 'var(--gray)', cursor: 'pointer',
@@ -538,7 +568,7 @@ export default function ProductDetailPage() {
           fill="none" stroke="currentColor" strokeWidth="2">
           <path d="M19 12H5M12 5l-7 7 7 7"/>
         </svg>
-        Back to Products
+        Back
       </button>
 
       {/* Loading state */}
@@ -659,7 +689,10 @@ export default function ProductDetailPage() {
                     Print to order
                   </div>
                 )}
-                {displayImages[activeImage] ? (
+                {optionImage ? (
+                  /* eslint-disable-next-line @next/next/no-img-element */
+                  <img src={optionImage} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', background: 'var(--dark2)', display: 'block', zIndex: 0 }} />
+                ) : displayImages[activeImage] ? (
                   /* eslint-disable-next-line @next/next/no-img-element */
                   <img src={displayImages[activeImage]} alt={product.subCategoryName} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', display: 'block', zIndex: 0 }} />
                 ) : (
@@ -706,7 +739,7 @@ export default function ProductDetailPage() {
                           <div key={tier.id ?? i} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', alignItems: 'center', padding: '0.625rem 1rem', borderTop: '1px solid var(--border)', background: isActive ? 'rgba(212,168,67,0.07)' : '' }}>
                             <span style={{ fontSize: '0.825rem', color: isActive ? 'var(--gold)' : 'var(--white)', fontWeight: isActive ? 700 : 500, display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
                               {`${tier.minQty}${tier.maxQty ? `–${tier.maxQty}` : '+'} pcs`}
-                              {isActive && <span style={{ fontSize: '0.58rem', background: 'rgba(212,168,67,0.18)', color: 'var(--gold)', padding: '1px 6px', borderRadius: '999px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Your qty</span>}
+                              {isActive && <span style={{ fontSize: '0.58rem', background: 'rgba(212,168,67,0.18)', color: 'var(--gold)', padding: '1px 6px', borderRadius: '999px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{optionUnitAdd > 0 ? 'Your qty - base' : 'Your qty'}</span>}
                             </span>
                             <span style={{ fontSize: '0.875rem', fontWeight: 700, color: isActive ? 'var(--gold)' : 'var(--white)', textAlign: 'right' }}>
                               {unitP ? `${formatPeso(unitP)} / pc` : '—'}
@@ -891,7 +924,67 @@ export default function ProductDetailPage() {
                   </div>
                   {quantity > 1 && (
                     <div style={{ fontSize: '0.82rem', color: 'var(--gray)', marginTop: '0.25rem' }}>
-                      Total: <span style={{ color: 'var(--gold)', fontWeight: 700 }}>{formatPeso(unitPrice * quantity)}</span>
+                      {/* totalPrice, not unitPrice x quantity: a per-order charge is added once and
+                          does not multiply, so the shorthand quietly left it out of the figure the
+                          customer reads as what they owe. */}
+                      Total: <span style={{ color: 'var(--gold)', fontWeight: 700 }}>{formatPeso(totalPrice)}</span>
+                    </div>
+                  )}
+
+                  {/* Where the number came from.
+                      Without this the headline says ₱65 while the tier table two inches away says
+                      ₱50, and nothing on the page reconciles them - which reads as a mistake at best
+                      and a trick at worst. It appears only once an option has actually added
+                      something; on a plain product there is nothing to explain. */}
+                  {chosenOptions.length > 0 && (optionUnitAdd > 0 || optionOrderAdd > 0) && (
+                    <div style={{
+                      marginTop: '0.85rem', padding: '0.7rem 0.85rem',
+                      background: 'var(--dark2)', border: '1px solid var(--border)',
+                      borderRadius: '10px', fontSize: '0.8rem',
+                      display: 'flex', flexDirection: 'column', gap: '0.3rem',
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', color: 'var(--gray)' }}>
+                        <span>Base price</span>
+                        <span style={{ fontVariantNumeric: 'tabular-nums' }}>{formatPeso(baseUnitPrice)} / pc</span>
+                      </div>
+
+                      {chosenOptions.filter(o => o.priceAdd > 0 && o.priceMode !== 'order').map((o, i) => (
+                        <div key={'u' + i} style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', color: 'var(--gray)' }}>
+                          <span>{o.label}</span>
+                          <span style={{ fontVariantNumeric: 'tabular-nums' }}>+{formatPeso(o.priceAdd)} / pc</span>
+                        </div>
+                      ))}
+
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem',
+                        paddingTop: '0.35rem', borderTop: '1px solid var(--border)',
+                        color: 'var(--white)', fontWeight: 700 }}>
+                        <span>Unit price</span>
+                        <span style={{ fontVariantNumeric: 'tabular-nums' }}>{formatPeso(unitPrice)} / pc</span>
+                      </div>
+
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', color: 'var(--gray)' }}>
+                        <span>&times; {quantity} pcs</span>
+                        <span style={{ fontVariantNumeric: 'tabular-nums' }}>{formatPeso(unitPrice * quantity)}</span>
+                      </div>
+
+                      {/* Charged once however many are made - the line most likely to be argued
+                          about, so it says "once" rather than leaving the reader to multiply it. */}
+                      {chosenOptions.filter(o => o.priceAdd > 0 && o.priceMode === 'order').map((o, i) => (
+                        <div key={'o' + i} style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', color: 'var(--gray)' }}>
+                          <span>{o.label}</span>
+                          <span style={{ fontVariantNumeric: 'tabular-nums' }}>
+                            +{formatPeso(o.priceAdd)}
+                            <span style={{ opacity: 0.7, fontWeight: 400 }}> once</span>
+                          </span>
+                        </div>
+                      ))}
+
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem',
+                        paddingTop: '0.35rem', borderTop: '1px solid var(--border)',
+                        color: 'var(--gold)', fontWeight: 800 }}>
+                        <span>Total</span>
+                        <span style={{ fontVariantNumeric: 'tabular-nums' }}>{formatPeso(totalPrice)}</span>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -979,8 +1072,8 @@ export default function ProductDetailPage() {
 
             {/* Variants */}
             {product.variantGroups?.length > 0 && (
-              product.variantGroups.map(group => (
-                <div key={group.id}>
+              product.variantGroups.map((group, gi) => (
+                <div key={group.id ?? group.name ?? gi}>
                   <div style={{ fontSize: '0.8rem',
                     fontWeight: 600, color: 'var(--gray)',
                     textTransform: 'uppercase',
@@ -1025,21 +1118,22 @@ export default function ProductDetailPage() {
             {/* Options - a choice about how it is made. Same picker language as the variants above,
                 because to the customer they are the same kind of decision; what differs is behind
                 the screen, where these do not touch stock or the bill of materials. */}
-            {optionGroups.map(group => (
-              <div key={group.id}>
+            {optionGroups.map((group, gi) => (
+              <div key={groupKey(group, gi)}>
                 <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--gray)',
                   textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '0.5rem' }}>
                   {group.name}
                 </div>
                 <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                  {group.options.map(opt => {
-                    const isSelected = selectedOptions[group.id] === opt.id;
-                    const add = Number(opt.priceAdd) || 0;
+                  {group.options.map((opt, oi) => {
+                    const gk = groupKey(group, gi);
+                    const ok = optionKey(opt, oi);
+                    const isSelected = selectedOptions[gk] === ok;
                     return (
                       <button
-                        key={opt.id}
+                        key={ok}
                         type="button"
-                        onClick={() => setSelectedOptions(p => ({ ...p, [group.id]: opt.id }))}
+                        onClick={() => setSelectedOptions(p => ({ ...p, [gk]: ok }))}
                         aria-pressed={isSelected}
                         style={{
                           display: 'inline-flex', alignItems: 'center',
@@ -1061,17 +1155,13 @@ export default function ProductDetailPage() {
                               marginRight: '0.45rem', verticalAlign: 'middle',
                               border: '1px solid rgba(0,0,0,.15)' }} />
                         )}
+                        {/* No price on the button. The figure at the top of the page already moves
+                            the moment a choice is made, and it moves to the number the customer
+                            will actually pay - quantity, tier and all. A badge beside the label
+                            repeats that in a form nobody can act on: "+₱15" does not say +₱15 of
+                            what, and on a per-order charge it is actively misleading at any
+                            quantity above one. */}
                         {opt.label}
-                        {/* Shown only when it costs something, and it says WHICH kind of charge -
-                            "+₱350" on a hundred-piece order means one thing per piece and quite
-                            another per order. A "+₱0.00" on every free option is noise that stops
-                            the one that does cost from standing out. */}
-                        {add > 0 && (
-                          <span style={{ marginLeft: '0.4rem', fontSize: '0.78em', opacity: 0.85 }}>
-                            +₱{add.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
-                            {opt.priceMode === 'order' ? ' / order' : ''}
-                          </span>
-                        )}
                       </button>
                     );
                   })}
@@ -1079,6 +1169,12 @@ export default function ProductDetailPage() {
               </div>
             ))}
 
+
+            {optionsPrompt && (
+              <p style={{ margin: '-0.25rem 0 0', fontSize: '0.8rem', fontWeight: 600, color: 'var(--gold)' }}>
+                {optionsPrompt}
+              </p>
+            )}
 
             {/* Quantity input — hidden when out of stock, and for inquiry (qty is set in the quote) */}
             {!isOutOfStock && !isInquiry && <div>
@@ -1222,9 +1318,13 @@ export default function ProductDetailPage() {
                         if (isOutOfStock || requestingQuote) return;
                         const qs = new URLSearchParams({ qty: String(quantity) });
                         Object.entries(selectedVariants).forEach(([g, v]) => { if (v) qs.set(`v_${g}`, v); });
+                        // The option travels the same way the variant does. Without it the order page
+                        // starts from nothing, quotes the base price, and the cut the customer picked
+                        // a moment ago is simply gone - along with what it added.
+                        Object.entries(selectedOptions).forEach(([g, v]) => { if (v) qs.set(`o_${g}`, v); });
                         router.push(`/shop/products/${id}/order?${qs.toString()}`);
                       }}
-                      disabled={isOutOfStock}
+                      disabled={isOutOfStock || optionsPending}
                       className="pdp-btn-primary"
                       style={{ opacity: isOutOfStock ? 0.5 : 1, cursor: isOutOfStock ? 'not-allowed' : 'pointer' }}
                     >
@@ -1232,7 +1332,7 @@ export default function ProductDetailPage() {
                     </button>
                     <button
                       onClick={handleAddToCart}
-                      disabled={isOutOfStock}
+                      disabled={isOutOfStock || optionsPending}
                       className="pdp-btn-secondary"
                       style={{ opacity: isOutOfStock ? 0.5 : 1, cursor: isOutOfStock ? 'not-allowed' : 'pointer' }}
                     >
@@ -1254,6 +1354,10 @@ export default function ProductDetailPage() {
                         if (!isInquiry) {
                           const qs = new URLSearchParams({ qty: String(quantity) });
                           Object.entries(selectedVariants).forEach(([g, v]) => { if (v) qs.set(`v_${g}`, v); });
+                        // The option travels the same way the variant does. Without it the order page
+                        // starts from nothing, quotes the base price, and the cut the customer picked
+                        // a moment ago is simply gone - along with what it added.
+                        Object.entries(selectedOptions).forEach(([g, v]) => { if (v) qs.set(`o_${g}`, v); });
                           router.push(`/shop/products/${id}/order?${qs.toString()}`);
                           return;
                         }
@@ -1281,13 +1385,13 @@ export default function ProductDetailPage() {
                           body: JSON.stringify({ productId: String(product._id ?? product.id), quantity, isCustom: true }),
                         }, 20000).catch(() => {}).finally(() => setTimeout(() => setRequestingQuote(false), 2000));
                       }}
-                      disabled={isOutOfStock || requestingQuote}
+                      disabled={isOutOfStock || requestingQuote || optionsPending}
                       style={{
                         background: (isOutOfStock || requestingQuote) ? 'rgba(107,114,128,0.3)' : 'var(--gold)',
                         color: isOutOfStock ? 'var(--gray)' : '#000',
                         border: 'none', borderRadius: '10px', padding: '0.875rem 1.5rem',
                         fontWeight: 800, fontSize: '1rem',
-                        cursor: isOutOfStock ? 'not-allowed' : 'pointer',
+                        cursor: (isOutOfStock || optionsPending) ? 'not-allowed' : 'pointer',
                         width: '100%', fontFamily: "'Outfit', sans-serif",
                         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
                       }}>
@@ -1295,7 +1399,9 @@ export default function ProductDetailPage() {
                         ? 'Opening chat…'
                         : isOutOfStock
                           ? 'Out of Stock'
-                          : (isInquiry ? 'Inquire' : 'Customize This Product')}
+                          : optionsPending
+                            ? optionsPrompt
+                            : (isInquiry ? 'Inquire' : 'Customize This Product')}
                     </button>
                     <p style={{ textAlign: 'center', fontSize: '0.75rem', color: 'var(--gray)', margin: 0, lineHeight: 1.5 }}>
                       {(product.priceType ?? product.pricingMode) === 'inquiry'
@@ -1308,7 +1414,7 @@ export default function ProductDetailPage() {
                   <>
                     <button
                       onClick={handleAddToCart}
-                      disabled={isOutOfStock}
+                      disabled={isOutOfStock || optionsPending}
                       style={{
                         background: isOutOfStock
                           ? 'rgba(107,114,128,0.3)'
@@ -1317,22 +1423,24 @@ export default function ProductDetailPage() {
                         border: 'none',
                         borderRadius: '10px', padding: '0.875rem 1.5rem',
                         fontWeight: 800, fontSize: '1rem',
-                        cursor: isOutOfStock ? 'not-allowed' : 'pointer',
+                        cursor: (isOutOfStock || optionsPending) ? 'not-allowed' : 'pointer',
                         width: '100%', fontFamily: "'Outfit', sans-serif",
                         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
                         transition: 'opacity 0.15s',
                       }}>
-                      {isOutOfStock ? 'Out of Stock' : addedToCart ? 'Added to Cart!' : 'Add to Cart'}
+                      {isOutOfStock ? 'Out of Stock'
+                        : optionsPending ? optionsPrompt
+                        : addedToCart ? 'Added to Cart!' : 'Add to Cart'}
                     </button>
                     <button
                       onClick={handleAddToCartAndCheckout}
-                      disabled={isOutOfStock}
+                      disabled={isOutOfStock || optionsPending}
                       style={{
                         background: isOutOfStock ? 'rgba(107,114,128,0.3)' : 'var(--gold)',
                         color: isOutOfStock ? 'var(--gray)' : '#000',
                         border: 'none', borderRadius: '10px', padding: '0.875rem 1.5rem',
                         fontWeight: 800, fontSize: '1rem',
-                        cursor: isOutOfStock ? 'not-allowed' : 'pointer',
+                        cursor: (isOutOfStock || optionsPending) ? 'not-allowed' : 'pointer',
                         width: '100%', fontFamily: "'Outfit', sans-serif",
                         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
                         opacity: 0.85,

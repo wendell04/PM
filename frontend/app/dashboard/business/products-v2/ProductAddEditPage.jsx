@@ -232,22 +232,18 @@ function StorefrontPreview({ name, description, thumbnail, priceRange, variantCo
           {thumbnail ? (
             <img src={thumbnail} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
           ) : (
-            <div style={{ textAlign: 'center', color: 'var(--border)' }}>
-              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                strokeWidth="1" strokeLinecap="round" strokeLinejoin="round"
-                style={{ display: 'block', margin: '0 auto 8px' }}>
-                <rect x="3" y="3" width="18" height="18" rx="2"/>
-                <circle cx="8.5" cy="8.5" r="1.5"/>
-                <polyline points="21 15 16 10 5 21"/>
-              </svg>
-              <NoImage size={28} color="var(--gray)" />
-            </div>
+            /* One mark, not two. Swapping the old "No image" caption for the shared component left
+               the 48px icon that had been sitting above it, so the preview drew the same picture
+               frame twice. */
+            <NoImage size={48} color="var(--border)" />
           )}
           {isCustomizable && (
             <div style={{ position: 'absolute', top: '10px', right: '10px', background: 'var(--gold)',
               color: 'var(--dark)', fontSize: '0.6rem', fontWeight: 700, padding: '3px 8px',
               borderRadius: '6px', textTransform: 'uppercase', letterSpacing: '0.5px', zIndex: 2 }}>
-              Customizable
+              {/* The same words the shop shows. A preview labelled "How customers see it" that says
+                  something the customer never sees is worse than no preview. */}
+              Print to order
             </div>
           )}
         </div>
@@ -405,7 +401,20 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
       tiers,
       collectionIds:      product.collectionIds || [],
       isCustomizable:     product.isCustomizable ?? false,
-      optionGroups:       Array.isArray(product.optionGroups) ? product.optionGroups : [],
+      // Backfill ids and the charge mode on the way IN. Rows saved before those keys existed have
+      // neither, and the form was sending back exactly what it received - so the gap repaired itself
+      // never, and every save looked like it had failed.
+      optionGroups: (Array.isArray(product.optionGroups) ? product.optionGroups : []).map(g => ({
+        ...g,
+        id: g.id || uid('og'),
+        options: (g.options || []).map(o => ({
+          ...o,
+          id: o.id || uid('o'),
+          priceMode: o.priceMode === 'order' ? 'order' : 'unit',
+          priceAdd: o.priceAdd ?? '',
+          imageUrl: o.imageUrl || '',
+        })),
+      })),
       allowPlain:         PLAIN_OR_CUSTOM_ENABLED
                             ? (product.allowPlain ?? !product.isCustomizable)
                             : !product.isCustomizable,
@@ -445,6 +454,7 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
 
   // ── Option groups ───────────────────────────────────────────────────────────
   const [optionUploading, setOptionUploading] = useState(null);
+  const [imgPreview, setImgPreview] = useState(null);
 
   const uploadOptionImage = async (gi, oi, file) => {
     if (!file) return;
@@ -646,8 +656,16 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
       let tiers = p.tiers;
       if (newMode === 'tiered') {
         const keys = p.type === 'standalone' ? ['__base__'] : p.variants.map(v => v.id);
+        // Keep what is already typed. Switching to Fixed and back is a way of LOOKING at the other
+        // mode, not a decision to throw the table away - and blanking it meant every glance at Fixed
+        // cost the owner the whole tier grid, retyped from memory.
+        // A key with no previous value still starts blank, so a newly added variant is not given
+        // some other variant's price by accident.
         tiers = p.tiers.length
-          ? p.tiers.map(t => ({ ...t, prices: keys.reduce((a, k) => ({ ...a, [k]: '' }), {}) }))
+          ? p.tiers.map(t => ({
+              ...t,
+              prices: keys.reduce((a, k) => ({ ...a, [k]: t.prices?.[k] ?? '' }), {}),
+            }))
           : [emptyTier(keys)];
       }
       // Inquiry products are made-to-order (quoted + produced per order) — enable MTO automatically.
@@ -663,6 +681,10 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
       : [...form.collectionIds, id]);
 
   // ── BOM cost + max producible ───────────────────────────────────────────────
+
+  // A BOM anywhere - on the product itself or on any variant - means the cost is already known,
+  // so the Cost Price box has nothing left to answer.
+  const hasAnyBom = !!form.bomId || (form.variants || []).some(v => !!v.bomId);
 
   const floorCostMap = useMemo(() => {
     const map = {};
@@ -785,6 +807,16 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
 
   return (
     <div style={{ minHeight: '100%', paddingBottom: '60px' }}>
+
+      {imgPreview && (
+        <div onClick={() => setImgPreview(null)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.72)', zIndex: 1200,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '32px', cursor: 'zoom-out' }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={imgPreview} alt="" onClick={e => e.stopPropagation()}
+            style={{ maxWidth: '100%', maxHeight: '100%', borderRadius: '10px', cursor: 'default' }} />
+        </div>
+      )}
 
       {prodCrop && (
         <ImageCropper src={prodCrop.src} aspect={1} title="Crop image (1:1)"
@@ -1166,7 +1198,7 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
                   <div key={g.id} style={{ border: '1px solid var(--border)', borderRadius: '8px', padding: '12px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
                     <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end' }}>
                       <Field label="Group name" style={{ flex: 1 }}>
-                        <input value={g.name} maxLength={60} placeholder="Cut"
+                        <input value={g.name} maxLength={60} placeholder="e.g. Cut type"
                           onChange={e => patchGroup(gi, 'name', e.target.value)} style={S.input} />
                       </Field>
                       <button onClick={() => removeGroup(gi)} style={{ ...S.btnSmDanger, marginBottom: '2px' }}
@@ -1183,10 +1215,11 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
                       </div>
                       {g.options.map((o, oi) => (
                         <div key={o.id} style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                          <input value={o.label} maxLength={60} placeholder="Kisscut"
+                          <input value={o.label} maxLength={60}
+                            placeholder={`e.g. ${['Kisscut', 'Diecut', 'Cut to shape'][oi % 3]}`}
                             onChange={e => patchOption(gi, oi, 'label', e.target.value)}
                             style={{ ...S.input, flex: 1 }} />
-                          <DecimalInput value={o.priceAdd} placeholder="free"
+                          <DecimalInput value={o.priceAdd} placeholder="e.g. 5.00"
                             onChange={v => patchOption(gi, oi, 'priceAdd', v)}
                             style={{ ...S.input, width: '96px' }} />
                           {/* Per piece or per order. A die is cut once however many stickers follow,
@@ -1200,20 +1233,44 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
                             ]}
                             style={{ width: '124px' }}
                           />
-                          <label style={{ width: '38px', height: '38px', borderRadius: '6px',
-                            border: '1px dashed var(--border)', display: 'flex', alignItems: 'center',
-                            justifyContent: 'center', cursor: 'pointer', overflow: 'hidden',
-                            flexShrink: 0, background: 'var(--dark2)' }}
-                            title={o.imageUrl ? 'Replace this picture' : 'Add a picture of this option'}>
-                            {optionUploading === (gi + ':' + oi)
-                              ? <span style={{ fontSize: '10px', color: 'var(--gray)' }}>...</span>
-                              : o.imageUrl
-                                /* eslint-disable-next-line @next/next/no-img-element */
-                                ? <img src={o.imageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                                : <span style={{ fontSize: '15px', color: 'var(--gray)' }}>+</span>}
-                            <input type="file" accept="image/*" style={{ display: 'none' }}
-                              onChange={e => { uploadOptionImage(gi, oi, e.target.files?.[0]); e.target.value = ''; }} />
-                          </label>
+                          {/* Three separate jobs, three separate targets. Once a picture is set,
+                              the tile opens it full size and a small x removes it - a single control
+                              that both previewed and replaced would make every look at the image a
+                              chance to overwrite it by accident. */}
+                          <div style={{ width: '38px', height: '38px', flexShrink: 0, position: 'relative' }}>
+                            {o.imageUrl ? (
+                              <>
+                                <button type="button" onClick={() => setImgPreview(o.imageUrl)}
+                                  title="View this picture"
+                                  style={{ width: '100%', height: '100%', borderRadius: '6px', overflow: 'hidden',
+                                    border: '1px solid var(--border)', padding: 0, cursor: 'zoom-in',
+                                    background: 'var(--dark2)', display: 'block' }}>
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img src={o.imageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                </button>
+                                <button type="button" onClick={() => patchOption(gi, oi, 'imageUrl', '')}
+                                  title="Remove this picture"
+                                  style={{ position: 'absolute', top: '-6px', right: '-6px', width: '17px', height: '17px',
+                                    borderRadius: '50%', border: '1px solid var(--border)', background: 'var(--dark)',
+                                    color: 'var(--gray)', fontSize: '11px', lineHeight: 1, cursor: 'pointer',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}>
+                                  &times;
+                                </button>
+                              </>
+                            ) : (
+                              <label style={{ width: '100%', height: '100%', borderRadius: '6px',
+                                border: '1px dashed var(--border)', display: 'flex', alignItems: 'center',
+                                justifyContent: 'center', cursor: 'pointer', overflow: 'hidden',
+                                background: 'var(--dark2)' }}
+                                title="Add a picture of this option">
+                                {optionUploading === (gi + ':' + oi)
+                                  ? <span style={{ fontSize: '10px', color: 'var(--gray)' }}>...</span>
+                                  : <span style={{ fontSize: '15px', color: 'var(--gray)' }}>+</span>}
+                                <input type="file" accept="image/*" style={{ display: 'none' }}
+                                  onChange={e => { uploadOptionImage(gi, oi, e.target.files?.[0]); e.target.value = ''; }} />
+                              </label>
+                            )}
+                          </div>
                           <button onClick={() => removeOption(gi, oi)}
                             disabled={g.options.length <= 1}
                             style={{ ...S.btnSmGhost, width: '30px', padding: 0, justifyContent: 'center',
@@ -1269,10 +1326,16 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
                 )}
 
                 {/* COGS fallback: used for profit when a product has no BOM and no linked inventory. */}
-                <Field label="Cost Price / Buy Price (P, optional)">
+                {/* Every product in this catalogue draws its cost from a bill of materials, so this box
+                    answers a question that is already answered - and invites a number that will be
+                    ignored. It appears only where nothing else can say what the item cost: something
+                    bought finished and resold, with no BOM behind it. */}
+                {!hasAnyBom && (
+                  <Field label="Cost Price / Buy Price (P, optional)">
                   <DecimalInput value={form.cost} onChange={v => setF('cost', v)} placeholder="0.00" />
                   <Note type="info">What you pay the supplier per unit. Used to compute profit when this product has no BOM or linked inventory. Leave blank if the cost comes from a BOM or inventory item.</Note>
                 </Field>
+                )}
 
                 {form.pricingMode === 'fixed' && form.type === 'multi-variant' && (
                   <div style={{ overflowX: 'auto' }}>

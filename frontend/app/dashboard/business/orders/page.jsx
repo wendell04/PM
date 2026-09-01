@@ -10,6 +10,7 @@ import { remainingDue, depositDue, paidSoFar, orderTotal } from '@/lib/orderBala
 import { S, ICONS, SearchBar, SummaryCard, PaginationBar, EmptyState, usePagination, CustomSelect, ConfirmModal } from '../inventory-v2/shared';
 import { DEFAULT_CUSTOM_ORDER_TERMS } from '@/lib/customOrderTerms';
 import { orderNo } from '@/lib/orderNumber';
+import NoImage from '@/components/NoImage';
 import { deliveryRisk, joRisk, RISK_STYLE } from '@/lib/deliveryRisk';
 import { fetchJobOrders, updateJobOrder } from '@/lib/jobOrderApi';
 import { JobOrderStatusBadge, DesignPreview, designUrl, joDocId, fmtJODate } from '@/components/dashboard/JobOrderBits';
@@ -1291,7 +1292,13 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
   const designItems = (lo.items || []).map((it, idx) => ({ it, idx })).filter(({ it }) => it.isCustom || it.designRequested || it.designUrl || it.designName || it.adminDesignUrl);
   const ai = lo.items?.[activeItemIdx] ?? {};
   const aiStatus = ai.designStatus ?? (designItems.length <= 1 ? lo.designStatus : null) ?? null;
-  const aiFiles = (ai.designFiles?.length ? ai.designFiles.map(f => f.url) : [ai.designUrl]).filter(Boolean);
+  // Kept as { url, name } rather than mapped down to url strings. Cloudinary renames every upload to
+  // a random public_id, so the URL cannot tell anyone what the customer actually sent - the original
+  // filename only exists on the line, and dropping it here was why the tiles were anonymous.
+  const aiFiles = (ai.designFiles?.length
+    ? ai.designFiles.map(f => ({ url: f.url, name: f.name || null }))
+    : [{ url: ai.designUrl, name: ai.designName || null }]
+  ).filter(f => f.url);
   // A proof can be several files. Reading only adminDesignUrl showed the owner one tile after
   // sending two, while the customer - who already reads the plural field - saw both. Prefer the
   // array, fall back to the single legacy field for proofs sent before it existed.
@@ -1571,11 +1578,15 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                 if (!files.length) return null;
                 return (
                   <div style={{ display:'flex', flexWrap:'wrap', gap:'8px', marginBottom:'8px' }}>
-                    {files.map((raw, i) => {
+                    {files.map((f, i) => {
+                      const raw = f.url;
                       const url = raw.startsWith('http') ? raw : `${API_URL}/storage/${raw}`;
                       const isImg = /\.(jpe?g|png|webp|gif|avif|svg)(\?|$)/i.test(url);
-                      const isPdf = /\.pdf(\?|$)/i.test(url);
-                      // Image opens a full-screen lightbox in place; PDF embeds; other formats open in a new tab.
+                      // The format label comes off the URL (Cloudinary keeps the extension on raw
+                      // uploads); the NAME has to come off the line, because the public_id is random.
+                      const ext = (url.split('?')[0].split('.').pop() || '').toUpperCase().slice(0, 4);
+                      const fname = f.name || 'Customer file';
+                      // Image opens a full-screen lightbox in place; everything else is a labelled card.
                       return isImg ? (
                         <button key={i} type="button" onClick={() => setLightboxUrl(url)} title="Click to preview"
                           style={{ padding:0, border:'none', background:'none', cursor:'zoom-in', display:'block' }}>
@@ -1583,16 +1594,20 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                           <img src={url} alt="Customer design" style={{ width:'120px', height:'120px', objectFit:'contain', background:'#f3f4f6', borderRadius:'8px', border:'1px solid var(--border)', display:'block' }} />
                         </button>
                       ) : (
-                        <a key={i} href={url} target="_blank" rel="noopener noreferrer" title="Open full file"
+                        // One card for every non-image format. The PDF branch used to be an
+                        // <embed>, which rendered as a blank white box: Cloudinary serves these from
+                        // /raw/upload/ with a generic content-type, and a browser will not open a PDF
+                        // viewer for that (cross-origin embedding is commonly refused too). A frame
+                        // that silently shows nothing is worse than no frame - it reads as a broken
+                        // upload rather than a file that simply has no inline preview. So: say what
+                        // the format is, say what the customer called it, and open it on click.
+                        <a key={i} href={url} target="_blank" rel="noopener noreferrer" title={`Open ${fname}`}
                           style={{ display:'block', textDecoration:'none' }}>
-                          {isPdf ? (
-                            <embed src={url} type="application/pdf" style={{ width:'160px', height:'120px', borderRadius:'8px', border:'1px solid var(--border)', pointerEvents:'none' }} />
-                          ) : (
-                            <div style={{ width:'120px', height:'120px', borderRadius:'8px', border:'1px solid var(--border)', background:'#f9fafb', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:'6px', color:'var(--gray)', fontSize:'11px', textAlign:'center', padding:'6px' }}>
-                              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                              No preview<br/>Open to download
-                            </div>
-                          )}
+                          <div style={{ width:'120px', height:'120px', borderRadius:'8px', border:'1px solid var(--border)', background:'#f9fafb', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:'4px', padding:'8px', boxSizing:'border-box' }}>
+                            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#d4a843" strokeWidth="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                            <span style={{ fontSize:'11px', fontWeight:800, color:'#d4a843', letterSpacing:'0.04em' }}>{ext || 'FILE'}</span>
+                            <span style={{ fontSize:'10px', color:'var(--gray)', textAlign:'center', lineHeight:1.3, wordBreak:'break-word', display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical', overflow:'hidden' }}>{fname}</span>
+                          </div>
                         </a>
                       );
                     })}
@@ -1603,7 +1618,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
               <ImageLightbox url={lightboxUrl} kind={lightboxKind} onClose={() => { setLightboxUrl(null); setLightboxKind(null); }} />
 
               {aiHasFile && (
-                <a href={aiFiles[0]?.startsWith('http') ? aiFiles[0] : `${API_URL}/storage/${aiFiles[0]}`} target="_blank" rel="noopener noreferrer"
+                <a href={aiFiles[0]?.url?.startsWith('http') ? aiFiles[0].url : `${API_URL}/storage/${aiFiles[0]?.url}`} target="_blank" rel="noopener noreferrer"
                   style={{ display:'inline-flex', alignItems:'center', gap:'4px', fontSize:'12px', fontWeight:600, color:'#2563eb', textDecoration:'none', marginBottom:'8px' }}>
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
                   Open full file
@@ -2076,7 +2091,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                   <div style={{ width:'38px', height:'38px', borderRadius:'6px', background:item.thumbnail?'transparent':'#e9ecef', flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center', overflow:'hidden' }}>
                     {item.thumbnail
                       ? <img src={item.thumbnail} alt={name} style={{ objectFit:'cover', width:'38px', height:'38px', borderRadius:'6px' }} />
-                      : <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#adb5bd" strokeWidth="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                      : <NoImage size={16} />
                     }
                   </div>
                   <div style={{ flex:1, minWidth:0 }}>

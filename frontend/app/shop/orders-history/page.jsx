@@ -12,6 +12,7 @@ import { getEcho } from '@/lib/echo';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import { useCart } from '@/app/shop/layout';
 import { normalizeStatus } from '@/lib/orderStatus';
+import NoImage from '@/components/NoImage';
 import PaymentPicker from '@/components/shop/PaymentPicker';
 import ImageLightbox from '@/components/shop/ImageLightbox';
 import ProofGallery from '@/components/shop/ProofGallery';
@@ -582,6 +583,12 @@ export default function OrdersHistoryPage() {
   const [revisionNotes, setRevisionNotes]               = useState('');
   const [revisionLoading, setRevisionLoading]           = useState(false);
   const [revisionError, setRevisionError]               = useState(null);
+  // A restart is its own action, not another revision - it carries a real charge, so it gets its
+  // own confirm step rather than reusing the revision textarea's "just send it" flow.
+  const [restartForIdx, setRestartForIdx]                = useState(null);
+  const [restartNotes, setRestartNotes]                  = useState('');
+  const [restartLoading, setRestartLoading]              = useState(false);
+  const [restartError, setRestartError]                  = useState(null);
   const [revisionSuccess, setRevisionSuccess]           = useState(false);
 
   const [existingReview, setExistingReview]         = useState(null);
@@ -920,6 +927,23 @@ export default function OrdersHistoryPage() {
       setRevisionSuccess(true); setRevisionForIdx(null); setRevisionNotes('');
     } catch (err) { setRevisionError(err.message || 'Failed to submit revision request.'); }
     finally { setRevisionLoading(false); }
+  };
+
+  const handleRestartDesignJob = async (idx = null) => {
+    if (restartNotes.trim().length < REVISION_MIN) {
+      setRestartError(`Please describe what the new design should do differently (at least ${REVISION_MIN} characters).`);
+      return;
+    }
+    if (!selectedOrder || !token) return;
+    setRestartLoading(true); setRestartError(null);
+    try {
+      const res = await fetchWithTimeout(`${API_URL}/api/orders/my/${selectedOrder._id ?? selectedOrder.id}/restart-design-job`, { method: 'POST', headers: { ...apiHeaders(token), 'Content-Type': 'application/json' }, body: JSON.stringify({ notes: restartNotes.trim(), ...(idx != null ? { itemIndex: idx } : {}) }) }, 15000);
+      const data = await res.json();
+      if (!res.ok) { setRestartError(data.message || 'Failed to start a new design job.'); return; }
+      mergeUpdatedOrder(data);
+      setRestartForIdx(null); setRestartNotes('');
+    } catch (err) { setRestartError(err.message || 'Failed to start a new design job.'); }
+    finally { setRestartLoading(false); }
   };
 
   const handleSubmitReview = async (productId) => {
@@ -1403,19 +1427,59 @@ export default function OrdersHistoryPage() {
                                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                     {!grouped && <div style={{ fontSize: '0.76rem', color: 'var(--gray)' }}>Please review the proof for this item.</div>}
                                     {approveDesignError && <div style={{ fontSize: '0.72rem', color: '#ef4444' }}>{approveDesignError}</div>}
-                                    {revisionForIdx !== idx ? (
-                                      <div style={{ display: 'flex', gap: '6px' }}>
-                                        {(() => {
-                                          const busy = approvingIdx === idx;
-                                          const anyBusy = approvingIdx !== null;
-                                          return (
-                                            <button onClick={() => handleApproveAdminDesign(idx)} disabled={anyBusy}
-                                              style={{ flex: 1, padding: '8px', borderRadius: '8px', border: 'none', background: anyBusy ? 'var(--border)' : '#d4a843', color: '#000', fontSize: '0.76rem', fontWeight: 700, cursor: anyBusy ? 'not-allowed' : 'pointer' }}>
-                                              {busy ? 'Approving...' : 'Approve'}
-                                            </button>
-                                          );
-                                        })()}
-                                        <button onClick={() => { setRevisionForIdx(idx); setRevisionNotes(''); setRevisionError(null); }} style={{ flex: 1, padding: '8px', borderRadius: '8px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--gray)', fontSize: '0.76rem', fontWeight: 600, cursor: 'pointer' }}>Request changes</button>
+                                    {revisionForIdx !== idx && restartForIdx !== idx ? (
+                                      (() => {
+                                        const usedNow = Number(it.revisionCount ?? 0);
+                                        const maxNow  = Number(storeSettings?.maxRevisions ?? 5);
+                                        const atCap   = usedNow >= maxNow;
+                                        const anyBusy = approvingIdx !== null;
+                                        return (
+                                          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                            <div style={{ display: 'flex', gap: '6px' }}>
+                                              {(() => {
+                                                const busy = approvingIdx === idx;
+                                                return (
+                                                  <button onClick={() => handleApproveAdminDesign(idx)} disabled={anyBusy}
+                                                    style={{ flex: 1, padding: '8px', borderRadius: '8px', border: 'none', background: anyBusy ? 'var(--border)' : '#d4a843', color: '#000', fontSize: '0.76rem', fontWeight: 700, cursor: anyBusy ? 'not-allowed' : 'pointer' }}>
+                                                    {busy ? 'Approving...' : 'Approve'}
+                                                  </button>
+                                                );
+                                              })()}
+                                              {/* Past the cap, "Request changes" would just hit the same wall the
+                                                  backend enforces - so it is replaced rather than left to fail. */}
+                                              {atCap ? (
+                                                <button onClick={() => { setRestartForIdx(idx); setRestartNotes(''); setRestartError(null); }} style={{ flex: 1, padding: '8px', borderRadius: '8px', border: '1px solid rgba(212,168,67,0.4)', background: 'rgba(212,168,67,0.08)', color: '#d4a843', fontSize: '0.76rem', fontWeight: 700, cursor: 'pointer' }}>Start new design job</button>
+                                              ) : (
+                                                <button onClick={() => { setRevisionForIdx(idx); setRevisionNotes(''); setRevisionError(null); }} style={{ flex: 1, padding: '8px', borderRadius: '8px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--gray)', fontSize: '0.76rem', fontWeight: 600, cursor: 'pointer' }}>Request changes</button>
+                                              )}
+                                            </div>
+                                            {atCap && (
+                                              <div style={{ fontSize: '0.68rem', color: 'var(--gray)', lineHeight: 1.5 }}>
+                                                You have used all {maxNow} revisions on this draft. Starting a new design
+                                                job restarts the round count with a fresh {formatPeso(Number(storeSettings?.designRequestFee ?? 100))} design fee.
+                                              </div>
+                                            )}
+                                          </div>
+                                        );
+                                      })()
+                                    ) : restartForIdx === idx ? (
+                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                        <div style={{ padding: '8px 11px', borderRadius: '8px', fontSize: '0.72rem', lineHeight: 1.5, background: 'rgba(212,168,67,0.08)', border: '1px solid rgba(212,168,67,0.3)', color: 'var(--gray)' }}>
+                                          This starts over as a new design job: <strong style={{ color: '#d4a843' }}>{formatPeso(Number(storeSettings?.designRequestFee ?? 100))}</strong> is
+                                          added to your order balance, and you get a fresh set of included revisions on the new draft.
+                                        </div>
+                                        <textarea placeholder="What should the new design do differently?" value={restartNotes} maxLength={REVISION_MAX} onChange={e => setRestartNotes(e.target.value)} rows={3} style={{ background: 'var(--dark2)', border: `1px solid ${restartNotes.trim().length > 0 && restartNotes.trim().length < REVISION_MIN ? '#ef4444' : 'var(--border)'}`, borderRadius: '8px', color: 'var(--white)', fontSize: '0.76rem', padding: '7px 10px', resize: 'vertical', outline: 'none', width: '100%', boxSizing: 'border-box' }} />
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.68rem', color: 'var(--gray)' }}>
+                                          <span>{restartNotes.trim().length < REVISION_MIN ? `At least ${REVISION_MIN} characters` : 'Ready to send'}</span>
+                                          <span>{restartNotes.length}/{REVISION_MAX}</span>
+                                        </div>
+                                        {restartError && <div style={{ fontSize: '0.72rem', color: '#ef4444' }}>{restartError}</div>}
+                                        <div style={{ display: 'flex', gap: '6px' }}>
+                                          <button onClick={() => handleRestartDesignJob(idx)} disabled={restartLoading || restartNotes.trim().length < REVISION_MIN} style={{ flex: 1, padding: '7px', borderRadius: '8px', border: 'none', background: (restartLoading || restartNotes.trim().length < REVISION_MIN) ? 'var(--border)' : '#d4a843', color: (restartLoading || restartNotes.trim().length < REVISION_MIN) ? 'var(--gray)' : '#000', fontSize: '0.76rem', fontWeight: 700, cursor: (restartLoading || restartNotes.trim().length < REVISION_MIN) ? 'not-allowed' : 'pointer' }}>
+                                            {restartLoading ? 'Starting...' : `Confirm & pay ${formatPeso(Number(storeSettings?.designRequestFee ?? 100))}`}
+                                          </button>
+                                          <button onClick={() => { setRestartForIdx(null); setRestartNotes(''); }} style={{ padding: '7px 12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--gray)', fontSize: '0.76rem', cursor: 'pointer' }}>Cancel</button>
+                                        </div>
                                       </div>
                                     ) : (
                                       <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -1679,7 +1743,7 @@ export default function OrdersHistoryPage() {
                                 <div style={{ width: '38px', height: '38px', borderRadius: '6px', background: (item.thumbnail || item.imageUrl) ? 'transparent' : 'rgba(212,168,67,0.06)', border: '1px solid var(--border)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
                                   {(item.thumbnail || item.imageUrl)
                                     ? <img src={item.thumbnail || item.imageUrl} alt={name} style={{ width: '38px', height: '38px', objectFit: 'cover' }} />
-                                    : <span style={{ fontSize: '0.9rem', fontWeight: 800, color: '#d4a843', opacity: 0.5 }}>{(name[0] || 'P').toUpperCase()}</span>
+                                    : <NoImage size={18} />
                                   }
                                 </div>
                                 <div style={{ flex: 1, minWidth: 0 }}>

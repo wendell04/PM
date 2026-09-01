@@ -1,4 +1,5 @@
 'use client';
+import { optionGroupsOf, selectedOptionList, optionsUnitAdd, optionsOrderAdd, withOptionSuffix, unansweredOptionGroups, optionKey, groupKey } from '@/lib/shopUtils';
 import NoImage from '@/components/NoImage';
 import { PLAIN_OR_CUSTOM_ENABLED } from '@/lib/featureFlags';
 
@@ -51,6 +52,7 @@ function getDisplayPrice(product) {
 // ─── Quick View Modal ─────────────────────────────────────────────────────────
 function QuickViewModal({ product, flashSale, onClose, onToast }) {
   const moq = product.minOrderQty || 1;
+  const [selOpts, setSelOpts] = useState({});
   const [selVars, setSelVars] = useState(() => {
     const init = {};
     (product.variantGroups || []).forEach(g => {
@@ -109,6 +111,17 @@ function QuickViewModal({ product, flashSale, onClose, onToast }) {
 
   const fmt = n => n == null ? '—' : `₱${Number(n).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   const mode = product.priceType || product.pricingMode || 'fixed';
+  // Nothing preselected here either, and the quick view refuses to add until the choice is made -
+  // otherwise the one door that skipped the question would be the fastest door in the shop.
+  const optGroups    = optionGroupsOf(product);
+  const optUnitAdd   = optionsUnitAdd(product, selOpts);
+  const optOrderAdd  = optionsOrderAdd(product, selOpts);
+  const chosenOpts   = selectedOptionList(product, selOpts);
+  const optsPending  = unansweredOptionGroups(product, selOpts).length > 0;
+  const optsPrompt   = optsPending
+    ? `Choose ${unansweredOptionGroups(product, selOpts).map(g => g.name).join(' and ')}`
+    : null;
+
   const combo = resolveCombo(selVars);
   const comboId = combo?.id ?? null;
 
@@ -192,12 +205,13 @@ function QuickViewModal({ product, flashSale, onClose, onToast }) {
   })();
 
   const buildCart = () => {
-    const variantLabel = combo
+    const baseLabel = combo
       ? (combo.label || combo.name || Object.values(selVars).join(', ') || null)
       : (Object.values(selVars).filter(Boolean).join(', ') || null);
-    const basePrice = (comboId && product.variantPrices?.[comboId])
+    const variantLabel = withOptionSuffix(baseLabel, product, selOpts);
+    const basePrice = ((comboId && product.variantPrices?.[comboId])
       ? parseFloat(product.variantPrices[comboId])
-      : parseFloat(product.flatPrice || product.price || 0);
+      : parseFloat(product.flatPrice || product.price || 0)) + optUnitAdd;
     const effectivePrice = flashSale ? Math.max(0, flashSale.discountType === 'percentage'
       ? basePrice * (1 - flashSale.discountValue / 100)
       : basePrice - flashSale.discountValue) : basePrice;
@@ -380,8 +394,8 @@ function QuickViewModal({ product, flashSale, onClose, onToast }) {
             )}
 
             {/* Variant groups (product page style) */}
-            {hasGroups && product.variantGroups.map(group => (
-              <div key={group.id} className="shop-qv-section">
+            {hasGroups && product.variantGroups.map((group, gi) => (
+              <div key={group.id ?? group.name ?? gi} className="shop-qv-section">
                 <div className="shop-qv-section-label">{group.name}</div>
                 <div className="shop-qv-variants">
                   {group.options?.map((opt, oi) => {
@@ -408,6 +422,35 @@ function QuickViewModal({ product, flashSale, onClose, onToast }) {
                 </div>
               </div>
             ))}
+
+            {/* Options - the same picker language as the variants above; what differs is behind the
+                screen, where these touch neither stock nor the bill of materials. */}
+            {optGroups.map((group, gi) => (
+              <div key={groupKey(group, gi)} className="shop-qv-section">
+                <div className="shop-qv-section-label">{group.name}</div>
+                <div className="shop-qv-variants">
+                  {group.options.map((opt, oi) => {
+                    const gk = groupKey(group, gi);
+                    const ok = optionKey(opt, oi);
+                    return (
+                      <button
+                        key={ok}
+                        className={`shop-qv-variant-btn${selOpts[gk] === ok ? ' active' : ''}`}
+                        onClick={() => setSelOpts(p => ({ ...p, [gk]: ok }))}
+                      >
+                        {opt.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+
+            {optsPrompt && (
+              <p style={{ margin: '0 0 .25rem', fontSize: '.78rem', fontWeight: 600, color: 'var(--gold)' }}>
+                {optsPrompt}
+              </p>
+            )}
 
             {/* Quantity */}
             {!isOOS && (
@@ -450,13 +493,14 @@ function QuickViewModal({ product, flashSale, onClose, onToast }) {
                   href={(() => {
                     const qs = new URLSearchParams({ qty: String(qty) });
                     Object.entries(selVars || {}).forEach(([g, v]) => { if (v) qs.set(`v_${g}`, String(v)); });
+                    Object.entries(selOpts || {}).forEach(([g, v]) => { if (v) qs.set(`o_${g}`, String(v)); });
                     return `/shop/products/${product.slug || toSlug(product.name)}/order?${qs.toString()}`;
                   })()}
                   className="shop-qv-btn-cart"
                 >
                   Customize This Product
                 </Link>
-                <button className="shop-qv-btn-checkout" disabled={isOOS} onClick={handleAdd}
+                <button className="shop-qv-btn-checkout" disabled={isOOS || optsPending} onClick={handleAdd}
                   style={{ opacity: isOOS ? 0.5 : 1, cursor: isOOS ? 'not-allowed' : 'pointer' }}>
                   {isOOS ? 'Out of Stock' : 'Buy it plain'}
                 </button>

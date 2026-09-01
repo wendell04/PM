@@ -47,6 +47,10 @@ export function normProduct(raw, collectionMap = {}) {
     price:              Number(raw.price ?? raw.flatPrice ?? 0),
     tiers,
     collectionIds:      collectionMap[id] ?? [],
+    // Every field added to the outgoing payload needs a line here too. Twice now a field has been
+    // sent, stored correctly, and then read back as undefined - which looks exactly like a save that
+    // failed, and sends you hunting in the wrong half of the system.
+    optionGroups:       Array.isArray(raw.optionGroups) ? raw.optionGroups : [],
     isCustomizable:     !!(raw.isCustom),
     // Not the opposite of customizable - both can be on. Older products have no flag, so a
     // non-custom product is assumed plain-purchasable, which is what it already was.

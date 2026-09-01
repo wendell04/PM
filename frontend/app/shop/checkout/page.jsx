@@ -167,7 +167,10 @@ export default function CheckoutPage() {
       return;
     }
     setShippingLoading(true);
-    const { storeLat, storeLng, shippingBaseRate = 50, shippingPerKmRate = 15 } = storeSettings;
+    const {
+      storeLat, storeLng,
+      shippingBaseRate = 49, shippingPerKmRate = 6, shippingPerKmRateFar = 5, shippingTierKm = 5,
+    } = storeSettings;
     fetch(
       `https://router.project-osrm.org/route/v1/driving/${storeLng},${storeLat};${addr.lng},${addr.lat}?overview=false`
     )
@@ -176,7 +179,14 @@ export default function CheckoutPage() {
         const distanceM = d.routes?.[0]?.distance ?? null;
         if (distanceM !== null) {
           const distKm = distanceM / 1000;
-          setShippingFeeAmt(Math.round((shippingBaseRate + shippingPerKmRate * distKm) * 100) / 100);
+          // Tiered like a real motorcycle-courier fare (Lalamove's own published Metro Manila rate is
+          // base + a steeper per-km charge for the first few km, then a lower one beyond) - a single
+          // flat per-km rate for the whole trip isn't a shape any courier actually prices with.
+          // https://www.lalamove.com/en-ph/all-delivery-pricing-detail
+          const nearKm = Math.min(distKm, shippingTierKm);
+          const farKm  = Math.max(0, distKm - shippingTierKm);
+          const fee    = shippingBaseRate + shippingPerKmRate * nearKm + shippingPerKmRateFar * farKm;
+          setShippingFeeAmt(Math.round(fee * 100) / 100);
         } else {
           setShippingFeeAmt(null);
         }
@@ -338,12 +348,12 @@ export default function CheckoutPage() {
   // Zero when there is nothing to produce, so the date shown at checkout matches the one the server
   // snapshots onto the order. A stocked cart was being quoted the full production lead - eleven days
   // for a bag already on the shelf.
-  const prodLead    = needsProduction ? Number(storeSettings?.productionLeadDays ?? 7) : 0;
-  const shipMin     = Number(storeSettings?.shippingDaysMin ?? 2);
-  const shipMax     = Number(storeSettings?.shippingDaysMax ?? 4);
+  const prodLead    = needsProduction ? Number(storeSettings?.productionLeadDays ?? 3) : 0;
+  const shipMin     = Number(storeSettings?.shippingDaysMin ?? 1);
+  const shipMax     = Number(storeSettings?.shippingDaysMax ?? 2);
   const rushEnabled = storeSettings?.rushEnabled !== false && needsProduction;
-  const rushLead    = Number(storeSettings?.rushLeadDays ?? 3);
-  const rushFeeAmt  = Number(storeSettings?.rushFee ?? 100);
+  const rushLead    = Number(storeSettings?.rushLeadDays ?? 1);
+  const rushFeeAmt  = Number(storeSettings?.rushFee ?? 150);
   const addBizDays  = (n) => { const d = new Date(); d.setHours(0,0,0,0); let a = 0; while (a < n) { d.setDate(d.getDate() + 1); if (d.getDay() !== 0) a++; } return d; }; // skip Sundays
   const getByRange  = (lead) => {
     const f = (d) => d.toLocaleDateString('en-PH', { month: 'short', day: 'numeric' });
@@ -352,8 +362,18 @@ export default function CheckoutPage() {
   };
   const isRush      = rushEnabled && rush;
   const rushCharge  = isRush ? rushFeeAmt : 0;
-  // Earliest an optional need-by date may be - no same/next day; at least the rush lead (min 2 biz days).
-  const minNeedByStr = addBizDays(Math.max(2, rushLead)).toISOString().slice(0, 10);
+  // Earliest an optional need-by date may be. Two bugs used to live here: this ignored shipping
+  // transit entirely (rush production alone was treated as the whole promise), and toISOString() on
+  // a local-midnight Date converts to UTC before slicing the date, which in any zone ahead of UTC
+  // (PHT is +8) reads back one calendar day earlier than the Date actually holds - so a real
+  // multi-day minimum was showing up as "tomorrow", which is exactly the promise a rush customer
+  // would hold the shop to.
+  //
+  // A cart with nothing to produce has no rush lead to add - the earliest it can go is however long
+  // the shipping leg itself takes, full stop. Adding rushLead here for a ready-made order would
+  // block dates that are genuinely achievable once nothing is waiting on production.
+  const toLocalDateStr = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const minNeedByStr = toLocalDateStr(addBizDays(shipMin + (needsProduction ? rushLead : 0)));
   // The latest a Standard order arrives. A need-by date on/after this fits Standard (no rush needed).
   const standardEtaMax = addBizDays(prodLead + shipMax);
   // Picking a date auto-sets the speed: sooner than Standard can make it -> Rush; otherwise Standard.
@@ -379,6 +399,11 @@ export default function CheckoutPage() {
   // The design fee and shipping are always collected once, now. The rest is the balance, settled
   // from the order detail modal (upload goods balance + requested-design goods after approval).
   const isReqLine = (i) => (i.designMode === 'request' || i.designRequested) && !i.designUrl;
+  // Only an uploaded file gets reviewed behind the customer's back: a requested design is approved
+  // by the customer themselves before it prints, and a ready-made line has no artwork at all. So
+  // the review promise is shown for upload lines and nothing else - a cart of ready-made mugs
+  // should not be told we are checking a file it never sent.
+  const hasUploadLine = items.some(i => !!i.designUrl || (i.designFiles?.length > 0));
   // A line takes a deposit when the product asks for one - either the flag is set OR a percent is
   // configured (a percent > 0 alone means downpayment, even if the boolean was never saved).
   const lineDpPct = (i) => {
@@ -1299,6 +1324,33 @@ export default function CheckoutPage() {
         </div>
       </div>}
 
+      {/* What happens to an uploaded file after payment. The same panel appears on the product page,
+          but that one is read before there is anything to lose - this is the screen where the money
+          actually leaves, and it was silent. The line that matters is not "we will check it" but
+          what becomes of the payment when the file cannot be used: saying nothing there does not
+          protect the shop, it just moves the conversation to a chargeback.
+
+          It promises a proof because the machinery for one already exists and already accepts
+          customer-supplied artwork (adminUploadDesign -> proof_sent -> the customer's own approve
+          in My Orders -> approved, which is what unlocks the Job Order). The proof is also what
+          settles size and placement - the two things the customer never chose when they handed
+          over a file, and the two things every "this is not what I ordered" argument is about.
+          Promising it here means it has to be sent every time. */}
+      {hasUploadLine && (
+        <div className="checkout-card" style={{ background: 'rgba(96,165,250,0.08)', border: '1px solid rgba(96,165,250,0.2)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 700, fontSize: '0.92rem', color: '#60a5fa', marginBottom: '0.4rem' }}>
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="m9 15 2 2 4-4"/></svg>
+            You approve a proof before we print
+          </div>
+          <div style={{ fontSize: '0.8rem', color: 'var(--gray)', lineHeight: 1.65 }}>
+            We send you a proof - a mockup showing exactly how your artwork will look. Nothing
+            goes to production until you approve it. If something is not right you can ask for
+            changes or send a replacement file at no extra cost, and if the file cannot be used at
+            all, we refund what you paid.
+          </div>
+        </div>
+      )}
+
       {/* SECTION 4C — Delivery speed (order-level Standard / Rush). Same card + toggle design language
           as the cart and the per-product custom page. */}
       {rushEnabled && (
@@ -1307,6 +1359,12 @@ export default function CheckoutPage() {
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="2"><rect x="1" y="3" width="15" height="13" rx="1"/><path d="M16 8h4l3 3v5h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
             Delivery speed
           </div>
+          {/* The range is a ceiling the shop commits to, not a fixed date - it is stated as a range
+              precisely because production time varies order to order. Saying so here means an early
+              arrival reads as expected rather than as a surprise nobody promised. */}
+          <p style={{ fontSize: '0.72rem', color: 'var(--gray)', margin: 0, lineHeight: 1.5 }}>
+            These are the latest expected dates - your order can arrive sooner if production finishes early.
+          </p>
           {[{ key: false, label: 'Standard', lead: prodLead, fee: 0 }, { key: true, label: 'Rush', lead: rushLead, fee: rushFeeAmt }].map(opt => {
             const active = rush === opt.key;
             // Choosing a speed directly clears any specific date (the two are alternative ways in).
@@ -1350,7 +1408,7 @@ export default function CheckoutPage() {
           )}
           {isRush && (
             <div style={{ padding: '9px 12px', borderRadius: '9px', background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.3)' }}>
-              <span style={{ fontSize: '0.75rem', color: '#b45309', lineHeight: 1.5 }}>Rush is <strong>subject to our confirmation</strong> based on our current queue. If we cannot make it, we will notify you.</span>
+              <span style={{ fontSize: '0.75rem', color: '#b45309', lineHeight: 1.5 }}>Rush is <strong>subject to our confirmation</strong>. If other orders are still in production ahead of yours, this date may be pushed back - we will notify you either way.</span>
             </div>
           )}
         </div>
@@ -1487,8 +1545,11 @@ export default function CheckoutPage() {
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="2" style={{ flexShrink: 0, marginTop: '2px' }}>
               <rect x="1" y="3" width="15" height="13"/><path d="M16 8h4l3 3v5h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/>
             </svg>
+            {/* Named plainly rather than left as "arranged after order": what it costs varies with
+                what is being shipped, so the honest promise is that the shop will say - not a number
+                that would have to be walked back once the courier actually quotes the vehicle. */}
             <span style={{ fontSize: '0.75rem', color: 'var(--gray-light)', lineHeight: 1.5 }}>
-              Total above excludes delivery. The seller books a courier to your pinned location after your order is confirmed, then advises the shipping fee (paid to the rider or the seller).
+              Total above excludes delivery. The seller books a third-party courier (Lalamove / Grab) to your pinned location after your order is confirmed, then sends you the exact fee in chat. Delivery is usually paid in cash to the rider or the seller. The fee can vary with the size of your order - a larger order may need a bigger vehicle, which the courier prices differently.
             </span>
           </div>
         )}

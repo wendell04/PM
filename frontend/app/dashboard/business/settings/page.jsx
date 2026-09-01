@@ -192,10 +192,10 @@ export default function SettingsPage() {
   const [shippingForm, setShippingForm] = useState({
     storeAddress: '', storeAddressParts: { ...EMPTY_STORE_PARTS }, storeLat: null, storeLng: null,
     shippingMode: 'courier_booked',
-    shippingBaseRate: '50', shippingPerKmRate: '15',
+    shippingBaseRate: '49', shippingPerKmRate: '6', shippingPerKmRateFar: '5', shippingTierKm: '5',
     flatRateInsideMetro: '150', flatRateOutsideMetro: '250',
-    productionLeadDays: '5', shippingDaysMin: '2', shippingDaysMax: '4',
-    rushEnabled: true, rushLeadDays: '2', rushFee: '150',
+    productionLeadDays: '3', shippingDaysMin: '1', shippingDaysMax: '2',
+    rushEnabled: true, rushLeadDays: '1', rushFee: '150',
   });
   const [termsRows, setTermsRows]                       = useState([]);
   const [settingsTermsVersion, setSettingsTermsVersion] = useState(1);
@@ -207,9 +207,20 @@ export default function SettingsPage() {
   const [regTermsVersion, setRegTermsVersion]           = useState(1);
   const [savingRegTerms, setSavingRegTerms]             = useState(false);
   const [regTermsMsg, setRegTermsMsg]                   = useState('');
-  const [isSavingShipping, setIsSavingShipping]   = useState(false);
-  const [shippingError, setShippingError]         = useState('');
-  const [shippingSuccess, setShippingSuccess]     = useState('');
+  // Split into four because the card split below means four independent saves, not one big one -
+  // changing the pin should not require re-submitting the design fee and revision limits with it.
+  const [isSavingLocation, setIsSavingLocation]   = useState(false);
+  const [locationError, setLocationError]         = useState('');
+  const [locationSuccess, setLocationSuccess]     = useState('');
+  const [isSavingMethod, setIsSavingMethod]       = useState(false);
+  const [methodError, setMethodError]             = useState('');
+  const [methodSuccess, setMethodSuccess]         = useState('');
+  const [isSavingCustom, setIsSavingCustom]       = useState(false);
+  const [customError, setCustomError]             = useState('');
+  const [customSuccess, setCustomSuccess]         = useState('');
+  const [isSavingPromise, setIsSavingPromise]     = useState(false);
+  const [promiseError, setPromiseError]           = useState('');
+  const [promiseSuccess, setPromiseSuccess]       = useState('');
   const [addrSearch, setAddrSearch]               = useState('');
   const [addrSuggestions, setAddrSuggestions]     = useState([]);
   const [addrShowSug, setAddrShowSug]             = useState(false);
@@ -276,8 +287,10 @@ export default function SettingsPage() {
             storeLat:             d.data.storeLat             ?? null,
             storeLng:             d.data.storeLng             ?? null,
             shippingMode:         d.data.shippingMode         || 'courier_booked',
-            shippingBaseRate:     d.data.shippingBaseRate     != null ? String(d.data.shippingBaseRate)     : '50',
-            shippingPerKmRate:    d.data.shippingPerKmRate    != null ? String(d.data.shippingPerKmRate)    : '15',
+            shippingBaseRate:     d.data.shippingBaseRate     != null ? String(d.data.shippingBaseRate)     : '49',
+            shippingPerKmRate:    d.data.shippingPerKmRate    != null ? String(d.data.shippingPerKmRate)    : '6',
+            shippingPerKmRateFar: d.data.shippingPerKmRateFar != null ? String(d.data.shippingPerKmRateFar) : '5',
+            shippingTierKm:       d.data.shippingTierKm       != null ? String(d.data.shippingTierKm)       : '5',
             designRequestFee:     d.data.designRequestFee     != null ? String(d.data.designRequestFee)     : '100',
             freeRevisions:        d.data.freeRevisions        != null ? String(d.data.freeRevisions)        : '3',
             extraRevisionFee:     d.data.extraRevisionFee     != null ? String(d.data.extraRevisionFee)     : '50',
@@ -288,12 +301,12 @@ export default function SettingsPage() {
             refundDays:           d.data.refundDays           != null ? String(d.data.refundDays)           : '7',
             flatRateInsideMetro:  d.data.flatRateInsideMetro  != null ? String(d.data.flatRateInsideMetro)  : '150',
             flatRateOutsideMetro: d.data.flatRateOutsideMetro != null ? String(d.data.flatRateOutsideMetro) : '250',
-            productionLeadDays:   d.data.productionLeadDays    != null ? String(d.data.productionLeadDays)   : '5',
-            shippingDaysMin:      d.data.shippingDaysMin       != null ? String(d.data.shippingDaysMin)      : '2',
-            shippingDaysMax:      d.data.shippingDaysMax       != null ? String(d.data.shippingDaysMax)      : '4',
+            productionLeadDays:   d.data.productionLeadDays    != null ? String(d.data.productionLeadDays)   : '3',
+            shippingDaysMin:      d.data.shippingDaysMin       != null ? String(d.data.shippingDaysMin)      : '1',
+            shippingDaysMax:      d.data.shippingDaysMax       != null ? String(d.data.shippingDaysMax)      : '2',
             rushEnabled:          d.data.rushEnabled           != null ? !!d.data.rushEnabled                : true,
-            rushLeadDays:         d.data.rushLeadDays          != null ? String(d.data.rushLeadDays)         : '2',
-            rushFee:              d.data.rushFee               != null ? String(d.data.rushFee)              : '100',
+            rushLeadDays:         d.data.rushLeadDays          != null ? String(d.data.rushLeadDays)         : '1',
+            rushFee:              d.data.rushFee               != null ? String(d.data.rushFee)              : '150',
           });
           // Pre-fill the editor with the built-in defaults when nothing is saved, so the owner SEES
           // and can edit the exact clauses shown to customers (instead of them living only in code).
@@ -819,63 +832,115 @@ export default function SettingsPage() {
     finally { setSavingRegTerms(false); }
   };
 
-  const handleSaveShipping = async () => {
-    setShippingError('');
-    setShippingSuccess('');
-    const noFee  = shippingForm.shippingMode === 'courier_booked';
+  // ── Save shipping settings - split per card (see the four state groups above) ──
+  const saveShippingFields = async (fields) => {
+    const res = await fetchWithTimeout(`${API_URL}/api/admin/settings/shipping`, {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify(fields),
+    }, 15000);
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.message || 'Failed to save.');
+  };
+
+  const handleSaveLocation = async () => {
+    setLocationError(''); setLocationSuccess(''); setIsSavingLocation(true);
+    try {
+      await saveShippingFields({
+        storeAddress:      shippingForm.storeAddress,
+        storeAddressParts: shippingForm.storeAddressParts,
+        storeLat:          shippingForm.storeLat,
+        storeLng:          shippingForm.storeLng,
+      });
+      setLocationSuccess('Shipping location saved.');
+      setTimeout(() => setLocationSuccess(''), 3000);
+    } catch (err) {
+      setLocationError(err.message || 'An unexpected error occurred.');
+    } finally {
+      setIsSavingLocation(false);
+    }
+  };
+
+  const handleSaveMethod = async () => {
+    setMethodError(''); setMethodSuccess('');
     const isFlat = shippingForm.shippingMode === 'flat';
+    const noFee  = shippingForm.shippingMode === 'courier_booked';
     const base    = parseFloat(shippingForm.shippingBaseRate);
     const perKm   = parseFloat(shippingForm.shippingPerKmRate);
+    const perKmFar= parseFloat(shippingForm.shippingPerKmRateFar);
+    const tierKm  = parseFloat(shippingForm.shippingTierKm);
     const inside  = parseFloat(shippingForm.flatRateInsideMetro);
     const outside = parseFloat(shippingForm.flatRateOutsideMetro);
     if (!noFee) {
       if (!isFlat) {
-        if (isNaN(base) || base < 0)   { setShippingError('Base rate must be a valid positive number.'); return; }
-        if (isNaN(perKm) || perKm < 0) { setShippingError('Per km rate must be a valid positive number.'); return; }
+        if (isNaN(base) || base < 0)         { setMethodError('Base rate must be a valid positive number.'); return; }
+        if (isNaN(perKm) || perKm < 0)       { setMethodError('First-tier per km rate must be a valid positive number.'); return; }
+        if (isNaN(perKmFar) || perKmFar < 0) { setMethodError('Second-tier per km rate must be a valid positive number.'); return; }
+        if (isNaN(tierKm) || tierKm <= 0)    { setMethodError('Tier threshold must be a valid positive number.'); return; }
       } else {
-        if (isNaN(inside)  || inside  < 0) { setShippingError('Inside Metro rate must be a valid positive number.'); return; }
-        if (isNaN(outside) || outside < 0) { setShippingError('Outside Metro rate must be a valid positive number.'); return; }
+        if (isNaN(inside)  || inside  < 0) { setMethodError('Inside Metro rate must be a valid positive number.'); return; }
+        if (isNaN(outside) || outside < 0) { setMethodError('Outside Metro rate must be a valid positive number.'); return; }
       }
     }
-    setIsSavingShipping(true);
+    setIsSavingMethod(true);
     try {
-      const res = await fetchWithTimeout(`${API_URL}/api/admin/settings/shipping`, {
-        method: 'PUT',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify({
-          storeAddress:         shippingForm.storeAddress,
-          storeAddressParts:    shippingForm.storeAddressParts,
-          storeLat:             shippingForm.storeLat,
-          storeLng:             shippingForm.storeLng,
-          shippingMode:         shippingForm.shippingMode,
-          designRequestFee:     parseFloat(shippingForm.designRequestFee) || 0,
-          freeRevisions:        Math.min(10, Math.max(0, parseInt(shippingForm.freeRevisions, 10) || 0)),
-          extraRevisionFee:     Math.min(99999, Math.max(0, parseFloat(shippingForm.extraRevisionFee) || 0)),
-          maxRevisions:         Math.min(20, Math.max(1, parseInt(shippingForm.maxRevisions, 10) || 1)),
-          depositDueDays:       Math.min(60, Math.max(1, parseInt(shippingForm.depositDueDays, 10) || 1)),
-          unpaidOrderDays:      Math.min(60, Math.max(1, parseInt(shippingForm.unpaidOrderDays, 10) || 1)),
-          unpaidReadyHoldDays:  Math.min(180, Math.max(1, parseInt(shippingForm.unpaidReadyHoldDays, 10) || 14)),
-          refundDays:           Math.min(60,  Math.max(1, parseInt(shippingForm.refundDays, 10) || 7)),
-          shippingBaseRate:     isFlat ? 50  : base,
-          shippingPerKmRate:    isFlat ? 15  : perKm,
-          flatRateInsideMetro:  inside,
-          flatRateOutsideMetro: outside,
-          productionLeadDays:   parseInt(shippingForm.productionLeadDays, 10) || 0,
-          shippingDaysMin:      parseInt(shippingForm.shippingDaysMin, 10) || 0,
-          shippingDaysMax:      parseInt(shippingForm.shippingDaysMax, 10) || 0,
-          rushEnabled:          !!shippingForm.rushEnabled,
-          rushLeadDays:         parseInt(shippingForm.rushLeadDays, 10) || 0,
-          rushFee:              parseFloat(shippingForm.rushFee) || 0,
-        }),
-      }, 15000);
-      const d = await res.json();
-      if (!res.ok) throw new Error(d.message || 'Failed to save shipping settings.');
-      setShippingSuccess('Shipping settings saved.');
-      setTimeout(() => setShippingSuccess(''), 3000);
+      await saveShippingFields({
+        shippingMode:         shippingForm.shippingMode,
+        shippingBaseRate:     isFlat ? 49 : base,
+        shippingPerKmRate:    isFlat ? 6  : perKm,
+        shippingPerKmRateFar: isFlat ? 5  : (perKmFar || 0),
+        shippingTierKm:       isFlat ? 5  : (tierKm || 5),
+        flatRateInsideMetro:  inside,
+        flatRateOutsideMetro: outside,
+      });
+      setMethodSuccess('Shipping method saved.');
+      setTimeout(() => setMethodSuccess(''), 3000);
     } catch (err) {
-      setShippingError(err.message || 'An unexpected error occurred.');
+      setMethodError(err.message || 'An unexpected error occurred.');
     } finally {
-      setIsSavingShipping(false);
+      setIsSavingMethod(false);
+    }
+  };
+
+  const handleSaveCustomOrders = async () => {
+    setCustomError(''); setCustomSuccess(''); setIsSavingCustom(true);
+    try {
+      await saveShippingFields({
+        designRequestFee:    parseFloat(shippingForm.designRequestFee) || 0,
+        freeRevisions:       Math.min(10, Math.max(0, parseInt(shippingForm.freeRevisions, 10) || 0)),
+        extraRevisionFee:    Math.min(99999, Math.max(0, parseFloat(shippingForm.extraRevisionFee) || 0)),
+        maxRevisions:        Math.min(20, Math.max(1, parseInt(shippingForm.maxRevisions, 10) || 1)),
+        depositDueDays:      Math.min(60, Math.max(1, parseInt(shippingForm.depositDueDays, 10) || 1)),
+        unpaidOrderDays:     Math.min(60, Math.max(1, parseInt(shippingForm.unpaidOrderDays, 10) || 1)),
+        unpaidReadyHoldDays: Math.min(180, Math.max(1, parseInt(shippingForm.unpaidReadyHoldDays, 10) || 14)),
+        refundDays:          Math.min(60,  Math.max(1, parseInt(shippingForm.refundDays, 10) || 7)),
+      });
+      setCustomSuccess('Custom order policy saved.');
+      setTimeout(() => setCustomSuccess(''), 3000);
+    } catch (err) {
+      setCustomError(err.message || 'An unexpected error occurred.');
+    } finally {
+      setIsSavingCustom(false);
+    }
+  };
+
+  const handleSaveDeliveryPromise = async () => {
+    setPromiseError(''); setPromiseSuccess(''); setIsSavingPromise(true);
+    try {
+      await saveShippingFields({
+        productionLeadDays: parseInt(shippingForm.productionLeadDays, 10) || 0,
+        shippingDaysMin:    parseInt(shippingForm.shippingDaysMin, 10) || 0,
+        shippingDaysMax:    parseInt(shippingForm.shippingDaysMax, 10) || 0,
+        rushEnabled:        !!shippingForm.rushEnabled,
+        rushLeadDays:       parseInt(shippingForm.rushLeadDays, 10) || 0,
+        rushFee:            parseFloat(shippingForm.rushFee) || 0,
+      });
+      setPromiseSuccess('Delivery promise saved.');
+      setTimeout(() => setPromiseSuccess(''), 3000);
+    } catch (err) {
+      setPromiseError(err.message || 'An unexpected error occurred.');
+    } finally {
+      setIsSavingPromise(false);
     }
   };
 
@@ -947,7 +1012,11 @@ export default function SettingsPage() {
               width: 200,
               flexShrink: 0,
               position: 'sticky',
-              top: '1rem',
+              // .admin-top-bar is also sticky, at top:0 with z-index:100 and a 56px height. This nav
+              // was sticking at 16px - underneath the header rather than below it - so once scrolled
+              // it wasn't gone, it was hidden behind an opaque bar with a higher z-index.
+              top: 'calc(56px + 1rem)',
+              zIndex: 10,
               alignSelf: 'flex-start',
               display: 'flex',
               flexDirection: 'column',
@@ -1510,8 +1579,8 @@ export default function SettingsPage() {
               <div style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '12px', overflow: 'visible' }}>
                 <div style={{ padding: '0.875rem 1.25rem', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--gray-light)" strokeWidth="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-                  <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--white)' }}>Store Location</span>
-                  <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>— Pin your store on the map. Shipping fee is calculated from this point.</span>
+                  <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--white)' }}>Shipping Location</span>
+                  <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>— Pin where orders ship from. Shipping fee and courier pickup are based on this point.</span>
                 </div>
                 <div style={{ padding: '1.5rem' }}>
                 <p style={{ margin: '0 0 1.25rem', fontSize: '0.8125rem', color: 'var(--gray)', display: 'none' }}>
@@ -1628,6 +1697,23 @@ export default function SettingsPage() {
                     Full address (shown to customers): <span style={{ color: 'var(--gray-light)' }}>{shippingForm.storeAddress || '—'}</span>
                   </p>
                 </div>
+
+                {locationError && (
+                  <div style={{ padding: '0.7rem 1rem', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: '8px', color: '#f87171', fontSize: '0.85rem' }}>
+                    {locationError}
+                  </div>
+                )}
+                {locationSuccess && (
+                  <div style={{ padding: '0.7rem 1rem', background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.25)', borderRadius: '8px', color: '#4ade80', fontSize: '0.85rem' }}>
+                    {locationSuccess}
+                  </div>
+                )}
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1.25rem', paddingTop: '1.25rem', borderTop: '1px solid var(--border)' }}>
+                  <button type="button" onClick={handleSaveLocation} disabled={isSavingLocation}
+                    style={{ padding: '0.55rem 1.25rem', background: isSavingLocation ? 'var(--dark3)' : 'var(--gold)', border: 'none', borderRadius: '8px', color: isSavingLocation ? 'var(--gray)' : 'var(--black)', fontSize: '0.82rem', fontWeight: 600, cursor: isSavingLocation ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    {isSavingLocation ? <><span className="spinner" />Saving...</> : <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>Save Location</>}
+                  </button>
+                </div>
                 </div>
               </div>
 
@@ -1635,7 +1721,7 @@ export default function SettingsPage() {
               <div style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden' }}>
                 <div style={{ padding: '0.875rem 1.25rem', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--gray-light)" strokeWidth="2"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
-                  <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--white)' }}>Shipping Rate</span>
+                  <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--white)' }}>Shipping Method</span>
                   <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>— Choose how shipping is calculated at checkout.</span>
                 </div>
                 <div style={{ padding: '1.5rem' }}>
@@ -1674,7 +1760,7 @@ export default function SettingsPage() {
                     to render after the terms editor, which put Base Rate and Per km Rate inside
                     the Custom Order Terms card. */}
                 {shippingForm.shippingMode === 'courier_booked' && (
-                  <div style={{ maxWidth: '560px', padding: '1rem 1.25rem', background: 'rgba(212,168,67,0.06)', border: '1px solid rgba(212,168,67,0.2)', borderRadius: '10px', fontSize: '0.82rem', color: 'var(--gray-light)', lineHeight: 1.6 }}>
+                  <div style={{ padding: '1rem 1.25rem', background: 'rgba(212,168,67,0.06)', border: '1px solid rgba(212,168,67,0.2)', borderRadius: '10px', fontSize: '0.82rem', color: 'var(--gray-light)', lineHeight: 1.6 }}>
                     <div style={{ fontWeight: 700, color: 'var(--gold)', marginBottom: '0.4rem' }}>No system-calculated shipping fee</div>
                     Checkout shows <em>“Shipping: arranged after order.”</em> Customers pay only the item total upfront.
                     After an order comes in, you book your courier (Lalamove / Grab) using the customer’s pinned drop-off —
@@ -1684,41 +1770,86 @@ export default function SettingsPage() {
                   </div>
                 )}
 
-                {shippingForm.shippingMode === 'distance' && (
-                  <>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', maxWidth: '480px' }}>
-                      <div className="profile-form-field">
-                        <label>Base Rate (₱) <span className="required">*</span></label>
-                        <input
-                          type="text" inputMode="decimal"
-                          value={shippingForm.shippingBaseRate}
-                          onChange={e => { const v = e.target.value.replace(/[^\d.]/g, ''); setShippingForm(f => ({ ...f, shippingBaseRate: v })); }}
-                          placeholder="50"
-                        />
-                        <div style={{ fontSize: '0.72rem', color: 'var(--gray)', marginTop: '0.25rem' }}>Flat fee regardless of distance</div>
+                {shippingForm.shippingMode === 'distance' && (() => {
+                  const base = parseFloat(shippingForm.shippingBaseRate || 0);
+                  const near = parseFloat(shippingForm.shippingPerKmRate || 0);
+                  const far  = parseFloat(shippingForm.shippingPerKmRateFar || near);
+                  const tier = parseFloat(shippingForm.shippingTierKm || 5);
+                  const fee  = (km) => base + near * Math.min(km, tier) + far * Math.max(0, km - tier);
+                  const hasRates = shippingForm.shippingBaseRate && shippingForm.shippingPerKmRate;
+                  return (
+                    // Two columns rather than one 480px-capped grid with empty space beside it: the
+                    // live example earns the room a fixed-width field grid was leaving blank.
+                    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(220px, 320px)', gap: '1.5rem', alignItems: 'start' }}>
+                      {/* Shaped after how motorcycle courier apps (Lalamove, Grab) actually price a trip in
+                          Metro Manila: a base fare, a steeper per-km rate for a short first stretch, then a
+                          lower per-km rate beyond it. Lalamove's own published Metro Manila motorcycle rate
+                          is ₱49 base + ₱6/km for the first 5 km + ₱5/km after - the defaults here. A single
+                          flat per-km rate the whole trip was a shape no real courier prices with. */}
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                        <div className="profile-form-field">
+                          <label>Base Rate (₱) <span className="required">*</span></label>
+                          <input
+                            type="text" inputMode="decimal"
+                            value={shippingForm.shippingBaseRate}
+                            onChange={e => { const v = e.target.value.replace(/[^\d.]/g, ''); setShippingForm(f => ({ ...f, shippingBaseRate: v })); }}
+                            placeholder="49"
+                          />
+                          <div style={{ fontSize: '0.72rem', color: 'var(--gray)', marginTop: '0.25rem' }}>Flat fee regardless of distance</div>
+                        </div>
+                        <div className="profile-form-field">
+                          <label>First <span style={{ color: 'var(--white)' }}>{shippingForm.shippingTierKm || 5} km</span> - Per km Rate (₱) <span className="required">*</span></label>
+                          <input
+                            type="text" inputMode="decimal"
+                            value={shippingForm.shippingPerKmRate}
+                            onChange={e => { const v = e.target.value.replace(/[^\d.]/g, ''); setShippingForm(f => ({ ...f, shippingPerKmRate: v })); }}
+                            placeholder="6"
+                          />
+                          <div style={{ fontSize: '0.72rem', color: 'var(--gray)', marginTop: '0.25rem' }}>Added per km, up to the tier below</div>
+                        </div>
+                        <div className="profile-form-field">
+                          <label>Tier threshold (km) <span className="required">*</span></label>
+                          <input
+                            type="text" inputMode="decimal"
+                            value={shippingForm.shippingTierKm}
+                            onChange={e => { const v = e.target.value.replace(/[^\d.]/g, ''); setShippingForm(f => ({ ...f, shippingTierKm: v })); }}
+                            placeholder="5"
+                          />
+                          <div style={{ fontSize: '0.72rem', color: 'var(--gray)', marginTop: '0.25rem' }}>Where the rate steps down</div>
+                        </div>
+                        <div className="profile-form-field">
+                          <label>Beyond that - Per km Rate (₱) <span className="required">*</span></label>
+                          <input
+                            type="text" inputMode="decimal"
+                            value={shippingForm.shippingPerKmRateFar}
+                            onChange={e => { const v = e.target.value.replace(/[^\d.]/g, ''); setShippingForm(f => ({ ...f, shippingPerKmRateFar: v })); }}
+                            placeholder="5"
+                          />
+                          <div style={{ fontSize: '0.72rem', color: 'var(--gray)', marginTop: '0.25rem' }}>Usually a little lower than the first tier</div>
+                        </div>
                       </div>
-                      <div className="profile-form-field">
-                        <label>Per km Rate (₱) <span className="required">*</span></label>
-                        <input
-                          type="text" inputMode="decimal"
-                          value={shippingForm.shippingPerKmRate}
-                          onChange={e => { const v = e.target.value.replace(/[^\d.]/g, ''); setShippingForm(f => ({ ...f, shippingPerKmRate: v })); }}
-                          placeholder="15"
-                        />
-                        <div style={{ fontSize: '0.72rem', color: 'var(--gray)', marginTop: '0.25rem' }}>Added per kilometer of distance</div>
-                      </div>
+
+                      {hasRates ? (
+                        <div style={{ padding: '1rem', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border)', borderRadius: '10px' }}>
+                          <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--gray-light)', textTransform: 'uppercase', letterSpacing: '0.03em', marginBottom: '0.6rem' }}>What a customer would pay</div>
+                          {[5, 10, 15].map(km => (
+                            <div key={km} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', padding: '0.3rem 0', borderTop: km > 5 ? '1px solid var(--border)' : 'none' }}>
+                              <span style={{ color: 'var(--gray)' }}>{km} km</span>
+                              <strong style={{ color: 'var(--white)' }}>₱{fee(km).toFixed(2)}</strong>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div style={{ padding: '1rem', background: 'rgba(255,255,255,0.02)', border: '1px dashed var(--border)', borderRadius: '10px', fontSize: '0.78rem', color: 'var(--gray)' }}>
+                          Fill in the rates to see what a customer would pay at a few sample distances.
+                        </div>
+                      )}
                     </div>
-                    {shippingForm.shippingBaseRate && shippingForm.shippingPerKmRate && (
-                      <div style={{ marginTop: '1rem', padding: '0.75rem 1rem', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '0.8125rem', color: 'var(--gray-light)' }}>
-                        Example — 5 km:{' '}<strong style={{ color: 'var(--white)' }}>₱{(parseFloat(shippingForm.shippingBaseRate || 0) + parseFloat(shippingForm.shippingPerKmRate || 0) * 5).toFixed(2)}</strong>
-                        {' '}· 10 km:{' '}<strong style={{ color: 'var(--white)' }}>₱{(parseFloat(shippingForm.shippingBaseRate || 0) + parseFloat(shippingForm.shippingPerKmRate || 0) * 10).toFixed(2)}</strong>
-                      </div>
-                    )}
-                  </>
-                )}
+                  );
+                })()}
 
                 {shippingForm.shippingMode === 'flat' && (
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', maxWidth: '480px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
                     <div className="profile-form-field">
                       <label>Inside Metro Manila (₱) <span className="required">*</span></label>
                       <input
@@ -1742,6 +1873,22 @@ export default function SettingsPage() {
                   </div>
                 )}
 
+                {methodError && (
+                  <div style={{ padding: '0.7rem 1rem', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: '8px', color: '#f87171', fontSize: '0.85rem' }}>
+                    {methodError}
+                  </div>
+                )}
+                {methodSuccess && (
+                  <div style={{ padding: '0.7rem 1rem', background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.25)', borderRadius: '8px', color: '#4ade80', fontSize: '0.85rem' }}>
+                    {methodSuccess}
+                  </div>
+                )}
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1.25rem', paddingTop: '1.25rem', borderTop: '1px solid var(--border)' }}>
+                  <button type="button" onClick={handleSaveMethod} disabled={isSavingMethod}
+                    style={{ padding: '0.55rem 1.25rem', background: isSavingMethod ? 'var(--dark3)' : 'var(--gold)', border: 'none', borderRadius: '8px', color: isSavingMethod ? 'var(--gray)' : 'var(--black)', fontSize: '0.82rem', fontWeight: 600, cursor: isSavingMethod ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    {isSavingMethod ? <><span className="spinner" />Saving...</> : <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>Save Method</>}
+                  </button>
+                </div>
                 </div>
               </div>
 
@@ -1763,7 +1910,8 @@ export default function SettingsPage() {
                     mug rather than a totebag - so this is charged ONCE per order however
                     many customised products share the same artwork. A product can still
                     override it for genuinely harder work. */}
-                <div style={{ maxWidth: '480px', marginBottom: '1.25rem' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 320px) minmax(0, 1fr)', gap: '1rem 1.5rem', alignItems: 'start', marginBottom: '1.25rem' }}>
+                  <div>
                   <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: 'var(--gray-light)', marginBottom: '0.35rem' }}>
                     Design fee (₱)
                   </label>
@@ -1774,6 +1922,7 @@ export default function SettingsPage() {
                     placeholder="100.00"
                     style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--dark2)', color: 'var(--white)', fontSize: '0.9rem' }}
                   />
+                  </div>
                   <p style={{ fontSize: '0.72rem', color: 'var(--gray)', margin: '0.35rem 0 0', lineHeight: 1.5 }}>
                     Charged once per order when a customer asks you to create the artwork -
                     not per product. Three items sharing one design are still one fee.
@@ -1784,7 +1933,7 @@ export default function SettingsPage() {
                     not, because without a cap one paid order can be sent back forever. These figures
                     are quoted verbatim on the order page and inside the Custom Order Terms, so
                     changing them here changes what the customer is promised everywhere. */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '0.75rem', maxWidth: '480px', marginBottom: '1.25rem' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '1.25rem' }}>
                   {[
                     { key: 'freeRevisions',    label: 'Free revisions',     ph: '3',  max: 2, hint: 'Rounds included in the design fee.' },
                     { key: 'extraRevisionFee', label: 'Extra revision (₱)', ph: '50', max: 7, hint: 'Charged per round after the free ones, added to the order balance.' },
@@ -1804,7 +1953,8 @@ export default function SettingsPage() {
                   ))}
                 </div>
 
-                <div style={{ maxWidth: '480px', marginBottom: '1.25rem' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 320px) minmax(0, 1fr)', gap: '1rem 1.5rem', alignItems: 'start', marginBottom: '1.25rem' }}>
+                  <div>
                   <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: 'var(--gray-light)', marginBottom: '0.35rem' }}>
                     Days to pay the deposit
                   </label>
@@ -1815,6 +1965,7 @@ export default function SettingsPage() {
                     placeholder="7"
                     style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--dark2)', color: 'var(--white)', fontSize: '0.9rem', boxSizing: 'border-box' }}
                   />
+                  </div>
                   <p style={{ fontSize: '0.72rem', color: 'var(--gray)', margin: '0.35rem 0 0', lineHeight: 1.5 }}>
                     How long an approved proof is held once the customer approves it. After this the order lapses and the reserved stock goes back.
                   </p>
@@ -1824,7 +1975,8 @@ export default function SettingsPage() {
                     for at all. They hold stock just as hard as an approved order does, and nothing else
                     in the system ever lets go of it. Orders whose design fee HAS cleared are exempt -
                     the designer is working and the customer has already paid. */}
-                <div style={{ maxWidth: '480px', marginBottom: '1.25rem' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 320px) minmax(0, 1fr)', gap: '1rem 1.5rem', alignItems: 'start', marginBottom: '1.25rem' }}>
+                  <div>
                   <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: 'var(--gray-light)', marginBottom: '0.35rem' }}>
                     Days before an unpaid order lapses
                   </label>
@@ -1835,6 +1987,7 @@ export default function SettingsPage() {
                     placeholder="3"
                     style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--dark2)', color: 'var(--white)', fontSize: '0.9rem', boxSizing: 'border-box' }}
                   />
+                  </div>
                   <p style={{ fontSize: '0.72rem', color: 'var(--gray)', margin: '0.35rem 0 0', lineHeight: 1.5 }}>
                     An order with no payment at all is cancelled after this and its reserved stock returns. Orders that have paid the design fee are never touched.
                   </p>
@@ -1845,7 +1998,7 @@ export default function SettingsPage() {
                     Personalised stock cannot be resold, so this is a holding period ending in
                     disposal, not a refund window - and the T&C quotes both numbers, which is why they
                     are settings rather than words typed into the clauses. */}
-                <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', maxWidth: '560px', marginBottom: '1.25rem' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1rem 1.5rem', marginBottom: '1.25rem' }}>
                   <div style={{ flex: '1 1 200px' }}>
                     <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: 'var(--gray-light)', marginBottom: '0.4rem' }}>
                       Days to hold finished goods
@@ -1878,6 +2031,22 @@ export default function SettingsPage() {
                   </div>
                 </div>
 
+                {customError && (
+                  <div style={{ padding: '0.7rem 1rem', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: '8px', color: '#f87171', fontSize: '0.85rem' }}>
+                    {customError}
+                  </div>
+                )}
+                {customSuccess && (
+                  <div style={{ padding: '0.7rem 1rem', background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.25)', borderRadius: '8px', color: '#4ade80', fontSize: '0.85rem' }}>
+                    {customSuccess}
+                  </div>
+                )}
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1.25rem', paddingTop: '1.25rem', borderTop: '1px solid var(--border)' }}>
+                  <button type="button" onClick={handleSaveCustomOrders} disabled={isSavingCustom}
+                    style={{ padding: '0.55rem 1.25rem', background: isSavingCustom ? 'var(--dark3)' : 'var(--gold)', border: 'none', borderRadius: '8px', color: isSavingCustom ? 'var(--gray)' : 'var(--black)', fontSize: '0.82rem', fontWeight: 600, cursor: isSavingCustom ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    {isSavingCustom ? <><span className="spinner" />Saving...</> : <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>Save Custom Orders</>}
+                  </button>
+                </div>
                 </div>
               </div>
 
@@ -1892,7 +2061,7 @@ export default function SettingsPage() {
 
                 {/* Drives the "Get by [date]" shown to customers and the rush fee/priority.
                     Production days skip Sundays. */}
-                <div style={{ maxWidth: '560px', marginBottom: '1.25rem', padding: '1rem 1.25rem', background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '10px' }}>
+                <div style={{ marginBottom: '1.25rem', padding: '1.25rem 1.5rem', background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '10px' }}>
                   <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--white)', marginBottom: '0.15rem' }}>Delivery &amp; Turnaround</div>
                   <p style={{ fontSize: '0.72rem', color: 'var(--gray)', margin: '0 0 0.9rem', lineHeight: 1.5 }}>Sets the estimated delivery date shown to customers. Production days skip Sundays.</p>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.9rem' }}>
@@ -1930,6 +2099,22 @@ export default function SettingsPage() {
                   )}
                 </div>
 
+                {promiseError && (
+                  <div style={{ padding: '0.7rem 1rem', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: '8px', color: '#f87171', fontSize: '0.85rem' }}>
+                    {promiseError}
+                  </div>
+                )}
+                {promiseSuccess && (
+                  <div style={{ padding: '0.7rem 1rem', background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.25)', borderRadius: '8px', color: '#4ade80', fontSize: '0.85rem' }}>
+                    {promiseSuccess}
+                  </div>
+                )}
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1.25rem', paddingTop: '1.25rem', borderTop: '1px solid var(--border)' }}>
+                  <button type="button" onClick={handleSaveDeliveryPromise} disabled={isSavingPromise}
+                    style={{ padding: '0.55rem 1.25rem', background: isSavingPromise ? 'var(--dark3)' : 'var(--gold)', border: 'none', borderRadius: '8px', color: isSavingPromise ? 'var(--gray)' : 'var(--black)', fontSize: '0.82rem', fontWeight: 600, cursor: isSavingPromise ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    {isSavingPromise ? <><span className="spinner" />Saving...</> : <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>Save Delivery Promise</>}
+                  </button>
+                </div>
                 </div>
               </div>
 
