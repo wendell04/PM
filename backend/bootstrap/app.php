@@ -20,7 +20,8 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->prepend(SecurityHeaders::class);
         $middleware->prepend(HandleCors::class);
         $middleware->alias([
-            'isAdmin'    => \App\Http\Middleware\IsAdminMiddleware::class,
+            'isAdmin'     => \App\Http\Middleware\IsAdminMiddleware::class,
+            'permission'  => \App\Http\Middleware\CheckPermission::class,
         ]);
         // Confine limited "2fa-pending" tokens to the 2FA-completion endpoints so the
         // second factor is enforced server-side, not just by the frontend redirect.

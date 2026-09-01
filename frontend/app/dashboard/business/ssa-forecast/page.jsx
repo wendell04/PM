@@ -77,9 +77,9 @@ const SEGMENT_DESC = {
 };
 
 const ABC_DESC = {
-  A: { label: "Vital — top 70% of revenue",  tip: "Protect these. Prioritize stock, quality, and promotion." },
-  B: { label: "Important — next 20%",         tip: "Grow these. Small improvements here have outsized ROI." },
-  C: { label: "Marginal — bottom 10%",        tip: "Review these. Consider bundling, discounting, or phasing out." },
+  A: { label: "Best sellers — top 70% of revenue",  tip: "Protect these. Prioritize stock, quality, and promotion." },
+  B: { label: "Steady — next 20%",                  tip: "Grow these. Small improvements here have outsized returns." },
+  C: { label: "Low performers — the rest",          tip: "Review these. Consider bundling, discounting, or phasing out." },
 };
 
 function AnalyticsSkeleton() {
@@ -1288,6 +1288,17 @@ export default function SSAForecastPage() {
     }
   };
 
+  // Auto-load the analytics tabs the first time they're opened, so users don't
+  // have to click "Run Analysis" — the data that needs projecting loads itself.
+  useEffect(() => {
+    if (!token) return;
+    if (activeTab === "segments" && !rfmResult && !analyticsLoading && !rfmError) {
+      loadRFM();
+    } else if (activeTab === "products" && !serviceResult && !analyticsLoading && !serviceError) {
+      loadProducts();
+    }
+  }, [activeTab, token]); // eslint-disable-line
+
   // Reset date picker when forecast result or period changes
   useEffect(() => { setPickerDate(""); }, [result, forecastPeriod.type]); // eslint-disable-line
 
@@ -1409,6 +1420,38 @@ export default function SSAForecastPage() {
       });
     }
 
+    // Fill the gap between the last recorded sale and today (or the forecast
+    // start) with explicit ZERO-sales periods. The backend trims trailing empty
+    // periods, so without this the chart shows a blank gap that hides the fact
+    // that there were simply no sales on those days — those 0-sales periods must
+    // be drawn, not left empty, or the timeline looks broken / stuck in the past.
+    if (trainDates.length > 0) {
+      const hasCount = parseInt(forecastCount, 10) > 0;
+      const pt = submittedConfig?.period?.type || forecastPeriod.type;
+      const stepDate = (iso) => {
+        const d = new Date(iso + "T00:00:00Z");
+        if (pt === "weekly") d.setUTCDate(d.getUTCDate() + 7);
+        else if (pt === "monthly") d.setUTCMonth(d.getUTCMonth() + 1);
+        else d.setUTCFullYear(d.getUTCFullYear() + 1);
+        return d.toISOString().slice(0, 10);
+      };
+      // When a forecast exists, stop just before its first period so we don't
+      // overwrite it; otherwise fill through today's period (inclusive).
+      const stopBefore = hasCount && fcDates.length > 0 ? fcDates[0] : null;
+      const fillThrough = todayRefDate || todayPeriodStart;
+      let cur = stepDate(trainDates[trainDates.length - 1]);
+      let guard = 0;
+      while (guard < 520 && (stopBefore ? cur < stopBefore : cur <= fillThrough)) {
+        data.push({
+          date: cur, Actual: 0, BacktestActual: null,
+          Trend: undefined, Seasonality: undefined,
+          Forecast: null, High: null, Low: null,
+        });
+        cur = stepDate(cur);
+        guard++;
+      }
+    }
+
     // Forecast — only included when user has a count entered
     if (parseInt(forecastCount, 10) > 0) {
       for (let i = 0; i < fcDates.length; i++) {
@@ -1467,8 +1510,10 @@ export default function SSAForecastPage() {
       data.push({ date: todayStr, StockActual: currentStockQty ?? 0, StockForecast: null });
     }
 
-    // Right side: subtract SSA-forecasted demand from current stock to get projected remaining
-    if (result && currentStockQty !== null) {
+    // Right side: subtract SSA-forecasted demand from current stock to get projected
+    // remaining. Only drawn once the user enters a look-ahead — no auto-projection
+    // on load. Until then the chart shows just the recorded stock staircase up to today.
+    if (result && currentStockQty !== null && parseInt(forecastCount, 10) > 0) {
       // Anchor the projection at today so the gold line starts from the current
       // stock base (the boundary between recorded history and the forecast).
       if (data.length > 0) data[data.length - 1].StockForecast = currentStockQty;
@@ -2167,7 +2212,7 @@ export default function SSAForecastPage() {
         {result && submittedConfig && submittedConfig.source === dataSource && (
           <>
             {/* ── Inventory depletion status banners ─────────────────────── */}
-            {isInvMode && stockoutDate && (
+            {isInvMode && stockoutDate && parseInt(forecastCount, 10) > 0 && (
               <div style={{ display: "flex", alignItems: "flex-start", gap: "0.75rem", background: "rgba(248,113,113,0.08)", border: "1px solid rgba(248,113,113,0.25)", borderRadius: "10px", padding: "0.875rem 1.25rem", fontSize: "0.85rem", color: "var(--gray)", lineHeight: 1.6, marginBottom: "1.5rem" }}>
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#f87171" strokeWidth="2" style={{ flexShrink: 0, marginTop: 2 }}>
                   <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
@@ -2355,7 +2400,9 @@ export default function SSAForecastPage() {
                   {isInvMode ? (
                     <div className="ssa-chart-legend">
                       <span className="lg"><span className="swatch" style={{ background: "var(--gray)" }} />Stock Level</span>
-                      <span className="lg"><span className="swatch" style={{ background: "var(--gold)" }} />Projected Stock</span>
+                      {parseInt(forecastCount, 10) > 0 && (
+                        <span className="lg"><span className="swatch" style={{ background: "var(--gold)" }} />Projected Stock</span>
+                      )}
                       <span className="lg"><span className="swatch" style={{ background: "#4ade80" }} />Today</span>
                       {invPolicy && invPolicy.ROP > 0 && (
                         <span className="lg"><span className="swatch" style={{ background: "#fbbf24" }} />Reorder point</span>
@@ -2376,7 +2423,7 @@ export default function SSAForecastPage() {
                 </div>
                 {!isInvMode && (
                 <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "center" }}>
-                  {todayRefDate && (
+                  {(todayRefDate || todayPeriodStart) && (
                     <span className="ssa-today-pill">
                       <span style={{ width: 6, height: 6, borderRadius: "50%", background: "currentColor" }} />
                       Today
@@ -2675,9 +2722,9 @@ export default function SSAForecastPage() {
                             tickFormatter={chartDateFormatter}
                           />
                         )}
-                        {!isInvMode && todayRefDate && (
+                        {!isInvMode && (todayRefDate || todayPeriodStart) && (
                           <ReferenceLine
-                            x={todayRefDate}
+                            x={todayRefDate || todayPeriodStart}
                             stroke="#4ade80"
                             strokeWidth={1.5}
                             strokeDasharray="4 3"
@@ -2702,7 +2749,7 @@ export default function SSAForecastPage() {
                             label={{ value: formatDateLabel(pickerMatchDate, submittedConfig?.period?.type), position: "insideTopRight", fill: "var(--gold)", fontSize: 10 }}
                           />
                         )}
-                        {isInvMode && stockoutDate && (
+                        {isInvMode && stockoutDate && parseInt(forecastCount, 10) > 0 && (
                           <ReferenceLine
                             x={stockoutDate}
                             stroke="rgba(248,113,113,0.65)"
@@ -2791,6 +2838,13 @@ export default function SSAForecastPage() {
                   )}
                 </span>
               </div>
+            )}
+            {isInvMode && !(parseInt(forecastCount, 10) > 0) && (
+              <p style={{ fontSize: "0.78rem", color: "var(--gray)", marginTop: "0.75rem", marginBottom: "1.5rem", lineHeight: 1.5 }}>
+                Showing recorded stock up to today. Enter a{" "}
+                <strong style={{ color: "var(--gold)" }}>look-ahead</strong> on the left and run the forecast to project future stock levels and see when{" "}
+                {selectedItemName || "this item"} may run out.
+              </p>
             )}
             {parseInt(forecastCount, 10) > 0 && isInvMode && (
               <p style={{ fontSize: "0.75rem", color: "var(--gray)", fontStyle: "italic", marginTop: "0.75rem", marginBottom: "1.5rem", lineHeight: 1.5 }}>
@@ -3010,22 +3064,22 @@ export default function SSAForecastPage() {
                 <div className="ssa-card" style={{marginBottom:"1.5rem"}}>
                   <div className="ssa-card-header" style={{marginBottom:0}}>
                     <div>
-                      <h2 className="ssa-card-title">RFM Customer Segmentation</h2>
+                      <h2 className="ssa-card-title">Customer Groups</h2>
                       <p style={{fontSize:"0.8rem",color:"var(--gray)",marginTop:"0.3rem",lineHeight:1.5}}>
-                        Each customer is scored 1–5 on <strong style={{color:"var(--white)"}}>Recency</strong> (days since last purchase),{" "}
-                        <strong style={{color:"var(--white)"}}>Frequency</strong> (how many separate orders), and{" "}
-                        <strong style={{color:"var(--white)"}}>Monetary</strong> (total spend). Higher = better.
+                        Customers are grouped by their buying habits — <strong style={{color:"var(--white)"}}>how recently</strong> they bought,{" "}
+                        <strong style={{color:"var(--white)"}}>how often</strong> they buy, and <strong style={{color:"var(--white)"}}>how much</strong> they spend —
+                        so you can see who your best customers are and who needs winning back.
                       </p>
                     </div>
-                    <button type="button" className="ssa-run-btn" onClick={loadRFM}>Re-run</button>
+                    <button type="button" className="ssa-run-btn" onClick={loadRFM}>Refresh</button>
                   </div>
                 </div>
 
                 <div className="ssa-metrics-grid">
                   {[
                     { label: "Total Customers", value: rfmResult.total_customers },
-                    { label: "Segments Found",  value: rfmResult.summary?.length ?? 0 },
-                    { label: "Largest Segment", value: [...(rfmResult.summary ?? [])].sort((a,b) => b.count - a.count)[0]?.segment ?? "—" },
+                    { label: "Groups Found",  value: rfmResult.summary?.length ?? 0 },
+                    { label: "Largest Group", value: [...(rfmResult.summary ?? [])].sort((a,b) => b.count - a.count)[0]?.segment ?? "—" },
                     { label: "Avg Spend / Customer", value: (rfmResult.customers?.length ?? 0) > 0
                       ? "₱" + (rfmResult.customers.reduce((s,c) => s + (c.monetary ?? 0), 0) / rfmResult.customers.length).toLocaleString("en-US",{maximumFractionDigits:0})
                       : "—" },
@@ -3039,7 +3093,7 @@ export default function SSAForecastPage() {
 
                 <div className="ssa-card">
                   <div style={{marginBottom:"1rem"}}>
-                    <h2 className="ssa-card-title">Segment Overview</h2>
+                    <h2 className="ssa-card-title">Group Overview</h2>
                     <p style={{fontSize:"0.78rem",color:"var(--gray)",marginTop:"0.3rem"}}>
                       What each customer group means for your business — and what to do about it.
                     </p>
@@ -3094,10 +3148,10 @@ export default function SSAForecastPage() {
                   <div style={{marginBottom:"1rem"}}>
                     <h2 className="ssa-card-title">
                       Customer Detail
-                      <span style={{fontSize:"0.78rem",fontWeight:400,color:"var(--gray)",marginLeft:"0.5rem"}}>(top 100 by RFM score)</span>
+                      <span style={{fontSize:"0.78rem",fontWeight:400,color:"var(--gray)",marginLeft:"0.5rem"}}>(top 100 most valuable)</span>
                     </h2>
                     <p style={{fontSize:"0.78rem",color:"var(--gray)",marginTop:"0.3rem"}}>
-                      RFM Score = R + F + M (max 15). Higher score = more valuable customer.
+                      The value score (out of 15) combines how recently, how often, and how much each customer buys. Higher = more valuable.
                     </p>
                   </div>
                   <div className="ssa-tbl-wrap" style={{maxHeight:"420px"}}>
@@ -3105,8 +3159,8 @@ export default function SSAForecastPage() {
                       <thead style={{position:"sticky",top:0,background:"var(--dark2)",zIndex:1}}>
                         <tr>
                           <th>Customer</th>
-                          <th>Segment</th>
-                          <th style={{textAlign:"right"}}>Score <span style={{fontWeight:400,opacity:0.6}}>(max 15)</span></th>
+                          <th>Group</th>
+                          <th style={{textAlign:"right"}}>Value score <span style={{fontWeight:400,opacity:0.6}}>(max 15)</span></th>
                           <th style={{textAlign:"right"}}>Last bought</th>
                           <th style={{textAlign:"right"}}>Orders</th>
                           <th style={{textAlign:"right"}}>Total spent</th>
@@ -3136,10 +3190,10 @@ export default function SSAForecastPage() {
               <div className="ssa-card">
                 <div className="ssa-card-header">
                   <div>
-                    <h2 className="ssa-card-title">RFM Customer Segmentation</h2>
-                    <p style={{fontSize:"0.82rem",color:"var(--gray)",marginTop:"0.35rem"}}>Segments customers by Recency, Frequency, and Monetary value.</p>
+                    <h2 className="ssa-card-title">Customer Groups</h2>
+                    <p style={{fontSize:"0.82rem",color:"var(--gray)",marginTop:"0.35rem"}}>Groups customers by how recently, how often, and how much they buy.</p>
                   </div>
-                  <button type="button" className="ssa-run-btn" onClick={loadRFM}>Run Analysis</button>
+                  <button type="button" className="ssa-run-btn" onClick={loadRFM}>Load</button>
                 </div>
                 {rfmError && <div className="ssa-error" style={{marginTop:"1rem"}}>{rfmError}</div>}
               </div>
@@ -3158,11 +3212,13 @@ export default function SSAForecastPage() {
                     <div>
                       <h2 className="ssa-card-title">Products &amp; Services</h2>
                       <p style={{fontSize:"0.8rem",color:"var(--gray)",marginTop:"0.3rem",lineHeight:1.55}}>
-                        <strong style={{color:"var(--white)"}}>ABC revenue analysis</strong> — ranks every product by its
-                        revenue contribution (A = top 70%, B = next 20%, C = the rest), with how often each sells and its average sale value.
+                        Ranks every product by how much revenue it brings in, and sorts them into three tiers —
+                        <strong style={{color:"var(--white)"}}> Best sellers</strong> (top 70% of revenue),{" "}
+                        <strong style={{color:"var(--white)"}}>Steady</strong> (next 20%), and{" "}
+                        <strong style={{color:"var(--white)"}}>Low performers</strong> (the rest) — alongside how often each sells and its average sale value.
                       </p>
                     </div>
-                    <button type="button" className="ssa-run-btn" onClick={loadProducts}>Re-run</button>
+                    <button type="button" className="ssa-run-btn" onClick={loadProducts}>Refresh</button>
                   </div>
                   {/* ABC legend */}
                   <div style={{display:"flex",gap:"0.75rem",flexWrap:"wrap"}}>
@@ -3186,7 +3242,7 @@ export default function SSAForecastPage() {
                   {[
                     { label: "Total Products",    value: serviceResult?.total_services ?? "—",   sub: "distinct products / services" },
                     { label: "Total Revenue",      value: serviceResult ? "₱" + (serviceResult.total_revenue ?? 0).toLocaleString("en-US",{maximumFractionDigits:0}) : "—", sub: "from all recorded sales" },
-                    { label: "A-Class Products",   value: (serviceResult?.services ?? []).filter(s => s.abc_class === "A").length || "—", sub: "top 70% of revenue" },
+                    { label: "Best Sellers",       value: (serviceResult?.services ?? []).filter(s => s.abc_class === "A").length || "—", sub: "top 70% of revenue" },
                     { label: "Top Earner",         value: serviceResult?.top_services?.[0]?.service ?? "—",                        sub: "highest revenue product" },
                   ].map(({ label, value, sub }) => (
                     <div key={label} className="ssa-stat-card">
@@ -3211,7 +3267,7 @@ export default function SSAForecastPage() {
                         <thead style={{position:"sticky",top:0,background:"var(--dark2)",zIndex:1}}>
                           <tr>
                             <th>Product / Service</th>
-                            <th>Class</th>
+                            <th>Tier</th>
                             <th style={{textAlign:"right"}}>Revenue</th>
                             <th style={{textAlign:"right"}}>Revenue share</th>
                             <th style={{textAlign:"right"}}>Times sold</th>
@@ -3258,10 +3314,10 @@ export default function SSAForecastPage() {
                   <div>
                     <h2 className="ssa-card-title">Products &amp; Services</h2>
                     <p style={{fontSize:"0.82rem",color:"var(--gray)",marginTop:"0.35rem"}}>
-                      Combines revenue ranking (ABC analysis) with purchase frequency across all orders.
+                      Ranks products by revenue and shows how often each one sells.
                     </p>
                   </div>
-                  <button type="button" className="ssa-run-btn" onClick={loadProducts}>Run Analysis</button>
+                  <button type="button" className="ssa-run-btn" onClick={loadProducts}>Load</button>
                 </div>
                 {serviceError && (
                   <div className="ssa-error" style={{marginTop:"1rem"}}>{serviceError}</div>

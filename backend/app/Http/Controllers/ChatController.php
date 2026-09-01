@@ -21,7 +21,8 @@ class ChatController extends Controller
     {
         try {
             $user = $request->user();
-            $isAdmin = in_array($user->role, ['admin', 'owner']);
+            // Staff-sees-all-conversations flag (Super Admin / Owner). Data scoping, not a gate.
+            $isAdmin = \App\Support\Rbac::isSuperAdmin($user) || \App\Support\Rbac::isOwner($user);
 
             // Get existing conversations where the user is a participant
             $conversations = Conversation::where('participants', (string)$user->_id)

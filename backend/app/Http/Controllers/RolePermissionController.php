@@ -9,7 +9,7 @@ use App\Models\User;
 
 class RolePermissionController extends Controller
 {
-    protected array $protectedRoles = ['admin', 'owner', 'customer'];
+    protected array $protectedRoles = ['superAdmin', 'admin', 'owner', 'customer'];
 
     private function labelFromRole(string $role): string
     {
@@ -79,6 +79,12 @@ class RolePermissionController extends Controller
                 'updatedAt'   => now(),
             ]);
 
+            $this->logActivity(
+                $request, 'role.created', 'role', $role,
+                "Created role {$label} ({$role})",
+                ['role' => $role, 'label' => $label]
+            );
+
             return $this->successResponse('Role created successfully.', [
                 'role'        => $role,
                 'label'       => $label,
@@ -103,17 +109,14 @@ class RolePermissionController extends Controller
 
             $userId = (string) ($user->_id ?? $user->id);
             $data   = Cache::remember("admin_permissions_{$userId}", 60, function () use ($user) {
-                if (in_array($user->role, ['admin', 'owner'])) {
-                    $all = RolePermission::defaultPermissions();
-                    return [
-                        'role'        => $user->role,
-                        'permissions' => array_map(fn() => true, $all),
-                    ];
-                }
-
+                // Centralized: Super Admin reflects the access toggle, Owner has
+                // business authority, staff resolve from their role grid.
                 return [
-                    'role'        => $user->role,
-                    'permissions' => RolePermission::forRole($user->role),
+                    'role'          => $user->role,
+                    'is_super_admin' => \App\Support\Rbac::isSuperAdmin($user),
+                    'full_access'   => \App\Support\Rbac::isSuperAdmin($user)
+                                        ? \App\Support\Rbac::superAdminFullAccess() : null,
+                    'permissions'   => \App\Support\Rbac::effectivePermissions($user),
                 ];
             });
 
@@ -134,16 +137,27 @@ class RolePermissionController extends Controller
                 return $this->unauthorizedResponse();
             }
 
+            // Protected system/business roles cannot be reconfigured through the
+            // normal permission UI (prevents removing Super Admin/Owner authority).
+            if (in_array($role, $this->protectedRoles, true)) {
+                return $this->errorResponse('This is a protected role and cannot be modified here.', 422);
+            }
+
             $record = RolePermission::where('role', $role)->first();
             if (!$record) {
                 return $this->errorResponse('Role not found.', 404);
             }
 
             $permissions = $request->input('permissions', []);
-            $allowed     = array_keys(RolePermission::defaultPermissions());
+            // Accept both coarse module keys and fine action keys (module.action),
+            // so the current module-toggle UI and the future action UI both work.
+            $allowed     = array_merge(
+                array_keys(RolePermission::defaultPermissions()),
+                RolePermission::actionKeys()
+            );
             $filtered    = array_filter(
                 $permissions,
-                fn($k) => in_array($k, $allowed),
+                fn($k) => in_array($k, $allowed, true),
                 ARRAY_FILTER_USE_KEY
             );
 
@@ -157,6 +171,12 @@ class RolePermissionController extends Controller
             foreach ($affected as $uid) {
                 Cache::forget("admin_permissions_{$uid}");
             }
+
+            $this->logActivity(
+                $request, 'role.permissions_changed', 'role', $role,
+                "Updated permissions for role {$role}",
+                ['role' => $role, 'affectedUsers' => $affected->count()]
+            );
 
             return $this->successResponse('Role permissions updated successfully.', [
                 'role'        => $role,
@@ -197,6 +217,12 @@ class RolePermissionController extends Controller
             }
 
             $record->delete();
+
+            $this->logActivity(
+                $request, 'role.deleted', 'role', $role,
+                "Deleted role {$role}",
+                ['role' => $role]
+            );
 
             return $this->successResponse('Role deleted successfully.');
         } catch (\Exception $e) {

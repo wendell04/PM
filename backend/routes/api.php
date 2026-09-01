@@ -272,8 +272,11 @@ Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
     Route::post('/admin/orders/{id}/rush-decision',   [OrderController::class, 'rushDecision']);
     Route::post('/admin/orders/{id}/remind-balance', [OrderController::class, 'remindBalance']);
     Route::post('/admin/orders/{id}/write-off',      [OrderController::class, 'writeOffOrder']);
-    Route::post('/admin/settings/registration-terms', [SettingsController::class, 'registrationTermsUpdate']);
-    Route::delete('/payment/cancel-pending/{orderId}', [PaymentController::class, 'cancelPending']);
+    // RBAC: system settings — Owner / Super Admin only (no staff grid grants `systemSettings`)
+    Route::post('/admin/settings/registration-terms', [SettingsController::class, 'registrationTermsUpdate'])
+        ->middleware('permission:systemSettings');
+    Route::delete('/payment/cancel-pending/{orderId}', [PaymentController::class, 'cancelPending'])
+        ->middleware('permission:orders.edit,payments.edit');
     Route::post('/admin/orders/{id}/reject-design',  [OrderController::class, 'rejectDesign']);
     Route::post('/admin/orders/{id}/upload-design',   [OrderController::class, 'adminUploadDesign']);
     Route::post('/admin/orders/{id}/approve-upload',  [OrderController::class, 'approveUploadDesign']);
@@ -292,20 +295,24 @@ Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
     Route::post('/admin/sales',                  [SaleController::class, 'store']);
     Route::put('/admin/sales/{id}',              [SaleController::class, 'update']);
 
-    // ─── Banners ──────────────────────────────────────────────────────────────
-    Route::get('/admin/banners',                 [BannerController::class, 'index']);
-    Route::post('/admin/banners',                [BannerController::class, 'store']);
-    Route::put('/admin/banners/{id}',            [BannerController::class, 'update']);
-    Route::delete('/admin/banners/{id}',         [BannerController::class, 'destroy']);
-    Route::put('/admin/banners/{id}/publish',    [BannerController::class, 'publish']);
-    Route::put('/admin/banners/{id}/unpublish',  [BannerController::class, 'unpublish']);
+    // ─── Banners ── RBAC: gated by `banners` (controller has no own check) ─────
+    Route::middleware('permission:banners')->group(function () {
+        Route::get('/admin/banners',                 [BannerController::class, 'index']);
+        Route::post('/admin/banners',                [BannerController::class, 'store']);
+        Route::put('/admin/banners/{id}',            [BannerController::class, 'update']);
+        Route::delete('/admin/banners/{id}',         [BannerController::class, 'destroy']);
+        Route::put('/admin/banners/{id}/publish',    [BannerController::class, 'publish']);
+        Route::put('/admin/banners/{id}/unpublish',  [BannerController::class, 'unpublish']);
+    });
 
-    // ─── Flash Sales ─────────────────────────────────────────────────────────
-    Route::get('/admin/flash-sales',              [FlashSaleController::class, 'index']);
-    Route::post('/admin/flash-sales',             [FlashSaleController::class, 'store']);
-    Route::put('/admin/flash-sales/{id}',         [FlashSaleController::class, 'update']);
-    Route::delete('/admin/flash-sales/{id}',      [FlashSaleController::class, 'destroy']);
-    Route::patch('/admin/flash-sales/{id}/toggle', [FlashSaleController::class, 'toggle']);
+    // ─── Flash Sales ── RBAC: gated by `flashSales` (controller has no own check) ─
+    Route::middleware('permission:flashSales')->group(function () {
+        Route::get('/admin/flash-sales',              [FlashSaleController::class, 'index']);
+        Route::post('/admin/flash-sales',             [FlashSaleController::class, 'store']);
+        Route::put('/admin/flash-sales/{id}',         [FlashSaleController::class, 'update']);
+        Route::delete('/admin/flash-sales/{id}',      [FlashSaleController::class, 'destroy']);
+        Route::patch('/admin/flash-sales/{id}/toggle', [FlashSaleController::class, 'toggle']);
+    });
 
     // ─── Order Requests (Admin) ──────────────────────────────────────────────
     Route::get('/admin/order-requests',               [OrderRequestController::class, 'index']);
@@ -343,19 +350,23 @@ Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
     Route::post('/admin/orders/walk-in',       [WalkInOrderController::class, 'store']);
 
     // ── Vouchers ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-    Route::get('/admin/vouchers',              [VoucherController::class, 'index']);
-    Route::post('/admin/vouchers',             [VoucherController::class, 'store']);
-    Route::put('/admin/vouchers/{id}',         [VoucherController::class, 'update']);
-    Route::delete('/admin/vouchers/{id}',      [VoucherController::class, 'destroy']);
-    Route::patch('/admin/vouchers/{id}/toggle', [VoucherController::class, 'toggle']);
+    // RBAC: gated by `vouchers` (controller has no own check)
+    Route::middleware('permission:vouchers')->group(function () {
+        Route::get('/admin/vouchers',              [VoucherController::class, 'index']);
+        Route::post('/admin/vouchers',             [VoucherController::class, 'store']);
+        Route::put('/admin/vouchers/{id}',         [VoucherController::class, 'update']);
+        Route::delete('/admin/vouchers/{id}',      [VoucherController::class, 'destroy']);
+        Route::patch('/admin/vouchers/{id}/toggle', [VoucherController::class, 'toggle']);
+    });
 
     // ─── Reviews (Admin) ─────────────────────────────────────────────────────
     Route::get('/admin/reviews',                        [ReviewController::class, 'adminIndex']);
     Route::patch('/admin/reviews/{id}/visibility',      [ReviewController::class, 'toggleVisibility']);
     Route::delete('/admin/reviews/{id}',                [ReviewController::class, 'destroy']);
 
-    // ─── Site content (editable landing sections) ────────────────────────────
-    Route::put('/admin/content/{key}',                  [SiteContentController::class, 'update']);
+    // ─── Site content (editable landing sections) ── RBAC: gated by `products` ─
+    Route::put('/admin/content/{key}',                  [SiteContentController::class, 'update'])
+        ->middleware('permission:products');
 });
 
 // ─── Order Requests (Customer) ───────────────────────────────────────────────

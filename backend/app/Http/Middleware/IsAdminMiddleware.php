@@ -4,6 +4,7 @@ namespace App\Http\Middleware;
 
 use Closure;
 use Illuminate\Http\Request;
+use App\Support\Rbac;
 
 class IsAdminMiddleware
 {
@@ -15,30 +16,24 @@ class IsAdminMiddleware
             return response()->json(['message' => 'Unauthenticated.'], 401);
         }
 
-        // If specific roles are passed to the middleware, enforce them
+        $isSuper = Rbac::isSuperAdmin($user);
+        $isOwner = Rbac::isOwner($user);
+
+        // If specific roles are passed to the middleware, enforce them.
+        // Super Admin and Owner always pass; otherwise the role must be listed.
         if (count($roles) > 0) {
-            if (!in_array($user->role, array_merge(['admin', 'owner'], $roles))) {
-                return response()->json(['message' => 'Forbidden. Insufficient role.'], 403);
+            if ($isSuper || $isOwner || in_array($user->role, $roles, true)) {
+                return $next($request);
             }
-            return $next($request);
+            return response()->json(['message' => 'Forbidden. Insufficient role.'], 403);
         }
 
-        // No specific roles required — but FAIL CLOSED: allow only provisioned staff, instead of
-        // "anything that isn't literally 'customer'" (which would let a null/empty/unknown role in).
-        // Built-in admin/owner always pass; any other role must exist in the role_permissions
-        // registry, where staff roles are provisioned — so custom roles created via the admin UI
-        // still work, while customers and any null/empty/unknown/future role are denied by default.
-        // Fine-grained per-feature checks still happen per-controller via hasPermission().
-        $role = $user->role;
-
-        if ($role === 'admin' || $role === 'owner') {
-            return $next($request);
-        }
-
-        if (
-            is_string($role) && $role !== '' && $role !== 'customer'
-            && \App\Models\RolePermission::where('role', $role)->exists()
-        ) {
+        // No specific roles required — FAIL CLOSED via the central staff gate:
+        // Super Admin / Owner always pass; any other role must be provisioned in
+        // the role_permissions registry. Customers and any null/empty/unknown
+        // role are denied. Fine-grained per-feature checks still run per-controller
+        // via hasPermission() — this is only the coarse admin-surface gate.
+        if (Rbac::isStaff($user)) {
             return $next($request);
         }
 

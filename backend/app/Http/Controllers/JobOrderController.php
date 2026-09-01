@@ -1087,7 +1087,7 @@ class JobOrderController extends Controller
     {
         try {
             $user = $request->user();
-            if (!$user || !in_array($user->role, ['admin', 'owner', 'production', 'qc'])) {
+            if (!$this->hasPermission($request, 'jobOrders.updateStatus')) {
                 return $this->unauthorizedResponse();
             }
 
@@ -1196,7 +1196,7 @@ class JobOrderController extends Controller
     {
         try {
             $user = $request->user();
-            if (!$user || !in_array($user->role, ['admin', 'owner', 'production'])) {
+            if (!$this->hasPermission($request, 'jobOrders.edit')) {
                 return $this->unauthorizedResponse();
             }
 
@@ -1259,7 +1259,7 @@ class JobOrderController extends Controller
     {
         try {
             $user = $request->user();
-            if (!$user || !in_array($user->role, ['admin', 'owner'])) {
+            if (!$this->hasPermission($request, 'jobOrders.edit')) {
                 return $this->unauthorizedResponse();
             }
             $jo = JobOrder::find($id);

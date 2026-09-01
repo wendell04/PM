@@ -52,6 +52,11 @@ class StaffController extends Controller
                 'role'      => 'required|string|in:' . implode(',', $this->getStaffRoles()),
             ]);
 
+            // Escalation guard: cannot create an account at or above your own level.
+            if (!\App\Support\Rbac::canAssignRole($request->user(), $validated['role'])) {
+                return $this->errorResponse('You cannot assign a role at or above your own level.', 403);
+            }
+
             $staff = User::create([
                 'firstName'    => $validated['firstName'],
                 'lastName'     => $validated['lastName'],
@@ -61,6 +66,12 @@ class StaffController extends Controller
                 'is_verified'  => true, // Admin-created accounts skip verification
                 'phoneNumber'  => $request->input('phoneNumber', ''),
             ]);
+
+            $this->logActivity(
+                $request, 'user.created', 'user', (string) $staff->_id,
+                "Created staff {$staff->email} with role {$staff->role}",
+                ['email' => $staff->email, 'role' => $staff->role]
+            );
 
             return $this->successResponse('Staff account created successfully.', [
                 '_id'       => (string) $staff->_id,
@@ -90,9 +101,15 @@ class StaffController extends Controller
             $staff = User::find($id);
             if (!$staff) return $this->notFoundResponse('Staff');
 
-            // Prevent modifying admin/owner accounts
-            if (in_array($staff->role, ['admin', 'owner'])) {
-                return $this->errorResponse('Cannot modify admin or owner accounts.', 403);
+            // Prevent modifying protected system/business accounts (Super Admin / Owner)
+            if (\App\Support\Rbac::isSuperAdmin($staff) || \App\Support\Rbac::isOwner($staff)) {
+                return $this->errorResponse('Cannot modify Super Admin or Owner accounts.', 403);
+            }
+
+            // Escalation guard: cannot manage an account at or above your own level
+            // (blocks self-edits too, since a role can never outrank itself).
+            if (\App\Support\Rbac::rank($request->user()->role) <= \App\Support\Rbac::rank($staff->role)) {
+                return $this->errorResponse('You cannot modify an account at or above your own level.', 403);
             }
 
             $validated = $request->validate([
@@ -102,12 +119,32 @@ class StaffController extends Controller
                 'password'  => 'sometimes|string|min:8',
             ]);
 
+            // Escalation guard: cannot promote a user into a role at or above your own level.
+            if (isset($validated['role']) && !\App\Support\Rbac::canAssignRole($request->user(), $validated['role'])) {
+                return $this->errorResponse('You cannot assign a role at or above your own level.', 403);
+            }
+
+            $oldRole = $staff->role;
             if (isset($validated['firstName'])) $staff->firstName = $validated['firstName'];
             if (isset($validated['lastName']))  $staff->lastName  = $validated['lastName'];
             if (isset($validated['role']))      $staff->role      = $validated['role'];
             if (isset($validated['password']))  $staff->password  = Hash::make($validated['password']);
 
             $staff->save();
+
+            if (isset($validated['role']) && $validated['role'] !== $oldRole) {
+                $this->logActivity(
+                    $request, 'user.role_changed', 'user', (string) $staff->_id,
+                    "Changed {$staff->email} role: {$oldRole} → {$staff->role}",
+                    ['email' => $staff->email, 'from' => $oldRole, 'to' => $staff->role]
+                );
+            } else {
+                $this->logActivity(
+                    $request, 'user.updated', 'user', (string) $staff->_id,
+                    "Updated staff account {$staff->email}",
+                    ['email' => $staff->email]
+                );
+            }
 
             return $this->successResponse('Staff account updated successfully.', [
                 '_id'       => (string) $staff->_id,
@@ -138,8 +175,8 @@ class StaffController extends Controller
             $staff = User::find($id);
             if (!$staff) return $this->notFoundResponse('Staff');
 
-            if (in_array($staff->role, ['admin', 'owner'])) {
-                return $this->errorResponse('Cannot delete admin or owner accounts.', 403);
+            if (\App\Support\Rbac::isSuperAdmin($staff) || \App\Support\Rbac::isOwner($staff)) {
+                return $this->errorResponse('Cannot delete Super Admin or Owner accounts.', 403);
             }
 
             // Prevent self-deletion
@@ -147,7 +184,16 @@ class StaffController extends Controller
                 return $this->errorResponse('Cannot delete your own account.', 403);
             }
 
+            $deletedEmail = $staff->email;
+            $deletedRole  = $staff->role;
+            $deletedId    = (string) $staff->_id;
             $staff->delete();
+
+            $this->logActivity(
+                $request, 'user.deleted', 'user', $deletedId,
+                "Deleted staff {$deletedEmail} ({$deletedRole})",
+                ['email' => $deletedEmail, 'role' => $deletedRole]
+            );
 
             return $this->successResponse('Staff account deleted successfully.');
         } catch (\Exception $e) {

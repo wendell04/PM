@@ -22,7 +22,14 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 // Roles allowed into the /dashboard/business/* admin area. This layout wraps EVERY admin page,
 // so this single allowlist guards the whole dashboard at once. Anyone else — customers, guests,
 // or any unknown/future role — is redirected out. (Data is independently protected server-side.)
-const STAFF_ROLES = ['admin', 'owner', 'salesRep', 'productionOperator', 'qualityControl', 'cashier', 'inventoryManager'];
+const STAFF_ROLES = ['superAdmin', 'admin', 'owner', 'salesRep', 'productionOperator', 'qualityControl', 'cashier', 'inventoryManager'];
+
+// A user belongs in the business dashboard if they are any authenticated
+// non-customer role. Per-module access is enforced by the backend and reflected
+// by can(); this guard only separates staff from customers/guests — so new roles
+// (administrator, manager, salesStaff, productionStaff, financeStaff, and any
+// future custom role) work without editing a hard-coded list.
+const isStaffRole = (role) => typeof role === 'string' && role !== '' && role !== 'customer';
 
 export default function BusinessDashboardLayout({ children }) {
   const pathname = usePathname();
@@ -102,7 +109,7 @@ export default function BusinessDashboardLayout({ children }) {
       router.replace("/");         // guest / not logged in → landing + login
       return;
     }
-    if (!STAFF_ROLES.includes(currentUser.role)) {
+    if (!isStaffRole(currentUser.role)) {
       router.replace("/shop");     // customer or any non-staff role → storefront
       return;
     }
@@ -448,12 +455,16 @@ export default function BusinessDashboardLayout({ children }) {
 
 
   const permsCacheRef = useRef(null);
+  // Super Admin access mode, surfaced from /my/permissions: { isSuperAdmin, fullAccess }.
+  // fullAccess reflects the backend SUPERADMIN_FULL_ACCESS env toggle.
+  const [superAccess, setSuperAccess] = useState(null);
 
   // Fetch role permissions on mount
   useEffect(() => {
     if (!token) return;
     if (permsCacheRef.current?.token === token) {
       setPermissions(permsCacheRef.current.permissions);
+      setSuperAccess(permsCacheRef.current.superAccess ?? null);
       return;
     }
     fetchWithTimeout(`${API_URL}/api/my/permissions`, {
@@ -466,24 +477,50 @@ export default function BusinessDashboardLayout({ children }) {
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (data?.data?.permissions) {
+          const access = {
+            isSuperAdmin: !!data.data.is_super_admin,
+            fullAccess: data.data.full_access,
+          };
           permsCacheRef.current = {
             token,
             permissions: data.data.permissions,
+            superAccess: access,
           };
           setPermissions(data.data.permissions);
+          setSuperAccess(access);
         }
       })
       .catch(() => {}); // non-fatal â€” sidebar degrades gracefully
   }, [token]);
 
-  // Returns true if admin/owner (always full access) or permission is granted
+  // Owner has full business access. Super Admin (superAdmin/legacy admin) is
+  // governed by the backend access toggle, surfaced via /my/permissions — so
+  // scoped mode hides business modules here too. Everyone else follows their grid.
+  const SUPER_ROLES = ["superAdmin", "admin"];
+  // Mirror of backend App\Support\Rbac::gridAllows — bridges coarse module flags
+  // and fine module.action keys so can('orders') and can('orders.edit') both work.
+  const gridAllows = (perms, key) => {
+    if (!perms) return false;
+    if (key.includes(".")) {
+      if (key in perms) return perms[key] === true;
+      const module = key.split(".")[0];
+      for (const k in perms) if (k.startsWith(module + ".")) return false;
+      return perms[module] === true;
+    }
+    if (perms[key] === true) return true;
+    const prefix = key + ".";
+    for (const k in perms) if (k.startsWith(prefix) && perms[k] === true) return true;
+    return false;
+  };
   const can = (key) => {
     if (!currentUser) return false;
-    if (["admin", "owner"].includes(currentUser.role)) return true;
-    if (!permissions) return false;
-    return permissions[key] === true;
+    if (currentUser.role === "owner") return true;
+    // Super Admin: optimistic until perms load (avoids nav flash); then the
+    // fetched map governs, so the access toggle / scoped mode is honored.
+    if (SUPER_ROLES.includes(currentUser.role) && !permissions) return true;
+    return gridAllows(permissions, key);
   };
-  const isAdminOwner = ["admin", "owner"].includes(currentUser?.role);
+  const isAdminOwner = ["superAdmin", "admin", "owner"].includes(currentUser?.role);
   const { theme, toggleTheme } = useTheme();
 
   const navItems = [
@@ -708,8 +745,15 @@ export default function BusinessDashboardLayout({ children }) {
 
   const sidebarRoleLabel = useMemo(() => {
     const labels = {
-      admin: "Admin",
+      superAdmin: "Super Admin",
+      admin: "Super Admin",
       owner: "Owner",
+      administrator: "Administrator",
+      manager: "Manager",
+      salesStaff: "Sales Staff",
+      productionStaff: "Production Staff",
+      inventoryStaff: "Inventory Staff",
+      financeStaff: "Finance Staff",
       salesRep: "Sales Rep",
       productionOperator: "Production",
       qualityControl: "QC Staff",
@@ -746,7 +790,7 @@ export default function BusinessDashboardLayout({ children }) {
 
   // Never paint the admin shell for anyone unauthorized — the guard above redirects them.
   // This runs after all hooks, so hook order stays stable.
-  if (!currentUser || !STAFF_ROLES.includes(currentUser.role)) {
+  if (!currentUser || !isStaffRole(currentUser.role)) {
     return null;
   }
 
@@ -1050,6 +1094,41 @@ export default function BusinessDashboardLayout({ children }) {
                   : currentUser?.email || "User"}
               </div>
               <span className="sidebar-footer-role">{sidebarRoleLabel}</span>
+              {superAccess?.isSuperAdmin && (
+                <span
+                  title={
+                    superAccess.fullAccess
+                      ? "Full Access — Super Admin bypasses all permission checks (SUPERADMIN_FULL_ACCESS=true). Development mode."
+                      : "Scoped — Super Admin is limited to system tasks (users, roles, audit, settings). Set SUPERADMIN_FULL_ACCESS=true to restore full access."
+                  }
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "4px",
+                    marginTop: "3px",
+                    padding: "1px 7px",
+                    borderRadius: "999px",
+                    fontSize: "0.6rem",
+                    fontWeight: 700,
+                    letterSpacing: "0.03em",
+                    textTransform: "uppercase",
+                    cursor: "help",
+                    color: superAccess.fullAccess ? "#4ade80" : "#fbbf24",
+                    background: superAccess.fullAccess ? "rgba(74,222,128,0.12)" : "rgba(251,191,36,0.12)",
+                    border: `1px solid ${superAccess.fullAccess ? "rgba(74,222,128,0.35)" : "rgba(251,191,36,0.35)"}`,
+                  }}
+                >
+                  <span
+                    style={{
+                      width: 5,
+                      height: 5,
+                      borderRadius: "50%",
+                      background: "currentColor",
+                    }}
+                  />
+                  {superAccess.fullAccess ? "Full Access" : "Scoped"}
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -1557,7 +1636,7 @@ export default function BusinessDashboardLayout({ children }) {
                 {currentUser?.email || ""}
               </div>
               <span style={{ display: "inline-block", marginTop: "0.6rem", padding: "2px 10px", borderRadius: "999px", border: "1px solid var(--gold)", color: "var(--gold)", fontSize: "0.68rem", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase" }}>
-                {{ admin: "Admin", owner: "Owner", salesRep: "Sales Rep", productionOperator: "Production", qualityControl: "QC Staff", cashier: "Cashier", inventoryManager: "Inventory" }[currentUser?.role] ?? "Staff"}
+                {{ superAdmin: "Super Admin", admin: "Super Admin", owner: "Owner", administrator: "Administrator", manager: "Manager", salesStaff: "Sales Staff", productionStaff: "Production Staff", inventoryStaff: "Inventory Staff", financeStaff: "Finance Staff", salesRep: "Sales Rep", productionOperator: "Production", qualityControl: "QC Staff", cashier: "Cashier", inventoryManager: "Inventory" }[currentUser?.role] ?? "Staff"}
               </span>
             </div>
 
