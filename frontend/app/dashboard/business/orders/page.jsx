@@ -2009,12 +2009,26 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                 {/* Rush is a REQUEST - the shop decides if it can fit it in ("kaya ba isabay"). */}
                 {lo.rushStatus === 'requested' && (
                   <div style={{ padding:'10px', background:'#fff7ed', border:'1px solid #fdba74', borderRadius:'8px', display:'flex', flexDirection:'column', gap:'8px' }}>
-                    <div style={{ fontSize:'12px', fontWeight:700, color:'#c2410c' }}>Rush requested (+₱{Number(lo.rushFee ?? 0).toLocaleString('en-PH')}) - can you fit it in?</div>
+                    {/* The customer has ALREADY paid this - it was collected in the checkout total,
+                        so "Accept" confirms and charges nothing. Declining is the expensive half,
+                        and the old label ("waive fee") read as though it cost the shop nothing. */}
+                    <div style={{ fontSize:'12px', fontWeight:700, color:'#c2410c' }}>
+                      Rush requested (+₱{Number(lo.rushFee ?? 0).toLocaleString('en-PH')}) - can you fit it in?
+                    </div>
+                    <div style={{ fontSize:'11px', color:'var(--gray)', lineHeight:1.45, marginTop:-2 }}>
+                      {Number(lo.balance ?? 0) <= 0
+                        ? 'Already paid. Accepting charges nothing more; declining means sending the fee back by hand.'
+                        : 'Accepting charges nothing more - the fee is already in the order total.'}
+                    </div>
                     <div style={{ display:'flex', gap:'6px' }}>
                       <button onClick={() => handleRushDecision('accepted')} disabled={savingDeliv}
                         style={{ flex:1, padding:'6px 0', background:'#166534', border:'none', borderRadius:'6px', color:'#fff', fontSize:'12px', fontWeight:700, cursor:savingDeliv?'not-allowed':'pointer', opacity:savingDeliv?.6:1 }}>Accept rush</button>
                       <button onClick={() => handleRushDecision('declined')} disabled={savingDeliv}
-                        style={{ flex:1, padding:'6px 0', background:'transparent', border:'1px solid #fecaca', borderRadius:'6px', color:'#991b1b', fontSize:'12px', fontWeight:700, cursor:savingDeliv?'not-allowed':'pointer', opacity:savingDeliv?.6:1 }}>Decline (waive fee)</button>
+                        style={{ flex:1, padding:'6px 0', background:'transparent', border:'1px solid #fecaca', borderRadius:'6px', color:'#991b1b', fontSize:'12px', fontWeight:700, cursor:savingDeliv?'not-allowed':'pointer', opacity:savingDeliv?.6:1 }}>
+                        {Number(lo.balance ?? 0) <= 0
+                          ? `Decline & refund \u20B1${Number(lo.rushFee ?? 0).toLocaleString('en-PH')}`
+                          : 'Decline (waive fee)'}
+                      </button>
                     </div>
                   </div>
                 )}
@@ -2164,6 +2178,29 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                   <span style={{ color:'var(--gray)' }}>Balance</span>
                   <span style={{ fontWeight:700, color: owing <= 0 ? '#166534' : '#c2410c' }}>₱{fmt(owing)}</span>
                 </div>
+
+                {/* Money owed BACK. A cancelled paid order and a declined paid-for rush both leave
+                    the shop holding money it is not entitled to, and until now neither said so
+                    anywhere - the order simply read as cancelled and the total quietly dropped.
+                    There is no refund API, so this is a to-do for a person, not a button that
+                    moves money; the value of it is that the debt is no longer invisible. */}
+                {Number(lo.refundOwed || 0) > 0 && (
+                  <div style={{ marginTop: 8, padding: '9px 11px', borderRadius: 6,
+                    background: 'rgba(239,68,68,0.07)', border: '1px solid rgba(239,68,68,0.28)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, fontWeight: 700, color: '#b91c1c' }}>
+                      <span>Refund owed</span>
+                      <span>₱{fmt(Number(lo.refundOwed))}</span>
+                    </div>
+                    {(lo.refunds || []).filter(r => (r.status || 'owed') === 'owed').map((r, i) => (
+                      <div key={i} style={{ fontSize: 11, color: 'var(--gray)', marginTop: 4, lineHeight: 1.45 }}>
+                        ₱{fmt(Number(r.amount || 0))} - {r.reason}
+                      </div>
+                    ))}
+                    <div style={{ fontSize: 10.5, color: 'var(--gray)', marginTop: 6, fontStyle: 'italic' }}>
+                      Send this back by hand (GCash / Maya) - the system cannot return it for you.
+                    </div>
+                  </div>
+                )}
 
                 {/* The automatic balance notice fires once, when the last job passes QC. Without a way
                     to send it again the only follow-up was typing in the chat by hand. */}

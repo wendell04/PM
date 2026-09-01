@@ -82,7 +82,7 @@ const DEFAULT_HIW = [
   { title: 'Place Your Order', desc: 'Review your item and check out. We confirm every order and send a proof before production.' },
   { title: 'Receive & Enjoy', desc: 'Your personalized item is crafted with care and delivered straight to your door.' },
 ];
-const DEFAULT_CONTACT = { handle: '@personalizemeprints', hours1: 'Mon - Sat: 9:00 AM - 6:00 PM', hours2: 'Sunday: By Appointment', shopeeUrl: 'https://shopee.ph/personalizemeprints', shopeeText: 'Shopee: personalizemeprints', email: '', facebook: 'https://www.facebook.com/share/1Mks4kwnhZ/?mibextid=wwXIfr', instagram: 'https://www.instagram.com/personalizemeprints', tiktok: 'https://www.tiktok.com/@personalizemeprints' };
+const DEFAULT_CONTACT = { handle: '@personalizemeprints', hours1: 'Mon - Sat: 9:00 AM - 6:00 PM', hours2: 'Sunday: By Appointment', hoursNote: 'You can order any time. Orders placed on Sundays or holidays start production the next working day.', shopeeUrl: 'https://shopee.ph/personalizemeprints', shopeeText: 'Shopee: personalizemeprints', email: '', facebook: 'https://www.facebook.com/share/1Mks4kwnhZ/?mibextid=wwXIfr', instagram: 'https://www.instagram.com/personalizemeprints', tiktok: 'https://www.tiktok.com/@personalizemeprints' };
 const PAY_METHODS = [
   { id: 'cod', label: 'Cash on Delivery', sub: 'Pay on delivery. May also be limited per-product and is off for downpayment orders.' },
   { id: 'gcash', label: 'GCash', sub: 'Automated via PayMongo.' },
@@ -539,6 +539,16 @@ export default function HomepageCmsPage() {
               <div><label style={lbl}>Shopee label</label><input style={inp} value={contact.shopeeText || ''} onChange={e => setContact(p => ({ ...p, shopeeText: e.target.value }))} /></div>
               <div><label style={lbl}>Hours line 1</label><input style={inp} value={contact.hours1 || ''} onChange={e => setContact(p => ({ ...p, hours1: e.target.value }))} /></div>
               <div><label style={lbl}>Hours line 2</label><input style={inp} value={contact.hours2 || ''} onChange={e => setContact(p => ({ ...p, hours2: e.target.value }))} /></div>
+              <div style={{ gridColumn: '1 / -1' }}>
+                <label style={lbl}>Hours note</label>
+                <input style={inp} maxLength={200}
+                  value={contact.hoursNote || ''}
+                  onChange={e => setContact(p => ({ ...p, hoursNote: e.target.value }))}
+                  placeholder="Orders placed on Sundays or holidays start production the next working day." />
+                <div style={{ fontSize: '.72rem', color: 'var(--gray)', marginTop: '.3rem' }}>
+                  Shown under Business Hours on the homepage and beside the delivery estimate at checkout. Ordering is never blocked by your hours - this line explains when the clock starts.
+                </div>
+              </div>
               <div style={{ gridColumn: '1 / -1', fontSize: '.74rem', color: 'var(--gray)', marginTop: '-.3rem' }}>Leave any social blank to hide that icon on the homepage &amp; footer.</div>
               <div style={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'flex-end' }}><button onClick={() => saveContent('contact', contact, 'Contact updated — live on the homepage.')} disabled={busy} style={pubBtn(false)}>{busy ? 'Saving…' : 'Save'}</button></div>
             </div>

@@ -1132,6 +1132,9 @@ class OrderController extends Controller
             'balance',
             'paymentMethod',
             'paymentHistory',
+            // Money the shop owes back. Without these on the projection the obligation exists in
+            // the database and nowhere a person will ever look.
+            'refunds', 'refundOwed',
             'notes',
             'joId',
             // A mixed order produces one job order per printable item, so the admin screens need the
@@ -1187,6 +1190,7 @@ class OrderController extends Controller
         return [
             'subtotal', 'shippingFee', 'courierFee', 'totalAmount', 'total', 'totalPrice',
             'downPayment', 'balance', 'paymentMethod', 'paymentHistory', 'discountAmount',
+            'refunds', 'refundOwed',
             'designFee', 'designFeePaid', 'designFeePaidAmount', 'rushFee', 'revisionFees',
         ];
     }
@@ -2314,6 +2318,41 @@ class OrderController extends Controller
      * Records a cash payment against an order (COD or partial payment).
      * Appends to paymentHistory[], recalculates downPayment and balance.
      */
+    /**
+     * Record that the shop owes the customer money back.
+     *
+     * Cancelling a paid order and declining a paid-for rush both take money the shop is not
+     * entitled to keep, and neither said so anywhere. This does not MOVE money - no refund
+     * API exists - it makes the obligation visible so somebody can send it.
+     */
+    private function recordRefundOwed($order, float $amount, string $reason, ?string $by = null): void
+    {
+        if ($amount <= 0.009) return;
+        $refunds   = $order->refunds ?? [];
+        $refunds[] = [
+            'amount'     => round($amount, 2),
+            'reason'     => mb_substr($reason, 0, 300),
+            'status'     => 'owed',
+            'recordedBy' => $by,
+            'recordedAt' => now()->toISOString(),
+        ];
+        $order->refunds    = $refunds;
+        $order->refundOwed = round(
+            collect($refunds)->filter(fn ($r) => ($r['status'] ?? 'owed') === 'owed')
+                ->sum(fn ($r) => (float) ($r['amount'] ?? 0)),
+            2
+        );
+    }
+
+    /** What the customer has actually handed over, however it was recorded. */
+    private function paidSoFar($order): float
+    {
+        return max(
+            (float) ($order->downPayment ?? 0),
+            (float) collect($order->paymentHistory ?? [])->sum(fn ($p) => (float) ($p['amount'] ?? 0))
+        );
+    }
+
     public function recordPayment(Request $request, $id)
     {
         try {
@@ -2591,14 +2630,27 @@ class OrderController extends Controller
             if ($decision === 'accepted') {
                 $order->rushStatus = 'accepted';
             } else {
-                // Decline: waive the rush fee - drop it from the total and re-derive the balance so a
-                // customer who already paid it in the downpayment is credited.
+                // Decline: waive the rush fee. The old version subtracted it from the balance with
+                // max(0, ...) and called that "credited" - which only works while an unpaid balance
+                // remains to subtract FROM. On an order already settled the balance is 0, so
+                // max(0, 0 - 100) is 0 and the fee simply vanished: the total dropped, the payments
+                // did not, and the shop was left holding money nothing recorded as owed.
                 $rushFee = (float) ($order->rushFee ?? 0);
                 if ($rushFee > 0) {
                     $order->totalAmount = round(max(0, (float) ($order->totalAmount ?? 0) - $rushFee), 2);
+                    $balanceBefore = (float) ($order->balance ?? 0);
+                    $absorbed      = min($rushFee, max(0, $balanceBefore));
                     if ($order->balance !== null && $order->balance !== '') {
-                        $order->balance = round(max(0, (float) $order->balance - $rushFee), 2);
+                        $order->balance = round($balanceBefore - $absorbed, 2);
                     }
+                    // Whatever the outstanding balance could not absorb has already been paid,
+                    // and has to go back.
+                    $this->recordRefundOwed(
+                        $order,
+                        $rushFee - $absorbed,
+                        'Rush declined by the shop - rush fee returned',
+                        trim(($user->firstName ?? '') . ' ' . ($user->lastName ?? '')) ?: null
+                    );
                 }
                 $order->rushStatus = 'declined';
                 $order->isRush = false;
@@ -2948,6 +3000,27 @@ class OrderController extends Controller
 
             // Restore inventory reserved at order creation
             $this->restoreStockOnCancel($order);
+
+            // The gate above lets a PAID order be cancelled - correctly, since nothing has been
+            // made yet - but the money was never mentioned anywhere: the order flipped to Cancelled,
+            // the stock came back, and the customer got an email quoting the total as though it were
+            // a receipt. A design fee is deliberately excluded because the design work was done and
+            // the terms say it is non-refundable; only the goods side is unwound.
+            $paid        = $this->paidSoFar($order);
+            $designKept  = ($order->designFeePaid ?? false)
+                ? (float) ($order->designFeePaidAmount ?? $order->designFee ?? 0)
+                : 0.0;
+            $this->recordRefundOwed(
+                $order,
+                $paid - $designKept,
+                $designKept > 0
+                    ? 'Order cancelled by the customer - goods payment returned, design fee retained'
+                    : 'Order cancelled by the customer before production',
+                'customer cancellation'
+            );
+            if (($order->refundOwed ?? 0) > 0) {
+                $order->save();
+            }
 
             // Email notification to customer
             try {

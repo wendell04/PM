@@ -1010,6 +1010,26 @@ export default function ProductDetailPage() {
               </p>
             )}
 
+            {/* Derived from the two flags that already decide it, NOT typed into the
+                description: a sentence the owner writes by hand goes stale the moment the
+                toggle changes, and then the page contradicts its own buttons. Sits with
+                the detail rather than on the grid card, where it would be one badge among
+                many and read as decoration. */}
+            {product.isCustom && !(product.allowPlainPurchase ?? false) && (
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start',
+                background: 'rgba(212,168,67,0.07)', border: '1px solid rgba(212,168,67,0.22)',
+                borderRadius: '8px', padding: '10px 12px' }}>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#D4A843"
+                  strokeWidth="2" style={{ flexShrink: 0, marginTop: '1px' }}>
+                  <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
+                </svg>
+                <span style={{ fontSize: '0.8rem', color: 'var(--gray)', lineHeight: 1.5 }}>
+                  <strong style={{ color: 'var(--white)' }}>Customizable only.</strong>{' '}
+                  This item is printed with your design. We do not sell it plain.
+                </span>
+              </div>
+            )}
+
             {/* Divider */}
             <div style={{ borderTop:
               '1px solid var(--border)' }} />

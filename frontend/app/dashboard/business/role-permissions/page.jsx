@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
+import { S, Note, EmptyState, SummaryCard } from '../inventory-v2/shared';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
@@ -275,47 +276,47 @@ export default function RolePermissionsPage() {
 
   return (
     <ErrorBoundary>
-      <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '2rem 1.5rem' }}>
+      {/* Was capped at 1200px with its own padding while every other module runs full width
+          off S.page - this screen sat visibly narrower than the one beside it in the nav. */}
+      <div style={{ ...S.page, padding: '24px' }}>
 
-        {/* Admin/Owner notice */}
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: '0.75rem',
-          padding: '0.75rem 1rem', marginBottom: '1.5rem',
-          background: 'rgba(212,168,67,0.07)', border: '1px solid rgba(212,168,67,0.2)',
-          borderRadius: '10px',
-        }}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#D4A843" strokeWidth="2">
-            <circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/>
-          </svg>
-          <span style={{ fontSize: '0.8rem', color: 'var(--gray)' }}>
-            <strong style={{ color: 'var(--gold)' }}>Super Admin</strong> and <strong style={{ color: 'var(--gold)' }}>Owner</strong> are protected roles with unrestricted access and cannot be configured here. Toggle a module on/off, or fine-tune individual actions (View, Edit, Delete…).
-          </span>
+        <div style={{ ...S.row, marginBottom: '18px' }}>
+          <SummaryCard label="Roles in use" value={activeRoles.length} accent
+            sub="Roles with at least one staff member" />
+          <SummaryCard label="Staff assigned"
+            value={Object.values(staffByRole).reduce((a, list) => a + (list?.length || 0), 0)} />
+        </div>
+
+        <div style={{ marginBottom: '18px' }}>
+          <Note type="info">
+            <strong style={{ color: 'var(--gold)' }}>Super Admin</strong> and <strong style={{ color: 'var(--gold)' }}>Owner</strong> are protected roles with unrestricted access and cannot be configured here. Toggle a module on or off, or fine-tune individual actions (View, Edit, Delete).
+          </Note>
         </div>
 
         {loading && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
             {[...Array(4)].map((_, i) => (
-              <div key={i} style={{ height: '60px', borderRadius: i === 0 ? '12px 12px 0 0' : i === 3 ? '0 0 12px 12px' : '0', background: 'var(--dark3)', border: '1px solid var(--border)', borderTop: i > 0 ? 'none' : undefined, animation: 'pulse 1.4s ease-in-out infinite' }} />
+              <div key={i} style={{ height: '60px', borderRadius: i === 0 ? '12px 12px 0 0' : i === 3 ? '0 0 12px 12px' : '0', background: 'var(--dark3)', border: '1px solid var(--border)', borderTop: i > 0 ? 'none' : undefined, animation: 'pmPulse 1.4s ease-in-out infinite' }} />
             ))}
           </div>
         )}
 
         {!loading && error && (
-          <div style={{ padding: '1rem 1.25rem', borderRadius: '12px', border: '1px solid rgba(239,68,68,0.3)', background: 'rgba(239,68,68,0.08)', color: '#ef4444', display: 'flex', flexDirection: 'column', gap: '0.75rem', alignItems: 'flex-start' }}>
-            <span style={{ fontSize: '0.9rem' }}>{error}</span>
-            <button type="button" onClick={fetchData} style={{ padding: '0.5rem 1rem', borderRadius: '8px', border: '1px solid rgba(239,68,68,0.3)', background: 'rgba(239,68,68,0.12)', color: '#ef4444', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600 }}>Retry</button>
+          <div style={{ ...S.card, borderColor: '#c62828', color: '#e05252', fontSize: '13px', display: 'flex', flexDirection: 'column', gap: '10px', alignItems: 'flex-start' }}>
+            <span>{error}</span>
+            <button type="button" onClick={fetchData} style={S.btnSmGhost}>Retry</button>
           </div>
         )}
 
         {!loading && !error && activeRoles.length === 0 && (
-          <div style={{ textAlign: 'center', padding: '4rem 1rem', color: 'var(--gray)' }}>
-            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ margin: '0 auto 16px', display: 'block', opacity: 0.3 }}>
+          <EmptyState
+            icon={<svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ opacity: 0.35 }}>
               <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
               <path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-            </svg>
-            <p style={{ margin: 0, fontSize: '0.95rem', fontWeight: 600, color: 'var(--white)', marginBottom: '6px' }}>No staff assigned yet</p>
-            <p style={{ margin: 0, fontSize: '0.82rem' }}>Add staff members with roles in the <strong style={{ color: 'var(--gold)' }}>Users</strong> page. Once assigned, their role will appear here for permission configuration.</p>
-          </div>
+            </svg>}
+            message="No staff assigned yet"
+            sub="Add staff members with roles in the Users page. Once assigned, their role appears here for permission configuration."
+          />
         )}
 
         {!loading && !error && activeRoles.length > 0 && (
@@ -491,6 +492,7 @@ export default function RolePermissionsPage() {
             })}
           </div>
         )}
+        <style>{`@keyframes pmPulse { 0%,100% { opacity: 1 } 50% { opacity: .45 } }`}</style>
       </div>
 
     </ErrorBoundary>

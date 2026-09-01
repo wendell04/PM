@@ -998,7 +998,7 @@ const handleForgotResetPassword = async () => {
   // Why-Us features + How-It-Works steps + Contact info — CMS override w/ hardcoded fallback.
   const DEFAULT_WHYUS = [
     { title: 'Affordable Pricing',   desc: 'Premium prints at prices that make sense. No hidden fees, no overpricing.' },
-    { title: 'Fast Turnaround',      desc: 'Most orders ready within 24–48 hours. Rush orders? We can make it work.' },
+    { title: 'Fast Turnaround',      desc: 'Standard orders arrive in 4-5 days, rush in 2-3. Ready-made items ship the next day.' },
     { title: 'Design Assistance',    desc: 'No designer? No problem. Request a design and our team will create it for you.' },
     { title: 'Approval Before Print', desc: 'You see and approve the final design before we print — 100% satisfaction guaranteed.' },
   ];
@@ -1047,7 +1047,7 @@ const handleForgotResetPassword = async () => {
   };
 
   const FAQS = [
-    { q: 'How long does an order take?', a: 'Most orders are ready within 24–48 hours after you approve the design. Need it sooner? We accept rush orders — just message us and we’ll do our best to make it work.' },
+    { q: 'How long does an order take?', a: 'Custom orders arrive in 4-5 days once you approve the design, or 2-3 days with rush. Ready-made items ship in 1-2 days. Production often finishes sooner when our queue is light, and we message you if yours is ready early.' },
     { q: 'I don’t have a design. Can you make one?', a: 'Yes! Pick “Request a Design” when you order and our team will create it for you. You’ll review and approve the proof before we print anything.' },
     { q: 'What files do you accept for custom uploads?', a: 'PNG, JPG, or PDF work best. For the sharpest print, send high-resolution files (around 300 DPI). If your file isn’t print-ready, we’ll let you know.' },
     { q: 'How do I pay?', a: 'We accept GCash, Maya, and credit/debit cards (Visa & Mastercard). For bulk orders, a downpayment option is available at checkout.' },
@@ -1144,10 +1144,10 @@ const handleForgotResetPassword = async () => {
     {
       tag: 'Fast Turnaround',
       titleParts: [
-        {text: 'Ready in ', plain: true},
-        {text: '24 Hours', className: 'gold-text'},
+        {text: 'Delivered in ', plain: true},
+        {text: '4-5 Days', className: 'gold-text'},
       ],
-      subtitle: 'Most orders are printed and ready within a day. Rush orders available for urgent needs.',
+      subtitle: 'Rush service brings that down to 2-3 days, and ready-made items ship the next day.',
       cta: {label: 'View Services', href: '#services'},
       cta2: {label: 'Get a Quote', action: 'login'},
     },
@@ -2283,7 +2283,12 @@ const handleForgotResetPassword = async () => {
                     <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
                   </svg>
                 </div>
-                <div><h4>Business Hours</h4><p>{contactContent?.hours1 || 'Mon - Sat: 9:00 AM - 6:00 PM'}</p><p style={{fontSize:'.78rem',color:'var(--gray)',marginTop:'.2rem'}}>{contactContent?.hours2 || 'Sunday: By Appointment'}</p></div>
+                <div><h4>Business Hours</h4><p>{contactContent?.hours1 || 'Mon - Sat: 9:00 AM - 6:00 PM'}</p><p style={{fontSize:'.78rem',color:'var(--gray)',marginTop:'.2rem'}}>{contactContent?.hours2 || 'Sunday: By Appointment'}</p>
+                  {/* The one line that answers "I ordered on a Sunday - when does anything start?".
+                      Owner-editable beside the hours it qualifies, so the two cannot drift apart. */}
+                  <p style={{fontSize:'.74rem',color:'var(--gray)',marginTop:'.45rem',lineHeight:1.5,opacity:.85}}>
+                    {contactContent?.hoursNote || 'You can order any time. Orders placed on Sundays or holidays start production the next working day.'}
+                  </p></div>
               </div>
               <div className="contact-info-card">
                 <div className="contact-info-icon" style={{color:'var(--gold)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
