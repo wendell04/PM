@@ -799,19 +799,33 @@ class PaymentController extends Controller
             // online path never recorded these before, so a cart/rush order lost its rush entirely.
             $owner       = User::where('role', 'owner')->first() ?? User::where('role', 'admin')->first();
             $rushOn      = (bool)  ($owner->rushEnabled ?? true);
-            $rushFeeAmt  = (float) ($owner->rushFee ?? 100);
+            // Must equal OrderController's fallback and SettingsController's - see the note there.
+            $rushFeeAmt  = (float) ($owner->rushFee ?? 150);
             $isRush      = $rushOn && filter_var($request->input('isRush', false), FILTER_VALIDATE_BOOLEAN);
             if ($isRush && $rushFeeAmt > 0) { $totalAmount += $rushFeeAmt; }
             $needByDate  = $request->input('needByDate') ?: null;
             $rushStatus  = $isRush ? 'requested' : null;
-            $prodLead    = (int) ($owner->productionLeadDays ?? 5);
-            $rushLead    = (int) ($owner->rushLeadDays ?? 2);
-            $shipMinD    = (int) ($owner->shippingDaysMin ?? 2);
-            $shipMaxD    = (int) ($owner->shippingDaysMax ?? 4);
+            $prodLead    = (int) ($owner->productionLeadDays ?? 3);
+            $rushLead    = (int) ($owner->rushLeadDays ?? 1);
+            $shipMinD    = (int) ($owner->shippingDaysMin ?? 1);
+            $shipMaxD    = (int) ($owner->shippingDaysMax ?? 2);
             $leadDays    = $isRush ? $rushLead : $prodLead;
             $addBiz      = function (int $days) { $d = now(); while ($days > 0) { $d = $d->addDay(); if (!$d->isSunday()) { $days--; } } return $d; };
             $estDelivMin = $addBiz($leadDays + $shipMinD)->toIso8601String();
             $estDelivMax = $addBiz($leadDays + $shipMaxD)->toIso8601String();
+
+            // Same guard as the cart-checkout path (OrderController): a needByDate earlier than what
+            // production and shipping can actually deliver is dropped rather than trusted. This is
+            // the Buy Now / direct-payment path, so it needed its own copy of the check.
+            if ($needByDate) {
+                try {
+                    if (\Carbon\Carbon::parse($needByDate)->lt(\Carbon\Carbon::parse($estDelivMin)->startOfDay())) {
+                        $needByDate = null;
+                    }
+                } catch (\Throwable) {
+                    $needByDate = null;
+                }
+            }
 
             // ── Voucher ───────────────────────────────────────────────
             $discountAmount = 0.0;
@@ -1878,6 +1892,36 @@ class PaymentController extends Controller
      * the order as paid if the intent has succeeded. Used as a webhook fallback —
      * the payment-success page calls this once so local dev (no webhook) still works.
      */
+    /**
+     * Claim a gateway payment reference so it can only ever be processed once.
+     *
+     * The `paymentStatus === 'paid'` early-return is not a guard against two confirmations arriving
+     * at the same instant - the browser coming back from PayMongo and the webhook firing together
+     * both read "unpaid" before either has written. Two admin notifications for one payment is the
+     * visible half of that; the expensive half is silent, because paymentHistory is assigned whole
+     * ($order->paymentHistory = $history) rather than pushed, so the second save overwrites the
+     * first and a payment row simply disappears - and on a deposit-then-balance order the balance
+     * maths is computed off that history.
+     *
+     * A single-document update in MongoDB is atomic, so exactly one caller can match "this reference
+     * has not been claimed" and set it. The loser gets false and stops. A genuinely different
+     * reference (the later balance payment) still claims normally.
+     */
+    private function claimPaymentReference($order, ?string $ref): bool
+    {
+        if (!$ref) return true;                       // nothing to key on - leave behaviour as it was
+        if ((string) ($order->paymentRefProcessed ?? '') === $ref) return false;
+
+        $claimed = \App\Models\Order::where('_id', $order->_id)
+            ->where(function ($q) use ($ref) {
+                $q->whereNull('paymentRefProcessed')
+                  ->orWhere('paymentRefProcessed', '!=', $ref);
+            })
+            ->update(['paymentRefProcessed' => $ref]);
+
+        return (bool) $claimed;
+    }
+
     public function verifyIntent(Request $request)
     {
         try {
@@ -2006,6 +2050,10 @@ class PaymentController extends Controller
                         $order->orderStatus = 'for_delivery';
                     }
                 }
+                if (!$this->claimPaymentReference($order, $sessionId)) {
+                    return $this->successResponse('Already processed.', ['paymentStatus' => $order->paymentStatus ?? 'paid']);
+                }
+
                 $history   = $order->paymentHistory ?? [];
                 $payFor = $isDesignFeeOnly ? 'design_fee'
                     : (($order->paymentStatus ?? '') === 'paid' && count($order->paymentHistory ?? []) > 0 ? 'balance'
@@ -2128,6 +2176,10 @@ class PaymentController extends Controller
                 }
             }
             $history   = $order->paymentHistory ?? [];
+            if (!$this->claimPaymentReference($order, $intentId)) {
+                return $this->successResponse('Already processed.', ['paymentStatus' => $order->paymentStatus ?? 'paid']);
+            }
+
             // What this payment was FOR. The note only ever carried the gateway reference, so the
             // receipt had to guess from position - and on a request-design order the FIRST payment is
             // the design fee, which is exactly the guess that goes wrong.

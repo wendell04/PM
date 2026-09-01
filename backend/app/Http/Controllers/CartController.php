@@ -122,6 +122,18 @@ class CartController extends Controller
                 'items.*.minOrderQty' => 'nullable|integer|min:1',
                 'items.*.priceTiers' => 'nullable|array',
                 'items.*.flashSaleId' => 'nullable|string',
+                // The clickwrap acceptance, for the same reason as everything above it: the customer
+                // ticks "I have read and agree" on the product page, the acceptance rides along on the
+                // cart line - and then the very first sync dropped all three of these fields, because
+                // they were never listed. By checkout there was nothing left to forward, so the order
+                // recorded agreedToTerms: false and the admin was told, correctly, that no acceptance
+                // existed. The proof was being collected and thrown away in the same breath.
+                'items.*.termsVersion' => 'nullable|integer|min:0',
+                'items.*.termsAgreedAt' => 'nullable|string|max:64',
+                'items.*.termsSnapshot' => 'nullable|array|max:60',
+                'items.*.termsSnapshot.*.title' => 'required_with:items.*.termsSnapshot|string|max:200',
+                'items.*.termsSnapshot.*.body'  => 'nullable|string|max:5000',
+                'items.*.termsSnapshot.*.mode'  => 'nullable|string|max:20',
             ]);
 
             $cart = Cart::getByUserId((string) $user->_id);
@@ -201,6 +213,18 @@ class CartController extends Controller
                 'items.*.minOrderQty' => 'nullable|integer|min:1',
                 'items.*.priceTiers' => 'nullable|array',
                 'items.*.flashSaleId' => 'nullable|string',
+                // The clickwrap acceptance, for the same reason as everything above it: the customer
+                // ticks "I have read and agree" on the product page, the acceptance rides along on the
+                // cart line - and then the very first sync dropped all three of these fields, because
+                // they were never listed. By checkout there was nothing left to forward, so the order
+                // recorded agreedToTerms: false and the admin was told, correctly, that no acceptance
+                // existed. The proof was being collected and thrown away in the same breath.
+                'items.*.termsVersion' => 'nullable|integer|min:0',
+                'items.*.termsAgreedAt' => 'nullable|string|max:64',
+                'items.*.termsSnapshot' => 'nullable|array|max:60',
+                'items.*.termsSnapshot.*.title' => 'required_with:items.*.termsSnapshot|string|max:200',
+                'items.*.termsSnapshot.*.body'  => 'nullable|string|max:5000',
+                'items.*.termsSnapshot.*.mode'  => 'nullable|string|max:20',
             ]);
 
             $guestItems = $this->withLineTotals($validated['items']);

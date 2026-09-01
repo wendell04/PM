@@ -325,17 +325,22 @@ class AuthController extends Controller
 
             $expiresAt = $user->sessionExpiresAt($request->boolean('rememberMe'));
 
-            $deviceName = $this->parseDeviceName($request->userAgent() ?? 'Unknown Device');
-
-            // Revoke the current token and issue a fresh one with the new expiry.
+            // Extending the SAME token in place, not revoking it for a new one. Deleting the current
+            // token the instant a new one is issued meant every other authenticated call already in
+            // flight on the old token - a chat heartbeat, a notification poll, the checkout page's own
+            // background fetches - would land moments later, find the token gone, come back 401, and
+            // trip the global session-expired handler (fetchWithTimeout.js) that force-logs-out and
+            // redirects to "/". So clicking "Stay logged in" could log the customer straight back out:
+            // the refresh itself worked, but a concurrent request on the token it had just deleted lost
+            // the race. Pushing this token's own expiry forward keeps every holder of it - this tab,
+            // any other tab, any in-flight request - valid through the same instant, with nothing to race.
             $current = $user->currentAccessToken();
             if ($current) {
-                $current->delete();
+                $current->expires_at = $expiresAt;
+                $current->save();
             }
-            $newToken = $user->createToken($deviceName, ['*'], $expiresAt)->plainTextToken;
 
             return $this->successResponse('Session extended.', [
-                'token'      => $newToken,
                 'expires_at' => $expiresAt->toIso8601String(),
             ]);
         } catch (\Exception $e) {
