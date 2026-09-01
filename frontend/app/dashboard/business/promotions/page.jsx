@@ -9,6 +9,9 @@ import {
   fetchVouchers, createVoucher, updateVoucher,
   deleteVoucher, toggleVoucher,
 } from '@/lib/voucherApi';
+import {
+  S, ICONS, TabBar, CustomSelect, Modal, ConfirmModal, PaginationBar,
+} from '../inventory-v2/shared';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
@@ -134,18 +137,12 @@ const CAT_COLORS = {
   experiential: { color: '#4ade80', bg: 'rgba(74,222,128,0.12)', border: 'rgba(74,222,128,0.3)'  },
 };
 
-// Shared input style
-const inp = {
-  width: '100%', padding: '0.6rem 0.875rem',
-  background: 'var(--dark2)', border: '1px solid var(--border)',
-  borderRadius: '8px', color: 'var(--white)', fontSize: '0.875rem',
-  boxSizing: 'border-box',
-};
-const lbl = {
-  display: 'block', fontSize: '0.75rem', fontWeight: 600,
-  color: 'var(--gray)', marginBottom: '0.375rem',
-  textTransform: 'uppercase', letterSpacing: '0.04em',
-};
+// The module's own input styling, now defined AS the shared tokens rather than beside
+// them. Both modals reference `inp`/`lbl` around sixty times; redefining the two
+// constants converts every field at once and means a field added later inherits the
+// system by default instead of copying whichever neighbour it was pasted from.
+const inp = S.input;
+const lbl = { ...S.label, display: 'block', marginBottom: '6px' };
 
 // ─── Main component ──────────────────────────────────────────────────────────
 function PromotionsInner() {
@@ -154,29 +151,15 @@ function PromotionsInner() {
   const [tab, setTab] = useState(() => searchParams?.get('tab') === 'flash_sales' ? 'flash_sales' : 'vouchers');
 
   return (
-    <div style={{ padding: '1.5rem', maxWidth: '1200px', margin: '0 auto' }}>
-      {/* Tabs */}
-      <div style={{ display: 'flex', gap: '0', marginBottom: '1.25rem', borderBottom: '1px solid var(--border)' }}>
-        {[
-          { key: 'vouchers',    label: 'Vouchers' },
-          { key: 'flash_sales', label: 'Flash Sales' },
-        ].map(t => (
-          <button
-            key={t.key}
-            onClick={() => setTab(t.key)}
-            style={{
-              padding: '0.5rem 1.125rem',
-              background: 'none', border: 'none',
-              borderBottom: tab === t.key ? '2px solid var(--gold)' : '2px solid transparent',
-              color: tab === t.key ? 'var(--gold)' : 'var(--gray)',
-              fontWeight: tab === t.key ? 700 : 500,
-              fontSize: '0.875rem', cursor: 'pointer',
-              marginBottom: '-1px', transition: 'color 0.15s',
-            }}
-          >
-            {t.label}
-          </button>
-        ))}
+    // The 1200px cap left a wide screen mostly empty while every other module runs full
+    // width; the tab strip was a third underline-tab implementation.
+    <div style={{ ...S.page, padding: '24px' }}>
+      <div style={{ marginBottom: '18px' }}>
+        <TabBar
+          tabs={[{ id: 'vouchers', label: 'Vouchers' }, { id: 'flash_sales', label: 'Flash Sales' }]}
+          active={tab}
+          onChange={setTab}
+        />
       </div>
 
       {tab === 'vouchers'    && <VouchersTab    token={token} />}
@@ -470,19 +453,13 @@ function VouchersTab({ token }) {
           </table>
         )}
 
-        {filtered.length > rpp && (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.6rem 1rem', borderTop: '1px solid var(--border)', fontSize: '0.8rem', color: 'var(--gray)', flexWrap: 'wrap', gap: '0.5rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              Rows:
-              <select value={rpp} onChange={e => { setRpp(Number(e.target.value)); setPage(1); }} style={{ background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '6px', color: 'var(--white)', padding: '0.2rem 0.4rem', fontSize: '0.78rem' }}>
-                {[5,10,25,50].map(n => <option key={n}>{n}</option>)}
-              </select>
-            </div>
-            <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
-              <button onClick={() => setPage(p => Math.max(1, p-1))} disabled={page<=1} style={{ padding: '0.2rem 0.6rem', background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '6px', color: page<=1?'var(--gray)':'var(--white)', cursor: page<=1?'not-allowed':'pointer' }}>‹</button>
-              <span>{page} / {totalPages}</span>
-              <button onClick={() => setPage(p => Math.min(totalPages, p+1))} disabled={page>=totalPages} style={{ padding: '0.2rem 0.6rem', background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '6px', color: page>=totalPages?'var(--gray)':'var(--white)', cursor: page>=totalPages?'not-allowed':'pointer' }}>›</button>
-            </div>
+        {/* Was gated on `filtered.length > rpp`, so at exactly one page the rows-per-page
+            control vanished - the one setting that could have shown more. The shared pager
+            handles that case itself. Its rows options are 10/25/50; the old 5 is gone. */}
+        {filtered.length > 0 && (
+          <div style={{ padding: '0 1rem 0.8rem' }}>
+            <PaginationBar total={filtered.length} page={page} perPage={rpp}
+              onPage={setPage} onPerPage={setRpp} />
           </div>
         )}
       </div>
@@ -498,13 +475,15 @@ function VouchersTab({ token }) {
       )}
 
       {/* Delete confirm */}
-      {deleteId && (
-        <ConfirmModal
-          message="Delete this voucher? This cannot be undone."
-          onConfirm={handleDelete} onCancel={() => setDeleteId(null)}
-          loading={deleting} confirmLabel="Delete"
-        />
-      )}
+      <ConfirmModal
+        open={!!deleteId}
+        onClose={() => setDeleteId(null)}
+        onConfirm={handleDelete}
+        loading={deleting}
+        title="Delete this voucher?"
+        message="Customers holding this code will no longer be able to use it. This cannot be undone - to stop it temporarily, switch it inactive instead."
+        confirmLabel="Delete"
+      />
     </>
   );
 }
@@ -526,18 +505,22 @@ function VoucherModal({ form, setForm, formError, saving, editTarget, onSave, on
   }
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.72)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
-      <div onClick={e => e.stopPropagation()} style={{ background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '14px', width: '100%', maxWidth: '520px', maxHeight: '92vh', overflowY: 'auto', scrollbarWidth: 'thin' }}>
-
-        {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1.25rem 1.5rem', borderBottom: '1px solid var(--border)', position: 'sticky', top: 0, background: 'var(--dark)', zIndex: 10 }}>
-          <h2 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: 'var(--white)' }}>
-            {editTarget ? 'Edit Voucher' : 'New Voucher'}
-          </h2>
-          <button onClick={onClose} style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '8px', width: '30px', height: '30px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--gray)' }}>✕</button>
-        </div>
-
-        <div style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+    // The shared Modal, which locks the background scroll for us. This wrapper did not,
+    // so the page behind kept scrolling under a long voucher form - and it was the third
+    // hand-built dialog shell in a system that has one.
+    <Modal
+      open
+      onClose={onClose}
+      title={editTarget ? 'Edit Voucher' : 'New Voucher'}
+      width={560}
+      footer={<>
+        <button onClick={onClose} disabled={saving} style={S.btnGhost}>Cancel</button>
+        <button onClick={onSave} disabled={saving} style={{ ...S.btnPrimary, opacity: saving ? 0.7 : 1 }}>
+          {saving ? 'Saving...' : editTarget ? 'Save Changes' : 'Create Voucher'}
+        </button>
+      </>}
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           {formError && (
             <div style={{ padding: '10px 14px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: 'var(--red)', fontSize: '0.85rem' }}>{formError}</div>
           )}
@@ -570,9 +553,9 @@ function VoucherModal({ form, setForm, formError, saving, editTarget, onSave, on
           {/* Benefit Type */}
           <div>
             <label style={lbl}>Benefit Type <span style={{ color: 'var(--red)' }}>*</span></label>
-            <select value={form.benefitType} onChange={e => setForm(f => ({ ...f, benefitType: e.target.value }))} style={inp}>
-              {catMeta?.types.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
-            </select>
+            <CustomSelect value={form.benefitType}
+              onChange={v => setForm(f => ({ ...f, benefitType: v }))}
+              options={(catMeta?.types ?? []).map(t => ({ value: t.key, label: t.label }))} />
           </div>
 
           {/* Monetary fields */}
@@ -581,11 +564,13 @@ function VoucherModal({ form, setForm, formError, saving, editTarget, onSave, on
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
                 <div>
                   <label style={lbl}>Discount Type <span style={{ color: 'var(--red)' }}>*</span></label>
-                  <select value={form.discountType || 'percentage'} onChange={e => setForm(f => ({ ...f, discountType: e.target.value }))} style={inp}>
-                    <option value="percentage">Percentage (%)</option>
-                    <option value="fixed">Fixed Amount (₱)</option>
-                    <option value="tiered">Tiered (manual)</option>
-                  </select>
+                  <CustomSelect value={form.discountType || 'percentage'}
+                    onChange={v => setForm(f => ({ ...f, discountType: v }))}
+                    options={[
+                      { value: 'percentage', label: 'Percentage (%)' },
+                      { value: 'fixed',      label: 'Fixed Amount (P)' },
+                      { value: 'tiered',     label: 'Tiered (manual)' },
+                    ]} />
                 </div>
                 <div>
                   <label style={lbl}>{form.discountType === 'percentage' ? 'Discount %' : 'Amount (₱)'} <span style={{ color: 'var(--red)' }}>*</span></label>
@@ -634,16 +619,8 @@ function VoucherModal({ form, setForm, formError, saving, editTarget, onSave, on
             </button>
           </div>
 
-          {/* Actions */}
-          <div style={{ display: 'flex', gap: '0.75rem', paddingTop: '0.25rem' }}>
-            <button onClick={onClose} disabled={saving} style={{ flex: 1, padding: '10px', background: 'var(--border)', border: 'none', borderRadius: '8px', color: 'var(--white)', fontWeight: 600, fontSize: '0.875rem', cursor: 'pointer' }}>Cancel</button>
-            <button onClick={onSave} disabled={saving} style={{ flex: 2, padding: '10px', background: 'var(--gold)', border: 'none', borderRadius: '8px', color: 'var(--black)', fontWeight: 700, fontSize: '0.875rem', cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.7 : 1 }}>
-              {saving ? 'Saving…' : editTarget ? 'Save Changes' : 'Create Voucher'}
-            </button>
-          </div>
-        </div>
       </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -903,7 +880,14 @@ function FlashSalesTab({ token }) {
       )}
 
       {confirmModal && (
-        <ConfirmModal message={confirmModal.message} onConfirm={confirmModal.onConfirm} onCancel={() => setConfirmModal(null)} confirmLabel="Delete" />
+        <ConfirmModal
+          open
+          onClose={() => setConfirmModal(null)}
+          onConfirm={confirmModal.onConfirm}
+          title="Delete this flash sale?"
+          message={confirmModal.message}
+          confirmLabel="Delete"
+        />
       )}
     </>
   );
@@ -912,33 +896,46 @@ function FlashSalesTab({ token }) {
 // ─── Flash Sale Modal ────────────────────────────────────────────────────────
 function FlashSaleModal({ form, setForm, formError, saving, editTarget, products, onSubmit, onClose }) {
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
-      <div onClick={e => e.stopPropagation()} style={{ background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '16px', width: '100%', maxWidth: '480px', maxHeight: '90vh', overflowY: 'auto', scrollbarWidth: 'thin' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1.25rem 1.5rem', borderBottom: '1px solid var(--border)', position: 'sticky', top: 0, background: 'var(--dark)', zIndex: 10 }}>
-          <h2 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: 'var(--white)' }}>{editTarget ? 'Edit Flash Sale' : 'New Flash Sale'}</h2>
-          <button onClick={onClose} style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '8px', width: '30px', height: '30px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--gray)' }}>✕</button>
-        </div>
-        <div style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+    <Modal
+      open
+      onClose={onClose}
+      title={editTarget ? 'Edit Flash Sale' : 'New Flash Sale'}
+      width={520}
+      footer={<>
+        <button onClick={onClose} disabled={saving} style={S.btnGhost}>Cancel</button>
+        <button onClick={onSubmit} disabled={saving} style={{ ...S.btnPrimary, opacity: saving ? 0.7 : 1 }}>
+          {saving ? 'Saving...' : editTarget ? 'Save Changes' : 'Create'}
+        </button>
+      </>}
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           {formError && <div style={{ padding: '0.75rem 1rem', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: 'var(--red)', fontSize: '0.85rem' }}>{formError}</div>}
 
           <div>
             <label style={lbl}>Product <span style={{ color: 'var(--red)' }}>*</span></label>
-            <select value={form.productId} onChange={e => setForm(f => ({ ...f, productId: e.target.value }))} style={inp}>
-              <option value="">Select a product</option>
-              {products.map(p => {
+            {/* searchable: a shop with a full catalogue cannot scroll a native list to find
+                one product, and this is the field the whole flash sale hangs on. */}
+            <CustomSelect value={form.productId}
+              onChange={v => setForm(f => ({ ...f, productId: v }))}
+              placeholder="Select a product" searchable
+              options={products.map(p => {
                 const price = p.flatPrice ?? p.price;
-                return <option key={p._id || p.id} value={p._id || p.id}>{p.subCategoryName || p.name || 'Unnamed'}{price != null ? ` — ₱${price}` : ''}</option>;
-              })}
-            </select>
+                return {
+                  value: p._id || p.id,
+                  label: `${p.subCategoryName || p.name || 'Unnamed'}${price != null ? ` - P${price}` : ''}`,
+                };
+              })} />
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
             <div>
               <label style={lbl}>Discount Type <span style={{ color: 'var(--red)' }}>*</span></label>
-              <select value={form.discountType} onChange={e => setForm(f => ({ ...f, discountType: e.target.value }))} style={inp}>
-                <option value="percentage">Percentage (%)</option>
-                <option value="fixed">Fixed Amount (₱)</option>
-              </select>
+              <CustomSelect value={form.discountType}
+                onChange={v => setForm(f => ({ ...f, discountType: v }))}
+                options={[
+                  { value: 'percentage', label: 'Percentage (%)' },
+                  { value: 'fixed',      label: 'Fixed Amount (P)' },
+                ]} />
             </div>
             <div>
               <label style={lbl}>{form.discountType === 'percentage' ? 'Discount %' : 'Amount (₱)'} <span style={{ color: 'var(--red)' }}>*</span></label>
@@ -967,15 +964,8 @@ function FlashSaleModal({ form, setForm, formError, saving, editTarget, products
             <span style={{ fontSize: '0.875rem', color: 'var(--white)' }}>Active immediately</span>
           </label>
 
-          <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
-            <button onClick={onClose} disabled={saving} style={{ padding: '0.625rem 1.25rem', background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--gray)', cursor: 'pointer', fontSize: '0.875rem', fontWeight: 600 }}>Cancel</button>
-            <button onClick={onSubmit} disabled={saving} style={{ padding: '0.625rem 1.25rem', background: saving ? 'rgba(212,168,67,0.5)' : 'var(--gold)', color: 'var(--black)', border: 'none', borderRadius: '8px', fontWeight: 700, fontSize: '0.875rem', cursor: saving ? 'wait' : 'pointer' }}>
-              {saving ? 'Saving...' : editTarget ? 'Save Changes' : 'Create'}
-            </button>
-          </div>
-        </div>
       </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -991,17 +981,3 @@ function SkelLoader() {
   );
 }
 
-function ConfirmModal({ message, onConfirm, onCancel, loading, confirmLabel = 'Confirm' }) {
-  return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '12px', padding: '2rem', maxWidth: '380px', width: '90%', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-        <div style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--white)' }}>Confirm</div>
-        <p style={{ margin: 0, fontSize: '0.9rem', color: 'var(--gray)' }}>{message}</p>
-        <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
-          <button onClick={onCancel} disabled={loading} style={{ padding: '0.5rem 1.25rem', background: 'transparent', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--gray)', cursor: 'pointer', fontWeight: 600, fontSize: '0.875rem' }}>Cancel</button>
-          <button onClick={onConfirm} disabled={loading} style={{ padding: '0.5rem 1.25rem', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: '8px', color: '#ef4444', cursor: 'pointer', fontWeight: 700, fontSize: '0.875rem', opacity: loading ? 0.6 : 1 }}>{loading ? 'Working…' : confirmLabel}</button>
-        </div>
-      </div>
-    </div>
-  );
-}

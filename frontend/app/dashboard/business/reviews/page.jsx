@@ -3,6 +3,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
+import {
+  S, ICONS, SummaryCard, CustomSelect, PaginationBar, EmptyState,
+  ConfirmModal, useToast, ToastContainer,
+} from '../inventory-v2/shared';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
@@ -12,381 +16,274 @@ function apiHeaders(token) {
   return h;
 }
 
-function StarDisplay({ rating, size = 14 }) {
+// NOT the shared formatDate: that one does `new Date(d + 'T00:00:00')` because it is fed date-only
+// strings elsewhere, and created_at is a full timestamp - appending a time to a timestamp yields
+// Invalid Date. Same output shape, parsed correctly.
+const reviewDate = (d) => {
+  const dt = new Date(d);
+  return isNaN(dt) ? '-' : dt.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' });
+};
+
+function Stars({ rating, size = 13 }) {
   return (
-    <div style={{ display: 'flex', gap: '2px' }}>
+    <span style={{ display: 'inline-flex', gap: '1px', verticalAlign: 'middle' }} title={`${rating} of 5`}>
       {[1, 2, 3, 4, 5].map(s => (
         <svg key={s} width={size} height={size} viewBox="0 0 24 24"
           fill={s <= rating ? 'var(--gold)' : 'none'}
-          stroke="var(--gold)" strokeWidth="1.5"
-          strokeLinecap="round" strokeLinejoin="round"
-        >
-          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+          stroke={s <= rating ? 'var(--gold)' : 'var(--border)'}
+          strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
         </svg>
       ))}
-    </div>
+    </span>
   );
 }
 
 export default function AdminReviewsPage() {
   const { token } = useAuth();
+  const { toasts, push, dismiss } = useToast();
 
-  const [reviews, setReviews]           = useState([]);
-  const [stats, setStats]               = useState(null);
-  const [loading, setLoading]           = useState(true);
-  const [error, setError]               = useState(null);
-  const [page, setPage]                 = useState(1);
-  const [totalPages, setTotalPages]     = useState(1);
-  const [total, setTotal]               = useState(0);
-  const [filterRating, setFilterRating] = useState('');
-  const [filterVisible, setFilterVisible] = useState('');
-  const [togglingId, setTogglingId]     = useState(null);
-  const [deletingId, setDeletingId]     = useState(null);
+  const [reviews, setReviews]       = useState([]);
+  const [stats, setStats]           = useState(null);
+  const [loading, setLoading]       = useState(true);
+  const [error, setError]           = useState(null);
+  const [page, setPage]             = useState(1);
+  const [perPage, setPerPage]       = useState(25);
+  const [total, setTotal]           = useState(0);
+  const [rating, setRating]         = useState('');
+  const [visibility, setVisibility] = useState('');
+  const [busyId, setBusyId]         = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
-  const PER_PAGE = 20;
+  // Which comments the reader has opened. Reviews run to 2000 characters and the table exists to be
+  // scanned, so every row is clamped until someone asks for the rest.
+  const [expanded, setExpanded]     = useState({});
 
-  const load = useCallback(async (p = 1) => {
+  const load = useCallback(async (p = 1, pp = perPage) => {
     if (!token) return;
     setLoading(true);
     setError(null);
     try {
-      const params = new URLSearchParams({ page: p, per_page: PER_PAGE });
-      if (filterRating) params.set('rating', filterRating);
-      if (filterVisible !== '') params.set('visible', filterVisible);
+      const params = new URLSearchParams({ page: p, per_page: pp });
+      if (rating) params.set('rating', rating);
+      if (visibility !== '') params.set('visible', visibility);
 
-      const res = await fetchWithTimeout(
-        `${API_URL}/api/admin/reviews?${params}`,
-        { headers: apiHeaders(token) },
-        15000
-      );
+      const res  = await fetchWithTimeout(`${API_URL}/api/admin/reviews?${params}`, { headers: apiHeaders(token) }, 15000);
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Failed to load reviews.');
       const d = data.data ?? data;
       setReviews(d.reviews ?? []);
       setStats(d.stats ?? null);
       setTotal(d.total ?? 0);
-      setTotalPages(d.totalPages ?? 1);
       setPage(p);
     } catch (err) {
       setError(err.message || 'Failed to load reviews.');
     } finally {
       setLoading(false);
     }
-  }, [token, filterRating, filterVisible]);
+  }, [token, rating, visibility, perPage]);
 
   useEffect(() => { load(1); }, [load]);
 
-  const handleToggleVisibility = async (id, currentVisible) => {
-    setTogglingId(id);
+  const handleToggle = async (id, currentlyVisible) => {
+    setBusyId(id);
     try {
-      const res = await fetchWithTimeout(
-        `${API_URL}/api/admin/reviews/${id}/visibility`,
-        { method: 'PATCH', headers: apiHeaders(token) },
-        10000
-      );
-      const data = await res.json();
-      if (!res.ok) return;
-      setReviews(prev => prev.map(r =>
-        (r._id ?? r.id) === id ? { ...r, is_visible: data.data?.is_visible ?? !currentVisible } : r
-      ));
-      if (stats) {
-        const delta = currentVisible ? -1 : 1;
-        setStats(s => ({ ...s, visible: s.visible + delta, hidden: s.hidden - delta }));
-      }
-    } catch {}
-    finally { setTogglingId(null); }
-  };
-
-  const handleDelete = async (id) => {
-    setDeletingId(id);
-    try {
-      const res = await fetchWithTimeout(
-        `${API_URL}/api/admin/reviews/${id}`,
-        { method: 'DELETE', headers: apiHeaders(token) },
-        10000
-      );
-      if (!res.ok) return;
-      setReviews(prev => prev.filter(r => (r._id ?? r.id) !== id));
-      setTotal(t => t - 1);
-      if (stats) setStats(s => ({ ...s, total: s.total - 1 }));
-    } catch {}
-    finally {
-      setDeletingId(null);
-      setDeleteTarget(null);
+      const res  = await fetchWithTimeout(`${API_URL}/api/admin/reviews/${id}/visibility`,
+        { method: 'PATCH', headers: apiHeaders(token) }, 10000);
+      const data = await res.json().catch(() => ({}));
+      // This used to be a bare `if (!res.ok) return`. The button un-greyed, the row did not change,
+      // and nothing said why - so a failed hide looked exactly like a hide that had worked and been
+      // rendered wrong. Hiding a review is a moderation decision; it has to report whether it took.
+      if (!res.ok) throw new Error(data.message || 'Could not change visibility.');
+      const nowVisible = data.data?.is_visible ?? !currentlyVisible;
+      setReviews(prev => prev.map(r => ((r._id ?? r.id) === id ? { ...r, is_visible: nowVisible } : r)));
+      setStats(s => (s ? { ...s, visible: s.visible + (nowVisible ? 1 : -1), hidden: s.hidden + (nowVisible ? -1 : 1) } : s));
+      push(nowVisible ? 'Review is now visible on the storefront.' : 'Review hidden from the storefront.', 'success');
+    } catch (err) {
+      push(err.message || 'Could not change visibility.', 'error');
+    } finally {
+      setBusyId(null);
     }
   };
 
+  const handleDelete = async () => {
+    const id = deleteTarget?._id ?? deleteTarget?.id;
+    if (!id) return;
+    setBusyId(id);
+    try {
+      const res  = await fetchWithTimeout(`${API_URL}/api/admin/reviews/${id}`,
+        { method: 'DELETE', headers: apiHeaders(token) }, 10000);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || 'Could not delete the review.');
+      setReviews(prev => prev.filter(r => (r._id ?? r.id) !== id));
+      setTotal(t => Math.max(0, t - 1));
+      setStats(s => (s ? { ...s, total: Math.max(0, s.total - 1) } : s));
+      push('Review deleted.', 'success');
+      setDeleteTarget(null);
+    } catch (err) {
+      push(err.message || 'Could not delete the review.', 'error');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const ratingOptions = [
+    { value: '', label: 'All ratings' },
+    ...[5, 4, 3, 2, 1].map(r => ({ value: String(r), label: `${r} star${r === 1 ? '' : 's'}` })),
+  ];
+  const visibilityOptions = [
+    { value: '', label: 'All reviews' },
+    { value: 'true', label: 'Visible' },
+    { value: 'false', label: 'Hidden' },
+  ];
+
   return (
-    <div style={{ padding: '24px' }}>
+    <div style={{ ...S.page, padding: '24px' }}>
 
-      {/* Stats row */}
-      {stats && (
-        <div style={{ display: 'flex', gap: '16px', marginBottom: '24px', flexWrap: 'wrap' }}>
-          {[
-            { label: 'Total Reviews', value: stats.total },
-            { label: 'Visible', value: stats.visible, color: 'var(--green)' },
-            { label: 'Hidden', value: stats.hidden, color: 'var(--gray)' },
-            { label: 'Avg Rating', value: stats.avgRating ? `${stats.avgRating} ★` : '—', color: 'var(--gold)' },
-          ].map(({ label, value, color }) => (
-            <div key={label} style={{
-              flex: '1 1 160px',
-              padding: '16px 20px',
-              background: 'var(--dark2)',
-              border: '1px solid var(--border)',
-              borderRadius: '10px',
-            }}>
-              <div style={{ fontSize: '0.75rem', color: 'var(--gray)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>
-                {label}
-              </div>
-              <div style={{ fontSize: '1.5rem', fontWeight: 800, color: color || 'var(--white)' }}>
-                {value}
-              </div>
-            </div>
-          ))}
+      <div style={{ ...S.rowBetween, marginBottom: '18px', justifyContent: 'flex-end' }}>
+        <button type="button" onClick={() => load(page)} style={S.btnGhost}>{ICONS.reload} Refresh</button>
+      </div>
+
+      <div style={{ ...S.row, marginBottom: '18px' }}>
+        <SummaryCard label="Total reviews" value={stats?.total ?? '-'} accent />
+        <SummaryCard label="Visible" value={stats?.visible ?? '-'} sub="Shown on the storefront" />
+        <SummaryCard label="Hidden" value={stats?.hidden ?? '-'} sub="Moderated out of view" />
+        <SummaryCard label="Average rating" value={stats?.avgRating ? `${stats.avgRating} / 5` : '-'} color="var(--gold)" />
+      </div>
+
+      {/* No search box: the reviews endpoint takes rating, visible, page and per_page and nothing
+          else, so a search field here would only appear to work. */}
+      <div style={{ ...S.row, marginBottom: '14px', gap: '10px' }}>
+        <div style={{ width: '170px' }}>
+          <CustomSelect value={rating} onChange={setRating} options={ratingOptions} placeholder="All ratings" />
         </div>
-      )}
-
-      {/* Filters */}
-      <div style={{ display: 'flex', gap: '12px', marginBottom: '20px', flexWrap: 'wrap', alignItems: 'center' }}>
-        <select
-          value={filterRating}
-          onChange={e => setFilterRating(e.target.value)}
-          style={{
-            padding: '8px 12px', borderRadius: '8px',
-            border: '1px solid var(--border)',
-            background: 'var(--dark2)', color: 'var(--white)',
-            fontSize: '0.875rem', cursor: 'pointer',
-          }}
-        >
-          <option value="">All Ratings</option>
-          {[5,4,3,2,1].map(r => <option key={r} value={r}>{r} Stars</option>)}
-        </select>
-        <select
-          value={filterVisible}
-          onChange={e => setFilterVisible(e.target.value)}
-          style={{
-            padding: '8px 12px', borderRadius: '8px',
-            border: '1px solid var(--border)',
-            background: 'var(--dark2)', color: 'var(--white)',
-            fontSize: '0.875rem', cursor: 'pointer',
-          }}
-        >
-          <option value="">All Visibility</option>
-          <option value="true">Visible</option>
-          <option value="false">Hidden</option>
-        </select>
-        <span style={{ fontSize: '0.8rem', color: 'var(--gray)', marginLeft: 'auto' }}>
-          {total} result{total !== 1 ? 's' : ''}
-        </span>
+        <div style={{ width: '170px' }}>
+          <CustomSelect value={visibility} onChange={setVisibility} options={visibilityOptions} placeholder="All reviews" />
+        </div>
       </div>
 
       {error && (
-        <div style={{
-          padding: '12px 16px', borderRadius: '8px',
-          background: 'rgba(239,68,68,0.08)',
-          border: '1px solid rgba(239,68,68,0.3)',
-          color: 'var(--red)', fontSize: '0.875rem',
-          marginBottom: '16px', display: 'flex',
-          justifyContent: 'space-between', alignItems: 'center',
-        }}>
-          {error}
-          <button onClick={() => load(page)} style={{ background: 'none', border: '1px solid var(--red)', borderRadius: '6px', color: 'var(--red)', padding: '4px 10px', fontSize: '12px', cursor: 'pointer' }}>
+        <div style={{ ...S.card, borderColor: '#c62828', color: '#e05252', fontSize: '13px', marginBottom: '14px' }}>
+          {error}{' '}
+          <button type="button" onClick={() => load(page)}
+            style={{ background: 'none', border: 'none', color: 'var(--gold)', cursor: 'pointer', fontWeight: 700 }}>
             Retry
           </button>
         </div>
       )}
 
-      {loading && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          {[1,2,3,4].map(i => (
-            <div key={i} style={{ height: '80px', background: 'var(--dark2)', borderRadius: '10px', border: '1px solid var(--border)', animation: 'pulse 1.5s ease-in-out infinite' }} />
+      {!error && loading && (
+        <div style={{ ...S.col, gap: '8px' }}>
+          {[1, 2, 3, 4, 5].map(i => (
+            <div key={i} style={{ height: '54px', background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '8px', animation: 'pmPulse 1.5s ease-in-out infinite' }} />
           ))}
         </div>
       )}
 
-      {!loading && reviews.length === 0 && !error && (
-        <div style={{
-          textAlign: 'center', padding: '3rem',
-          background: 'var(--dark2)', border: '1px solid var(--border)',
-          borderRadius: '12px', color: 'var(--gray)',
-        }}>
-          No reviews found.
-        </div>
+      {!error && !loading && reviews.length === 0 && (
+        <EmptyState
+          icon={ICONS.info}
+          message={rating || visibility !== '' ? 'No reviews match these filters' : 'No reviews yet'}
+          sub={rating || visibility !== ''
+            ? 'Clear a filter to widen the list.'
+            : 'A customer can review a product once their order is delivered.'}
+        />
       )}
 
-      {!loading && reviews.length > 0 && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(460px, 1fr))', gap: '12px', alignItems: 'start' }}>
-          {reviews.map((r, idx) => {
-            const id = r._id ?? r.id;
-            return (
-              <div key={id || `rev-${idx}`} style={{
-                padding: '16px',
-                background: 'var(--dark2)',
-                border: `1px solid ${r.is_visible ? 'var(--border)' : 'rgba(107,114,128,0.3)'}`,
-                borderRadius: '10px',
-                opacity: r.is_visible ? 1 : 0.65,
-              }}>
-                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', flexWrap: 'wrap' }}>
-                  <div style={{ flex: 1, minWidth: '200px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px', flexWrap: 'wrap' }}>
-                      <span style={{ fontSize: '0.875rem', fontWeight: 700, color: 'var(--white)' }}>
-                        {r.customerName || 'Customer'}
-                      </span>
-                      <StarDisplay rating={r.rating} />
-                      <span style={{
-                        padding: '2px 8px', borderRadius: '999px', fontSize: '0.7rem', fontWeight: 600,
-                        background: r.is_visible ? 'rgba(74,222,128,0.1)' : 'rgba(107,114,128,0.15)',
-                        color: r.is_visible ? 'var(--green)' : 'var(--gray)',
-                        border: `1px solid ${r.is_visible ? 'rgba(74,222,128,0.3)' : 'rgba(107,114,128,0.3)'}`,
-                      }}>
-                        {r.is_visible ? 'Visible' : 'Hidden'}
-                      </span>
-                      <span style={{ fontSize: '0.75rem', color: 'var(--gray)', marginLeft: 'auto' }}>
-                        {r.created_at ? new Date(r.created_at).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' }) : ''}
-                      </span>
-                    </div>
-                    <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--gray)', lineHeight: 1.6 }}>
-                      {r.comment}
-                    </p>
-                  </div>
-
-                  <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
-                    <button
-                      onClick={() => handleToggleVisibility(id, r.is_visible)}
-                      disabled={togglingId === id}
-                      title={r.is_visible ? 'Hide review' : 'Show review'}
-                      style={{
-                        padding: '6px 12px', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 600,
-                        border: `1px solid ${r.is_visible ? 'rgba(107,114,128,0.4)' : 'rgba(74,222,128,0.4)'}`,
-                        background: 'transparent',
-                        color: r.is_visible ? 'var(--gray)' : 'var(--green)',
-                        cursor: togglingId === id ? 'not-allowed' : 'pointer',
-                        opacity: togglingId === id ? 0.5 : 1,
-                      }}
-                    >
-                      {togglingId === id ? '...' : r.is_visible ? 'Hide' : 'Show'}
-                    </button>
-                    <button
-                      onClick={() => setDeleteTarget(r)}
-                      title="Delete review"
-                      style={{
-                        padding: '6px 12px', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 600,
-                        border: '1px solid rgba(239,68,68,0.4)',
-                        background: 'transparent', color: 'var(--red)',
-                        cursor: 'pointer',
-                      }}
-                    >
-                      Delete
-                    </button>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Pagination */}
-      {!loading && totalPages > 1 && (
-        <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginTop: '24px', flexWrap: 'wrap' }}>
-          <button
-            onClick={() => load(page - 1)}
-            disabled={page <= 1}
-            style={{
-              padding: '8px 16px', borderRadius: '8px',
-              border: '1px solid var(--border)',
-              background: page <= 1 ? 'transparent' : 'var(--dark2)',
-              color: page <= 1 ? 'var(--border)' : 'var(--gray)',
-              cursor: page <= 1 ? 'not-allowed' : 'pointer',
-              fontSize: '0.875rem',
-            }}
-          >
-            ← Prev
-          </button>
-          <span style={{ padding: '8px 16px', fontSize: '0.875rem', color: 'var(--gray)', alignSelf: 'center' }}>
-            Page {page} of {totalPages}
-          </span>
-          <button
-            onClick={() => load(page + 1)}
-            disabled={page >= totalPages}
-            style={{
-              padding: '8px 16px', borderRadius: '8px',
-              border: '1px solid var(--border)',
-              background: page >= totalPages ? 'transparent' : 'var(--dark2)',
-              color: page >= totalPages ? 'var(--border)' : 'var(--gray)',
-              cursor: page >= totalPages ? 'not-allowed' : 'pointer',
-              fontSize: '0.875rem',
-            }}
-          >
-            Next →
-          </button>
-        </div>
-      )}
-
-      {/* Delete confirmation dialog */}
-      {deleteTarget && (
-        <div
-          onClick={() => setDeleteTarget(null)}
-          style={{
-            position: 'fixed', inset: 0, zIndex: 2000,
-            background: 'rgba(0,0,0,0.75)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            padding: '16px',
-          }}
-        >
-          <div
-            onClick={e => e.stopPropagation()}
-            style={{
-              background: 'var(--dark2)',
-              border: '1px solid var(--border)',
-              borderRadius: '16px',
-              padding: '24px',
-              width: '100%', maxWidth: '400px',
-            }}
-          >
-            <h3 style={{ margin: '0 0 8px', fontSize: '1rem', fontWeight: 700, color: 'var(--white)' }}>
-              Delete Review?
-            </h3>
-            <p style={{ margin: '0 0 20px', fontSize: '0.875rem', color: 'var(--gray)', lineHeight: 1.5 }}>
-              This will permanently delete the review by{' '}
-              <strong style={{ color: 'var(--white)' }}>{deleteTarget.customerName || 'Customer'}</strong>.
-              This action cannot be undone.
-            </p>
-            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
-              <button
-                onClick={() => setDeleteTarget(null)}
-                disabled={!!deletingId}
-                style={{
-                  padding: '9px 20px', borderRadius: '8px',
-                  border: '1px solid var(--border)',
-                  background: 'var(--dark)',
-                  color: 'var(--gray)', fontSize: '0.875rem',
-                  cursor: 'pointer',
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => handleDelete(deleteTarget._id ?? deleteTarget.id)}
-                disabled={!!deletingId}
-                style={{
-                  padding: '9px 20px', borderRadius: '8px',
-                  border: 'none',
-                  background: deletingId ? 'rgba(239,68,68,0.4)' : 'var(--red)',
-                  color: 'var(--white)', fontSize: '0.875rem',
-                  fontWeight: 700, cursor: deletingId ? 'not-allowed' : 'pointer',
-                }}
-              >
-                {deletingId ? 'Deleting...' : 'Delete'}
-              </button>
-            </div>
+      {!error && !loading && reviews.length > 0 && (
+        <div style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '820px' }}>
+              <thead>
+                <tr>
+                  <th style={S.th}>Customer</th>
+                  <th style={S.th}>Rating</th>
+                  <th style={S.th}>Product</th>
+                  <th style={{ ...S.th, width: '42%' }}>Review</th>
+                  <th style={S.th}>Date</th>
+                  <th style={S.th}>Status</th>
+                  <th style={{ ...S.th, textAlign: 'right' }}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {reviews.map((r, idx) => {
+                  const id   = r._id ?? r.id ?? `rev-${idx}`;
+                  const open = !!expanded[id];
+                  const long = (r.comment || '').length > 140;
+                  return (
+                    <tr key={id} style={{ ...S.tr, opacity: r.is_visible ? 1 : 0.55 }}>
+                      <td style={{ ...S.td, fontWeight: 600 }}>{r.customerName || 'Customer'}</td>
+                      <td style={S.td}><Stars rating={r.rating} /></td>
+                      <td style={{ ...S.td, color: r.productName ? 'var(--white)' : 'var(--gray)', fontSize: '12px' }}>
+                        {/* Older reviews were written against a whole order, before the per-product
+                            split, so they legitimately name no product. Say so rather than blank. */}
+                        {r.productName || (r.productId ? 'Unknown product' : 'Whole order')}
+                      </td>
+                      <td style={{ ...S.td, color: 'var(--gray)', lineHeight: 1.5 }}>
+                        <span style={open ? undefined : {
+                          display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
+                        }}>
+                          {r.comment}
+                        </span>
+                        {long && (
+                          <button type="button" onClick={() => setExpanded(e => ({ ...e, [id]: !open }))}
+                            style={{ background: 'none', border: 'none', color: 'var(--gold)', cursor: 'pointer', fontSize: '11px', fontWeight: 600, padding: '2px 0 0' }}>
+                            {open ? 'Show less' : 'Show more'}
+                          </button>
+                        )}
+                      </td>
+                      <td style={{ ...S.td, color: 'var(--gray)', fontSize: '12px', whiteSpace: 'nowrap' }}>
+                        {r.created_at ? reviewDate(r.created_at) : '-'}
+                      </td>
+                      <td style={S.td}>
+                        <span style={{
+                          ...S.badge,
+                          background: r.is_visible ? 'rgba(74,222,128,0.12)' : 'rgba(107,114,128,0.15)',
+                          color: r.is_visible ? 'var(--green)' : 'var(--gray)',
+                          border: `1px solid ${r.is_visible ? 'rgba(74,222,128,0.3)' : 'rgba(107,114,128,0.3)'}`,
+                        }}>
+                          {r.is_visible ? 'Visible' : 'Hidden'}
+                        </span>
+                      </td>
+                      <td style={{ ...S.td, textAlign: 'right', whiteSpace: 'nowrap' }}>
+                        <button type="button" onClick={() => handleToggle(r._id ?? r.id, r.is_visible)}
+                          disabled={busyId === (r._id ?? r.id)}
+                          style={{ ...S.btnSmGhost, marginRight: '6px', opacity: busyId === (r._id ?? r.id) ? 0.5 : 1 }}>
+                          {ICONS.eye} {r.is_visible ? 'Hide' : 'Show'}
+                        </button>
+                        <button type="button" onClick={() => setDeleteTarget(r)} style={S.btnSmDanger}>
+                          {ICONS.trash} Delete
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         </div>
       )}
 
-      <style>{`
-        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
-      `}</style>
+      {!error && !loading && total > 0 && (
+        <PaginationBar
+          total={total} page={page} perPage={perPage}
+          onPage={p => load(p)}
+          onPerPage={n => { setPerPage(n); load(1, n); }}
+        />
+      )}
+
+      <ConfirmModal
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={handleDelete}
+        loading={!!busyId && busyId === (deleteTarget?._id ?? deleteTarget?.id)}
+        title="Delete this review?"
+        message={`This permanently deletes the ${deleteTarget?.rating ?? ''}-star review by ${deleteTarget?.customerName || 'this customer'}. It cannot be undone - if you only want it off the storefront, use Hide instead.`}
+        confirmLabel="Delete"
+      />
+
+      <ToastContainer toasts={toasts} dismiss={dismiss} />
+
+      <style>{`@keyframes pmPulse { 0%,100% { opacity: 1 } 50% { opacity: .45 } }`}</style>
     </div>
   );
 }

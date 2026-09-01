@@ -283,6 +283,21 @@ class ReviewController extends Controller
                 ->values()
                 ->all();
 
+            // Name the product each review is about. The per-product split was made precisely so a
+            // bad totebag would stop dragging down the mug's rating - but the admin screen was still
+            // handed a bare productId, so the one person who has to judge whether a review is fair
+            // could not tell WHICH product it was judging. Resolved in ONE query over the page's
+            // ids rather than a lookup per row.
+            $ids = collect($reviews)->pluck('productId')->filter()->unique()->values()->all();
+            if ($ids) {
+                $names = \App\Models\Product::whereIn('_id', $ids)->get()
+                    ->mapWithKeys(fn($p) => [(string) $p->_id => (string) ($p->name ?? '')]);
+                $reviews = array_map(function ($r) use ($names) {
+                    $r['productName'] = $r['productId'] ? ($names[$r['productId']] ?? null) : null;
+                    return $r;
+                }, $reviews);
+            }
+
             $allReviews = Review::query();
             $totalAll     = $allReviews->count();
             $totalVisible = Review::where('is_visible', true)->count();
