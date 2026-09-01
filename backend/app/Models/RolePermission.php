@@ -41,6 +41,7 @@ class RolePermission extends Model
             'badOrders'         => false,
             'sales'             => false,
             'reports'           => false,
+            'payments'          => false,
             'products'          => false,
             'banners'           => false,
             'flashSales'        => false,
@@ -49,6 +50,21 @@ class RolePermission extends Model
             'userManagement'    => false,
             'rolePermissions'   => false,
         ];
+    }
+
+    /**
+     * Flat list of every action-based permission key (module.action) from the
+     * action catalog — used to whitelist incoming keys when a role is saved.
+     */
+    public static function actionKeys(): array
+    {
+        $keys = [];
+        foreach (config('rbac.action_catalog', []) as $module => $actions) {
+            foreach ($actions as $action) {
+                $keys[] = "{$module}.{$action}";
+            }
+        }
+        return $keys;
     }
 
     /**

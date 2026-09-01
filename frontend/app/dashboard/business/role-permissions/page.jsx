@@ -18,6 +18,7 @@ const SECTIONS = [
   { key: 'badOrders',     label: 'Bad Orders' },
   { key: 'sales',         label: 'Sales' },
   { key: 'reports',       label: 'Reports' },
+  { key: 'payments',      label: 'Payments' },
   { key: 'products',      label: 'Products' },
   { key: 'banners',       label: 'Banners' },
   { key: 'flashSales',    label: 'Flash Sales' },
@@ -28,12 +29,40 @@ const SECTIONS = [
 ];
 
 const SECTION_GROUPS = [
-  { label: 'Operations', keys: ['orderRequests', 'orders', 'jobOrders', 'pos'] },
-  { label: 'Inventory',  keys: ['inventory', 'vendors', 'badOrders'] },
-  { label: 'Analytics',  keys: ['sales', 'reports'] },
-  { label: 'Catalog',    keys: ['products', 'banners', 'flashSales', 'vouchers'] },
-  { label: 'Admin',      keys: ['auditLogs', 'userManagement', 'rolePermissions'] },
+  { label: 'Operations',           keys: ['orderRequests', 'orders', 'jobOrders', 'pos'] },
+  { label: 'Inventory',            keys: ['inventory', 'vendors', 'badOrders'] },
+  { label: 'Analytics & Finance',  keys: ['sales', 'reports', 'payments'] },
+  { label: 'Catalog',              keys: ['products', 'banners', 'flashSales', 'vouchers'] },
+  { label: 'Admin',                keys: ['auditLogs', 'userManagement', 'rolePermissions'] },
 ];
+
+// Action catalog — mirrors backend config('rbac.action_catalog').
+const ACTION_CATALOG = {
+  orderRequests:   ['view', 'create', 'edit', 'delete', 'approve'],
+  orders:          ['view', 'create', 'edit', 'delete', 'updateStatus'],
+  jobOrders:       ['view', 'create', 'edit', 'delete', 'updateStatus'],
+  pos:             ['view', 'sell', 'void'],
+  inventory:       ['view', 'create', 'edit', 'delete'],
+  vendors:         ['view', 'create', 'edit', 'delete'],
+  badOrders:       ['view', 'create', 'edit', 'delete'],
+  sales:           ['view', 'export'],
+  reports:         ['view', 'export'],
+  payments:        ['view', 'create', 'edit', 'delete', 'confirm', 'refund'],
+  products:        ['view', 'create', 'edit', 'delete'],
+  banners:         ['view', 'create', 'edit', 'delete'],
+  flashSales:      ['view', 'create', 'edit', 'delete'],
+  vouchers:        ['view', 'create', 'edit', 'delete'],
+  auditLogs:       ['view'],
+  userManagement:  ['view', 'create', 'edit', 'disable', 'delete', 'assignRole'],
+  rolePermissions: ['view', 'create', 'edit', 'delete', 'assignPermissions'],
+};
+
+const ACTION_LABEL = {
+  view: 'View', create: 'Create', edit: 'Edit', delete: 'Delete', approve: 'Approve',
+  updateStatus: 'Update Status', sell: 'Sell', void: 'Void', export: 'Export',
+  confirm: 'Confirm', refund: 'Refund', disable: 'Disable',
+  assignRole: 'Assign Role', assignPermissions: 'Assign Permissions',
+};
 
 const HEADERS = (token) => ({
   Authorization: `Bearer ${token}`,
@@ -42,20 +71,33 @@ const HEADERS = (token) => ({
   'ngrok-skip-browser-warning': '1',
 });
 
+// Full grid: coarse module flag + every module.action key, all off (dashboard on).
 function defaultRow() {
-  const row = { dashboard: true };
-  SECTIONS.forEach((s) => { row[s.key] = false; });
+  const row = { dashboard: true, 'dashboard.view': true };
+  SECTIONS.forEach((s) => {
+    row[s.key] = false;
+    (ACTION_CATALOG[s.key] || []).forEach((a) => { row[`${s.key}.${a}`] = false; });
+  });
   return row;
 }
 
+// Merge the API's stored grid over the full default, preserving action keys so a
+// save never silently drops fine-grained grants.
 function mergePerms(apiRow) {
   const base = defaultRow();
   if (!apiRow || typeof apiRow !== 'object') return base;
-  SECTIONS.forEach((s) => {
-    if (typeof apiRow[s.key] === 'boolean') base[s.key] = apiRow[s.key];
+  Object.keys(base).forEach((k) => {
+    if (typeof apiRow[k] === 'boolean') base[k] = apiRow[k];
   });
   base.dashboard = true;
+  base['dashboard.view'] = true;
   return base;
+}
+
+// True if the role holds any action within a module (drives the coarse flag + count).
+function moduleOn(row, moduleKey) {
+  if (row[moduleKey] === true) return true;
+  return (ACTION_CATALOG[moduleKey] || []).some((a) => row[`${moduleKey}.${a}`] === true);
 }
 
 function ToggleSwitch({ checked, disabled, onChange }) {
@@ -108,7 +150,7 @@ export default function RolePermissionsPage() {
   const successTimersRef = useRef({});
 
 
-  const isPrivilegedRole = (role) => role === 'admin' || role === 'owner';
+  const isPrivilegedRole = (role) => role === 'superAdmin' || role === 'admin' || role === 'owner';
 
   useEffect(() => {
     if (!currentUser) return;
@@ -173,10 +215,9 @@ export default function RolePermissionsPage() {
     return () => { Object.values(timers).forEach(clearTimeout); };
   }, []);
 
-  const handleToggle = (role, key) => {
-    if (key === 'dashboard' || !token) return;
-    const prev = { ...permissionsData[role] };
-    const updated = { ...prev, [key]: !prev[key], dashboard: true };
+  // Persist the FULL grid (module flags + every action key) so no fine-grained
+  // grant is ever dropped by a partial save. Optimistic with rollback on error.
+  const persistPerms = (role, updated, prev) => {
     setPermissionsData((p) => ({ ...p, [role]: updated }));
     setSaving((p) => ({ ...p, [role]: true }));
     setSaveError((p) => ({ ...p, [role]: null }));
@@ -207,6 +248,27 @@ export default function RolePermissionsPage() {
     })();
   };
 
+  // Toggle a single action; the coarse module flag is recomputed from its actions.
+  const handleToggleAction = (role, moduleKey, action) => {
+    if (moduleKey === 'dashboard' || !token) return;
+    const prev = permissionsData[role] || defaultRow();
+    const updated = { ...prev, [`${moduleKey}.${action}`]: !prev[`${moduleKey}.${action}`] };
+    updated[moduleKey] = (ACTION_CATALOG[moduleKey] || []).some((a) => updated[`${moduleKey}.${a}`] === true);
+    updated.dashboard = true; updated['dashboard.view'] = true;
+    persistPerms(role, updated, prev);
+  };
+
+  // Toggle a whole module (all its actions on/off at once).
+  const handleToggleModule = (role, moduleKey) => {
+    if (moduleKey === 'dashboard' || !token) return;
+    const prev = permissionsData[role] || defaultRow();
+    const turnOn = !moduleOn(prev, moduleKey);
+    const updated = { ...prev, [moduleKey]: turnOn };
+    (ACTION_CATALOG[moduleKey] || []).forEach((a) => { updated[`${moduleKey}.${a}`] = turnOn; });
+    updated.dashboard = true; updated['dashboard.view'] = true;
+    persistPerms(role, updated, prev);
+  };
+
   const activeRoles = roles.filter((r) => (staffByRole[r.value] || []).length > 0);
 
   if (currentUser && !isPrivilegedRole(currentUser.role)) return null;
@@ -226,7 +288,7 @@ export default function RolePermissionsPage() {
             <circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/>
           </svg>
           <span style={{ fontSize: '0.8rem', color: 'var(--gray)' }}>
-            <strong style={{ color: 'var(--gold)' }}>Administrator</strong> and <strong style={{ color: 'var(--gold)' }}>Owner</strong> roles have unrestricted access and cannot be configured here.
+            <strong style={{ color: 'var(--gold)' }}>Super Admin</strong> and <strong style={{ color: 'var(--gold)' }}>Owner</strong> are protected roles with unrestricted access and cannot be configured here. Toggle a module on/off, or fine-tune individual actions (View, Edit, Delete…).
           </span>
         </div>
 
@@ -279,7 +341,7 @@ export default function RolePermissionsPage() {
             {activeRoles.map(({ value: role, label }, idx) => {
               const row        = permissionsData[role] || defaultRow();
               const members    = staffByRole[role] || [];
-              const enabledCount = SECTIONS.filter((s) => row[s.key]).length;
+              const enabledCount = SECTIONS.filter((s) => moduleOn(row, s.key)).length;
               const totalCount   = SECTIONS.length;
               const isExpanded   = !!expanded[role];
 
@@ -362,17 +424,43 @@ export default function RolePermissionsPage() {
                           <div style={{ fontSize: '0.67rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '8px' }}>
                             {group.label}
                           </div>
-                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '6px' }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '8px' }}>
                             {group.keys.map((key) => {
                               const section = SECTIONS.find((s) => s.key === key);
                               if (!section) return null;
-                              const checked = !!row[key];
+                              const actions = ACTION_CATALOG[key] || [];
+                              const modOn   = moduleOn(row, key);
                               return (
-                                <div key={key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.45rem 0.75rem', borderRadius: '8px', background: checked ? 'rgba(212,168,67,0.06)' : 'var(--dark2)', border: `1px solid ${checked ? 'rgba(212,168,67,0.2)' : 'var(--border)'}`, transition: 'all 0.15s' }}>
-                                  <span style={{ fontSize: '0.8rem', color: checked ? 'var(--white)' : 'var(--gray)', fontWeight: checked ? 600 : 400 }}>
-                                    {section.label}
-                                  </span>
-                                  <ToggleSwitch checked={checked} disabled={false} onChange={() => handleToggle(role, key)} />
+                                <div key={key} style={{ padding: '0.6rem 0.75rem', borderRadius: '8px', background: modOn ? 'rgba(212,168,67,0.05)' : 'var(--dark2)', border: `1px solid ${modOn ? 'rgba(212,168,67,0.2)' : 'var(--border)'}`, transition: 'all 0.15s' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: actions.length > 1 ? '0.55rem' : 0 }}>
+                                    <span style={{ fontSize: '0.82rem', color: modOn ? 'var(--white)' : 'var(--gray)', fontWeight: 600 }}>
+                                      {section.label}
+                                    </span>
+                                    <ToggleSwitch checked={modOn} disabled={false} onChange={() => handleToggleModule(role, key)} />
+                                  </div>
+                                  {actions.length > 1 && (
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
+                                      {actions.map((a) => {
+                                        const on = row[`${key}.${a}`] === true;
+                                        return (
+                                          <button
+                                            key={a}
+                                            type="button"
+                                            onClick={() => handleToggleAction(role, key, a)}
+                                            style={{
+                                              padding: '3px 9px', borderRadius: '999px', fontSize: '0.7rem', fontWeight: 600,
+                                              cursor: 'pointer', transition: 'all 0.15s',
+                                              border: `1px solid ${on ? 'rgba(212,168,67,0.4)' : 'var(--border)'}`,
+                                              background: on ? 'rgba(212,168,67,0.14)' : 'var(--dark3)',
+                                              color: on ? 'var(--gold)' : 'var(--gray)',
+                                            }}
+                                          >
+                                            {ACTION_LABEL[a] || a}
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
                                 </div>
                               );
                             })}

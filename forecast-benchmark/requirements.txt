@@ -1,0 +1,11 @@
+# Isolated ARIMA + Prophet benchmark — two independent models, each its own library.
+fastapi
+uvicorn[standard]
+numpy>=1.26,<2.0
+pandas>=2.0
+scipy
+scikit-learn
+statsmodels
+pmdarima          # standalone auto-ARIMA
+prophet           # Facebook Prophet
+requests

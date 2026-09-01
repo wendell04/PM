@@ -833,7 +833,7 @@ class OrderController extends Controller
     public function remindBalance(Request $request, $id)
     {
         try {
-            if (!$this->hasPermission($request, 'orders')) {
+            if (!$this->hasPermission($request, 'orders.edit')) {
                 return $this->forbiddenResponse();
             }
 
@@ -930,7 +930,7 @@ class OrderController extends Controller
     public function writeOffOrder(Request $request, $id)
     {
         try {
-            if (!$this->hasPermission($request, 'orders')) {
+            if (!$this->hasPermission($request, 'payments.edit')) {
                 return $this->forbiddenResponse();
             }
 
@@ -1081,7 +1081,7 @@ class OrderController extends Controller
             }
 
             $orders = $query->get();
-            return $this->successResponse('Orders fetched successfully.', $orders);
+            return $this->successResponse('Orders fetched successfully.', $this->stripOrderFinancials($request, $orders));
         } catch (\Exception $e) {
             return $this->serverErrorResponse($e, 'An unexpected error occurred while fetching orders.');
         }
@@ -1163,6 +1163,56 @@ class OrderController extends Controller
         ];
     }
 
+    /** Order money fields hidden from roles with no money-facing access. */
+    private function orderFinancialKeys(): array
+    {
+        return [
+            'subtotal', 'shippingFee', 'courierFee', 'totalAmount', 'total', 'totalPrice',
+            'downPayment', 'balance', 'paymentMethod', 'paymentHistory', 'discountAmount',
+            'designFee', 'designFeePaid', 'designFeePaidAmount', 'rushFee', 'revisionFees',
+        ];
+    }
+
+    /**
+     * Hide order money from roles that can view orders but have NO money-facing
+     * capability (e.g. Production Staff). Admin/Owner/Super Admin and anyone with
+     * payments / sales / POS visibility keep the full financial picture unchanged.
+     * Accepts a single order (model/array) or a collection; returns array(s).
+     */
+    private function stripOrderFinancials(Request $request, $orders)
+    {
+        $user = $request->user();
+        $canSeeMoney = \App\Support\Rbac::allows($user, 'payments.view')
+            || \App\Support\Rbac::allows($user, 'sales.view')
+            || \App\Support\Rbac::allows($user, 'pos');
+        if ($canSeeMoney) {
+            return $orders; // full financial view — unchanged
+        }
+
+        $keys  = $this->orderFinancialKeys();
+        $scrub = function ($o) use ($keys) {
+            $arr = is_array($o) ? $o : $o->toArray();
+            foreach ($keys as $k) unset($arr[$k]);
+            if (isset($arr['items']) && is_array($arr['items'])) {
+                $arr['items'] = array_map(function ($it) {
+                    if (is_array($it)) {
+                        unset($it['price'], $it['unitPrice'], $it['lineTotal'], $it['subtotal'], $it['total'], $it['amount']);
+                    }
+                    return $it;
+                }, $arr['items']);
+            }
+            return $arr;
+        };
+
+        if ($orders instanceof \Illuminate\Support\Collection) {
+            return $orders->map($scrub)->all();
+        }
+        if (is_array($orders)) {
+            return array_is_list($orders) ? array_map($scrub, $orders) : $scrub($orders);
+        }
+        return $scrub($orders);
+    }
+
     /**
      * PUT /api/admin/orders/{id}
      * Admin updates order status.
@@ -1170,7 +1220,8 @@ class OrderController extends Controller
     public function adminUpdate(Request $request, $id)
     {
         try {
-            if (!$this->hasPermission($request, 'orders')) {
+            // Editing an order is a financial-capable action → fine-grained `orders.edit`.
+            if (!$this->hasPermission($request, 'orders.edit')) {
                 return $this->unauthorizedResponse();
             }
 
@@ -1690,7 +1741,7 @@ class OrderController extends Controller
     {
         try {
             $user = $request->user();
-            if (!$user || !in_array($user->role, ['admin', 'owner'])) {
+            if (!$this->hasPermission($request, 'orders.delete')) {
                 return response()->json(['error' => 'Forbidden'], 403);
             }
 
@@ -1743,7 +1794,7 @@ class OrderController extends Controller
 
             $orders = $query->get();
 
-            return response()->json(['orders' => $orders]);
+            return response()->json(['orders' => $this->stripOrderFinancials($request, $orders)]);
         } catch (\Exception $e) {
             return $this->serverErrorResponse($e, 'An unexpected error occurred while fetching orders.');
         }
@@ -1786,7 +1837,7 @@ class OrderController extends Controller
                 return response()->json(['error' => 'Order not found'], 404);
             }
 
-            return response()->json(['order' => $order]);
+            return response()->json(['order' => $this->stripOrderFinancials($request, $order)]);
         } catch (\Exception $e) {
             return $this->serverErrorResponse($e, 'An unexpected error occurred while fetching the order.');
         }
@@ -1805,7 +1856,8 @@ class OrderController extends Controller
                 return response()->json(['error' => 'Unauthorized'], 401);
             }
 
-            if (!$this->hasPermission($request, 'orders')) {
+            // Production Staff may advance status without holding full order edit.
+            if (!$this->hasPermission($request, 'orders.updateStatus')) {
                 return $this->unauthorizedResponse();
             }
 
@@ -2248,7 +2300,8 @@ class OrderController extends Controller
     {
         try {
             $user = $request->user();
-            if (!$user || !in_array($user->role, ['admin', 'owner'])) {
+            // Recording a payment is a Finance capability (Admin/Owner/Super bypass).
+            if (!$this->hasPermission($request, 'payments.create')) {
                 return $this->unauthorizedResponse();
             }
 
@@ -2394,7 +2447,7 @@ class OrderController extends Controller
     {
         try {
             $user = $request->user();
-            if (!$user || !in_array($user->role, ['admin', 'owner'])) return $this->unauthorizedResponse();
+            if (!$this->hasPermission($request, 'orders.edit')) return $this->unauthorizedResponse();
             $validated = $request->validate(['decision' => 'required|string|in:accepted,declined']);
             $order = Order::find($id);
             if (!$order) return $this->notFoundResponse('Order');
@@ -2447,7 +2500,7 @@ class OrderController extends Controller
     {
         try {
             $user = $request->user();
-            if (!$user || !in_array($user->role, ['admin', 'owner'])) {
+            if (!$this->hasPermission($request, 'orders.edit')) {
                 return $this->unauthorizedResponse();
             }
 
@@ -2537,7 +2590,7 @@ class OrderController extends Controller
     {
         try {
             $user = $request->user();
-            if (!$user || !in_array($user->role, ['admin', 'owner'])) {
+            if (!$this->hasPermission($request, 'orders.edit')) {
                 return $this->unauthorizedResponse();
             }
 
@@ -2610,7 +2663,7 @@ class OrderController extends Controller
     {
         try {
             $user = $request->user();
-            if (!$user || !in_array($user->role, ['admin', 'owner'])) {
+            if (!$this->hasPermission($request, 'orders.edit')) {
                 return $this->unauthorizedResponse();
             }
 
@@ -3288,7 +3341,7 @@ class OrderController extends Controller
     {
         try {
             $user = $request->user();
-            if (!$user || !in_array($user->role, ['admin', 'owner'])) {
+            if (!$this->hasPermission($request, 'orders.edit')) {
                 return $this->unauthorizedResponse();
             }
 
@@ -3478,7 +3531,7 @@ class OrderController extends Controller
     {
         try {
             $user = $request->user();
-            if (!$user || !in_array($user->role, ['admin', 'owner'])) {
+            if (!$this->hasPermission($request, 'orders.edit')) {
                 return $this->unauthorizedResponse();
             }
 
