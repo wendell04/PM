@@ -2105,6 +2105,43 @@ class OrderController extends Controller
                 }
             }
 
+            // A quote-converted order holds materials the ADMIN chose when drafting the quote,
+            // in the admin's own quantities - not the product's BOM. Releasing it through the
+            // BOM path below would release the wrong amount, or nothing at all when the quoted
+            // service has no BOM, and the real hold would never come back. Release what was
+            // actually taken, then skip the BOM path so nothing is released twice.
+            if (!empty($order->quoteReservations)) {
+                foreach ($order->quoteReservations as $held) {
+                    try {
+                        $inv = Inventory::find($held['inventoryId'] ?? null);
+                        $qty = (int) ($held['qty'] ?? 0);
+                        if (!$inv || $inv->isOnDemand || $qty <= 0) continue;
+                        $inv->reservedQty = max(0, (int) ($inv->reservedQty ?? 0) - $qty);
+                        $inv->save();
+                        StockHistory::create([
+                            'inventoryId'  => (string) $inv->_id,
+                            'quantity'     => $qty,
+                            'remainingQty' => (int) ($inv->stockQty ?? 0),
+                            'unitCost'     => $this->unitCostOf($inv),
+                            'totalCost'    => 0,
+                            'reason'       => 'reservation_released',
+                            'type'         => 'reservation',
+                            'performedBy'  => 'system',
+                            'orderId'      => (string) $order->_id,
+                            'customerName' => $order->userSnapshot['name'] ?? '',
+                            'remarks'      => 'Quote order cancelled (reservation released): ' . (string) $order->_id,
+                            'createdAt'    => now(),
+                        ]);
+                    } catch (\Throwable $e) {
+                        Log::warning('restoreStockOnCancel: quote reservation release failed', [
+                            'orderId' => (string) $order->_id,
+                            'error'   => $e->getMessage(),
+                        ]);
+                    }
+                }
+                return;
+            }
+
             // Restore BOM raw materials deducted at order creation
             foreach ($order->items as $item) {
                 $bomProduct = Product::find($item['productId'] ?? null);

@@ -1545,6 +1545,26 @@ class PaymentController extends Controller
         $orderRequest->convertedOrderId = (string) $order->_id;
         $orderRequest->save();
 
+        // What the quote is about to hold, recorded ON THE ORDER so cancelling can release
+        // exactly this and not a BOM-derived guess. Deliberately id+qty only: the quote's
+        // material rows carry unitCost, and an order document is readable by the customer.
+        $held = [];
+        foreach ($orderRequest->lineItems ?? [] as $line) {
+            foreach ($line['materials'] ?? [] as $mat) {
+                $mid = (string) ($mat['inventoryId'] ?? '');
+                $mq  = (int) round((float) ($mat['qty'] ?? 0));
+                if ($mid === '' || $mq <= 0) continue;
+                $held[$mid] = ($held[$mid] ?? 0) + $mq;
+            }
+        }
+        if ($held) {
+            $order->quoteReservations = array_map(
+                fn ($id, $qty) => ['inventoryId' => $id, 'qty' => $qty],
+                array_keys($held), array_values($held)
+            );
+            $order->save();
+        }
+
         $this->reserveQuoteMaterials($orderRequest, $order);
 
         Log::info('OrderRequest converted to Order', [
