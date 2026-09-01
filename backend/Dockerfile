@@ -13,6 +13,8 @@ RUN composer install --optimize-autoloader --no-scripts --no-interaction
 
 COPY . .
 
+COPY php-uploads.ini /usr/local/etc/php/conf.d/zz-uploads.ini
+
 COPY Caddyfile /etc/caddy/Caddyfile
 
 RUN mkdir -p storage/framework/{sessions,views,cache,testing} storage/logs bootstrap/cache \
