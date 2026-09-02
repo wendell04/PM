@@ -1088,7 +1088,15 @@ export default function CheckoutPage() {
                         {item.qty} × ₱{Number(item.unitPrice).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </span>
                       {/* Per-line deposit indicator so a mixed cart (e.g. mug 50%, mousepad 30%, scrunchie full) is clear. */}
-                      {lineDpPct(item) > 0 ? (
+                      {designFeeOnly ? (
+                        /* A design-request checkout collects the design fee and nothing else; the
+                           goods are settled from My Orders after the proof is approved. Printing
+                           "50% DEPOSIT" here contradicts the Due Now panel a few inches below,
+                           which tells the same customer the whole remaining balance comes later. */
+                        <span style={{ background: 'rgba(96,165,250,0.12)', color: '#2563eb', border: '1px solid rgba(96,165,250,0.3)', borderRadius: 999, padding: '1px 7px', fontSize: '.62rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.04em' }}>
+                          Paid after proof
+                        </span>
+                      ) : lineDpPct(item) > 0 ? (
                         <span style={{ background: 'rgba(245,158,11,0.12)', color: '#b45309', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 999, padding: '1px 7px', fontSize: '.62rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.04em' }}>
                           {lineDpPct(item)}% deposit
                         </span>
