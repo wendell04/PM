@@ -530,6 +530,15 @@ export default function BusinessDashboardLayout({ children }) {
       permKey: "dashboard",
       icon: "M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z",
     },
+    // The replacement, carried alongside the original rather than swapped in, so the two can be
+    // compared on real data before anything is removed. Same permission key - it is the same
+    // page's job, done differently.
+    {
+      name: "Home (new)",
+      href: "/dashboard/business/home",
+      permKey: "dashboard",
+      icon: "M4 5a1 1 0 011-1h5a1 1 0 011 1v5a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM13 5a1 1 0 011-1h5a1 1 0 011 1v5a1 1 0 01-1 1h-5a1 1 0 01-1-1V5zM4 14a1 1 0 011-1h5a1 1 0 011 1v5a1 1 0 01-1 1H5a1 1 0 01-1-1v-5zM13 14a1 1 0 011-1h5a1 1 0 011 1v5a1 1 0 01-1 1h-5a1 1 0 01-1-1v-5z",
+    },
     { type: "divider", label: "Operations" },
     {
       name: "Orders",
@@ -710,6 +719,7 @@ export default function BusinessDashboardLayout({ children }) {
   const currentPageName = useMemo(() => {
     const map = {
       "/dashboard/business/dashboardoverview": "Dashboard",
+      "/dashboard/business/home": "Home",
       "/dashboard/business/orders": "Orders",
       "/dashboard/business/job-orders": "Job Orders",
       "/dashboard/business/pos": "Point of Sale",

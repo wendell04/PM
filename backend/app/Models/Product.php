@@ -22,6 +22,9 @@ class Product extends Model
         // from one to the other.
         'allowPlainPurchase',
         'isMadeToOrder',
+        // Sell it with an empty shelf. On the PRODUCT, not the material: a material is shared
+        // across recipes, so a promise made there would leak into every product using it.
+        'allowPreorder',
         'minOrderQty',
         'designFee',
         'designTemplates',
@@ -74,6 +77,7 @@ class Product extends Model
         'isCustom'            => 'boolean',
         'allowPlainPurchase'  => 'boolean',
         'isMadeToOrder'       => 'boolean',
+        'allowPreorder'       => 'boolean',
         'minOrderQty'         => 'integer',
         'designFee'           => 'float',
         'requiresDownpayment' => 'boolean',

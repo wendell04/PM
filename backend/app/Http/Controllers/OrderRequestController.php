@@ -722,7 +722,9 @@ class OrderRequestController extends Controller
                 'user_id'    => $customerId,
                 'type'       => 'quote_ready',
                 'title'      => 'Your quote is ready',
-                'message'    => "We've sent a price for \"{$req->productName}\". Tap to review and pay.",
+                'message'    => count($lineItems) > 1
+                    ? "We've sent a price for " . count($lineItems) . " items, including \"{$req->productName}\". Tap to review and pay."
+                    : "We've sent a price for \"{$req->productName}\". Tap to review and pay.",
                 'is_read'    => false,
                 'data'       => [
                     'orderRequestId' => (string) $req->_id,

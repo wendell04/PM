@@ -6,6 +6,7 @@ import { cloudinaryThumb } from '@/lib/cloudinaryImage';
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import { useCart } from '../layout';
 import ErrorBoundary from '../../../components/ErrorBoundary';
 import { useAuth } from '@/contexts/AuthContext';
@@ -87,6 +88,26 @@ export default function CartPage() {
   const router = useRouter();
   const { cartItems, isCartLoading, updateQty, removeFromCart, bulkRemove } = useCart();
   const { token } = useAuth();
+  const [hasAddress, setHasAddress] = useState(null);   // null = unknown / not signed in
+  const [addrDismissed, setAddrDismissed] = useState(false);
+
+  // Does this shopper already have somewhere to send things to? Signed out, the question does not
+  // arise - they will be asked to sign in before checkout anyway.
+  useEffect(() => {
+    if (!token) { setHasAddress(null); return; }
+    let cancelled = false;
+    fetchWithTimeout(`${API_URL}/api/addresses`, {
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+    }, 10000)
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => {
+        if (cancelled || !d) return;
+        const list = Array.isArray(d?.data) ? d.data : (d?.data?.addresses ?? d?.addresses ?? []);
+        setHasAddress(list.length > 0);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [token]);
 
   const [selectedItems, setSelectedItems] = useState(new Set());
   const [notes, setNotes] = useState('');
@@ -170,7 +191,9 @@ export default function CartPage() {
         allowCOD:            item.allowCOD ?? true,
       },
       stockCap: (() => {
-        if (!item.trackInventory || item.stockStatus === 'upon-order') return 99;
+        // 'upon-order' is set by the made-to-order flag and says nothing about supply; the
+        // checkout still refuses on real materials. Cap on what can be built.
+        if (!item.trackInventory) return 99;
         if (item.variantId && item.product?.variantAvailableQty?.[item.variantId] != null)
           return Math.max(item.product.variantAvailableQty[item.variantId], 1);
         if (item.product?.canProduce != null) return Math.max(item.product.availableQty ?? 0, 1);
@@ -388,6 +411,32 @@ export default function CartPage() {
           Continue shopping
         </Link>
 
+        {hasAddress === false && !addrDismissed && (
+          <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', background: '#fffbeb',
+            border: '1px solid #fcd34d', borderRadius: 10, padding: '11px 13px', marginBottom: 14 }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#b45309" strokeWidth="2"
+              style={{ flexShrink: 0, marginTop: 1 }}>
+              <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" /><circle cx="12" cy="10" r="3" />
+            </svg>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: '.86rem', fontWeight: 700, color: '#92400e' }}>Add your delivery address</div>
+              <div style={{ fontSize: '.8rem', color: '#92400e', marginTop: 2, lineHeight: 1.5 }}>
+                You can save it now instead of at checkout - it also lets us quote you a delivery
+                fee while we are still talking about your order.
+              </div>
+              <Link href="/shop/profile?tab=addresses"
+                style={{ display: 'inline-block', marginTop: 8, fontSize: '.8rem', fontWeight: 700,
+                  color: '#92400e', textDecoration: 'underline' }}>
+                Add address
+              </Link>
+            </div>
+            <button type="button" onClick={() => setAddrDismissed(true)} aria-label="Dismiss"
+              style={{ background: 'none', border: 'none', color: '#b45309', cursor: 'pointer', fontSize: '1rem', lineHeight: 1, padding: 2 }}>
+              &times;
+            </button>
+          </div>
+        )}
+
         <h1 style={{ fontSize: '1.4rem', fontWeight: 800, margin: 0 }}>Shopping cart</h1>
         <p style={{ color: '#6b7280', fontSize: '.86rem', margin: '4px 0 18px' }}>
           {enrichedCart.length} item{enrichedCart.length !== 1 ? 's' : ''} saved. Tick what you want to check out now.
@@ -594,6 +643,15 @@ export default function CartPage() {
                               {choice?.uploading ? 'Uploading your design...'
                                 : isReq ? 'We will design this for you'
                                 : 'This item still needs artwork'}
+                            </span>
+                          )}
+
+                          {item.designNotes && (
+                            <span style={{ display: 'block', width: '100%', order: 99, marginTop: 6,
+                              fontSize: '.72rem', color: '#4b5563', lineHeight: 1.5,
+                              borderTop: '1px dashed #d1d5db', paddingTop: 6 }}>
+                              <strong style={{ color: '#111827' }}>Your instructions: </strong>
+                              {item.designNotes}
                             </span>
                           )}
 

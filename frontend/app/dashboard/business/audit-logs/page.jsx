@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
-import CustomDropdown from '@/app/components/CustomDropdown';
+import { S, ICONS, CustomSelect, EmptyState, PaginationBar } from '../inventory-v2/shared';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL
   || 'http://127.0.0.1:8000';
@@ -22,6 +22,10 @@ export default function AuditLogsPage() {
 
   // Filters
   const [filterReason, setFilterReason] = useState('');
+  // Paging state for the new pager. Reset to page 1 whenever a filter changes, otherwise the
+  // reader narrows a search and lands on an empty page 7 of the old result set.
+  const [page, setPage] = useState(1);
+  const [perPage, setPerPage] = useState(25);
   const [filterStartDate, setFilterStartDate] = useState('');
   const [filterEndDate, setFilterEndDate] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
@@ -150,9 +154,15 @@ export default function AuditLogsPage() {
     );
   });
 
+  // Narrowing a search while sitting on page 7 would otherwise leave the reader on an empty page
+  // of a result set that no longer exists.
+  useEffect(() => { setPage(1); }, [filterReason, filterStartDate, filterEndDate, searchQuery, perPage]);
+
   return (
     <ErrorBoundary>
-      <div className="page-content-wrapper">
+      {/* page-content-wrapper is this module's own width and padding; every module converted
+          so far runs off S.page, so this one sat visibly different from its neighbours. */}
+      <div style={{ ...S.page, padding: '24px' }}>
 
         {/* Page Header */}
         <div className="page-header">
@@ -302,7 +312,7 @@ export default function AuditLogsPage() {
           </div>
 
           {/* Reason filter */}
-          <CustomDropdown
+          <CustomSelect
             value={filterReason}
             onChange={v => setFilterReason(v)}
             placeholder="All Reasons"
@@ -315,7 +325,7 @@ export default function AuditLogsPage() {
               { value: 'return', label: 'Return' },
               { value: 'sales-outside', label: 'Manual Sale' },
             ]}
-            style={{ minWidth: '160px' }}
+            style={{ minWidth: '170px' }}
           />
 
           {/* Start date */}
@@ -400,9 +410,7 @@ export default function AuditLogsPage() {
         {/* Loading state */}
         {isLoading && (
           <>
-            <style>{`
-              @keyframes alPageSkel { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
-            `}</style>
+            <style>{`@keyframes pmPulse { 0%,100% { opacity: 1 } 50% { opacity: .45 } }`}</style>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '1rem' }}>
               {[...Array(5)].map((_, i) => (
                 <div
@@ -411,7 +419,8 @@ export default function AuditLogsPage() {
                     height: '56px',
                     borderRadius: '8px',
                     background: 'var(--dark2)',
-                    animation: 'alPageSkel 1.5s ease-in-out infinite',
+                    border: '1px solid var(--border)',
+                    animation: 'pmPulse 1.5s ease-in-out infinite',
                   }}
                 />
               ))}
@@ -427,24 +436,13 @@ export default function AuditLogsPage() {
             overflow: 'hidden',
           }}>
             {filtered.length === 0 ? (
-              <div className="empty-state">
-                <div className="empty-icon">
-                  <svg width="48" height="48"
-                    viewBox="0 0 24 24" fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.5">
-                    <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/>
-                  </svg>
-                </div>
-                <h3 className="empty-title">
-                  No Audit Logs Found
-                </h3>
-                <p className="empty-description">
-                  {filterReason || filterStartDate || filterEndDate || searchQuery
-                    ? 'Try adjusting your filters.'
-                    : 'Stock movements will appear here once inventory is updated.'}
-                </p>
-              </div>
+              <EmptyState
+                icon={ICONS.info}
+                message="No audit logs found"
+                sub={filterReason || filterStartDate || filterEndDate || searchQuery
+                  ? 'Try widening or clearing a filter.'
+                  : 'Stock movements appear here once inventory is updated.'}
+              />
             ) : (
               <div style={{ overflowX: 'auto' }}>
                 <table style={{
@@ -489,7 +487,7 @@ export default function AuditLogsPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {filtered.map((log, i) => {
+                    {filtered.slice((page - 1) * perPage, page * perPage).map((log, i) => {
                       const isPositive = log.quantity > 0;
                       return (
                         <tr key={log._id || i} style={{
@@ -633,21 +631,19 @@ export default function AuditLogsPage() {
         )}
 
         {/* Row count */}
+        {/* There was no pager at all - the page simply printed however many rows came back and
+            told the reader to narrow the dates. An audit log is the one screen where scanning
+            backwards is the whole job, so it gets a real pager and a rows-per-page control. */}
         {!isLoading && filtered.length > 0 && (
-          <div style={{
-            marginTop: '0.75rem',
-            fontSize: '0.8rem',
-            color: 'var(--gray)',
-            textAlign: 'right',
-          }}>
-            Showing {filtered.length} of {logs.length}
-            {' '}log{logs.length !== 1 ? 's' : ''}
+          <>
+            <PaginationBar total={filtered.length} page={page} perPage={perPage}
+              onPage={setPage} onPerPage={setPerPage} />
             {logs.length === 100 && (
-              <span style={{ color: 'var(--gold)', marginLeft: '0.5rem' }}>
-                (limit: 100 — use date filters to narrow results)
-              </span>
+              <div style={{ marginTop: '0.5rem', fontSize: '0.78rem', color: 'var(--gold)', textAlign: 'right' }}>
+                The server returns the 100 most recent movements. Use the date filters to reach older ones.
+              </div>
             )}
-          </div>
+          </>
         )}
 
       </div>

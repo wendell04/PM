@@ -39,6 +39,7 @@ const QuotationModal = ({ onClose, onSubmit, isSending, token, customerId, custo
   // The customer's pinned address - so the delivery fee can be checked against a
   // courier (Lalamove etc.) before the quote is sent.
   const [addr, setAddr] = useState(null);
+  const [shipMode, setShipMode] = useState(null);
   const [addrLoading, setAddrLoading] = useState(false);
   const [addrPhone, setAddrPhone] = useState('');
   const [copied, setCopied] = useState(false);
@@ -86,6 +87,12 @@ const QuotationModal = ({ onClose, onSubmit, isSending, token, customerId, custo
   useEffect(() => {
     if (!customerId || !token) return;
     let cancelled = false;
+    // Which way this shop prices shipping. Public endpoint, no auth needed.
+    fetch(`${API_URL}/api/public/settings`)
+      .then(r => r.json())
+      .then(d => setShipMode(d?.data?.shippingMode ?? null))
+      .catch(() => {});
+
     setAddrLoading(true);
     fetchWithTimeout(`${API_URL}/api/admin/customers/${customerId}/addresses`, {
       headers: { Authorization: `Bearer ${token}` },
@@ -848,8 +855,8 @@ const QuotationModal = ({ onClose, onSubmit, isSending, token, customerId, custo
               <div style={{ fontSize: '12px', color: 'var(--gray)' }}>Loading address…</div>
             ) : !addr ? (
               <div style={{ fontSize: '12px', color: 'var(--gray)', lineHeight: 1.5 }}>
-                No saved address yet - the customer will pin one at checkout. Leave the
-                delivery fee blank if you can&apos;t price it yet.
+                No saved address yet - the customer will pin one at checkout, and the quote can be
+                sent without it. Ask for it here in the chat if you need to price delivery first.
               </div>
             ) : (
               <>
@@ -893,6 +900,23 @@ const QuotationModal = ({ onClose, onSubmit, isSending, token, customerId, custo
             <DecimalInput value={form.deliveryFee} onChange={set('deliveryFee')} />
           </Field>
         </div>
+
+        {/* Said where the number is typed, not on a settings page the owner is not looking at.
+            Address-aware, because the right advice is opposite in the two cases. */}
+        {shipMode === 'courier_booked' && (
+          <div style={{ padding: '9px 11px', borderRadius: 8, background: 'rgba(212,168,67,0.06)',
+            border: '1px solid rgba(212,168,67,0.22)', fontSize: '11.5px', color: 'var(--gray)', lineHeight: 1.5 }}>
+            Your shop is on <strong style={{ color: 'var(--white)' }}>Courier Booked</strong>, so nothing
+            here is calculated for you.{' '}
+            {addr
+              ? <>Check the address above in Lalamove or Grab to see what the booking costs, then put
+                  that figure here - it is charged with the order. Leave it blank and the customer
+                  pays the rider separately after you book.</>
+              : <>This customer has no address yet. Ask for it in this chat so you can check the
+                  booking cost, or send the quote without it - delivery is then settled after the
+                  order.</>}
+          </div>
+        )}
 
         <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '12px' }}>
           <Field label={<>Downpayment (&#8369;, optional){dpPct > 0 ? ` - ${dpPct}%` : ''}</>}>

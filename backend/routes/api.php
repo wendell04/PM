@@ -270,6 +270,10 @@ Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
     Route::post('/admin/orders/{id}/approve-design', [OrderController::class, 'approveDesign']);
     Route::post('/admin/orders/{id}/revert-design',  [OrderController::class, 'revertDesignApproval']);
     Route::post('/admin/orders/{id}/rush-decision',   [OrderController::class, 'rushDecision']);
+    // Turn an uploaded file into a design job the shop will draw, billing the design fee onto
+    // the balance. restartDesignJob does the same money move but is customer-only and needs an
+    // existing draft, so neither side could do this for an order that arrived as an upload.
+    Route::post('/admin/orders/{id}/convert-to-design', [OrderController::class, 'convertToDesignJob']);
     Route::post('/admin/orders/{id}/remind-balance', [OrderController::class, 'remindBalance']);
     Route::post('/admin/orders/{id}/write-off',      [OrderController::class, 'writeOffOrder']);
     // RBAC: system settings — Owner / Super Admin only (no staff grid grants `systemSettings`)
@@ -345,6 +349,9 @@ Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
 
     // ─── Record Payment ────────────────────────────────────────────────────────────────────────
     Route::post('/admin/orders/{id}/record-payment',  [OrderController::class, 'recordPayment']);
+    // Money going the other way. Same permission as taking a payment, because settling a debt to
+    // a customer is the same kind of act as recording one from them.
+    Route::post('/admin/orders/{id}/mark-refunded', [OrderController::class, 'markRefunded']);
 
     // ── Walk-in / POS ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
     Route::post('/admin/orders/walk-in',       [WalkInOrderController::class, 'store']);

@@ -1896,6 +1896,18 @@ export default function OrdersHistoryPage() {
                           </div>
                         )}
 
+                        {/* What cancelling costs, said where the money is committed rather than
+                            only in a clause ticked weeks ago on the product page. Deliberately
+                            derived from the deposit already shown above - the deposit IS the cap. */}
+                        <div style={{ padding: '8px 11px', borderRadius: '8px', background: 'var(--dark)', border: '1px solid var(--border)', fontSize: '0.7rem', color: 'var(--gray)', lineHeight: 1.55 }}>
+                            <strong style={{ color: 'var(--white)' }}>If you cancel later:</strong>{' '}
+                            before we start making it, everything comes back except the downpayment.
+                            Once production has started we keep the downpayment and nothing more -
+                            anything you paid above it is refunded, and you are never billed extra
+                            for materials. If <em>we</em> cancel, or we get your order wrong, you get
+                            all of it back.
+                        </div>
+
                         {/* Breakdown for awaiting_payment */}
                         {selectedOrder.orderStatus === 'awaiting_payment' && (
                           <div style={{ padding: '10px 12px', background: 'var(--dark)', borderRadius: '8px', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '5px', marginBottom: '4px' }}>

@@ -33,6 +33,11 @@ class ProductController extends Controller
         // in-stock goods showing as sold out with nothing on any screen to say why.
         // Matching nothing now means "not this branch", so the per-combination bomId lookup below
         // takes over, and that one is keyed on an id no rename can change.
+        // One decision, taken on the product, for every variant of it. A shared material
+        // could not carry this: Mug Box White 11oz sits in all three mug recipes, so a promise
+        // made there would silently promise mugs the owner never had in mind.
+        $preorder = (bool) ($product->allowPreorder ?? false);
+
         $groupBoms = !empty($product->bomGroupName)
             ? \App\Models\BillOfMaterial::where('productGroupName', $product->bomGroupName)->get()
             : collect();
@@ -56,7 +61,8 @@ class ProductController extends Controller
                     $cp = $min === PHP_INT_MAX ? 0 : $min;
                     $variantCanProduce[$bomId] = $cp;
 
-                    $backorder = (bool) ($product->variantBackorder[$bomId] ?? false);
+                    // Product-level override first, then what the materials themselves allow.
+                    $backorder = $preorder || (bool) ($product->variantBackorder[$bomId] ?? false);
                     if ($backorder) {
                         $variantAvailableQty[$bomId] = 9999;
                     } else {
@@ -98,7 +104,7 @@ class ProductController extends Controller
                         }
                         $cp = $min === PHP_INT_MAX ? 0 : $min;
                         $variantCanProduce[$comboId] = $cp;
-                        $backorder = (bool) ($product->variantBackorder[$comboId] ?? false);
+                        $backorder = $preorder || (bool) ($product->variantBackorder[$comboId] ?? false);
                         if ($backorder) {
                             $variantAvailableQty[$comboId] = 9999;
                         } else {
@@ -161,6 +167,11 @@ class ProductController extends Controller
         $variantCanProduce   = null;
         $variantAvailableQty = null;
 
+        // Must match computeAvailability exactly - the grid and the product page describing the
+        // same item differently is the fault that produced "100 can build" in the CMS beside
+        // "Only 10 left" on the shop.
+        $preorder = (bool) ($product->allowPreorder ?? false);
+
         $calcMin = function (array $components) use ($inventoryMap): int {
             $min = PHP_INT_MAX;
             foreach ($components as $component) {
@@ -182,7 +193,7 @@ class ProductController extends Controller
                 $bomId = (string) $bom->_id;
                 $cp    = $calcMin($bom->components ?? []);
                 $variantCanProduce[$bomId] = $cp;
-                $backorder = (bool) ($product->variantBackorder[$bomId] ?? false);
+                $backorder = $preorder || (bool) ($product->variantBackorder[$bomId] ?? false);
                 if ($backorder) {
                     $variantAvailableQty[$bomId] = 9999;
                 } else {
@@ -210,7 +221,7 @@ class ProductController extends Controller
                     $bom = $bomsById[(string) $bomId] ?? null;
                     $cp  = $bom ? $calcMin($bom->components ?? []) : 0;
                     $variantCanProduce[$comboId] = $cp;
-                    $backorder = (bool) ($product->variantBackorder[$comboId] ?? false);
+                    $backorder = $preorder || (bool) ($product->variantBackorder[$comboId] ?? false);
                     if ($backorder) {
                         $variantAvailableQty[$comboId] = 9999;
                     } else {
@@ -679,6 +690,8 @@ class ProductController extends Controller
                 'variantStock'      => 'nullable|array',
                 'variantImageUrls'  => 'nullable|array',
                 'isMadeToOrder'       => 'nullable|boolean',
+                'allowPreorder'       => 'nullable|boolean',
+                'allowPreorder'       => 'nullable|boolean',
                 'minOrderQty'         => 'nullable|integer|min:1',
                 'designFee'           => 'nullable|numeric|min:0',
                 // Print-ready templates the customer downloads before drawing anything -

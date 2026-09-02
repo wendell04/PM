@@ -6,7 +6,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import CustomDropdown from '@/app/components/CustomDropdown';
 import { ResponsiveContainer, LineChart, Line, BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
-import { PaginationBar } from '@/app/dashboard/business/inventory-v2/shared';
+import { S, PaginationBar, SummaryCard, TabBar } from '@/app/dashboard/business/inventory-v2/shared';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
@@ -56,101 +56,34 @@ function fileDatePart(d) {
   return d && String(d).trim() ? String(d).trim() : 'all';
 }
 
-function StatCard({ label, value, sub }) {
-  return (
-    <div
-      style={{
-        background: 'var(--dark2)',
-        border: '1px solid var(--border)',
-        borderRadius: '12px',
-        padding: '1.25rem 1.5rem',
-      }}
-    >
-      <div
-        style={{
-          fontSize: '0.72rem',
-          color: 'var(--gray)',
-          textTransform: 'uppercase',
-          letterSpacing: '0.08em',
-          marginBottom: '0.5rem',
-        }}
-      >
-        {label}
-      </div>
-      <div
-        style={{
-          fontSize: '1.75rem',
-          fontWeight: 700,
-          color: 'var(--white)',
-          fontFamily: 'inherit',
-          lineHeight: 1.2,
-        }}
-      >
-        {value}
-      </div>
-      {sub != null && sub !== '' && (
-        <div style={{ fontSize: '0.75rem', color: 'var(--gray)', marginTop: '0.35rem' }}>{sub}</div>
-      )}
-    </div>
-  );
+// Kept as a named wrapper so the four call sites read the same, but drawn by the shared card the
+// rest of the dashboard uses. `accent` marks the headline figure, as Sales does with revenue.
+function StatCard({ label, value, sub, accent }) {
+  return <SummaryCard label={label} value={value} sub={sub} accent={accent} />;
 }
 
 function DateRangeFilter({ startDate, endDate, onStartChange, onEndChange, onApply, onClear, loading }) {
-  const inputStyle = {
-    height: '36px',
-    padding: '0 0.75rem',
-    background: 'var(--dark2)',
-    border: '1px solid var(--border)',
-    color: 'var(--white)',
-    borderRadius: '8px',
-    fontSize: '0.82rem',
-    boxSizing: 'border-box',
-  };
+  const inputStyle = { ...S.input, height: '36px', padding: '0 0.75rem' };
+  // A bare row of controls floating on the page background. Sales and Orders put their filters
+  // in a card of their own above the table, which is what makes them read as a toolbar rather
+  // than as three inputs somebody left there.
   return (
-    <div
-      style={{
-        display: 'flex',
-        flexDirection: 'row',
-        gap: '0.75rem',
-        alignItems: 'center',
-        flexWrap: 'wrap',
-      }}
-    >
-      <input type="date" value={startDate} onChange={(e) => onStartChange(e.target.value)} style={inputStyle} />
-      <input type="date" value={endDate} onChange={(e) => onEndChange(e.target.value)} style={inputStyle} />
-      <button
-        type="button"
-        onClick={onApply}
-        disabled={loading}
-        style={{
-          height: '36px',
-          padding: '0 1rem',
-          background: 'var(--gold)',
-          color: 'var(--black)',
-          border: 'none',
-          borderRadius: '8px',
-          fontWeight: 700,
-          cursor: loading ? 'not-allowed' : 'pointer',
-          opacity: loading ? 0.5 : 1,
-        }}
-      >
+    <div style={{ ...S.card, ...S.row, gap: '10px', padding: '12px 16px', marginBottom: '14px' }}>
+      <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '.5px' }}>
+        From
+      </span>
+      <input type="date" value={startDate} onChange={(e) => onStartChange(e.target.value)}
+        style={{ ...inputStyle, width: 'auto' }} />
+      <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '.5px' }}>
+        To
+      </span>
+      <input type="date" value={endDate} onChange={(e) => onEndChange(e.target.value)}
+        style={{ ...inputStyle, width: 'auto' }} />
+      <button type="button" onClick={onApply} disabled={loading}
+        style={{ ...S.btnPrimary, opacity: loading ? 0.5 : 1, cursor: loading ? 'not-allowed' : 'pointer' }}>
         Apply
       </button>
-      <button
-        type="button"
-        onClick={onClear}
-        style={{
-          height: '36px',
-          padding: '0 1rem',
-          background: 'transparent',
-          color: 'var(--gray)',
-          border: '1px solid var(--border)',
-          borderRadius: '8px',
-          cursor: 'pointer',
-        }}
-      >
-        Clear
-      </button>
+      <button type="button" onClick={onClear} style={S.btnGhost}>Clear</button>
     </div>
   );
 }
@@ -597,16 +530,7 @@ export default function ReportsPage() {
     }
   };
 
-  const selectStyle = {
-    height: '36px',
-    padding: '0 0.75rem',
-    background: 'var(--dark2)',
-    border: '1px solid var(--border)',
-    color: 'var(--white)',
-    borderRadius: '8px',
-    fontSize: '0.82rem',
-    boxSizing: 'border-box',
-  };
+  const selectStyle = { ...S.select, height: '36px', padding: '0 0.75rem' };
 
   const salesGrouped = salesData?.grouped;
   const salesGroupedLen = salesGrouped?.length ?? 0;
@@ -623,51 +547,19 @@ export default function ReportsPage() {
           50% { opacity: 0.4; }
         }
       `}</style>
-      <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '2rem 1.5rem' }}>
+      {/* Was capped at 1280px while Orders and Inventory run full width off S.page. */}
+      <div style={{ ...S.page, padding: '24px' }}>
         {!token && (
           <p style={{ color: 'var(--gray)', fontSize: '0.9rem' }}>Sign in to load reports.</p>
         )}
 
         {token && (
           <>
-            <div
-              style={{
-                display: 'flex',
-                flexDirection: 'row',
-                borderBottom: '1px solid var(--border)',
-                marginBottom: '1.5rem',
-                gap: 0,
-                flexWrap: 'wrap',
-              }}
-            >
-              {TABS.map((t) => {
-                const active = activeTab === t.id;
-                return (
-                  <button
-                    key={t.id}
-                    type="button"
-                    onClick={() => setActiveTab(t.id)}
-                    style={{
-                      padding: '0.75rem 1.25rem',
-                      fontSize: '0.85rem',
-                      fontWeight: 600,
-                      background: 'none',
-                      border: 'none',
-                      borderBottom: active ? '2px solid var(--gold)' : '2px solid transparent',
-                      color: active ? 'var(--gold)' : 'var(--gray)',
-                      cursor: 'pointer',
-                    }}
-                    onMouseEnter={(e) => {
-                      if (!active) e.currentTarget.style.color = 'var(--white)';
-                    }}
-                    onMouseLeave={(e) => {
-                      if (!active) e.currentTarget.style.color = 'var(--gray)';
-                    }}
-                  >
-                    {t.label}
-                  </button>
-                );
-              })}
+            {/* A fourth underline-tab implementation. TabBar is the one every converted
+                module uses, and it carries counts when a tab has them. */}
+            <div style={{ marginBottom: '18px' }}>
+              <TabBar tabs={TABS.map(t => ({ id: t.id, label: t.label }))}
+                active={activeTab} onChange={setActiveTab} />
             </div>
 
             {activeTab === 'sales' && (
@@ -697,9 +589,9 @@ export default function ReportsPage() {
                 {salesLoading && <LoadingRows />}
                 {!salesLoading && salesData && (
                   <>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem', marginBottom: '1rem' }}>
+                    <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '10px' }}>
                       <StatCard label="Total Transactions" value={String(salesData.totalSales ?? 0)} />
-                      <StatCard label="Total Revenue"      value={fmtPeso(salesData.totalRevenue)} />
+                      <StatCard label="Total Revenue"      value={fmtPeso(salesData.totalRevenue)} accent />
                       <StatCard label="Total Cost"         value={fmtPeso(salesData.totalCost)} />
                       <StatCard label="Net Profit"         value={fmtPeso(salesData.totalProfit)} />
                     </div>
@@ -842,8 +734,8 @@ export default function ReportsPage() {
                 {ordersLoading && <LoadingRows />}
                 {!ordersLoading && ordersData && (
                   <>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem', marginBottom: '1rem' }}>
-                      <StatCard label="Total Orders"  value={String(ordersData.totalOrders    ?? 0)} />
+                    <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '10px' }}>
+                      <StatCard label="Total Orders"  value={String(ordersData.totalOrders    ?? 0)} accent />
                       <StatCard label="Completed"     value={String(ordersData.completedOrders ?? 0)} />
                       <StatCard label="Pending"       value={String(ordersData.pendingOrders   ?? 0)} />
                       <StatCard label="Cancelled"     value={String(ordersData.cancelledOrders ?? 0)} />
@@ -911,12 +803,12 @@ export default function ReportsPage() {
                     <div
                       style={{
                         display: 'grid',
-                        gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))',
+                        gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))',
                         gap: '1rem',
                         marginBottom: '1rem',
                       }}
                     >
-                      <StatCard label="Total Items" value={String(invTotal)} />
+                      <StatCard label="Total Items" value={String(invTotal)} accent />
                       <StatCard label="Low Stock Items" value={String(invLow)} />
                       <StatCard label="Out of Stock Items" value={String(invOut)} />
                     </div>
@@ -1134,12 +1026,12 @@ export default function ReportsPage() {
                     <div
                       style={{
                         display: 'grid',
-                        gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))',
+                        gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))',
                         gap: '1rem',
                         marginBottom: '1.5rem',
                       }}
                     >
-                      <StatCard label="Total Requests" value={String(orData.total ?? 0)} />
+                      <StatCard label="Total Requests" value={String(orData.total ?? 0)} accent />
                       <StatCard label="Delivered" value={String(orData.delivered ?? 0)} />
                       <StatCard label="Cancelled" value={String(orData.cancelled ?? 0)} />
                       <StatCard

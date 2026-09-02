@@ -44,7 +44,7 @@ const EMPTY_FORM = {
   pricingMode: 'fixed', price: '',
   tiers: [{ id: uid('t'), minQty: '1', maxQty: '', prices: { __base__: '' } }],
   collectionIds: [],
-  isCustomizable: false, allowPlain: true, allowCOD: true, isMadeToOrder: false,
+  isCustomizable: false, allowPlain: true, allowCOD: true, isMadeToOrder: false, allowPreorder: false,
   optionGroups: [],
   downpaymentPct: '0', hideWhenOutOfStock: false, isPublished: false,
   isFeatured: false,
@@ -420,6 +420,7 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
                             : !product.isCustomizable,
       allowCOD:           product.allowCOD ?? true,
       isMadeToOrder:      product.isMadeToOrder ?? false,
+      allowPreorder:      product.allowPreorder ?? false,
       downpaymentPct:     product.downpaymentPct != null ? String(product.downpaymentPct) : '0',
       hideWhenOutOfStock: product.hideWhenOutOfStock ?? false,
       isPublished:        product.isPublished ?? false,
@@ -747,6 +748,7 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
       type: f.type, pricingMode: f.pricingMode,
       collectionIds: f.collectionIds,
       isCustomizable: f.isCustomizable, allowCOD: f.allowCOD, isMadeToOrder: f.isMadeToOrder,
+      allowPreorder: f.allowPreorder,
       // Both names, because the API has historically read `isCustom` while this form has spoken
       // `isCustomizable`.
       isCustom: f.isCustomizable,
@@ -1491,8 +1493,50 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
             <Card>
               <CardTitle>Order Settings</CardTitle>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                <ToggleRow label="Made to Order" hint="No stock held; supplies ordered on demand" on={form.isMadeToOrder} onChange={v => setF('isMadeToOrder', v)} />
-                <ToggleRow label="Customizable" hint="Customers upload or request a design" on={form.isCustomizable} onChange={v => setF('isCustomizable', v)} />
+                {/* The old hint - "No stock held; supplies ordered on demand" - described a different
+                    flag entirely. Buying per order is isOnDemand on the MATERIAL; this toggle has
+                    never done that, and reading it that way is what made the storefront offer
+                    quantities the checkout then refused. */}
+{/* Pre-order sits with the product because it is a selling decision about THIS item.
+                    It deliberately does not live on the material: a material is shared across
+                    recipes - Mug Box White 11oz is in all three mug BOMs - so a promise made there
+                    would silently promise products nobody considered. Applies to ready-made and
+                    customizable alike. */}
+                <ToggleRow
+                  label="Allow pre-order"
+                  hint="Customers can keep ordering after the stock runs out, and the card shows Pre-order instead of Out of Stock. Only for what you can genuinely restock in time - the delivery date is already on the order."
+                  on={form.allowPreorder}
+                  onChange={v => setF('allowPreorder', v)} />
+
+                {/* Made to Order is what routes a line to a job order. A customizable product is
+                    produced by definition, so it is already on and the toggle would be a second
+                    switch for one outcome; it only earns its place on a non-customizable product
+                    that is still made rather than picked off a shelf. */}
+                {form.isCustomizable ? (
+                  <div style={{ padding: '10px 12px', borderRadius: 8, background: 'rgba(212,168,67,0.06)', border: '1px solid rgba(212,168,67,0.2)' }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--white)' }}>Made to Order - always on here</div>
+                    <div style={{ fontSize: 11.5, color: 'var(--gray)', marginTop: 3, lineHeight: 1.5 }}>
+                      A customizable product is produced after the order, so it already gets a job order.
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <ToggleRow label="Made to Order" hint="Produced after the order, so it gets a job order. Leave off for anything you pick off a shelf." on={form.isMadeToOrder} onChange={v => setF('isMadeToOrder', v)} />
+                    {form.isMadeToOrder && (
+                      <div style={{ marginTop: -4, padding: '10px 12px', borderRadius: 8, background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.25)' }}>
+                        <div style={{ fontSize: 12.5, fontWeight: 700, color: '#b91c1c' }}>This product will not ship on its own</div>
+                        <div style={{ fontSize: 11.5, color: 'var(--gray)', marginTop: 3, lineHeight: 1.5 }}>
+                          Every order of it waits for someone to create a Job Order and pass QC, and its
+                          materials are held rather than deducted. Correct if you really make it per order.
+                          If it sits on a shelf ready to pack, switch this off - nothing chases a stalled
+                          job, so the promised delivery date would just pass.
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+                <ToggleRow label="Customizable" hint="Customers upload or request a design" on={form.isCustomizable}
+                  onChange={v => setForm(p => ({ ...p, isCustomizable: v, isMadeToOrder: v ? true : p.isMadeToOrder }))} />
                 {/* These are NOT opposites. A totebag can be sold blank off the shelf AND printed to
                     order, from the same stock. Before this, making it plain meant nobody could
                     customise it any more - one flag doing the work of two. */}

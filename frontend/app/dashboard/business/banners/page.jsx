@@ -684,11 +684,9 @@ export default function BannerManagementPage() {
 
   if (isLoading) {
     return (
-      <div className="skeleton-page" style={{ padding: "2rem" }}>
-        <style>{`
-          @keyframes bnPageSkel { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
-        `}</style>
-        <div style={{ display: "flex", flexDirection: "column", gap: "8px", maxWidth: "1400px", margin: "0 auto" }}>
+      <div className="skeleton-page" style={{ padding: "24px" }}>
+        <style>{`@keyframes pmPulse { 0%,100% { opacity: 1 } 50% { opacity: .45 } }`}</style>
+        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
           {[...Array(5)].map((_, i) => (
             <div
               key={i}
@@ -696,7 +694,8 @@ export default function BannerManagementPage() {
                 height: "56px",
                 borderRadius: "8px",
                 background: "var(--dark2)",
-                animation: "bnPageSkel 1.5s ease-in-out infinite",
+                border: "1px solid var(--border)",
+                animation: "pmPulse 1.5s ease-in-out infinite",
               }}
             />
           ))}
@@ -719,15 +718,15 @@ export default function BannerManagementPage() {
     )}
     <div className="banner-management-container">
       <style jsx>{`
-        .banner-management-container { padding: 2rem; max-width: 1400px; margin: 0 auto; background: var(--black); min-height: 100vh; }
+        .banner-management-container { padding: 24px; background: var(--black); min-height: 100vh; }
 
         .banner-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; }
         .banner-actions { display: flex; gap: 0.75rem; }
         .banner-btn { padding: 0.625rem 1.5rem; border-radius: 8px; font-size: 0.875rem; font-weight: 600; cursor: pointer; transition: all 0.2s; border: none; font-family: 'DM Sans', sans-serif; }
         .banner-btn-secondary { background: transparent; border: 1px solid var(--border); color: var(--gray-light); }
         .banner-btn-secondary:hover { border-color: var(--gold); color: var(--white); }
-        .banner-btn-primary { background: linear-gradient(135deg, var(--gold-light), var(--gold-dark)); color: var(--black); font-weight: 700; }
-        .banner-btn-primary:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(212, 168, 67, 0.3); }
+        .banner-btn-primary { background: var(--gold); color: #1a1a1a; font-weight: 600; }
+        .banner-btn-primary:hover { filter: brightness(1.05); }
         .banner-btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
 
         .banner-grid { display: grid; grid-template-columns: 340px 1fr; gap: 1.5rem; }

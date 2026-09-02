@@ -1489,6 +1489,11 @@ class PaymentController extends Controller
             'unitPrice'     => round((float) ($line['unitPrice'] ?? 0), 2),
             'lineTotal'     => round((float) ($line['lineTotal'] ?? 0), 2),
             'flashSaleId'   => null,
+            'materials'     => array_values(array_map(fn ($m) => [
+                'inventoryId' => (string) ($m['inventoryId'] ?? ''),
+                'name'        => $m['name'] ?? null,
+                'qty'         => (float) ($m['qty'] ?? 0),
+            ], array_filter($line['materials'] ?? [], fn ($m) => !empty($m['inventoryId'])))),
             'designUrl'     => $orderRequest->designUrl,
             'designNotes'   => $orderRequest->designNotes,
             'selectedVariants' => $orderRequest->selectedVariants ?? [],

@@ -499,6 +499,7 @@ function CustomOrderInner() {
   function handleBuyNow() {
     if (designMode === 'upload' && uploading) { setSubmitError('Your files are still uploading, please wait.'); return; }
     if (designMode === 'upload' && !designFileUrl) { setSubmitError('Upload your design first.'); return; }
+    if (designMode === 'request' && !briefOk) { setSubmitError('Tell us what you need before ordering.'); return; }
     if (!designMode) { setSubmitError('Choose how you want to provide your design.'); return; }
     setSubmitError(null);
 
@@ -567,7 +568,11 @@ function CustomOrderInner() {
   // A custom line can be ordered once its design intent is set: an uploaded design needs its file,
   // a requested design needs nothing yet (the shop draws it after checkout). Quote inquiries have
   // their own Submit button and never hit the cart.
-  const canOrder = !isInquiry && (designMode === 'request' || (designMode === 'upload' && !!designFileUrl));
+  const briefOk = designNotes.trim().length >= 10;
+  const canOrder = !isInquiry && (
+    (designMode === 'request' && briefOk) ||
+    (designMode === 'upload' && !!designFileUrl)
+  );
 
   // Puts the configured item - artwork and all - into the ordinary cart. From here it is a
   // normal line that happens to carry a design, which is what makes a mug and a totebag
@@ -575,6 +580,7 @@ function CustomOrderInner() {
   async function handleAddToCart() {
     if (designMode === 'upload' && uploading) { setSubmitError('Your files are still uploading, please wait.'); return; }
     if (designMode === 'upload' && !designFileUrl) { setSubmitError('Upload your design first.'); return; }
+    if (designMode === 'request' && !briefOk) { setSubmitError('Tell us what you need before ordering.'); return; }
     if (!designMode) { setSubmitError('Choose how you want to provide your design.'); return; }
     setAddingToCart(true);
     setSubmitError(null);
@@ -692,8 +698,16 @@ function CustomOrderInner() {
             }
           : {}),
         ...(designMode === 'request'
-          ? { designRequested: true, designFee, designNotes: designNotes.trim() || null }
+          ? {
+              designRequested: true,
+              designFee,
+              ...(uploadedFiles.length
+                ? { designFiles: uploadedFiles.map(f => ({ url: f.url, name: f.name })) }
+                : {}),
+            }
           : {}),
+        // True of BOTH modes: someone sending their own artwork still has instructions for it.
+        designNotes: designNotes.trim() || null,
       };
 
       // "Submit for review" must never take money - that is the whole promise of the
@@ -1075,7 +1089,10 @@ function CustomOrderInner() {
                     <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
                   </svg>
                   <p style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.2rem', color: designMode === 'upload' ? 'var(--gold)' : 'var(--white)' }}>I have a design</p>
-                  <p style={{ fontSize: '0.75rem', color: 'var(--gray)', margin: 0 }}>Upload your file (JPG, PNG, PDF, AI)</p>
+                  <p style={{ fontSize: '0.75rem', color: 'var(--gray)', margin: 0, lineHeight: 1.5 }}>
+                    Your file is finished and ready to print as it is. We print exactly what you send.
+                    <span style={{ display: 'block', color: '#166534', fontWeight: 700, marginTop: 4 }}>Free</span>
+                  </p>
                 </button>
 
                 <button onClick={() => handlePickMode('request')}
@@ -1084,14 +1101,37 @@ function CustomOrderInner() {
                     <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
                   </svg>
                   <p style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.2rem', color: designMode === 'request' ? 'var(--gold)' : 'var(--white)' }}>Request a design</p>
-                  <p style={{ fontSize: '0.75rem', color: 'var(--gray)', margin: 0 }}>
-                    We&apos;ll create it for you
+                  <p style={{ fontSize: '0.75rem', color: 'var(--gray)', margin: 0, lineHeight: 1.5 }}>
+                    You have photos, ideas or text and want us to make the artwork. We send you a
+                    mockup to approve before anything is printed.
                     {product.designFee > 0 && !isInquiry && (
-                      <span style={{ color: 'var(--gold)', fontWeight: 700, marginLeft: '4px' }}>+{fmt(product.designFee)}</span>
+                      <span style={{ display: 'block', color: 'var(--gold)', fontWeight: 700, marginTop: 4 }}>
+                        +{fmt(product.designFee)} - includes 3 revisions
+                      </span>
                     )}
                   </p>
                 </button>
               </div>
+
+              <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginBottom: '1.1rem',
+                padding: '9px 11px', borderRadius: 8, background: 'rgba(212,168,67,0.06)',
+                border: '1px solid rgba(212,168,67,0.2)' }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#D4A843" strokeWidth="2"
+                  style={{ flexShrink: 0, marginTop: 2 }}>
+                  <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
+                </svg>
+                <span style={{ fontSize: '0.75rem', color: 'var(--gray)', lineHeight: 1.55 }}>
+                  <strong style={{ color: 'var(--white)' }}>Not sure?</strong> Choose{' '}
+                  <strong style={{ color: 'var(--white)' }}>I have a design</strong> and message us -
+                  we will look at your file and tell you if it needs work.{' '}
+                  <strong style={{ color: 'var(--white)' }}>The design fee is only charged if you agree to it.</strong>
+                </span>
+              </div>
+
+              {/* One picker, both modes: the artwork on an upload, the references on a request. */}
+              <input ref={fileInputRef} type="file" multiple accept=".jpg,.jpeg,.png,.webp,.pdf,.ai,.psd,.svg"
+                style={{ display: 'none' }}
+                onChange={e => { handleFilesSelect(e.target.files); e.target.value = ''; }} />
 
               {designMode === 'upload' && (
                 <div>
@@ -1116,8 +1156,6 @@ function CustomOrderInner() {
                       </div>
                     </div>
                   )}
-                  <input ref={fileInputRef} type="file" multiple accept=".jpg,.jpeg,.png,.webp,.pdf,.ai,.psd,.svg" style={{ display: 'none' }}
-                    onChange={e => { handleFilesSelect(e.target.files); e.target.value = ''; }} />
 
                   {designFiles.length > 0 && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '0.75rem' }}>
@@ -1187,11 +1225,19 @@ function CustomOrderInner() {
                   needs these as much as the file itself; without a field they had to guess. */}
               {designMode === 'upload' && (
                 <div style={{ marginTop: '0.85rem' }}>
+                  {/* Not required, deliberately. A mandatory box gets "ok" and "print po" typed
+                      into it to reach the button - a toll, not an instruction - and it cannot fix
+                      the real cause, which is a customer who did not know anything was expected of
+                      them. Saying what happens to the words is what makes them worth writing. */}
                   <p style={{ fontSize: '0.8rem', color: 'var(--gray)', marginBottom: '0.5rem' }}>
-                    Printing instructions (optional):
+                    How should we print this?{' '}
+                    <span style={{ color: 'var(--gray)', opacity: 0.85 }}>
+                      This is the only instruction the printer gets. Not a finished design? Say so -
+                      you can also message us after ordering.
+                    </span>
                   </p>
                   <textarea value={designNotes} onChange={e => setDesignNotes(e.target.value)}
-                    placeholder="E.g. Print centered on the front, keep a 1cm margin, match the red exactly."
+                    placeholder="E.g. Portrait, centered on the front, keep a 1cm margin, match the red exactly."
                     rows={3}
                     style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--border)', background: 'rgba(255,255,255,0.05)', color: 'var(--white)', fontSize: '0.85rem', fontFamily: "'Outfit', sans-serif", resize: 'vertical', boxSizing: 'border-box', outline: 'none' }} />
                 </div>
@@ -1200,12 +1246,59 @@ function CustomOrderInner() {
               {designMode === 'request' && (
                 <div>
                   <p style={{ fontSize: '0.8rem', color: 'var(--gray)', marginBottom: '0.5rem' }}>
-                    Describe what you need (optional — our designer will contact you via chat to finalize):
+                    Describe what you need <span style={{ color: '#ef4444', fontWeight: 700 }}>*</span>
+                    <span style={{ display: 'block', color: 'var(--gray)', opacity: 0.85, marginTop: 2 }}>
+                      There is nothing to print until we draw it, so we need somewhere to start.
+                      Our designer will follow up in chat.
+                    </span>
                   </p>
                   <textarea value={designNotes} onChange={e => setDesignNotes(e.target.value)}
                     placeholder="E.g. Company logo in blue and white, add 'ABC Corp' in bold. Minimalist style."
                     rows={4}
                     style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--border)', background: 'rgba(255,255,255,0.05)', color: 'var(--white)', fontSize: '0.85rem', fontFamily: "'Outfit', sans-serif", resize: 'vertical', boxSizing: 'border-box', outline: 'none' }} />
+
+                  <div style={{ marginTop: '0.85rem' }}>
+                    <p style={{ fontSize: '0.8rem', color: 'var(--gray)', marginBottom: '0.5rem' }}>
+                      Reference photos (optional)
+                      <span style={{ display: 'block', color: 'var(--gray)', opacity: 0.85, marginTop: 2 }}>
+                        Photos, a logo, a screenshot of something you like. We design from these -
+                        they are not printed as they are.
+                      </span>
+                    </p>
+                    <button type="button" onClick={() => fileInputRef.current?.click()} disabled={uploading}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '8px 14px',
+                        borderRadius: 8, border: '1px solid var(--border)', background: 'transparent',
+                        color: 'var(--white)', fontSize: '0.8rem', fontWeight: 600,
+                        cursor: uploading ? 'wait' : 'pointer' }}>
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" />
+                      </svg>
+                      {uploading ? 'Uploading...' : uploadedFiles.length ? 'Add more' : 'Attach references'}
+                    </button>
+
+                    {uploadedFiles.length > 0 && (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
+                        {uploadedFiles.map((f, i) => (
+                          <div key={i} style={{ position: 'relative', width: 62, height: 62, borderRadius: 8,
+                            overflow: 'hidden', border: '1px solid var(--border)', background: 'var(--dark2)',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            {/\.(jpe?g|png|webp|gif)$/i.test(f.url)
+                              ? <img src={f.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                              : <span style={{ fontSize: 9, fontWeight: 800, color: 'var(--gold)' }}>
+                                  {(f.name || 'FILE').split('.').pop().toUpperCase().slice(0, 4)}
+                                </span>}
+                            <button type="button" onClick={() => removeDesignFile(f.key)}
+                              style={{ position: 'absolute', top: 2, right: 2, width: 17, height: 17,
+                                borderRadius: '50%', border: 'none', background: 'rgba(0,0,0,0.65)',
+                                color: '#fff', fontSize: 11, lineHeight: 1, cursor: 'pointer', padding: 0 }}>
+                              &times;
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
             </section>
@@ -1498,9 +1591,11 @@ function CustomOrderInner() {
                 <div style={{ padding: '0.75rem', marginBottom: '1rem', textAlign: 'center', fontSize: '0.82rem', color: 'var(--gray)', fontWeight: 600 }}>
                   {!designMode
                     ? 'Choose how you\u2019d like to provide your design to continue.'
-                    : designMode === 'upload' && uploading
-                      ? 'Uploading your file\u2026'
-                      : 'Attach your design file to continue.'}
+                    : designMode === 'request'
+                      ? 'Tell us what you need above - even a sentence is enough to start.'
+                      : uploading
+                        ? 'Uploading your file\u2026'
+                        : 'Attach your design file to continue.'}
                 </div>
               )}
 

@@ -1873,13 +1873,15 @@ export default function SettingsPage() {
                   </div>
                 )}
 
+                {/* Under Courier Booked there are no rate fields, so these landed flush against
+                    the bordered explainer above and read as one box growing a second border. */}
                 {methodError && (
-                  <div style={{ padding: '0.7rem 1rem', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: '8px', color: '#f87171', fontSize: '0.85rem' }}>
+                  <div style={{ marginTop: '0.9rem', padding: '0.7rem 1rem', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: '8px', color: '#f87171', fontSize: '0.85rem' }}>
                     {methodError}
                   </div>
                 )}
                 {methodSuccess && (
-                  <div style={{ padding: '0.7rem 1rem', background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.25)', borderRadius: '8px', color: '#4ade80', fontSize: '0.85rem' }}>
+                  <div style={{ marginTop: '0.9rem', padding: '0.7rem 1rem', background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.25)', borderRadius: '8px', color: '#4ade80', fontSize: '0.85rem' }}>
                     {methodSuccess}
                   </div>
                 )}

@@ -138,7 +138,11 @@ const ChatWindow = ({ activeConversation, messages, user, isLoading, isAdmin, on
           <div className="quotation-card">
             <div className="quotation-header">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#d4a843" strokeWidth="2.5"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/></svg>
-              <span className="quotation-tag">Design order</span>
+              <span className="quotation-tag">{
+                  m.kind === 'deposit_due'  ? 'Deposit due'
+                : m.kind === 'delivery_fee' ? 'Delivery fee'
+                : m.kind === 'proof_ready'  ? 'Proof ready'
+                : 'Design order'}</span>
             </div>
             {/* The same card is read by both sides, so the destination follows the reader. Sending the
                 shop to the customer's order history showed them a page built for someone else. */}

@@ -446,7 +446,9 @@ export default function ProductDetailPage() {
   const isInquiry = (product?.priceType ?? product?.pricingMode) === 'inquiry';
 
   const effectiveMaxQty = (() => {
-    if (!product?.trackInventory || product?.isMadeToOrder || product?.stockStatus === 'upon-order') return 9999;
+    // Same reason as the shop grid: the checkout refuses on real stock whatever this flag says,
+    // so offering 9999 here only moves the refusal to the worst possible moment.
+    if (!product?.trackInventory) return 9999;
     const comboId = resolveCombinationId(selectedVariants);
     // Multi-variant BOM: use live per-variant availableQty from server
     if (product?.variantAvailableQty && comboId != null && product.variantAvailableQty[comboId] != null) {
@@ -467,7 +469,12 @@ export default function ProductDetailPage() {
     return Math.max(product?.availableQty ?? product?.stock ?? 0, 0);
   })();
 
-  const isOutOfStock = effectiveMaxQty === 0 && !product?.isMadeToOrder;
+  // The last one, and the one that mattered: with nothing left to build from, a made-to-order
+  // product still reported itself in stock, so Add to Cart stayed live and the refusal moved
+  // to the checkout. A product whose materials really are bought per order never reaches 0
+  // here anyway - canProduce skips on-demand materials - so it keeps selling, truthfully.
+  const isOutOfStock = effectiveMaxQty === 0;
+
 
   // Computed values
   // Declared before the price maths below reads them. `const` is not hoisted, so a use above the
@@ -516,6 +523,21 @@ export default function ProductDetailPage() {
     : null;
 
   const activeComboId = product ? resolveCombinationId(selectedVariants) : null;
+  // What can be built from stock TODAY. Once pre-order is on, availableQty jumps to 9999 and can
+  // no longer answer that - so the split has to be measured against canProduce instead.
+  const readyNow = (() => {
+    if (activeComboId != null && product?.variantCanProduce?.[activeComboId] != null)
+      return Number(product.variantCanProduce[activeComboId]);
+    if (product?.canProduce != null) return Number(product.canProduce);
+    if (activeComboId != null && product?.variantStock?.[activeComboId] != null)
+      return Number(product.variantStock[activeComboId]);
+    return product?.stock != null ? Number(product.stock) : null;
+  })();
+  // Only the part that is not on the shelf yet. Saying it before the order is placed is the
+  // whole point: a customer who discovers it afterwards reads it as a delay nobody mentioned.
+  const preorderQty = (product?.allowPreorder && readyNow != null && quantity > readyNow)
+    ? quantity - Math.max(0, readyNow)
+    : 0;
   const variantImage = (() => {
     if (!activeComboId || !product?.variantImageUrls) return null;
     return product.variantImageUrls[activeComboId]
@@ -849,6 +871,25 @@ export default function ProductDetailPage() {
                 </div>
               )}
             </div>
+
+            {/* Derived from the two flags that already decide it, NOT typed into the description:
+                a sentence the owner writes by hand goes stale the moment the toggle changes, and
+                then the page contradicts its own buttons. Sits at the foot of the detail column
+                rather than beside the buy button, where it competed with the thing it qualifies. */}
+            {product.isCustom && !(product.allowPlainPurchase ?? false) && (
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start',
+                background: 'rgba(212,168,67,0.07)', border: '1px solid rgba(212,168,67,0.22)',
+                borderRadius: '8px', padding: '10px 12px' }}>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#D4A843"
+                  strokeWidth="2" style={{ flexShrink: 0, marginTop: '1px' }}>
+                  <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
+                </svg>
+                <span style={{ fontSize: '0.8rem', color: 'var(--gray)', lineHeight: 1.5 }}>
+                  <strong style={{ color: 'var(--white)' }}>Customizable only.</strong>{' '}
+                  This item is printed with design. We do not sell it plain.
+                </span>
+              </div>
+            )}
           </div>
 
           {/* RIGHT — Info + Order Form */}
@@ -1010,25 +1051,6 @@ export default function ProductDetailPage() {
               </p>
             )}
 
-            {/* Derived from the two flags that already decide it, NOT typed into the
-                description: a sentence the owner writes by hand goes stale the moment the
-                toggle changes, and then the page contradicts its own buttons. Sits with
-                the detail rather than on the grid card, where it would be one badge among
-                many and read as decoration. */}
-            {product.isCustom && !(product.allowPlainPurchase ?? false) && (
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start',
-                background: 'rgba(212,168,67,0.07)', border: '1px solid rgba(212,168,67,0.22)',
-                borderRadius: '8px', padding: '10px 12px' }}>
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#D4A843"
-                  strokeWidth="2" style={{ flexShrink: 0, marginTop: '1px' }}>
-                  <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
-                </svg>
-                <span style={{ fontSize: '0.8rem', color: 'var(--gray)', lineHeight: 1.5 }}>
-                  <strong style={{ color: 'var(--white)' }}>Customizable only.</strong>{' '}
-                  This item is printed with your design. We do not sell it plain.
-                </span>
-              </div>
-            )}
 
             {/* Divider */}
             <div style={{ borderTop:
@@ -1279,6 +1301,24 @@ export default function ProductDetailPage() {
                     justifyContent: 'center',
                   }}>+</button>
               </div>
+
+              {preorderQty > 0 && (
+                <div style={{ marginTop: '0.6rem', display: 'flex', gap: '8px', alignItems: 'flex-start',
+                  background: 'rgba(212,168,67,0.07)', border: '1px solid rgba(212,168,67,0.25)',
+                  borderRadius: '8px', padding: '9px 11px' }}>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#D4A843" strokeWidth="2"
+                    style={{ flexShrink: 0, marginTop: '1px' }}>
+                    <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+                  </svg>
+                  <span style={{ fontSize: '0.8rem', color: 'var(--gray)', lineHeight: 1.5 }}>
+                    <strong style={{ color: 'var(--white)' }}>
+                      {Math.max(0, readyNow)} ready now, {preorderQty} on pre-order.
+                    </strong>{' '}
+                    We have {Math.max(0, readyNow)} in stock and will restock the rest. The whole
+                    order ships together on the delivery date shown at checkout.
+                  </span>
+                </div>
+              )}
             </div>}
 
             {/* Design format download — filtered to selected variant */}

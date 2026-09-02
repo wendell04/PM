@@ -1093,6 +1093,32 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
   const [returnReason,   setReturnReason]   = useState('');
   const [returnOther,    setReturnOther]    = useState('');
   const [returnSellable, setReturnSellable] = useState(false);
+  const [cancelReason,   setCancelReason]   = useState('');
+  const [cancelOther,    setCancelOther]    = useState('');
+  const [refundAmt,      setRefundAmt]      = useState('');
+  const [payingRefund,   setPayingRefund]   = useState(false);
+  const [refundMethod,   setRefundMethod]   = useState('gcash');
+  const [refundErr,      setRefundErr]      = useState('');
+
+  const handleMarkRefunded = async () => {
+    setPayingRefund(true); setRefundErr('');
+    try {
+      const res = await fetchWithTimeout(`${API_URL}/api/admin/orders/${lo.id}/mark-refunded`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ amount: Number(lo.refundOwed || 0), method: refundMethod }),
+      }, 15000);
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.message || d.error || 'Could not record the refund.');
+      const updated = { ...lo, refundOwed: 0, refunds: d?.data?.refunds ?? lo.refunds };
+      setLo(updated);
+      if (onStatusUpdated) onStatusUpdated(lo.id, updated);
+    } catch (err) {
+      setRefundErr(err.message || 'Could not record the refund.');
+    } finally {
+      setPayingRefund(false);
+    }
+  };
 
   const handleUpdateStatus = async () => {
     if (!selStatus || selStatus === lo.orderStatus) return;
@@ -1107,6 +1133,13 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
       if (String(selStatus).toLowerCase() === 'returned') {
         payload.returnReason = returnReason === 'Other' ? returnOther.trim() : returnReason;
         payload.restock      = returnSellable;
+      }
+      // A cancellation the customer did not ask for needs the same two facts a return does: why,
+      // and what happens to the money. Blank refund means "everything back", which is the right
+      // default when nothing was made.
+      if (String(selStatus).toLowerCase() === 'cancelled') {
+        payload.cancelReason = cancelReason === 'Other' ? cancelOther.trim() : cancelReason;
+        if (refundAmt !== '') payload.refundAmount = Number(refundAmt);
       }
       const res = await fetchWithTimeout(`${API_URL}/api/admin/orders/${lo.id}`, {
         method:'PUT', headers:{ 'Content-Type':'application/json', Authorization:`Bearer ${token}` },
@@ -1321,6 +1354,58 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
   const uploadTargets = activeSection?.indices ?? [activeItemIdx];
 
   const [reviewLinkState, setReviewLinkState] = useState(null);
+  const [msgState, setMsgState] = useState('idle');
+  const [convertState, setConvertState] = useState('idle');
+  const [confirmConvert, setConfirmConvert] = useState(false);
+
+  // Bills the design fee onto the BALANCE rather than charging it. Nothing moves until the
+  // customer settles the rest, which is why this is safe to press after they have agreed in
+  // chat - and why taking the fee up front and refunding it would not have been.
+  const convertToDesign = async () => {
+    setConvertState('sending');
+    try {
+      const res = await fetchWithTimeout(`${API_URL}/api/admin/orders/${lo.id}/convert-to-design`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({}),
+      }, 15000);
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.message || d.error || 'Could not convert this order.');
+      const updated = { ...lo, ...(d?.data ?? {}), id: lo.id };
+      setLo(updated);
+      setConfirmConvert(false);
+      setConvertState('done');
+      if (onStatusUpdated) onStatusUpdated(lo.id, updated);
+    } catch (err) {
+      setConvertState('error');
+    }
+  };
+
+  const messageCustomer = async () => {
+    setMsgState('sending');
+    try {
+      const res = await fetchWithTimeout(`${API_URL}/api/chat/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          recipient_id: String(lo.userId ?? lo.user_id ?? ''),
+          type: 'order_reference',
+          order_id: String(lo.id ?? lo._id ?? ''),
+          body: 'Hi! We have your file but no printing instructions with it. '
+            + 'Could you tell us how you would like it printed - which side, roughly what size, '
+            + 'and whether this file is the final artwork or reference for us to design from? '
+            + 'We will not print until you confirm.',
+          metadata: {
+            orderId: String(lo.id ?? lo._id ?? ''),
+            orderNo: lo.orderNumber ?? lo.orderNo ?? 'Order',
+            products: (lo.items ?? []).map(i => i.productName).filter(Boolean).join(', '),
+          },
+        }),
+      }, 15000);
+      setMsgState(res.ok ? 'sent' : 'error');
+    } catch { setMsgState('error'); }
+  };
+
   const sendReviewLink = async () => {
     setReviewLinkState('sending');
     try {
@@ -1617,6 +1702,11 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
 
               <ImageLightbox url={lightboxUrl} kind={lightboxKind} onClose={() => { setLightboxUrl(null); setLightboxKind(null); }} />
 
+              {aiHasFile && aiRequested && (
+                <div style={{ fontSize: 11.5, color: 'var(--gold)', fontWeight: 600, marginBottom: 4 }}>
+                  Reference from the customer - design from these, do not print them
+                </div>
+              )}
               {aiHasFile && (
                 <a href={aiFiles[0]?.url?.startsWith('http') ? aiFiles[0].url : `${API_URL}/storage/${aiFiles[0]?.url}`} target="_blank" rel="noopener noreferrer"
                   style={{ display:'inline-flex', alignItems:'center', gap:'4px', fontSize:'12px', fontWeight:600, color:'#2563eb', textDecoration:'none', marginBottom:'8px' }}>
@@ -1635,6 +1725,70 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
               {/* Upload-line review: three choices - approve as-is, bounce back for a re-upload
                   (with a reason), or fix it yourself and send an adjusted proof for the customer
                   to approve (reuses the request-design proof flow below via showFix). */}
+              {/* An uploaded file with nothing said about it. The shop is the one who finds
+                  out, so the shop is the one that gets told - with the question already
+                  addressed to the right person. Kept above Approve/Reject deliberately:
+                  approving artwork nobody has explained is the mistake this prevents. */}
+              {aiHasFile && !aiNotes && aiStatus === 'pending_review' && (
+                <div style={{ marginBottom: '10px', padding: '10px 12px', borderRadius: 8,
+                  background: 'rgba(212,168,67,0.07)', border: '1px solid rgba(212,168,67,0.3)' }}>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#b45309"
+                      strokeWidth="2" style={{ flexShrink: 0, marginTop: 1 }}>
+                      <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+                      <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+                    </svg>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 12.5, fontWeight: 700, color: '#b45309' }}>No printing instructions</div>
+                      <div style={{ fontSize: 11.5, color: 'var(--gray)', marginTop: 3, lineHeight: 1.5 }}>
+                        The customer sent a file and said nothing about it - which side, what size,
+                        whether it is even finished artwork. Ask before producing.
+                      </div>
+                    </div>
+                  </div>
+                      <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+                    <button type="button" onClick={messageCustomer} disabled={msgState === 'sending'}
+                      style={{ ...S.btnSm, cursor: msgState === 'sending' ? 'wait' : 'pointer' }}>
+                      {msgState === 'sent' ? 'Sent - open Messages'
+                        : msgState === 'sending' ? 'Sending...'
+                        : msgState === 'error' ? 'Could not send - try again'
+                        : 'Message customer'}
+                    </button>
+                    {!confirmConvert && (
+                      <button type="button" onClick={() => setConfirmConvert(true)} style={S.btnSmGhost}>
+                        Convert to design job
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Confirmed, because it puts money on somebody's bill. Press it after they
+                      have agreed in chat, not instead of asking. */}
+                  {confirmConvert && (
+                    <div style={{ marginTop: 8, padding: '9px 11px', borderRadius: 6,
+                      background: 'var(--dark)', border: '1px solid var(--border)' }}>
+                      <div style={{ fontSize: 11.5, color: 'var(--gray)', lineHeight: 1.5, marginBottom: 7 }}>
+                        This becomes a design job: you draw the artwork and send a mockup to approve.
+                        The design fee is <strong style={{ color: 'var(--white)' }}>added to their balance</strong>,
+                        not charged now - so only do this once they have agreed to it.
+                      </div>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <button type="button" onClick={convertToDesign} disabled={convertState === 'sending'}
+                          style={{ ...S.btnSm, cursor: convertState === 'sending' ? 'wait' : 'pointer' }}>
+                          {convertState === 'sending' ? 'Converting...' : 'Yes, convert and bill the fee'}
+                        </button>
+                        <button type="button" onClick={() => { setConfirmConvert(false); setConvertState('idle'); }}
+                          style={S.btnSmGhost}>Cancel</button>
+                      </div>
+                      {convertState === 'error' && (
+                        <div style={{ fontSize: 11, color: '#b91c1c', marginTop: 6 }}>
+                          Could not convert - try again.
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {aiStatus==='pending_review' && aiHasFile && !aiRequested && !showReject && !showFix && !confirmApprove && (
                 <div style={{ display:'flex', gap:'6px', marginBottom:'8px', flexWrap:'wrap' }}>
                   <button onClick={() => { setConfirmApprove(true); setDesignErr(''); }} disabled={!!designAct}
@@ -1953,7 +2107,51 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                     </span>
                   </label>
                 </div>
+
               )}
+
+                {/* Cancelling a PAID order is the case that costs money, so both questions are asked
+                    here rather than discovered afterwards. */}
+                {String(selStatus).toLowerCase() === 'cancelled' && (
+                  <div style={{ display:'flex', flexDirection:'column', gap:'8px', marginTop:'10px' }}>
+                    <div style={{ fontSize:'11px', fontWeight:700, color:'var(--gray)', textTransform:'uppercase', letterSpacing:'.5px' }}>
+                      Why are you cancelling?
+                    </div>
+                    <div style={{ display:'flex', flexWrap:'wrap', gap:'6px' }}>
+                      {['Cannot fulfil', 'Out of stock', 'Customer asked', 'Duplicate order', 'Payment problem', 'Other'].map(r => (
+                        <button key={r} type="button" onClick={() => setCancelReason(r)}
+                          style={{ padding:'5px 11px', borderRadius:'999px', fontSize:'11.5px', cursor:'pointer',
+                            border:`1px solid ${cancelReason === r ? 'var(--gold)' : 'var(--border)'}`,
+                            background: cancelReason === r ? 'rgba(212,168,67,0.1)' : 'transparent',
+                            color: cancelReason === r ? 'var(--gold)' : 'var(--gray)',
+                            fontWeight: cancelReason === r ? 700 : 500 }}>{r}</button>
+                      ))}
+                    </div>
+                    {cancelReason === 'Other' && (
+                      <input value={cancelOther} onChange={e => setCancelOther(e.target.value)} maxLength={200}
+                        placeholder="Say what happened - the customer is told this" style={S.input} />
+                    )}
+
+                    {paidSoFar(lo) > 0 && (
+                      <div style={{ marginTop:'4px', padding:'9px 11px', borderRadius:'6px',
+                        background:'rgba(239,68,68,0.06)', border:'1px solid rgba(239,68,68,0.25)' }}>
+                        <div style={{ fontSize:'12px', fontWeight:700, color:'#b91c1c', marginBottom:'4px' }}>
+                          This customer has paid &#8369;{fmt(paidSoFar(lo))}
+                        </div>
+                        <div style={{ fontSize:'11.5px', color:'var(--gray)', lineHeight:1.5, marginBottom:'7px' }}>
+                          Leave blank to return all of it - which is right when nothing has been made.
+                          Enter less only if production had already started: personalised goods cannot
+                          be resold, and the deposit is what covers that.
+                        </div>
+                        <input value={refundAmt}
+                          onChange={e => setRefundAmt(e.target.value.replace(/[^0-9.]/g, ''))}
+                          inputMode="decimal" maxLength={9}
+                          placeholder={`Refund amount - blank means all ${fmt(paidSoFar(lo))}`}
+                          style={S.input} />
+                      </div>
+                    )}
+                  </div>
+                )}
 
               {/* One button, one modal. The old version swapped this button in place for a "Set to X"
                   confirm, so a double-click landed on the confirm and fired it - the exact accident
@@ -2197,8 +2395,23 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                       </div>
                     ))}
                     <div style={{ fontSize: 10.5, color: 'var(--gray)', marginTop: 6, fontStyle: 'italic' }}>
-                      Send this back by hand (GCash / Maya) - the system cannot return it for you.
+                      Send this back by hand - the system cannot return it for you. Log it here once
+                      you have, so the order stops reading as unpaid business.
                     </div>
+                    <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+                      <select value={refundMethod} onChange={e => setRefundMethod(e.target.value)}
+                        style={{ ...S.input, width: 'auto', flex: '0 0 auto', fontSize: 12, padding: '5px 8px' }}>
+                        <option value="gcash">GCash</option>
+                        <option value="maya">Maya</option>
+                        <option value="bank_transfer">Bank transfer</option>
+                        <option value="cash">Cash</option>
+                      </select>
+                      <button type="button" onClick={handleMarkRefunded} disabled={payingRefund}
+                        style={{ ...S.btnSm, opacity: payingRefund ? 0.6 : 1 }}>
+                        {payingRefund ? 'Recording...' : `I have sent \u20B1${fmt(Number(lo.refundOwed))}`}
+                      </button>
+                    </div>
+                    {refundErr && <div style={{ fontSize: 11, color: '#b91c1c', marginTop: 5 }}>{refundErr}</div>}
                   </div>
                 )}
 
@@ -2292,7 +2505,7 @@ export default function OrdersPage() {
   const [search,       setSearch]       = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [payFilter,    setPayFilter]    = useState('all');
-  const [dateFilter,   setDateFilter]   = useState('this-month');
+  const [dateFilter,   setDateFilter]   = useState('all-time');
   const [customFrom,   setCustomFrom]   = useState('');
   const [customTo,     setCustomTo]     = useState('');
   const [expandedId,   setExpandedId]   = useState(null);
@@ -2366,17 +2579,15 @@ export default function OrdersPage() {
 
   // ── Filter + sort ───────────────────────────────────────────────────────────
 
-  const filtered = orders.filter(o => {
+  // Everything except the status filter. The cards count this, and the table is this narrowed by
+  // status - so the two can no longer describe different populations.
+  const scoped = orders.filter(o => {
     const q = search.toLowerCase();
     const matchSearch = !q ||
       (o.customerName || '').toLowerCase().includes(q) ||
       (o.id || '').toLowerCase().includes(q) ||
       (o.productName || '').toLowerCase().includes(q);
 
-    // 'needs_attention' is not a stored status - it is the derived delivery-promise risk.
-    const matchStatus = statusFilter === 'all' ? true
-      : statusFilter === 'needs_attention' ? !!deliveryRisk(o)
-      : normalizeStatus(o.orderStatus) === statusFilter;
     const matchPay    = payFilter === 'all' || o.paymentStatus === payFilter;
 
     let matchDate = true;
@@ -2394,21 +2605,28 @@ export default function OrdersPage() {
       matchDate  = d >= from && d <= to;
     }
 
-    return matchSearch && matchStatus && matchPay && matchDate;
-  }).sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
+    return matchSearch && matchPay && matchDate;
+  });
+
+  const filtered = scoped.filter(o =>
+    // 'needs_attention' is not a stored status - it is the derived delivery-promise risk.
+    statusFilter === 'all' ? true
+      : statusFilter === 'needs_attention' ? !!deliveryRisk(o)
+      : normalizeStatus(o.orderStatus) === statusFilter
+  ).sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
 
   // ── Summary counts ──────────────────────────────────────────────────────────
 
-  const countBy = (code) => orders.filter(o => normalizeStatus(o.orderStatus) === code).length;
+  const countBy = (code) => scoped.filter(o => normalizeStatus(o.orderStatus) === code).length;
   const counts = {
-    all:          orders.length,
+    all:          scoped.length,
     pending:      countBy('pending'),
     inProduction: countBy('in_production'),
     forDelivery:  countBy('for_delivery'),
     delivered:    countBy('delivered'),
     cancelled:    countBy('cancelled'),
     // Orders whose delivery promise is late or about to be missed (derived, not stored).
-    needsAttention: orders.filter(o => !!deliveryRisk(o)).length,
+    needsAttention: scoped.filter(o => !!deliveryRisk(o)).length,
   };
 
   const { slice, page, perPage, total, setPage, setPerPage } = usePagination(filtered);
@@ -2478,10 +2696,10 @@ export default function OrdersPage() {
               onChange={v => setDateFilter(v)}
               style={{ width:'150px' }}
               options={[
+                { value:'all-time',   label:'All Time'     },
                 { value:'today',      label:'Today'        },
                 { value:'this-week',  label:'This Week'    },
                 { value:'this-month', label:'This Month'   },
-                { value:'all-time',   label:'All Time'     },
                 { value:'custom',     label:'Custom Range' },
               ]}
             />

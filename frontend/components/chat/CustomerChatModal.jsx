@@ -631,7 +631,11 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
                           <div key={msgKey} style={{ display: 'flex', justifyContent: isMe ? 'flex-end' : 'flex-start' }}>
                             <div className="quotation-card">
                               <div className="quotation-header">
-                                <span className="quotation-tag">{m.kind === 'deposit_due' ? 'Deposit due' : 'Design order'}</span>
+                                <span className="quotation-tag">{
+                                  m.kind === 'deposit_due'  ? 'Deposit due'
+                                : m.kind === 'delivery_fee' ? 'Delivery fee'
+                                : m.kind === 'proof_ready'  ? 'Proof ready'
+                                : 'Design order'}</span>
                               </div>
                               <div className="quotation-body">
                                 <div className="quotation-product" style={{ margin: 0 }}>{m.orderNo || 'Order'}</div>

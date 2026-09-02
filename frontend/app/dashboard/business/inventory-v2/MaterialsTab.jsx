@@ -246,7 +246,7 @@ function ManageListsModal({ open, onClose, categories, setCategories, units, set
 export default function MaterialsTab({ materials, setMaterials, vendors, setVendors, batches, boms, categories, setCategories, units, setUnits, token, onRefresh, toast }) {
   const [search,       setSearch]     = useState('');
   const [catFilter,    setCat]        = useState('All');
-  const [form,         setForm]       = useState({ name:'', category:'', unit:'', vendorId:'', baseCost:'', minStock:'', leadTime:'7' });
+  const [form,         setForm]       = useState({ name:'', category:'', unit:'', vendorId:'', baseCost:'', minStock:'', leadTime:'7', isOnDemand:false });
   const [errors,       setErrors]     = useState({});
   const [editId,       setEditId]     = useState(null);
   const [showForm,     setShowForm]   = useState(false);
@@ -258,8 +258,13 @@ export default function MaterialsTab({ materials, setMaterials, vendors, setVend
   const stockMap = useMemo(() => {
     const m = {};
     (batches || []).forEach(b => { m[b.matId] = (m[b.matId] || 0) + (b.remainingQty || 0); });
+    // stockQty is the authoritative figure - batches are only its receipt history, and a material
+    // can hold stock with no batch rows at all.
+    (materials || []).forEach(mat => {
+      if (mat.stockQty != null) m[mat.id] = Number(mat.stockQty);
+    });
     return m;
-  }, [batches]);
+  }, [batches, materials]);
 
   const inBomSet = useMemo(() => {
     const s = new Set();
@@ -280,12 +285,12 @@ export default function MaterialsTab({ materials, setMaterials, vendors, setVend
   const { slice, page, perPage, total, setPage, setPerPage } = usePagination(filtered);
 
   const openAdd = () => {
-    setForm({ name:'', category: categories[0]||'', unit: units[0]||'', vendorId:'', baseCost:'', minStock:'', leadTime:'7' });
+    setForm({ name:'', category: categories[0]||'', unit: units[0]||'', vendorId:'', baseCost:'', minStock:'', leadTime:'7', isOnDemand:false });
     setErrors({}); setEditId(null); setShowForm(true);
   };
 
   const openEdit = (mat) => {
-    setForm({ name:mat.name, category:mat.category, unit:mat.unit, vendorId:mat.vendorId, baseCost:String(mat.baseCost), minStock:String(mat.minStock), leadTime:String(mat.leadTime ?? 7) });
+    setForm({ name:mat.name, category:mat.category, unit:mat.unit, vendorId:mat.vendorId, baseCost:String(mat.baseCost), minStock:String(mat.minStock), leadTime:String(mat.leadTime ?? 7), isOnDemand:!!mat.isOnDemand });
     setErrors({}); setEditId(mat.id); setShowForm(true);
   };
 
@@ -304,6 +309,7 @@ export default function MaterialsTab({ materials, setMaterials, vendors, setVend
       baseCost:      Number(form.baseCost),
       minStockLevel: Number(form.minStock),
       leadTimeDays:  Number(form.leadTime || 7),
+      isOnDemand:    !!form.isOnDemand,
     };
     setSaving(true);
     try {
@@ -521,6 +527,27 @@ export default function MaterialsTab({ materials, setMaterials, vendors, setVend
               How long replenishment takes — used to compute the reorder point in the Forecast page.
             </div>
           </Field>
+
+          {/* Read by the reports, the To Buy list, the forecast and the availability
+              calculation - and settable, until now, from no screen at all, so every material
+              behaved as stocked whatever the shop actually did. Pre-order is deliberately NOT
+              here: a material is shared across recipes, so promising one would promise every
+              product that uses it. That decision belongs to the product. */}
+          <div style={{ ...S.card, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <label style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', cursor: 'pointer' }}>
+              <input type="checkbox" checked={!!form.isOnDemand}
+                onChange={e => setF('isOnDemand', e.target.checked)}
+                style={{ width: 16, height: 16, accentColor: 'var(--gold)', marginTop: 2, flexShrink: 0, cursor: 'pointer' }} />
+              <span>
+                <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--white)' }}>Bought per order</span>
+                <span style={{ display: 'block', fontSize: 11.5, color: 'var(--gray)', marginTop: 2, lineHeight: 1.5 }}>
+                  You do not keep this on the shelf - you buy it when a job needs it. It stops
+                  limiting what can be sold, and its full demand appears in To Buy instead.
+                </span>
+              </span>
+            </label>
+
+          </div>
 
           {!editId && (
             <div style={S.noteInfo}>

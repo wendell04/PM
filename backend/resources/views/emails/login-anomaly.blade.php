@@ -24,19 +24,19 @@
                 A new sign-in to your account was just detected. Here are the details:
             </p>
 
-            <div style="background: #f7f7f5; border: 1px solid #2e2e2e; border-radius: 10px; padding: 20px; margin-bottom: 24px;">
+            <div style="background: #f7f7f5; border: 1px solid #e4e4e0; border-radius: 10px; padding: 20px; margin-bottom: 24px;">
                 <table style="width: 100%; border-collapse: collapse;">
                     <tr>
                         <td style="color: #6b6b6b; font-size: 12px; padding: 6px 0; width: 36%;">Time</td>
-                        <td style="color: #f0f0f0; font-size: 13px; padding: 6px 0; font-weight: 600;">{{ $loginTime }}</td>
+                        <td style="color: #111111; font-size: 13px; padding: 6px 0; font-weight: 600;">{{ $loginTime }}</td>
                     </tr>
                     <tr>
                         <td style="color: #6b6b6b; font-size: 12px; padding: 6px 0;">IP Address</td>
-                        <td style="color: #f0f0f0; font-size: 13px; padding: 6px 0; font-weight: 600;">{{ $ipAddress }}</td>
+                        <td style="color: #111111; font-size: 13px; padding: 6px 0; font-weight: 600;">{{ $ipAddress }}</td>
                     </tr>
                     <tr>
                         <td style="color: #6b6b6b; font-size: 12px; padding: 6px 0; vertical-align: top;">Device</td>
-                        <td style="color: #f0f0f0; font-size: 13px; padding: 6px 0; font-weight: 600; word-break: break-word;">{{ $userAgent }}</td>
+                        <td style="color: #111111; font-size: 13px; padding: 6px 0; font-weight: 600; word-break: break-word;">{{ $userAgent }}</td>
                     </tr>
                 </table>
             </div>

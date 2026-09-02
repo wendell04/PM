@@ -8,6 +8,7 @@ use App\Models\Message;
 use App\Models\User;
 use App\Models\Order;
 use Illuminate\Http\Request;
+use App\Models\Notification;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -332,6 +333,32 @@ class ChatController extends Controller
                 broadcast(new MessageSent($message))->toOthers();
             } catch (\Throwable $e) {
                 Log::warning('Chat broadcast failed (message still saved): ' . $e->getMessage());
+            }
+
+            // Something is waiting for this person. Without this, a message only ever reached
+            // someone already looking at the site with the widget open - so a question that
+            // blocks an order could sit unanswered for days with nobody told it had been asked.
+            try {
+                $recipientId = (string) $request->input('recipient_id', '');
+                if ($recipientId === '' && !empty($conversation->participants)) {
+                    $recipientId = (string) collect($conversation->participants)
+                        ->first(fn ($pid) => (string) $pid !== (string) $user->_id, '');
+                }
+                $senderIsStaff = in_array($user->role ?? null, ['admin', 'owner', 'superAdmin', 'staff'], true)
+                    || !empty($user->role) && $user->role !== 'customer';
+                if ($recipientId !== '' && $senderIsStaff) {
+                    Notification::create([
+                        'user_id'    => $recipientId,
+                        'type'       => 'chat_message',
+                        'title'      => 'Message from the shop',
+                        'message'    => mb_substr(strip_tags((string) $request->input('body', 'You have a new message.')), 0, 180),
+                        'is_read'    => false,
+                        'data'       => ['conversationId' => (string) $conversation->_id],
+                        'created_at' => now(),
+                    ]);
+                }
+            } catch (\Throwable $e) {
+                Log::warning('Chat notification failed (message still sent): ' . $e->getMessage());
             }
 
             return $this->successResponse('Message sent successfully', $message);

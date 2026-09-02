@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
+import { S, CustomSelect, PaginationBar, SummaryCard, SearchBar, EmptyState } from '../inventory-v2/shared';
 import ErrorBoundary from '@/components/ErrorBoundary';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
@@ -131,6 +132,17 @@ export default function UserManagementPage() {
   const [deleteError, setDeleteError] = useState(null);
   const [form, setForm] = useState(() => emptyForm());
 
+  const [staffSearch, setStaffSearch] = useState('');
+  const [openMenuId, setOpenMenuId] = useState(null);
+
+  // Any click outside closes it. Without this a menu left open floats over whatever the reader
+  // scrolls to next, and clicking a second card opens a second menu beside the first.
+  useEffect(() => {
+    if (!openMenuId) return;
+    const close = () => setOpenMenuId(null);
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [openMenuId]);
   const [addRoleOpen, setAddRoleOpen] = useState(false);
   const [addRoleLabel, setAddRoleLabel] = useState('');
   const [addRoleError, setAddRoleError] = useState('');
@@ -385,23 +397,20 @@ export default function UserManagementPage() {
   }
 
   const inputBase = {
-    width: '100%',
+    ...S.input,
     height: '40px',
     padding: '0 12px',
-    borderRadius: '8px',
-    border: '1px solid var(--border)',
-    background: 'var(--dark)',
-    color: 'var(--white)',
-    fontSize: '0.875rem',
     boxSizing: 'border-box',
   };
 
-  const labelStyle = { display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--gray)', marginBottom: '8px' };
+  const labelStyle = { ...S.label, display: 'block', marginBottom: '8px' };
   const fieldGap = { marginBottom: '16px' };
 
   return (
     <ErrorBoundary>
-    <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '2rem 1.5rem' }}>
+    {/* Was capped at 1200px with its own padding while its neighbours run full width off
+        S.page - two screens one click apart, visibly different widths. */}
+    <div style={{ ...S.page, padding: '24px' }}>
       <style>{`
         @keyframes usersSkelPulse {
           0%, 100% { opacity: 1; }
@@ -412,33 +421,40 @@ export default function UserManagementPage() {
           to   { opacity: 1; transform: translateY(0); }
         }
       `}</style>
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          flexWrap: 'wrap',
-          gap: '16px',
-          marginBottom: '24px',
-        }}
-      >
-        <div style={{ display: 'flex', gap: '10px' }}>
-          <button
-            type="button"
-            onClick={() => { setAddRoleOpen(true); setAddRoleLabel(''); setAddRoleError(''); }}
-            style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '10px 18px', borderRadius: '8px', border: '1px solid var(--gold)', background: 'transparent', color: 'var(--gold)', fontWeight: 700, fontSize: '0.875rem', cursor: 'pointer' }}
-          >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            Add Role
-          </button>
-          <button
-            type="button"
-            onClick={openCreate}
-            style={{ padding: '10px 20px', borderRadius: '8px', border: 'none', background: 'var(--gold)', color: 'var(--black)', fontWeight: 700, fontSize: '0.875rem', cursor: 'pointer' }}
-          >
-            Add Staff
-          </button>
-        </div>
+      {/* Built to the Customers shape: what the numbers are, then how to narrow them, then the
+          list. Two buttons over an empty page told the reader nothing about the people they were
+          about to manage - how many there are, how many can be edited, which roles exist at all. */}
+      <div style={{ ...S.row, marginBottom: '16px' }}>
+        <SummaryCard label="Staff accounts" value={staff.length} accent />
+        <SummaryCard label="Protected"
+          value={staff.filter(m => isPrivilegedRole(m.role)).length}
+          sub="Admin and owner - cannot be edited here" />
+        <SummaryCard label="Editable"
+          value={staff.filter(m => !isPrivilegedRole(m.role)).length}
+          sub="Department staff" />
+        <SummaryCard label="Roles defined" value={availableRoles.length}
+          color={availableRoles.length === 0 ? '#e05252' : 'var(--gold)'}
+          sub={availableRoles.length === 0 ? 'Add one before adding staff' : 'Assignable to staff'} />
+      </div>
+
+      <div style={{ display: 'flex', gap: '12px', marginBottom: '16px', flexWrap: 'wrap' }}>
+        <SearchBar
+          value={staffSearch}
+          onChange={v => { setStaffSearch(v); setUPage(1); }}
+          placeholder="Search by name or email..."
+          style={{ flex: 1, minWidth: '200px' }}
+        />
+        <button
+          type="button"
+          onClick={() => { setAddRoleOpen(true); setAddRoleLabel(''); setAddRoleError(''); }}
+          style={{ ...S.btnOutline, whiteSpace: 'nowrap' }}
+        >
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Add Role
+        </button>
+        <button type="button" onClick={openCreate} style={{ ...S.btnPrimary, whiteSpace: 'nowrap' }}>
+          Add Staff
+        </button>
       </div>
 
 
@@ -490,10 +506,20 @@ export default function UserManagementPage() {
       )}
 
       {!loading && !error && staff.length > 0 && (() => {
-        const uTotalPages = Math.max(1, Math.ceil(staff.length / uRpp));
-        const pagedStaff = staff.slice((uPage - 1) * uRpp, uPage * uRpp);
+        const q = staffSearch.trim().toLowerCase();
+        const shown = !q ? staff : staff.filter(m =>
+          `${m.firstName || ''} ${m.lastName || ''}`.toLowerCase().includes(q) ||
+          String(m.email || '').toLowerCase().includes(q));
+        const pagedStaff = shown.slice((uPage - 1) * uRpp, uPage * uRpp);
+        if (shown.length === 0) {
+          return <EmptyState message="Nobody matches that search" sub="Clear the box to see everyone again." />;
+        }
         return (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(420px, 1fr))', gap: '12px', alignItems: 'start' }}>
+        <>
+        <div style={{ fontSize: '0.8rem', color: 'var(--gray)', marginBottom: '12px' }}>
+          {shown.length} account{shown.length !== 1 ? 's' : ''}{q ? ' (filtered)' : ''}
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(380px, 1fr))', gap: '12px', alignItems: 'start' }}>
           {pagedStaff.map((member) => {
             const fullName = `${member.firstName || ''} ${member.lastName || ''}`.trim() || '—';
             const role = member.role;
@@ -540,66 +566,84 @@ export default function UserManagementPage() {
                       <LockIcon />
                     </span>
                   ) : (
-                    <>
+                    <div style={{ position: 'relative' }} onMouseDown={e => e.stopPropagation()}>
                       <button
                         type="button"
-                        onClick={() => openEdit(member)}
+                        aria-label="Actions"
+                        onClick={() => { const k = String(member._id ?? member.id ?? member.email); setOpenMenuId(openMenuId === k ? null : k); }}
                         style={{
-                          padding: '8px 16px',
-                          borderRadius: '8px',
-                          border: '1px solid var(--gold)',
-                          background: 'transparent',
-                          color: 'var(--gold)',
-                          fontWeight: 600,
-                          fontSize: '0.8rem',
-                          cursor: 'pointer',
+                          width: '32px', height: '32px', borderRadius: '8px',
+                          border: '1px solid var(--border)', background: 'transparent',
+                          color: 'var(--gray)', cursor: 'pointer',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
                         }}
                       >
-                        Edit
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+                          <circle cx="12" cy="5" r="1.7" /><circle cx="12" cy="12" r="1.7" /><circle cx="12" cy="19" r="1.7" />
+                        </svg>
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setDeleteTarget(member);
-                          setDeleteError(null);
-                        }}
-                        style={{
-                          padding: '8px 16px',
-                          borderRadius: '8px',
-                          border: '1px solid var(--red)',
-                          background: 'transparent',
-                          color: 'var(--red)',
-                          fontWeight: 600,
-                          fontSize: '0.8rem',
-                          cursor: 'pointer',
-                        }}
-                      >
-                        Delete
-                      </button>
-                    </>
+
+                      {openMenuId === String(member._id ?? member.id ?? member.email) && (
+                        <div style={{
+                          position: 'absolute', top: '36px', right: 0, zIndex: 30,
+                          minWidth: '150px', background: 'var(--dark)',
+                          border: '1px solid var(--border)', borderRadius: '8px',
+                          boxShadow: '0 8px 24px rgba(0,0,0,0.28)', overflow: 'hidden',
+                        }}>
+                          <button
+                            type="button"
+                            onClick={() => { setOpenMenuId(null); openEdit(member); }}
+                            style={{
+                              display: 'flex', alignItems: 'center', gap: '8px', width: '100%',
+                              padding: '9px 12px', background: 'transparent', border: 'none',
+                              color: 'var(--white)', fontSize: '0.82rem', fontWeight: 500,
+                              cursor: 'pointer', textAlign: 'left',
+                            }}
+                            onMouseEnter={e => e.currentTarget.style.background = 'var(--dark2)'}
+                            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                          >
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                            </svg>
+                            Edit
+                          </button>
+                          <div style={{ height: '1px', background: 'var(--border)' }} />
+                          <button
+                            type="button"
+                            onClick={() => { setOpenMenuId(null); setDeleteTarget(member); setDeleteError(null); }}
+                            style={{
+                              display: 'flex', alignItems: 'center', gap: '8px', width: '100%',
+                              padding: '9px 12px', background: 'transparent', border: 'none',
+                              color: '#e05252', fontSize: '0.82rem', fontWeight: 500,
+                              cursor: 'pointer', textAlign: 'left',
+                            }}
+                            onMouseEnter={e => e.currentTarget.style.background = 'rgba(239,68,68,0.08)'}
+                            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                          >
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                              <path d="M10 11v6" /><path d="M14 11v6" /><path d="M9 6V4h6v2" />
+                            </svg>
+                            Delete
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
               </div>
             );
           })}
-          {staff.length > uRpp && (
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.625rem 1rem', border: '1px solid var(--border)', borderRadius: '10px', flexWrap: 'wrap', gap: '0.5rem', fontSize: '0.8rem', color: 'var(--gray)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                Rows per page:
-                <select value={uRpp} onChange={e => { setURpp(Number(e.target.value)); setUPage(1); }} style={{ background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '6px', color: 'var(--white)', padding: '0.2rem 0.5rem', fontSize: '0.8rem', cursor: 'pointer' }}>
-                  {[5, 10, 25, 50].map(n => <option key={n} value={n}>{n}</option>)}
-                </select>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
-                <button onClick={() => setUPage(p => Math.max(1, p - 1))} disabled={uPage <= 1} style={{ padding: '0.25rem 0.625rem', background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '6px', color: uPage <= 1 ? 'var(--gray)' : 'var(--white)', cursor: uPage <= 1 ? 'not-allowed' : 'pointer' }}>‹</button>
-                <button onClick={() => setUPage(p => Math.min(uTotalPages, p + 1))} disabled={uPage >= uTotalPages} style={{ padding: '0.25rem 0.625rem', background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '6px', color: uPage >= uTotalPages ? 'var(--gray)' : 'var(--white)', cursor: uPage >= uTotalPages ? 'not-allowed' : 'pointer' }}>›</button>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                Page: <span style={{ padding: '0.2rem 0.6rem', background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '6px', color: 'var(--white)', minWidth: '28px', textAlign: 'center' }}>{uPage}</span> of {uTotalPages}
-              </div>
-            </div>
-          )}
         </div>
+
+        {/* Was hidden until the list outgrew one page - so the rows-per-page control, the one
+            thing that could have shown more, only appeared once you no longer needed it. */}
+        {shown.length > uRpp && (
+          <PaginationBar total={shown.length} page={uPage} perPage={uRpp}
+            onPage={setUPage} onPerPage={setURpp} />
+        )}
+        </>
         );
       })()}
 
@@ -712,11 +756,12 @@ export default function UserManagementPage() {
                     No roles yet — use <strong style={{ color: 'var(--gold)', margin: '0 4px' }}>+ Add Role</strong> to create one first.
                   </div>
                 ) : (
-                  <select id="staff-role" value={form.role} onChange={(e) => setField('role', e.target.value)} style={{ ...inputBase, cursor: 'pointer' }}>
-                    {availableRoles.map((r) => (
-                      <option key={r.value} value={r.value}>{r.label}</option>
-                    ))}
-                  </select>
+                  <CustomSelect
+                    value={form.role}
+                    onChange={(v) => setField('role', v)}
+                    options={availableRoles.map((r) => ({ value: r.value, label: r.label }))}
+                    placeholder="Choose a role"
+                  />
                 )}
 
               </div>

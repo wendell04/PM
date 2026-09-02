@@ -611,8 +611,9 @@ export default function PaymentSuccessPage() {
                   is created on first use, so an order nobody has questions about leaves no empty thread. */}
               {/* Mixed carts store designType as 'upload', so keying on it hid the chat button from
                   exactly the orders that need it most - the ones with a design being drawn. */}
-              {(order?.designType === 'request'
-                || (order?.items ?? []).some(i => i?.designRequested || i?.designMode === 'request')) && (
+              {(order?.designType === 'request' || order?.designType === 'upload'
+                || (order?.items ?? []).some(i => i?.designRequested || i?.designMode === 'request'
+                    || i?.designUrl || i?.designFiles?.length || i?.isCustom)) && (
                 <button
                   type="button"
                   onClick={() => window.dispatchEvent(new CustomEvent('pmp_open_chat', { detail: { orderCard: {

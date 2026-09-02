@@ -1368,6 +1368,15 @@ class OrderController extends Controller
                             'data'       => ['orderId' => (string) $order->_id, 'courierFee' => $newFee],
                             'created_at' => now(),
                         ]);
+                        $this->postOrderCardToChat(
+                            $order,
+                            'delivery_fee',
+                            'Your order has been booked with a third-party courier. The delivery fee is P'
+                                . number_format($newFee, 2) . '. You can hand this to the rider in cash on '
+                                . 'delivery, or send it ahead via GCash or Maya and we will confirm here. '
+                                . 'This is the courier\'s charge - it is not part of the item total you already paid.',
+                            ['courierFee' => $newFee]
+                        );
                     } catch (\Exception $e) {
                         Log::warning('adminUpdate: courier fee notification failed', ['error' => $e->getMessage()]);
                     }
@@ -1967,7 +1976,52 @@ class OrderController extends Controller
             // Handle cancellation: cancel linked JobOrder and restore inventory
             if ($newStatus === OrderStatus::CANCELLED) {
                 $this->cancelLinkedJobOrder($order);
-                if ($oldStatus !== OrderStatus::CANCELLED) $this->restoreStockOnCancel($order);
+                if ($oldStatus !== OrderStatus::CANCELLED) {
+                    $this->restoreStockOnCancel($order);
+
+                    // Why the SHOP cancelled. Returns record a reason and a customer's own
+                    // cancellation records a reason; this path recorded nothing, so the one
+                    // cancellation the customer did not ask for was the one nobody could explain.
+                    $reason = trim((string) $request->input('cancelReason', ''));
+                    $order->cancelledBy     = 'admin';
+                    $order->cancelledReason = $reason !== '' ? mb_substr($reason, 0, 500) : null;
+                    $order->cancelledAt     = now();
+
+                    // The money. `refundAmount` lets the shop keep a deposit when work had already
+                    // started - personalised goods cannot be resold, which is what a deposit is for
+                    // - but the DEFAULT is everything received, because a shop that cancels an
+                    // order nobody has made yet is not entitled to any of it.
+                    $paid = $this->paidSoFar($order);
+                    $refund = $request->has('refundAmount')
+                        ? max(0, min($paid, (float) $request->input('refundAmount')))
+                        : $paid;
+                    $this->recordRefundOwed(
+                        $order,
+                        $refund,
+                        $reason !== ''
+                            ? 'Cancelled by the shop - ' . mb_substr($reason, 0, 200)
+                            : 'Cancelled by the shop',
+                        trim(($user->firstName ?? '') . ' ' . ($user->lastName ?? '')) ?: null
+                    );
+                    $order->save();
+
+                    try {
+                        Notification::create([
+                            'user_id'    => (string) $order->userId,
+                            'type'       => 'order_cancelled',
+                            'title'      => 'Order Cancelled',
+                            'message'    => 'Order #' . strtoupper(substr((string) $order->_id, -8))
+                                . ' was cancelled by the shop.'
+                                . ($reason !== '' ? ' Reason: ' . mb_substr($reason, 0, 200) : '')
+                                . ($refund > 0 ? ' A refund of P' . number_format($refund, 2) . ' is being arranged.' : ''),
+                            'is_read'    => false,
+                            'data'       => ['orderId' => (string) $order->_id],
+                            'created_at' => now(),
+                        ]);
+                    } catch (\Exception $e) {
+                        Log::warning('updateStatus: cancel notification failed', ['error' => $e->getMessage()]);
+                    }
+                }
             }
 
             // Handle return: restore inventory
@@ -2390,6 +2444,111 @@ class OrderController extends Controller
         );
     }
 
+    /**
+     * POST /api/admin/orders/{id}/mark-refunded
+     *
+     * The other half of recordRefundOwed. That one records that money is owed; nothing until now
+     * could record that it had been sent, so the debt sat on the order forever and the only way to
+     * clear it was to forget about it. There is still no refund API - the shop sends it by hand -
+     * so this is a receipt, not a transfer, and it says who logged it and how.
+     */
+    public function markRefunded(Request $request, $id)
+    {
+        try {
+            $user = $request->user();
+            if (!$this->hasPermission($request, 'payments.create')) {
+                return $this->unauthorizedResponse();
+            }
+
+            $order = Order::find($id);
+            if (!$order) return $this->notFoundResponse('Order');
+
+            $owed = (float) ($order->refundOwed ?? 0);
+            if ($owed <= 0) {
+                return $this->errorResponse('This order has no refund outstanding.', 422);
+            }
+
+            $validated = $request->validate([
+                'amount' => 'required|numeric|min:0.01',
+                'method' => 'required|string|in:gcash,maya,bank_transfer,cash,paymongo',
+                'note'   => 'nullable|string|max:500',
+            ]);
+
+            $amount = round((float) $validated['amount'], 2);
+            if ($amount > $owed + 0.01) {
+                return $this->errorResponse(
+                    'That is more than the ' . number_format($owed, 2) . ' owed on this order.',
+                    422
+                );
+            }
+
+            // Mark the owed entries settled oldest first, so a partial payment clears the oldest
+            // debt rather than leaving several half-paid rows nobody can reconcile.
+            $left    = $amount;
+            $refunds = $order->refunds ?? [];
+            foreach ($refunds as $i => $r) {
+                if (($r['status'] ?? 'owed') !== 'owed') continue;
+                if ($left <= 0.009) break;
+                $rowAmt = (float) ($r['amount'] ?? 0);
+                if ($rowAmt <= $left + 0.009) {
+                    $refunds[$i]['status']   = 'paid';
+                    $refunds[$i]['paidAt']   = now()->toISOString();
+                    $refunds[$i]['paidVia']  = $validated['method'];
+                    $refunds[$i]['paidBy']   = trim(($user->firstName ?? '') . ' ' . ($user->lastName ?? '')) ?: null;
+                    $refunds[$i]['paidNote'] = isset($validated['note'])
+                        ? htmlspecialchars(strip_tags(trim($validated['note'])), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')
+                        : null;
+                    $left -= $rowAmt;
+                } else {
+                    // Partly settled: split it so the remainder is still visibly owed.
+                    $refunds[$i]['amount'] = round($rowAmt - $left, 2);
+                    $refunds[] = [
+                        'amount'     => round($left, 2),
+                        'reason'     => $r['reason'] ?? 'Refund',
+                        'status'     => 'paid',
+                        'recordedBy' => $r['recordedBy'] ?? null,
+                        'recordedAt' => $r['recordedAt'] ?? now()->toISOString(),
+                        'paidAt'     => now()->toISOString(),
+                        'paidVia'    => $validated['method'],
+                        'paidBy'     => trim(($user->firstName ?? '') . ' ' . ($user->lastName ?? '')) ?: null,
+                    ];
+                    $left = 0;
+                }
+            }
+
+            $order->refunds    = array_values($refunds);
+            $order->refundOwed = round(
+                collect($order->refunds)->filter(fn ($r) => ($r['status'] ?? 'owed') === 'owed')
+                    ->sum(fn ($r) => (float) ($r['amount'] ?? 0)),
+                2
+            );
+            $order->updatedAt = now();
+            $order->save();
+
+            try {
+                Notification::create([
+                    'user_id'    => (string) $order->userId,
+                    'type'       => 'refund_sent',
+                    'title'      => 'Refund Sent',
+                    'message'    => 'We have sent P' . number_format($amount, 2) . ' back for order #'
+                        . strtoupper(substr((string) $order->_id, -8))
+                        . ' via ' . strtoupper($validated['method']) . '.',
+                    'is_read'    => false,
+                    'data'       => ['orderId' => (string) $order->_id],
+                    'created_at' => now(),
+                ]);
+            } catch (\Exception $e) {
+                Log::warning('markRefunded: notification failed', ['error' => $e->getMessage()]);
+            }
+
+            return $this->successResponse('Refund recorded.', $order);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return $this->validationErrorResponse($e);
+        } catch (\Exception $e) {
+            return $this->serverErrorResponse($e, 'Failed to record the refund.');
+        }
+    }
+
     public function recordPayment(Request $request, $id)
     {
         try {
@@ -2645,6 +2804,97 @@ class OrderController extends Controller
             return $this->validationErrorResponse($e);
         } catch (\Exception $e) {
             return $this->serverErrorResponse($e, 'Failed to restart the design job.');
+        }
+    }
+
+    /**
+     * POST /api/admin/orders/{id}/convert-to-design
+     *
+     * The customer uploaded a file, then turned out to want it designed - references rather than
+     * artwork, or artwork that needs work. Until now there was no way to act on that: the design
+     * fee is collected at checkout, so an upload order carries none, and the two mechanisms that
+     * could add one both refuse. restartDesignJob is customer-only and requires an existing
+     * draft; the revision fee requires a proof to revise.
+     *
+     * So the fee is billed onto the BALANCE rather than collected now. Nothing moves until the
+     * customer has agreed in chat - which is the point: a refund of a fee taken too early costs
+     * the shop the gateway charge and cannot be undone cleanly.
+     */
+    public function convertToDesignJob(Request $request, $id)
+    {
+        try {
+            $user = $request->user();
+            if (!in_array($user->role ?? null, ['admin', 'owner', 'superAdmin'], true)) {
+                return $this->unauthorizedResponse();
+            }
+
+            $order = Order::find($id);
+            if (!$order) return $this->notFoundResponse('Order');
+
+            if (($order->designStatus ?? null) === 'approved') {
+                return $this->errorResponse('This design is already approved - revert it first.', 422);
+            }
+            if (\App\Models\JobOrder::where('orderId', (string) $order->_id)
+                    ->get()->contains(fn ($j) => $j->joStatus !== 'Cancelled')) {
+                return $this->errorResponse('This order is already in production.', 422);
+            }
+
+            $owner     = User::where('role', 'owner')->first();
+            $designFee = max(0, (float) ($request->input('designFee', $owner->designRequestFee ?? 100)));
+
+            $itemIndex = $request->input('itemIndex');
+            $items     = $order->items ?? [];
+            if (is_numeric($itemIndex) && isset($items[(int) $itemIndex])) {
+                $items[(int) $itemIndex]['designRequested'] = true;
+                $items[(int) $itemIndex]['designStatus']    = 'pending_design';
+                $order->items = $items;
+            } else {
+                foreach ($items as $i => $it) {
+                    if (!empty($it['isCustom'])) {
+                        $items[$i]['designRequested'] = true;
+                        $items[$i]['designStatus']    = 'pending_design';
+                    }
+                }
+                $order->items = $items;
+            }
+
+            // Billed, not charged. The customer settles it with the rest of the balance.
+            if ($designFee > 0) {
+                $order->designFee   = round((float) ($order->designFee ?? 0) + $designFee, 2);
+                $order->totalAmount = round((float) ($order->totalAmount ?? 0) + $designFee, 2);
+                if ($order->balance !== null && $order->balance !== '') {
+                    $order->balance = round((float) $order->balance + $designFee, 2);
+                }
+            }
+
+            $order->designStatus  = 'pending_design';
+            $order->designType    = 'request';
+            $history              = $order->statusHistory ?? [];
+            $history[]            = ['status' => 'converted_to_design', 'at' => now()->toISOString()];
+            $order->statusHistory = $history;
+            $order->updatedAt     = now();
+            $order->save();
+
+            try {
+                Notification::create([
+                    'user_id'    => (string) $order->userId,
+                    'type'       => 'design_job_started',
+                    'title'      => 'We are designing your order',
+                    'message'    => 'Order #' . strtoupper(substr((string) $order->_id, -8))
+                        . ' - we will create the artwork and send you a mockup to approve.'
+                        . ($designFee > 0 ? ' A design fee of P' . number_format($designFee, 2)
+                            . ' has been added to your balance.' : ''),
+                    'is_read'    => false,
+                    'data'       => ['orderId' => (string) $order->_id],
+                    'created_at' => now(),
+                ]);
+            } catch (\Exception $e) {
+                Log::warning('convertToDesignJob: notification failed', ['error' => $e->getMessage()]);
+            }
+
+            return $this->successResponse('Converted to a design job.', $order);
+        } catch (\Exception $e) {
+            return $this->serverErrorResponse($e, 'Failed to convert this order.');
         }
     }
 

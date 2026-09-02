@@ -172,7 +172,10 @@ function QuickViewModal({ product, flashSale, onClose, onToast }) {
   ) : unitPrice;
 
   const isOOS = (() => {
-    if (!product.trackInventory || product.isMadeToOrder || product.stockStatus === 'upon-order') return false;
+    // Availability comes from what can actually be built, not from the made-to-order flag.
+    // A product genuinely bought per order has on-demand materials, which canProduce already
+    // skips - so it stays available truthfully rather than by assertion.
+    if (!product.trackInventory) return false;
     if (comboId != null && product.variantAvailableQty?.[comboId] != null) return Number(product.variantAvailableQty[comboId]) === 0;
     if (product.availableQty != null) return Number(product.availableQty) === 0;
     if (comboId != null && product.variantStock?.[comboId] != null) return Number(product.variantStock[comboId]) === 0;
@@ -180,7 +183,7 @@ function QuickViewModal({ product, flashSale, onClose, onToast }) {
   })();
 
   const maxQty = (() => {
-    if (!product.trackInventory || product.isMadeToOrder || product.stockStatus === 'upon-order') return 9999;
+    if (!product.trackInventory) return 9999;
     if (comboId != null && product.variantBackorder?.[comboId]) return 9999;
     if (comboId != null && product.variantAvailableQty?.[comboId] != null) return Math.max(Number(product.variantAvailableQty[comboId]), 0);
     if (product.availableQty != null) return Math.max(Number(product.availableQty), 0);
@@ -188,9 +191,20 @@ function QuickViewModal({ product, flashSale, onClose, onToast }) {
     return product.stock != null ? Math.max(Number(product.stock), 0) : 9999;
   })();
 
+  // What can really be built right now, ignoring the pre-order allowance. availableQty goes
+  // to 9999 once pre-order is on, so it can no longer answer "how many are ready today".
+  const readyNow = (() => {
+    if (comboId != null && product.variantCanProduce?.[comboId] != null) return Number(product.variantCanProduce[comboId]);
+    if (product.canProduce != null) return Number(product.canProduce);
+    if (comboId != null && product.variantStock?.[comboId] != null) return Number(product.variantStock[comboId]);
+    return product.stock != null ? Number(product.stock) : null;
+  })();
+
   const displayStock = (() => {
     if (product.isMadeToOrder) return null;
     if (product.stockStatus === 'upon-order') return { label: 'Upon Order', type: 'gold' };
+    // Sold out on the shelf but still orderable, because the shop said it can restock.
+    if (product.allowPreorder && readyNow != null && readyNow <= 0) return { label: 'Pre-order', type: 'gold' };
     if (isOOS) return { label: 'Out of Stock', type: 'red' };
     if (comboId != null && product.variantAvailableQty?.[comboId] != null) {
       const n = Number(product.variantAvailableQty[comboId]);
@@ -1778,7 +1792,7 @@ export default function ShopClient({
                         onClick={() => {
                           if (isOOS) return;
                           setQuickVariant(combo);
-                          const unlimited = !quickAddProduct.trackInventory || quickAddProduct.isMadeToOrder || quickAddProduct.stockStatus === 'upon-order' || !!quickAddProduct.variantBackorder?.[combo.id];
+                          const unlimited = !quickAddProduct.trackInventory || !!quickAddProduct.variantBackorder?.[combo.id];
                           if (!unlimited) {
                             const vqty = quickAddProduct.variantStock?.[combo.id];
                             const cap = vqty != null ? Number(vqty) : (quickAddProduct.availableQty ?? quickAddProduct.stock ?? 9999);
@@ -1826,7 +1840,7 @@ export default function ShopClient({
             {/* Quantity */}
             {(() => {
               const hasVariants = quickAddProduct.combinations?.length > 0;
-              const unlimited = !quickAddProduct.trackInventory || quickAddProduct.isMadeToOrder || quickAddProduct.stockStatus === 'upon-order';
+              const unlimited = !quickAddProduct.trackInventory;
               const effectiveMaxQty = (() => {
                 if (unlimited) return 9999;
                 if (hasVariants && !quickVariant) return 9999;
@@ -1841,7 +1855,7 @@ export default function ShopClient({
                 if (!quickAddProduct.trackInventory) return null;
                 if (quickAddProduct.isMadeToOrder || quickAddProduct.stockStatus === 'upon-order') return { text: 'Made to Order', color: 'var(--gold)' };
                 if (hasVariants && !quickVariant) return null;
-                if (quickVariant && quickAddProduct.variantBackorder?.[quickVariant.id]) return { text: 'Backorder OK', color: 'var(--gray)' };
+                if (quickVariant && quickAddProduct.variantBackorder?.[quickVariant.id]) return { text: 'Pre-order', color: 'var(--gold)' };
                 if (effectiveMaxQty < 9999) {
                   const color = effectiveMaxQty <= 5 ? '#ef4444' : effectiveMaxQty <= 10 ? '#f59e0b' : 'var(--gray)';
                   return { text: `${effectiveMaxQty} in stock`, color };

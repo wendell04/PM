@@ -8,6 +8,7 @@ import {
 } from '@/lib/orderRequestApi';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import { loadInventory } from '../inventory-v2/api';
+import { S } from '../inventory-v2/shared';
 
 const STATUS_LABELS = {
   pending_review: 'Pending Review',
@@ -302,9 +303,9 @@ export default function OrderRequestsPage() {
 
   if (isLoading) {
     return (
-      <div style={{ padding: '2rem' }}>
+      <div style={{ ...S.page, padding: '24px' }}>
         <style>{`
-          @keyframes orPageSkel { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+          @keyframes pmPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
         `}</style>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxWidth: '960px' }}>
           {[...Array(5)].map((_, i) => (
@@ -314,7 +315,7 @@ export default function OrderRequestsPage() {
                 height: '56px',
                 borderRadius: '8px',
                 background: 'rgba(255,255,255,0.04)',
-                animation: 'orPageSkel 1.5s ease-in-out infinite',
+                animation: 'pmPulse 1.5s ease-in-out infinite',
               }}
             />
           ))}
@@ -325,7 +326,7 @@ export default function OrderRequestsPage() {
 
   return (
     <ErrorBoundary>
-    <div style={{ padding: '2rem' }}>
+    <div style={{ ...S.page, padding: '24px' }}>
       {/* Page title is shown in the top bar; keep only the descriptive subtitle */}
       <p style={{ margin: '0 0 1.5rem', color: 'var(--gray)', fontSize: '0.9rem' }}>Review and manage customer print orders</p>
 

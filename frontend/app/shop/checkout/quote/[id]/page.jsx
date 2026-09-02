@@ -326,6 +326,17 @@ export default function QuoteCheckoutPage() {
                 <span style={{ color: '#6b7280' }}>Delivery fee</span><span>{formatPeso(deliveryFee)}</span>
               </div>
             )}
+            {/* At zero the line simply vanished, leaving a total that said nothing about
+                delivery - which reads as "included" to anyone who is not looking for it. */}
+            {deliveryFee === 0 && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: '.86rem' }}>
+                <span style={{ color: '#6b7280' }}>Delivery</span>
+                <span style={{ color: '#6b7280', textAlign: 'right', maxWidth: 260, lineHeight: 1.45 }}>
+                  Not included. The seller books a courier to your address after this is paid and
+                  sends you the exact fee in chat.
+                </span>
+              </div>
+            )}
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '.86rem', marginTop: 2 }}>
               <span style={{ color: '#6b7280' }}>Quoted total</span>
               <span style={{ fontWeight: 800 }}>{formatPeso(finalPrice)}</span>

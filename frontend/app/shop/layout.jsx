@@ -710,7 +710,7 @@ export default function ShopLayout({ children }) {
         return prev.map(i => {
           if (`${(i.product.id ?? i.product._id)}_${i.variantId ?? 'none'}` !== key) return i;
           const stockCap = (() => {
-            if (!i.trackInventory || i.stockStatus === 'upon-order') return 99;
+            if (!i.trackInventory) return 99;
             if (i.variantId && i.product?.variantAvailableQty?.[i.variantId] != null)
               return Math.max(i.product.variantAvailableQty[i.variantId], 1);
             if (i.product?.canProduce != null) return Math.max(i.product.availableQty ?? 0, 1);

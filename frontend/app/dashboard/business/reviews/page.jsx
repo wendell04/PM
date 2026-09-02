@@ -139,10 +139,6 @@ export default function AdminReviewsPage() {
   return (
     <div style={{ ...S.page, padding: '24px' }}>
 
-      <div style={{ ...S.rowBetween, marginBottom: '18px', justifyContent: 'flex-end' }}>
-        <button type="button" onClick={() => load(page)} style={S.btnGhost}>{ICONS.reload} Refresh</button>
-      </div>
-
       <div style={{ ...S.row, marginBottom: '18px' }}>
         <SummaryCard label="Total reviews" value={stats?.total ?? '-'} accent />
         <SummaryCard label="Visible" value={stats?.visible ?? '-'} sub="Shown on the storefront" />
@@ -159,6 +155,9 @@ export default function AdminReviewsPage() {
         <div style={{ width: '170px' }}>
           <CustomSelect value={visibility} onChange={setVisibility} options={visibilityOptions} placeholder="All reviews" />
         </div>
+        <button type="button" onClick={() => load(page)} style={{ ...S.btnGhost, marginLeft: 'auto' }}>
+          {ICONS.reload} Refresh
+        </button>
       </div>
 
       {error && (
@@ -192,7 +191,7 @@ export default function AdminReviewsPage() {
       {!error && !loading && reviews.length > 0 && (
         <div style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '820px' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr>
                   <th style={S.th}>Customer</th>
@@ -210,7 +209,9 @@ export default function AdminReviewsPage() {
                   const open = !!expanded[id];
                   const long = (r.comment || '').length > 140;
                   return (
-                    <tr key={id} style={{ ...S.tr, opacity: r.is_visible ? 1 : 0.55 }}>
+                    <tr key={id} style={{ ...S.tr, opacity: r.is_visible ? 1 : 0.55 }}
+                      onMouseEnter={e => e.currentTarget.style.background = 'var(--dark2)'}
+                      onMouseLeave={e => e.currentTarget.style.background = ''}>
                       <td style={{ ...S.td, fontWeight: 600 }}>{r.customerName || 'Customer'}</td>
                       <td style={S.td}><Stars rating={r.rating} /></td>
                       <td style={{ ...S.td, color: r.productName ? 'var(--white)' : 'var(--gray)', fontSize: '12px' }}>
@@ -260,15 +261,16 @@ export default function AdminReviewsPage() {
               </tbody>
             </table>
           </div>
+          {total > 0 && (
+            <div style={{ padding: '0 16px 12px' }}>
+              <PaginationBar
+                total={total} page={page} perPage={perPage}
+                onPage={p => load(p)}
+                onPerPage={n => { setPerPage(n); load(1, n); }}
+              />
+            </div>
+          )}
         </div>
-      )}
-
-      {!error && !loading && total > 0 && (
-        <PaginationBar
-          total={total} page={page} perPage={perPage}
-          onPage={p => load(p)}
-          onPerPage={n => { setPerPage(n); load(1, n); }}
-        />
       )}
 
       <ConfirmModal
