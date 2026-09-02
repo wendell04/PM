@@ -503,9 +503,9 @@ export default function BusinessDashboardLayout({ children }) {
     if (!perms) return false;
     if (key.includes(".")) {
       if (key in perms) return perms[key] === true;
-      const module = key.split(".")[0];
-      for (const k in perms) if (k.startsWith(module + ".")) return false;
-      return perms[module] === true;
+      const mod = key.split(".")[0];
+      for (const k in perms) if (k.startsWith(mod + ".")) return false;
+      return perms[mod] === true;
     }
     if (perms[key] === true) return true;
     const prefix = key + ".";
