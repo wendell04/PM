@@ -10,6 +10,7 @@ import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import { uploadDesignFile } from '@/lib/orderRequestApi';
 import { useCart } from '@/context/CartContext';
 import useLockBodyScroll from '@/lib/useLockBodyScroll';
+import { compressImage } from '@/lib/compressImage';
 import { DEFAULT_CUSTOM_ORDER_TERMS, renderTermsBody } from '@/lib/customOrderTerms';
 
 const METRO_CITIES = ['Manila', 'Quezon City', 'Caloocan', 'Las Piñas', 'Makati', 'Malabon', 'Mandaluyong', 'Marikina', 'Muntinlupa', 'Navotas', 'Parañaque', 'Pasay', 'Pasig', 'Pateros', 'San Juan', 'Taguig', 'Valenzuela'];
@@ -52,7 +53,8 @@ function getTierForQty(p, qty) {
   return match;
 }
 
-const MAX_DESIGN_FILES = 5;
+const MAX_DESIGN_FILES = 5;    // artwork to be printed
+const MAX_REFERENCE_FILES = 10;  // photos we design FROM - a collage is legitimately many
 // Matched by extension, not MIME type: browsers report .ai as application/pdf and .psd as
 // octet-stream, so a MIME whitelist rejects the very formats a designer sends.
 const ACCEPTED_RE = /\.(jpe?g|png|webp|pdf|ai|psd|svg)$/i;
@@ -451,17 +453,25 @@ function CustomOrderInner() {
     const picked = Array.from(fileList || []);
     if (!picked.length) return;
 
-    const room = MAX_DESIGN_FILES - designFiles.length;
-    if (room <= 0) { setSubmitError(`You can attach up to ${MAX_DESIGN_FILES} files.`); return; }
+    const cap = designMode === 'request' ? MAX_REFERENCE_FILES : MAX_DESIGN_FILES;
+    const room = cap - designFiles.length;
+    if (room <= 0) { setSubmitError(`You can attach up to ${cap} files.`); return; }
 
     setSubmitError(null);
     const accepted = [];
-    for (const file of picked.slice(0, room)) {
-      if (!ACCEPTED_RE.test(file.name)) { setSubmitError(`${file.name} is not an accepted format.`); continue; }
-      if (file.size > 10 * 1024 * 1024) { setSubmitError(`${file.name} is over 10 MB.`); continue; }
+    // References are looked at, not printed, so a 25 MB phone photo is 25 MB of nothing - shrink it
+    // the way Messenger quietly does. Artwork is never touched: a design file has to reach the press
+    // byte-identical, and re-encoding one would be silent damage to the thing being sold.
+    const isReference = designMode === 'request';
+    for (const original of picked.slice(0, room)) {
+      if (!ACCEPTED_RE.test(original.name)) { setSubmitError(`${original.name} is not an accepted format.`); continue; }
+      const file = isReference ? await compressImage(original) : original;
+      // Checked after shrinking, so a big photo that compresses down is accepted rather than refused
+      // over a size the customer never has to care about.
+      if (file.size > 10 * 1024 * 1024) { setSubmitError(`${original.name} is over 10 MB.`); continue; }
       accepted.push(file);
     }
-    if (picked.length > room) setSubmitError(`Only ${MAX_DESIGN_FILES} files can be attached - the rest were skipped.`);
+    if (picked.length > room) setSubmitError(`Only ${cap} files can be attached - the rest were skipped.`);
     if (!accepted.length) return;
 
     const entries = accepted.map(file => ({

@@ -2022,6 +2022,9 @@ export default function CheckoutPage() {
             : paymentMethod === 'paymaya'
               ? 'By placing this order, you agree to our terms. You\'ll be redirected to Maya to complete payment.'
               : 'By placing this order, you agree to our terms. Your card details are processed securely by PayMongo.'}
+        {courierBooked && paymentMethod !== 'cod'
+          ? ' Delivery is not included - the seller books the courier after your order is confirmed and sends you the exact fee in chat.'
+          : ''}
       </p>
 
       {/* ADDRESS PICKER MODAL */}

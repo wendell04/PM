@@ -1774,13 +1774,24 @@ export default function OrdersHistoryPage() {
                           reasonably believe they owe nothing, then meet a rider asking for money. */}
                       <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                         <span style={{ fontSize: '12px', color: 'var(--gray)' }}>Shipping</span>
-                        {selectedOrder.shippingMode === 'courier_booked' && !(Number(selectedOrder.shippingFee) > 0) ? (
-                          <span style={{ fontSize: '12px', color: '#d4a843', textAlign: 'right' }}>
-                            Paid to the rider on delivery
-                          </span>
-                        ) : (
-                          <span style={{ fontSize: '12px', color: 'var(--white)' }}>{formatPeso(selectedOrder.shippingFee ?? 0)}</span>
-                        )}
+                        {(() => {
+                          const courierMode = selectedOrder.shippingMode === 'courier_booked'
+                            && !(Number(selectedOrder.shippingFee) > 0);
+                          if (!courierMode) return (
+                            <span style={{ fontSize: '12px', color: 'var(--white)' }}>{formatPeso(selectedOrder.shippingFee ?? 0)}</span>
+                          );
+                          const cf = Number(selectedOrder.courierFee ?? 0);
+                          return (
+                            <span style={{ fontSize: '12px', color: '#d4a843', textAlign: 'right' }}>
+                              {cf > 0 ? formatPeso(cf) : 'Billed separately'}
+                              <span style={{ display: 'block', fontSize: '10.5px', color: 'var(--gray)', fontWeight: 400, marginTop: '1px' }}>
+                                {cf > 0
+                                  ? 'Paid to the rider, separate from your order total'
+                                  : 'We will send the exact fee in chat'}
+                              </span>
+                            </span>
+                          );
+                        })()}
                       </div>
                       {selectedOrder.isRush && Number(selectedOrder.rushFee) > 0 && (
                         <div style={{ display: 'flex', justifyContent: 'space-between' }}>

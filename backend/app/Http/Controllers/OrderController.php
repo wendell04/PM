@@ -1363,7 +1363,8 @@ class OrderController extends Controller
                             'message'    => 'Your delivery fee for order #' .
                                 strtoupper(substr((string) $order->_id, -8)) .
                                 ' is ₱' . number_format($newFee, 2) .
-                                '. Please prepare this amount in cash to pay the rider on delivery.',
+                                '. You can pay this in cash to the rider on delivery, or send it '
+                                . 'ahead via GCash or Maya. It is separate from the item total.',
                             'is_read'    => false,
                             'data'       => ['orderId' => (string) $order->_id, 'courierFee' => $newFee],
                             'created_at' => now(),
