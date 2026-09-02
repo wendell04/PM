@@ -1314,6 +1314,10 @@ class OrderController extends Controller
                 $order->trackingNumber = $request->input('trackingNumber') ?: null;
             }
 
+            // Read before the save, not after. update() resyncs the model's originals, so anything
+            // that wants to know what a field USED to be has to capture it here.
+            $prevCourierFee = (float) ($order->courierFee ?? 0);
+
             $order->update($validated);
 
             // Notify the customer when the promised delivery date is moved (e.g. production backlog).
@@ -1353,9 +1357,10 @@ class OrderController extends Controller
             // Notify the customer so they have cash ready.
             if (array_key_exists('courierFee', $validated)) {
                 $newFee = (float) $validated['courierFee'];
-                $prevFee = (float) ($order->getOriginal('courierFee') ?? 0);
+                $prevFee = $prevCourierFee;
+                // update() above has already persisted it; this only keeps the in-memory model
+                // consistent for the notification payloads below.
                 $order->courierFee = $newFee;
-                $order->save();
 
                 if ($newFee > 0 && abs($newFee - $prevFee) > 0.001) {
                     try {
