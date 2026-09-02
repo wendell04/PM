@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Events\OrderStatusUpdated;
 use App\Mail\AdminNewOrderMail;
+use App\Mail\DeliveryFeeMail;
 use App\Mail\OrderConfirmationMail;
 use App\Mail\OrderStatusMail;
 use App\Models\Order;
@@ -1400,6 +1401,18 @@ class OrderController extends Controller
                                 . 'This is the courier\'s charge - it is not part of the item total you already paid.',
                             ['courierFee' => $newFee]
                         );
+
+                        $to = $order->userSnapshot['email'] ?? null;
+                        if ($to) {
+                            $first = trim((string) ($order->userSnapshot['name'] ?? ''));
+                            $first = $first !== '' ? explode(' ', $first)[0] : 'there';
+                            Mail::to($to)->send(new DeliveryFeeMail(
+                                $first,
+                                (string) $order->_id,
+                                $newFee,
+                                (float) ($order->totalAmount ?? 0)
+                            ));
+                        }
                     } catch (\Exception $e) {
                         Log::warning('adminUpdate: courier fee notification failed', ['error' => $e->getMessage()]);
                     }
