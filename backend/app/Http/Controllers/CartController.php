@@ -102,7 +102,7 @@ class CartController extends Controller
                 'items.*.lineId' => 'nullable|string',
                 'items.*.isCustom' => 'nullable|boolean',
                 'items.*.designUrl' => 'nullable|string',
-                'items.*.designNotes' => 'nullable|string',
+                'items.*.designNotes' => 'nullable|string|max:2000',
                 // Cloudinary renames the stored file, so the customer's own filename has to
                 // travel with the line or they only ever see a random string.
                 'items.*.designName' => 'nullable|string|max:255',
@@ -193,7 +193,7 @@ class CartController extends Controller
                 'items.*.lineId' => 'nullable|string',
                 'items.*.isCustom' => 'nullable|boolean',
                 'items.*.designUrl' => 'nullable|string',
-                'items.*.designNotes' => 'nullable|string',
+                'items.*.designNotes' => 'nullable|string|max:2000',
                 // Cloudinary renames the stored file, so the customer's own filename has to
                 // travel with the line or they only ever see a random string.
                 'items.*.designName' => 'nullable|string|max:255',

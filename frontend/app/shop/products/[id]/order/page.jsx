@@ -56,6 +56,7 @@ function getTierForQty(p, qty) {
 // What an "as is" choice records on the order. It is a real instruction, not a blank: the
 // printer reads the same field either way.
 const AS_IS_NOTE = 'Print exactly as the file is - no changes.';
+const MAX_QTY = 10000;   // a print run, not a typo
 const MAX_DESIGN_FILES = 5;    // artwork to be printed
 const MAX_REFERENCE_FILES = 10;  // photos we design FROM - a collage is legitimately many
 // Matched by extension, not MIME type: browsers report .ai as application/pdf and .psd as
@@ -1092,12 +1093,25 @@ function CustomOrderInner() {
                   <button
                     onClick={() => { const n = Math.max(moq, quantity - 1); setQuantity(n); setQuantityInput(String(n)); }}
                     style={{ width: 36, height: 36, borderRadius: '8px', border: '1px solid var(--border)', background: 'rgba(255,255,255,0.05)', color: 'var(--white)', fontSize: '1.1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>−</button>
-                  <input type="text" value={quantityInput}
-                    onChange={e => setQuantityInput(e.target.value)}
-                    onBlur={() => { const n = Math.max(moq, parseInt(quantityInput) || moq); setQuantity(n); setQuantityInput(String(n)); }}
+                  <input type="text" inputMode="numeric" pattern="[0-9]*" value={quantityInput}
+                    onFocus={e => e.target.select()}
+                    onChange={e => {
+                      // Digits only, and never above the cap. Left empty on purpose while typing -
+                      // forcing a value back in mid-keystroke makes the field impossible to clear.
+                      const raw = e.target.value.replace(/\D/g, '');
+                      if (raw === '') { setQuantityInput(''); return; }
+                      const clamped = Math.min(parseInt(raw, 10), MAX_QTY);
+                      setQuantityInput(String(clamped));
+                      if (clamped >= moq) setQuantity(clamped);
+                    }}
+                    onBlur={() => {
+                      const v = parseInt(quantityInput, 10);
+                      const n = isNaN(v) || v < moq ? moq : Math.min(v, MAX_QTY);
+                      setQuantity(n); setQuantityInput(String(n));
+                    }}
                     style={{ width: 64, textAlign: 'center', padding: '0.4rem', borderRadius: '8px', border: '1px solid var(--border)', background: 'rgba(255,255,255,0.05)', color: 'var(--white)', fontSize: '0.95rem', fontFamily: "'Outfit', sans-serif" }} />
                   <button
-                    onClick={() => { const n = quantity + 1; setQuantity(n); setQuantityInput(String(n)); }}
+                    onClick={() => { const n = Math.min(MAX_QTY, quantity + 1); setQuantity(n); setQuantityInput(String(n)); }}
                     style={{ width: 36, height: 36, borderRadius: '8px', border: '1px solid var(--border)', background: 'rgba(255,255,255,0.05)', color: 'var(--white)', fontSize: '1.1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>+</button>
                   {unitPrice != null && (
                     <span style={{ marginLeft: '0.5rem', color: 'var(--gray)', fontSize: '0.85rem' }}>{fmt(unitPrice)} / pc</span>
@@ -1302,7 +1316,7 @@ function CustomOrderInner() {
                   })}
 
                   {printIntent === 'notes' && (
-                    <textarea value={designNotes} onChange={e => setDesignNotes(e.target.value)}
+                    <textarea value={designNotes} maxLength={2000} onChange={e => setDesignNotes(e.target.value)}
                       placeholder="E.g. Portrait, centered on the front, keep a 1cm margin, match the red exactly."
                       rows={3}
                       style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--border)', background: 'rgba(255,255,255,0.05)', color: 'var(--white)', fontSize: '0.85rem', fontFamily: "'Outfit', sans-serif", resize: 'vertical', boxSizing: 'border-box', outline: 'none' }} />
@@ -1319,7 +1333,7 @@ function CustomOrderInner() {
                       Our designer will follow up in chat.
                     </span>
                   </p>
-                  <textarea value={designNotes} onChange={e => setDesignNotes(e.target.value)}
+                  <textarea value={designNotes} maxLength={2000} onChange={e => setDesignNotes(e.target.value)}
                     placeholder="E.g. Company logo in blue and white, add 'ABC Corp' in bold. Minimalist style."
                     rows={4}
                     style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--border)', background: 'rgba(255,255,255,0.05)', color: 'var(--white)', fontSize: '0.85rem', fontFamily: "'Outfit', sans-serif", resize: 'vertical', boxSizing: 'border-box', outline: 'none' }} />

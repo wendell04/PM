@@ -402,6 +402,7 @@ const ChatInput = ({ onSendMessage, isSending, activeConversation, token, onTypi
         />
 
         <textarea
+          maxLength={2000}
           value={text}
           onChange={(e) => {
             setText(e.target.value);

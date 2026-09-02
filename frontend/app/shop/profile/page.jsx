@@ -2248,13 +2248,13 @@ export default function CustomerProfilePage() {
                         <label style={{ display: "block", fontSize: "0.72rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--gray)", marginBottom: "0.4rem" }}>
                           First Name <span style={{ color: "var(--red)" }}>*</span>
                         </label>
-                        <input type="text" value={profileForm.firstName} onChange={(e) => handleProfileChange("firstName", e.target.value)} style={{ width: "100%", padding: "0.625rem 0.75rem", background: "var(--dark)", border: "1px solid var(--border)", borderRadius: "8px", color: "var(--white)", fontSize: "0.875rem", boxSizing: "border-box" }} />
+                        <input type="text" maxLength={100} value={profileForm.firstName} onChange={(e) => handleProfileChange("firstName", e.target.value)} style={{ width: "100%", padding: "0.625rem 0.75rem", background: "var(--dark)", border: "1px solid var(--border)", borderRadius: "8px", color: "var(--white)", fontSize: "0.875rem", boxSizing: "border-box" }} />
                       </div>
                       <div>
                         <label style={{ display: "block", fontSize: "0.72rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--gray)", marginBottom: "0.4rem" }}>
                           Last Name <span style={{ color: "var(--red)" }}>*</span>
                         </label>
-                        <input type="text" value={profileForm.lastName} onChange={(e) => handleProfileChange("lastName", e.target.value)} style={{ width: "100%", padding: "0.625rem 0.75rem", background: "var(--dark)", border: "1px solid var(--border)", borderRadius: "8px", color: "var(--white)", fontSize: "0.875rem", boxSizing: "border-box" }} />
+                        <input type="text" maxLength={100} value={profileForm.lastName} onChange={(e) => handleProfileChange("lastName", e.target.value)} style={{ width: "100%", padding: "0.625rem 0.75rem", background: "var(--dark)", border: "1px solid var(--border)", borderRadius: "8px", color: "var(--white)", fontSize: "0.875rem", boxSizing: "border-box" }} />
                       </div>
                       <div>
                         <label style={{ display: "block", fontSize: "0.72rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--gray)", marginBottom: "0.4rem" }}>
@@ -2266,7 +2266,7 @@ export default function CustomerProfilePage() {
                         <label style={{ display: "block", fontSize: "0.72rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--gray)", marginBottom: "0.4rem" }}>
                           Phone Number <span style={{ color: "var(--red)" }}>*</span>
                         </label>
-                        <input type="text" value={profileForm.phoneNumber} onChange={(e) => handleProfileChange("phoneNumber", e.target.value)} placeholder="+639XXXXXXXXX" style={{ width: "100%", padding: "0.625rem 0.75rem", background: "var(--dark)", border: "1px solid var(--border)", borderRadius: "8px", color: "var(--white)", fontSize: "0.875rem", boxSizing: "border-box" }} />
+                        <input type="text" maxLength={20} value={profileForm.phoneNumber} onChange={(e) => handleProfileChange("phoneNumber", e.target.value)} placeholder="+639XXXXXXXXX" style={{ width: "100%", padding: "0.625rem 0.75rem", background: "var(--dark)", border: "1px solid var(--border)", borderRadius: "8px", color: "var(--white)", fontSize: "0.875rem", boxSizing: "border-box" }} />
                       </div>
                       <div style={{ gridColumn: "1 / -1", display: "flex", gap: "0.75rem", justifyContent: "flex-end", paddingTop: "0.25rem", borderTop: "1px solid var(--border)" }}>
                         <button onClick={handleCancelEdit} style={{ padding: "0.625rem 1.25rem", background: "transparent", border: "1px solid var(--border)", borderRadius: "8px", color: "var(--gray)", fontSize: "0.875rem", cursor: "pointer" }}>Cancel</button>

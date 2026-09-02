@@ -705,7 +705,8 @@ export default function AddressBook({ onSaved, initialEditAddress }) {
               <input
                 type="text"
                 value={addressSearch}
-                onChange={e => handleSearchChange(e.target.value)}
+                onChange={e => handleSearchChange(e.target.value.slice(0, 200))}
+                maxLength={200}
                 onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}
                 onBlur={() => setTimeout(() => setShowSuggestions(false), 160)}
                 placeholder="Type a street, barangay, building, or landmark…"
@@ -831,12 +832,12 @@ export default function AddressBook({ onSaved, initialEditAddress }) {
           <div className="addr-2col">
             <div>
               <label style={labelStyle}>Label <span style={{ color: 'var(--gray)', fontSize: '0.7rem' }}>(optional)</span></label>
-              <input type="text" value={formData.label} onChange={e => handleInputChange('label', e.target.value)} placeholder="e.g. Home, Office" style={formErrors.label ? inputErrorStyle : inputStyle} />
+              <input type="text" maxLength={100} value={formData.label} onChange={e => handleInputChange('label', e.target.value)} placeholder="e.g. Home, Office" style={formErrors.label ? inputErrorStyle : inputStyle} />
               {fieldError(formErrors.label)}
             </div>
             <div>
               <label style={labelStyle}>Phone <span style={{ color: 'var(--red)' }}>*</span></label>
-              <input type="text" value={formData.phone} onChange={e => handleInputChange('phone', e.target.value)} placeholder="+63XXXXXXXXXX" style={formErrors.phone ? inputErrorStyle : inputStyle} />
+              <input type="tel" inputMode="tel" maxLength={20} value={formData.phone} onChange={e => handleInputChange('phone', e.target.value)} placeholder="+63XXXXXXXXXX" style={formErrors.phone ? inputErrorStyle : inputStyle} />
               {fieldError(formErrors.phone)}
             </div>
           </div>
@@ -904,12 +905,12 @@ export default function AddressBook({ onSaved, initialEditAddress }) {
           <div className="addr-2col">
             <div>
               <label style={labelStyle}>House/Unit No. <span style={{ color: 'var(--red)' }}>*</span></label>
-              <input type="text" value={formData.house_number} onChange={e => handleInputChange('house_number', e.target.value)} onBlur={refinePin} placeholder="e.g. 168 or Blk 2 Lot 24" style={formErrors.house_number ? inputErrorStyle : inputStyle} />
+              <input type="text" maxLength={100} value={formData.house_number} onChange={e => handleInputChange('house_number', e.target.value)} onBlur={refinePin} placeholder="e.g. 168 or Blk 2 Lot 24" style={formErrors.house_number ? inputErrorStyle : inputStyle} />
               {fieldError(formErrors.house_number)}
             </div>
             <div>
               <label style={labelStyle}>Subdivision / Village <span style={{ color: 'var(--gray)', fontSize: '0.7rem' }}>(optional)</span></label>
-              <input type="text" value={formData.subdivision} onChange={e => handleInputChange('subdivision', e.target.value)} placeholder="e.g. Greenville Subd." style={inputStyle} />
+              <input type="text" maxLength={255} value={formData.subdivision} onChange={e => handleInputChange('subdivision', e.target.value)} placeholder="e.g. Greenville Subd." style={inputStyle} />
             </div>
           </div>
 
@@ -917,12 +918,12 @@ export default function AddressBook({ onSaved, initialEditAddress }) {
           <div className="addr-2col-wide">
             <div>
               <label style={labelStyle}>Street <span style={{ color: 'var(--red)' }}>*</span></label>
-              <input type="text" value={formData.street} onChange={e => handleInputChange('street', e.target.value)} onBlur={refinePin} placeholder="e.g. General Luis St." style={formErrors.street ? inputErrorStyle : inputStyle} />
+              <input type="text" maxLength={255} value={formData.street} onChange={e => handleInputChange('street', e.target.value)} onBlur={refinePin} placeholder="e.g. General Luis St." style={formErrors.street ? inputErrorStyle : inputStyle} />
               {fieldError(formErrors.street)}
             </div>
             <div>
               <label style={labelStyle}>ZIP Code <span style={{ color: 'var(--red)' }}>*</span></label>
-              <input type="text" value={formData.zip} onChange={e => handleInputChange('zip', e.target.value)} placeholder="e.g. 1400" style={formErrors.zip ? inputErrorStyle : inputStyle} />
+              <input type="text" inputMode="numeric" maxLength={4} value={formData.zip} onChange={e => handleInputChange('zip', e.target.value.replace(/\D/g, '').slice(0, 4))} placeholder="e.g. 1400" style={formErrors.zip ? inputErrorStyle : inputStyle} />
               {fieldError(formErrors.zip)}
             </div>
           </div>
