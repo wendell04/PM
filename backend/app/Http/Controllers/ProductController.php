@@ -887,6 +887,10 @@ class ProductController extends Controller
                 'variantStock'        => 'nullable|array',
                 'variantImageUrls'    => 'nullable|array',
                 'isMadeToOrder'       => 'nullable|boolean',
+                // Present when the product is created and absent here, so the toggle could be set
+                // once and never changed: validate() returns only the paths it was given, and an
+                // edit silently dropped this one every time it was saved.
+                'allowPreorder'       => 'nullable|boolean',
                 'minOrderQty'         => 'nullable|integer|min:1',
                 'designFee'           => 'nullable|numeric|min:0',
                 // Print-ready templates the customer downloads before drawing anything -
