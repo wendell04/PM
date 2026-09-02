@@ -572,11 +572,14 @@ export default function ProductDetailPage() {
           A foreign referrer, or a cold deep link with nothing behind it, falls back to /shop. */}
       <button
         onClick={() => {
+          const canGoBack = typeof window !== 'undefined' && window.history.length > 1;
           const sameOrigin = typeof document !== 'undefined'
             && document.referrer.startsWith(window.location.origin);
-          const inAppSpaHop = typeof document !== 'undefined'
-            && document.referrer === '' && window.history.length > 1;
-          if (sameOrigin || inAppSpaHop) router.back();
+          // An empty referrer with history behind it is the SPA case - referrer never updates on a
+          // soft navigation, so its absence is not evidence of a cold entry.
+          const inApp = typeof document !== 'undefined'
+            && (sameOrigin || document.referrer === '');
+          if (canGoBack && inApp) router.back();
           else router.push('/shop');
         }}
         style={{
@@ -1382,6 +1385,7 @@ export default function ProductDetailPage() {
                         // starts from nothing, quotes the base price, and the cut the customer picked
                         // a moment ago is simply gone - along with what it added.
                         Object.entries(selectedOptions).forEach(([g, v]) => { if (v) qs.set(`o_${g}`, v); });
+                        try { sessionStorage.setItem('pmp:cameFromPdp', String(id)); } catch { /* private mode */ }
                         router.push(`/shop/products/${id}/order?${qs.toString()}`);
                       }}
                       disabled={isOutOfStock || optionsPending}
@@ -1418,6 +1422,7 @@ export default function ProductDetailPage() {
                         // starts from nothing, quotes the base price, and the cut the customer picked
                         // a moment ago is simply gone - along with what it added.
                         Object.entries(selectedOptions).forEach(([g, v]) => { if (v) qs.set(`o_${g}`, v); });
+                        try { sessionStorage.setItem('pmp:cameFromPdp', String(id)); } catch { /* private mode */ }
                           router.push(`/shop/products/${id}/order?${qs.toString()}`);
                           return;
                         }

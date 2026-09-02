@@ -1052,10 +1052,23 @@ function CustomOrderInner() {
       `}</style>
 
       <div style={{ maxWidth: 1100, margin: '0 auto' }}>
-        <Link href={`/shop/products/${id}`} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: 'var(--gray)', fontSize: '0.85rem', textDecoration: 'none', marginBottom: '1.5rem' }}>
+        <button type="button"
+          onClick={() => {
+            let cameFromPdp = false;
+            try {
+              cameFromPdp = sessionStorage.getItem('pmp:cameFromPdp') === String(id);
+              if (cameFromPdp) sessionStorage.removeItem('pmp:cameFromPdp');
+            } catch { /* private mode - fall through to replace */ }
+            // Pop when the product page really is the entry behind this one. Otherwise REPLACE
+            // rather than push, so a cold deep link here does not leave a dead entry that the
+            // product page's own Back would bounce straight into.
+            if (cameFromPdp && typeof window !== 'undefined' && window.history.length > 1) router.back();
+            else router.replace(`/shop/products/${id}`);
+          }}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: 'var(--gray)', fontSize: '0.85rem', background: 'none', border: 'none', padding: 0, cursor: 'pointer', marginBottom: '1.5rem', fontFamily: 'inherit' }}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="15 18 9 12 15 6"/></svg>
           Back to Product
-        </Link>
+        </button>
 
         <h1 style={{ fontSize: '1.4rem', fontWeight: 800, marginBottom: '0.2rem' }}>{isInquiry ? 'Request a Quote' : 'Place Custom Order'}</h1>
         <p style={{ color: 'var(--gray)', fontSize: '0.875rem', marginBottom: '2rem' }}>{product.name}</p>
