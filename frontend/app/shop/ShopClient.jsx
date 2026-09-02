@@ -729,6 +729,9 @@ function ProductCard({ product, onAddToCart, onQuickView, flashSale }) {
 
           {/* Stock image badge — top left */}
           {(() => {
+            // Price-on-request items are quoted, not stocked. "IN STOCK" on one is a claim about a
+            // shelf that does not exist, and it sits directly beside "Price on request".
+            if (mode === 'inquiry') return null;
             if (product.isMadeToOrder) return (
               <div className="shop-stock-img-badge in-stock">In Stock</div>
             );

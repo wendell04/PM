@@ -446,6 +446,9 @@ export default function ProductDetailPage() {
   const isInquiry = (product?.priceType ?? product?.pricingMode) === 'inquiry';
 
   const effectiveMaxQty = (() => {
+    // Nothing is reserved for a quote, so there is no quantity to run out of. Inquiry products are
+    // saved with trackInventory true and no BOM, which is why the branch below returned 0 for them.
+    if (isInquiry) return 9999;
     // Same reason as the shop grid: the checkout refuses on real stock whatever this flag says,
     // so offering 9999 here only moves the refusal to the worst possible moment.
     if (!product?.trackInventory) return 9999;
@@ -473,7 +476,10 @@ export default function ProductDetailPage() {
   // product still reported itself in stock, so Add to Cart stayed live and the refusal moved
   // to the checkout. A product whose materials really are bought per order never reaches 0
   // here anyway - canProduce skips on-demand materials - so it keeps selling, truthfully.
-  const isOutOfStock = effectiveMaxQty === 0;
+  // An inquiry product is quoted, never sold from stock, so a stock count cannot put it out of
+  // stock. Without this the CTA read "Out of Stock" and was disabled on the very page that offers
+  // to send a quote in chat - the one action the customer came for.
+  const isOutOfStock = !isInquiry && effectiveMaxQty === 0;
 
 
   // Computed values
