@@ -132,7 +132,15 @@ function normalizeOrder(apiOrder) {
   const totalAmount = parseFloat(
     apiOrder.totalAmount || apiOrder.total || apiOrder.totalPrice || 0
   );
-  const isCustom = !!(items[0]?.isCustom || apiOrder.designFilePath || apiOrder.design_file_path);
+  // Does anything on this order have to be MADE? Any line that is custom, made-to-order, or
+  // carries artwork needs a Job Order; an order of only shelf goods does not. Checked across every
+  // line, not just the first - a mixed cart is the whole reason the batch Job Order creator exists.
+  const needsProduction = items.some(i =>
+    i?.isCustom || i?.isMadeToOrder || i?.designRequested || i?.designUrl || i?.designFiles?.length
+  );
+  const isCustom = !!(
+    apiOrder.isCustomOrder || needsProduction || apiOrder.designFilePath || apiOrder.design_file_path
+  );
   const productType = isCustom ? 'Customized' : 'Ready Made';
 
   return {
@@ -149,6 +157,9 @@ function normalizeOrder(apiOrder) {
     customerContact: apiOrder.userSnapshot?.phone || apiOrder.customer?.phone || apiOrder.customerContact || '',
     items: items,
     isCustom: isCustom,
+    // Whether anything on the order has to be MADE. Listed explicitly because this normalizer
+    // builds its result field by field - anything not named here never reaches the UI.
+    needsProduction: needsProduction,
     productType: productType,
     productName: productName,
     category: category,

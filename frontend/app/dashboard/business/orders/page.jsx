@@ -743,6 +743,16 @@ function getAvailableStatuses(o) {
     });
   }
   if (isCOD) {
+    // A shelf item is picked, not produced. Offering In Production for one sends an order into a
+    // stage with no Job Order behind it, which Production and QC then have nothing to work on.
+    if (!o.needsProduction) {
+      return pick({
+        Pending:        ['Processing', 'Cancelled'],
+        Processing:     ['For Delivery', 'Cancelled'],
+        'For Delivery': ['Delivered', 'Returned'],
+        Delivered:      ['Returned'],
+      });
+    }
     return pick({
       Pending:        ['Processing', 'Cancelled'],
       Processing:     ['In Production', 'For Delivery', 'Cancelled'],

@@ -1304,6 +1304,20 @@ class OrderController extends Controller
                     && empty($order->joId)) {
                     return response()->json(['message' => 'Create a Job Order to start production. The downpayment must be paid and the design approved first.'], 422);
                 }
+
+                // Nothing to produce means no production stage. Without this the UI dropdown was the
+                // only thing stopping a shelf-goods order from entering a stage Production and QC
+                // have no job order for, and it could never be released from there by QC either.
+                if ($targetNorm === OrderStatus::IN_PRODUCTION) {
+                    $produces = collect($order->items ?? [])->contains(fn ($it) =>
+                        !empty($it['isCustom']) || !empty($it['isMadeToOrder'])
+                        || !empty($it['designRequested']) || !empty($it['designUrl'])
+                        || !empty($it['designFiles'])
+                    );
+                    if (!$produces) {
+                        return response()->json(['message' => 'Nothing on this order has to be produced - it is ready-made stock. Send it straight to delivery.'], 422);
+                    }
+                }
             }
 
             $oldStatus = $order->orderStatus;
