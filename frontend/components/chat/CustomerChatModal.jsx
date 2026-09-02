@@ -31,6 +31,7 @@ const sameSend = (a, b) =>
   String(a?.file_url ?? '') === String(b?.file_url ?? '');
 
 const isTwin = (confirmed, pending, knownIds) => {
+  if (confirmed.client_key && pending.clientKey) return confirmed.client_key === pending.clientKey;
   if (knownIds.has(confirmed._id) || !sameSend(confirmed, pending)) return false;
   const a = Date.parse(confirmed.created_at ?? '');
   const b = Date.parse(pending.created_at ?? '');
@@ -309,7 +310,7 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
     setIsSending(true);
 
     try {
-      const actualPayload = { ...payload };
+      const actualPayload = { ...payload, client_key: tempId };
       if (isNewConv) {
         actualPayload.recipient_id = activeConv.other_user.id;
         delete actualPayload.conversation_id;

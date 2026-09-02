@@ -353,6 +353,30 @@ function CustomOrderInner() {
   }, [token]);
 
   const moq = product?.minOrderQty || 1;
+
+  // Mirrors effectiveMaxQty on the product page. Kept in the same shape deliberately - two different
+  // answers to "how many may I buy" on two pages of the same purchase is worse than either answer.
+  const maxQty = (() => {
+    if (!product) return MAX_QTY;
+    // Not tracking inventory: the checkout still refuses on real stock, so a number here only moves
+    // the refusal to a worse moment. The sanity cap stays.
+    if (!product.trackInventory) return MAX_QTY;
+    const comboId = resolveCombo(product, selectedVariants)?.id ?? null;
+    if (product.variantAvailableQty && comboId != null && product.variantAvailableQty[comboId] != null) {
+      return Math.max(Number(product.variantAvailableQty[comboId]) || 0, 0);
+    }
+    if (product.variantAvailableQty && comboId == null) {
+      const vals = Object.values(product.variantAvailableQty).map(v => Number(v) || 0);
+      if (vals.length > 0) return Math.max(...vals);
+    }
+    if (product.canProduce != null) return Math.max(product.availableQty ?? 0, 0);
+    if (comboId != null && product.variantBackorder?.[comboId]) return MAX_QTY;
+    if (comboId != null && product.variantStock?.[comboId] != null) {
+      return Math.max(Number(product.variantStock[comboId]), 0);
+    }
+    return Math.max(product.availableQty ?? product.stock ?? 0, 0);
+  })();
+  const qtyCeiling = Math.max(moq, Math.min(maxQty, MAX_QTY));
   // Inquiry (quotation) products have no computable price — they go through the quote flow
   // (request now, owner sends a quote, customer pays it later), never a direct ₱0 checkout.
   const isInquiry = (product?.priceType ?? product?.pricingMode) === 'inquiry';
@@ -1100,18 +1124,18 @@ function CustomOrderInner() {
                       // forcing a value back in mid-keystroke makes the field impossible to clear.
                       const raw = e.target.value.replace(/\D/g, '');
                       if (raw === '') { setQuantityInput(''); return; }
-                      const clamped = Math.min(parseInt(raw, 10), MAX_QTY);
+                      const clamped = Math.min(parseInt(raw, 10), qtyCeiling);
                       setQuantityInput(String(clamped));
                       if (clamped >= moq) setQuantity(clamped);
                     }}
                     onBlur={() => {
                       const v = parseInt(quantityInput, 10);
-                      const n = isNaN(v) || v < moq ? moq : Math.min(v, MAX_QTY);
+                      const n = isNaN(v) || v < moq ? moq : Math.min(v, qtyCeiling);
                       setQuantity(n); setQuantityInput(String(n));
                     }}
                     style={{ width: 64, textAlign: 'center', padding: '0.4rem', borderRadius: '8px', border: '1px solid var(--border)', background: 'rgba(255,255,255,0.05)', color: 'var(--white)', fontSize: '0.95rem', fontFamily: "'Outfit', sans-serif" }} />
                   <button
-                    onClick={() => { const n = Math.min(MAX_QTY, quantity + 1); setQuantity(n); setQuantityInput(String(n)); }}
+                    onClick={() => { const n = Math.min(qtyCeiling, quantity + 1); setQuantity(n); setQuantityInput(String(n)); }}
                     style={{ width: 36, height: 36, borderRadius: '8px', border: '1px solid var(--border)', background: 'rgba(255,255,255,0.05)', color: 'var(--white)', fontSize: '1.1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>+</button>
                   {unitPrice != null && (
                     <span style={{ marginLeft: '0.5rem', color: 'var(--gray)', fontSize: '0.85rem' }}>{fmt(unitPrice)} / pc</span>

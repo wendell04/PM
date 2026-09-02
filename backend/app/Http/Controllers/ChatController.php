@@ -164,6 +164,9 @@ class ChatController extends Controller
                 'file_url'        => 'nullable|string',
                 'order_id'        => 'nullable|string',
                 'metadata'        => 'nullable|array',
+                // The sender's own id for this message, echoed back untouched so the browser can
+                // recognise its own optimistic bubble instead of guessing from the text.
+                'client_key'      => 'nullable|string|max:64',
             ]);
 
             $conversationId = $request->conversation_id;
@@ -318,6 +321,7 @@ class ChatController extends Controller
                 'type'            => $request->type,
                 'file_url'        => $request->file_url,
                 'metadata'        => $metadata,
+                'client_key'      => $request->input('client_key'),
                 'is_read'         => false,
             ]);
 

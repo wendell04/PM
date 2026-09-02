@@ -73,7 +73,11 @@ const ChatModule = ({ user, token, addToCart }) => {
   // 1.5s poll would hand React a brand new array every tick.
   const listSig = (l) => l.map(m => (m.clientKey || m._id) + (m.pending ? ':p' : ':c')).join('|');
 
+  // An exact match on the key the sender stamped on it. The old text comparison stays only as a
+  // fallback for messages sent before this existed, and even then only for one never seen before -
+  // otherwise sending the same words twice pairs the second bubble with the first message.
   const isTwin = (confirmed, pending, knownIds) => {
+    if (confirmed.client_key && pending.clientKey) return confirmed.client_key === pending.clientKey;
     if (knownIds.has(confirmed._id) || !sameSend(confirmed, pending)) return false;
     const a = Date.parse(confirmed.created_at ?? '');
     const b = Date.parse(pending.created_at ?? '');
@@ -335,7 +339,7 @@ const ChatModule = ({ user, token, addToCart }) => {
     setIsSending(true);
 
     try {
-      const actualPayload = { ...payload };
+      const actualPayload = { ...payload, client_key: tempId };
       if (isNewConv) {
         actualPayload.recipient_id = activeConversation.other_user.id;
         delete actualPayload.conversation_id;
