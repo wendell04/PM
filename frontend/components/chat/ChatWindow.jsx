@@ -126,7 +126,9 @@ const ChatWindow = ({ activeConversation, messages, user, isLoading, isAdmin, on
   const renderMessage = (msg, idx) => {
     const myId = String(user?.id || user?._id || '');
     const isMe = msg.sender_id === myId;
-    const msgKey = msg._id || msg.id || `msg-${idx}`;
+    // clientKey first: a bubble that began life as a placeholder keeps it through confirmation, so
+    // React updates the node in place instead of unmounting it and mounting the server's copy.
+    const msgKey = msg.clientKey || msg._id || msg.id || `msg-${idx}`;
 
     // A design order opening a thread. The designer needs to know WHICH order is being discussed
     // before anything else - a wall of "can you make the logo bigger" with no reference is how the

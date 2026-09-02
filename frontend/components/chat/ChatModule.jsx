@@ -53,6 +53,26 @@ const ChatModule = ({ user, token, addToCart }) => {
 
   // The confirmed message must be one we have never held before - an id already on screen belongs
   // to an earlier send, however identical the wording - and it must not predate the placeholder.
+  // Carries each placeholder's render key onto its confirmed twin, so the list can be rebuilt from
+  // server data without any bubble changing identity. Returns the mapped server list plus the
+  // placeholders that have still not come back.
+  const absorbPending = (fresh, prev) => {
+    const known = new Set(prev.filter(m => !m.pending).map(m => m._id));
+    const pend  = prev.filter(m => m.pending);
+    const used  = new Set();
+    const mapped = fresh.map(f => {
+      const p = pend.find(x => !used.has(x.clientKey) && isTwin(f, x, known));
+      if (!p) return f;
+      used.add(p.clientKey);
+      return { ...f, clientKey: p.clientKey };
+    });
+    return { mapped, leftover: pend.filter(x => !used.has(x.clientKey)) };
+  };
+
+  // Same bubbles in the same order and the same states means nothing to re-render. Without this the
+  // 1.5s poll would hand React a brand new array every tick.
+  const listSig = (l) => l.map(m => (m.clientKey || m._id) + (m.pending ? ':p' : ':c')).join('|');
+
   const isTwin = (confirmed, pending, knownIds) => {
     if (knownIds.has(confirmed._id) || !sameSend(confirmed, pending)) return false;
     const a = Date.parse(confirmed.created_at ?? '');
@@ -76,12 +96,9 @@ const ChatModule = ({ user, token, addToCart }) => {
           try {
             const msgs = await getMessages(token, nid(sameConv._id));
             setMessages(prev => {
-              const fresh = msgs.map(normalizeMsg);
-              const freshIds = new Set(fresh.map(m => m._id));
-              const known = new Set(prev.filter(m => !m.pending).map(m => m._id));
-              const pending = prev.filter(m => m.pending
-                && !freshIds.has(m._id) && !fresh.some(f => isTwin(f, m, known)));
-              return [...fresh, ...pending];
+              const { mapped, leftover } = absorbPending(msgs.map(normalizeMsg), prev);
+              const next = [...mapped, ...leftover];
+              return listSig(next) === listSig(prev) ? prev : next;
             });
           } catch { /* ignore */ }
         }
@@ -190,16 +207,9 @@ const ChatModule = ({ user, token, addToCart }) => {
       try {
         const data = await getMessages(token, convId);
         setMessages(prev => {
-          const fresh = data.map(normalizeMsg);
-          const confirmedIds = new Set(fresh.map(m => m._id));
-          // Confirmed either by its own id coming back or - the usual case - by its twin turning up
-          // in the fetched list under the id the server gave it.
-          const known = new Set(prev.filter(m => !m.pending).map(m => m._id));
-          const withoutStale = prev.filter(m => !m.pending
-            || (!confirmedIds.has(m._id) && !fresh.some(f => isTwin(f, m, known))));
-          const existingIds = new Set(withoutStale.map(m => m._id));
-          const newOnes = fresh.filter(m => !existingIds.has(m._id));
-          return newOnes.length > 0 ? [...withoutStale, ...newOnes] : withoutStale.length !== prev.length ? withoutStale : prev;
+          const { mapped, leftover } = absorbPending(data.map(normalizeMsg), prev);
+          const next = [...mapped, ...leftover];
+          return listSig(next) === listSig(prev) ? prev : next;
         });
       } catch { /* ignore */ }
     };
@@ -235,9 +245,13 @@ const ChatModule = ({ user, token, addToCart }) => {
           curr._id === 'support_auto') {
         setMessages(prev => {
           if (prev.find(m => m._id === newMessage._id)) return prev;
-          // Swapped in one update. Appending the real one and letting the HTTP response clean up
-          // the placeholder afterwards left both on screen for the gap between them.
-          return [...prev.filter(m => !(m.pending && sameSend(newMessage, m))), newMessage];
+          // If this is the server's copy of a bubble already on screen, update that bubble where it
+          // stands rather than appending a second one beside it.
+          const { mapped } = absorbPending([newMessage], prev);
+          const key = mapped[0]?.clientKey;
+          return key
+            ? prev.map(m => (m.pending && m.clientKey === key) ? mapped[0] : m)
+            : [...prev, newMessage];
         });
       }
     }
@@ -305,6 +319,9 @@ const ChatModule = ({ user, token, addToCart }) => {
     // Optimistic: add bubble immediately before API call
     const optimistic = normalizeMsg({
       _id: tempId,
+      // The identity that survives confirmation. Everything else about this object is replaced by
+      // the server's version; this is what keeps it the same bubble on screen.
+      clientKey: tempId,
       conversation_id: activeConversation?._id || '',
       sender_id: String(user?.id || user?._id || ''),
       type: payload.type || 'text',
@@ -329,9 +346,11 @@ const ChatModule = ({ user, token, addToCart }) => {
       // Replace the optimistic bubble with the confirmed message. If the realtime socket already
       // delivered the same message (it can beat the HTTP response), drop the placeholder instead of
       // swapping it in — otherwise we'd get two copies (the duplicate inquiry/quote card bug).
-      setMessages(prev => prev.some(m => m._id === newMessage._id)
+      // The socket usually gets here first and has already folded this in, in which case there is
+      // no placeholder left to update and nothing to do.
+      setMessages(prev => prev.some(m => m._id === newMessage._id && m._id !== tempId)
         ? prev.filter(m => m._id !== tempId)
-        : prev.map(m => m._id === tempId ? newMessage : m));
+        : prev.map(m => m._id === tempId ? { ...newMessage, clientKey: m.clientKey } : m));
 
       // For new conversations only: fetch real conv and update sidebar
       if (isNewConv) {

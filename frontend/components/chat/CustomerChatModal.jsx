@@ -22,6 +22,38 @@ const nid = (id) => {
 const normalizeMsg = (m) =>
   m ? { ...m, _id: nid(m._id), conversation_id: nid(m.conversation_id), sender_id: nid(m.sender_id) } : m;
 
+// A confirmed message and the placeholder it replaces never share an id - the server assigns its
+// own - so they are paired on what was actually sent. The twin has to be a message never held
+// before, or sending the same words twice pairs the second placeholder with the first message.
+const sameSend = (a, b) =>
+  String(a?.type ?? 'text') === String(b?.type ?? 'text') &&
+  String(a?.body ?? '') === String(b?.body ?? '') &&
+  String(a?.file_url ?? '') === String(b?.file_url ?? '');
+
+const isTwin = (confirmed, pending, knownIds) => {
+  if (knownIds.has(confirmed._id) || !sameSend(confirmed, pending)) return false;
+  const a = Date.parse(confirmed.created_at ?? '');
+  const b = Date.parse(pending.created_at ?? '');
+  return !a || !b || a >= b - 120000;
+};
+
+// Carries each placeholder's render key onto its confirmed twin, so the list can be rebuilt from
+// server data without any bubble changing identity.
+const absorbPending = (fresh, prev) => {
+  const known = new Set(prev.filter(m => !m.pending).map(m => m._id));
+  const pend  = prev.filter(m => m.pending);
+  const used  = new Set();
+  const mapped = fresh.map(f => {
+    const p = pend.find(x => !used.has(x.clientKey) && isTwin(f, x, known));
+    if (!p) return f;
+    used.add(p.clientKey);
+    return { ...f, clientKey: p.clientKey };
+  });
+  return { mapped, leftover: pend.filter(x => !used.has(x.clientKey)) };
+};
+
+const listSig = (l) => l.map(m => (m.clientKey || m._id) + (m.pending ? ':p' : ':c')).join('|');
+
 const FAQS = [
   { q: 'How do I place a custom order?' },
   { q: 'How long does delivery take?' },
@@ -135,11 +167,14 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
               setMessages(prev => {
                 const normalized = msgs.map(normalizeMsg);
                 const freshIds = new Set(normalized.map(m => String(m._id)));
-                // Keep local messages not yet in the fetch — pending OR just-confirmed (racing the DB
-                // read) — so a just-sent message isn't dropped from the view before it re-appears.
-                const localExtra = prev.filter(m => !freshIds.has(String(m._id)) &&
-                  (m.pending || (m.created_at && Date.now() - new Date(m.created_at).getTime() < 15000)));
-                return [...normalized, ...localExtra];
+                const { mapped, leftover } = absorbPending(normalized, prev);
+                // Confirmed messages the fetch has not caught up with yet are kept as well - the
+                // read can race the write - but a placeholder now folds into its twin rather than
+                // being kept beside it.
+                const recent = prev.filter(m => !m.pending && !freshIds.has(String(m._id)) &&
+                  m.created_at && Date.now() - new Date(m.created_at).getTime() < 15000);
+                const next = [...mapped, ...recent, ...leftover];
+                return listSig(next) === listSig(prev) ? prev : next;
               });
             } catch { /* silent */ }
           }
@@ -188,11 +223,9 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
       try {
         const data = await getMessages(token, convId);
         setMessages(prev => {
-          const confirmedIds = new Set(data.map(m => normalizeMsg(m)._id));
-          const withoutStale = prev.filter(m => !m.pending || !confirmedIds.has(m._id));
-          const existingIds = new Set(withoutStale.map(m => m._id));
-          const fresh = data.map(normalizeMsg).filter(m => !existingIds.has(m._id));
-          return fresh.length > 0 ? [...withoutStale, ...fresh] : withoutStale.length !== prev.length ? withoutStale : prev;
+          const { mapped, leftover } = absorbPending(data.map(normalizeMsg), prev);
+          const next = [...mapped, ...leftover];
+          return listSig(next) === listSig(prev) ? prev : next;
         });
       } catch { /* silent */ }
     };
@@ -218,7 +251,14 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
     const channel = echo.private(`conversation.${convId}`);
     channel.listen('.message.sent', (data) => {
       const msg = normalizeMsg(data.message);
-      setMessages(prev => prev.find(m => m._id === msg._id) ? prev : [...prev, msg]);
+      setMessages(prev => {
+        if (prev.find(m => m._id === msg._id)) return prev;
+        const { mapped } = absorbPending([msg], prev);
+        const key = mapped[0]?.clientKey;
+        return key
+          ? prev.map(m => (m.pending && m.clientKey === key) ? mapped[0] : m)
+          : [...prev, msg];
+      });
     });
     channel.listenForWhisper('typing', (data) => {
       const uid = String(data.userId || '');
@@ -255,6 +295,7 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
     // Optimistic: show bubble immediately
     const optimistic = normalizeMsg({
       _id: tempId,
+      clientKey: tempId,
       conversation_id: activeConv._id || '',
       sender_id: String(user?.id || user?._id || ''),
       type: payload.type || 'text',
@@ -278,9 +319,9 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
       // Replace the optimistic bubble with the confirmed message. If the realtime socket already
       // delivered the same message (it can beat the HTTP response), just drop the placeholder instead
       // of swapping it in — otherwise we'd end up with two copies (the duplicate inquiry/quote card bug).
-      setMessages(prev => prev.some(m => m._id === newMessage._id)
+      setMessages(prev => prev.some(m => m._id === newMessage._id && m._id !== tempId)
         ? prev.filter(m => m._id !== tempId)
-        : prev.map(m => m._id === tempId ? newMessage : m));
+        : prev.map(m => m._id === tempId ? { ...newMessage, clientKey: m.clientKey } : m));
 
       if (isNewConv) {
         const convs = await getConversations(token);
@@ -564,7 +605,9 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
                     {messages.map((msg, idx) => {
                       const myId = String(user?.id || user?._id || '');
                       const isMe = msg.sender_id === myId;
-                      const msgKey = msg._id || `msg-${idx}`;
+                      // clientKey first, so a bubble that began as a placeholder keeps its identity
+                      // through confirmation and React updates it rather than replacing it.
+                      const msgKey = msg.clientKey || msg._id || `msg-${idx}`;
 
                       if (msg.type === 'file' && msg.file_url) {
                         return (
