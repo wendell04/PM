@@ -245,7 +245,7 @@ export default function PaymentSuccessPage() {
           )}
         </div>
 
-        <h1 style={{
+        <h1 className="pmp-heading" style={{
           fontSize: '1.5rem',
           fontWeight: 700,
           color: 'var(--white)',
@@ -254,7 +254,7 @@ export default function PaymentSuccessPage() {
           {verifying ? 'Confirming your payment…' : isCod ? 'Order Placed!' : order?.paymentStatus === 'partial' ? 'Downpayment Received!' : (order?.designFeePaid && order?.paymentStatus !== 'paid') ? 'Design Fee Paid!' : 'Payment Successful'}
         </h1>
 
-        <p style={{
+        <p className="pmp-sub" style={{
           color: 'var(--gray)',
           fontSize: '0.95rem',
           marginBottom: '32px',
@@ -286,6 +286,21 @@ export default function PaymentSuccessPage() {
             {error}
           </p>
         )}
+
+        <style>{`
+          /* Gap and alignment are not set inline anywhere in this card, so plain rules reach them. */
+          #pmp-receipt div { gap: 10px; }
+          #pmp-receipt span:last-child { text-align: right; }
+          #pmp-receipt span { overflow-wrap: anywhere; }
+          @media (max-width: 480px) {
+            #pmp-receipt { padding: 13px !important; }
+            #pmp-receipt span { font-size: 0.75rem !important; }
+            /* The total keeps its size so the one number that matters still reads first. */
+            #pmp-receipt .pmp-total-block span { font-size: 0.86rem !important; }
+            .pmp-heading { font-size: 1.25rem !important; }
+            .pmp-sub { font-size: 0.86rem !important; margin-bottom: 22px !important; }
+          }
+        `}</style>
 
         {order && !loading && (
           <div id="pmp-receipt" style={{
@@ -375,7 +390,7 @@ export default function PaymentSuccessPage() {
             )}
 
             {/* Total + Status */}
-            <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', marginTop: '8px', paddingTop: '10px' }}>
+            <div className="pmp-total-block" style={{ borderTop: '1px solid rgba(255,255,255,0.06)', marginTop: '8px', paddingTop: '10px' }}>
               {order.paymentStatus === 'partial' ? (
                 <>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>

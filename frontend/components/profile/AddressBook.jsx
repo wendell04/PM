@@ -817,10 +817,18 @@ export default function AddressBook({ onSaved, initialEditAddress }) {
             )}
           </div>
 
+          <style>{`
+            .addr-2col      { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+            .addr-2col-wide { display: grid; grid-template-columns: 2fr 1fr; gap: 1rem; }
+            @media (max-width: 560px) {
+              .addr-2col, .addr-2col-wide { grid-template-columns: 1fr; gap: 0.75rem; }
+            }
+          `}</style>
+
           <div style={{ height: '1px', background: 'var(--border)' }} />
 
           {/* ROW 1: Label | Phone */}
-          <div className="addr-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+          <div className="addr-2col">
             <div>
               <label style={labelStyle}>Label <span style={{ color: 'var(--gray)', fontSize: '0.7rem' }}>(optional)</span></label>
               <input type="text" value={formData.label} onChange={e => handleInputChange('label', e.target.value)} placeholder="e.g. Home, Office" style={formErrors.label ? inputErrorStyle : inputStyle} />
@@ -834,7 +842,7 @@ export default function AddressBook({ onSaved, initialEditAddress }) {
           </div>
 
           {/* PSGC cascade: Region | Province */}
-          <div className="addr-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+          <div className="addr-2col">
             <div>
               <label style={labelStyle}>Region <span style={{ color: 'var(--red)' }}>*</span></label>
               <CustomSelect
@@ -863,7 +871,7 @@ export default function AddressBook({ onSaved, initialEditAddress }) {
           </div>
 
           {/* PSGC cascade: City/Municipality | Barangay */}
-          <div className="addr-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+          <div className="addr-2col">
             <div>
               <label style={labelStyle}>City / Municipality <span style={{ color: 'var(--red)' }}>*</span></label>
               <CustomSelect
@@ -893,7 +901,7 @@ export default function AddressBook({ onSaved, initialEditAddress }) {
           </div>
 
           {/* House/Unit No. | Subdivision */}
-          <div className="addr-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+          <div className="addr-2col">
             <div>
               <label style={labelStyle}>House/Unit No. <span style={{ color: 'var(--red)' }}>*</span></label>
               <input type="text" value={formData.house_number} onChange={e => handleInputChange('house_number', e.target.value)} onBlur={refinePin} placeholder="e.g. 168 or Blk 2 Lot 24" style={formErrors.house_number ? inputErrorStyle : inputStyle} />
@@ -906,7 +914,7 @@ export default function AddressBook({ onSaved, initialEditAddress }) {
           </div>
 
           {/* Street | ZIP */}
-          <div className="addr-2col" style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '1rem' }}>
+          <div className="addr-2col-wide">
             <div>
               <label style={labelStyle}>Street <span style={{ color: 'var(--red)' }}>*</span></label>
               <input type="text" value={formData.street} onChange={e => handleInputChange('street', e.target.value)} onBlur={refinePin} placeholder="e.g. General Luis St." style={formErrors.street ? inputErrorStyle : inputStyle} />

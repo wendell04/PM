@@ -1019,6 +1019,10 @@ function CustomOrderInner() {
       <style>{`
         @keyframes spin { to { transform: rotate(360deg); } }
         .custom-order-grid { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,340px); gap: 16px; align-items: start; }
+        /* The two design-mode cards carry three lines of copy each. Side by side on a 390px phone
+           that is a column of single words, so they stack before it gets there. */
+        .co-modes { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-bottom: 1.25rem; }
+        @media (max-width: 560px) { .co-modes { grid-template-columns: 1fr; } }
         @media (max-width: 768px) { .custom-order-grid { grid-template-columns: 1fr; } .custom-order-sidebar { position: static !important; } }
       `}</style>
 
@@ -1106,7 +1110,7 @@ function CustomOrderInner() {
             <section style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: '12px', padding: '1.15rem' }}>
               <h2 style={{ fontSize: '0.74rem', fontWeight: 800, letterSpacing: '0.03em', textTransform: 'uppercase', color: '#6b7280', marginBottom: '0.85rem' }}>Your design</h2>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '1.25rem' }}>
+              <div className="co-modes">
                 <button onClick={() => handlePickMode('upload')}
                   style={{ padding: '1.25rem', borderRadius: '10px', border: `1.5px solid ${designMode === 'upload' ? 'var(--gold)' : 'var(--border)'}`, background: designMode === 'upload' ? 'rgba(212,168,67,0.08)' : 'transparent', cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s', color: 'var(--white)' }}>
                   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={designMode === 'upload' ? '#D4A843' : 'var(--gray)'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block', marginBottom: '0.6rem' }}>

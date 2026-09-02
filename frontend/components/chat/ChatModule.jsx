@@ -44,6 +44,13 @@ const ChatModule = ({ user, token, addToCart }) => {
   };
   const normalizeMsg = (m) => m ? { ...m, _id: nid(m._id), conversation_id: nid(m.conversation_id), sender_id: nid(m.sender_id) } : m;
 
+  // Is this confirmed message the server's copy of that optimistic bubble? Matched on what was
+  // actually sent, because the ids will never agree.
+  const sameSend = (confirmed, pending) =>
+    String(confirmed?.type ?? 'text') === String(pending?.type ?? 'text') &&
+    String(confirmed?.body ?? '') === String(pending?.body ?? '') &&
+    String(confirmed?.file_url ?? '') === String(pending?.file_url ?? '');
+
   // Core fetch logic shared by initial load and background polls
   const applyConversations = useCallback(async () => {
     const data = await getConversations(token);
@@ -62,7 +69,8 @@ const ChatModule = ({ user, token, addToCart }) => {
             setMessages(prev => {
               const fresh = msgs.map(normalizeMsg);
               const freshIds = new Set(fresh.map(m => m._id));
-              const pending = prev.filter(m => m.pending && !freshIds.has(m._id));
+              const pending = prev.filter(m => m.pending
+                && !freshIds.has(m._id) && !fresh.some(f => sameSend(f, m)));
               return [...fresh, ...pending];
             });
           } catch { /* ignore */ }
@@ -172,11 +180,14 @@ const ChatModule = ({ user, token, addToCart }) => {
       try {
         const data = await getMessages(token, convId);
         setMessages(prev => {
-          const confirmedIds = new Set(data.map(m => normalizeMsg(m)._id));
-          // Remove pending bubbles that have been confirmed by the server
-          const withoutStale = prev.filter(m => !m.pending || !confirmedIds.has(m._id));
+          const fresh = data.map(normalizeMsg);
+          const confirmedIds = new Set(fresh.map(m => m._id));
+          // Confirmed either by its own id coming back or - the usual case - by its twin turning up
+          // in the fetched list under the id the server gave it.
+          const withoutStale = prev.filter(m => !m.pending
+            || (!confirmedIds.has(m._id) && !fresh.some(f => sameSend(f, m))));
           const existingIds = new Set(withoutStale.map(m => m._id));
-          const newOnes = data.map(normalizeMsg).filter(m => !existingIds.has(m._id));
+          const newOnes = fresh.filter(m => !existingIds.has(m._id));
           return newOnes.length > 0 ? [...withoutStale, ...newOnes] : withoutStale.length !== prev.length ? withoutStale : prev;
         });
       } catch { /* ignore */ }
@@ -213,7 +224,9 @@ const ChatModule = ({ user, token, addToCart }) => {
           curr._id === 'support_auto') {
         setMessages(prev => {
           if (prev.find(m => m._id === newMessage._id)) return prev;
-          return [...prev, newMessage];
+          // Swapped in one update. Appending the real one and letting the HTTP response clean up
+          // the placeholder afterwards left both on screen for the gap between them.
+          return [...prev.filter(m => !(m.pending && sameSend(newMessage, m))), newMessage];
         });
       }
     }
