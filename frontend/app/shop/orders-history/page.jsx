@@ -1306,6 +1306,27 @@ export default function OrdersHistoryPage() {
                       </div>
                     </div>
 
+                    {selectedOrder.mockups?.length > 0 && (
+                      <div style={{ marginTop: '14px', padding: '12px', background: 'rgba(212,168,67,0.06)', border: '1px solid rgba(212,168,67,0.2)', borderRadius: '10px' }}>
+                        <div style={{ fontSize: '12px', fontWeight: 700, color: '#d4a843', marginBottom: '2px' }}>
+                          Mockup from the shop
+                        </div>
+                        <div style={{ fontSize: '11px', color: 'var(--gray)', lineHeight: 1.5, marginBottom: '8px' }}>
+                          How your order will look. Nothing to approve here - your design is already confirmed.
+                        </div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                          {selectedOrder.mockups.map((m, i) => (
+                            <a key={i} href={m.url} target="_blank" rel="noopener noreferrer"
+                              title={m.sentAt ? `Sent ${new Date(m.sentAt).toLocaleDateString()}` : 'Open'}
+                              style={{ display: 'block', width: '84px', height: '84px', borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--border)', background: '#fff' }}>
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img src={m.url} alt="Mockup" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                            </a>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
                     {/* Per-item designs (Option 2): each custom line has its own artwork state and
                         actions, so a mixed order can approve one item, review another and wait on a
                         proof for a third - all in the same modal. */}

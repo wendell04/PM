@@ -923,6 +923,8 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
   // Which custom line the admin is acting on (per-item design, Option 2 mixed cart).
   const [activeItemIdx, setActiveItemIdx] = useState(0);
   const [showProof, setShowProof] = useState(false);   // T&C acceptance proof panel
+  // Same upload panel, two jobs: a proof asks the customer to approve, a mockup only shows them.
+  const [mockupMode, setMockupMode] = useState(false);
   const [delivDate,   setDelivDate]   = useState('');
   const [savingDeliv, setSavingDeliv] = useState(false);
   const [feeErr,      setFeeErr]      = useState('');
@@ -1014,7 +1016,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
   useEffect(() => {
     const first = (o.items || []).findIndex(it => it.isCustom || it.designRequested || it.designUrl || it.designName || it.adminDesignUrl);
     setActiveItemIdx(first >= 0 ? first : 0);
-    setShowReject(false); setShowFix(false); setConfirmApprove(false); setDraftFiles([]); setShowProof(false);
+    setShowReject(false); setShowFix(false); setConfirmApprove(false); setDraftFiles([]); setShowProof(false); setMockupMode(false);
     // Intentionally keyed on the order id alone: re-running this on every `o.items` change would
     // clear staged files again, which is the bug this is fixing.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1294,6 +1296,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
       const form = new FormData();
       files.forEach(f => form.append('design[]', f));
       form.append('itemIndex', String(activeItemIdx));
+      if (mockupMode) form.append('informational', '1');
       // A shared artwork lands on every product it covers in one send, instead of the owner
       // uploading the identical proof once per line.
       (uploadTargets ?? [activeItemIdx]).forEach(i => form.append('itemIndexes[]', String(i)));
@@ -1617,7 +1620,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                     const active = sec.indices.includes(activeItemIdx);
                     const done = sec.entries.every(({ it }) => it.designStatus === 'approved');
                     return (
-                      <button key={sec.key} onClick={() => { setActiveItemIdx(sec.indices[0]); setShowReject(false); setShowFix(false); setConfirmApprove(false); setDraftFiles([]); setDesignErr(''); }}
+                      <button key={sec.key} onClick={() => { setActiveItemIdx(sec.indices[0]); setShowReject(false); setShowFix(false); setConfirmApprove(false); setDraftFiles([]); setDesignErr(''); setMockupMode(false); }}
                         style={{ padding:'4px 10px', borderRadius:'999px', border:`1px solid ${active?'var(--gold)':done?'#bbf7d0':'var(--border)'}`, background: active?'rgba(212,168,67,0.1)':'transparent', color: active?'var(--gold)':'var(--gray)', fontSize:'11px', fontWeight:700, cursor:'pointer' }}>
                         {sec.label}{done ? ' - approved' : ''}
                       </button>
@@ -1824,6 +1827,18 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                 </div>
               )}
 
+              {/* A mockup after approval changes nothing, so unlike Revert it stays available once a
+                  Job Order exists - which is exactly when someone asks to see what they are getting. */}
+              {aiStatus === 'approved' && !showFix && (
+                <div style={{ display:'flex', alignItems:'center', gap:'8px', marginBottom:'8px' }}>
+                  <span style={{ fontSize:'11px', color:'var(--gray)' }}>Show them what it will look like?</span>
+                  <button onClick={() => { setMockupMode(true); setShowFix(true); setDesignErr(''); }} disabled={!!designAct}
+                    style={{ padding:'4px 10px', background:'rgba(212,168,67,0.08)', border:'1px solid var(--gold)', borderRadius:'6px', color:'var(--gold)', fontSize:'11px', fontWeight:700, cursor:designAct?'not-allowed':'pointer', opacity:designAct?.6:1 }}>
+                    Send mockup
+                  </button>
+                </div>
+              )}
+
               {/* Undo an accidental approval - allowed only while no Job Order exists yet. */}
               {aiStatus === 'approved' && !hasAnyJobOrder && (
                 <div style={{ display:'flex', alignItems:'center', gap:'8px', marginBottom:'8px' }}>
@@ -1894,12 +1909,16 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                 </button>
               )}
 
-              {(aiRequested || showFix) && aiStatus !== 'approved' && (
+              {(aiRequested || showFix) && (aiStatus !== 'approved' || mockupMode) && (
                 <div>
                   {showFix && (
                     <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'6px' }}>
-                      <span style={{ fontSize:'11px', color:'var(--gray)' }}>Upload your adjusted design - the customer will approve it.</span>
-                      <button onClick={() => { setShowFix(false); setDraftFiles([]); }} disabled={uploading}
+                      <span style={{ fontSize:'11px', color:'var(--gray)' }}>
+                        {mockupMode
+                          ? 'Send a mockup - information only. The approval and the Job Order stay exactly as they are.'
+                          : 'Upload your adjusted design - the customer will approve it.'}
+                      </span>
+                      <button onClick={() => { setShowFix(false); setDraftFiles([]); setMockupMode(false); }} disabled={uploading}
                         style={{ padding:'2px 8px', background:'transparent', border:'1px solid var(--border)', borderRadius:'6px', color:'var(--gray)', fontSize:'11px', cursor:'pointer' }}>
                         Back
                       </button>
@@ -1941,7 +1960,9 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                           style={{ flex:1, padding:'5px 0', background:'var(--gold)', border:'none', borderRadius:'6px', color:'var(--dark)', fontSize:'12px', fontWeight:700, cursor:uploading?'not-allowed':'pointer', opacity:uploading?.6:1 }}>
                           {uploading
                             ? `Uploading ${(draftFiles.reduce((n,f)=>n+f.size,0)/1048576).toFixed(1)} MB…`
-                            : `Send ${draftFiles.length} File${draftFiles.length>1?'s':''}`}
+                            : mockupMode
+                              ? `Send ${draftFiles.length} Mockup${draftFiles.length>1?'s':''}`
+                              : `Send ${draftFiles.length} File${draftFiles.length>1?'s':''}`}
                         </button>
                         {/* Staging a file used to be a one-shot decision - Send or start over. Let more
                             be added to the same batch, up to the five the endpoint accepts. */}

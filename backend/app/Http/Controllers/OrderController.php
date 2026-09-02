@@ -1169,6 +1169,9 @@ class OrderController extends Controller
             'designFiles',
             'adminDesignUrl',
             'adminDesignUrls',
+            // Informational mockups sent after approval. Listed here or the admin list silently
+            // drops them, which is how every other field on this projection has gone missing.
+            'mockups',
             'revisionNotes',
             'requiresDownpayment',
             'downpaymentPercent',
@@ -3848,6 +3851,19 @@ class OrderController extends Controller
                 return response()->json(['message' => 'At least one design file is required.'], 422);
             }
 
+            // Sending a mockup after approval is information - "here is what it will look like" -
+            // not a request to approve again. Without the distinction this endpoint rewrote
+            // designStatus and orderStatus unconditionally, and it had no Job Order guard at all,
+            // so a proof sent late could knock an order the shop floor was already building from
+            // back to proof_sent. revertDesignApproval has always refused that; this did not.
+            $informational = $request->boolean('informational');
+            if (!$informational && \App\Models\JobOrder::where('orderId', (string) $order->_id)
+                    ->get()->contains(fn ($j) => $j->joStatus !== 'Cancelled')) {
+                return $this->errorResponse(
+                    'This order is already in production - a proof sent now would send it back for approval. '
+                    . 'Send it as a mockup instead, or cancel the Job Order first.', 422);
+            }
+
             // The design fee buys the designer's time, so nothing leaves the studio until it has
             // cleared. A part-paid or fully paid order has already covered it, whatever route the
             // money took. Orders with no design fee at all (the customer supplied artwork) are
@@ -3923,6 +3939,50 @@ class OrderController extends Controller
 
             $adminDesignUrl  = $uploadedUrls[0];
             $adminDesignUrls = $uploadedUrls;
+
+            // Information only: record it, say so, and touch no status. Everything below this
+            // point moves the order backwards through the approval flow, which is right for a
+            // proof and wrong for a courtesy mockup.
+            if ($informational) {
+                $mockups = $order->mockups ?? [];
+                foreach ($adminDesignUrls as $u) {
+                    $mockups[] = [
+                        'url'    => $u,
+                        'sentAt' => now()->toISOString(),
+                        'sentBy' => trim("{$user->firstName} {$user->lastName}"),
+                    ];
+                }
+                $order->mockups   = $mockups;
+                $order->updatedAt = now();
+                $order->save();
+
+                try {
+                    Notification::create([
+                        'user_id'    => (string) $order->userId,
+                        'type'       => 'design_mockup_sent',
+                        'title'      => 'A mockup of your order',
+                        'message'    => 'We sent a mockup for order #' .
+                            strtoupper(substr((string) $order->_id, -8)) .
+                            ' showing how it will look. Nothing needs approving - your design is already confirmed.',
+                        'is_read'    => false,
+                        'data'       => ['orderId' => (string) $order->_id, 'mockups' => $adminDesignUrls],
+                        'created_at' => now(),
+                    ]);
+                } catch (\Exception $notifErr) {
+                    Log::warning('adminUploadDesign: mockup notification failed', ['error' => $notifErr->getMessage()]);
+                }
+
+                $this->postOrderCardToChat(
+                    $order,
+                    'mockup',
+                    'Here is a mockup of your order so you can see how it will look. '
+                        . 'Nothing needs approving - your design is already confirmed and we are '
+                        . 'printing what you approved.',
+                    ['mockups' => array_slice($adminDesignUrls, 0, 6)]
+                );
+
+                return $this->successResponse('Mockup sent to the customer.', $order);
+            }
 
             $history                = $order->statusHistory ?? [];
             $history[]              = ['status' => 'proof_sent', 'at' => now()->toISOString()];

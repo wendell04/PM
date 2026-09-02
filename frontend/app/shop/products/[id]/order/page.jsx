@@ -53,6 +53,9 @@ function getTierForQty(p, qty) {
   return match;
 }
 
+// What an "as is" choice records on the order. It is a real instruction, not a blank: the
+// printer reads the same field either way.
+const AS_IS_NOTE = 'Print exactly as the file is - no changes.';
 const MAX_DESIGN_FILES = 5;    // artwork to be printed
 const MAX_REFERENCE_FILES = 10;  // photos we design FROM - a collage is legitimately many
 // Matched by extension, not MIME type: browsers report .ai as application/pdf and .psd as
@@ -139,6 +142,10 @@ function CustomOrderInner() {
   // Each entry: { key, name, size, preview, url, uploading }
   const [designFiles, setDesignFiles] = useState([]);
   const [designNotes, setDesignNotes] = useState('');
+  // Silence used to mean two different things on an upload - "print it as it is" and "I did not
+  // notice this field" - and they arrived looking identical. Making it a choice costs the prepared
+  // customer one click and turns the unprepared one's silence into something they actually said.
+  const [printIntent, setPrintIntent] = useState(null);   // null | 'as_is' | 'notes'
   const fileInputRef = useRef(null);
 
   const [addresses, setAddresses] = useState([]);
@@ -509,6 +516,7 @@ function CustomOrderInner() {
   function handleBuyNow() {
     if (designMode === 'upload' && uploading) { setSubmitError('Your files are still uploading, please wait.'); return; }
     if (designMode === 'upload' && !designFileUrl) { setSubmitError('Upload your design first.'); return; }
+    if (designMode === 'upload' && !uploadOk) { setSubmitError('Tell us how to print it, or choose "Print exactly as my file is".'); return; }
     if (designMode === 'request' && !briefOk) { setSubmitError('Tell us what you need before ordering.'); return; }
     if (!designMode) { setSubmitError('Choose how you want to provide your design.'); return; }
     setSubmitError(null);
@@ -579,9 +587,14 @@ function CustomOrderInner() {
   // a requested design needs nothing yet (the shop draws it after checkout). Quote inquiries have
   // their own Submit button and never hit the cart.
   const briefOk = designNotes.trim().length >= 10;
+  // Same ten-character floor as a design request: "ok" and "asap" clear any check that only
+  // rejects an empty box, and neither tells a printer anything.
+  const uploadOk = !!designFileUrl && (
+    printIntent === 'as_is' || (printIntent === 'notes' && briefOk)
+  );
   const canOrder = !isInquiry && (
     (designMode === 'request' && briefOk) ||
-    (designMode === 'upload' && !!designFileUrl)
+    (designMode === 'upload' && uploadOk)
   );
 
   // Puts the configured item - artwork and all - into the ordinary cart. From here it is a
@@ -590,6 +603,7 @@ function CustomOrderInner() {
   async function handleAddToCart() {
     if (designMode === 'upload' && uploading) { setSubmitError('Your files are still uploading, please wait.'); return; }
     if (designMode === 'upload' && !designFileUrl) { setSubmitError('Upload your design first.'); return; }
+    if (designMode === 'upload' && !uploadOk) { setSubmitError('Tell us how to print it, or choose "Print exactly as my file is".'); return; }
     if (designMode === 'request' && !briefOk) { setSubmitError('Tell us what you need before ordering.'); return; }
     if (!designMode) { setSubmitError('Choose how you want to provide your design.'); return; }
     setAddingToCart(true);
@@ -1235,21 +1249,60 @@ function CustomOrderInner() {
                   needs these as much as the file itself; without a field they had to guess. */}
               {designMode === 'upload' && (
                 <div style={{ marginTop: '0.85rem' }}>
-                  {/* Not required, deliberately. A mandatory box gets "ok" and "print po" typed
-                      into it to reach the button - a toll, not an instruction - and it cannot fix
-                      the real cause, which is a customer who did not know anything was expected of
-                      them. Saying what happens to the words is what makes them worth writing. */}
-                  <p style={{ fontSize: '0.8rem', color: 'var(--gray)', marginBottom: '0.5rem' }}>
+                  {/* A choice rather than a required box. A mandatory textarea gets "ok" and "print
+                      po" typed into it to reach the button - a toll, not an instruction. Two radios
+                      cost the prepared customer one click, and make the unprepared one decide
+                      something instead of skipping a field they never read. Either way the order
+                      carries a sentence the printer can act on. */}
+                  <p style={{ fontSize: '0.8rem', color: 'var(--gray)', marginBottom: '0.6rem' }}>
                     How should we print this?{' '}
                     <span style={{ color: 'var(--gray)', opacity: 0.85 }}>
-                      This is the only instruction the printer gets. Not a finished design? Say so -
-                      you can also message us after ordering.
+                      This is the only instruction the printer gets.
                     </span>
                   </p>
-                  <textarea value={designNotes} onChange={e => setDesignNotes(e.target.value)}
-                    placeholder="E.g. Portrait, centered on the front, keep a 1cm margin, match the red exactly."
-                    rows={3}
-                    style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--border)', background: 'rgba(255,255,255,0.05)', color: 'var(--white)', fontSize: '0.85rem', fontFamily: "'Outfit', sans-serif", resize: 'vertical', boxSizing: 'border-box', outline: 'none' }} />
+
+                  {[
+                    { key: 'as_is', title: 'Print exactly as my file is',
+                      sub: 'No changes, no repositioning, no resizing.' },
+                    { key: 'notes', title: 'I have specific instructions',
+                      sub: 'Placement, orientation, margins, exact colours.' },
+                  ].map(opt => {
+                    const on = printIntent === opt.key;
+                    return (
+                      <button key={opt.key} type="button"
+                        onClick={() => {
+                          setPrintIntent(opt.key);
+                          // Leaving the canned sentence behind when they switch would make them
+                          // delete it before they could type; clearing anything they wrote would
+                          // throw away their work. Only ever clear our own text.
+                          if (opt.key === 'as_is') setDesignNotes(AS_IS_NOTE);
+                          else if (designNotes === AS_IS_NOTE) setDesignNotes('');
+                        }}
+                        style={{ display: 'flex', alignItems: 'flex-start', gap: '0.6rem', width: '100%',
+                          textAlign: 'left', padding: '0.7rem 0.8rem', marginBottom: '0.5rem',
+                          borderRadius: '10px', cursor: 'pointer',
+                          border: on ? '1px solid var(--gold)' : '1px solid var(--border)',
+                          background: on ? 'rgba(212,168,67,0.08)' : 'rgba(255,255,255,0.03)' }}>
+                        <span style={{ width: 15, height: 15, borderRadius: '50%', flexShrink: 0, marginTop: 2,
+                          border: on ? '5px solid var(--gold)' : '1.5px solid var(--gray)',
+                          background: 'transparent', boxSizing: 'border-box' }} />
+                        <span>
+                          <span style={{ display: 'block', fontSize: '0.83rem', fontWeight: 600,
+                            color: on ? 'var(--gold)' : 'var(--white)' }}>{opt.title}</span>
+                          <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--gray)', marginTop: 1 }}>
+                            {opt.sub}
+                          </span>
+                        </span>
+                      </button>
+                    );
+                  })}
+
+                  {printIntent === 'notes' && (
+                    <textarea value={designNotes} onChange={e => setDesignNotes(e.target.value)}
+                      placeholder="E.g. Portrait, centered on the front, keep a 1cm margin, match the red exactly."
+                      rows={3}
+                      style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--border)', background: 'rgba(255,255,255,0.05)', color: 'var(--white)', fontSize: '0.85rem', fontFamily: "'Outfit', sans-serif", resize: 'vertical', boxSizing: 'border-box', outline: 'none' }} />
+                  )}
                 </div>
               )}
 
@@ -1557,8 +1610,8 @@ function CustomOrderInner() {
 
               {designMode === 'upload' && !isInquiry && (
                 <div style={{ padding: '0.875rem', background: 'rgba(96,165,250,0.08)', border: '1px solid rgba(96,165,250,0.2)', borderRadius: '10px', marginBottom: '1rem', fontSize: '0.78rem', color: 'var(--gray)', lineHeight: 1.6 }}>
-                  <strong style={{ color: '#60a5fa', display: 'block', marginBottom: '4px' }}>You approve a proof before we print</strong>
-                  We send you a proof - a mockup showing exactly how your artwork will look. Nothing goes to production until you approve it. If something is not right you can ask for changes or send a replacement file at no extra cost, and if the file cannot be used at all, we refund what you paid.
+                  <strong style={{ color: '#60a5fa', display: 'block', marginBottom: '4px' }}>We check your file before we print</strong>
+                  Every file is reviewed before production. If the size, resolution or placement will not print well, we send you a mockup to approve, or ask for a replacement at no extra cost. If we still cannot print it and nothing has gone into production, we refund what you paid.
                 </div>
               )}
 
@@ -1605,7 +1658,9 @@ function CustomOrderInner() {
                       ? 'Tell us what you need above - even a sentence is enough to start.'
                       : uploading
                         ? 'Uploading your file\u2026'
-                        : 'Attach your design file to continue.'}
+                        : !designFileUrl
+                          ? 'Attach your design file to continue.'
+                          : 'Tell us how to print it above.'}
                 </div>
               )}
 
