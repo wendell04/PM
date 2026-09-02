@@ -2410,7 +2410,9 @@ class OrderController extends Controller
     private function notifyOwner(Order $order): void
     {
         try {
-            $ownerEmail = env('ADMIN_EMAIL');
+            // env() outside a config file returns null once config is cached, so in production this
+            // was addressing owner mail to nothing at all.
+            $ownerEmail = config('mail.admin_recipient');
             if (!$ownerEmail) return;
 
             Mail::to($ownerEmail)->send(new AdminNewOrderMail(

@@ -730,7 +730,7 @@ class AuthController extends Controller
                 'message' => 'required|string|max:5000',
             ]);
 
-            $adminEmail = env('ADMIN_EMAIL', 'personalizemeprints@gmail.com');
+            $adminEmail = config('mail.admin_recipient');
 
             $name    = htmlspecialchars(strip_tags(trim($request->name)),    ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
             $subject = str_replace(["\r", "\n", "\0"], '', strip_tags(trim($request->subject)));
@@ -789,7 +789,21 @@ class AuthController extends Controller
                 }
             }
 
-            Mail::to($adminEmail)->send(new ContactFormMail($name, $request->email, $subject, $messageText));
+            // The message is already stored above, so it is not lost if delivery fails - but the
+            // shop has to be able to tell the difference between "nobody wrote in" and "the mail
+            // relay is down". Failing loudly in the log, quietly to the customer.
+            try {
+                if ($adminEmail) {
+                    Mail::to($adminEmail)->send(new ContactFormMail($name, $request->email, $subject, $messageText));
+                } else {
+                    Log::error('Contact form: no admin recipient configured (mail.admin_recipient is empty).');
+                }
+            } catch (\Throwable $mailErr) {
+                Log::error('Contact form: email delivery failed', [
+                    'to'    => $adminEmail,
+                    'error' => $mailErr->getMessage(),
+                ]);
+            }
 
             return $this->successResponse('Message sent successfully! We will get back to you soon.');
         } catch (\Illuminate\Validation\ValidationException $e) {

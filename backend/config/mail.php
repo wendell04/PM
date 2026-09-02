@@ -119,4 +119,19 @@ return [
         'name' => env('MAIL_FROM_NAME', 'Example'),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Shop Inbox
+    |--------------------------------------------------------------------------
+    |
+    | Where contact-form messages and owner alerts are delivered. It lives here
+    | rather than being read with env() at the call site because `php artisan
+    | config:cache` stops loading .env entirely - after that, an env() call
+    | outside a config file returns null, and the two callers that used to make
+    | one silently addressed mail to a hardcoded fallback or to nothing at all.
+    |
+    */
+
+    'admin_recipient' => env('ADMIN_EMAIL', env('MAIL_FROM_ADDRESS')),
+
 ];
