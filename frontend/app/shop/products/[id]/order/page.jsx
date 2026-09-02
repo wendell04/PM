@@ -1595,10 +1595,8 @@ function CustomOrderInner() {
                         <rect x="1" y="3" width="15" height="13"/><path d="M16 8h4l3 3v5h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/>
                       </svg>
                       <span style={{ fontSize: '0.72rem', color: 'var(--gray-light)', lineHeight: 1.5 }}>
-                        Total above excludes delivery. We book a third-party courier (Lalamove / Grab) to your
-                        pinned location after your order is confirmed, then send you the exact fee in chat -
-                        usually paid in cash to the rider or the seller. The fee can vary with the size of
-                        your order.
+                        Delivery is not included. We book a courier once your order is confirmed and send
+                        you the fee in chat - usually paid in cash to the rider.
                       </span>
                     </div>
                   )}
@@ -1615,7 +1613,7 @@ function CustomOrderInner() {
               {designMode === 'upload' && !isInquiry && (
                 <div style={{ padding: '0.875rem', background: 'rgba(96,165,250,0.08)', border: '1px solid rgba(96,165,250,0.2)', borderRadius: '10px', marginBottom: '1rem', fontSize: '0.78rem', color: 'var(--gray)', lineHeight: 1.6 }}>
                   <strong style={{ color: '#60a5fa', display: 'block', marginBottom: '4px' }}>We check your file before we print</strong>
-                  Every file is reviewed before production. If the size, resolution or placement will not print well, we send you a mockup to approve, or ask for a replacement at no extra cost. If we still cannot print it and nothing has gone into production, we refund what you paid.
+                  If it will not print well we send you a mockup, or ask for a new file - free either way. If we still cannot print it, you get your money back.
                 </div>
               )}
 

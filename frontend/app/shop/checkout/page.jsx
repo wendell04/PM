@@ -1561,7 +1561,7 @@ export default function CheckoutPage() {
                 what is being shipped, so the honest promise is that the shop will say - not a number
                 that would have to be walked back once the courier actually quotes the vehicle. */}
             <span style={{ fontSize: '0.75rem', color: 'var(--gray-light)', lineHeight: 1.5 }}>
-              Total above excludes delivery. The seller books a third-party courier (Lalamove / Grab) to your pinned location after your order is confirmed, then sends you the exact fee in chat. Delivery is usually paid in cash to the rider or the seller. The fee can vary with the size of your order - a larger order may need a bigger vehicle, which the courier prices differently.
+              Delivery is not included. We book a courier once your order is confirmed and send you the fee in chat - usually paid in cash to the rider.
             </span>
           </div>
         )}

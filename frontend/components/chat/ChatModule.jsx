@@ -51,6 +51,15 @@ const ChatModule = ({ user, token, addToCart }) => {
     String(confirmed?.body ?? '') === String(pending?.body ?? '') &&
     String(confirmed?.file_url ?? '') === String(pending?.file_url ?? '');
 
+  // The confirmed message must be one we have never held before - an id already on screen belongs
+  // to an earlier send, however identical the wording - and it must not predate the placeholder.
+  const isTwin = (confirmed, pending, knownIds) => {
+    if (knownIds.has(confirmed._id) || !sameSend(confirmed, pending)) return false;
+    const a = Date.parse(confirmed.created_at ?? '');
+    const b = Date.parse(pending.created_at ?? '');
+    return !a || !b || a >= b - 120000;
+  };
+
   // Core fetch logic shared by initial load and background polls
   const applyConversations = useCallback(async () => {
     const data = await getConversations(token);
@@ -69,8 +78,9 @@ const ChatModule = ({ user, token, addToCart }) => {
             setMessages(prev => {
               const fresh = msgs.map(normalizeMsg);
               const freshIds = new Set(fresh.map(m => m._id));
+              const known = new Set(prev.filter(m => !m.pending).map(m => m._id));
               const pending = prev.filter(m => m.pending
-                && !freshIds.has(m._id) && !fresh.some(f => sameSend(f, m)));
+                && !freshIds.has(m._id) && !fresh.some(f => isTwin(f, m, known)));
               return [...fresh, ...pending];
             });
           } catch { /* ignore */ }
@@ -184,8 +194,9 @@ const ChatModule = ({ user, token, addToCart }) => {
           const confirmedIds = new Set(fresh.map(m => m._id));
           // Confirmed either by its own id coming back or - the usual case - by its twin turning up
           // in the fetched list under the id the server gave it.
+          const known = new Set(prev.filter(m => !m.pending).map(m => m._id));
           const withoutStale = prev.filter(m => !m.pending
-            || (!confirmedIds.has(m._id) && !fresh.some(f => sameSend(f, m))));
+            || (!confirmedIds.has(m._id) && !fresh.some(f => isTwin(f, m, known))));
           const existingIds = new Set(withoutStale.map(m => m._id));
           const newOnes = fresh.filter(m => !existingIds.has(m._id));
           return newOnes.length > 0 ? [...withoutStale, ...newOnes] : withoutStale.length !== prev.length ? withoutStale : prev;
