@@ -427,14 +427,16 @@ const ChatWindow = ({ activeConversation, messages, user, isLoading, isAdmin, on
             const roleLabel = role === 'admin' || role === 'owner' ? 'Staff' : 'Customer';
             return (
               <>
-                <div className="chat-avatar" style={{ width: '38px', height: '38px', position: 'relative', flexShrink: 0 }}>
-                  {activeConversation.other_user?.avatar ? (
-                    <img src={activeConversation.other_user.avatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                  ) : (
-                    <span style={{ fontSize: '0.82rem', fontWeight: 800 }}>{(activeConversation.other_user?.name || 'U').charAt(0)}</span>
-                  )}
+                <div className="chat-avatar-wrap">
+                  <div className="chat-avatar" style={{ width: '38px', height: '38px' }}>
+                    {activeConversation.other_user?.avatar ? (
+                      <img src={activeConversation.other_user.avatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    ) : (
+                      <span style={{ fontSize: '0.82rem', fontWeight: 800 }}>{(activeConversation.other_user?.name || 'U').charAt(0)}</span>
+                    )}
+                  </div>
                   {isOnline && (
-                    <span style={{ position: 'absolute', bottom: '1px', right: '1px', width: '10px', height: '10px', borderRadius: '50%', background: '#22c55e', border: '2px solid var(--dark2)' }} />
+                    <span className="chat-online-dot" />
                   )}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>

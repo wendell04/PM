@@ -102,12 +102,14 @@ const ChatSidebar = ({ conversations, activeConversation, onSelectConversation, 
                 onClick={() => onSelectConversation(conv)}
                 className={`chat-item${isActive ? ' active' : ''}${hasUnread ? ' has-unread' : ''}`}
               >
-                <div className="chat-avatar" style={{ position: 'relative' }}>
-                  {avatarSrc ? (
-                    <img src={avatarSrc} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                  ) : (
-                    <span>{(conv.other_user?.name || 'U').charAt(0).toUpperCase()}</span>
-                  )}
+                <div className="chat-avatar-wrap">
+                  <div className="chat-avatar">
+                    {avatarSrc ? (
+                      <img src={avatarSrc} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    ) : (
+                      <span>{(conv.other_user?.name || 'U').charAt(0).toUpperCase()}</span>
+                    )}
+                  </div>
                   {isOnline && <span className="chat-online-dot" />}
                 </div>
 

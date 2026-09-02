@@ -1428,10 +1428,17 @@
   flex-shrink: 0;
 }
 
+/* Wrapper exists purely to hold the dot outside the avatar's circular clip. */
+.chat-avatar-wrap {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
 .chat-online-dot {
   position: absolute;
-  bottom: 1px;
-  right: 1px;
+  bottom: 0;
+  right: 0;
   width: 10px;
   height: 10px;
   border-radius: 50%;
