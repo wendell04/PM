@@ -1385,6 +1385,18 @@ export default function CheckoutPage() {
             );
           })}
 
+          <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginTop: 4, marginBottom: 4 }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#166534" strokeWidth="2"
+              style={{ flexShrink: 0, marginTop: 2 }}>
+              <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+            </svg>
+            <span style={{ fontSize: '0.75rem', color: 'var(--gray)', lineHeight: 1.55 }}>
+              These dates are the latest you should expect it.{' '}
+              <strong style={{ color: '#166534' }}>Orders often arrive earlier</strong> when our
+              production queue is light - we message you as soon as yours is ready.
+            </span>
+          </div>
+
           {/* Optional exact deadline. Picking a date auto-sets the speed above: sooner than Standard can
               make it -> Rush; otherwise Standard (no fee). The native "dd/mm/yyyy" is hidden. */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
