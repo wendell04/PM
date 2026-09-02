@@ -683,9 +683,9 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
                               </div>
                               <div className="quotation-body">
                                 <div className="quotation-product" style={{ margin: 0 }}>{m.orderNo || 'Order'}</div>
-                                {m.products && <div style={{ fontSize: '0.72rem', color: '#9ca3af' }}>{m.products}</div>}
+                                {m.products && <div style={{ fontSize: '0.72rem', color: 'var(--gray)' }}>{m.products}</div>}
                               </div>
-                              {msg.body && <div style={{ padding: '2px 12px 6px', fontSize: '0.82rem', color: '#4b5563' }}>{msg.body}</div>}
+                              {msg.body && <div style={{ padding: '2px 12px 6px', fontSize: '0.82rem', color: 'var(--gray-light)' }}>{msg.body}</div>}
 
                               {/* Every order card is a pointer to an order, so it always offers the way
                                   there. Without this a card the customer sent themselves was a dead end. */}
@@ -705,7 +705,7 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
                                       {m.proofs.slice(0, 6).map((u, n) => (
                                         <button key={n} type="button" title="Click to preview"
                                           onClick={() => setPreview(u)}
-                                          style={{ width: 46, height: 46, padding: 0, borderRadius: 6, overflow: 'hidden', border: '1px solid #e5e7eb', background: '#000', display: 'block', cursor: 'zoom-in' }}>
+                                          style={{ width: 46, height: 46, padding: 0, borderRadius: 6, overflow: 'hidden', border: '1px solid var(--border)', background: '#000', display: 'block', cursor: 'zoom-in' }}>
                                           {/* eslint-disable-next-line @next/next/no-img-element */}
                                           <img src={/\.(mp4|webm|mov|m4v|ogg)(\?|$)/i.test(u) ? u.replace(/\.(mp4|webm|mov|m4v|ogg)(\?|$)/i, '.jpg$2') : u}
                                             alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
@@ -723,7 +723,7 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
                                           {busy === 'busy' ? 'Approving...' : 'Approve'}
                                         </button>
                                         <a href={orderHref(m.orderId)}
-                                          style={{ flex: 1, textAlign: 'center', padding: '7px', borderRadius: 8, border: '1px solid #e5e7eb', color: '#6b7280', fontSize: '0.76rem', fontWeight: 600, textDecoration: 'none' }}>
+                                          style={{ flex: 1, textAlign: 'center', padding: '7px', borderRadius: 8, border: '1px solid var(--border)', color: 'var(--gray)', fontSize: '0.76rem', fontWeight: 600, textDecoration: 'none' }}>
                                           Request changes
                                         </a>
                                       </div>
@@ -735,9 +735,9 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
 
                               {m.kind === 'deposit_due' && (
                                 <div style={{ padding: '2px 12px 10px' }}>
-                                  <div style={{ fontSize: '0.78rem', color: '#4b5563', lineHeight: 1.6, marginBottom: 8 }}>
+                                  <div style={{ fontSize: '0.78rem', color: 'var(--gray-light)', lineHeight: 1.6, marginBottom: 8 }}>
                                     {m.dueNow && <div>Due now: <strong style={{ color: '#111' }}>{m.dueNow}</strong>{m.dueFull ? <> or in full <strong style={{ color: '#111' }}>{m.dueFull}</strong></> : null}</div>}
-                                    {m.heldUntil && <div style={{ color: '#6b7280' }}>Held until {m.heldUntil}</div>}
+                                    {m.heldUntil && <div style={{ color: 'var(--gray)' }}>Held until {m.heldUntil}</div>}
                                   </div>
                                   <a href={orderHref(m.orderId)}
                                     style={{ display: 'block', textAlign: 'center', padding: '7px', borderRadius: 8, background: '#d4a843', color: '#000', fontSize: '0.76rem', fontWeight: 700, textDecoration: 'none' }}>
@@ -766,16 +766,16 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
                                     <img src={m.thumbnail} alt="" style={{ width: 46, height: 46, borderRadius: 8, objectFit: 'cover', flexShrink: 0 }} />
                                   ) : (
                                     <div style={{ width: 46, height: 46, borderRadius: 8, background: 'rgba(0,0,0,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--gray)" strokeWidth="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
                                     </div>
                                   )}
                                   <div style={{ minWidth: 0 }}>
                                     <div className="quotation-product" style={{ margin: 0 }}>{m.productName}</div>
-                                    {m.category && <div style={{ fontSize: '0.72rem', color: '#9ca3af' }}>{m.category}</div>}
+                                    {m.category && <div style={{ fontSize: '0.72rem', color: 'var(--gray)' }}>{m.category}</div>}
                                   </div>
                                 </div>
                               </a>
-                              {msg.body && <div style={{ padding: '2px 12px 6px', fontSize: '0.82rem', color: '#4b5563' }}>{msg.body}</div>}
+                              {msg.body && <div style={{ padding: '2px 12px 6px', fontSize: '0.82rem', color: 'var(--gray-light)' }}>{msg.body}</div>}
                               <div className="quotation-timestamp">{formatTime(msg.created_at)}</div>
                             </div>
                           </div>
@@ -810,7 +810,7 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
                                     <div className="quotation-product" style={{ marginBottom: '2px' }}>
                                       {li.productName}
                                       {li.variantName && (
-                                        <span style={{ fontWeight: 500, color: '#6b7280' }}> - {li.variantName}</span>
+                                        <span style={{ fontWeight: 500, color: 'var(--gray)' }}> - {li.variantName}</span>
                                       )}
                                     </div>
                                     <div className="quotation-line">
@@ -911,7 +911,7 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
           <button type="button" onClick={() => setPreview(null)} aria-label="Close preview"
             style={{
               position: 'absolute', top: 16, right: 18, width: 34, height: 34, borderRadius: '50%',
-              border: 'none', background: 'rgba(255,255,255,0.15)', color: '#fff', fontSize: 18,
+              border: 'none', background: 'rgba(255,255,255,0.15)', color: 'var(--dark)', fontSize: 18,
               cursor: 'pointer', lineHeight: 1,
             }}>
             &times;

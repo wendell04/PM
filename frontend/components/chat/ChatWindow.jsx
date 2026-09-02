@@ -151,15 +151,15 @@ const ChatWindow = ({ activeConversation, messages, user, isLoading, isAdmin, on
             <a href={`${isAdmin ? '/dashboard/business/orders' : '/shop/orders-history'}?order=${m.orderId || ''}`} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none', color: 'inherit', cursor: 'pointer' }}>
               <div className="quotation-body">
                 <div className="quotation-product" style={{ margin: 0 }}>{m.orderNo || 'Order'}</div>
-                {m.products && <div style={{ fontSize: '0.72rem', color: '#9ca3af' }}>{m.products}</div>}
+                {m.products && <div style={{ fontSize: '0.72rem', color: 'var(--gray)' }}>{m.products}</div>}
               </div>
             </a>
             {m.brief && (
-              <div style={{ padding: '2px 12px 6px', fontSize: '0.8rem', color: '#4b5563', lineHeight: 1.5 }}>
-                <span style={{ fontWeight: 700, color: '#6b7280' }}>Brief: </span>{m.brief}
+              <div style={{ padding: '2px 12px 6px', fontSize: '0.8rem', color: 'var(--gray-light)', lineHeight: 1.5 }}>
+                <span style={{ fontWeight: 700, color: 'var(--gray)' }}>Brief: </span>{m.brief}
               </div>
             )}
-            {msg.body && <div style={{ padding: '2px 12px 6px', fontSize: '0.82rem', color: '#4b5563' }}>{msg.body}</div>}
+            {msg.body && <div style={{ padding: '2px 12px 6px', fontSize: '0.82rem', color: 'var(--gray-light)' }}>{msg.body}</div>}
 
             {/* The proof is already on screen here, so the decision belongs here too - sending the
                 customer to another page to press a button they could press now is friction with
@@ -171,7 +171,7 @@ const ChatWindow = ({ activeConversation, messages, user, isLoading, isAdmin, on
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
                     {m.proofs.slice(0, 6).map((u, n) => (
                       <a key={n} href={u} target="_blank" rel="noopener noreferrer"
-                        style={{ width: 46, height: 46, borderRadius: 6, overflow: 'hidden', border: '1px solid #e5e7eb', background: '#000', display: 'block' }}>
+                        style={{ width: 46, height: 46, borderRadius: 6, overflow: 'hidden', border: '1px solid var(--border)', background: '#000', display: 'block' }}>
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img src={/\.(mp4|webm|mov|m4v|ogg)(\?|$)/i.test(u) ? u.replace(/\.(mp4|webm|mov|m4v|ogg)(\?|$)/i, '.jpg$2') : u}
                           alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
@@ -189,7 +189,7 @@ const ChatWindow = ({ activeConversation, messages, user, isLoading, isAdmin, on
                       {proofActionState?.[m.orderId] === 'busy' ? 'Approving...' : 'Approve'}
                     </button>
                     <button type="button" onClick={() => onRequestChanges?.(m)}
-                      style={{ flex: 1, padding: '7px', borderRadius: 8, border: '1px solid #e5e7eb', background: 'transparent', color: '#6b7280', fontSize: '0.76rem', fontWeight: 600, cursor: 'pointer' }}>
+                      style={{ flex: 1, padding: '7px', borderRadius: 8, border: '1px solid var(--border)', background: 'transparent', color: 'var(--gray)', fontSize: '0.76rem', fontWeight: 600, cursor: 'pointer' }}>
                       Request changes
                     </button>
                   </div>
@@ -202,9 +202,9 @@ const ChatWindow = ({ activeConversation, messages, user, isLoading, isAdmin, on
                 the question every payment dispute turns on. One tap away, not reproduced here. */}
             {m.kind === 'deposit_due' && !isAdmin && (
               <div style={{ padding: '2px 12px 10px' }}>
-                <div style={{ fontSize: '0.78rem', color: '#4b5563', lineHeight: 1.6, marginBottom: 8 }}>
+                <div style={{ fontSize: '0.78rem', color: 'var(--gray-light)', lineHeight: 1.6, marginBottom: 8 }}>
                   {m.dueNow != null && <div>Due now: <strong style={{ color: '#111' }}>{m.dueNow}</strong>{m.dueFull ? <> or pay in full <strong style={{ color: '#111' }}>{m.dueFull}</strong></> : null}</div>}
-                  {m.heldUntil && <div style={{ color: '#6b7280' }}>Held until {m.heldUntil}</div>}
+                  {m.heldUntil && <div style={{ color: 'var(--gray)' }}>Held until {m.heldUntil}</div>}
                 </div>
                 <a href={`/shop/orders-history?order=${m.orderId || ''}`}
                   style={{ display: 'block', textAlign: 'center', padding: '7px', borderRadius: 8, background: '#d4a843', color: '#000', fontSize: '0.76rem', fontWeight: 700, textDecoration: 'none' }}>
@@ -237,16 +237,16 @@ const ChatWindow = ({ activeConversation, messages, user, isLoading, isAdmin, on
                   <img src={m.thumbnail} alt="" style={{ width: 46, height: 46, borderRadius: 8, objectFit: 'cover', flexShrink: 0 }} />
                 ) : (
                   <div style={{ width: 46, height: 46, borderRadius: 8, background: 'rgba(0,0,0,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--gray)" strokeWidth="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
                   </div>
                 )}
                 <div style={{ minWidth: 0 }}>
                   <div className="quotation-product" style={{ margin: 0 }}>{m.productName}</div>
-                  {m.category && <div style={{ fontSize: '0.72rem', color: '#9ca3af' }}>{m.category}</div>}
+                  {m.category && <div style={{ fontSize: '0.72rem', color: 'var(--gray)' }}>{m.category}</div>}
                 </div>
               </div>
             </a>
-            {msg.body && <div style={{ padding: '2px 12px 6px', fontSize: '0.82rem', color: '#4b5563' }}>{msg.body}</div>}
+            {msg.body && <div style={{ padding: '2px 12px 6px', fontSize: '0.82rem', color: 'var(--gray-light)' }}>{msg.body}</div>}
             <div className="quotation-timestamp" style={{ textAlign: isMe ? 'right' : 'left' }}>
               {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
             </div>
@@ -304,7 +304,7 @@ const ChatWindow = ({ activeConversation, messages, user, isLoading, isAdmin, on
                   <div className="quotation-product" style={{ marginBottom: '2px' }}>
                     {li.productName}
                     {li.variantName && (
-                      <span style={{ fontWeight: 500, color: '#6b7280' }}> - {li.variantName}</span>
+                      <span style={{ fontWeight: 500, color: 'var(--gray)' }}> - {li.variantName}</span>
                     )}
                   </div>
                   <div className="quotation-line">

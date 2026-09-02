@@ -138,14 +138,14 @@ export default function QuoteCheckoutPage() {
 
   if (loading) {
     return <div className="shop-container" style={{ maxWidth: 860, margin: '0 auto', padding: '2rem 1rem' }}>
-      <p style={{ color: '#6b7280' }}>Loading your quote&hellip;</p>
+      <p style={{ color: 'var(--gray)' }}>Loading your quote&hellip;</p>
     </div>;
   }
 
   if (loadError || !quote) {
     return <div className="shop-container" style={{ maxWidth: 640, margin: '0 auto', padding: '3rem 1rem', textAlign: 'center' }}>
       <p style={{ fontWeight: 700, marginBottom: 6 }}>Quote unavailable</p>
-      <p style={{ color: '#6b7280', fontSize: '.88rem', marginBottom: 16 }}>{loadError || 'This quote could not be found.'}</p>
+      <p style={{ color: 'var(--gray)', fontSize: '.88rem', marginBottom: 16 }}>{loadError || 'This quote could not be found.'}</p>
       <Link href="/shop/orders-history" style={{ color: '#2563eb', fontWeight: 700, textDecoration: 'none' }}>Back to My Orders</Link>
     </div>;
   }
@@ -153,7 +153,7 @@ export default function QuoteCheckoutPage() {
   if (quote.convertedOrderId) {
     return <div className="shop-container" style={{ maxWidth: 640, margin: '0 auto', padding: '3rem 1rem', textAlign: 'center' }}>
       <p style={{ fontWeight: 700, marginBottom: 6 }}>This quote is already an order</p>
-      <p style={{ color: '#6b7280', fontSize: '.88rem', marginBottom: 16 }}>You&apos;ve paid for this quote — track it in your orders.</p>
+      <p style={{ color: 'var(--gray)', fontSize: '.88rem', marginBottom: 16 }}>You&apos;ve paid for this quote — track it in your orders.</p>
       <Link href="/shop/orders-history" style={{ color: '#2563eb', fontWeight: 700, textDecoration: 'none' }}>Go to My Orders &rarr;</Link>
     </div>;
   }
@@ -161,7 +161,7 @@ export default function QuoteCheckoutPage() {
   if (!payable) {
     return <div className="shop-container" style={{ maxWidth: 640, margin: '0 auto', padding: '3rem 1rem', textAlign: 'center' }}>
       <p style={{ fontWeight: 700, marginBottom: 6 }}>Not ready for payment yet</p>
-      <p style={{ color: '#6b7280', fontSize: '.88rem', marginBottom: 16 }}>
+      <p style={{ color: 'var(--gray)', fontSize: '.88rem', marginBottom: 16 }}>
         {quote.paymentStatus !== 'unpaid'
           ? 'Payment for this quote has already been received.'
           : 'The store is still preparing your price. You will be notified in chat once the quote is ready.'}
@@ -173,7 +173,7 @@ export default function QuoteCheckoutPage() {
   return (
     <div className="shop-container" style={{ maxWidth: 860, margin: '0 auto', padding: '1.25rem 1rem 4rem' }}>
       <h1 style={{ fontSize: '1.4rem', fontWeight: 800, margin: 0 }}>Checkout</h1>
-      <p style={{ color: '#6b7280', fontSize: '.86rem', margin: '4px 0 18px' }}>
+      <p style={{ color: 'var(--gray)', fontSize: '.86rem', margin: '4px 0 18px' }}>
         Paying your quote sends it straight into production.
       </p>
 
@@ -186,9 +186,9 @@ export default function QuoteCheckoutPage() {
       <div className="quote-checkout-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,340px)', gap: 16, alignItems: 'start' }}>
         {/* LEFT — address + payment choice */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <section style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 14 }}>
+          <section style={{ background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: 12, padding: 14 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-              <span style={{ fontSize: '.74rem', fontWeight: 800, letterSpacing: '.03em', textTransform: 'uppercase', color: '#6b7280' }}>
+              <span style={{ fontSize: '.74rem', fontWeight: 800, letterSpacing: '.03em', textTransform: 'uppercase', color: 'var(--gray)' }}>
                 Delivery address
               </span>
               <button
@@ -200,7 +200,7 @@ export default function QuoteCheckoutPage() {
             </div>
 
             {addresses.length === 0 ? (
-              <p style={{ color: '#6b7280', fontSize: '.82rem', margin: 0 }}>
+              <p style={{ color: 'var(--gray)', fontSize: '.82rem', margin: 0 }}>
                 You have no saved address yet. Add one to continue.
               </p>
             ) : (
@@ -208,7 +208,7 @@ export default function QuoteCheckoutPage() {
                 <select
                   value={selectedAddressId}
                   onChange={(e) => setSelectedAddressId(e.target.value)}
-                  style={{ width: '100%', padding: '9px 11px', border: '1px solid #d1d5db', borderRadius: 9, fontSize: '.86rem', background: '#fff' }}
+                  style={{ width: '100%', padding: '9px 11px', border: '1px solid var(--border)', borderRadius: 9, fontSize: '.86rem', background: 'var(--dark)' }}
                 >
                   {addresses.map(a => (
                     <option key={a.id} value={a.id}>
@@ -217,7 +217,7 @@ export default function QuoteCheckoutPage() {
                   ))}
                 </select>
                 {selectedAddress && (
-                  <p style={{ color: '#6b7280', fontSize: '.78rem', margin: '8px 0 0' }}>{selectedAddress.phone}</p>
+                  <p style={{ color: 'var(--gray)', fontSize: '.78rem', margin: '8px 0 0' }}>{selectedAddress.phone}</p>
                 )}
                 {selectedAddress && (!selectedAddress.lat || !selectedAddress.lng) && (
                   <p style={{ color: '#b45309', fontSize: '.78rem', margin: '8px 0 0' }}>
@@ -231,8 +231,8 @@ export default function QuoteCheckoutPage() {
             )}
           </section>
 
-          <section style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 14 }}>
-            <span style={{ display: 'block', fontSize: '.74rem', fontWeight: 800, letterSpacing: '.03em', textTransform: 'uppercase', color: '#6b7280', marginBottom: 10 }}>
+          <section style={{ background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: 12, padding: 14 }}>
+            <span style={{ display: 'block', fontSize: '.74rem', fontWeight: 800, letterSpacing: '.03em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 10 }}>
               How much to pay now
             </span>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -248,35 +248,35 @@ export default function QuoteCheckoutPage() {
                     style={{
                       display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10,
                       textAlign: 'left', width: '100%', padding: '11px 12px', borderRadius: 10, cursor: 'pointer',
-                      border: active ? '2px solid #111827' : '1px solid #e5e7eb',
-                      background: active ? '#f9fafb' : '#fff',
+                      border: active ? '2px solid var(--white)' : '1px solid var(--border)',
+                      background: active ? 'var(--dark2)' : 'var(--dark)',
                     }}
                   >
                     <span>
                       <span style={{ display: 'block', fontWeight: 700, fontSize: '.86rem' }}>{opt.title}</span>
-                      <span style={{ display: 'block', color: '#6b7280', fontSize: '.75rem', marginTop: 2 }}>{opt.sub}</span>
+                      <span style={{ display: 'block', color: 'var(--gray)', fontSize: '.75rem', marginTop: 2 }}>{opt.sub}</span>
                     </span>
                     <span style={{ fontWeight: 800, fontSize: '.9rem', whiteSpace: 'nowrap' }}>{formatPeso(opt.amount)}</span>
                   </button>
                 );
               })}
             </div>
-            <p style={{ color: '#6b7280', fontSize: '.75rem', margin: '10px 0 0' }}>
+            <p style={{ color: 'var(--gray)', fontSize: '.75rem', margin: '10px 0 0' }}>
               You&apos;ll choose GCash, Maya or card on the secure payment page.
             </p>
           </section>
         </div>
 
         {/* RIGHT — quote summary */}
-        <aside style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 14, position: 'sticky', top: 16 }}>
-          <span style={{ display: 'block', fontSize: '.74rem', fontWeight: 800, letterSpacing: '.03em', textTransform: 'uppercase', color: '#6b7280', marginBottom: 10 }}>
+        <aside style={{ background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: 12, padding: 14, position: 'sticky', top: 16 }}>
+          <span style={{ display: 'block', fontSize: '.74rem', fontWeight: 800, letterSpacing: '.03em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 10 }}>
             Your quote
           </span>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 12 }}>
             {lines.map((li, i) => (
               <div key={li.productId ?? i} style={{ display: 'flex', gap: 10 }}>
-                <div style={{ width: 44, height: 44, borderRadius: 8, overflow: 'hidden', background: '#f3f4f6', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <div style={{ width: 44, height: 44, borderRadius: 8, overflow: 'hidden', background: 'var(--dark2)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   {li.thumbnail
                     /* eslint-disable-next-line @next/next/no-img-element */
                     ? <img src={li.thumbnail} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
@@ -286,10 +286,10 @@ export default function QuoteCheckoutPage() {
                   <div style={{ fontWeight: 700, fontSize: '.84rem', lineHeight: 1.3 }}>
                     {li.productName}
                     {li.variantName && (
-                      <span style={{ fontWeight: 500, color: '#6b7280' }}> - {li.variantName}</span>
+                      <span style={{ fontWeight: 500, color: 'var(--gray)' }}> - {li.variantName}</span>
                     )}
                   </div>
-                  <div style={{ color: '#6b7280', fontSize: '.74rem', marginTop: 1 }}>
+                  <div style={{ color: 'var(--gray)', fontSize: '.74rem', marginTop: 1 }}>
                     {li.qty} &times; {formatPeso(li.unitPrice)}
                   </div>
                 </div>
@@ -299,49 +299,49 @@ export default function QuoteCheckoutPage() {
           </div>
 
           {quote.adminComment && (
-            <div style={{ fontSize: '.78rem', color: '#374151', background: '#f9fafb', border: '1px solid #f0f1f3', borderRadius: 8, padding: '7px 9px', marginBottom: 12 }}>
+            <div style={{ fontSize: '.78rem', color: 'var(--gray-light)', background: 'var(--dark2)', border: '1px solid #f0f1f3', borderRadius: 8, padding: '7px 9px', marginBottom: 12 }}>
               <span style={{ fontWeight: 700 }}>Note from store:</span> {quote.adminComment}
             </div>
           )}
 
           {quote.designUrl && (
-            <a href={quote.designUrl} target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, padding: '8px 10px', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 8, textDecoration: 'none' }}>
+            <a href={quote.designUrl} target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, padding: '8px 10px', background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: 8, textDecoration: 'none' }}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={quote.designUrl} alt="" style={{ width: 44, height: 44, borderRadius: 6, objectFit: 'cover', flexShrink: 0 }} />
               <span style={{ minWidth: 0 }}>
-                <span style={{ display: 'block', fontSize: '.8rem', fontWeight: 700, color: '#111827' }}>Your design</span>
+                <span style={{ display: 'block', fontSize: '.8rem', fontWeight: 700, color: 'var(--white)' }}>Your design</span>
                 <span style={{ display: 'block', fontSize: '.72rem', color: '#2563eb' }}>View full artwork</span>
               </span>
             </a>
           )}
 
-          <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 10, display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <div style={{ borderTop: '1px solid var(--border)', paddingTop: 10, display: 'flex', flexDirection: 'column', gap: 4 }}>
             {designFee > 0 && (
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '.8rem' }}>
-                <span style={{ color: '#6b7280' }}>Design fee</span><span>{formatPeso(designFee)}</span>
+                <span style={{ color: 'var(--gray)' }}>Design fee</span><span>{formatPeso(designFee)}</span>
               </div>
             )}
             {deliveryFee > 0 && (
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '.8rem' }}>
-                <span style={{ color: '#6b7280' }}>Delivery fee</span><span>{formatPeso(deliveryFee)}</span>
+                <span style={{ color: 'var(--gray)' }}>Delivery fee</span><span>{formatPeso(deliveryFee)}</span>
               </div>
             )}
             {/* At zero the line simply vanished, leaving a total that said nothing about
                 delivery - which reads as "included" to anyone who is not looking for it. */}
             {deliveryFee === 0 && (
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: '.86rem' }}>
-                <span style={{ color: '#6b7280' }}>Delivery</span>
-                <span style={{ color: '#6b7280', textAlign: 'right', maxWidth: 260, lineHeight: 1.45 }}>
+                <span style={{ color: 'var(--gray)' }}>Delivery</span>
+                <span style={{ color: 'var(--gray)', textAlign: 'right', maxWidth: 260, lineHeight: 1.45 }}>
                   Not included. The seller books a courier to your address after this is paid and
                   sends you the exact fee in chat.
                 </span>
               </div>
             )}
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '.86rem', marginTop: 2 }}>
-              <span style={{ color: '#6b7280' }}>Quoted total</span>
+              <span style={{ color: 'var(--gray)' }}>Quoted total</span>
               <span style={{ fontWeight: 800 }}>{formatPeso(finalPrice)}</span>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #e5e7eb', marginTop: 8, paddingTop: 8 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--border)', marginTop: 8, paddingTop: 8 }}>
               <span style={{ fontWeight: 800, fontSize: '.9rem' }}>Pay now</span>
               <span style={{ fontWeight: 900, fontSize: '1.05rem' }}>{formatPeso(amountDue)}</span>
             </div>
@@ -367,7 +367,7 @@ export default function QuoteCheckoutPage() {
               disabled={paying || !selectedAddress || isExpired}
               style={{
                 width: '100%', marginTop: 12, padding: '11px 12px', borderRadius: 10, border: 'none',
-                background: '#111827', color: '#fff', fontWeight: 800, fontSize: '.88rem',
+                background: 'var(--white)', color: 'var(--dark)', fontWeight: 800, fontSize: '.88rem',
                 cursor: (paying || !selectedAddress || isExpired) ? 'not-allowed' : 'pointer',
                 opacity: (paying || !selectedAddress || isExpired) ? 0.6 : 1,
               }}
@@ -375,7 +375,7 @@ export default function QuoteCheckoutPage() {
               {isExpired ? 'Quote expired' : paying ? 'Opening payment…' : `Pay ${formatPeso(amountDue)}`}
             </button>
           )}
-          <Link href="/shop/orders-history" style={{ display: 'block', textAlign: 'center', marginTop: 10, fontSize: '.78rem', color: '#6b7280', textDecoration: 'none' }}>
+          <Link href="/shop/orders-history" style={{ display: 'block', textAlign: 'center', marginTop: 10, fontSize: '.78rem', color: 'var(--gray)', textDecoration: 'none' }}>
             Back to My Orders
           </Link>
         </aside>

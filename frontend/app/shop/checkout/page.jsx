@@ -1410,7 +1410,7 @@ export default function CheckoutPage() {
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
             <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>Need it by a specific date?</span>
             <label onClick={(e) => { const inp = e.currentTarget.querySelector('input[type="date"]'); try { inp?.showPicker(); } catch { inp?.focus(); } }}
-              style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 8, border: `1.5px solid ${needByDate ? 'var(--gold)' : 'var(--border)'}`, borderRadius: '9px', background: 'var(--dark2, #f9fafb)', padding: '7px 11px', cursor: 'pointer', minWidth: 140 }}>
+              style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 8, border: `1.5px solid ${needByDate ? 'var(--gold)' : 'var(--border)'}`, borderRadius: '9px', background: 'var(--dark2, var(--dark2))', padding: '7px 11px', cursor: 'pointer', minWidth: 140 }}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="2" style={{ flexShrink: 0 }}><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
               <span style={{ fontSize: '0.82rem', fontWeight: 600, color: needByDate ? 'var(--white, #111)' : 'var(--gray)', flex: 1 }}>
                 {needByDate ? new Date(needByDate).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Pick a date'}
@@ -1859,9 +1859,9 @@ export default function CheckoutPage() {
                   value={cardNumber}
                   onChange={e => setCardNumber(fmtCardNumber(e.target.value))}
                   style={{
-                    width: '100%', background: '#ffffff', border: '1px solid var(--border)',
+                    width: '100%', background: 'var(--dark)', border: '1px solid var(--border)',
                     borderRadius: '8px', padding: '0.72rem 2.75rem 0.72rem 0.875rem',
-                    color: '#111827', fontSize: '1rem', outline: 'none', boxSizing: 'border-box',
+                    color: 'var(--white)', fontSize: '1rem', outline: 'none', boxSizing: 'border-box',
                     fontFamily: 'monospace', letterSpacing: '0.08em',
                   }}
                   onFocus={e => { e.target.style.borderColor = '#9C7BE8'; }}
@@ -1890,9 +1890,9 @@ export default function CheckoutPage() {
                   value={cardExpiry}
                   onChange={e => setCardExpiry(fmtExpiry(e.target.value))}
                   style={{
-                    width: '100%', background: '#ffffff', border: '1px solid var(--border)',
+                    width: '100%', background: 'var(--dark)', border: '1px solid var(--border)',
                     borderRadius: '8px', padding: '0.72rem 0.875rem',
-                    color: '#111827', fontSize: '0.95rem', outline: 'none',
+                    color: 'var(--white)', fontSize: '0.95rem', outline: 'none',
                     fontFamily: 'monospace', boxSizing: 'border-box',
                   }}
                   onFocus={e => { e.target.style.borderColor = '#9C7BE8'; }}
@@ -1909,9 +1909,9 @@ export default function CheckoutPage() {
                     maxLength={4} value={cardCvc}
                     onChange={e => setCardCvc(e.target.value.replace(/\D/g, '').slice(0, 4))}
                     style={{
-                      width: '100%', background: '#ffffff', border: '1px solid var(--border)',
+                      width: '100%', background: 'var(--dark)', border: '1px solid var(--border)',
                       borderRadius: '8px', padding: '0.72rem 2.25rem 0.72rem 0.875rem',
-                      color: '#111827', fontSize: '0.95rem', outline: 'none',
+                      color: 'var(--white)', fontSize: '0.95rem', outline: 'none',
                       fontFamily: 'monospace', boxSizing: 'border-box',
                     }}
                     onFocus={e => { e.target.style.borderColor = '#9C7BE8'; }}
@@ -1935,9 +1935,9 @@ export default function CheckoutPage() {
                 value={cardName}
                 onChange={e => setCardName(e.target.value)}
                 style={{
-                  width: '100%', background: '#ffffff', border: '1px solid var(--border)',
+                  width: '100%', background: 'var(--dark)', border: '1px solid var(--border)',
                   borderRadius: '8px', padding: '0.72rem 0.875rem',
-                  color: '#111827', fontSize: '0.95rem', outline: 'none', boxSizing: 'border-box',
+                  color: 'var(--white)', fontSize: '0.95rem', outline: 'none', boxSizing: 'border-box',
                 }}
                 onFocus={e => { e.target.style.borderColor = '#9C7BE8'; }}
                 onBlur={e => { e.target.style.borderColor = 'var(--border)'; }}
@@ -1997,7 +1997,7 @@ export default function CheckoutPage() {
       {/* Custom Order Terms modal (the exact clauses being agreed to + recorded). */}
       {showTerms && (
         <div onClick={() => setShowTerms(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 4000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
-          <div onClick={e => e.stopPropagation()} style={{ background: 'var(--dark2, #fff)', color: 'var(--white, #111)', borderRadius: '14px', maxWidth: 560, width: '100%', maxHeight: '80vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: 'var(--dark2, var(--dark))', color: 'var(--white, #111)', borderRadius: '14px', maxWidth: 560, width: '100%', maxHeight: '80vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem 1.25rem', borderBottom: '1px solid var(--border)' }}>
               <strong style={{ fontSize: '1rem' }}>Custom Order Terms</strong>
               <button onClick={() => setShowTerms(false)} style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', fontSize: '1.2rem' }}>&times;</button>

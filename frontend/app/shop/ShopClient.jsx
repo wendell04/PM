@@ -566,8 +566,8 @@ function QuickViewModal({ product, flashSale, onClose, onToast }) {
                   {showPricing && (
                     <div style={{ marginTop: '10px' }}>
                       <p style={{ margin: '0 0 8px', fontSize: '0.77rem', color: '#888', lineHeight: 1.5 }}>Price per piece depends on quantity ordered.</p>
-                      <div style={{ border: '1px solid #e5e5e5', borderRadius: '8px', overflow: 'hidden' }}>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', padding: '6px 14px', background: '#f5f5f5', fontSize: '0.65rem', fontWeight: 700, color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                      <div style={{ border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', padding: '6px 14px', background: 'var(--dark2)', fontSize: '0.65rem', fontWeight: 700, color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                           <span>Quantity</span><span style={{ textAlign: 'right' }}>Unit Price</span>
                         </div>
                         {[...getTiers()].sort((a, b) => (parseInt(a.minQty) || 0) - (parseInt(b.minQty) || 0)).map((tier, i, arr) => {
@@ -583,7 +583,7 @@ function QuickViewModal({ product, flashSale, onClose, onToast }) {
                             return vals.length ? Math.min(...vals) : null;
                           })();
                           return (
-                            <div key={tier.id ?? i} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', alignItems: 'center', padding: '9px 14px', borderTop: '1px solid #e5e5e5', background: isActive ? 'rgba(212,168,67,0.07)' : '#fff' }}>
+                            <div key={tier.id ?? i} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', alignItems: 'center', padding: '9px 14px', borderTop: '1px solid var(--border)', background: isActive ? 'rgba(212,168,67,0.07)' : 'var(--dark)' }}>
                               <span style={{ fontSize: '0.82rem', color: isActive ? '#b8922f' : '#333', fontWeight: isActive ? 700 : 500, display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                                 {`${tier.minQty}${tier.maxQty ? `–${tier.maxQty}` : '+'} pcs`}
                                 {isActive && <span style={{ fontSize: '0.6rem', background: 'rgba(212,168,67,0.15)', color: '#b8922f', padding: '1px 6px', borderRadius: '999px', fontWeight: 700, textTransform: 'uppercase' }}>Your qty</span>}

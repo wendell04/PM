@@ -39,10 +39,10 @@ function fileNameFromUrl(url) {
 }
 
 // Same card language as the quote checkout: white surface, hairline border, quiet labels.
-const CARD = { background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 14 };
+const CARD = { background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: 12, padding: 14 };
 const MICRO_LABEL = {
   display: 'block', fontSize: '.74rem', fontWeight: 800, letterSpacing: '.03em',
-  textTransform: 'uppercase', color: '#6b7280',
+  textTransform: 'uppercase', color: 'var(--gray)',
 };
 
 // ── Login Required Modal ──────────────────────────────────────────────────────
@@ -53,11 +53,11 @@ function LoginRequiredModal({ isOpen, onClose }) {
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }} onClick={onClose}>
       <div style={{ ...CARD, padding: 20, width: '100%', maxWidth: 400 }} onClick={e => e.stopPropagation()}>
         <div style={{ textAlign: 'center', marginBottom: 16 }}>
-          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--gray)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
             <rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />
           </svg>
           <p style={{ fontSize: '1rem', fontWeight: 800, margin: '10px 0 4px' }}>Please log in or register</p>
-          <p style={{ fontSize: '.82rem', color: '#6b7280', lineHeight: 1.6, margin: 0 }}>
+          <p style={{ fontSize: '.82rem', color: 'var(--gray)', lineHeight: 1.6, margin: 0 }}>
             You need an account to place orders, so we can process it and keep you updated.
           </p>
         </div>
@@ -65,13 +65,13 @@ function LoginRequiredModal({ isOpen, onClose }) {
         <div style={{ display: 'flex', gap: 8 }}>
           <button
             onClick={() => { onClose(); openAuthModalWithRedirect('/shop/checkout'); }}
-            style={{ flex: 1, padding: '10px 12px', borderRadius: 10, border: '1px solid #d1d5db', background: '#fff', fontWeight: 700, fontSize: '.85rem', cursor: 'pointer' }}
+            style={{ flex: 1, padding: '10px 12px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--dark)', fontWeight: 700, fontSize: '.85rem', cursor: 'pointer' }}
           >
             Log in
           </button>
           <button
             onClick={() => { onClose(); window.dispatchEvent(new CustomEvent('pmp_open_auth', { detail: { type: 'register' } })); }}
-            style={{ flex: 1, padding: '10px 12px', borderRadius: 10, border: 'none', background: '#111827', color: '#fff', fontWeight: 800, fontSize: '.85rem', cursor: 'pointer' }}
+            style={{ flex: 1, padding: '10px 12px', borderRadius: 10, border: 'none', background: 'var(--white)', color: 'var(--dark)', fontWeight: 800, fontSize: '.85rem', cursor: 'pointer' }}
           >
             Register
           </button>
@@ -404,7 +404,7 @@ export default function CartPage() {
   return (
     <ErrorBoundary>
       <div className="shop-container" style={{ maxWidth: 980, margin: '0 auto', padding: '1.25rem 1rem 4rem' }}>
-        <Link href="/shop" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: '#6b7280', fontSize: '.82rem', fontWeight: 600, textDecoration: 'none', marginBottom: 10 }}>
+        <Link href="/shop" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--gray)', fontSize: '.82rem', fontWeight: 600, textDecoration: 'none', marginBottom: 10 }}>
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <line x1="19" y1="12" x2="5" y2="12" /><polyline points="12 19 5 12 12 5" />
           </svg>
@@ -438,7 +438,7 @@ export default function CartPage() {
         )}
 
         <h1 style={{ fontSize: '1.4rem', fontWeight: 800, margin: 0 }}>Shopping cart</h1>
-        <p style={{ color: '#6b7280', fontSize: '.86rem', margin: '4px 0 18px' }}>
+        <p style={{ color: 'var(--gray)', fontSize: '.86rem', margin: '4px 0 18px' }}>
           {enrichedCart.length} item{enrichedCart.length !== 1 ? 's' : ''} saved. Tick what you want to check out now.
         </p>
 
@@ -451,13 +451,13 @@ export default function CartPage() {
         <div className="cart-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,340px)', gap: 16, alignItems: 'start' }}>
           {/* LEFT - items */}
           <section style={{ ...CARD, padding: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '12px 14px', borderBottom: '1px solid #e5e7eb' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '12px 14px', borderBottom: '1px solid var(--border)' }}>
               <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
                 <input
                   type="checkbox"
                   checked={selectedItems.size === enrichedCart.length && enrichedCart.length > 0}
                   onChange={toggleSelectAll}
-                  style={{ width: 16, height: 16, accentColor: '#111827', cursor: 'pointer' }}
+                  style={{ width: 16, height: 16, accentColor: 'var(--white)', cursor: 'pointer' }}
                 />
                 <span style={{ ...MICRO_LABEL, display: 'inline' }}>Select all ({enrichedCart.length})</span>
               </label>
@@ -497,7 +497,7 @@ export default function CartPage() {
                     key={fileKey}
                     style={{
                       display: 'flex', gap: 12, padding: '14px 0',
-                      borderTop: idx > 0 ? '1px solid #f3f4f6' : 'none',
+                      borderTop: idx > 0 ? '1px solid var(--dark2)' : 'none',
                       opacity: isRemoving ? 0 : 1,
                       transform: isRemoving ? 'translateX(-16px)' : 'none',
                       transition: 'opacity .25s, transform .25s',
@@ -507,12 +507,12 @@ export default function CartPage() {
                       type="checkbox"
                       checked={isSelected}
                       onChange={() => toggleSelectItem(idx)}
-                      style={{ width: 16, height: 16, accentColor: '#111827', cursor: 'pointer', marginTop: 4, flexShrink: 0 }}
+                      style={{ width: 16, height: 16, accentColor: 'var(--white)', cursor: 'pointer', marginTop: 4, flexShrink: 0 }}
                     />
 
                     <Link
                       href={`/shop/products/${item.product._id}`}
-                      style={{ width: 72, height: 72, borderRadius: 10, overflow: 'hidden', background: '#f3f4f6', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                      style={{ width: 72, height: 72, borderRadius: 10, overflow: 'hidden', background: 'var(--dark2)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                     >
                       {item.product.images?.[0]
                         /* eslint-disable-next-line @next/next/no-img-element */
@@ -526,15 +526,15 @@ export default function CartPage() {
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <Link
                             href={`/shop/products/${item.product._id}`}
-                            style={{ fontWeight: 700, fontSize: '.9rem', lineHeight: 1.35, color: '#111827', textDecoration: 'none' }}
+                            style={{ fontWeight: 700, fontSize: '.9rem', lineHeight: 1.35, color: 'var(--white)', textDecoration: 'none' }}
                           >
                             {item.product.name}
                             {item.variantName && (
-                              <span style={{ fontWeight: 500, color: '#6b7280' }}> - {item.variantName}</span>
+                              <span style={{ fontWeight: 500, color: 'var(--gray)' }}> - {item.variantName}</span>
                             )}
                           </Link>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap', marginTop: 3 }}>
-                            <span style={{ color: '#6b7280', fontSize: '.76rem' }}>
+                            <span style={{ color: 'var(--gray)', fontSize: '.76rem' }}>
                               {item.qty} &times; {formatPeso(item.unitPrice)}
                             </span>
                             {/* Per-line deposit indicator: exact % for a downpayment item, or "Pay in full"
@@ -570,7 +570,7 @@ export default function CartPage() {
                               href={designHref} target="_blank" rel="noopener noreferrer"
                               style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, marginRight: 'auto', textDecoration: 'none' }}
                             >
-                              <span style={{ width: 34, height: 34, borderRadius: 7, overflow: 'hidden', background: '#fff', border: '1px solid #bbf7d0', flexShrink: 0,
+                              <span style={{ width: 34, height: 34, borderRadius: 7, overflow: 'hidden', background: 'var(--dark)', border: '1px solid #bbf7d0', flexShrink: 0,
                                 display: (fileCount > 1 && openFiles[fileKey]) ? 'none' : 'flex', alignItems: 'center', justifyContent: 'center' }}>
                                 {IMAGE_RE.test(designHref)
                                   /* eslint-disable-next-line @next/next/no-img-element */
@@ -620,7 +620,7 @@ export default function CartPage() {
                                             nothing about which file is which - and when four of five are
                                             artwork, the thumbnail IS the identifying detail. */}
                                         <span style={{ width: 26, height: 26, borderRadius: 6, overflow: 'hidden',
-                                          background: '#fff', border: '1px solid #bbf7d0', flexShrink: 0,
+                                          background: 'var(--dark)', border: '1px solid #bbf7d0', flexShrink: 0,
                                           display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                                           {IMAGE_RE.test(f.url)
                                             /* eslint-disable-next-line @next/next/no-img-element */
@@ -648,9 +648,9 @@ export default function CartPage() {
 
                           {item.designNotes && (
                             <span style={{ display: 'block', width: '100%', order: 99, marginTop: 6,
-                              fontSize: '.72rem', color: '#4b5563', lineHeight: 1.5,
-                              borderTop: '1px dashed #d1d5db', paddingTop: 6 }}>
-                              <strong style={{ color: '#111827' }}>Your instructions: </strong>
+                              fontSize: '.72rem', color: 'var(--gray-light)', lineHeight: 1.5,
+                              borderTop: '1px dashed var(--border)', paddingTop: 6 }}>
+                              <strong style={{ color: 'var(--white)' }}>Your instructions: </strong>
                               {item.designNotes}
                             </span>
                           )}
@@ -660,9 +660,9 @@ export default function CartPage() {
                               <label style={{
                                 display: 'inline-flex', alignItems: 'center', gap: 5, cursor: 'pointer',
                                 padding: '5px 11px', borderRadius: 999, fontSize: '.74rem', fontWeight: 700,
-                                background: isUpload ? '#111827' : '#fff',
-                                color: isUpload ? '#fff' : '#111827',
-                                border: `1px solid ${isUpload ? '#111827' : '#d1d5db'}`,
+                                background: isUpload ? 'var(--white)' : 'var(--dark)',
+                                color: isUpload ? 'var(--dark)' : 'var(--white)',
+                                border: `1px solid ${isUpload ? 'var(--white)' : 'var(--border)'}`,
                               }}>
                                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                                   <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" />
@@ -676,9 +676,9 @@ export default function CartPage() {
                                   onClick={() => handleRequestDesign(item.lineId, mode)}
                                   style={{
                                     padding: '5px 11px', borderRadius: 999, fontSize: '.74rem', fontWeight: 700, cursor: 'pointer',
-                                    background: isReq ? '#111827' : '#fff',
-                                    color: isReq ? '#fff' : '#111827',
-                                    border: `1px solid ${isReq ? '#111827' : '#d1d5db'}`,
+                                    background: isReq ? 'var(--white)' : 'var(--dark)',
+                                    color: isReq ? 'var(--dark)' : 'var(--white)',
+                                    border: `1px solid ${isReq ? 'var(--white)' : 'var(--border)'}`,
                                   }}
                                 >
                                   Request design
@@ -690,7 +690,7 @@ export default function CartPage() {
                       )}
 
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', border: '1px solid #d1d5db', borderRadius: 9, overflow: 'hidden', background: '#fff' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', border: '1px solid var(--border)', borderRadius: 9, overflow: 'hidden', background: 'var(--dark)' }}>
                           <button
                             onClick={() => updateQty(item.lineId, item.qty - 1)}
                             disabled={item.qty <= (item.minOrderQty || 1)}
@@ -698,7 +698,7 @@ export default function CartPage() {
                           >
                             &minus;
                           </button>
-                          <span style={{ minWidth: 40, textAlign: 'center', fontSize: '.85rem', fontWeight: 700, borderLeft: '1px solid #e5e7eb', borderRight: '1px solid #e5e7eb', lineHeight: '30px' }}>
+                          <span style={{ minWidth: 40, textAlign: 'center', fontSize: '.85rem', fontWeight: 700, borderLeft: '1px solid var(--border)', borderRight: '1px solid var(--border)', lineHeight: '30px' }}>
                             {item.qty}
                           </span>
                           <button
@@ -713,7 +713,7 @@ export default function CartPage() {
                         <button
                           onClick={() => handleRemoveItem(item.lineId, idx)}
                           title="Remove item"
-                          style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', color: '#9ca3af', fontSize: '.76rem', fontWeight: 600, cursor: 'pointer', padding: 0 }}
+                          style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', color: 'var(--gray)', fontSize: '.76rem', fontWeight: 600, cursor: 'pointer', padding: 0 }}
                         >
                           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                             <polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
@@ -734,16 +734,16 @@ export default function CartPage() {
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '.8rem' }}>
-                <span style={{ color: '#6b7280' }}>Selected items</span>
+                <span style={{ color: 'var(--gray)' }}>Selected items</span>
                 <span>{selectedCartItems.length} of {enrichedCart.length}</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '.8rem' }}>
-                <span style={{ color: '#6b7280' }}>Subtotal</span>
+                <span style={{ color: 'var(--gray)' }}>Subtotal</span>
                 <span>{formatPeso(selectedBaseTotal)}</span>
               </div>
               {selectedDesignFee > 0 && (
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: '.8rem' }}>
-                  <span style={{ color: '#6b7280' }}>
+                  <span style={{ color: 'var(--gray)' }}>
                     Design fee
                     <span style={{ display: 'block', fontSize: '.7rem', opacity: .8 }}>
                       Charged once, however many products the artwork goes on
@@ -756,8 +756,8 @@ export default function CartPage() {
                   quoted after the order, once a courier is actually booked. Promising a figure at
                   checkout that never appears there is the kind of small lie a customer notices. */}
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: '.8rem' }}>
-                <span style={{ color: '#6b7280' }}>Shipping</span>
-                <span style={{ color: '#6b7280', textAlign: 'right' }}>
+                <span style={{ color: 'var(--gray)' }}>Shipping</span>
+                <span style={{ color: 'var(--gray)', textAlign: 'right' }}>
                   {shippingMode === 'courier_booked' ? 'Arranged after order' : 'Calculated at checkout'}
                 </span>
               </div>
@@ -766,7 +766,7 @@ export default function CartPage() {
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#d4a843" strokeWidth="2" style={{ flexShrink: 0, marginTop: 2 }}>
                     <rect x="1" y="3" width="15" height="13"/><path d="M16 8h4l3 3v5h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/>
                   </svg>
-                  <span style={{ fontSize: '.72rem', color: '#6b7280', lineHeight: 1.5 }}>
+                  <span style={{ fontSize: '.72rem', color: 'var(--gray)', lineHeight: 1.5 }}>
                     Delivery is not included in this total. We book a third-party courier after your
                     order is confirmed and send you the fee in chat - usually paid in cash to the rider
                     or the seller. It can vary with the size of your order.
@@ -775,7 +775,7 @@ export default function CartPage() {
               )}
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #e5e7eb', marginTop: 10, paddingTop: 10 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--border)', marginTop: 10, paddingTop: 10 }}>
               <span style={{ fontWeight: 800, fontSize: '.9rem' }}>Total</span>
               <span style={{ fontWeight: 900, fontSize: '1.05rem' }}>{formatPeso(selectedTotal)}</span>
             </div>
@@ -784,32 +784,32 @@ export default function CartPage() {
                 proof is approved. Quoting a deposit here contradicted the checkout that follows and
                 showed the customer a figure they were never going to be charged. */}
             {designLines.length > 0 ? (
-              <div style={{ marginTop: 10, padding: '9px 11px', borderRadius: 10, background: '#f9fafb', border: '1px solid #e5e7eb', display: 'flex', flexDirection: 'column', gap: 5 }}>
+              <div style={{ marginTop: 10, padding: '9px 11px', borderRadius: 10, background: 'var(--dark2)', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 5 }}>
                 <span style={{ fontSize: '.76rem', fontWeight: 800 }}>You pay the design fee first</span>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '.8rem' }}>
-                  <span style={{ color: '#6b7280' }}>Due now</span>
+                  <span style={{ color: 'var(--gray)' }}>Due now</span>
                   <span style={{ fontWeight: 700 }}>{formatPeso(selectedDesignFee)}</span>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '.78rem', color: '#6b7280' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '.78rem', color: 'var(--gray)' }}>
                   <span>After you approve the proof</span>
                   <span>{formatPeso(Math.max(0, selectedTotal - selectedDesignFee))} + delivery</span>
                 </div>
-                <span style={{ fontSize: '.72rem', color: '#6b7280', lineHeight: 1.5, borderTop: '1px solid #e5e7eb', paddingTop: 6 }}>
+                <span style={{ fontSize: '.72rem', color: 'var(--gray)', lineHeight: 1.5, borderTop: '1px solid var(--border)', paddingTop: 6 }}>
                   The design fee is non-refundable - it pays for the designer&apos;s time. You see the artwork before you pay for the goods.
                 </span>
               </div>
             ) : dpRequired && (
-              <div style={{ marginTop: 10, padding: '9px 11px', borderRadius: 10, background: '#f9fafb', border: '1px solid #e5e7eb', display: 'flex', flexDirection: 'column', gap: 5 }}>
+              <div style={{ marginTop: 10, padding: '9px 11px', borderRadius: 10, background: 'var(--dark2)', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 5 }}>
                 <span style={{ fontSize: '.76rem', fontWeight: 800 }}>{dpPercent ? `${dpPercent}% downpayment required` : 'Downpayment required'}</span>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '.8rem' }}>
-                  <span style={{ color: '#6b7280' }}>Due now (excl. shipping)</span>
+                  <span style={{ color: 'var(--gray)' }}>Due now (excl. shipping)</span>
                   <span style={{ fontWeight: 700 }}>{formatPeso(dpAmountDue)}</span>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '.78rem', color: '#6b7280' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '.78rem', color: 'var(--gray)' }}>
                   <span>Balance later</span>
                   <span>{formatPeso(dpRemaining)}</span>
                 </div>
-                <span style={{ fontSize: '.72rem', color: '#6b7280', lineHeight: 1.5, borderTop: '1px solid #e5e7eb', paddingTop: 6 }}>
+                <span style={{ fontSize: '.72rem', color: 'var(--gray)', lineHeight: 1.5, borderTop: '1px solid var(--border)', paddingTop: 6 }}>
                   Due now is the deposit on your items (ready-made items in full). The remaining balance is collected before delivery.
                 </span>
               </div>
@@ -817,7 +817,7 @@ export default function CartPage() {
 
             {/* A zero total next to a priced item reads as a bug rather than a prompt. */}
             {selectedItems.size === 0 && (
-              <p style={{ marginTop: 10, marginBottom: 0, fontSize: '.76rem', color: '#6b7280', lineHeight: 1.5 }}>
+              <p style={{ marginTop: 10, marginBottom: 0, fontSize: '.76rem', color: 'var(--gray)', lineHeight: 1.5 }}>
                 Tick an item to include it - the total updates as you select.
               </p>
             )}
@@ -830,9 +830,9 @@ export default function CartPage() {
                 placeholder="Colour preferences, deadlines, special instructions..."
                 value={notes}
                 onChange={e => setNotes(e.target.value.slice(0, 500))}
-                style={{ width: '100%', padding: '9px 11px', border: '1px solid #d1d5db', borderRadius: 9, fontSize: '.84rem', fontFamily: 'inherit', resize: 'vertical', background: '#fff' }}
+                style={{ width: '100%', padding: '9px 11px', border: '1px solid var(--border)', borderRadius: 9, fontSize: '.84rem', fontFamily: 'inherit', resize: 'vertical', background: 'var(--dark)' }}
               />
-              <span style={{ display: 'block', textAlign: 'right', fontSize: '.7rem', color: '#9ca3af' }}>{notes.length}/500</span>
+              <span style={{ display: 'block', textAlign: 'right', fontSize: '.7rem', color: 'var(--gray)' }}>{notes.length}/500</span>
             </div>
 
             <button
@@ -840,7 +840,7 @@ export default function CartPage() {
               disabled={selectedItems.size === 0 || isCheckingOut}
               style={{
                 width: '100%', marginTop: 10, padding: '11px 12px', borderRadius: 10, border: 'none',
-                background: '#111827', color: '#fff', fontWeight: 800, fontSize: '.88rem',
+                background: 'var(--white)', color: 'var(--dark)', fontWeight: 800, fontSize: '.88rem',
                 cursor: (selectedItems.size === 0 || isCheckingOut) ? 'not-allowed' : 'pointer',
                 opacity: (selectedItems.size === 0 || isCheckingOut) ? 0.5 : 1,
               }}
@@ -848,7 +848,7 @@ export default function CartPage() {
               {isCheckingOut ? 'Preparing checkout...' : `Check out (${selectedItems.size})`}
             </button>
 
-            <p style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '10px 0 0', fontSize: '.74rem', color: '#6b7280' }}>
+            <p style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '10px 0 0', fontSize: '.74rem', color: 'var(--gray)' }}>
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
                 <path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z" /><circle cx="12" cy="10" r="3" />
               </svg>

@@ -919,7 +919,7 @@ function CustomOrderInner() {
     const bar = (extra) => ({ background: 'var(--dark2)', borderRadius: 8, animation: 'pmPulse 1.4s ease-in-out infinite', ...extra });
     const card = { background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: 14, padding: 20, display: 'flex', flexDirection: 'column', gap: 12 };
     return (
-      <div style={{ minHeight: '100vh', background: 'var(--dark1)', color: 'var(--white)', padding: '2rem 1rem 4rem', fontFamily: "'Outfit', sans-serif" }}>
+      <div style={{ minHeight: '100vh', background: 'var(--black)', color: 'var(--white)', padding: '2rem 1rem 4rem', fontFamily: "'Outfit', sans-serif" }}>
         <style>{`@keyframes pmPulse { 0%,100%{opacity:1} 50%{opacity:.5} }`}</style>
         <div style={{ maxWidth: 1000, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div style={bar({ width: 120, height: 14 })} />
@@ -970,7 +970,7 @@ function CustomOrderInner() {
   );
   
   if (requestSubmitted) return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--dark1)', padding: '20px', fontFamily: "'Outfit', sans-serif" }}>
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--black)', padding: '20px', fontFamily: "'Outfit', sans-serif" }}>
       <div style={{ background: 'var(--dark2)', border: '1px solid rgba(212,168,67,0.25)', borderRadius: '18px', padding: '40px 32px', maxWidth: '420px', width: '100%', textAlign: 'center' }}>
         <div style={{ width: 68, height: 68, borderRadius: '50%', background: 'rgba(212,168,67,0.1)', border: '2px solid var(--gold)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px' }}>
           <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
@@ -988,14 +988,14 @@ function CustomOrderInner() {
   );
 
   if (loadError || !product) return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '1rem', background: 'var(--dark1)', color: 'var(--white)', fontFamily: "'Outfit', sans-serif" }}>
+    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '1rem', background: 'var(--black)', color: 'var(--white)', fontFamily: "'Outfit', sans-serif" }}>
       <p style={{ color: 'var(--gray)' }}>{loadError ?? 'Product not found.'}</p>
       <Link href="/shop" style={{ color: 'var(--gold)', fontSize: '0.9rem' }}>← Back to Shop</Link>
     </div>
   );
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--dark1)', color: 'var(--white)', padding: '2rem 1rem 4rem', fontFamily: "'Outfit', sans-serif" }}>
+    <div style={{ minHeight: '100vh', background: 'var(--black)', color: 'var(--white)', padding: '2rem 1rem 4rem', fontFamily: "'Outfit', sans-serif" }}>
       {showTerms && (
         <div onClick={() => setShowTerms(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 9998, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
           <div onClick={e => e.stopPropagation()} style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '16px', maxWidth: '560px', width: '100%', maxHeight: '85vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -1079,8 +1079,8 @@ function CustomOrderInner() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
 
             {/* Step 1: Product Config */}
-            <section style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: '12px', padding: '1.15rem' }}>
-              <h2 style={{ fontSize: '0.74rem', fontWeight: 800, letterSpacing: '0.03em', textTransform: 'uppercase', color: '#6b7280', marginBottom: '0.85rem' }}>Product details</h2>
+            <section style={{ background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '12px', padding: '1.15rem' }}>
+              <h2 style={{ fontSize: '0.74rem', fontWeight: 800, letterSpacing: '0.03em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: '0.85rem' }}>Product details</h2>
 
               {/* The variant was already chosen on the product page, so it is confirmed
                   here rather than asked again. "Change" goes back to that picker. */}
@@ -1158,8 +1158,8 @@ function CustomOrderInner() {
             </section>
 
             {/* Step 2: Design */}
-            <section style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: '12px', padding: '1.15rem' }}>
-              <h2 style={{ fontSize: '0.74rem', fontWeight: 800, letterSpacing: '0.03em', textTransform: 'uppercase', color: '#6b7280', marginBottom: '0.85rem' }}>Your design</h2>
+            <section style={{ background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '12px', padding: '1.15rem' }}>
+              <h2 style={{ fontSize: '0.74rem', fontWeight: 800, letterSpacing: '0.03em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: '0.85rem' }}>Your design</h2>
 
               <div className="co-modes">
                 <button onClick={() => handlePickMode('upload')}
@@ -1246,7 +1246,7 @@ function CustomOrderInner() {
                             </div>
                           ) : f.preview ? (
                             /* eslint-disable-next-line @next/next/no-img-element */
-                            <img src={f.preview} alt="" style={{ width: 40, height: 40, borderRadius: 8, objectFit: 'cover', flexShrink: 0, background: '#fff' }} />
+                            <img src={f.preview} alt="" style={{ width: 40, height: 40, borderRadius: 8, objectFit: 'cover', flexShrink: 0, background: 'var(--dark)' }} />
                           ) : (
                             <span style={{ width: 40, height: 40, borderRadius: 8, flexShrink: 0, background: 'rgba(212,168,67,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#D4A843" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1409,7 +1409,7 @@ function CustomOrderInner() {
                             <button type="button" onClick={() => removeDesignFile(f.key)}
                               style={{ position: 'absolute', top: 2, right: 2, width: 17, height: 17,
                                 borderRadius: '50%', border: 'none', background: 'rgba(0,0,0,0.65)',
-                                color: '#fff', fontSize: 11, lineHeight: 1, cursor: 'pointer', padding: 0 }}>
+                                color: 'var(--dark)', fontSize: 11, lineHeight: 1, cursor: 'pointer', padding: 0 }}>
                               &times;
                             </button>
                           </div>
@@ -1422,8 +1422,8 @@ function CustomOrderInner() {
             </section>
 
             {/* Step 3: Delivery — shown for both upload and request */}
-            {(designMode === 'upload' || designMode === 'request') && !isInquiry && <section style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: '12px', padding: '1.15rem' }}>
-              <h2 style={{ fontSize: '0.74rem', fontWeight: 800, letterSpacing: '0.03em', textTransform: 'uppercase', color: '#6b7280', marginBottom: '0.85rem' }}>Delivery address</h2>
+            {(designMode === 'upload' || designMode === 'request') && !isInquiry && <section style={{ background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '12px', padding: '1.15rem' }}>
+              <h2 style={{ fontSize: '0.74rem', fontWeight: 800, letterSpacing: '0.03em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: '0.85rem' }}>Delivery address</h2>
               {addressLoading ? (
                 <p style={{ color: 'var(--gray)', fontSize: '0.85rem' }}>Loading addresses...</p>
               ) : addresses.length === 0 ? (
@@ -1465,8 +1465,8 @@ function CustomOrderInner() {
             {/* Step 4: Payment - never on this page any more. Request design submits an unpaid
                 order and pays the design fee (then the goods) from the order detail modal;
                 upload design goes through the cart. Kept only for the legacy inquiry branch. */}
-            {false && <section style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: '12px', padding: '1.15rem' }}>
-              <h2 style={{ fontSize: '0.74rem', fontWeight: 800, letterSpacing: '0.03em', textTransform: 'uppercase', color: '#6b7280', marginBottom: '0.85rem' }}>Payment method</h2>
+            {false && <section style={{ background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '12px', padding: '1.15rem' }}>
+              <h2 style={{ fontSize: '0.74rem', fontWeight: 800, letterSpacing: '0.03em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: '0.85rem' }}>Payment method</h2>
 
               <div style={{ padding: '0.75rem 1rem', background: 'rgba(212,168,67,0.08)', border: '1px solid rgba(212,168,67,0.2)', borderRadius: '8px', marginBottom: '1rem', fontSize: '0.8rem', color: 'var(--gray)', lineHeight: 1.5 }}>
                 {designMode === 'request'
@@ -1489,7 +1489,7 @@ function CustomOrderInner() {
                 return (
                   <div key={opt.id}>
                     <div onClick={() => { setPaymentMethod(opt.id); setEWalletPhone(''); setShowEWalletPhone(false); }}
-                      style={{ display: 'flex', alignItems: 'center', gap: '0.875rem', padding: '0.875rem 1rem', borderRadius: '10px', cursor: 'pointer', border: `1px solid ${isSelected ? opt.accent : 'rgba(255,255,255,0.07)'}`, background: isSelected ? opt.accentBg : 'var(--dark1)', marginBottom: showPanel ? 0 : '0.625rem', transition: 'all 0.18s' }}>
+                      style={{ display: 'flex', alignItems: 'center', gap: '0.875rem', padding: '0.875rem 1rem', borderRadius: '10px', cursor: 'pointer', border: `1px solid ${isSelected ? opt.accent : 'rgba(255,255,255,0.07)'}`, background: isSelected ? opt.accentBg : 'var(--black)', marginBottom: showPanel ? 0 : '0.625rem', transition: 'all 0.18s' }}>
                       <div style={{ width: '44px', height: '44px', borderRadius: '10px', flexShrink: 0, background: isSelected ? opt.accentBg : 'rgba(255,255,255,0.04)', border: `1px solid ${isSelected ? opt.accent : 'rgba(255,255,255,0.06)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img src={opt.logo} alt={opt.label} style={{ width: '30px', height: '30px', objectFit: 'contain', ...(opt.filterImg ? { filter: 'brightness(0) invert(1)', opacity: isSelected ? 1 : 0.45 } : { borderRadius: '6px' }) }} />
@@ -1563,7 +1563,7 @@ function CustomOrderInner() {
 
           {/* ── RIGHT: STICKY SUMMARY ──────────────────────────── */}
           <div className="custom-order-sidebar" style={{ position: 'sticky', top: '5rem' }}>
-            <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: '12px', padding: '1.15rem' }}>
+            <div style={{ background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '12px', padding: '1.15rem' }}>
 
               <div style={{ display: 'flex', gap: '0.875rem', marginBottom: '1.25rem', paddingBottom: '1rem', borderBottom: '1px solid var(--border)' }}>
                 {(() => {
