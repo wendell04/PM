@@ -2578,7 +2578,15 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
         confirmStyle={statusCopy(selStatus).danger ? 'danger' : 'primary'}
         message={updateErr
           ? `${updateErr}. Nothing was changed - the order is still ${getStatusBadge(lo.orderStatus).label}.`
-          : `${lo.orderRef || 'This order'}: ${statusCopy(selStatus).body}`}
+          : `${lo.orderRef || 'This order'}: ${statusCopy(selStatus).body}`
+            /* Delivering a COD order also records the cash as collected, which is a money change,
+               and a money change should never be a side effect nobody was told about. Named here,
+               with the figure, before it happens. */
+            + (String(selStatus) === 'Delivered'
+                && String(lo.paymentMethod ?? '').toLowerCase() === 'cod'
+                && remainingDue(lo) > 0
+                  ? ` This is a Cash on Delivery order, so it will also be marked PAID and ₱${fmt(remainingDue(lo))} recorded as collected by the rider.`
+                  : '')}
       />
 
       <ConfirmModal

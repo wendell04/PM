@@ -351,15 +351,35 @@ class ChatController extends Controller
                 $senderIsStaff = in_array($user->role ?? null, ['admin', 'owner', 'superAdmin', 'staff'], true)
                     || !empty($user->role) && $user->role !== 'customer';
                 if ($recipientId !== '' && $senderIsStaff) {
-                    Notification::create([
-                        'user_id'    => $recipientId,
-                        'type'       => 'chat_message',
-                        'title'      => 'Message from the shop',
-                        'message'    => mb_substr(strip_tags((string) $request->input('body', 'You have a new message.')), 0, 180),
-                        'is_read'    => false,
-                        'data'       => ['conversationId' => (string) $conversation->_id],
-                        'created_at' => now(),
-                    ]);
+                    // One unread notification per conversation, not one per message. A shop that
+                    // types four short lines is having a conversation, not sending four alerts, and
+                    // stacking them buries every other notification the customer has - the order
+                    // updates and the delivery fee among them. An existing unread one is refreshed
+                    // in place so it carries the latest line and sorts to the top; a new one is
+                    // created only once the customer has read the last.
+                    $existing = Notification::where('user_id', $recipientId)
+                        ->where('type', 'chat_message')
+                        ->where('is_read', false)
+                        ->get()
+                        ->first(fn ($n) => (string) (($n->data['conversationId'] ?? '')) === (string) $conversation->_id);
+
+                    $preview = mb_substr(strip_tags((string) $request->input('body', 'You have a new message.')), 0, 180);
+
+                    if ($existing) {
+                        $existing->message    = $preview;
+                        $existing->created_at = now();
+                        $existing->save();
+                    } else {
+                        Notification::create([
+                            'user_id'    => $recipientId,
+                            'type'       => 'chat_message',
+                            'title'      => 'Message from the shop',
+                            'message'    => $preview,
+                            'is_read'    => false,
+                            'data'       => ['conversationId' => (string) $conversation->_id],
+                            'created_at' => now(),
+                        ]);
+                    }
                 }
             } catch (\Throwable $e) {
                 Log::warning('Chat notification failed (message still sent): ' . $e->getMessage());
