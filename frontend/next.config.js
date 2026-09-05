@@ -17,7 +17,12 @@ const securityHeaders = [
       // 'unsafe-inline' kept for Next.js hydration scripts; full removal requires nonce implementation
       // 'unsafe-eval' restricted to dev only — not needed in production builds
       `script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com https://maps.googleapis.com${process.env.NODE_ENV === 'development' ? " 'unsafe-eval'" : ''}`,
-      "style-src 'self' 'unsafe-inline'", // needed for inline <style> tags used in components
+      // fonts.googleapis.com belongs here, not only in font-src. The Google Fonts <link> is a
+      // STYLESHEET - font-src governs the .woff2 files it goes on to request, style-src governs the
+      // stylesheet itself. With only 'self' here the browser blocked the whole thing, no @font-face
+      // rules ever arrived, and every device fell back to its own sans-serif. On the live site it had
+      // never once rendered the brand fonts; localhost has no CSP, which is why it looked right there.
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com", // inline <style> tags + Google Fonts
       // Without an explicit media-src, <video> and <audio> fall back to default-src ('self'), so a
       // Cloudinary-hosted proof clip is blocked before it is ever fetched - the player just sits at
       // 0:00 with no error in the UI. Images were unaffected because img-src names Cloudinary, which
