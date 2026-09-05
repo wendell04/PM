@@ -28,6 +28,12 @@ class AccountSecurityAlertMail extends Mailable implements ShouldQueue
         // Routed down the security lane - see config/mail.php. A quota spent on order
         // notifications must never be able to stop somebody signing in.
         $this->mailer = config('mail.security_mailer');
+        // Providers disagree about who may send as whom - Resend will only send from a
+        // verified domain, so this lane needs its own sender when the shop's default
+        // From is a Gmail address it cannot verify.
+        if ($secFrom = config('mail.security_from.address')) {
+            $this->from($secFrom, config('mail.security_from.name'));
+        }
     }
 
     public function envelope(): Envelope

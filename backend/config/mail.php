@@ -150,4 +150,22 @@ return [
 
     'security_mailer' => env('MAIL_SECURITY_MAILER', env('MAIL_MAILER', 'smtp')),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Security Mail Sender
+    |--------------------------------------------------------------------------
+    |
+    | The security lane usually sits on a different provider from the default
+    | one, and providers do not agree about who may send as whom. Resend, for
+    | instance, will only send from a domain you have verified - so a shop whose
+    | MAIL_FROM_ADDRESS is a Gmail address cannot use it for this lane without
+    | its own sender. Leave unset and the lane keeps the default From.
+    |
+    */
+
+    'security_from' => [
+        'address' => env('MAIL_SECURITY_FROM_ADDRESS'),
+        'name'    => env('MAIL_SECURITY_FROM_NAME', env('MAIL_FROM_NAME', 'Personalize Me Prints')),
+    ],
+
 ];
