@@ -206,7 +206,7 @@ export default function QuoteCheckoutPage() {
   }
 
   return (
-    <div className="shop-container" style={{ maxWidth: 860, margin: '0 auto', padding: '1.25rem 1rem 4rem' }}>
+    <div className="shop-container" style={{ maxWidth: 1100, margin: '0 auto', padding: '1.25rem 1rem 4rem' }}>
       <h1 style={{ fontSize: '1.4rem', fontWeight: 800, margin: 0 }}>Checkout</h1>
       <p style={{ color: 'var(--gray)', fontSize: '.86rem', margin: '4px 0 18px' }}>
         Paying your quote sends it straight into production.
@@ -240,20 +240,39 @@ export default function QuoteCheckoutPage() {
               </p>
             ) : (
               <>
-                <select
-                  value={selectedAddressId}
-                  onChange={(e) => setSelectedAddressId(e.target.value)}
-                  style={{ width: '100%', padding: '9px 11px', border: '1px solid var(--border)', borderRadius: 9, fontSize: '.86rem', background: 'var(--dark)' }}
-                >
-                  {addresses.map(a => (
-                    <option key={a.id} value={a.id}>
-                      {(a.label ? `${a.label} — ` : '') + addressLine(a)}
-                    </option>
-                  ))}
-                </select>
-                {selectedAddress && (
-                  <p style={{ color: 'var(--gray)', fontSize: '.78rem', margin: '8px 0 0' }}>{selectedAddress.phone}</p>
-                )}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {addresses.map(a => {
+                    const on = a.id === selectedAddressId;
+                    return (
+                      <button key={a.id} type="button" onClick={() => setSelectedAddressId(a.id)}
+                        style={{ display: 'flex', alignItems: 'flex-start', gap: 10, width: '100%', textAlign: 'left',
+                          padding: '10px 12px', borderRadius: 10, cursor: 'pointer', fontFamily: 'inherit',
+                          border: on ? '1px solid var(--gold)' : '1px solid var(--border)',
+                          background: on ? 'rgba(212,168,67,0.07)' : 'var(--dark2)' }}>
+                        <span style={{ width: 14, height: 14, borderRadius: '50%', flexShrink: 0, marginTop: 3,
+                          border: on ? '4.5px solid var(--gold)' : '1.5px solid var(--gray)', boxSizing: 'border-box' }} />
+                        <span style={{ minWidth: 0 }}>
+                          {a.label && (
+                            <span style={{ display: 'inline-block', fontSize: '.66rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--gold)', background: 'rgba(212,168,67,0.12)', border: '1px solid rgba(212,168,67,0.3)', borderRadius: 999, padding: '1px 7px', marginBottom: 4 }}>
+                              {a.label}
+                            </span>
+                          )}
+                          <span style={{ display: 'block', fontSize: '.82rem', lineHeight: 1.45, color: 'var(--white)' }}>
+                            {addressLine(a)}
+                          </span>
+                          {a.phone && (
+                            <span style={{ display: 'block', fontSize: '.76rem', color: 'var(--gray)', marginTop: 2 }}>{a.phone}</span>
+                          )}
+                          {(!a.lat || !a.lng) && (
+                            <span style={{ display: 'block', fontSize: '.72rem', color: '#b45309', marginTop: 3 }}>
+                              No map pin yet
+                            </span>
+                          )}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
                 {selectedAddress && (!selectedAddress.lat || !selectedAddress.lng) && (
                   <p style={{ color: '#b45309', fontSize: '.78rem', margin: '8px 0 0' }}>
                     This address has no map pin. The seller needs it to book your courier —{' '}

@@ -559,7 +559,23 @@ class OrderRequestController extends Controller
             $lineItems[] = [
                 'productId'    => (string) $product->_id,
                 'productName'  => $product->name,
-                'thumbnail'    => $product->thumbnail ?? ($product->images[0] ?? null),
+                // The variant's own picture when it has one. A quote for a Magic Mug that shows the
+                // plain white mug is describing a different product from the one being bought, and
+                // this is the last screen before the customer pays. Same order of preference the
+                // storefront already uses.
+                'thumbnail'    => (function () use ($product, $row) {
+                    $vid = $row['variantId'] ?? null;
+                    if ($vid) {
+                        $map = (array) ($product->variantImageUrls ?? []);
+                        if (!empty($map[$vid])) return $map[$vid];
+                        foreach ((array) ($product->combinations ?? []) as $c) {
+                            if ((string) ($c['id'] ?? '') === (string) $vid && !empty($c['imageUrl'])) {
+                                return $c['imageUrl'];
+                            }
+                        }
+                    }
+                    return $product->thumbnail ?? ($product->images[0] ?? null);
+                })(),
                 'category'     => $product->category ?? null,
                 'variantId'    => $row['variantId'] ?? null,
                 'variantName'  => $row['variantName'] ?? null,
