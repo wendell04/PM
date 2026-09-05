@@ -1535,7 +1535,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                     <a href={`https://www.google.com/maps/search/?api=1&query=${lo.deliveryAddress.lat},${lo.deliveryAddress.lng}`}
                        target="_blank" rel="noopener noreferrer"
                        style={{ display:'inline-flex', alignItems:'center', gap:'4px', padding:'5px 10px', fontSize:'11px', fontWeight:600, borderRadius:'6px', border:'1px solid var(--border)', background:'var(--dark)', color:'var(--white)', textDecoration:'none', cursor:'pointer' }}>
-                      📍 Google Maps
+                      Google Maps
                     </a>
                     <a href={`https://waze.com/ul?ll=${lo.deliveryAddress.lat},${lo.deliveryAddress.lng}&navigate=yes`}
                        target="_blank" rel="noopener noreferrer"

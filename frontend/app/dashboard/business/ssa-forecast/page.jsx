@@ -1735,7 +1735,7 @@ export default function SSAForecastPage() {
                     const isLow = (item.stockQty ?? 0) <= (item.minStockLevel ?? 0);
                     return (
                       <option key={item._id ?? item.id} value={item._id ?? item.id}>
-                        {isLow ? "⚠ " : ""}{item.name}{isLow ? ` (${item.stockQty ?? 0} left)` : ""}
+                        {item.name}{isLow ? ` (${item.stockQty ?? 0} left)` : ""}
                       </option>
                     );
                   })}

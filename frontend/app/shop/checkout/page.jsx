@@ -1741,7 +1741,7 @@ export default function CheckoutPage() {
                     {opt.sub}
                     {opt.id !== 'cod' && grandTotal < 100 && (
                       <span style={{ color: 'var(--red)', display: 'block', marginTop: '0.2rem' }}>
-                        ⚠ Minimum ₱100.00 required.
+                        Minimum ₱100.00 required.
                       </span>
                     )}
                   </div>

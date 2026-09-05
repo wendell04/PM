@@ -684,6 +684,9 @@ function QuickViewModal({ product, flashSale, onClose, onToast }) {
 
 // ─── Product Card ─────────────────────────────────────────────────────────────
 function ProductCard({ product, onAddToCart, onQuickView, flashSale }) {
+  // Declared here because the card needs it too. The stock badge below asked for `mode` while only
+  // QuickViewModal defined one, which threw a ReferenceError and took the whole /shop page down.
+  const mode = product.priceType || product.pricingMode || 'fixed';
   const [hovered, setHovered] = useState(false);
   const hasImage = product.thumbnail || product.images?.length > 0;
   const { cartItems } = useCart();
