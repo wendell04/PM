@@ -71,11 +71,19 @@ function StatusBadge({ status }) {
   );
 }
 
-function PayBadge({ status }) {
+function PayBadge({ status, method }) {
   const c = PAY_CFG[status] ?? PAY_CFG.unpaid;
+  const isCOD = String(method ?? '').toLowerCase() === 'cod';
   return (
-    <span style={{ ...S.badge, background:c.bg, color:c.color, border:`1px solid ${c.border}`, fontSize:'10px' }}>
-      {c.label}
+    <span style={{ display:'inline-flex', flexDirection:'column', alignItems:'flex-end', gap:'2px' }}>
+      <span style={{ ...S.badge, background:c.bg, color:c.color, border:`1px solid ${c.border}`, fontSize:'10px' }}>
+        {c.label}
+      </span>
+      {isCOD && (
+        <span style={{ fontSize:'9px', fontWeight:800, letterSpacing:'.06em', color:'var(--gray)' }}>
+          COD
+        </span>
+      )}
     </span>
   );
 }
@@ -2378,6 +2386,25 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
           {Number(lo.shippingFee) > 0 && (
             <InfoRow label="Shipping" value={`₱${fmt(lo.shippingFee)}`} />
           )}
+          {Number(lo.designFee) > 0 && (
+            <InfoRow
+              label={`Design fee${lo.designFeePaid ? '' : ' (unpaid)'}`}
+              value={`₱${fmt(lo.designFee)}`}
+            />
+          )}
+          {Number(lo.rushFee) > 0 && (
+            <div style={{ display:'flex', justifyContent:'space-between', fontSize:'12px', padding:'3px 0' }}>
+              <span style={{ color:'var(--gray)' }}>
+                Rush fee
+                {lo.rushStatus === 'accepted' ? null : (
+                  <span style={{ marginLeft:6, fontSize:'10px', fontWeight:700, textTransform:'uppercase', letterSpacing:'.04em', color: lo.rushStatus === 'declined' ? '#c2410c' : 'var(--gray)' }}>
+                    {lo.rushStatus === 'declined' ? 'declined' : 'not yet accepted'}
+                  </span>
+                )}
+              </span>
+              <span style={{ fontWeight:600, color:'var(--white)' }}>₱{fmt(lo.rushFee)}</span>
+            </div>
+          )}
           <div style={{ display:'flex', justifyContent:'space-between', fontSize:'13px', fontWeight:700, padding:'4px 0', borderTop:'1px solid var(--border)', marginTop:'4px' }}>
             <span style={{ color:'var(--white)' }}>Total</span>
             <span style={{ color:'var(--gold)' }}>₱{fmt(lo.totalAmount ?? lo.totalPrice)}</span>
@@ -2397,9 +2424,9 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
             const history = (lo.paymentHistory ?? []).reduce((t, x) => t + (Number(x.amount) || 0), 0);
             const paid  = Math.max(Number(lo.downPayment ?? 0), history);
             const total = Number(lo.totalAmount ?? lo.totalPrice ?? 0);
-            const owing = lo.balance != null && lo.balance !== ''
-              ? Number(lo.balance)
-              : Math.max(0, Math.round((total - paid) * 100) / 100);
+            // Always derived. Preferring the stored field is what reported P0.00 owing beside a
+            // P350.00 total with P100.00 paid - the number the owner then acts on.
+            const owing = Math.max(0, Math.round((total - paid) * 100) / 100);
             return (
               <>
                 <InfoRow label="Paid" value={`₱${fmt(paid)}`} />
@@ -2536,6 +2563,7 @@ export default function OrdersPage() {
   const [search,       setSearch]       = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [payFilter,    setPayFilter]    = useState('all');
+  const [typeFilter,   setTypeFilter]   = useState('all');
   const [dateFilter,   setDateFilter]   = useState('all-time');
   const [customFrom,   setCustomFrom]   = useState('');
   const [customTo,     setCustomTo]     = useState('');
@@ -2621,6 +2649,9 @@ export default function OrdersPage() {
 
     const matchPay    = payFilter === 'all' || o.paymentStatus === payFilter;
 
+    const matchType   = typeFilter === 'all'
+      || (typeFilter === 'produced' ? !!o.needsProduction : !o.needsProduction);
+
     let matchDate = true;
     const d    = new Date(o.createdAt); d.setHours(0,0,0,0);
     const now  = new Date();            now.setHours(0,0,0,0);
@@ -2636,7 +2667,7 @@ export default function OrdersPage() {
       matchDate  = d >= from && d <= to;
     }
 
-    return matchSearch && matchPay && matchDate;
+    return matchSearch && matchPay && matchType && matchDate;
   });
 
   const filtered = scoped.filter(o =>
@@ -2709,6 +2740,17 @@ export default function OrdersPage() {
           <div style={{ ...S.row, gap:'8px', flex:1 }}>
             <SearchBar value={search} onChange={v => { setSearch(v); setPage(1); }}
               placeholder="Search order, customer, product…" style={{ width:'260px' }} />
+
+            <CustomSelect
+              value={typeFilter}
+              onChange={v => { setTypeFilter(v); setPage(1); }}
+              style={{ width:'150px' }}
+              options={[
+                { value:'all',      label:'All Types'   },
+                { value:'produced', label:'Custom'      },
+                { value:'ready',    label:'Ready Made'  },
+              ]}
+            />
 
             <CustomSelect
               value={payFilter}
@@ -2822,7 +2864,7 @@ export default function OrdersPage() {
                           })()}
                         </td>
                         <td style={{ ...S.td, textAlign:'center' }}>
-                          <PayBadge status={o.paymentStatus} />
+                          <PayBadge status={o.paymentStatus} method={o.paymentMethod} />
                         </td>
                         <td style={{ ...S.td, fontSize:'11px', color:'var(--gray)', whiteSpace:'nowrap' }}>
                           {o.createdAt ? new Date(o.createdAt).toLocaleDateString('en-PH', { month:'short', day:'numeric', year:'numeric' }) : '-'}
