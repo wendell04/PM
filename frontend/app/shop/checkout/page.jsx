@@ -1977,6 +1977,33 @@ export default function CheckoutPage() {
         </div>
       )}
 
+      {/* A disabled button with no reason beside it is the commonest way an order is abandoned. On a
+          phone the address section is several screens up, so someone who scrolled straight down sees
+          a dead button and no cause. Name the one thing missing, and offer the fix in place rather
+          than asking them to go looking for it. */}
+      {!placing && (() => {
+        const blocker =
+          items.length === 0
+            ? { text: 'Your cart is empty.', action: null }
+            : !selectedAddress
+              ? { text: 'Add a delivery address to place this order.', action: 'address' }
+              : (isOnlinePayment && grandTotal < 100)
+                ? { text: `GCash and Maya need at least ₱100.00. This order is ₱${grandTotal.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} - choose Cash on Delivery instead.`, action: null }
+                : null;
+        if (!blocker) return null;
+        return (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', gap: '0.5rem', padding: '0.7rem 0.9rem', marginBottom: '0.6rem', borderRadius: '10px', background: 'rgba(212,168,67,0.08)', border: '1px solid rgba(212,168,67,0.25)', fontSize: '0.82rem', color: 'var(--gray-light)', textAlign: 'center', lineHeight: 1.5 }}>
+            <span>{blocker.text}</span>
+            {blocker.action === 'address' && (
+              <button type="button" onClick={() => setShowAddressPicker(true)}
+                style={{ padding: '5px 12px', borderRadius: 8, border: '1px solid var(--gold)', background: 'transparent', color: 'var(--gold)', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                Choose address
+              </button>
+            )}
+          </div>
+        );
+      })()}
+
       <button
         onClick={handlePlaceOrder}
         disabled={placing || !selectedAddress || items.length === 0 || (isOnlinePayment && grandTotal < 100)}

@@ -1548,7 +1548,7 @@
         }
 
         .shop-product-card {
-          background: var(--black);
+          background: var(--dark);
           border: 1px solid rgba(255, 255, 255, 0.07);
           border-radius: 12px;
           overflow: hidden;
@@ -1949,7 +1949,7 @@
 
   /* Items Section */
   .cart-items-section {
-    background: var(--black);
+    background: var(--dark);
     border: 1px solid rgba(255, 255, 255, 0.07);
     border-radius: 12px;
     overflow: hidden;
@@ -2226,7 +2226,7 @@
 
   /* Summary Panel */
   .cart-summary-panel {
-    background: var(--black);
+    background: var(--dark);
     border: 1px solid rgba(255, 255, 255, 0.07);
     border-radius: 12px;
     overflow: hidden;
@@ -2674,7 +2674,7 @@
   }
 
   .checkout-card {
-    background: var(--black);
+    background: var(--dark);
     border: 1px solid rgba(255, 255, 255, 0.07);
     border-radius: 12px;
     padding: 1.25rem;
@@ -2699,6 +2699,9 @@
     gap: 0.5rem;
   }
 
+  /* Sits beside .checkout-default-badge in an align-items:center flex row, so the two have to be
+     the same shape or they read as misaligned. The margin-bottom was the real culprit - a bottom
+     margin on one flex child pushes it up against its neighbour. */
   .checkout-address-badge {
     display: inline-block;
     background: rgba(212, 168, 67, 0.12);
@@ -2706,8 +2709,8 @@
     border-radius: 20px;
     padding: 0.2rem 0.6rem;
     font-size: 0.7rem;
+    line-height: 1.35;
     color: var(--gold);
-    margin-bottom: 0.5rem;
   }
 
   .checkout-default-badge {
@@ -2715,8 +2718,9 @@
     background: rgba(34, 197, 94, 0.12);
     border: 1px solid rgba(34, 197, 94, 0.3);
     border-radius: 20px;
-    padding: 0.15rem 0.5rem;
-    font-size: 0.65rem;
+    padding: 0.2rem 0.6rem;
+    font-size: 0.7rem;
+    line-height: 1.35;
     color: var(--green);
   }
 
@@ -3010,7 +3014,7 @@
   }
 
   .checkout-modal-content {
-    background: var(--black);
+    background: var(--dark);
     border: 1px solid rgba(255, 255, 255, 0.07);
     border-radius: 16px;
     max-width: 480px;

@@ -1,5 +1,6 @@
 'use client';
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { useTheme } from '@/contexts/ThemeContext';
 
 /**
@@ -170,7 +171,12 @@ export default function ImageCropper({ src, aspect = 1, round = false, title = '
 
   const ready = disp && box && workSrc;
 
-  return (
+  // Portal target. Resolved after mount so the server render and the first client render match.
+  const [portalHost, setPortalHost] = useState(null);
+  useEffect(() => { setPortalHost(document.body); }, []);
+  if (!portalHost) return null;
+
+  return createPortal(
     <div style={{ position: 'fixed', inset: 0, zIndex: 3000, background: 'rgba(0,0,0,0.72)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
       <div style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: '14px', padding: '1.25rem', maxWidth: 'min(460px, 94vw)', boxShadow: '0 20px 60px rgba(0,0,0,0.35)' }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '0.75rem', marginBottom: '0.15rem' }}>
@@ -238,6 +244,7 @@ export default function ImageCropper({ src, aspect = 1, round = false, title = '
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    portalHost
   );
 }
