@@ -481,6 +481,48 @@ export default function ProductDetailPage() {
   // to send a quote in chat - the one action the customer came for.
   const isOutOfStock = !isInquiry && effectiveMaxQty === 0;
 
+  // Opens the chat with a card naming the product, and records the request behind it. The chat is
+  // opened FIRST and the write is not awaited - waiting on it is what used to make the button feel
+  // stuck and invite a second press.
+  const startInquiry = () => {
+    if (!product || requestingQuote) return;
+    if (!token) {
+      window.dispatchEvent(new CustomEvent('pmp_open_auth', { detail: { type: 'login', returnPath: window.location.pathname } }));
+      return;
+    }
+    setRequestingQuote(true);
+    window.dispatchEvent(new CustomEvent('pmp_open_chat', {
+      detail: {
+        inquiryCard: {
+          productId: String(product._id ?? product.id),
+          productSlug: product.slug || String(product._id ?? product.id),
+          productName: product.name,
+          thumbnail: product.thumbnail || product.images?.[0] || null,
+          category: product.category || product.subCategoryName || 'Custom order',
+        },
+      },
+    }));
+    fetchWithTimeout(`${API_URL}/api/order-requests`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ productId: String(product._id ?? product.id), quantity, isCustom: true }),
+    }, 20000).catch(() => {}).finally(() => setTimeout(() => setRequestingQuote(false), 2000));
+  };
+
+  // Arriving from the shop grid's "Inquire" button, which sends ?inquire=1 rather than trying to
+  // open the chat itself - the auth check and the request write live here, and should stay in one
+  // place. The flag is cleared from the URL so a refresh does not fire a second inquiry.
+  useEffect(() => {
+    if (!product || !isInquiry) return;
+    if (typeof window === 'undefined') return;
+    const url = new URL(window.location.href);
+    if (url.searchParams.get('inquire') !== '1') return;
+    url.searchParams.delete('inquire');
+    window.history.replaceState({}, '', url.pathname + (url.search || '') + url.hash);
+    startInquiry();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [product, isInquiry]);
+
 
   // Computed values
   // Declared before the price maths below reads them. `const` is not hoisted, so a use above the
@@ -1435,29 +1477,7 @@ export default function ProductDetailPage() {
                           router.push(`/shop/products/${id}/order?${qs.toString()}`);
                           return;
                         }
-                        if (!token) {
-                          window.dispatchEvent(new CustomEvent('pmp_open_auth', { detail: { type: 'login', returnPath: window.location.pathname } }));
-                          return;
-                        }
-                        setRequestingQuote(true);
-                        // Open the chat INSTANTLY (the lag/spam came from awaiting the request write first).
-                        window.dispatchEvent(new CustomEvent('pmp_open_chat', {
-                          detail: {
-                            inquiryCard: {
-                              productId: String(product._id ?? product.id),
-                              productSlug: product.slug || String(product._id ?? product.id),
-                              productName: product.name,
-                              thumbnail: product.thumbnail || product.images?.[0] || null,
-                              category: product.category || product.subCategoryName || 'Custom order',
-                            },
-                          },
-                        }));
-                        // Track the request in the background — does not block the chat.
-                        fetchWithTimeout(`${API_URL}/api/order-requests`, {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                          body: JSON.stringify({ productId: String(product._id ?? product.id), quantity, isCustom: true }),
-                        }, 20000).catch(() => {}).finally(() => setTimeout(() => setRequestingQuote(false), 2000));
+                        startInquiry();
                       }}
                       disabled={isOutOfStock || requestingQuote || optionsPending}
                       style={{

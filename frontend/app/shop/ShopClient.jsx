@@ -519,6 +519,18 @@ function QuickViewModal({ product, flashSale, onClose, onToast }) {
                   {isOOS ? 'Out of Stock' : 'Buy it plain'}
                 </button>
               </>
+            ) : mode === 'inquiry' ? (
+              /* Checked BEFORE isCustom, not after. A price-on-request service has no price, no
+                 usable quantity and no variant, so the fixed-price order form has nothing to work
+                 with - an inquiry is a conversation. The PDP opens the chat itself; ?inquire=1 tells
+                 it to do that on arrival, so this is one press rather than two. */
+              <Link
+                href={`/shop/products/${product.slug || toSlug(product.name)}?inquire=1`}
+                className="shop-qv-btn-cart"
+                onClick={onClose}
+              >
+                Inquire - get a quote
+              </Link>
             ) : product.isCustom ? (
               /* Straight to the order form, not the product page. Sending someone to the PDP made
                  them press the same button a second time - and it silently dropped the variant and

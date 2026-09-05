@@ -351,7 +351,11 @@ class ProductController extends Controller
                 $arr = array_merge($p->toArray(), $this->computeAvailabilityBatched($p, $bomsByGroup, $bomsById, $inventoryMap));
                 $arr['slug'] = $slugify($p->name ?? '');
                 if ($slim) {
-                    unset($arr['description'], $arr['bomId']);
+                    // description stays. The quick-view modal renders it, and stripping it here is
+                    // why a product opened from the grid showed its name and price and nothing about
+                    // what it is - on a price-on-request service, that description is the only thing
+                    // telling the customer what they are asking about. bomId is internal; it goes.
+                    unset($arr['bomId']);
                 }
                 return $arr;
             })->values();
