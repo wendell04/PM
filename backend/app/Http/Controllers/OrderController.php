@@ -1379,15 +1379,23 @@ class OrderController extends Controller
 
                 if ($newFee > 0 && abs($newFee - $prevFee) > 0.001) {
                     try {
+                        $isCOD    = strtolower((string) ($order->paymentMethod ?? '')) === 'cod';
+                        $stillDue = max(0.0, round((float) ($order->totalAmount ?? $order->totalPrice ?? 0) - $this->paidSoFar($order), 2));
+                        // What the customer actually hands over on arrival. For COD that is the
+                        // goods plus the courier; for a prepaid order it is the courier alone.
+                        $onArrival = $isCOD ? round($stillDue + $newFee, 2) : $newFee;
                         Notification::create([
                             'user_id'    => (string) $order->userId,
                             'type'       => 'delivery_fee_set',
                             'title'      => 'Delivery Fee',
-                            'message'    => 'Your delivery fee for order #' .
-                                strtoupper(substr((string) $order->_id, -8)) .
-                                ' is ₱' . number_format($newFee, 2) .
-                                '. You can pay this in cash to the rider on delivery, or send it '
-                                . 'ahead via GCash or Maya. It is separate from the item total.',
+                            'message'    => $isCOD
+                                ? 'Your delivery fee for order #' . strtoupper(substr((string) $order->_id, -8))
+                                    . ' is ₱' . number_format($newFee, 2) . '. Together with your order this is ₱'
+                                    . number_format($onArrival, 2) . ' to hand the rider on arrival.'
+                                : 'Your delivery fee for order #' . strtoupper(substr((string) $order->_id, -8))
+                                    . ' is ₱' . number_format($newFee, 2)
+                                    . '. You can pay this in cash to the rider on delivery, or send it '
+                                    . 'ahead via GCash or Maya. It is separate from the item total.',
                             'is_read'    => false,
                             'data'       => ['orderId' => (string) $order->_id, 'courierFee' => $newFee],
                             'created_at' => now(),
@@ -1395,10 +1403,16 @@ class OrderController extends Controller
                         $this->postOrderCardToChat(
                             $order,
                             'delivery_fee',
-                            'Your order has been booked with a third-party courier. The delivery fee is P'
-                                . number_format($newFee, 2) . '. You can hand this to the rider in cash on '
-                                . 'delivery, or send it ahead via GCash or Maya and we will confirm here. '
-                                . 'This is the courier\'s charge - it is not part of the item total you already paid.',
+                            $isCOD
+                                ? 'Your order has been booked with a third-party courier. The delivery fee is P'
+                                    . number_format($newFee, 2) . '. Your order is P' . number_format($stillDue, 2)
+                                    . ', so please have P' . number_format($onArrival, 2) . ' ready for the rider '
+                                    . 'on arrival - one payment covers both. If you would rather send the delivery '
+                                    . 'part ahead by GCash or Maya, message us here and we will confirm it.'
+                                : 'Your order has been booked with a third-party courier. The delivery fee is P'
+                                    . number_format($newFee, 2) . '. You can hand this to the rider in cash on '
+                                    . 'delivery, or send it ahead via GCash or Maya and we will confirm here. '
+                                    . 'This is the courier\'s charge - it is not part of the item total you already paid.',
                             ['courierFee' => $newFee]
                         );
 
@@ -1410,7 +1424,9 @@ class OrderController extends Controller
                                 $first,
                                 (string) $order->_id,
                                 $newFee,
-                                (float) ($order->totalAmount ?? 0)
+                                (float) ($order->totalAmount ?? 0),
+                                $isCOD,
+                                $onArrival
                             ));
                         }
                     } catch (\Exception $e) {
@@ -1976,6 +1992,35 @@ class OrderController extends Controller
                 }
             }
 
+            // Nothing to produce means no production stage. The same rule lives in adminUpdate, but
+            // the admin UI posts status changes HERE - so a guard that existed only there was never
+            // once consulted by the screen the owner actually uses.
+            if ($newStatus === OrderStatus::IN_PRODUCTION) {
+                $produces = collect($order->items ?? [])->contains(fn ($it) =>
+                    !empty($it['isCustom']) || !empty($it['isMadeToOrder'])
+                    || !empty($it['designRequested']) || !empty($it['designUrl'])
+                    || !empty($it['designFiles'])
+                );
+                if (!$produces) {
+                    return response()->json([
+                        'error' => 'Nothing on this order has to be produced - it is ready-made stock. Send it straight to delivery.',
+                    ], 422);
+                }
+            }
+
+            // Every job order has to have passed QC before the goods can leave. adminUpdate enforces
+            // this and this path did not, so the release that Quality Control owns could be taken
+            // from the Orders screen instead.
+            if (in_array($newStatus, [OrderStatus::READY_FOR_DELIVERY, OrderStatus::FOR_DELIVERY, OrderStatus::DELIVERED], true)) {
+                $openJobs = \App\Models\JobOrder::where('orderId', (string) $order->_id)->get()
+                    ->filter(fn ($j) => !in_array($j->joStatus, ['QC_Passed', 'Completed', 'Cancelled'], true));
+                if ($openJobs->isNotEmpty()) {
+                    return response()->json([
+                        'error' => $openJobs->count() . ' job order(s) have not passed QC yet. The order is released for delivery by Quality Control.',
+                    ], 422);
+                }
+            }
+
             // Courier required when moving to Out for Delivery
             if ($newStatus === OrderStatus::FOR_DELIVERY) {
                 $validated2 = $request->validate([
@@ -2007,6 +2052,33 @@ class OrderController extends Controller
             // Handle completion: create sales records and deduct inventory
             if ($newStatus === OrderStatus::DELIVERED && $oldStatus !== OrderStatus::DELIVERED) {
                 $this->completeOrder($order);
+
+                // COD delivered IS COD collected - that is what the words mean, and if the rider did
+                // not collect then the order should not be marked delivered. Until now nothing said
+                // so: completeOrder wrote the Sale rows, so the money appeared in Reports, while the
+                // order itself still read "Unpaid" with its full balance outstanding. Two records of
+                // the same transaction disagreeing, and the owner had to remember to reconcile it by
+                // hand every time. The courier fee is deliberately NOT included - that is the
+                // rider's money, never the shop's.
+                if (strtolower((string) ($order->paymentMethod ?? '')) === 'cod') {
+                    $total = (float) ($order->totalAmount ?? $order->totalPrice ?? 0);
+                    $due   = round($total - $this->paidSoFar($order), 2);
+                    if ($due > 0.009) {
+                        $history   = $order->paymentHistory ?? [];
+                        $history[] = [
+                            'amount'    => $due,
+                            'method'    => 'cod',
+                            'reference' => 'Collected on delivery',
+                            'paidAt'    => now()->toISOString(),
+                            'recordedBy'=> trim(($user->firstName ?? '') . ' ' . ($user->lastName ?? '')) ?: 'system',
+                        ];
+                        $order->paymentHistory = $history;
+                        $order->downPayment    = $total;
+                        $order->balance        = 0;
+                        $order->paymentStatus  = 'paid';
+                        $order->save();
+                    }
+                }
             }
 
             // Handle cancellation: cancel linked JobOrder and restore inventory

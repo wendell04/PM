@@ -25,13 +25,25 @@ class DeliveryFeeMail extends Mailable implements ShouldQueue
     public string $orderId;
     public float  $fee;
     public float  $itemTotal;
+    /** COD and prepaid need opposite advice, so the template is told which one this is. */
+    public bool   $isCod;
+    /** What the customer hands the rider: goods plus courier on COD, courier alone otherwise. */
+    public float  $onArrival;
 
-    public function __construct(string $firstName, string $orderId, float $fee, float $itemTotal)
-    {
+    public function __construct(
+        string $firstName,
+        string $orderId,
+        float $fee,
+        float $itemTotal,
+        bool $isCod = false,
+        ?float $onArrival = null
+    ) {
         $this->firstName = $firstName;
         $this->orderId   = $orderId;
         $this->fee       = $fee;
         $this->itemTotal = $itemTotal;
+        $this->isCod     = $isCod;
+        $this->onArrival = $onArrival ?? $fee;
     }
 
     public function envelope(): Envelope

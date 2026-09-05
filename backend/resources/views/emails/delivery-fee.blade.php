@@ -75,6 +75,27 @@
                 </tr>
               </table>
 
+              @if ($isCod)
+                {{-- COD was chosen precisely to avoid paying online. Asking for the delivery fee by
+                     GCash undoes that, so this says one number: what to hand the rider. --}}
+                <table role="presentation" cellpadding="0" cellspacing="0"
+                  style="background: #f7f7f5;border-radius:8px;border:1px solid rgba(0,0,0,0.07);
+                         margin-bottom:24px;width:100%;">
+                  <tr>
+                    <td style="padding:14px 16px;">
+                      <strong style="font-size:13px;color: #111111;">Have this ready for the rider</strong>
+                      <p style="margin:6px 0 0;font-size:20px;font-weight:700;color: #a67c1a;">
+                        &#8369;{{ number_format($onArrival, 2) }}
+                      </p>
+                      <p style="margin:6px 0 0;font-size:13px;color: #6b6b6b;line-height:1.6;">
+                        Your order and the delivery together - one payment covers both. If you would
+                        rather send the delivery part ahead by GCash or Maya, message us in your
+                        order chat and we will confirm it.
+                      </p>
+                    </td>
+                  </tr>
+                </table>
+              @else
               {{-- The two ways to settle it. Stated plainly, because one of them needs doing
                    before the rider arrives and the other does not. --}}
               <p style="margin:0 0 10px;font-size:13px;font-weight:700;color: #111111;">
@@ -101,6 +122,7 @@
                   </td>
                 </tr>
               </table>
+              @endif
 
               <p style="margin:0;font-size:13px;color: #6b6b6b;line-height:1.6;">
                 Questions? Reply in your order chat, or email us at

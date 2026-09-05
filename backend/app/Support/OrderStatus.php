@@ -57,7 +57,12 @@ class OrderStatus
         // and for_qc may go straight to for_delivery (ready_for_delivery is an optional middle step).
         return [
             self::PENDING            => [self::PROCESSING, self::IN_PRODUCTION, self::CANCELLED],
-            self::PROCESSING         => [self::IN_PRODUCTION, self::CANCELLED],
+            // FOR_DELIVERY is reachable straight from PROCESSING because a ready-made order has
+            // nothing to produce - it is picked off a shelf and handed to a courier. Without this
+            // edge the admin's own dropdown offered a transition the backend then refused with a
+            // 422. Nothing is weakened for a produced order: that route is guarded separately, by
+            // the QC gate and by the Job Order requirement, not by this table.
+            self::PROCESSING         => [self::IN_PRODUCTION, self::FOR_DELIVERY, self::CANCELLED],
             self::IN_PRODUCTION      => [self::FOR_QC, self::CANCELLED],
             self::FOR_QC             => [self::READY_FOR_DELIVERY, self::FOR_DELIVERY, self::IN_PRODUCTION],
             self::READY_FOR_DELIVERY => [self::FOR_DELIVERY, self::CANCELLED],
