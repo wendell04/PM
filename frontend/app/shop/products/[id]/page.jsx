@@ -1495,7 +1495,7 @@ export default function ProductDetailPage() {
                           ? 'Out of Stock'
                           : optionsPending
                             ? optionsPrompt
-                            : (isInquiry ? 'Inquire' : 'Customize This Product')}
+                            : (isInquiry ? 'Ask about this' : 'Customize This Product')}
                     </button>
                     <p style={{ textAlign: 'center', fontSize: '0.75rem', color: 'var(--gray)', margin: 0, lineHeight: 1.5 }}>
                       {(product.priceType ?? product.pricingMode) === 'inquiry'

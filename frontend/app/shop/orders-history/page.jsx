@@ -1806,9 +1806,11 @@ export default function OrdersHistoryPage() {
                             <span style={{ fontSize: '12px', color: '#d4a843', textAlign: 'right' }}>
                               {cf > 0 ? formatPeso(cf) : 'Billed separately'}
                               <span style={{ display: 'block', fontSize: '10.5px', color: 'var(--gray)', fontWeight: 400, marginTop: '1px' }}>
-                                {cf > 0
-                                  ? 'Paid to the rider, separate from your order total'
-                                  : 'We will send the exact fee in chat'}
+                                {cf <= 0
+                                  ? 'We will send the exact fee in chat'
+                                  : selectedOrder.courierFeePaid
+                                    ? 'Received - nothing to pay the rider'
+                                    : 'Paid to the rider, separate from your order total'}
                               </span>
                             </span>
                           );

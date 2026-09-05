@@ -18,6 +18,7 @@ class Order extends Model
         'balance'            => 'float',
         'shippingFee'        => 'float',
         'courierFee'         => 'float',
+        'courierFeePaid'     => 'boolean',
         'totalAmount'        => 'float',
         'targetCompletion'   => 'datetime',
         'paymentDate'          => 'datetime',

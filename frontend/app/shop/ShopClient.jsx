@@ -529,7 +529,7 @@ function QuickViewModal({ product, flashSale, onClose, onToast }) {
                 className="shop-qv-btn-cart"
                 onClick={onClose}
               >
-                Inquire - get a quote
+                Ask about this
               </Link>
             ) : product.isCustom ? (
               /* Straight to the order form, not the product page. Sending someone to the PDP made

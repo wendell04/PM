@@ -1040,6 +1040,22 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [o.id]);
 
+  const handleCourierFeePaid = async (paid) => {
+    setSavingFee(true); setFeeErr('');
+    try {
+      const res = await fetchWithTimeout(`${API_URL}/api/admin/orders/${lo.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type':'application/json', Authorization:`Bearer ${token}` },
+        body: JSON.stringify({ courierFeePaid: paid }),
+      }, 15000);
+      if (!res.ok) { const d = await res.json().catch(()=>({})); throw new Error(d.message || 'Failed to update'); }
+      const updated = { ...lo, courierFeePaid: paid };
+      setLo(updated);
+      if (onStatusUpdated) onStatusUpdated(lo.id, updated);
+    } catch (err) { setFeeErr(err.message || 'Failed to update'); }
+    finally { setSavingFee(false); }
+  };
+
   const handleSaveCourierFee = async () => {
     const val = parseFloat(feeInput);
     if (isNaN(val) || val < 0) { setFeeErr('Enter a valid amount.'); return; }
@@ -1540,7 +1556,8 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                 <div style={{ marginTop:'10px', padding:'10px 12px', background:'var(--dark2)', border:'1px solid var(--border)', borderRadius:'8px' }}>
                   <div style={{ fontSize:'11px', fontWeight:600, color:'var(--gray-light)', marginBottom:'2px' }}>Delivery fee (paid by customer to rider)</div>
                   <div style={{ fontSize:'10.5px', color:'var(--gray)', marginBottom:'6px' }}>
-                    After you book the courier, enter the fee. The customer is notified to pay this in cash on delivery.
+                    After you book the courier, enter the fee. The customer is told what it is and can either
+                    hand it to the rider or send it ahead - mark it received here when they do.
                   </div>
                   <div style={{ display:'flex', gap:'6px', alignItems:'center', flexWrap:'wrap' }}>
                     <div style={{ display:'flex', alignItems:'center', border:'1px solid var(--border)', borderRadius:'6px', overflow:'hidden', background:'var(--dark)' }}>
@@ -1558,10 +1575,37 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                     </button>
                     {Number(lo.courierFee) > 0 && (
                       <span style={{ fontSize:'11px', color:'#166534', fontWeight:600 }}>
-                        Set: ₱{fmt(lo.courierFee)} · customer notified
+                        Set: ₱{fmt(lo.courierFee)}
                       </span>
                     )}
                   </div>
+
+                  {/* Only offered once a fee exists - there is nothing to settle before that. */}
+                  {Number(lo.courierFee) > 0 && (
+                    <div style={{ display:'flex', alignItems:'center', gap:'8px', flexWrap:'wrap', marginTop:'8px', paddingTop:'8px', borderTop:'1px solid var(--border)' }}>
+                      {lo.courierFeePaid ? (
+                        <>
+                          <span style={{ fontSize:'11px', fontWeight:700, color:'#166534' }}>
+                            Delivery fee received - nothing for the rider to collect
+                          </span>
+                          <button type="button" onClick={() => handleCourierFeePaid(false)} disabled={savingFee}
+                            style={{ padding:'3px 9px', fontSize:'10.5px', fontWeight:600, borderRadius:'6px', border:'1px solid var(--border)', background:'transparent', color:'var(--gray)', cursor: savingFee ? 'not-allowed' : 'pointer' }}>
+                            Undo
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <span style={{ fontSize:'11px', color:'var(--gray)' }}>
+                            Did they send it ahead (GCash / Maya)?
+                          </span>
+                          <button type="button" onClick={() => handleCourierFeePaid(true)} disabled={savingFee}
+                            style={{ padding:'4px 11px', fontSize:'11px', fontWeight:700, borderRadius:'6px', border:'1px solid #166534', background:'transparent', color:'#166534', cursor: savingFee ? 'not-allowed' : 'pointer' }}>
+                            Mark fee received
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  )}
                   {feeErr && <div style={{ marginTop:'4px', fontSize:'11px', color:'#dc2626' }}>{feeErr}</div>}
                 </div>
               )}

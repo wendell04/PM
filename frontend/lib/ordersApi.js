@@ -180,6 +180,7 @@ function normalizeOrder(apiOrder) {
     deliveryAddress: apiOrder.deliveryAddress ?? apiOrder.delivery_address ?? null,
     deliveryNotes:   apiOrder.deliveryNotes ?? apiOrder.delivery_notes ?? null,
     courierFee:      apiOrder.courierFee ?? null,
+    courierFeePaid:  apiOrder.courierFeePaid ?? false,
     courierName: apiOrder.courier_name || apiOrder.courierName || '',
     trackingNumber: apiOrder.tracking_number || apiOrder.trackingNumber || '',
     notes: apiOrder.notes || '',

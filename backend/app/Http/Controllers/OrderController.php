@@ -1126,6 +1126,7 @@ class OrderController extends Controller
             'subtotal',
             'shippingFee',
             'courierFee',
+            'courierFeePaid',
             'totalAmount',
             'total',
             'totalPrice',
@@ -1265,6 +1266,10 @@ class OrderController extends Controller
                 // Courier-booked delivery fee — paid by the customer directly to the
                 // rider on delivery. Informational only: does NOT change the order total.
                 'courierFee'    => 'sometimes|numeric|min:0|max:50000',
+                // Whether the customer has already settled the courier fee - by GCash ahead of the
+                // rider, usually. Without it the shop had no way to record that, so the chat kept
+                // telling the customer to have cash ready for something they had already sent.
+                'courierFeePaid' => 'sometimes|boolean',
                 // Admin can adjust the promised delivery window (e.g. production backlog); the
                 // customer is notified below when it changes.
                 'estimatedDeliveryMin' => 'sometimes|nullable|date',
@@ -1331,7 +1336,8 @@ class OrderController extends Controller
 
             // Read before the save, not after. update() resyncs the model's originals, so anything
             // that wants to know what a field USED to be has to capture it here.
-            $prevCourierFee = (float) ($order->courierFee ?? 0);
+            $prevCourierFee     = (float) ($order->courierFee ?? 0);
+            $prevCourierFeePaid = (bool) ($order->courierFeePaid ?? false);
 
             $order->update($validated);
 
@@ -1365,6 +1371,36 @@ class OrderController extends Controller
                 $subtotal = (float) ($order->subtotal ?? ($order->totalAmount - $prevShipping));
                 $order->totalAmount = round($subtotal + (float) $validated['shippingFee'], 2);
                 $order->save();
+            }
+
+            // Settling the courier fee ahead of the rider. Confirming it is not bookkeeping - the
+            // customer is standing by with cash they no longer need to hand over, and only the shop
+            // knows the transfer landed.
+            if (array_key_exists('courierFeePaid', $validated)
+                && (bool) $validated['courierFeePaid'] && !$prevCourierFeePaid) {
+                try {
+                    $fee = (float) ($order->courierFee ?? 0);
+                    Notification::create([
+                        'user_id'    => (string) $order->userId,
+                        'type'       => 'delivery_fee_settled',
+                        'title'      => 'Delivery Fee Received',
+                        'message'    => 'We have received your ₱' . number_format($fee, 2)
+                            . ' delivery fee for order #' . strtoupper(substr((string) $order->_id, -8))
+                            . '. Nothing to pay the rider for delivery.',
+                        'is_read'    => false,
+                        'data'       => ['orderId' => (string) $order->_id, 'courierFee' => $fee],
+                        'created_at' => now(),
+                    ]);
+                    $this->postOrderCardToChat(
+                        $order,
+                        'delivery_fee_settled',
+                        'Received - thank you. Your P' . number_format($fee, 2) . ' delivery fee is '
+                            . 'settled, so there is nothing to pay the rider for the delivery itself.',
+                        ['courierFee' => $fee, 'courierFeePaid' => true]
+                    );
+                } catch (\Exception $e) {
+                    Log::warning('adminUpdate: courier fee settled notification failed', ['error' => $e->getMessage()]);
+                }
             }
 
             // Courier-booked delivery fee: store as informational only (paid by the
