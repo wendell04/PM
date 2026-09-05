@@ -1412,8 +1412,11 @@ export default function ProductDetailPage() {
                       Plain items ship from stock. Customised ones are printed to order.
                     </p>
                   </>
-                ) : product.isCustom ? (
-                  /* Custom product — goes to order form, not cart */
+                ) : (product.isCustom || isInquiry) ? (
+                  /* Custom product, or anything priced on request - either way it does not go to the
+                     cart. A price-on-request product that is not flagged custom used to fall through
+                     to the Add to Cart branch below, where its price is zero, so it could be bought
+                     for nothing. The quick-view modal has always guarded this; this page did not. */
                   <>
                     <button
                       onClick={() => {
