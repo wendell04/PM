@@ -1783,7 +1783,19 @@ export default function CustomerProfilePage() {
               const completePct = Math.round((completenessItems.filter(c => c.done).length / completenessItems.length) * 100);
 
               // Active order tracker
-              const orderSteps = ["Pending", "Confirmed", "In Production", "For QC", "For Delivery", "Delivered"];
+              const activeOrder = orders.find(o => inProgressStatuses.includes(o.orderStatus));
+              // Does anything on THIS order have to be made? A scrunchie is picked off a shelf, so
+              // showing it "In Production" and "For QC" describes work that will never happen, and
+              // leaves the customer watching for stages the order can never reach. Same predicate
+              // the admin table and the order normalizer use.
+              const activeNeedsProduction = !!(activeOrder && (
+                activeOrder.isCustomOrder
+                || (activeOrder.items ?? []).some(i =>
+                     i?.isCustom || i?.isMadeToOrder || i?.designRequested || i?.designUrl || i?.designFiles?.length)
+              ));
+              const orderSteps = activeNeedsProduction
+                ? ["Pending", "Confirmed", "In Production", "For QC", "For Delivery", "Delivered"]
+                : ["Pending", "Confirmed", "For Delivery", "Delivered"];
               const statusToStep = {
                 awaiting_production: "In Production", in_production: "In Production",
                 pending_design: "Confirmed", proof_sent: "Confirmed",
@@ -1791,9 +1803,10 @@ export default function CustomerProfilePage() {
                 awaiting_payment: "Pending",
                 for_qc: "For QC", ready_for_delivery: "For Delivery", for_delivery: "For Delivery",
                 delivered: "Delivered", cancelled: "Delivered",
-                Processing: "In Production",
+                // Processing means "being made" only when there is something to make. On a
+                // ready-made order it is the shop confirming and packing it.
+                Processing: activeNeedsProduction ? "In Production" : "Confirmed",
               };
-              const activeOrder = orders.find(o => inProgressStatuses.includes(o.orderStatus));
               const activeStepIdx = activeOrder
                 ? orderSteps.indexOf(statusToStep[activeOrder.orderStatus] ?? activeOrder.orderStatus)
                 : -1;
