@@ -2,7 +2,9 @@
     PERSONALIZE ME PRINTS — custom-styles.css
     ============================================================ */
 
-  @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&family=Outfit:wght@400;500;600;700;800&display=swap');
+  /* Fonts are loaded once, preconnected, in app/layout.js. A CSS @import here
+     cannot start until this file has been fetched and parsed - a second round trip
+     that shows the device fallback first on a slow connection. */
 
   :root {
     --gold:        #d4a843;
