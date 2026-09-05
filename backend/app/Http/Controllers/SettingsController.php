@@ -304,13 +304,13 @@ class SettingsController extends Controller
                 'customOrderTerms'          => 'present|array|max:30',
                 'customOrderTerms.*.title'  => 'required|string|max:120',
                 'customOrderTerms.*.body'   => 'required|string|max:2000',
-                'customOrderTerms.*.mode'   => 'nullable|string|in:both,upload,request',
+                'customOrderTerms.*.mode'   => 'nullable|string|in:both,upload,request,quote',
             ]);
 
             $clean = array_values(array_map(fn ($t) => [
                 'title' => trim(strip_tags($t['title'])),
                 'body'  => trim(strip_tags($t['body'])),
-                'mode'  => in_array($t['mode'] ?? 'both', ['both', 'upload', 'request'], true) ? ($t['mode'] ?? 'both') : 'both',
+                'mode'  => in_array($t['mode'] ?? 'both', ['both', 'upload', 'request', 'quote'], true) ? ($t['mode'] ?? 'both') : 'both',
             ], array_filter($validated['customOrderTerms'], fn ($t) => trim($t['title'] ?? '') !== '' && trim($t['body'] ?? '') !== '')));
 
             $owner->customOrderTerms = $clean;

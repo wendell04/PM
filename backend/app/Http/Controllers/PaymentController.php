@@ -1237,6 +1237,16 @@ class PaymentController extends Controller
                 'orderRequestId'  => 'required|string|size:24',
                 'type'            => 'required|in:downpayment,balance,full',
                 'deliveryAddress' => 'nullable|array',
+                // The clickwrap on the quote checkout. Paying a quotation is accepting an offer, and
+                // this is the record of what was accepted - every clause, verbatim, at the version
+                // in force at the time, so a later edit to the shop's terms cannot rewrite history.
+                'agreedToTerms'          => 'nullable|boolean',
+                'termsVersion'           => 'nullable|integer|min:0',
+                'termsAgreedAt'          => 'nullable|string|max:64',
+                'termsSnapshot'          => 'nullable|array|max:60',
+                'termsSnapshot.*.title'  => 'required_with:termsSnapshot|string|max:200',
+                'termsSnapshot.*.body'   => 'nullable|string|max:5000',
+                'termsSnapshot.*.mode'   => 'nullable|string|max:20',
             ]);
 
             $orderRequest = OrderRequest::find($validated['orderRequestId']);
@@ -1267,6 +1277,18 @@ class PaymentController extends Controller
                 }
                 $orderRequest->deliveryAddress = $address;
                 // Keep the admin-set delivery fee (already folded into finalPrice); do not zero it out.
+                $orderRequest->save();
+            }
+
+            // Recorded before the payment link is created, so the agreement exists whether or not the
+            // customer completes the payment - and cannot be claimed to have been collected after the
+            // money moved. Written once: a second payment on the same quote must not overwrite the
+            // version that was actually agreed to.
+            if (!empty($validated['agreedToTerms']) && !($orderRequest->agreedToTerms ?? false)) {
+                $orderRequest->agreedToTerms      = true;
+                $orderRequest->termsVersion       = (int) ($validated['termsVersion'] ?? 1);
+                $orderRequest->agreedAt           = $validated['termsAgreedAt'] ?? now()->toIso8601String();
+                $orderRequest->agreedTermsSnapshot = $validated['termsSnapshot'] ?? [];
                 $orderRequest->save();
             }
 
@@ -1500,6 +1522,13 @@ class PaymentController extends Controller
         ], $orderRequest->lineItems);
 
         $order = Order::create([
+            // The acceptance recorded when the quote was paid. Without carrying it here the proof
+            // would live on the OrderRequest and be missing from the Order - which is the record the
+            // admin opens, and the only one anybody looks at afterwards.
+            'agreedToTerms'       => (bool) ($orderRequest->agreedToTerms ?? false),
+            'termsVersion'        => (int) ($orderRequest->termsVersion ?? 1),
+            'agreedAt'            => $orderRequest->agreedAt ?? null,
+            'agreedTermsSnapshot' => $orderRequest->agreedTermsSnapshot ?? [],
             'userId'        => (string) $orderRequest->customerId,
             'userSnapshot'  => [
                 'name'  => $orderRequest->customerName

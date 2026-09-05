@@ -2169,6 +2169,7 @@ export default function SettingsPage() {
                             <option value="both">Both flows</option>
                             <option value="upload">Uploaded design only</option>
                             <option value="request">Design request only</option>
+                            <option value="quote">Quotation only</option>
                           </select>
                           <button
                             type="button"

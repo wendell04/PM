@@ -24,6 +24,12 @@ export const DEFAULT_CUSTOM_ORDER_TERMS = [
   { title: 'If the mistake is ours', mode: 'both', body: 'None of the above applies when we get it wrong. If we misprint, damage an item, use the wrong artwork, or send the wrong product, we remake it free or refund it in full, whichever you prefer. This overrides everything above.' },
   { title: 'How refunds are paid', mode: 'both',  body: 'Approved refunds go back to the payment method you used, within {refundDays} working days of us confirming the amount.' },
   { title: 'Reprints',        mode: 'both',    body: 'Free reprints only for defects that are our fault (e.g. misprint on our end). Errors approved by you or caused by your file are not covered.' },
+
+  // Quotation-only. A listed price is the price; a quoted one is the answer to a specific question,
+  // and stops being true when the question changes or enough time passes.
+  { title: 'How long this price holds', mode: 'quote', body: 'This quotation is valid until the date shown on it. After that we may need to re-quote, because material prices move.' },
+  { title: 'What this price covers',    mode: 'quote', body: 'The price is for the exact quantity, size, material and finish written on the quotation. Changing any of them means a new quote - it is not a discount or a surcharge on this one.' },
+  { title: 'Estimates on services',     mode: 'quote', body: 'Where the work is quoted per piece or per metre, the final amount follows the quantity actually produced. We tell you before anything is made if that will differ from the quotation.' },
 ];
 
 /**

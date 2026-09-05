@@ -180,7 +180,7 @@ export async function createAdminQuotation(token, { recipientId, items, designFe
   return data.data ?? data;
 }
 
-export async function createOrderRequestPaymentLink(token, orderRequestId, type, deliveryAddress = null) {
+export async function createOrderRequestPaymentLink(token, orderRequestId, type, deliveryAddress = null, terms = null) {
   const res = await fetchWithTimeout(`${API_URL}/api/payment/order-request-link`, {
     method: 'POST',
     headers: {
@@ -188,7 +188,11 @@ export async function createOrderRequestPaymentLink(token, orderRequestId, type,
       Authorization: `Bearer ${token}`,
       ...ngrokHeader,
     },
-    body: JSON.stringify({ orderRequestId, type, ...(deliveryAddress ? { deliveryAddress } : {}) }),
+    body: JSON.stringify({
+      orderRequestId, type,
+      ...(deliveryAddress ? { deliveryAddress } : {}),
+      ...(terms ? terms : {}),
+    }),
   }, 30000);
   const data = await res.json();
   if (!res.ok) throw new Error(data.message || 'Failed to create payment link');

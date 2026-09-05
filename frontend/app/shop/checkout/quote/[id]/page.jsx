@@ -9,6 +9,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { fetchMyOrderRequest, createOrderRequestPaymentLink } from '@/lib/orderRequestApi';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import { formatPeso } from '@/lib/shopUtils';
+import { DEFAULT_CUSTOM_ORDER_TERMS, renderTermsBody } from '@/lib/customOrderTerms';
 import '@/app/shop/shop.css';
 
 const AddressBook = dynamic(() => import('@/components/profile/AddressBook'), { ssr: false });
@@ -39,6 +40,12 @@ export default function QuoteCheckoutPage() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
   const [error, setError] = useState(null);
+  // A quotation is an offer; paying it is the acceptance. This page collected money and recorded no
+  // agreement to anything but the amount - the one route into the shop with no terms on it, and the
+  // one carrying the largest orders.
+  const [settings, setSettings]     = useState(null);
+  const [agreed, setAgreed]         = useState(false);
+  const [showTerms, setShowTerms]   = useState(false);
   const [payType, setPayType] = useState('downpayment');
   const [paying, setPaying] = useState(false);
   const [showPinModal, setShowPinModal] = useState(false);
@@ -65,6 +72,13 @@ export default function QuoteCheckoutPage() {
     if (!token || !id) return;
     let cancelled = false;
     setLoading(true);
+    // The shop's own clauses, when it has saved any. Falls back to the built-in defaults, so the
+    // terms are never simply absent.
+    fetchWithTimeout(`${API_URL}/api/public/settings`, {}, 10000)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (!cancelled && d) setSettings(d.data ?? d); })
+      .catch(() => {});
+
     Promise.all([fetchMyOrderRequest(token, id), fetchAddresses()])
       .then(([q]) => {
         if (cancelled) return;
@@ -106,8 +120,24 @@ export default function QuoteCheckoutPage() {
     };
   }
 
+  // 'both' plus the quotation-only clauses. A quote needs everything a custom order needs, and
+  // three things a listed product never does: how long the price holds, exactly what it covers, and
+  // that a per-piece service is billed on what is actually produced.
+  const rawTerms = (() => {
+    const saved = settings?.customOrderTerms?.length ? settings.customOrderTerms : null;
+    const base = saved
+      ? [...saved, ...DEFAULT_CUSTOM_ORDER_TERMS.filter(d =>
+          !saved.some(t => (t.title || '').trim().toLowerCase() === d.title.trim().toLowerCase()))]
+      : DEFAULT_CUSTOM_ORDER_TERMS;
+    return base.map(c => ({ ...c, body: renderTermsBody(c.body, settings) }));
+  })();
+  const activeClauses = rawTerms.filter(t => !t.mode || t.mode === 'both' || t.mode === 'quote');
+  const termsSnapshot = activeClauses.map(t => ({ title: t.title, body: t.body, mode: t.mode || 'both' }));
+  const termsVersion  = settings?.termsVersion ?? 1;
+
   async function handlePay() {
     setError(null);
+    if (!agreed) { setError('Please read and agree to the Custom Order Terms before paying.'); return; }
     if (!selectedAddress) { setError('Please select a delivery address first.'); return; }
     if (!selectedAddress.lat || !selectedAddress.lng) {
       setError('Please pin your delivery location so the seller can book your courier accurately.');
@@ -123,7 +153,12 @@ export default function QuoteCheckoutPage() {
 
     setPaying(true);
     try {
-      const res = await createOrderRequestPaymentLink(token, id, payType, buildAddressPayload(selectedAddress));
+      const res = await createOrderRequestPaymentLink(token, id, payType, buildAddressPayload(selectedAddress), {
+        agreedToTerms: true,
+        termsVersion,
+        termsAgreedAt: new Date().toISOString(),
+        termsSnapshot,
+      });
       if (res.checkoutUrl) {
         window.location.href = res.checkoutUrl;
       } else {
@@ -346,6 +381,51 @@ export default function QuoteCheckoutPage() {
               <span style={{ fontWeight: 900, fontSize: '1.05rem' }}>{formatPeso(amountDue)}</span>
             </div>
           </div>
+
+          {!alreadyPaid && !isExpired && (
+            <div style={{ marginTop: 12, display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+              <input id="quote-terms" type="checkbox" checked={agreed}
+                onChange={e => { setAgreed(e.target.checked); if (e.target.checked) setError(null); }}
+                style={{ marginTop: 2, width: 15, height: 15, accentColor: 'var(--gold)', cursor: 'pointer', flexShrink: 0 }} />
+              <label htmlFor="quote-terms" style={{ fontSize: '.8rem', lineHeight: 1.5, color: 'var(--gray-light)', cursor: 'pointer' }}>
+                I have read and agree to the{' '}
+                <button type="button" onClick={e => { e.preventDefault(); setShowTerms(true); }}
+                  style={{ background: 'none', border: 'none', padding: 0, color: 'var(--gold)', fontWeight: 700, textDecoration: 'underline', cursor: 'pointer', fontSize: '.8rem', fontFamily: 'inherit' }}>
+                  Custom Order Terms
+                </button>{' '}
+                for this quotation.
+              </label>
+            </div>
+          )}
+
+          {/* The exact clauses being agreed to, so the acceptance means something. The same set is
+              recorded on the order as the snapshot. */}
+          {showTerms && (
+            <div onClick={() => setShowTerms(false)}
+              style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 4000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+              <div onClick={e => e.stopPropagation()}
+                style={{ background: 'var(--dark)', color: 'var(--white)', borderRadius: 14, maxWidth: 560, width: '100%', maxHeight: '80vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', border: '1px solid var(--border)' }}>
+                <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)', fontWeight: 800, fontSize: '.95rem' }}>
+                  Custom Order Terms
+                </div>
+                <div style={{ padding: '14px 18px', overflowY: 'auto' }}>
+                  {activeClauses.map((c, i) => (
+                    <div key={i} style={{ marginBottom: 14 }}>
+                      <div style={{ fontWeight: 700, fontSize: '.84rem', marginBottom: 3 }}>{c.title}</div>
+                      <div style={{ fontSize: '.8rem', color: 'var(--gray)', lineHeight: 1.6 }}>{c.body}</div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 18px', borderTop: '1px solid var(--border)' }}>
+                  <span style={{ fontSize: '.72rem', color: 'var(--gray)' }}>Terms v{termsVersion}</span>
+                  <button onClick={() => { setAgreed(true); setShowTerms(false); setError(null); }}
+                    style={{ padding: '8px 18px', background: 'var(--gold)', border: 'none', borderRadius: 8, color: '#000', fontWeight: 700, cursor: 'pointer', fontSize: '.85rem' }}>
+                    I agree
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {alreadyPaid ? (
             <div style={{ marginTop: 12, padding: '9px 12px', borderRadius: 10, fontSize: '.8rem', fontWeight: 700,
