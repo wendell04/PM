@@ -24,6 +24,9 @@ class LoginAnomalyMail extends Mailable implements ShouldQueue
         string $userAgent,
         string $loginTime
     ) {
+        // Routed down the security lane - see config/mail.php. A quota spent on order
+        // notifications must never be able to stop somebody signing in.
+        $this->mailer = config('mail.security_mailer');
         $this->userName  = $userName;
         $this->ipAddress = $ipAddress;
         $this->userAgent = $userAgent;

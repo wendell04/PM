@@ -18,6 +18,9 @@ class TwoFactorMail extends Mailable
         string $userName,
         int    $expiryMinutes = 5
     ) {
+        // Routed down the security lane - see config/mail.php. A quota spent on order
+        // notifications must never be able to stop somebody signing in.
+        $this->mailer = config('mail.security_mailer');
         $this->otpCode        = $otpCode;
         $this->userName       = $userName;
         $this->expiryMinutes  = $expiryMinutes;

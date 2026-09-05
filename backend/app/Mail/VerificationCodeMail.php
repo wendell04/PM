@@ -14,6 +14,9 @@ class VerificationCodeMail extends Mailable
 
     public function __construct(string $code, string $firstName)
     {
+        // Routed down the security lane - see config/mail.php. A quota spent on order
+        // notifications must never be able to stop somebody signing in.
+        $this->mailer = config('mail.security_mailer');
         $this->code = $code;
         $this->firstName = $firstName;
     }

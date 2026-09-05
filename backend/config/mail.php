@@ -134,4 +134,20 @@ return [
 
     'admin_recipient' => env('ADMIN_EMAIL', env('MAIL_FROM_ADDRESS')),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Security Mail Lane
+    |--------------------------------------------------------------------------
+    |
+    | Which mailer carries one-time codes, password resets and login alerts.
+    | Everything else uses the default MAIL_MAILER. Keeping them apart means a
+    | daily quota spent on order notifications cannot stop someone signing in,
+    | and the two can sit on different providers entirely.
+    |
+    | Falls back to the default mailer, so leaving it unset changes nothing.
+    |
+    */
+
+    'security_mailer' => env('MAIL_SECURITY_MAILER', env('MAIL_MAILER', 'smtp')),
+
 ];

@@ -17,6 +17,9 @@ class PasswordResetLinkMail extends Mailable
      */
     public function __construct(string $resetUrl, string $firstName)
     {
+        // Routed down the security lane - see config/mail.php. A quota spent on order
+        // notifications must never be able to stop somebody signing in.
+        $this->mailer = config('mail.security_mailer');
         $this->resetUrl = $resetUrl;
         $this->firstName = $firstName;
     }

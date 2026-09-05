@@ -24,7 +24,11 @@ class AccountSecurityAlertMail extends Mailable implements ShouldQueue
         public string $message,
         public string $ipAddress,
         public string $eventTime,
-    ) {}
+    ) {
+        // Routed down the security lane - see config/mail.php. A quota spent on order
+        // notifications must never be able to stop somebody signing in.
+        $this->mailer = config('mail.security_mailer');
+    }
 
     public function envelope(): Envelope
     {
