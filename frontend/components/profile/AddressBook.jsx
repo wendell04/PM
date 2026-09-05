@@ -75,6 +75,21 @@ const normalizeNominatim = (r) => ({
   address: r.address || {},
 });
 
+// Accepts a Philippine mobile the way people actually write it - 09171234567, 9171234567,
+// 639171234567, +63 917 123 4567, with or without spaces, dashes or brackets - and returns the one
+// canonical form, +639171234567. Returns '' when it is not a PH mobile at all, which is what the
+// validator tests. Storing one shape matters: the rider is handed this number.
+export function normalizePhMobile(raw) {
+  const digits = String(raw ?? '').replace(/[^\d+]/g, '').replace(/(?!^)\+/g, '');
+  const bare = digits.startsWith('+') ? digits.slice(1) : digits;
+  let local;
+  if (/^639\d{9}$/.test(bare))      local = bare.slice(2);   // 639171234567
+  else if (/^09\d{9}$/.test(bare))  local = bare.slice(1);   // 09171234567
+  else if (/^9\d{9}$/.test(bare))   local = bare;            // 9171234567
+  else return '';
+  return '+63' + local;
+}
+
 const StoreLocationMap = dynamic(() => import('@/components/maps/StoreLocationMap'), { ssr: false });
 
 const inputStyle = {
@@ -523,8 +538,13 @@ export default function AddressBook({ onSaved, initialEditAddress }) {
     if (!formData.street.trim())       errors.street       = 'Street is required';
     if (!formData.zip.trim() || !/^\d{4}$/.test(formData.zip.trim()))
       errors.zip = 'ZIP Code must be a 4-digit number';
-    if (!formData.phone.trim() || !/^\+63\d{10}$/.test(formData.phone.trim()))
-      errors.phone = 'Phone must be in the format +63XXXXXXXXXX';
+    // Validate the normalized form, so 09171234567 and +639171234567 are the same number - which
+    // they are. The canonical value is written back below so what gets saved is always +63.
+    const phoneNorm = normalizePhMobile(formData.phone);
+    if (!phoneNorm) errors.phone = 'Enter a mobile number, e.g. 09171234567 or +639171234567';
+    else if (phoneNorm !== formData.phone.trim()) {
+      setFormData(prev => ({ ...prev, phone: phoneNorm }));
+    }
     if (!formData.lat || !formData.lng)
       errors.pin = 'Please pin your location on the map before saving.';
     setFormErrors(errors);
@@ -837,7 +857,12 @@ export default function AddressBook({ onSaved, initialEditAddress }) {
             </div>
             <div>
               <label style={labelStyle}>Phone <span style={{ color: 'var(--red)' }}>*</span></label>
-              <input type="tel" inputMode="tel" maxLength={20} value={formData.phone} onChange={e => handleInputChange('phone', e.target.value)} placeholder="+63XXXXXXXXXX" style={formErrors.phone ? inputErrorStyle : inputStyle} />
+              <input type="tel" inputMode="tel" maxLength={20} value={formData.phone}
+                onChange={e => handleInputChange('phone', e.target.value)}
+                // Tidy it the moment they leave the field, so they SEE the stored form rather than
+                // finding out at submit that what they typed was not what was wanted.
+                onBlur={e => { const v = normalizePhMobile(e.target.value); if (v) handleInputChange('phone', v); }}
+                placeholder="09171234567" style={formErrors.phone ? inputErrorStyle : inputStyle} />
               {fieldError(formErrors.phone)}
             </div>
           </div>
