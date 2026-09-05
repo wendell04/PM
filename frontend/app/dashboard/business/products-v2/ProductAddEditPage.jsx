@@ -1646,13 +1646,23 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
 
             <Card>
               <CardTitle>Visibility</CardTitle>
+              {/* Pre-order and hide-at-zero are opposites: one keeps the product selling with an
+                  empty shelf, the other takes it off the shop the moment the shelf empties. Leaving
+                  both switchable invites a setting that cancels the one beside it, and the shop is
+                  left wondering why a pre-order product vanished. */}
               <ToggleRow
                 label="Hide when out of stock"
                 hint="Won't appear in shop when stock is 0"
-                on={form.hideWhenOutOfStock} onChange={v => setF('hideWhenOutOfStock', v)}
-                disabled={form.isMadeToOrder}
+                on={form.allowPreorder ? false : form.hideWhenOutOfStock}
+                onChange={v => setF('hideWhenOutOfStock', v)}
+                disabled={form.isMadeToOrder || form.allowPreorder}
               />
-              {form.isMadeToOrder && (
+              {form.allowPreorder ? (
+                <span style={{ fontSize: '11px', color: 'var(--gray)', marginTop: '8px', display: 'block' }}>
+                  Off while pre-order is on - the point of pre-order is that the product keeps
+                  selling once the stock runs out.
+                </span>
+              ) : form.isMadeToOrder && (
                 <span style={{ fontSize: '11px', color: 'var(--gray)', marginTop: '8px', display: 'block' }}>
                   Not applicable for made-to-order products.
                 </span>
