@@ -358,6 +358,8 @@ export default function BannerManagementPage() {
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [cropSrc, setCropSrc] = useState(null);
+  // First paint only. Actions use isSubmitting: this one blanks the entire page
+  // for the skeleton, so flipping it mid-edit reads to the user as a reload.
   const [isLoading, setIsLoading] = useState(true);
   const [modal, setModal] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -428,6 +430,7 @@ export default function BannerManagementPage() {
 
   // Create new banner via API
   const createNewBanner = async () => {
+    if (isSubmitting) return;
     if (filteredBanners.length >= MAX_BANNERS) {
       setModal({
         type: 'error',
@@ -436,7 +439,7 @@ export default function BannerManagementPage() {
       });
       return;
     }
-    setIsLoading(true);
+    setIsSubmitting(true);
     try {
       const newBanner = await apiCreateBanner({ ...createDefaultBanner(), showOn: activePage === 'landing' ? 'landing' : 'shop' }, token);
       const updatedBanners = [...banners, newBanner];
@@ -450,7 +453,7 @@ export default function BannerManagementPage() {
         message: err.message || 'Failed to create banner. Please try again.',
       });
     } finally {
-      setIsLoading(false);
+      setIsSubmitting(false);
     }
   };
 
@@ -462,7 +465,6 @@ export default function BannerManagementPage() {
       message: 'Are you sure you want to delete this banner? This action cannot be undone.',
       onConfirm: async () => {
         setIsSubmitting(true);
-        setIsLoading(true);
         try {
           await apiDeleteBanner(bannerId, token);
           const updatedBanners = banners.filter(b => (b._id || b.id) !== bannerId);
@@ -484,7 +486,6 @@ export default function BannerManagementPage() {
             message: err.message || 'Failed to delete banner. Please try again.',
           });
         } finally {
-          setIsLoading(false);
           setIsSubmitting(false);
         }
       },
@@ -502,7 +503,6 @@ export default function BannerManagementPage() {
     updatedBanners.forEach((b, idx) => { b.order = idx; });
 
     setIsSubmitting(true);
-    setIsLoading(true);
     try {
       // Update the moved banner's order via API
       const movedBanner = updatedBanners[newIndex];
@@ -516,7 +516,6 @@ export default function BannerManagementPage() {
         message: err.message || 'Failed to reorder banner. Please try again.',
       });
     } finally {
-      setIsLoading(false);
       setIsSubmitting(false);
     }
   };
@@ -535,8 +534,8 @@ export default function BannerManagementPage() {
 
   // Save edited banner via API
   const saveChanges = async () => {
-    if (!editedBanner || !activeBannerId) return;
-    setIsLoading(true);
+    if (!editedBanner || !activeBannerId || isSubmitting) return;
+    setIsSubmitting(true);
     try {
       const updatedBanner = await apiUpdateBanner(activeBannerId, editedBanner, token);
       const updatedBanners = banners.map(b => (b._id || b.id) === activeBannerId ? updatedBanner : b);
@@ -557,14 +556,14 @@ export default function BannerManagementPage() {
         message: err.message || 'Failed to save banner. Please try again.',
       });
     } finally {
-      setIsLoading(false);
+      setIsSubmitting(false);
     }
   };
 
   // Publish banner via API
   const publishBanner = async () => {
-    if (!editedBanner) return;
-    setIsLoading(true);
+    if (!editedBanner || isSubmitting) return;
+    setIsSubmitting(true);
     try {
       const updatedBanner = await apiPublishBanner(activeBannerId, token);
       const updatedBanners = banners.map(b => (b._id || b.id) === activeBannerId ? updatedBanner : b);
@@ -579,7 +578,7 @@ export default function BannerManagementPage() {
         message: err.message || 'Failed to publish banner. Please try again.',
       });
     } finally {
-      setIsLoading(false);
+      setIsSubmitting(false);
     }
   };
 
@@ -587,7 +586,6 @@ export default function BannerManagementPage() {
   const unpublishBanner = async () => {
     if (!editedBanner || isSubmitting) return;
     setIsSubmitting(true);
-    setIsLoading(true);
     try {
       const updatedBanner = await apiUnpublishBanner(activeBannerId, token);
       const updatedBanners = banners.map(b => (b._id || b.id) === activeBannerId ? updatedBanner : b);
@@ -679,7 +677,7 @@ export default function BannerManagementPage() {
 
   const goToSlide = (index) => { setCurrentSlide(index); setIsAutoPlaying(false); setTimeout(() => setIsAutoPlaying(true), 10000); };
 
-  const isLive = banners.find(b => b.id === activeBannerId)?.status === 'live';
+  const isLive = banners.find(b => (b._id || b.id) === activeBannerId)?.status === 'live';
   isLiveRef.current = isLive;
 
   if (isLoading) {
@@ -918,18 +916,18 @@ export default function BannerManagementPage() {
                 <button
                   className="banner-btn banner-btn-secondary"
                   onClick={saveChanges}
-                  disabled={isLoading}
+                  disabled={isSubmitting}
                 >
-                  {isLoading ? 'Saving...' : 'Save Changes'}
+                  {isSubmitting ? 'Saving...' : 'Save Changes'}
                 </button>
               ) : null}
               <button
                 className="banner-btn banner-btn-primary"
                 onClick={publishBanner}
-                disabled={!editedBanner?.image || isLoading}
+                disabled={!editedBanner?.image || isSubmitting}
                 title={!editedBanner?.image ? 'Upload a banner image first' : ''}
               >
-                {isLoading ? 'Publishing...' : 'Publish Live'}
+                {isSubmitting ? 'Publishing...' : 'Publish Live'}
               </button>
             </>
           )}
@@ -989,8 +987,8 @@ export default function BannerManagementPage() {
             <button
               className="banner-add-btn"
               onClick={createNewBanner}
-              disabled={filteredBanners.length >= MAX_BANNERS}
-              style={{ opacity: filteredBanners.length >= MAX_BANNERS ? 0.5 : 1, cursor: filteredBanners.length >= MAX_BANNERS ? 'not-allowed' : 'pointer' }}
+              disabled={filteredBanners.length >= MAX_BANNERS || isSubmitting}
+              style={{ opacity: (filteredBanners.length >= MAX_BANNERS || isSubmitting) ? 0.5 : 1, cursor: (filteredBanners.length >= MAX_BANNERS || isSubmitting) ? 'not-allowed' : 'pointer' }}
             >
               <span>+</span>
               {filteredBanners.length >= MAX_BANNERS ? `Max ${MAX_BANNERS} banners reached` : `Add ${activePage === 'landing' ? 'Landing' : 'Shop'} Banner`}
