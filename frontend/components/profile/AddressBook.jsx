@@ -852,16 +852,23 @@ export default function AddressBook({ onSaved, initialEditAddress }) {
           <div className="addr-2col">
             <div>
               <label style={labelStyle}>Label <span style={{ color: 'var(--gray)', fontSize: '0.7rem' }}>(optional)</span></label>
-              <input type="text" maxLength={100} value={formData.label} onChange={e => handleInputChange('label', e.target.value)} placeholder="e.g. Home, Office" style={formErrors.label ? inputErrorStyle : inputStyle} />
+              <input type="text" maxLength={30} value={formData.label} onChange={e => handleInputChange('label', e.target.value)} placeholder="e.g. Home, Office" style={formErrors.label ? inputErrorStyle : inputStyle} />
               {fieldError(formErrors.label)}
             </div>
             <div>
               <label style={labelStyle}>Phone <span style={{ color: 'var(--red)' }}>*</span></label>
-              <input type="tel" inputMode="tel" maxLength={20} value={formData.phone}
+              <input type="tel" inputMode="tel" maxLength={13} value={formData.phone}
                 onChange={e => handleInputChange('phone', e.target.value)}
-                // Tidy it the moment they leave the field, so they SEE the stored form rather than
-                // finding out at submit that what they typed was not what was wanted.
-                onBlur={e => { const v = normalizePhMobile(e.target.value); if (v) handleInputChange('phone', v); }}
+                // Judged the moment they leave the field. Normalized when it is a real number, and
+                // told plainly when it is not - waiting until submit means the error appears at the
+                // bottom of the form, far from the thing that caused it.
+                onBlur={e => {
+                  const v = normalizePhMobile(e.target.value);
+                  if (v) { handleInputChange('phone', v); setFormErrors(p => ({ ...p, phone: undefined })); }
+                  else if (e.target.value.trim()) {
+                    setFormErrors(p => ({ ...p, phone: 'Enter a mobile number, e.g. 09171234567' }));
+                  }
+                }}
                 placeholder="09171234567" style={formErrors.phone ? inputErrorStyle : inputStyle} />
               {fieldError(formErrors.phone)}
             </div>
@@ -930,12 +937,12 @@ export default function AddressBook({ onSaved, initialEditAddress }) {
           <div className="addr-2col">
             <div>
               <label style={labelStyle}>House/Unit No. <span style={{ color: 'var(--red)' }}>*</span></label>
-              <input type="text" maxLength={100} value={formData.house_number} onChange={e => handleInputChange('house_number', e.target.value)} onBlur={refinePin} placeholder="e.g. 168 or Blk 2 Lot 24" style={formErrors.house_number ? inputErrorStyle : inputStyle} />
+              <input type="text" maxLength={40} value={formData.house_number} onChange={e => handleInputChange('house_number', e.target.value)} onBlur={refinePin} placeholder="e.g. 168 or Blk 2 Lot 24" style={formErrors.house_number ? inputErrorStyle : inputStyle} />
               {fieldError(formErrors.house_number)}
             </div>
             <div>
               <label style={labelStyle}>Subdivision / Village <span style={{ color: 'var(--gray)', fontSize: '0.7rem' }}>(optional)</span></label>
-              <input type="text" maxLength={255} value={formData.subdivision} onChange={e => handleInputChange('subdivision', e.target.value)} placeholder="e.g. Greenville Subd." style={inputStyle} />
+              <input type="text" maxLength={80} value={formData.subdivision} onChange={e => handleInputChange('subdivision', e.target.value)} placeholder="e.g. Greenville Subd." style={inputStyle} />
             </div>
           </div>
 
@@ -943,7 +950,7 @@ export default function AddressBook({ onSaved, initialEditAddress }) {
           <div className="addr-2col-wide">
             <div>
               <label style={labelStyle}>Street <span style={{ color: 'var(--red)' }}>*</span></label>
-              <input type="text" maxLength={255} value={formData.street} onChange={e => handleInputChange('street', e.target.value)} onBlur={refinePin} placeholder="e.g. General Luis St." style={formErrors.street ? inputErrorStyle : inputStyle} />
+              <input type="text" maxLength={80} value={formData.street} onChange={e => handleInputChange('street', e.target.value)} onBlur={refinePin} placeholder="e.g. General Luis St." style={formErrors.street ? inputErrorStyle : inputStyle} />
               {fieldError(formErrors.street)}
             </div>
             <div>
