@@ -186,7 +186,7 @@
   *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
   html { scroll-behavior: smooth; overscroll-behavior: none; }
   body {
-    font-family: 'Inter', sans-serif;
+    font-family: 'Figtree', sans-serif;
     background: var(--black);
     color: var(--white);
     overscroll-behavior: none;
@@ -301,7 +301,7 @@
   }
 
   .section-title {
-    font-family: 'Inter', sans-serif;
+    font-family: 'Figtree', sans-serif;
     font-size: clamp(1.8rem, 4vw, 2.6rem);
     font-weight: 800;
     line-height: 1.15;
@@ -357,7 +357,7 @@
   }
 
   .nav-logo-text {
-    font-family: 'Inter', sans-serif;
+    font-family: 'Figtree', sans-serif;
     font-size: .72rem;
     font-weight: 900;
     letter-spacing: 1.5px;
@@ -409,7 +409,7 @@
     font-size: .85rem;
     font-weight: 600;
     color: rgba(245,245,245,0.75);
-    font-family: 'Inter', sans-serif;
+    font-family: 'Figtree', sans-serif;
   }
 
   .lp-nav-icon-btn {
@@ -497,7 +497,7 @@
     transition: all 0.15s;
     text-align: left;
     text-decoration: none;
-    font-family: 'Inter', sans-serif;
+    font-family: 'Figtree', sans-serif;
   }
   .lp-nav-menu-item:hover {
     background: rgba(0,0,0,0.04);
@@ -716,7 +716,7 @@
     border: 1.5px solid rgba(255,255,255,.25);
     border-radius: 6px;
     cursor: pointer;
-    font-family: 'Inter', sans-serif;
+    font-family: 'Figtree', sans-serif;
     transition: border-color .2s, color .2s;
   }
   .btn-nav-login:hover { border-color: var(--gold); color: var(--gold); }
@@ -730,7 +730,7 @@
     border: none;
     border-radius: 6px;
     cursor: pointer;
-    font-family: 'Inter', sans-serif;
+    font-family: 'Figtree', sans-serif;
     transition: opacity .2s, transform .2s;
   }
   .btn-nav-register:hover { opacity: .88; transform: translateY(-1px); }
@@ -872,7 +872,7 @@
     color: var(--white);
     padding: 0.3rem 0;
     text-align: left;
-    font-family: 'Inter', sans-serif;
+    font-family: 'Figtree', sans-serif;
     transition: color 0.14s, padding-left 0.14s;
   }
 
@@ -917,7 +917,7 @@
     color: var(--white);
     text-align: left;
     transition: background 0.12s, color 0.12s;
-    font-family: 'Inter', sans-serif;
+    font-family: 'Figtree', sans-serif;
   }
 
   .mega-cat-item:hover,
@@ -1078,7 +1078,7 @@
     width: 100%;
     text-align: left;
     cursor: pointer;
-    font-family: 'Inter', sans-serif;
+    font-family: 'Figtree', sans-serif;
     letter-spacing: 0.01em;
     border-bottom: 1px solid rgba(0,0,0,0.06);
     transition: color 0.15s;
@@ -1106,7 +1106,7 @@
     font-size: 0.95rem;
     font-weight: 700;
     cursor: pointer;
-    font-family: 'Inter', sans-serif;
+    font-family: 'Figtree', sans-serif;
   }
   .mm-btn-login:hover { background: rgba(0,0,0,0.04); }
   .mm-btn-register {
@@ -1119,7 +1119,7 @@
     font-size: 0.95rem;
     font-weight: 700;
     cursor: pointer;
-    font-family: 'Inter', sans-serif;
+    font-family: 'Figtree', sans-serif;
   }
 
   /* L2 header row: back button left, X close right */
@@ -1144,7 +1144,7 @@
     border: none;
     background: transparent;
     cursor: pointer;
-    font-family: 'Inter', sans-serif;
+    font-family: 'Figtree', sans-serif;
   }
   .mm-back-btn:hover { color: #111; }
 
@@ -1155,7 +1155,7 @@
     color: #111;
     padding: 14px 24px 8px;
     flex-shrink: 0;
-    font-family: 'Inter', sans-serif;
+    font-family: 'Figtree', sans-serif;
     letter-spacing: -0.02em;
   }
 
@@ -1243,7 +1243,7 @@
     font-weight: 800;
     color: #111;
     margin-bottom: 2px;
-    font-family: 'Inter', sans-serif;
+    font-family: 'Figtree', sans-serif;
   }
   .mobile-auth-modal-sub {
     font-size: 0.88rem;
@@ -1261,7 +1261,7 @@
     font-size: 0.95rem;
     font-weight: 700;
     cursor: pointer;
-    font-family: 'Inter', sans-serif;
+    font-family: 'Figtree', sans-serif;
     transition: background 0.15s;
   }
   .mobile-auth-modal-login:hover { background: rgba(0,0,0,0.04); }
@@ -1275,7 +1275,7 @@
     font-size: 0.95rem;
     font-weight: 800;
     cursor: pointer;
-    font-family: 'Inter', sans-serif;
+    font-family: 'Figtree', sans-serif;
   }
 
   /* mobile menu and auth modal are now always white — no light-mode overrides needed */
@@ -1321,7 +1321,7 @@
   }
 
   .hero-title {
-    font-family: 'Inter', sans-serif;
+    font-family: 'Figtree', sans-serif;
     font-size: clamp(2.5rem, 6vw, 4rem);
     font-weight: 900;
     line-height: 1.1;
@@ -1352,7 +1352,7 @@
   }
 
   .hero-stat-num {
-    font-family: 'Inter', sans-serif;
+    font-family: 'Figtree', sans-serif;
     font-size: 1.5rem;
     font-weight: 800;
     line-height: 1;
@@ -2009,7 +2009,7 @@
   }
 
   .fcard-value {
-    font-family: 'Inter', sans-serif;
+    font-family: 'Figtree', sans-serif;
     font-size: 1.8rem;
     font-weight: 800;
     line-height: 1;
@@ -2052,7 +2052,7 @@
   }
 
   .cta-banner h2 {
-    font-family: 'Inter', sans-serif;
+    font-family: 'Figtree', sans-serif;
     font-size: clamp(1.6rem, 4vw, 2.4rem);
     font-weight: 800;
     color: var(--white);
@@ -2105,7 +2105,7 @@
   }
 
   .lp-footer-brand-name {
-    font-family: 'Inter', sans-serif;
+    font-family: 'Figtree', sans-serif;
     font-size: 0.8rem;
     font-weight: 900;
     letter-spacing: 1px;
@@ -2382,7 +2382,7 @@
   }
 
   .auth-modal-header h2 {
-    font-family: 'Inter', sans-serif;
+    font-family: 'Figtree', sans-serif;
     font-size: 1.2rem;
     font-weight: 800;
     color: var(--white);
@@ -2446,7 +2446,7 @@
     border-radius: 8px;
     color: var(--white);
     font-size: .88rem;
-    font-family: 'Inter', sans-serif;
+    font-family: 'Figtree', sans-serif;
     outline: none;
     transition: border-color .2s, background .2s;
   }
@@ -2540,7 +2540,7 @@
     border: none;
     cursor: pointer;
     padding: 0;
-    font-family: 'Inter', sans-serif;
+    font-family: 'Figtree', sans-serif;
     transition: opacity .2s;
   }
   .auth-link:hover { opacity: .8; text-decoration: underline; }
@@ -2555,7 +2555,7 @@
     border: none;
     border-radius: 10px;
     cursor: pointer;
-    font-family: 'Inter', sans-serif;
+    font-family: 'Figtree', sans-serif;
     letter-spacing: .3px;
     margin-top: .25rem;
     transition: transform .2s, box-shadow .2s, opacity .2s;
@@ -2584,7 +2584,7 @@
     font-weight: 700;
     cursor: pointer;
     font-size: .82rem;
-    font-family: 'Inter', sans-serif;
+    font-family: 'Figtree', sans-serif;
     padding: 0;
     margin-left: .25rem;
     transition: opacity .2s;
@@ -2631,7 +2631,7 @@
   }
 
   .tnc-header h3 {
-    font-family: 'Inter', sans-serif;
+    font-family: 'Figtree', sans-serif;
     font-size: 1.2rem;
     font-weight: 800;
     color: var(--white);
@@ -2763,7 +2763,7 @@
   }
 
   .pub-pricing-amount {
-    font-family: 'Inter', sans-serif;
+    font-family: 'Figtree', sans-serif;
     font-size: 1.2rem;
     font-weight: 800;
     line-height: 1.1;
@@ -2800,7 +2800,7 @@
   .pricing-lock-icon { font-size: 1.8rem; flex-shrink: 0; }
 
   .pricing-unlock-left h3 {
-    font-family: 'Inter', sans-serif;
+    font-family: 'Figtree', sans-serif;
     font-size: 1.1rem;
     font-weight: 800;
     color: var(--white);
@@ -2945,7 +2945,7 @@
     border-radius: 8px;
     color: var(--white);
     font-size: .88rem;
-    font-family: 'Inter', sans-serif;
+    font-family: 'Figtree', sans-serif;
     outline: none;
     resize: vertical;
     min-height: 120px;
@@ -2985,7 +2985,7 @@
   .contact-success-icon { font-size: 2.5rem; }
 
   .contact-success h3 {
-    font-family: 'Inter', sans-serif;
+    font-family: 'Figtree', sans-serif;
     font-size: 1.4rem;
     font-weight: 800;
     color: var(--white);
@@ -3018,7 +3018,7 @@
     flex-shrink: 0;
   }
   .pricelist-modal-header h2 {
-    font-family: 'Inter', sans-serif;
+    font-family: 'Figtree', sans-serif;
     font-size: 1.2rem;
     font-weight: 800;
     color: var(--white);
@@ -3041,7 +3041,7 @@
   }
   .pl-item-header { margin-bottom: .75rem; }
   .pl-item-header h3 {
-    font-family: 'Inter', sans-serif;
+    font-family: 'Figtree', sans-serif;
     font-size: 1rem;
     font-weight: 800;
     color: var(--white);
@@ -3073,7 +3073,7 @@
   }
   .pl-qty { color: var(--gray-light); flex: 1; }
   .pl-dash { color: var(--gray); }
-  .pl-price { font-weight: 700; font-family: 'Inter', sans-serif; }
+  .pl-price { font-weight: 700; font-family: 'Figtree', sans-serif; }
   .pl-variants {
     display: flex;
     flex-direction: column;
@@ -3135,7 +3135,7 @@
   }
 
   .verify-title {
-    font-family: 'Inter', sans-serif;
+    font-family: 'Figtree', sans-serif;
     font-size: 1.4rem;
     font-weight: 800;
     color: var(--white);
@@ -3176,7 +3176,7 @@
     border-radius: 10px;
     color: var(--white);
     font-size: 1.4rem;
-    font-family: 'Inter', sans-serif;
+    font-family: 'Figtree', sans-serif;
     font-weight: 700;
     letter-spacing: .5rem;
     text-align: center;
@@ -4431,14 +4431,14 @@ html.light .lp-mob-card-ph {
   font-weight: 700;
   color: #fff;
   display: block;
-  font-family: 'Inter', sans-serif;
+  font-family: 'Figtree', sans-serif;
 }
 html.light .lp-mob-card-title { color: #111; }
 .lp-mob-card-count {
   font-size: 0.78rem;
   color: rgba(255,255,255,0.5);
   display: block;
-  font-family: 'Inter', sans-serif;
+  font-family: 'Figtree', sans-serif;
 }
 html.light .lp-mob-card-count { color: #888; }
 
