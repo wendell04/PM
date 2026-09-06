@@ -56,7 +56,7 @@ export default function FlashSalesStorefront() {
       {/* Page header */}
       <div style={{ marginBottom: '2rem' }}>
         <h1 style={{
-          fontFamily: "'Outfit', sans-serif",
+          fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif",
           fontSize: '2rem', fontWeight: 800,
           color: 'var(--white)', margin: 0,
           display: 'flex', alignItems: 'center', gap: '0.5rem',
