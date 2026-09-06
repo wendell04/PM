@@ -395,7 +395,7 @@ export default function BannerManagementPage() {
 
   useEffect(() => {
     if (editedBanner && activeBannerId) {
-      const originalBanner = banners.find(b => b.id === activeBannerId);
+      const originalBanner = banners.find(b => (b._id || b.id) === activeBannerId);
       if (originalBanner) setHasUnsavedChanges(JSON.stringify(editedBanner) !== JSON.stringify(originalBanner));
     }
   }, [editedBanner, activeBannerId, banners]);
@@ -408,7 +408,7 @@ export default function BannerManagementPage() {
 
   useEffect(() => {
     if (activeBannerId && banners.length > 0) {
-      const index = banners.findIndex(b => b.id === activeBannerId);
+      const index = banners.findIndex(b => (b._id || b.id) === activeBannerId);
       if (index !== -1 && index !== currentSlide) setCurrentSlide(index);
     }
   }, [activeBannerId, banners, currentSlide]);
