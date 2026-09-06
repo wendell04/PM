@@ -732,13 +732,27 @@ class AuthController extends Controller
 
             $adminEmail = config('mail.admin_recipient');
 
-            $name    = htmlspecialchars(strip_tags(trim($request->name)),    ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+            // Identity comes from the token, never from the box. The sender used to be resolved
+            // as User::where('email', $request->email), so anyone - signed in or not - could type
+            // a customer's address and have their message filed into that customer's own
+            // conversation with the shop, which is also where the reply would then be sent.
+            $authUser   = auth('sanctum')->user();
+            $replyEmail = $authUser ? $authUser->email : $request->email;
+
+            $name    = $authUser
+                ? trim(($authUser->firstName ?? '') . ' ' . ($authUser->lastName ?? ''))
+                : htmlspecialchars(strip_tags(trim($request->name)), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+            if ($name === '') {
+                $name = htmlspecialchars(strip_tags(trim($request->name)), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+            }
             $subject = str_replace(["\r", "\n", "\0"], '', strip_tags(trim($request->subject)));
             $messageText = htmlspecialchars(strip_tags(trim($request->message)), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 
             // ── CHAT INTEGRATION ──
-            // Find existing user by email
-            $sender = User::where('email', $request->email)->first();
+            // A guest stays a guest. Matching a stranger's typed address to an account is what
+            // let one person write into another's thread, and it bought nothing a signed-in
+            // customer does not already get by being signed in.
+            $sender = $authUser;
             $admin  = User::whereIn('role', ['admin', 'owner'])->first();
 
             if ($admin) {
@@ -770,7 +784,7 @@ class AuthController extends Controller
                     'conversation_id' => $conversation->_id,
                     'sender_id'       => $sender ? $sender->_id : 'guest',
                     'sender_name'     => $name,
-                    'sender_email'    => $request->email,
+                    'sender_email'    => $replyEmail,
                     'body'            => "Subject: {$subject}\n\n{$messageText}",
                     'type'            => 'text',
                     'is_read'         => false,
@@ -794,7 +808,7 @@ class AuthController extends Controller
             // relay is down". Failing loudly in the log, quietly to the customer.
             try {
                 if ($adminEmail) {
-                    Mail::to($adminEmail)->send(new ContactFormMail($name, $request->email, $subject, $messageText));
+                    Mail::to($adminEmail)->send(new ContactFormMail($name, $replyEmail, $subject, $messageText));
                 } else {
                     Log::error('Contact form: no admin recipient configured (mail.admin_recipient is empty).');
                 }

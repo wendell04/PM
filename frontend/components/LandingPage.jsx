@@ -423,6 +423,18 @@ const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=
     if (atBottom) setHasReadTerms(true);
   };
 
+  // A signed-in customer's own address is the one the shop will answer, so it is filled in
+  // and shown locked rather than hidden - hiding it would leave them guessing where the reply
+  // goes. The server ignores this field for signed-in senders either way.
+  useEffect(() => {
+    if (!user) return;
+    setContactForm(f => ({
+      ...f,
+      name:  f.name || `${user.firstName || ''} ${user.lastName || ''}`.trim(),
+      email: user.email || f.email,
+    }));
+  }, [user]);
+
   const handleContactChange = (field, value) => {
     setContactForm(f => ({...f, [field]: value}));
     if (contactErrors[field]) setContactErrors(e => ({...e, [field]: ''}));
@@ -445,13 +457,21 @@ const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=
       try {
         const res = await fetchWithTimeout(`${API_URL}/api/contact`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            // Sent so the server can file the message under the account that actually wrote it.
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
           body: JSON.stringify(contactForm),
         }, 15000);
         const data = await res.json();
         if (res.ok && data.message) {
           setContactSent(true);
-          setContactForm({name: '', email: '', subject: '', message: ''});
+          setContactForm({
+            name:  user ? `${user.firstName || ''} ${user.lastName || ''}`.trim() : '',
+            email: user?.email || '',
+            subject: '', message: '',
+          });
         } else {
           setContactErrors({ submit: data.error || data.message || 'Failed to send message. Please try again.' });
         }
@@ -2345,7 +2365,8 @@ const handleForgotResetPassword = async () => {
                     </div>
                     <div className="auth-field">
                       <label>Email Address</label>
-                      <input type="email" id="contact-email" name="email" autoComplete="email" placeholder="you@example.com" value={contactForm.email} onChange={(e) => handleContactChange('email', e.target.value)} className={contactErrors.email ? 'error' : ''}/>
+                      <input type="email" id="contact-email" name="email" autoComplete="email" placeholder="you@example.com" value={contactForm.email} onChange={(e) => handleContactChange('email', e.target.value)} className={contactErrors.email ? 'error' : ''} readOnly={!!user} title={user ? 'We reply to the address on your account' : undefined} style={user ? { opacity: 0.75, cursor: 'not-allowed' } : undefined}/>
+                      {user && <span style={{ display: 'block', fontSize: '0.72rem', color: 'var(--gray)', marginTop: '0.25rem' }}>We reply to the address on your account.</span>}
                       {contactErrors.email && <span className="error-message">{contactErrors.email}</span>}
                     </div>
                   </div>
