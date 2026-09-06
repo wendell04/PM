@@ -48,7 +48,7 @@ const EMPTY_FORM = {
   optionGroups: [],
   downpaymentPct: '0', hideWhenOutOfStock: false, isPublished: false,
   isFeatured: false,
-  designFee: '', minOrderQty: '1',
+  designFee: '', minOrderQty: '1', quoteAboveQty: '',
   designTemplates: [],
 };
 
@@ -427,6 +427,7 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
       isFeatured:         product.isFeatured ?? false,
       designFee:          product.designFee != null ? String(product.designFee) : '',
       minOrderQty:        product.minOrderQty != null ? String(product.minOrderQty) : '1',
+      quoteAboveQty:      product.quoteAboveQty != null ? String(product.quoteAboveQty) : '',
       designTemplates:    Array.isArray(product.designTemplates) ? product.designTemplates : [],
     });
     setErrors({});
@@ -779,6 +780,8 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
             .map(t => ({ label: t.label.trim(), url: t.url.trim() }))
         : [],
       minOrderQty: Number(f.minOrderQty) || 1,
+      // Blank means no ceiling - the last tier's price keeps applying however large the order is.
+      quoteAboveQty: f.quoteAboveQty === '' ? null : (Number(f.quoteAboveQty) || null),
       cost: (f.cost !== '' && f.cost != null) ? Number(f.cost) : null,
     };
     let data;
@@ -1638,6 +1641,25 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
                   {form.isCustomizable && Number(form.minOrderQty) <= 1 && (
                     <div style={{ marginTop: '6px', fontSize: '11px', color: '#b45309', background: '#fef9c3', border: '1px solid #fcd34d', borderRadius: '4px', padding: '5px 8px' }}>
                       Warning: customizable products typically require a minimum order. Set an MOQ to protect against unprofitable single-unit orders.
+                    </div>
+                  )}
+                </Field>
+
+                {/* The last tier promises its price for every quantity above it, which is a promise
+                    about work nobody has costed. At 5,000 pieces the materials, the machine time and
+                    often a subcontractor are all different, and a published number leaves no room to
+                    say so. Above this figure the product asks rather than sells. */}
+                <Field label="Ask for a quote above">
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <IntegerInput value={form.quoteAboveQty} onChange={v => setF('quoteAboveQty', v)}
+                      min={1} placeholder="none"
+                      style={{ ...S.input, width: '70px' }} />
+                    <span style={{ fontSize: '11px', color: 'var(--gray)' }}>pcs - leave blank to keep selling at the last tier price</span>
+                  </div>
+                  {Number(form.quoteAboveQty) > 0 && (
+                    <div style={{ marginTop: '6px', fontSize: '11px', color: 'var(--gray)' }}>
+                      Above {Number(form.quoteAboveQty)} pcs the product page stops showing a price and
+                      offers to open a chat instead.
                     </div>
                   )}
                 </Field>

@@ -481,6 +481,11 @@ export default function ProductDetailPage() {
   // to send a quote in chat - the one action the customer came for.
   const isOutOfStock = !isInquiry && effectiveMaxQty === 0;
 
+  // Past this quantity the listed tiers stop being an offer. The order is still perfectly welcome -
+  // it just has to be quoted, because at that size the cost is not the one on the page.
+  const quoteAbove = Number(product?.quoteAboveQty) > 0 ? Number(product.quoteAboveQty) : null;
+  const needsQuote = quoteAbove != null && quantity > quoteAbove;
+
   // Opens the chat with a card naming the product, and records the request behind it. The chat is
   // opened FIRST and the write is not awaited - waiting on it is what used to make the button feel
   // stuck and invite a second press.
@@ -827,7 +832,9 @@ export default function ProductDetailPage() {
                         const overflowThreshold = lastTier.maxQty ? parseInt(lastTier.maxQty) : parseInt(lastTier.minQty);
                         return (
                           <div style={{ padding: '0.5rem 1rem', borderTop: '1px solid var(--border)', fontSize: '0.7rem', color: 'var(--gray)', fontStyle: 'italic' }}>
-                            Any qty above {overflowThreshold} gets the same price of {formatPeso(lastUnitP)} / pc.
+                            {quoteAbove != null
+                              ? `Above ${quoteAbove} pcs the price depends on the run - message us for a quote.`
+                              : `Any qty above ${overflowThreshold} gets the same price of ${formatPeso(lastUnitP)} / pc.`}
                           </div>
                         );
                       })()}
@@ -1466,7 +1473,7 @@ export default function ProductDetailPage() {
                         // Fixed/tiered custom products keep the structured order form.
                         // Carry the variant/qty chosen here so the order page confirms
                         // that choice instead of silently resetting to the first option.
-                        if (!isInquiry) {
+                        if (!isInquiry && !needsQuote) {
                           const qs = new URLSearchParams({ qty: String(quantity) });
                           Object.entries(selectedVariants).forEach(([g, v]) => { if (v) qs.set(`v_${g}`, v); });
                         // The option travels the same way the variant does. Without it the order page
@@ -1495,7 +1502,7 @@ export default function ProductDetailPage() {
                           ? 'Out of Stock'
                           : optionsPending
                             ? optionsPrompt
-                            : (isInquiry ? 'Ask about this' : 'Customize This Product')}
+                            : (isInquiry || needsQuote ? 'Ask about this' : 'Customize This Product')}
                     </button>
                     <p style={{ textAlign: 'center', fontSize: '0.75rem', color: 'var(--gray)', margin: 0, lineHeight: 1.5 }}>
                       {(product.priceType ?? product.pricingMode) === 'inquiry'

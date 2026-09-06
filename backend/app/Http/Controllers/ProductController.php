@@ -696,6 +696,8 @@ class ProductController extends Controller
                 'isMadeToOrder'       => 'nullable|boolean',
                 'allowPreorder'       => 'nullable|boolean',
                 'allowPreorder'       => 'nullable|boolean',
+                // Above this quantity the product stops quoting its tiers and offers a conversation.
+                'quoteAboveQty'       => 'nullable|integer|min:1|max:1000000',
                 'minOrderQty'         => 'nullable|integer|min:1',
                 'designFee'           => 'nullable|numeric|min:0',
                 // Print-ready templates the customer downloads before drawing anything -
@@ -895,6 +897,8 @@ class ProductController extends Controller
                 // once and never changed: validate() returns only the paths it was given, and an
                 // edit silently dropped this one every time it was saved.
                 'allowPreorder'       => 'nullable|boolean',
+                // Above this quantity the product stops quoting its tiers and offers a conversation.
+                'quoteAboveQty'       => 'nullable|integer|min:1|max:1000000',
                 'minOrderQty'         => 'nullable|integer|min:1',
                 'designFee'           => 'nullable|numeric|min:0',
                 // Print-ready templates the customer downloads before drawing anything -

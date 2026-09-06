@@ -26,6 +26,9 @@ class Product extends Model
         // across recipes, so a promise made there would leak into every product using it.
         'allowPreorder',
         'minOrderQty',
+        // Mass assignment drops anything not listed here, silently - the trap that has already cost
+        // this codebase a legal record and a pre-order toggle.
+        'quoteAboveQty',
         'designFee',
         'designTemplates',
         'name',

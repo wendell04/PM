@@ -2996,6 +2996,9 @@
     FULL PRICELIST MODAL
   ══════════════════════════════════════ */
   .pricelist-modal {
+    /* .auth-close inside is position:absolute, and with no positioned ancestor here it anchored to
+       the viewport instead - the X floated up over the navbar, outside the modal it closes. */
+    position: relative;
     background: var(--dark2);
     border: 1px solid rgba(212,168,67,.2);
     border-radius: 20px;
