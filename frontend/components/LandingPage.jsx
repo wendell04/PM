@@ -2340,23 +2340,23 @@ const handleForgotResetPassword = async () => {
                   <div className="contact-fields-row">
                     <div className="auth-field">
                       <label>Your Name</label>
-                      <input type="text" placeholder="Juan Dela Cruz" value={contactForm.name} onChange={(e) => handleContactChange('name', e.target.value)} className={contactErrors.name ? 'error' : ''} maxLength={120}/>
+                      <input type="text" id="contact-name" name="name" autoComplete="name" placeholder="Juan Dela Cruz" value={contactForm.name} onChange={(e) => handleContactChange('name', e.target.value)} className={contactErrors.name ? 'error' : ''} maxLength={120}/>
                       {contactErrors.name && <span className="error-message">{contactErrors.name}</span>}
                     </div>
                     <div className="auth-field">
                       <label>Email Address</label>
-                      <input type="email" placeholder="you@example.com" value={contactForm.email} onChange={(e) => handleContactChange('email', e.target.value)} className={contactErrors.email ? 'error' : ''}/>
+                      <input type="email" id="contact-email" name="email" autoComplete="email" placeholder="you@example.com" value={contactForm.email} onChange={(e) => handleContactChange('email', e.target.value)} className={contactErrors.email ? 'error' : ''}/>
                       {contactErrors.email && <span className="error-message">{contactErrors.email}</span>}
                     </div>
                   </div>
                   <div className="auth-field">
                     <label>Subject</label>
-                    <input type="text" placeholder="Bulk order inquiry, custom design, etc." value={contactForm.subject} onChange={(e) => handleContactChange('subject', e.target.value)} className={contactErrors.subject ? 'error' : ''} maxLength={200}/>
+                    <input type="text" id="contact-subject" name="subject" placeholder="Bulk order inquiry, custom design, etc." value={contactForm.subject} onChange={(e) => handleContactChange('subject', e.target.value)} className={contactErrors.subject ? 'error' : ''} maxLength={200}/>
                     {contactErrors.subject && <span className="error-message">{contactErrors.subject}</span>}
                   </div>
                   <div className="auth-field">
                     <label>Message</label>
-                    <textarea placeholder="Tell us about your order, design, ideas, or any questions you have..." value={contactForm.message} onChange={(e) => handleContactChange('message', e.target.value)} className={`contact-textarea ${contactErrors.message ? 'error' : ''}`} rows={5} maxLength={5000}/>
+                    <textarea id="contact-message" name="message" placeholder="Tell us about your order, design, ideas, or any questions you have..." value={contactForm.message} onChange={(e) => handleContactChange('message', e.target.value)} className={`contact-textarea ${contactErrors.message ? 'error' : ''}`} rows={5} maxLength={5000}/>
                     {contactErrors.message && <span className="error-message">{contactErrors.message}</span>}
                   </div>
                   <button type="submit" className="btn-primary contact-submit-btn">

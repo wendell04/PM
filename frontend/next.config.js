@@ -16,7 +16,7 @@ const securityHeaders = [
       "default-src 'self'",
       // 'unsafe-inline' kept for Next.js hydration scripts; full removal requires nonce implementation
       // 'unsafe-eval' restricted to dev only — not needed in production builds
-      `script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com https://maps.googleapis.com${process.env.NODE_ENV === 'development' ? " 'unsafe-eval'" : ''}`,
+      `script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com https://static.cloudflareinsights.com https://maps.googleapis.com${process.env.NODE_ENV === 'development' ? " 'unsafe-eval'" : ''}`,
       // fonts.googleapis.com belongs here, not only in font-src. The Google Fonts <link> is a
       // STYLESHEET - font-src governs the .woff2 files it goes on to request, style-src governs the
       // stylesheet itself. With only 'self' here the browser blocked the whole thing, no @font-face
