@@ -385,7 +385,7 @@ export default function CartPage() {
   // ── Empty cart ──────────────────────────────────────────────────────────────
   if (!isCartLoading && enrichedCart.length === 0) {
     return (
-      <div className="shop-container" style={{ maxWidth: 900, margin: '0 auto', padding: '2.5rem 1rem', fontFamily: "'Outfit', sans-serif" }}>
+      <div className="shop-container" style={{ maxWidth: 900, margin: '0 auto', padding: '2.5rem 1rem', fontFamily: "'Segoe UI', Selawik, -apple-system, BlinkMacSystemFont, Roboto, Arial, sans-serif" }}>
         <div style={{ textAlign: 'center', padding: '5rem 1.5rem', border: '1px dashed rgba(212,168,67,0.15)', borderRadius: '16px', background: 'rgba(212,168,67,0.02)' }}>
           <div style={{ width: '72px', height: '72px', borderRadius: '50%', margin: '0 auto 20px', background: 'rgba(212,168,67,0.06)', border: '1px solid rgba(212,168,67,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="rgba(212,168,67,0.5)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>

@@ -2,6 +2,37 @@
      cannot start until this file has been fetched and parsed - a second round trip
      that shows the device fallback first on a slow connection. */
 
+/* ── Segoe UI everywhere ───────────────────────────────────────────────────────
+   Windows already has Segoe UI and is served first, so it downloads nothing. Every
+   other device falls to Selawik, Microsoft's own open metric-compatible clone of
+   it - same widths, same shapes - so the shop reads identically on a phone.
+
+   Only three weights exist: 400, 600 and 700. Windows has no 900-weight Segoe UI
+   either, so the headings set at 800 and 900 have always been synthetic bold, and
+   they stay synthetic here. That is why this matches what the shop was seeing.
+   43KB in total, self-hosted. */
+@font-face {
+  font-family: 'Selawik';
+  src: url('/fonts/selawk.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Selawik';
+  src: url('/fonts/selawksb.woff2') format('woff2');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Selawik';
+  src: url('/fonts/selawkb.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
