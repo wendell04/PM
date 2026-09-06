@@ -60,7 +60,7 @@ Route::post('/verify-reset-token', [AuthController::class, 'verifyResetToken'])-
 Route::post('/send-reset-code', [AuthController::class, 'sendResetCode'])->middleware('throttle:5,1');
 Route::post('/verify-reset-code', [AuthController::class, 'verifyResetCode'])->middleware('throttle:10,1');
 Route::post('/reset-password',  [AuthController::class, 'resetPassword'])->middleware('throttle:5,1');
-Route::post('/contact',         [AuthController::class, 'contact'])->middleware('throttle:5,1');
+Route::post('/contact',         [AuthController::class, 'contact'])->middleware(['throttle:5,1', 'throttle:20,60', \App\Http\Middleware\VerifyTurnstile::class]);
 Route::post('/unlock-request',  [AuthController::class, 'unlockRequest'])->middleware('throttle:3,1');
 
 // ─── Auth (Protected — any logged-in user) ───────────────────────────────────

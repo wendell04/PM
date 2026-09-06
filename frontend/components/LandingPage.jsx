@@ -8,6 +8,7 @@ import NoImage from '@/components/NoImage';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import { getStorefrontBanners } from '@/lib/bannerUtils';
 import { useAuth } from '@/contexts/AuthContext';
+import Turnstile from '@/components/Turnstile';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useCart } from '@/context/CartContext';
 import { fetchNotifications, markNotificationRead, markAllNotificationsRead } from '@/lib/notificationApi';
@@ -426,14 +427,23 @@ const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=
   // A signed-in customer's own address is the one the shop will answer, so it is filled in
   // and shown locked rather than hidden - hiding it would leave them guessing where the reply
   // goes. The server ignores this field for signed-in senders either way.
+  const accountName = (u) => {
+    if (!u) return '';
+    const parts = [u.firstName ?? u.first_name, u.lastName ?? u.last_name].filter(Boolean).join(' ').trim();
+    return parts || (u.name ?? u.fullName ?? u.displayName ?? '').trim();
+  };
+
   useEffect(() => {
     if (!user) return;
     setContactForm(f => ({
       ...f,
-      name:  f.name || `${user.firstName || ''} ${user.lastName || ''}`.trim(),
+      name:  f.name || accountName(user),
       email: user.email || f.email,
     }));
   }, [user]);
+
+  const [contactTurnstileToken, setContactTurnstileToken] = useState('');
+  const contactTurnstileRef = useRef(null);
 
   const handleContactChange = (field, value) => {
     setContactForm(f => ({...f, [field]: value}));
@@ -462,13 +472,15 @@ const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=
             // Sent so the server can file the message under the account that actually wrote it.
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
           },
-          body: JSON.stringify(contactForm),
+          body: JSON.stringify({ ...contactForm, turnstileToken: contactTurnstileToken }),
         }, 15000);
         const data = await res.json();
         if (res.ok && data.message) {
           setContactSent(true);
+          // Single-use: a retry needs a fresh one or the server rejects the stale token.
+          contactTurnstileRef.current?.reset();
           setContactForm({
-            name:  user ? `${user.firstName || ''} ${user.lastName || ''}`.trim() : '',
+            name:  accountName(user),
             email: user?.email || '',
             subject: '', message: '',
           });
@@ -2360,13 +2372,12 @@ const handleForgotResetPassword = async () => {
                   <div className="contact-fields-row">
                     <div className="auth-field">
                       <label>Your Name</label>
-                      <input type="text" id="contact-name" name="name" autoComplete="name" placeholder="Juan Dela Cruz" value={contactForm.name} onChange={(e) => handleContactChange('name', e.target.value)} className={contactErrors.name ? 'error' : ''} maxLength={120}/>
+                      <input type="text" id="contact-name" name="name" autoComplete="name" placeholder="Juan Dela Cruz" value={contactForm.name} onChange={(e) => handleContactChange('name', e.target.value)} className={contactErrors.name ? 'error' : ''} maxLength={120} readOnly={!!user} title={user ? 'From your account' : undefined} style={user ? { opacity: 0.75, cursor: 'not-allowed' } : undefined}/>
                       {contactErrors.name && <span className="error-message">{contactErrors.name}</span>}
                     </div>
                     <div className="auth-field">
                       <label>Email Address</label>
-                      <input type="email" id="contact-email" name="email" autoComplete="email" placeholder="you@example.com" value={contactForm.email} onChange={(e) => handleContactChange('email', e.target.value)} className={contactErrors.email ? 'error' : ''} readOnly={!!user} title={user ? 'We reply to the address on your account' : undefined} style={user ? { opacity: 0.75, cursor: 'not-allowed' } : undefined}/>
-                      {user && <span style={{ display: 'block', fontSize: '0.72rem', color: 'var(--gray)', marginTop: '0.25rem' }}>We reply to the address on your account.</span>}
+                      <input type="email" id="contact-email" name="email" autoComplete="email" placeholder="you@example.com" value={contactForm.email} onChange={(e) => handleContactChange('email', e.target.value)} className={contactErrors.email ? 'error' : ''} readOnly={!!user} title={user ? 'From your account' : undefined} style={user ? { opacity: 0.75, cursor: 'not-allowed' } : undefined}/>
                       {contactErrors.email && <span className="error-message">{contactErrors.email}</span>}
                     </div>
                   </div>
@@ -2379,6 +2390,9 @@ const handleForgotResetPassword = async () => {
                     <label>Message</label>
                     <textarea id="contact-message" name="message" placeholder="Tell us about your order, design, ideas, or any questions you have..." value={contactForm.message} onChange={(e) => handleContactChange('message', e.target.value)} className={`contact-textarea ${contactErrors.message ? 'error' : ''}`} rows={5} maxLength={5000}/>
                     {contactErrors.message && <span className="error-message">{contactErrors.message}</span>}
+                  </div>
+                  <div style={{ margin: '0.25rem 0 0.75rem' }}>
+                    <Turnstile ref={contactTurnstileRef} onVerify={setContactTurnstileToken} theme={theme} />
                   </div>
                   <button type="submit" className="btn-primary contact-submit-btn">
                     Send Message
