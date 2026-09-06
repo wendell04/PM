@@ -20,14 +20,18 @@ export default function RootLayout({ children }) {
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
-        {/* No web fonts, by the shop owner's decision. Every font-family in the CSS still names
-            Montserrat or Outfit, and with nothing loading them each falls through to the platform's
-            own UI face - Segoe UI on Windows, which is the look the shop wants and had been getting
-            for months while a CSP rule blocked these files without anybody noticing.
+        {/* Arimo only, and only devices without Arial ever fetch it.
 
-            The cost, written down so it is not a surprise later: a platform face is Roboto on
-            Android and SF Pro on iOS, so the site will not look the same on every device. Restoring
-            the three lines that were here is all it takes to reverse this. */}
+            Measured rather than assumed: probing the live page returned Arial at a width difference
+            of 0.0 and Segoe UI at 42.7, so Windows has been rendering Arial. Android has no Arial
+            and substitutes Roboto, which is why the phone looked wrong.
+
+            Arimo is metrically identical to Arial - same widths, same line breaks. With Arial first
+            in every stack, Windows and iOS match locally and this file is never downloaded there. */}
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link href="https://fonts.googleapis.com/css2?family=Arimo:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
       <body suppressHydrationWarning={true}>

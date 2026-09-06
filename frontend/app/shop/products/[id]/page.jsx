@@ -970,7 +970,7 @@ export default function ProductDetailPage() {
 
             {/* Product name */}
             <h1 style={{
-              fontFamily: "'Outfit', sans-serif",
+              fontFamily: "Arial, Arimo, Helvetica, sans-serif",
               fontSize: '1.75rem', fontWeight: 800,
               color: 'var(--white)', margin: 0,
               lineHeight: 1.2 }}>
@@ -1486,7 +1486,7 @@ export default function ProductDetailPage() {
                         border: 'none', borderRadius: '10px', padding: '0.875rem 1.5rem',
                         fontWeight: 800, fontSize: '1rem',
                         cursor: (isOutOfStock || optionsPending) ? 'not-allowed' : 'pointer',
-                        width: '100%', fontFamily: "'Outfit', sans-serif",
+                        width: '100%', fontFamily: "Arial, Arimo, Helvetica, sans-serif",
                         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
                       }}>
                       {requestingQuote
@@ -1518,7 +1518,7 @@ export default function ProductDetailPage() {
                         borderRadius: '10px', padding: '0.875rem 1.5rem',
                         fontWeight: 800, fontSize: '1rem',
                         cursor: (isOutOfStock || optionsPending) ? 'not-allowed' : 'pointer',
-                        width: '100%', fontFamily: "'Outfit', sans-serif",
+                        width: '100%', fontFamily: "Arial, Arimo, Helvetica, sans-serif",
                         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
                         transition: 'opacity 0.15s',
                       }}>
@@ -1535,7 +1535,7 @@ export default function ProductDetailPage() {
                         border: 'none', borderRadius: '10px', padding: '0.875rem 1.5rem',
                         fontWeight: 800, fontSize: '1rem',
                         cursor: (isOutOfStock || optionsPending) ? 'not-allowed' : 'pointer',
-                        width: '100%', fontFamily: "'Outfit', sans-serif",
+                        width: '100%', fontFamily: "Arial, Arimo, Helvetica, sans-serif",
                         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
                         opacity: 0.85,
                       }}>
@@ -1553,7 +1553,7 @@ export default function ProductDetailPage() {
                     background: 'var(--gold)', color: '#000',
                     border: 'none', borderRadius: '10px', padding: '0.875rem 1.5rem',
                     fontWeight: 800, fontSize: '1rem', cursor: 'pointer',
-                    width: '100%', fontFamily: "'Outfit', sans-serif",
+                    width: '100%', fontFamily: "Arial, Arimo, Helvetica, sans-serif",
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                   }}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '6px', flexShrink: 0 }}>
@@ -1795,11 +1795,11 @@ export default function ProductDetailPage() {
                   <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--gray)', marginBottom: '0.375rem', fontWeight: 600 }}>Notes <span style={{ fontWeight: 400 }}>(optional)</span></label>
                   <textarea value={reqDesignNotes} onChange={e => setReqDesignNotes(e.target.value)} rows={3} maxLength={500}
                     placeholder="Colors, placement, size notes..."
-                    style={{ width: '100%', padding: '0.625rem 0.75rem', background: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--white)', fontSize: '0.85rem', resize: 'vertical', fontFamily: "'Outfit', sans-serif", boxSizing: 'border-box' }} />
+                    style={{ width: '100%', padding: '0.625rem 0.75rem', background: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--white)', fontSize: '0.85rem', resize: 'vertical', fontFamily: "Arial, Arimo, Helvetica, sans-serif", boxSizing: 'border-box' }} />
                 </div>
                 {reqError && <div style={{ color: '#ef4444', fontSize: '0.82rem', marginBottom: '0.75rem' }}>{reqError}</div>}
                 <button onClick={() => handleDesignSubmit('upload')} disabled={reqSubmitting || !reqDesignFile}
-                  style={{ width: '100%', background: reqSubmitting || !reqDesignFile ? 'rgba(255,255,255,0.08)' : 'var(--gold)', color: reqSubmitting || !reqDesignFile ? 'var(--gray)' : '#000', border: 'none', borderRadius: '10px', padding: '0.875rem', fontWeight: 800, fontSize: '0.95rem', cursor: reqSubmitting || !reqDesignFile ? 'not-allowed' : 'pointer', fontFamily: "'Outfit', sans-serif" }}>
+                  style={{ width: '100%', background: reqSubmitting || !reqDesignFile ? 'rgba(255,255,255,0.08)' : 'var(--gold)', color: reqSubmitting || !reqDesignFile ? 'var(--gray)' : '#000', border: 'none', borderRadius: '10px', padding: '0.875rem', fontWeight: 800, fontSize: '0.95rem', cursor: reqSubmitting || !reqDesignFile ? 'not-allowed' : 'pointer', fontFamily: "Arial, Arimo, Helvetica, sans-serif" }}>
                   {reqSubmitting ? 'Uploading…' : 'Submit Design'}
                 </button>
               </div>
