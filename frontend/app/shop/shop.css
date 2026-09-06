@@ -2891,7 +2891,7 @@
   }
 
   .checkout-summary-card {
-    background: rgba(255, 255, 255, 0.02);
+    background: linear-gradient(rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0.02)), var(--dark);
   }
 
   .checkout-summary-row {
@@ -3428,6 +3428,27 @@ html.light .checkout-item-thumb-placeholder,
 html.light .checkout-notes-input {
   border-color: var(--border);
 }
+/* These five paint a white film to lift themselves off a dark surface. On a light one
+   a white film is invisible, so each gets the same lift in the other direction. */
+html.light .checkout-summary-card {
+  background: linear-gradient(rgba(0,0,0,0.025), rgba(0,0,0,0.025)), var(--dark);
+}
+html.light .checkout-divider {
+  background: rgba(0,0,0,0.10);
+}
+html.light .checkout-loading-line {
+  background: rgba(0,0,0,0.08);
+}
+html.light .cart-items-header {
+  background: rgba(0,0,0,0.03);
+}
+html.light .cart-continue-shopping {
+  background: rgba(0,0,0,0.03);
+}
+html.light .cart-item-card:hover {
+  background: rgba(0,0,0,0.02);
+}
+
 html.light .checkout-addr-card:hover {
   border-color: rgba(0,0,0,0.2);
 }
