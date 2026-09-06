@@ -919,7 +919,7 @@ function CustomOrderInner() {
     const bar = (extra) => ({ background: 'var(--dark2)', borderRadius: 8, animation: 'pmPulse 1.4s ease-in-out infinite', ...extra });
     const card = { background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: 14, padding: 20, display: 'flex', flexDirection: 'column', gap: 12 };
     return (
-      <div style={{ minHeight: '100vh', background: 'var(--black)', color: 'var(--white)', padding: '2rem 1rem 4rem', fontFamily: "'Outfit', sans-serif" }}>
+      <div style={{ minHeight: '100vh', background: 'var(--black)', color: 'var(--white)', padding: '2rem 1rem 4rem', fontFamily: "'Inter', sans-serif" }}>
         <style>{`@keyframes pmPulse { 0%,100%{opacity:1} 50%{opacity:.5} }`}</style>
         <div style={{ maxWidth: 1000, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div style={bar({ width: 120, height: 14 })} />
@@ -970,7 +970,7 @@ function CustomOrderInner() {
   );
   
   if (requestSubmitted) return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--black)', padding: '20px', fontFamily: "'Outfit', sans-serif" }}>
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--black)', padding: '20px', fontFamily: "'Inter', sans-serif" }}>
       <div style={{ background: 'var(--dark2)', border: '1px solid rgba(212,168,67,0.25)', borderRadius: '18px', padding: '40px 32px', maxWidth: '420px', width: '100%', textAlign: 'center' }}>
         <div style={{ width: 68, height: 68, borderRadius: '50%', background: 'rgba(212,168,67,0.1)', border: '2px solid var(--gold)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px' }}>
           <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
@@ -988,14 +988,14 @@ function CustomOrderInner() {
   );
 
   if (loadError || !product) return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '1rem', background: 'var(--black)', color: 'var(--white)', fontFamily: "'Outfit', sans-serif" }}>
+    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '1rem', background: 'var(--black)', color: 'var(--white)', fontFamily: "'Inter', sans-serif" }}>
       <p style={{ color: 'var(--gray)' }}>{loadError ?? 'Product not found.'}</p>
       <Link href="/shop" style={{ color: 'var(--gold)', fontSize: '0.9rem' }}>← Back to Shop</Link>
     </div>
   );
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--black)', color: 'var(--white)', padding: '2rem 1rem 4rem', fontFamily: "'Outfit', sans-serif" }}>
+    <div style={{ minHeight: '100vh', background: 'var(--black)', color: 'var(--white)', padding: '2rem 1rem 4rem', fontFamily: "'Inter', sans-serif" }}>
       {showTerms && (
         <div onClick={() => setShowTerms(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 9998, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
           <div onClick={e => e.stopPropagation()} style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '16px', maxWidth: '560px', width: '100%', maxHeight: '85vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -1035,8 +1035,8 @@ function CustomOrderInner() {
               You are switching to <strong style={{ color: 'var(--white)' }}>{pendingMode === 'upload' ? 'Upload a design' : 'Request a design'}</strong>. You&apos;ll need to review and accept the Custom Order Terms again.
             </p>
             <div style={{ display: 'flex', gap: '10px' }}>
-              <button onClick={() => setPendingMode(null)} style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--gray)', fontSize: '0.85rem', cursor: 'pointer', fontFamily: "'Outfit', sans-serif" }}>Cancel</button>
-              <button onClick={() => { const m = pendingMode; setPendingMode(null); applyMode(m); }} style={{ flex: 1, padding: '10px', borderRadius: '8px', border: 'none', background: 'var(--gold)', color: '#000', fontSize: '0.85rem', fontWeight: 700, cursor: 'pointer', fontFamily: "'Outfit', sans-serif" }}>Switch</button>
+              <button onClick={() => setPendingMode(null)} style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--gray)', fontSize: '0.85rem', cursor: 'pointer', fontFamily: "'Inter', sans-serif" }}>Cancel</button>
+              <button onClick={() => { const m = pendingMode; setPendingMode(null); applyMode(m); }} style={{ flex: 1, padding: '10px', borderRadius: '8px', border: 'none', background: 'var(--gold)', color: '#000', fontSize: '0.85rem', fontWeight: 700, cursor: 'pointer', fontFamily: "'Inter', sans-serif" }}>Switch</button>
             </div>
           </div>
         </div>
@@ -1146,7 +1146,7 @@ function CustomOrderInner() {
                       const n = isNaN(v) || v < moq ? moq : Math.min(v, qtyCeiling);
                       setQuantity(n); setQuantityInput(String(n));
                     }}
-                    style={{ width: 64, textAlign: 'center', padding: '0.4rem', borderRadius: '8px', border: '1px solid var(--border)', background: 'rgba(255,255,255,0.05)', color: 'var(--white)', fontSize: '0.95rem', fontFamily: "'Outfit', sans-serif" }} />
+                    style={{ width: 64, textAlign: 'center', padding: '0.4rem', borderRadius: '8px', border: '1px solid var(--border)', background: 'rgba(255,255,255,0.05)', color: 'var(--white)', fontSize: '0.95rem', fontFamily: "'Inter', sans-serif" }} />
                   <button
                     onClick={() => { const n = Math.min(qtyCeiling, quantity + 1); setQuantity(n); setQuantityInput(String(n)); }}
                     style={{ width: 36, height: 36, borderRadius: '8px', border: '1px solid var(--border)', background: 'rgba(255,255,255,0.05)', color: 'var(--white)', fontSize: '1.1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>+</button>
@@ -1356,7 +1356,7 @@ function CustomOrderInner() {
                     <textarea value={designNotes} maxLength={2000} onChange={e => setDesignNotes(e.target.value)}
                       placeholder="E.g. Portrait, centered on the front, keep a 1cm margin, match the red exactly."
                       rows={3}
-                      style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--border)', background: 'rgba(255,255,255,0.05)', color: 'var(--white)', fontSize: '0.85rem', fontFamily: "'Outfit', sans-serif", resize: 'vertical', boxSizing: 'border-box', outline: 'none' }} />
+                      style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--border)', background: 'rgba(255,255,255,0.05)', color: 'var(--white)', fontSize: '0.85rem', fontFamily: "'Inter', sans-serif", resize: 'vertical', boxSizing: 'border-box', outline: 'none' }} />
                   )}
                 </div>
               )}
@@ -1373,7 +1373,7 @@ function CustomOrderInner() {
                   <textarea value={designNotes} maxLength={2000} onChange={e => setDesignNotes(e.target.value)}
                     placeholder="E.g. Company logo in blue and white, add 'ABC Corp' in bold. Minimalist style."
                     rows={4}
-                    style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--border)', background: 'rgba(255,255,255,0.05)', color: 'var(--white)', fontSize: '0.85rem', fontFamily: "'Outfit', sans-serif", resize: 'vertical', boxSizing: 'border-box', outline: 'none' }} />
+                    style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--border)', background: 'rgba(255,255,255,0.05)', color: 'var(--white)', fontSize: '0.85rem', fontFamily: "'Inter', sans-serif", resize: 'vertical', boxSizing: 'border-box', outline: 'none' }} />
 
                   <div style={{ marginTop: '0.85rem' }}>
                     <p style={{ fontSize: '0.8rem', color: 'var(--gray)', marginBottom: '0.5rem' }}>
@@ -1755,7 +1755,7 @@ function CustomOrderInner() {
                 <button onClick={handleAddToCart} disabled={placing || addingToCart || !agreedTerms}
                   style={{ width: '100%', padding: '0.9rem', background: addingToCart ? 'rgba(212,168,67,0.55)' : 'var(--gold)',
                     color: '#000', border: 'none', borderRadius: '10px', fontWeight: 800, fontSize: '0.95rem',
-                    cursor: (addingToCart ? 'wait' : (!agreedTerms ? 'not-allowed' : 'pointer')), fontFamily: "'Outfit', sans-serif", opacity: !agreedTerms ? 0.5 : 1 }}>
+                    cursor: (addingToCart ? 'wait' : (!agreedTerms ? 'not-allowed' : 'pointer')), fontFamily: "'Inter', sans-serif", opacity: !agreedTerms ? 0.5 : 1 }}>
                   {addingToCart ? 'Adding...' : 'Add to cart'}
                 </button>
               )}
@@ -1766,7 +1766,7 @@ function CustomOrderInner() {
                 <button onClick={handleBuyNow} disabled={placing || addingToCart || !agreedTerms}
                   style={{ width: '100%', padding: '0.85rem', marginTop: '0.6rem', background: 'transparent',
                     color: 'var(--gold)', border: '1.5px solid var(--gold)', borderRadius: '10px', fontWeight: 800,
-                    fontSize: '0.9rem', cursor: !agreedTerms ? 'not-allowed' : 'pointer', fontFamily: "'Outfit', sans-serif", opacity: !agreedTerms ? 0.5 : 1 }}>
+                    fontSize: '0.9rem', cursor: !agreedTerms ? 'not-allowed' : 'pointer', fontFamily: "'Inter', sans-serif", opacity: !agreedTerms ? 0.5 : 1 }}>
                   Buy it now
                 </button>
               )}
@@ -1811,7 +1811,7 @@ function CustomOrderInner() {
                     color: isInquiry ? '#000' : 'var(--gray)',
                     border: isInquiry ? 'none' : '1px solid var(--border)',
                     borderRadius: '10px', fontWeight: isInquiry ? 800 : 600, fontSize: isInquiry ? '0.95rem' : '0.82rem',
-                    cursor: placing ? 'wait' : (!agreedTerms ? 'not-allowed' : 'pointer'), fontFamily: "'Outfit', sans-serif",
+                    cursor: placing ? 'wait' : (!agreedTerms ? 'not-allowed' : 'pointer'), fontFamily: "'Inter', sans-serif",
                     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', opacity: !agreedTerms ? 0.5 : 1 }}>
                   {placing ? (
                     <>
