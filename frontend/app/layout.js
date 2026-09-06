@@ -20,11 +20,14 @@ export default function RootLayout({ children }) {
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
-        {/* Bundle the brand fonts so every device renders the same (DM Sans = UI, Outfit = logo).
-            Without this, devices without these fonts fell back to their system sans-serif. */}
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Montserrat:ital,wght@0,400;0,500;0,600;0,700;0,800;0,900;1,400;1,500;1,600;1,700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+        {/* No web fonts, by the shop owner's decision. Every font-family in the CSS still names
+            Montserrat or Outfit, and with nothing loading them each falls through to the platform's
+            own UI face - Segoe UI on Windows, which is the look the shop wants and had been getting
+            for months while a CSP rule blocked these files without anybody noticing.
+
+            The cost, written down so it is not a surprise later: a platform face is Roboto on
+            Android and SF Pro on iOS, so the site will not look the same on every device. Restoring
+            the three lines that were here is all it takes to reverse this. */}
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
       <body suppressHydrationWarning={true}>
