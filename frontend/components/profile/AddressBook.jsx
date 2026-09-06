@@ -6,6 +6,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import { fetchRegions, fetchProvinces, fetchCities, fetchBarangays, isNCR } from '@/lib/psgc';
 import { CustomSelect } from '@/app/dashboard/business/inventory-v2/shared';
+import PhoneInput, { isValidPhone } from '@/components/auth/PhoneInput';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
@@ -540,11 +541,7 @@ export default function AddressBook({ onSaved, initialEditAddress }) {
       errors.zip = 'ZIP Code must be a 4-digit number';
     // Validate the normalized form, so 09171234567 and +639171234567 are the same number - which
     // they are. The canonical value is written back below so what gets saved is always +63.
-    const phoneNorm = normalizePhMobile(formData.phone);
-    if (!phoneNorm) errors.phone = 'Enter a mobile number, e.g. 09171234567 or +639171234567';
-    else if (phoneNorm !== formData.phone.trim()) {
-      setFormData(prev => ({ ...prev, phone: phoneNorm }));
-    }
+    if (!isValidPhone(formData.phone)) errors.phone = 'Enter a complete mobile number for the country shown.';
     if (!formData.lat || !formData.lng)
       errors.pin = 'Please pin your location on the map before saving.';
     setFormErrors(errors);
@@ -602,7 +599,7 @@ export default function AddressBook({ onSaved, initialEditAddress }) {
       barangay:      address.barangay      || '',
       barangay_code: address.barangay_code || '',
       zip:           address.zip           || '',
-      phone:         address.phone         || '',
+      phone:         normalizePhMobile(address.phone) || address.phone || '',
       is_default:    address.is_default    || false,
       lat:           address.lat           ?? null,
       lng:           address.lng           ?? null,
@@ -857,19 +854,16 @@ export default function AddressBook({ onSaved, initialEditAddress }) {
             </div>
             <div>
               <label style={labelStyle}>Phone <span style={{ color: 'var(--red)' }}>*</span></label>
-              <input type="tel" inputMode="tel" maxLength={13} value={formData.phone}
-                onChange={e => handleInputChange('phone', e.target.value)}
-                // Judged the moment they leave the field. Normalized when it is a real number, and
-                // told plainly when it is not - waiting until submit means the error appears at the
-                // bottom of the form, far from the thing that caused it.
-                onBlur={e => {
-                  const v = normalizePhMobile(e.target.value);
-                  if (v) { handleInputChange('phone', v); setFormErrors(p => ({ ...p, phone: undefined })); }
-                  else if (e.target.value.trim()) {
-                    setFormErrors(p => ({ ...p, phone: 'Enter a mobile number, e.g. 09171234567' }));
-                  }
-                }}
-                placeholder="09171234567" style={formErrors.phone ? inputErrorStyle : inputStyle} />
+              {/* Same field as sign-in: the country picker holds the code, so the box takes the
+                  number the way it is written on a phone - 917 123 4567 - and the country's own
+                  length rule stops the typing. A free-text box that accepted +63, 0917 and 63917
+                  alike had to guess afterwards which one was meant. */}
+              <PhoneInput
+                value={formData.phone}
+                onChange={v => { handleInputChange('phone', v); if (formErrors.phone) setFormErrors(p => ({ ...p, phone: undefined })); }}
+                error={!!formErrors.phone}
+                inputStyle={inputStyle}
+              />
               {fieldError(formErrors.phone)}
             </div>
           </div>
@@ -962,11 +956,11 @@ export default function AddressBook({ onSaved, initialEditAddress }) {
 
           {/* Delivery notes / landmark for the rider */}
           <div>
-            <label style={labelStyle}>Delivery Notes <span style={{ color: 'var(--gray)', fontSize: '0.7rem' }}>(optional — landmark or instructions for the rider)</span></label>
+            <label style={labelStyle}>Landmark / Delivery Notes <span style={{ color: 'var(--gray)', fontSize: '0.7rem' }}>(optional - the nearest landmark, or instructions for the rider)</span></label>
             <textarea
               value={formData.delivery_notes}
               onChange={e => handleInputChange('delivery_notes', e.target.value.slice(0, 300))}
-              placeholder="e.g. Green gate beside the sari-sari store. Ring the bell / call on arrival."
+              placeholder="e.g. Across SM Fairview. Green gate beside the sari-sari store, ring the bell on arrival."
               rows={2}
               style={{ ...inputStyle, resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.5 }}
             />

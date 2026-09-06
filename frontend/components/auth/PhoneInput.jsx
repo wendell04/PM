@@ -36,7 +36,7 @@ const COUNTRIES = getCountries()
  * libphonenumber-js enforces that country's own length/format, so nothing is hard-coded.
  * Emits the E.164 string (e.g. +639272518750) via onChange.
  */
-export default function PhoneInput({ value = '', onChange, error, defaultCountry = 'PH' }) {
+export default function PhoneInput({ value = '', onChange, error, defaultCountry = 'PH', inputStyle = null }) {
   const [country, setCountry] = useState(defaultCountry);
   const [open, setOpen]       = useState(false);
   const [search, setSearch]   = useState('');
@@ -102,7 +102,11 @@ export default function PhoneInput({ value = '', onChange, error, defaultCountry
 
   return (
     <div ref={boxRef} style={{ position: 'relative' }}>
-      <div style={{ display: 'flex', borderRadius: '10px', overflow: 'hidden', border: '1px solid var(--border)' }}>
+      <div style={{ display: 'flex', borderRadius: '10px', overflow: 'hidden',
+        // The inner box is transparent, so without this the field would show the page
+        // behind it while every other input on the form sits on its own surface.
+        background: inputStyle?.background,
+        border: error ? '1px solid var(--red)' : '1px solid var(--border)' }}>
         <button
           type="button"
           onClick={() => setOpen(o => !o)}
@@ -123,7 +127,7 @@ export default function PhoneInput({ value = '', onChange, error, defaultCountry
           value={national}
           onChange={e => handleNumber(e.target.value)}
           className={error ? 'error' : ''}
-          style={{ border: 'none', borderRadius: 0, flex: 1, background: 'transparent' }}
+          style={{ ...(inputStyle || {}), border: 'none', borderRadius: 0, flex: 1, background: 'transparent', width: 'auto' }}
         />
       </div>
 
