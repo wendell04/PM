@@ -124,7 +124,7 @@ input[type="number"] {
 }
 
 .sidebar-logo-text {
-  font-family: 'Segoe UI', Selawik, -apple-system, BlinkMacSystemFont, Roboto, Arial, sans-serif;
+  font-family: 'Outfit', sans-serif;
   font-size: 0.68rem;
   font-weight: 800;
   letter-spacing: 1.2px;
@@ -211,7 +211,7 @@ input[type="number"] {
 }
 
 .sidebar-divider-label {
-  font-family: 'Segoe UI', Selawik, -apple-system, BlinkMacSystemFont, Roboto, Arial, sans-serif;
+  font-family: 'Outfit', sans-serif;
   font-size: 0.58rem;
   font-weight: 700;
   text-transform: uppercase;
