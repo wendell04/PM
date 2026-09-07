@@ -123,6 +123,13 @@ export default function ProductsV2() {
         allowCOD:             formData.allowCOD,
         hideWhenOutOfStock:   formData.hideWhenOutOfStock,
         isFeatured:           formData.isFeatured,
+        // Both were caught by the warning above: the form sent them, this list did not carry
+        // them, and the save reported success while the value never left the browser. Neither
+        // field exists on any product document as a result - not set to false or null, absent.
+        // Pre-order therefore never took effect, and "Ask for a quote above" could not be set
+        // at all.
+        allowPreorder:        formData.allowPreorder,
+        quoteAboveQty:        formData.quoteAboveQty ?? null,
       };
 
       payload.images    = httpImages;
