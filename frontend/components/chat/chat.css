@@ -1681,3 +1681,51 @@ html.light .cw-new-conv-btn:hover {
 }
 
 .welcome-feature svg { color: rgba(212,168,67,0.45); }
+
+/* Two inboxes, one control. Two filled full-width buttons read as primary actions and competed
+   with the conversation list for weight; a segmented control says "pick a view" instead, and is
+   inset to the same 12px as the search field below it so the header reads as one block. */
+.chat-box-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3px;
+  margin: 2px 12px 10px;
+  padding: 3px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.chat-box-tab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 7px 10px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--gray);
+  font-size: 0.79rem;
+  font-weight: 600;
+  letter-spacing: .01em;
+  cursor: pointer;
+  transition: background .15s ease, color .15s ease;
+}
+.chat-box-tab:hover { color: var(--white); }
+.chat-box-tab.active {
+  background: var(--gold);
+  color: #111;
+  font-weight: 700;
+}
+.chat-box-count {
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  font-size: 0.66rem;
+  font-weight: 800;
+  line-height: 18px;
+  background: var(--red);
+  color: #fff;
+}
+.chat-box-tab.active .chat-box-count { background: rgba(0, 0, 0, 0.22); color: #111; }
+html.light .chat-box-switch { background: rgba(0, 0, 0, 0.04); }

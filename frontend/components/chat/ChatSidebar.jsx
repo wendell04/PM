@@ -59,23 +59,13 @@ const ChatSidebar = ({ conversations, activeConversation, onSelectConversation, 
             <span className="chat-total-badge">{totalUnread > 99 ? '99+' : totalUnread}</span>
           )}
         </div>
-        <div style={{ display: 'flex', gap: '6px', margin: '0 0 8px' }}>
+        <div className="chat-box-switch">
           {[['customers', 'Customers', totalUnread], ['guests', 'Guests', guestUnread]].map(([id, label, unread]) => (
             <button key={id} type="button" onClick={() => setBox(id)}
-              style={{ flex: 1, padding: '6px 8px', borderRadius: '7px', cursor: 'pointer',
-                fontSize: '0.78rem', fontWeight: box === id ? 700 : 600,
-                background: box === id ? 'var(--gold)' : 'transparent',
-                color: box === id ? '#111' : 'var(--gray)',
-                border: `1px solid ${box === id ? 'var(--gold)' : 'var(--border)'}`,
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px' }}>
+              className={`chat-box-tab${box === id ? ' active' : ''}`}
+              aria-pressed={box === id}>
               {label}
-              {unread > 0 && (
-                <span style={{ background: box === id ? 'rgba(0,0,0,0.18)' : 'var(--red)',
-                  color: box === id ? '#111' : '#fff', borderRadius: '999px',
-                  padding: '0 5px', fontSize: '0.68rem', fontWeight: 800 }}>
-                  {unread > 99 ? '99+' : unread}
-                </span>
-              )}
+              {unread > 0 && <span className="chat-box-count">{unread > 99 ? '99+' : unread}</span>}
             </button>
           ))}
         </div>

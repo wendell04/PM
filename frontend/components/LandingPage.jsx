@@ -442,6 +442,10 @@ const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=
     }));
   }, [user]);
 
+  // Without this the button stayed live through the whole request, so a second click sent a
+  // second copy - and the form is rate-limited, so the duplicate could also spend the
+  // sender's remaining allowance on a message the shop already had.
+  const [contactSending, setContactSending] = useState(false);
   const [contactTurnstileToken, setContactTurnstileToken] = useState('');
   const contactTurnstileRef = useRef(null);
 
@@ -452,18 +456,20 @@ const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=
 
   const handleContactSubmit = async (e) => {
     e.preventDefault();
+    if (contactSending) return;
     const newErrors = {};
     if (!contactForm.name.trim()) newErrors.name = 'Name is required';
     else if (contactForm.name.trim().length > 120) newErrors.name = 'Name must be 120 characters or fewer';
     if (!contactForm.email.trim()) newErrors.email = 'Email is required';
     else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactForm.email)) newErrors.email = 'Please enter a valid email address';
     if (!contactForm.subject.trim()) newErrors.subject = 'Subject is required';
-    else if (contactForm.subject.trim().length > 200) newErrors.subject = 'Subject must be 200 characters or fewer';
+    else if (contactForm.subject.trim().length > 100) newErrors.subject = 'Subject must be 100 characters or fewer';
     if (!contactForm.message.trim()) newErrors.message = 'Message is required';
-    else if (contactForm.message.trim().length > 5000) newErrors.message = 'Message must be 5000 characters or fewer';
+    else if (contactForm.message.trim().length > 1500) newErrors.message = 'Message must be 1500 characters or fewer';
     setContactErrors(newErrors);
 
     if (Object.keys(newErrors).length === 0) {
+      setContactSending(true);
       try {
         const res = await fetchWithTimeout(`${API_URL}/api/contact`, {
           method: 'POST',
@@ -489,6 +495,8 @@ const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=
         }
       } catch {
         setContactErrors({ submit: 'Network error. Please try again later.' });
+      } finally {
+        setContactSending(false);
       }
     }
   };
@@ -2383,22 +2391,26 @@ const handleForgotResetPassword = async () => {
                   </div>
                   <div className="auth-field">
                     <label>Subject</label>
-                    <input type="text" id="contact-subject" name="subject" placeholder="Bulk order inquiry, custom design, etc." value={contactForm.subject} onChange={(e) => handleContactChange('subject', e.target.value)} className={contactErrors.subject ? 'error' : ''} maxLength={200}/>
-                    <span style={{ display: 'block', fontSize: '0.7rem', color: 'var(--gray)', textAlign: 'right', marginTop: '0.2rem' }}>{(contactForm.subject || '').length}/200</span>
+                    <input type="text" id="contact-subject" name="subject" placeholder="Bulk order inquiry, custom design, etc." value={contactForm.subject} onChange={(e) => handleContactChange('subject', e.target.value)} className={contactErrors.subject ? 'error' : ''} maxLength={100}/>
+                    <span style={{ display: 'block', fontSize: '0.7rem', color: 'var(--gray)', textAlign: 'right', marginTop: '0.2rem' }}>{(contactForm.subject || '').length}/100</span>
                     {contactErrors.subject && <span className="error-message">{contactErrors.subject}</span>}
                   </div>
                   <div className="auth-field">
                     <label>Message</label>
-                    <textarea id="contact-message" name="message" placeholder="Tell us about your order, design, ideas, or any questions you have..." value={contactForm.message} onChange={(e) => handleContactChange('message', e.target.value)} className={`contact-textarea ${contactErrors.message ? 'error' : ''}`} rows={5} maxLength={5000}/>
-                    <span style={{ display: 'block', fontSize: '0.7rem', color: 'var(--gray)', textAlign: 'right', marginTop: '0.2rem' }}>{(contactForm.message || '').length}/5000</span>
+                    <textarea id="contact-message" name="message" placeholder="Tell us about your order, design, ideas, or any questions you have..." value={contactForm.message} onChange={(e) => handleContactChange('message', e.target.value)} className={`contact-textarea ${contactErrors.message ? 'error' : ''}`} rows={5} maxLength={1500}/>
+                    <span style={{ display: 'block', fontSize: '0.7rem', color: 'var(--gray)', textAlign: 'right', marginTop: '0.2rem' }}>{(contactForm.message || '').length}/1500</span>
                     {contactErrors.message && <span className="error-message">{contactErrors.message}</span>}
                   </div>
                   <div style={{ margin: '0.25rem 0 0.75rem' }}>
                     <Turnstile ref={contactTurnstileRef} onVerify={setContactTurnstileToken} theme={theme} />
                   </div>
-                  <button type="submit" className="btn-primary contact-submit-btn">
-                    Send Message
-                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 8h12M10 4l4 4-4 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                  <button type="submit" className="btn-primary contact-submit-btn"
+                    disabled={contactSending}
+                    style={contactSending ? { opacity: 0.65, cursor: 'wait' } : undefined}>
+                    {contactSending ? 'Sending...' : 'Send Message'}
+                    {!contactSending && (
+                      <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 8h12M10 4l4 4-4 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                    )}
                   </button>
                 </form>
               )}

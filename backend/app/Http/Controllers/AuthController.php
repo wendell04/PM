@@ -726,8 +726,8 @@ class AuthController extends Controller
             $request->validate([
                 'name'    => 'required|string|min:2|max:120',
                 'email'   => 'required|email|max:255',
-                'subject' => 'required|string|max:200',
-                'message' => 'required|string|max:5000',
+                'subject' => 'required|string|max:100',
+                'message' => 'required|string|max:1500',
             ]);
 
             $adminEmail = config('mail.admin_recipient');
