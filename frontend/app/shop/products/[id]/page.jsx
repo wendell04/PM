@@ -797,15 +797,25 @@ export default function ProductDetailPage() {
                 {showTiers && (
                   <>
                     <p style={{ margin: '0.6rem 0 0.75rem', fontSize: '0.78rem', color: 'var(--gray)', lineHeight: 1.55 }}>
-                      Price per piece depends on how many you order. The more you buy, the lower the unit price. If your quantity exceeds the last tier, the last tier price still applies.
+                      Price per piece depends on how many you order. The more you buy, the lower the unit price.{' '}
+                      {quoteAbove != null
+                        ? `Past ${quoteAbove} pcs we price the run itself, so that band is quoted rather than listed.`
+                        : 'If your quantity exceeds the last tier, the last tier price still applies.'}
                     </p>
                     <div style={{ border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden' }}>
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', padding: '0.5rem 1rem', background: 'rgba(255,255,255,0.025)', fontSize: '0.65rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                         <span>Quantity</span>
                         <span style={{ textAlign: 'right' }}>Unit Price</span>
                       </div>
-                      {sortedTiers.map((tier, i) => {
-                        const isLastTier = i === sortedTiers.length - 1;
+                      {/* Tiers past the ceiling are not an offer any more, so they are not shown as
+                          one. A table that lists P50/pc at 501 and then offers to quote the same
+                          band underneath is telling the customer two different things. The tier
+                          that straddles the ceiling is displayed ending there. */}
+                      {(quoteAbove == null
+                        ? sortedTiers
+                        : sortedTiers.filter(t => (parseInt(t.minQty) || 0) <= quoteAbove)
+                       ).map((tier, i, shownTiers) => {
+                        const isLastTier = i === shownTiers.length - 1;
                         const isActive = (() => {
                           const min = parseInt(tier.minQty) || 0;
                           if (isLastTier) return quantity >= min;
@@ -816,7 +826,12 @@ export default function ProductDetailPage() {
                         return (
                           <div key={tier.id ?? i} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', alignItems: 'center', padding: '0.625rem 1rem', borderTop: '1px solid var(--border)', background: isActive ? 'rgba(212,168,67,0.07)' : '' }}>
                             <span style={{ fontSize: '0.825rem', color: isActive ? 'var(--gold)' : 'var(--white)', fontWeight: isActive ? 700 : 500, display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
-                              {`${tier.minQty}${tier.maxQty ? `-${tier.maxQty}` : '+'} pcs`}
+                              {(() => {
+                                const tierMax = tier.maxQty ? parseInt(tier.maxQty) : null;
+                                const capped = quoteAbove != null && (tierMax === null || tierMax > quoteAbove);
+                                if (capped) return `${tier.minQty}-${quoteAbove} pcs`;
+                                return `${tier.minQty}${tier.maxQty ? `-${tier.maxQty}` : '+'} pcs`;
+                              })()}
                               {isActive && <span style={{ fontSize: '0.58rem', background: 'rgba(212,168,67,0.18)', color: 'var(--gold)', padding: '1px 6px', borderRadius: '999px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{optionUnitAdd > 0 ? 'Your qty - base' : 'Your qty'}</span>}
                             </span>
                             <span style={{ fontSize: '0.875rem', fontWeight: 700, color: isActive ? 'var(--gold)' : 'var(--white)', textAlign: 'right' }}>
@@ -825,6 +840,24 @@ export default function ProductDetailPage() {
                           </div>
                         );
                       })}
+                      {quoteAbove != null && (
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', alignItems: 'center', padding: '0.625rem 1rem', borderTop: '1px solid var(--border)', background: needsQuote ? 'rgba(212,168,67,0.07)' : '' }}>
+                          <span style={{ fontSize: '0.825rem', color: needsQuote ? 'var(--gold)' : 'var(--white)', fontWeight: needsQuote ? 700 : 500, display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                            {`${quoteAbove + 1}+ pcs`}
+                            {needsQuote && <span style={{ fontSize: '0.58rem', background: 'rgba(212,168,67,0.18)', color: 'var(--gold)', padding: '1px 6px', borderRadius: '999px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Your qty</span>}
+                          </span>
+                          <span style={{ textAlign: 'right' }}>
+                            <button
+                              type="button"
+                              onClick={startInquiry}
+                              disabled={requestingQuote}
+                              style={{ background: 'none', border: 'none', padding: 0, cursor: requestingQuote ? 'wait' : 'pointer', font: 'inherit', fontSize: '0.825rem', fontWeight: 700, color: 'var(--gold)', textDecoration: 'underline' }}
+                            >
+                              {requestingQuote ? 'Opening chat...' : 'Ask for a quote'}
+                            </button>
+                          </span>
+                        </div>
+                      )}
                       {(() => {
                         const lastTier = sortedTiers[sortedTiers.length - 1];
                         const lastUnitP = lastTier ? getPriceFromTier(lastTier, resolveCombinationId(selectedVariants)) : null;
@@ -833,7 +866,7 @@ export default function ProductDetailPage() {
                         return (
                           <div style={{ padding: '0.5rem 1rem', borderTop: '1px solid var(--border)', fontSize: '0.7rem', color: 'var(--gray)', fontStyle: 'italic' }}>
                             {quoteAbove != null
-                              ? `Above ${quoteAbove} pcs the price depends on the run - message us for a quote.`
+                              ? `Above ${quoteAbove} pcs the materials, the machine time and often a subcontractor are all different, so we price the run itself rather than quote a number we would have to take back.`
                               : `Any qty above ${overflowThreshold} gets the same price of ${formatPeso(lastUnitP)} / pc.`}
                           </div>
                         );
