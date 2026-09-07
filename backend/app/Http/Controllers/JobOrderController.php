@@ -12,6 +12,7 @@ use App\Models\StockHistory;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use App\Support\PaymentMethod;
 
 class JobOrderController extends Controller
 {
@@ -416,7 +417,7 @@ class JobOrderController extends Controller
     /** Balance-due-before-delivery reminder once an order is fully produced (non-COD, unpaid balance). */
     private function notifyBalanceDue(Order $order): void
     {
-        $isCOD   = strtolower((string) ($order->paymentMethod ?? '')) === 'cod';
+        $isCOD   = PaymentMethod::isCod($order->paymentMethod);
         $balance = $order->balance !== null && $order->balance !== ''
             ? (float) $order->balance
             : max(0, (float) ($order->totalAmount ?? 0) - (float) ($order->downPayment ?? 0));

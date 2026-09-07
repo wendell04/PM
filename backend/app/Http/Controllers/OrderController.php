@@ -30,6 +30,7 @@ use App\Models\StockHistory;
 use App\Models\AuditLog;
 use App\Services\PriceResolver;
 use App\Support\OrderStatus;
+use App\Support\PaymentMethod;
 
 class OrderController extends Controller
 {
@@ -365,7 +366,7 @@ class OrderController extends Controller
             $paymentMethod = $validated['paymentMethod'] ?? 'cod';
 
             // ── COD guard — reject if any product disallows COD ──────────
-            if ($paymentMethod === 'cod') {
+            if (PaymentMethod::isCod($paymentMethod)) {
                 foreach ($validated['items'] as $item) {
                     $prod = Product::find($item['productId'] ?? null);
                     if ($prod && $prod->allowCOD === false) {
@@ -859,7 +860,7 @@ class OrderController extends Controller
             $order = Order::find($id);
             if (!$order) return $this->notFoundResponse('Order');
 
-            if (strtolower((string) ($order->paymentMethod ?? '')) === 'cod') {
+            if (PaymentMethod::isCod($order->paymentMethod)) {
                 return $this->errorResponse('This is a cash-on-delivery order - there is nothing to settle in advance.', 422);
             }
 
@@ -1295,7 +1296,7 @@ class OrderController extends Controller
                 }
 
                 if (in_array($targetNorm, [OrderStatus::FOR_DELIVERY, OrderStatus::DELIVERED], true)) {
-                    $isCOD = strtolower((string) ($order->paymentMethod ?? '')) === 'cod';
+                    $isCOD = PaymentMethod::isCod($order->paymentMethod);
                     if (!$isCOD && ($order->paymentStatus ?? '') !== 'paid') {
                         return response()->json(['message' => 'The remaining balance must be fully paid before this order can be released for delivery.'], 422);
                     }
@@ -1415,7 +1416,7 @@ class OrderController extends Controller
 
                 if ($newFee > 0 && abs($newFee - $prevFee) > 0.001) {
                     try {
-                        $isCOD    = strtolower((string) ($order->paymentMethod ?? '')) === 'cod';
+                        $isCOD    = PaymentMethod::isCod($order->paymentMethod);
                         $stillDue = max(0.0, round((float) ($order->totalAmount ?? $order->totalPrice ?? 0) - $this->paidSoFar($order), 2));
                         // What the customer actually hands over on arrival. For COD that is the
                         // goods plus the courier; for a prepaid order it is the courier alone.
@@ -1501,7 +1502,7 @@ class OrderController extends Controller
             // Balance-due-before-delivery reminder when an admin moves the order to Ready for Delivery.
             if (isset($validated['orderStatus']) && $oldStatus !== $order->orderStatus
                 && OrderStatus::normalize($order->orderStatus) === OrderStatus::READY_FOR_DELIVERY) {
-                $rfdCOD     = strtolower((string) ($order->paymentMethod ?? '')) === 'cod';
+                $rfdCOD     = PaymentMethod::isCod($order->paymentMethod);
                 $rfdBalance = $order->balance !== null && $order->balance !== ''
                     ? (float) $order->balance
                     : max(0, (float) ($order->totalAmount ?? 0) - (float) ($order->downPayment ?? 0));
@@ -2033,7 +2034,7 @@ class OrderController extends Controller
                 $paymentHistory = $order->paymentHistory ?? [];
                 $paymentStatus  = $order->paymentStatus ?? '';
 
-                $hasCodMethod    = $paymentMethod === 'cod';
+                $hasCodMethod    = PaymentMethod::isCod($paymentMethod);
                 $hasAnyPayment   = $downPayment > 0 || count($paymentHistory) > 0 || $paymentStatus === 'paid';
 
                 if (!$hasCodMethod && !$hasAnyPayment) {
@@ -2119,7 +2120,7 @@ class OrderController extends Controller
                 // the same transaction disagreeing, and the owner had to remember to reconcile it by
                 // hand every time. The courier fee is deliberately NOT included - that is the
                 // rider's money, never the shop's.
-                if (strtolower((string) ($order->paymentMethod ?? '')) === 'cod') {
+                if (PaymentMethod::isCod($order->paymentMethod)) {
                     $total = (float) ($order->totalAmount ?? $order->totalPrice ?? 0);
                     $due   = round($total - $this->paidSoFar($order), 2);
                     if ($due > 0.009) {
@@ -2742,7 +2743,7 @@ class OrderController extends Controller
             // - payment method is COD (courier collects after delivery), AND
             // - order is not already fully paid
             if ($order->orderStatus === 'Delivered') {
-                $isCod       = ($order->paymentMethod ?? '') === 'cod';
+                $isCod       = PaymentMethod::isCod($order->paymentMethod);
                 $isFullyPaid = ($order->paymentStatus ?? '') === 'paid';
                 if (!$isCod || $isFullyPaid) {
                     return response()->json([

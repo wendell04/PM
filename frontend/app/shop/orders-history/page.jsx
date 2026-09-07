@@ -17,6 +17,7 @@ import PaymentPicker from '@/components/shop/PaymentPicker';
 import ImageLightbox from '@/components/shop/ImageLightbox';
 import ProofGallery from '@/components/shop/ProofGallery';
 import { watermarkProofs } from '@/lib/proofWatermark';
+import { isCodMethod } from '@/lib/paymentMethod';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
@@ -185,7 +186,7 @@ function OrderTracker({ status, paymentMethod, paymentStatus, statusHistory = []
   const historyMap = {};
   (statusHistory || []).forEach(e => { if (e?.status && e?.at) historyMap[e.status] = e.at; });
 
-  const isCOD = (paymentMethod || '').toLowerCase() === 'cod';
+  const isCOD = isCodMethod(paymentMethod);
   const trackSteps = isCOD ? COD_TRACK_STEPS : ONLINE_TRACK_STEPS;
   const isTerminal = status === 'Cancelled' || status === 'Returned';
 

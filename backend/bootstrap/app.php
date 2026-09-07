@@ -7,6 +7,7 @@ use Illuminate\Http\Middleware\HandleCors;
 use Illuminate\Auth\AuthenticationException;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 use App\Http\Middleware\SecurityHeaders;
+use Illuminate\Http\Request;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -17,6 +18,24 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // Railway sits behind Cloudflare, and with no proxy trusted at all $request->ip()
+        // returned the edge's address for every visitor. That is worse than it sounds: the
+        // rate limiters key on it, so Limit::perMinute(40)->by($request->ip()) on login meant
+        // 40 attempts a minute for the WHOLE SITE, shared - one bot could exhaust the bucket
+        // and lock out every real customer. It also made login-anomaly detection blind, showed
+        // Cloudflare's IP as the device in "active sessions", and recorded the edge's address
+        // as acceptedTermsIp, weakening the very evidence the T&C clickwrap exists to produce.
+        //
+        // Trusting every proxy is right while the origin is only reachable through Cloudflare.
+        // If the Railway URL is ever exposed directly, a caller could forge X-Forwarded-For and
+        // hand us any IP it likes - close that by serving the custom domain only. Kept literal
+        // rather than read from env(): a cached config makes env() return null out here, which
+        // would silently put us back where we started.
+        $middleware->trustProxies(at: '*', headers: Request::HEADER_X_FORWARDED_FOR
+            | Request::HEADER_X_FORWARDED_HOST
+            | Request::HEADER_X_FORWARDED_PORT
+            | Request::HEADER_X_FORWARDED_PROTO);
+
         $middleware->prepend(SecurityHeaders::class);
         $middleware->prepend(HandleCors::class);
         $middleware->alias([

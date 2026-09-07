@@ -19,6 +19,7 @@ import ImageLightbox from '@/components/shop/ImageLightbox';
 import ProofGallery from '@/components/shop/ProofGallery';
 import useLockBodyScroll from '@/lib/useLockBodyScroll';
 import { normalizeStatus, statusLabel, ORDER_STATUS_ORDER } from '@/lib/orderStatus';
+import { isCodMethod } from '@/lib/paymentMethod';
 
 const API_URL    = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 const POLL_MS    = 30000;
@@ -73,7 +74,7 @@ function StatusBadge({ status }) {
 
 function PayBadge({ status, method }) {
   const c = PAY_CFG[status] ?? PAY_CFG.unpaid;
-  const isCOD = String(method ?? '').toLowerCase() === 'cod';
+  const isCOD = isCodMethod(method);
   return (
     <span style={{ display:'inline-flex', flexDirection:'column', alignItems:'flex-end', gap:'2px' }}>
       <span style={{ ...S.badge, background:c.bg, color:c.color, border:`1px solid ${c.border}`, fontSize:'10px' }}>
@@ -720,7 +721,7 @@ function getAvailableStatuses(o) {
   };
 
   const s = o.orderStatus;
-  const isCOD = (o.paymentMethod || '').toLowerCase() === 'cod';
+  const isCOD = isCodMethod(o.paymentMethod);
   if (o.isCustom) {
     // Once any payment (downpayment or COD) has landed, "Awaiting Payment" is no longer a valid
     // next step - the customer already paid to unlock production. Only offer it when still unpaid.
@@ -2583,7 +2584,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                and a money change should never be a side effect nobody was told about. Named here,
                with the figure, before it happens. */
             + (String(selStatus) === 'Delivered'
-                && String(lo.paymentMethod ?? '').toLowerCase() === 'cod'
+                && isCodMethod(lo.paymentMethod)
                 && remainingDue(lo) > 0
                   ? ` This is a Cash on Delivery order, so it will also be marked PAID and ₱${fmt(remainingDue(lo))} recorded as collected by the rider.`
                   : '')}

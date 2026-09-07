@@ -21,6 +21,7 @@ import { orderNo } from '@/lib/orderNumber';
 import { joRisk, RISK_STYLE } from '@/lib/deliveryRisk';
 import { JO_BADGE, JO_STATUSES, JobOrderStatusBadge as StatusBadge, RushBadge, DesignPreview, designUrl, joDocId, fmtJODate, TableSkeleton } from '@/components/dashboard/JobOrderBits';
 import { S, ICONS, SearchBar, SummaryCard, PaginationBar, EmptyState, usePagination, CustomSelect } from '../inventory-v2/shared';
+import { isCodMethod } from '@/lib/paymentMethod';
 
 // Backward-scheduling buffers: the JO must FINISH before the delivery promise, leaving room to QC,
 // pack, and ship. Target = (customer need-by || delivery promise) - shipping transit - QC/pack.
@@ -225,7 +226,7 @@ function JobOrderForm({ initial = EMPTY_FORM, isEdit = false, orders = [], order
   };
 
   // ── Order context header (gates at a glance) ──
-  const isCOD = (selectedOrder?.paymentMethod || '').toLowerCase() === 'cod';
+  const isCOD = isCodMethod(selectedOrder?.paymentMethod);
   const payTone = isCOD ? 'gold' : (selectedOrder?.paymentStatus === 'paid' ? 'green' : 'gold');
   const payLabel = isCOD ? 'COD'
     : selectedOrder?.paymentStatus === 'paid' ? 'FULLY PAID'
@@ -562,7 +563,7 @@ export default function JobOrdersPage() {
     if (o.joId) return false;
     const st = normalizeStatus(o.orderStatus);
     if (['delivered', 'cancelled', 'returned'].includes(st)) return false;
-    const isCOD = (o.paymentMethod || '').toLowerCase() === 'cod';
+    const isCOD = isCodMethod(o.paymentMethod);
     const paid = isCOD || ['partial', 'paid'].includes(o.paymentStatus) || Number(o.downPayment) > 0;
     if (!paid) return false;
     const isCustom = o.isCustomOrder ?? o.isCustom;
