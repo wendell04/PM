@@ -2377,18 +2377,20 @@ const handleForgotResetPassword = async () => {
                     </div>
                     <div className="auth-field">
                       <label>Email Address</label>
-                      <input type="email" id="contact-email" name="email" autoComplete="email" placeholder="you@example.com" value={contactForm.email} onChange={(e) => handleContactChange('email', e.target.value)} className={contactErrors.email ? 'error' : ''} readOnly={!!user} title={user ? 'From your account' : undefined} style={user ? { opacity: 0.75, cursor: 'not-allowed' } : undefined}/>
+                      <input type="email" id="contact-email" name="email" autoComplete="email" placeholder="you@example.com" value={contactForm.email} onChange={(e) => handleContactChange('email', e.target.value)} className={contactErrors.email ? 'error' : ''} maxLength={255} readOnly={!!user} title={user ? 'From your account' : undefined} style={user ? { opacity: 0.75, cursor: 'not-allowed' } : undefined}/>
                       {contactErrors.email && <span className="error-message">{contactErrors.email}</span>}
                     </div>
                   </div>
                   <div className="auth-field">
                     <label>Subject</label>
                     <input type="text" id="contact-subject" name="subject" placeholder="Bulk order inquiry, custom design, etc." value={contactForm.subject} onChange={(e) => handleContactChange('subject', e.target.value)} className={contactErrors.subject ? 'error' : ''} maxLength={200}/>
+                    <span style={{ display: 'block', fontSize: '0.7rem', color: 'var(--gray)', textAlign: 'right', marginTop: '0.2rem' }}>{(contactForm.subject || '').length}/200</span>
                     {contactErrors.subject && <span className="error-message">{contactErrors.subject}</span>}
                   </div>
                   <div className="auth-field">
                     <label>Message</label>
                     <textarea id="contact-message" name="message" placeholder="Tell us about your order, design, ideas, or any questions you have..." value={contactForm.message} onChange={(e) => handleContactChange('message', e.target.value)} className={`contact-textarea ${contactErrors.message ? 'error' : ''}`} rows={5} maxLength={5000}/>
+                    <span style={{ display: 'block', fontSize: '0.7rem', color: 'var(--gray)', textAlign: 'right', marginTop: '0.2rem' }}>{(contactForm.message || '').length}/5000</span>
                     {contactErrors.message && <span className="error-message">{contactErrors.message}</span>}
                   </div>
                   <div style={{ margin: '0.25rem 0 0.75rem' }}>

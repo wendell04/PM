@@ -2722,8 +2722,25 @@ export default function OrdersPage() {
 
     const matchPay    = payFilter === 'all' || o.paymentStatus === payFilter;
 
-    const matchType   = typeFilter === 'all'
-      || (typeFilter === 'produced' ? !!o.needsProduction : !o.needsProduction);
+    // "Custom" covered a line the customer drew themselves and a line we drew for them as one
+    // thing, though they are different work at different cost and a cart holding both is a third
+    // case again - the one most likely to be mishandled, and the one that was hardest to find.
+    const orderKind = (() => {
+      const its = o.items || [];
+      const req   = its.some(i => i.designMode === 'request' || i.designRequested);
+      const upl   = its.some(i => i.designUrl || (i.designFiles?.length > 0));
+      const plain = its.some(i => !i.isCustom && !i.designRequested && !i.designUrl && !(i.designFiles?.length > 0));
+      const kinds = (req ? 1 : 0) + (upl ? 1 : 0);
+      if (kinds > 1 || (kinds === 1 && plain)) return 'mixed';
+      if (req) return 'request';
+      if (upl) return 'upload';
+      return 'ready';
+    })();
+    const matchType =
+      typeFilter === 'all'      ? true
+      : typeFilter === 'ready'    ? !o.needsProduction
+      : typeFilter === 'produced' ? !!o.needsProduction
+      : orderKind === typeFilter;
 
     let matchDate = true;
     const d    = new Date(o.createdAt); d.setHours(0,0,0,0);
@@ -2817,11 +2834,14 @@ export default function OrdersPage() {
             <CustomSelect
               value={typeFilter}
               onChange={v => { setTypeFilter(v); setPage(1); }}
-              style={{ width:'150px' }}
+              style={{ width:'175px' }}
               options={[
-                { value:'all',      label:'All Types'   },
-                { value:'produced', label:'Custom'      },
-                { value:'ready',    label:'Ready Made'  },
+                { value:'all',      label:'All Types'        },
+                { value:'produced', label:'All Custom'       },
+                { value:'request',  label:'Custom (Request)' },
+                { value:'upload',   label:'Custom (Upload)'  },
+                { value:'mixed',    label:'Mixed Cart'       },
+                { value:'ready',    label:'Ready Made'       },
               ]}
             />
 

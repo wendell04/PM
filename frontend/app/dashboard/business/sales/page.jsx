@@ -63,7 +63,26 @@ function orderToRow(o) {
       quantity: item.qty ?? item.quantity ?? 1,
       unitPrice: item.unitPrice ?? 0,
       designFee: Number(item.designFee ?? 0),
+      isCustom: item.isCustom ?? false,
+      designRequested: item.designRequested ?? false,
+      designMode: item.designMode ?? null,
+      designUrl: item.designUrl ?? null,
+      designFiles: item.designFiles ?? null,
     })),
+    // What kind of order this is, decided once. A line the customer drew themselves and a line
+    // we drew for them are different work at different cost, and a cart holding both is a third
+    // thing again - but the list showed all three as one undifferentiated row.
+    orderKind: (() => {
+      const its = o.items || [];
+      const req = its.some(i => i.designMode === 'request' || i.designRequested);
+      const upl = its.some(i => i.designUrl || (i.designFiles?.length > 0));
+      const plain = its.some(i => !i.isCustom && !i.designRequested && !i.designUrl && !(i.designFiles?.length > 0));
+      const customKinds = (req ? 1 : 0) + (upl ? 1 : 0);
+      if (customKinds > 1 || (customKinds === 1 && plain)) return 'mixed';
+      if (req) return 'request';
+      if (upl) return 'upload';
+      return 'ready';
+    })(),
     quantity: (o.items || []).reduce((s, i) => s + (i.qty ?? i.quantity ?? 0), 0),
     orderDate: o.createdAt || o.orderDate || new Date().toISOString(),
     dueDate: o.dueDate || null,
@@ -363,6 +382,7 @@ export default function SalesListPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [paymentFilter, setPaymentFilter] = useState('');
   const [dateFilter, setDateFilter] = useState('all');
+  const [kindFilter, setKindFilter] = useState('all');
   const [customDateRange, setCustomDateRange] = useState({ fromMonth: 0, toMonth: 0, year: 2026 });
   const [expandedRows, setExpandedRows] = useState(new Set());
   const [sPage, setSPage] = useState(1);
@@ -455,9 +475,14 @@ export default function SalesListPage() {
       else if (dateFilter === 'this-month') matchesDate = orderDate.getMonth() === today.getMonth() && orderDate.getFullYear() === today.getFullYear();
       else if (dateFilter === 'custom') matchesDate = orderDate.getFullYear() === customDateRange.year && orderDate.getMonth() >= customDateRange.fromMonth && orderDate.getMonth() <= customDateRange.toMonth;
 
-      return matchesSearch && matchesPayment && matchesDate;
+      const matchesKind =
+        kindFilter === 'all'    ? true
+        : kindFilter === 'custom' ? order.orderKind !== 'ready'
+        : order.orderKind === kindFilter;
+
+      return matchesSearch && matchesPayment && matchesDate && matchesKind;
     });
-  }, [sales, searchQuery, paymentFilter, dateFilter, customDateRange]);
+  }, [sales, searchQuery, paymentFilter, dateFilter, customDateRange, kindFilter]);
 
   const pagedSales = filteredSales.slice((sPage - 1) * sRpp, sPage * sRpp);
 
@@ -791,6 +816,17 @@ export default function SalesListPage() {
           <div style={{ ...S.row, gap: '8px', flex: 1 }}>
             <SearchBar value={searchQuery} onChange={v => { setSearchQuery(v); setSPage(1); }}
               placeholder="Search customer or order number…" style={{ width: '260px' }} />
+            <CustomSelect
+              value={kindFilter} onChange={v => { setKindFilter(v); setSPage(1); }} style={{ width: '170px' }}
+              options={[
+                { value: 'all', label: 'All order types' },
+                { value: 'custom', label: 'All Custom' },
+                { value: 'request', label: 'Custom (Request)' },
+                { value: 'upload', label: 'Custom (Upload)' },
+                { value: 'mixed', label: 'Mixed Cart' },
+                { value: 'ready', label: 'Ready-made' },
+              ]}
+            />
             <CustomSelect
               value={dateFilter} onChange={setDateFilter} style={{ width: '150px' }}
               options={[

@@ -167,24 +167,56 @@ export default function StaffHome() {
     return rows;
   }, [orders]);
 
+  // Every payment the shop has actually taken, as a flat ledger. Both the chip and the chart
+  // read this, so they cannot disagree. They used to: the chip summed payments on orders CREATED
+  // this month, which credits an August order paid in September to neither month, while the
+  // chart summed sale totals by sale date - two different questions under two money labels on
+  // one screen, showing P7,070 and P3,380.
+  const payments = useMemo(() => {
+    const st = (o) => String(o.orderStatus ?? o.status ?? '').toLowerCase();
+    const rows = [];
+    for (const o of orders) {
+      if (st(o) === 'cancelled') continue;
+      const history = Array.isArray(o.paymentHistory) ? o.paymentHistory : [];
+      if (history.length) {
+        for (const p of history) {
+          const amt = Number(p.amount ?? 0);
+          if (amt <= 0) continue;
+          // Orders written before payments carried a date fall back to when the order was placed.
+          const when = p.paidAt ?? p.createdAt ?? o.createdAt ?? null;
+          if (!when) continue;
+          rows.push({ amount: amt, at: new Date(when) });
+        }
+      } else if (Number(o.downPayment ?? 0) > 0 && o.createdAt) {
+        rows.push({ amount: Number(o.downPayment), at: new Date(o.createdAt) });
+      }
+    }
+    return rows;
+  }, [orders]);
+
   const money = useMemo(() => {
     const st = (o) => String(o.orderStatus ?? o.status ?? '').toLowerCase();
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    let collected = 0, outstanding = 0;
+
+    const collected = payments
+      .filter(p => p.at >= monthStart)
+      .reduce((a, p) => a + p.amount, 0);
+
+    let outstanding = 0;
     for (const o of orders) {
+      // Delivered used to be excluded, so an order that went out and was never paid for stopped
+      // counting as owed the moment it left - the debt disappeared exactly when it became real.
+      // Cancelled and returned are genuinely not owed.
+      if (['cancelled', 'returned'].includes(st(o))) continue;
       const paid = Math.max(
         Number(o.downPayment ?? 0),
         (o.paymentHistory ?? []).reduce((a, p) => a + Number(p.amount ?? 0), 0)
       );
-      const created = o.createdAt ? new Date(o.createdAt) : null;
-      if (created && created >= monthStart && st(o) !== 'cancelled') collected += paid;
-      if (!['delivered', 'cancelled', 'returned'].includes(st(o))) {
-        outstanding += Math.max(0, Number(o.totalAmount ?? 0) - paid);
-      }
+      outstanding += Math.max(0, Number(o.totalAmount ?? 0) - paid);
     }
     return { collected, outstanding };
-  }, [orders]);
+  }, [orders, payments]);
 
   // Money received per calendar month, from the orders already in hand - no second request.
   const byMonth = useMemo(() => {
@@ -197,16 +229,16 @@ export default function StaffHome() {
         label: d.toLocaleDateString('en-PH', { month: 'short' }), total: 0, orders: 0 });
     }
     const idx = Object.fromEntries(buckets.map((b, i) => [b.key, i]));
-    for (const sale of sales) {
-      if (!sale.saleDate) continue;
-      const d = new Date(sale.saleDate);
-      const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    // Same ledger as the chip. This read sale totals by sale date, which is the value of what
+    // shipped, not the money that came in - so the card above it and the chart below disagreed.
+    for (const p of payments) {
+      const k = `${p.at.getFullYear()}-${String(p.at.getMonth() + 1).padStart(2, '0')}`;
       if (!(k in idx)) continue;
-      buckets[idx[k]].total += Number(sale.totalPrice ?? 0);
+      buckets[idx[k]].total += p.amount;
       buckets[idx[k]].orders += 1;
     }
     return buckets;
-  }, [sales, months]);
+  }, [payments, months]);
 
   const isOwnerView = isSuper || allows('reports') || allows('sales');
 
@@ -316,9 +348,9 @@ export default function StaffHome() {
               messages, whether somebody is waiting on a reply. */}
           <div style={{ ...S.row, marginBottom: '18px' }}>
             <SummaryCard label="Collected this month" value={peso(money.collected)} accent
-              sub="Payments received on orders placed this month" />
+              sub="Money actually received this month" />
             <SummaryCard label="Still owed to you" value={peso(money.outstanding)}
-              sub="Across every order not yet delivered" />
+              sub="Unpaid balance across every live order" />
             <SummaryCard label="Materials to buy" value={toBuy?.totalItems ?? '-'}
               color={toBuy?.totalItems > 0 ? 'var(--gold)' : 'var(--white)'}
               sub={toBuy ? `About ${peso(toBuy.estimatedCost)} to cover committed work` : 'Needs inventory access'} />
