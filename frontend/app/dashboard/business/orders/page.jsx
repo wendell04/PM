@@ -2246,6 +2246,26 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                 Update Status
               </button>
               {updateErr && <div style={{ fontSize:'11px', color:'#991b1b' }}>{updateErr}</div>}
+
+              {/* The shortcut used to live only in the branch for orders with no legal transition
+                  left, as though needing a job order and having a status to move were
+                  alternatives. They are not: an approved upload is paid, still has moves
+                  available, and needs a job order - so the dropdown showed and the shortcut never
+                  did. Request-design orders happened to land on a status with nothing to move to,
+                  which is the only reason it ever appeared. */}
+              {lo.isCustom && lo.designStatus === 'approved' && jobOrdersMissing > 0 && (
+                <>
+                  <span style={{ fontSize:'11px', color:'var(--gray)', fontStyle:'italic' }}>
+                    {hasAnyJobOrder
+                      ? `${jobOrdersMissing} item${jobOrdersMissing > 1 ? 's' : ''} on this order still has no job order.`
+                      : 'Ready for production - create a Job Order to start.'}
+                  </span>
+                  <a href="/dashboard/business/job-orders" target="_blank" rel="noopener noreferrer"
+                    style={{ ...S.btnSmGhost, justifyContent:'center', textDecoration:'none', display:'inline-flex', alignItems:'center', gap:'6px' }}>
+                    {ICONS.plus} Create Job Order
+                  </a>
+                </>
+              )}
             </div>
           ) : (
             (lo.isCustom && lo.designStatus === 'approved' && jobOrdersMissing > 0) ? (

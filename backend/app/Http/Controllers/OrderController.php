@@ -4303,9 +4303,26 @@ class OrderController extends Controller
             if (!$order) return $this->notFoundResponse('Order');
 
             $history   = $order->statusHistory ?? [];
-            $history[] = ['status' => 'awaiting_payment', 'at' => now()->toISOString(), 'by' => 'admin', 'note' => 'Upload approved — awaiting customer payment'];
+            $history[] = ['status' => 'awaiting_payment', 'at' => now()->toISOString(), 'by' => 'admin', 'note' => 'Upload approved - awaiting customer payment'];
             $order->orderStatus   = 'awaiting_payment';
             $order->statusHistory = $history;
+
+            // This is the OTHER approve path - the quick-view modal posts here while the expanded
+            // row posts to approve-design - and it recorded the money side only. The artwork was
+            // approved and nothing said so, so designStatus stayed pending: the aggregate gate
+            // refused to let a job order be created, and the Create Job Order shortcut, which
+            // keys on the same field, never appeared. Approving in one place has to mean the
+            // same thing as approving in the other.
+            $items = $order->items ?? [];
+            foreach ($items as $i => $it) {
+                $isCustom = ($it['isCustom'] ?? false) || !empty($it['designRequested'])
+                    || !empty($it['designUrl']) || !empty($it['designFiles']);
+                if ($isCustom) {
+                    $items[$i]['designStatus'] = 'approved';
+                }
+            }
+            $order->items = array_values($items);
+            $this->syncDesignAggregate($order);
             $order->updatedAt     = now();
             $order->save();
 
