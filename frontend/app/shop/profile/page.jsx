@@ -17,6 +17,7 @@ import AddressBook from "../../../components/profile/AddressBook";
 import ImageCropper from "../../../components/ImageCropper";
 import { useAuth } from "../../../contexts/AuthContext";
 import "../shop.css";
+import { CustomSelect } from '@/app/dashboard/business/inventory-v2/shared';
 
 const ReadOnlyPinMap = dynamic(
   () => import("@/components/maps/ReadOnlyPinMap"),
@@ -3213,18 +3214,23 @@ export default function CustomerProfilePage() {
                       <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px' }}>
                         Why are you leaving? (optional)
                       </label>
-                      <select
+                      {/* A native select draws the operating system's own list - the blue
+                          highlight, the system font, the system corners - inside a modal styled
+                          by the app. The rest of the shop already uses CustomSelect, which is
+                          portal-based so it is not clipped by the modal either. */}
+                      <CustomSelect
                         value={deleteReason}
-                        onChange={e => setDeleteReason(e.target.value)}
-                        style={{ width: '100%', height: '40px', padding: '0 12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--dark)', color: 'var(--white)', fontSize: '0.875rem' }}
-                      >
-                        <option value="">Prefer not to say</option>
-                        <option value="No longer using the service">No longer using the service</option>
-                        <option value="Privacy concerns">Privacy concerns</option>
-                        <option value="Switching to another provider">Switching to another provider</option>
-                        <option value="Poor experience">Poor experience</option>
-                        <option value="Other">Other</option>
-                      </select>
+                        onChange={setDeleteReason}
+                        placeholder="Prefer not to say"
+                        options={[
+                          { value: '',                              label: 'Prefer not to say' },
+                          { value: 'No longer using the service',    label: 'No longer using the service' },
+                          { value: 'Privacy concerns',               label: 'Privacy concerns' },
+                          { value: 'Switching to another provider',  label: 'Switching to another provider' },
+                          { value: 'Poor experience',                label: 'Poor experience' },
+                          { value: 'Other',                          label: 'Other' },
+                        ]}
+                      />
                     </div>
 
                     {/* Password */}
