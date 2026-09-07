@@ -166,6 +166,9 @@ export default function SettingsPage() {
   const [passwordSuccess, setPasswordSuccess]   = useState('');
 
   const [businessForm, setBusinessForm] = useState({
+    // Contact form controls. Defaults keep it open with the current wording, so nothing changes
+    // until the owner decides otherwise.
+    contactFormEnabled: true, contactSuccessMessage: '', contactClosedMessage: '',
     businessName: '',
     businessAddress: '',
     operatingHours: '',
@@ -308,6 +311,12 @@ export default function SettingsPage() {
             rushLeadDays:         d.data.rushLeadDays          != null ? String(d.data.rushLeadDays)         : '1',
             rushFee:              d.data.rushFee               != null ? String(d.data.rushFee)              : '150',
           });
+          setBusinessForm(f => ({
+            ...f,
+            contactFormEnabled:    d.data.contactFormEnabled !== false,
+            contactSuccessMessage: d.data.contactSuccessMessage || '',
+            contactClosedMessage:  d.data.contactClosedMessage  || '',
+          }));
           // Pre-fill the editor with the built-in defaults when nothing is saved, so the owner SEES
           // and can edit the exact clauses shown to customers (instead of them living only in code).
           // A saved set wins, but any NEW built-in clause the owner has never seen is appended
@@ -957,6 +966,9 @@ export default function SettingsPage() {
           businessAddress: businessForm.businessAddress,
           operatingHours: businessForm.operatingHours,
           contactEmail: businessForm.contactEmail,
+          contactFormEnabled:    !!businessForm.contactFormEnabled,
+          contactSuccessMessage: businessForm.contactSuccessMessage || '',
+          contactClosedMessage:  businessForm.contactClosedMessage  || '',
         }),
       }, 10000);
       const d = await res.json();
@@ -1548,6 +1560,40 @@ export default function SettingsPage() {
       <div className="profile-form-field">
         <label>Business name</label>
         <input type="text" value={businessForm.businessName} onChange={e => setBusinessForm(f => ({ ...f, businessName: e.target.value }))} placeholder="PersonalizeMe Prints" maxLength={100} />
+        {/* The public contact form. It is a write endpoint anyone can reach, so there has to be a
+            way to close it - and the server refuses too, since hiding the form would leave the
+            URL open to whoever already knows it. */}
+        <div style={{ marginTop: '1.4rem', paddingTop: '1.2rem', borderTop: '1px solid var(--border)' }}>
+          <div style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--white)', marginBottom: '0.15rem' }}>Contact form</div>
+          <div style={{ fontSize: '0.74rem', color: 'var(--gray)', marginBottom: '0.8rem' }}>
+            The &ldquo;Let&apos;s Talk&rdquo; form on the landing page.
+          </div>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.8rem', fontWeight: 600, color: 'var(--white)', cursor: 'pointer', marginBottom: '0.9rem' }}>
+            <input type="checkbox" checked={!!businessForm.contactFormEnabled}
+              onChange={e => setBusinessForm(f => ({ ...f, contactFormEnabled: e.target.checked }))}
+              style={{ width: 16, height: 16, accentColor: 'var(--gold)' }} />
+            Accept messages through the contact form
+          </label>
+          <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--gray-light)', marginBottom: '0.3rem' }}>
+            After someone sends a message
+          </label>
+          <input type="text" value={businessForm.contactSuccessMessage ?? ''} maxLength={300}
+            onChange={e => setBusinessForm(f => ({ ...f, contactSuccessMessage: e.target.value }))}
+            placeholder="Thanks for reaching out. We'll get back to you as soon as we can." />
+          <div style={{ fontSize: '0.7rem', color: 'var(--gray)', margin: '0.25rem 0 0.9rem' }}>
+            Avoid naming a deadline you cannot keep on a Sunday. Leave blank for the default.
+          </div>
+          {!businessForm.contactFormEnabled && (
+            <>
+              <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--gray-light)', marginBottom: '0.3rem' }}>
+                Shown while the form is closed
+              </label>
+              <input type="text" value={businessForm.contactClosedMessage ?? ''} maxLength={300}
+                onChange={e => setBusinessForm(f => ({ ...f, contactClosedMessage: e.target.value }))}
+                placeholder="Our contact form is closed right now. Reach us on Facebook, Instagram or TikTok." />
+            </>
+          )}
+        </div>
       </div>
       <div className="profile-form-field">
         <label>Operating hours</label>

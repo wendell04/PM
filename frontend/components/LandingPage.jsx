@@ -70,6 +70,9 @@ const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=
   const [contactForm, setContactForm]   = useState({name: '', email: '', subject: '', message: ''});
   const [contactErrors, setContactErrors] = useState({});
   const [contactSent, setContactSent]   = useState(false);
+  // Owner-editable from Settings. Defaults keep the form open and the old wording, so the page
+  // behaves exactly as before until someone changes something.
+  const [contactCfg, setContactCfg] = useState({ enabled: true, success: null, closed: null });
   const [loginErrors, setLoginErrors]   = useState({});
   const [sessionMessage, setSessionMessage] = useState('');
   const [errors, setErrors]             = useState({});
@@ -448,6 +451,23 @@ const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=
   const [contactSending, setContactSending] = useState(false);
   const [contactTurnstileToken, setContactTurnstileToken] = useState('');
   const contactTurnstileRef = useRef(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchWithTimeout(`${API_URL}/api/public/settings`, {}, 10000)
+      .then(r => r.json())
+      .then(d => {
+        if (cancelled) return;
+        const st = d?.data ?? d ?? {};
+        setContactCfg({
+          enabled: st.contactFormEnabled !== false,
+          success: st.contactSuccessMessage || null,
+          closed:  st.contactClosedMessage || null,
+        });
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
 
   const handleContactChange = (field, value) => {
     setContactForm(f => ({...f, [field]: value}));
@@ -2370,10 +2390,20 @@ const handleForgotResetPassword = async () => {
                     </svg>
                   </div>
                   <h3>Message Sent!</h3>
-                  <p>Thanks for reaching out! We'll get back to you within 24 hours.</p>
+                  {/* "within 24 hours" is a promise the shop cannot keep on a Sunday, and the page
+                      itself says Sunday is by appointment. Editable, and no longer a deadline by
+                      default. */}
+                  <p>{contactCfg.success || "Thanks for reaching out. We'll get back to you as soon as we can."}</p>
                   <button type="button" className="btn-primary" onClick={() => { setContactSent(false); setContactErrors({}); }} style={{marginTop: '1rem'}}>
                     Send Another Message
                   </button>
+                </div>
+              ) : !contactCfg.enabled ? (
+                /* Switched off in Settings. The endpoint refuses too - hiding the form would
+                   otherwise leave the URL open to anyone who already knows it. */
+                <div className="contact-success">
+                  <h3>Send us a message another way</h3>
+                  <p>{contactCfg.closed || 'Our contact form is closed right now. Reach us on Facebook, Instagram or TikTok, or through the chat button on this page.'}</p>
                 </div>
               ) : (
                 <form className="contact-form" onSubmit={handleContactSubmit}>
@@ -2401,9 +2431,10 @@ const handleForgotResetPassword = async () => {
                     <span style={{ display: 'block', fontSize: '0.7rem', color: 'var(--gray)', textAlign: 'right', marginTop: '0.2rem' }}>{(contactForm.message || '').length}/1500</span>
                     {contactErrors.message && <span className="error-message">{contactErrors.message}</span>}
                   </div>
-                  <div style={{ margin: '0.25rem 0 0.75rem' }}>
-                    <Turnstile ref={contactTurnstileRef} onVerify={setContactTurnstileToken} theme={theme} />
-                  </div>
+                  {/* No wrapper margin: .contact-form is a flex column with gap 1rem, so a margin
+                      here is added to that gap rather than replacing it, and the widget ends up
+                      floating in twice the space every other field gets. */}
+                  <Turnstile ref={contactTurnstileRef} onVerify={setContactTurnstileToken} theme={theme} />
                   <button type="submit" className="btn-primary contact-submit-btn"
                     disabled={contactSending}
                     style={contactSending ? { opacity: 0.65, cursor: 'wait' } : undefined}>

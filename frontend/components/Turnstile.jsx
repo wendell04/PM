@@ -11,7 +11,7 @@ const SCRIPT_SRC = 'https://challenges.cloudflare.com/turnstile/v0/api.js';
  * responsive. Calls onVerify(token) when solved, onVerify('') on expire/error. Tokens are
  * single-use - call the exposed reset() (via ref) after each submit for a fresh token.
  */
-const Turnstile = forwardRef(function Turnstile({ onVerify, theme = 'light' }, ref) {
+const Turnstile = forwardRef(function Turnstile({ onVerify, theme = 'light', size = 'flexible' }, ref) {
   const containerRef = useRef(null);
   const widgetIdRef  = useRef(null);
 
@@ -37,6 +37,7 @@ const Turnstile = forwardRef(function Turnstile({ onVerify, theme = 'light' }, r
         widgetIdRef.current = window.turnstile.render(containerRef.current, {
           sitekey: SITE_KEY,
           theme: theme === 'dark' ? 'dark' : 'light',
+          size,
           callback: (token) => onVerify?.(token),
           'expired-callback': () => onVerify?.(''),
           'error-callback': () => onVerify?.(''),

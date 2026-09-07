@@ -730,6 +730,17 @@ class AuthController extends Controller
                 'message' => 'required|string|max:1500',
             ]);
 
+            // Hiding the form is not closing it: the endpoint is public and anyone who knows the
+            // URL can still post. The switch has to be enforced where the request lands.
+            $formOwner = \App\Models\User::whereIn('role', ['admin', 'owner'])->first();
+            if ($formOwner && ($formOwner->contactFormEnabled ?? true) === false) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $formOwner->contactClosedMessage
+                        ?: 'Our contact form is closed right now. Please message us on Facebook, Instagram or TikTok.',
+                ], 403);
+            }
+
             $adminEmail = config('mail.admin_recipient');
 
             // Identity comes from the token, never from the box. The sender used to be resolved
