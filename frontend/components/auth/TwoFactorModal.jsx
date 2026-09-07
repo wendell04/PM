@@ -7,6 +7,7 @@ import {
   verifyTwoFactorOtp,
 } from "@/lib/authApi";
 import { useEffect, useRef, useState } from "react";
+import OtpInput from './OtpInput';
 
 function maskEmail(email) {
   if (!email || !email.includes("@")) return email || "";
@@ -234,7 +235,6 @@ function MethodSelector({ onSelect, onBack }) {
 
 // ── Code Entry Screen ───────────────────────────────────────────────────────
 function CodeEntry({ token, method, userEmail, persistLogin, onSuccess, onBack, onSwitchMethod }) {
-  const inputRefs = useRef([]);
   const hasSentInitial = useRef(false);
   const isTOTP = method === "totp";
 
@@ -282,29 +282,6 @@ function CodeEntry({ token, method, userEmail, persistLogin, onSuccess, onBack, 
     } finally { setSending(false); }
   };
 
-  const handleInputChange = (idx, val) => {
-    if (val && !/^\d$/.test(val)) return;
-    const next = [...digits]; next[idx] = val; setDigits(next);
-    if (val && idx < 5) inputRefs.current[idx + 1]?.focus();
-  };
-
-  const handleKeyDown = (idx, e) => {
-    if (e.key === "Backspace" && !digits[idx] && idx > 0) {
-      inputRefs.current[idx - 1]?.focus();
-      const next = [...digits]; next[idx - 1] = ""; setDigits(next);
-    }
-  };
-
-  const handlePaste = (e) => {
-    e.preventDefault();
-    const pasted = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, 6);
-    if (!pasted) return;
-    const next = [...digits];
-    for (let i = 0; i < pasted.length; i++) next[i] = pasted[i];
-    setDigits(next);
-    inputRefs.current[Math.min(pasted.length, 5)]?.focus();
-  };
-
   const handleVerify = async () => {
     if (!token) return;
     const code = digits.join("");
@@ -340,7 +317,6 @@ function CodeEntry({ token, method, userEmail, persistLogin, onSuccess, onBack, 
       else {
         setError(err.message || "Invalid code. Please try again.");
         setDigits(["", "", "", "", "", ""]);
-        inputRefs.current[0]?.focus();
       }
     } finally { setLoading(false); }
   };
@@ -348,7 +324,7 @@ function CodeEntry({ token, method, userEmail, persistLogin, onSuccess, onBack, 
   const handleResend = async () => {
     if (!canResend || isTOTP) return;
     setCanResend(false); setError(null); setIsLocked(false); setLockedUntil(null);
-    setDigits(["", "", "", "", "", ""]); inputRefs.current[0]?.focus();
+    setDigits(["", "", "", "", "", ""]);
     setSending(true);
     try { await sendTwoFactorOtp(token); setCountdown(30); }
     catch (err) {
@@ -440,37 +416,16 @@ function CodeEntry({ token, method, userEmail, persistLogin, onSuccess, onBack, 
           </p>
         )}
 
-        {/* Digit inputs */}
-        <div style={{ display: "flex", justifyContent: "center", gap: "8px", marginBottom: "16px" }}>
-          {digits.map((digit, idx) => (
-            <input
-              key={idx}
-              ref={(el) => (inputRefs.current[idx] = el)}
-              type="text"
-              inputMode="numeric"
-              maxLength={1}
-              value={digit}
-              onChange={(e) => handleInputChange(idx, e.target.value)}
-              onKeyDown={(e) => handleKeyDown(idx, e)}
-              onPaste={handlePaste}
-              disabled={loading || sending}
-              style={{
-                width: "48px",
-                height: "56px",
-                fontSize: "24px",
-                textAlign: "center",
-                borderRadius: "10px",
-                border: `1.5px solid ${digit ? `${accent}80` : "rgba(255,255,255,0.1)"}`,
-                background: digit ? `${accent}0d` : "var(--dark, #1a1a1a)",
-                color: "var(--white, #f5f5f5)",
-                outline: "none",
-                transition: "all 0.15s",
-                fontFamily: "monospace",
-              }}
-              onFocus={(e) => { e.target.style.borderColor = `${accent}80`; }}
-              onBlur={(e) => { if (!digit) e.target.style.borderColor = "rgba(255,255,255,0.1)"; }}
-            />
-          ))}
+        {/* Digit inputs - shared with account verification, which used to ask for the same six
+            digits in a single text box. One component, so the two cannot drift again. */}
+        <div style={{ marginBottom: "16px" }}>
+          <OtpInput
+            value={digits.join("")}
+            onChange={(code) => setDigits(Array.from({ length: 6 }, (_, i) => code[i] ?? ""))}
+            disabled={loading || sending}
+            accent={accent}
+            autoFocus
+          />
         </div>
 
         <div style={{ minHeight: "22px", marginBottom: "12px" }}>

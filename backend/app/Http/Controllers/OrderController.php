@@ -1488,8 +1488,9 @@ class OrderController extends Controller
             // Handle cancellation: cancel linked JobOrder and restore inventory
             if (isset($validated['orderStatus']) && $order->orderStatus === 'Cancelled' && $oldStatus !== 'Cancelled') {
                 $jobStages = $this->jobStagesFor($order);
+                $keepBack  = (array) $request->input('stockSettlement', []);
                 $this->cancelLinkedJobOrder($order);
-                $this->restoreStockOnCancel($order, $jobStages);
+                $this->restoreStockOnCancel($order, $jobStages, $keepBack);
             }
 
             // Handle return: restore inventory
@@ -2143,9 +2144,10 @@ class OrderController extends Controller
             // Handle cancellation: cancel linked JobOrder and restore inventory
             if ($newStatus === OrderStatus::CANCELLED) {
                 $jobStages = $this->jobStagesFor($order);
+                $keepBack  = (array) $request->input('stockSettlement', []);
                 $this->cancelLinkedJobOrder($order);
                 if ($oldStatus !== OrderStatus::CANCELLED) {
-                    $this->restoreStockOnCancel($order, $jobStages);
+                    $this->restoreStockOnCancel($order, $jobStages, $keepBack);
 
                     // Why the SHOP cancelled. Returns record a reason and a customer's own
                     // cancellation records a reason; this path recorded nothing, so the one
@@ -2296,6 +2298,79 @@ class OrderController extends Controller
         return $stages;
     }
 
+    /**
+     * GET /api/admin/orders/{id}/cancel-settlement
+     *
+     * What cancelling this order would do to inventory, per material. Read-only - it decides
+     * nothing, it reports what the settlement below is going to do, so the modal cannot show a
+     * plan the code then contradicts.
+     */
+    public function cancelSettlement(Request $request, $id)
+    {
+        try {
+            if (!$this->hasPermission($request, 'orders.edit')) {
+                return $this->unauthorizedResponse();
+            }
+            $order = Order::find($id);
+            if (!$order) return $this->notFoundResponse('Order');
+
+            $stages = $this->jobStagesFor($order);
+            $rows   = [];
+
+            foreach (($order->items ?? []) as $itemIdx => $item) {
+                $product = Product::find($item['productId'] ?? null);
+                if (!$product) continue;
+
+                $produced = \App\Support\OrderLine::isProduced($product, (array) $item);
+                $stage    = $stages[$itemIdx] ?? null;
+
+                $action = !$produced
+                    ? 'restock'
+                    : ($this->stageAlreadySettled($stage) ? 'none'
+                        : ($this->stageConsumedMaterial($stage) ? 'consume' : 'release'));
+
+                $variantId = $item['variantId'] ?? null;
+                $bom       = $product->resolveBom($variantId);
+                $materials = [];
+
+                foreach (($bom->components ?? []) as $component) {
+                    $inv = Inventory::find($component['inventoryId'] ?? null);
+                    if (!$inv || $inv->isOnDemand) continue;
+                    $qty = (int) round(($component['qty'] ?? 0) * ($item['qty'] ?? 0));
+                    if ($qty <= 0) continue;
+
+                    $materials[] = [
+                        'inventoryId' => (string) $inv->_id,
+                        'name'        => $inv->name,
+                        'uom'         => $inv->uom,
+                        'qty'         => $qty,
+                        'onHand'      => (int) ($inv->stockQty ?? 0),
+                        'unitCost'    => round($this->unitCostOf($inv), 2),
+                    ];
+                }
+
+                $rows[] = [
+                    'itemIndex'   => (int) $itemIdx,
+                    'itemName'    => $item['productName'] ?? ($product->name ?? 'Item'),
+                    'variantName' => $item['variantName'] ?? null,
+                    'qty'         => (int) ($item['qty'] ?? 0),
+                    'produced'    => $produced,
+                    'jobStage'    => $stage,
+                    'action'      => $action,
+                    'materials'   => $materials,
+                ];
+            }
+
+            return $this->successResponse('Cancel settlement computed.', [
+                'orderRef' => strtoupper(substr((string) $order->_id, -8)),
+                'paidSoFar'=> round($this->paidSoFar($order), 2),
+                'items'    => $rows,
+            ]);
+        } catch (\Throwable $e) {
+            return $this->serverErrorResponse($e, 'Failed to compute the cancellation settlement.');
+        }
+    }
+
     /** Material was pulled from the shelf and worked on, so it cannot go back. */
     private function stageConsumedMaterial(?string $joStatus): bool
     {
@@ -2308,7 +2383,13 @@ class OrderController extends Controller
         return in_array($joStatus, ['QC_Passed', 'Completed'], true);
     }
 
-    private function restoreStockOnCancel(Order $order, array $jobStages = []): void
+    /**
+     * @param array $keepBack inventoryId => how many units survived and go back on the shelf.
+     *        Only consulted for material that would otherwise be written off. The person at the
+     *        bench is the only one who knows the box was never opened while the mug was printed,
+     *        so the stage decides the default and they decide the exception.
+     */
+    private function restoreStockOnCancel(Order $order, array $jobStages = [], array $keepBack = []): void
     {
         try {
             foreach ($order->items as $item) {
@@ -2446,15 +2527,25 @@ class OrderController extends Controller
                             // consumed and recorded as spoilage instead, which is what the deposit
                             // is there to cover.
                             if ($this->stageConsumedMaterial($stage)) {
-                                $rawInv->stockQty    = max(0, (int) ($rawInv->stockQty ?? 0) - $qty);
+                                // Whatever survived stays on the shelf; only the rest is written
+                                // off. Clamped to what this line actually held, so a mistyped
+                                // figure cannot invent stock.
+                                $saved  = max(0, min($qty, (int) ($keepBack[(string) $rawInv->_id] ?? 0)));
+                                $spoiled = $qty - $saved;
+
+                                $rawInv->stockQty    = max(0, (int) ($rawInv->stockQty ?? 0) - $spoiled);
                                 $rawInv->reservedQty = max(0, (int) ($rawInv->reservedQty ?? 0) - $qty);
                                 $rawInv->save();
+
+                                if ($spoiled <= 0) {
+                                    continue;   // all of it came back; nothing to write off
+                                }
                                 StockHistory::create([
                                     'inventoryId'  => (string) $rawInv->_id,
-                                    'quantity'     => $qty,
+                                    'quantity'     => $spoiled,
                                     'remainingQty' => (int) ($rawInv->stockQty ?? 0),
                                     'unitCost'     => $this->unitCostOf($rawInv),
-                                    'totalCost'    => round($this->unitCostOf($rawInv) * $qty, 2),
+                                    'totalCost'    => round($this->unitCostOf($rawInv) * $spoiled, 2),
                                     'reason'       => 'production_spoilage',
                                     'type'         => 'adjustment',
                                     'performedBy'  => 'system',

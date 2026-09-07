@@ -253,6 +253,9 @@ Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
     Route::get('/orders/{id}',          [OrderController::class, 'show']);
     Route::patch('/orders/{id}/status', [OrderController::class, 'updateStatus']);
     Route::put('/admin/orders/{id}',    [OrderController::class, 'adminUpdate']);
+    // What cancelling would do to stock, per material. Read-only; it reports the plan the
+    // settlement will follow so the confirm modal cannot show something different.
+    Route::get('/admin/orders/{id}/cancel-settlement', [OrderController::class, 'cancelSettlement']);
     Route::get('/admin/orders',         [OrderController::class, 'adminIndex']);
     Route::get('/admin/orders/{id}',    [OrderController::class, 'show']);
 
