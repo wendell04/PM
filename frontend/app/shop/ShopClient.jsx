@@ -183,16 +183,20 @@ function QuickViewModal({ product, flashSale, onClose, onToast }) {
   })();
 
   const maxQty = (() => {
-    if (!product.trackInventory) return 9999;
-    if (comboId != null && product.variantBackorder?.[comboId]) return 9999;
+    if (!product.trackInventory) return NO_CAP;
+    // The flag, not the old 9999 that used to be written into the quantity itself. Pre-order is
+    // the shop saying a shortfall does not stop the sale - it is a yes or no, not a count.
+    if (product.allowPreorder) return NO_CAP;
+    if (comboId != null && product.variantPreorder?.[comboId]) return NO_CAP;
+    if (comboId != null && product.variantBackorder?.[comboId]) return NO_CAP;
     if (comboId != null && product.variantAvailableQty?.[comboId] != null) return Math.max(Number(product.variantAvailableQty[comboId]), 0);
     if (product.availableQty != null) return Math.max(Number(product.availableQty), 0);
     if (comboId != null && product.variantStock?.[comboId] != null) return Math.max(Number(product.variantStock[comboId]), 0);
-    return product.stock != null ? Math.max(Number(product.stock), 0) : 9999;
+    return product.stock != null ? Math.max(Number(product.stock), 0) : NO_CAP;
   })();
 
-  // What can really be built right now, ignoring the pre-order allowance. availableQty goes
-  // to 9999 once pre-order is on, so it can no longer answer "how many are ready today".
+  // What can really be built right now, ignoring the pre-order allowance. Null here means no
+  // counted material constrains this variant at all - which is not the same as zero.
   const readyNow = (() => {
     if (comboId != null && product.variantCanProduce?.[comboId] != null) return Number(product.variantCanProduce[comboId]);
     if (product.canProduce != null) return Number(product.canProduce);
@@ -759,6 +763,9 @@ function ProductCard({ product, onAddToCart, onQuickView, flashSale }) {
               // three mug variants draw on the same box, each read 50, and the card said 150 for a
               // shop that could ship 50. canProduceTotal is that sum with shared materials capped.
               if (product.canProduceTotal != null) return Number(product.canProduceTotal);
+              // Every value null means nothing counted constrains any variant: no limit, not zero.
+              const vals = Object.values(product.variantCanProduce ?? {});
+              if (vals.length > 0 && vals.every(v => v == null)) return null;
               const vcp = product.variantCanProduce;
               if (vcp && Object.keys(vcp).length > 0) {
                 return Object.values(vcp).reduce((s, v) => s + (Number(v) || 0), 0);
@@ -912,6 +919,10 @@ function ProductCard({ product, onAddToCart, onQuickView, flashSale }) {
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
+// A quantity input still needs a number for its max. This is that number, and it is deliberately
+// not the 9999 that used to travel in the API as a stock figure - it never leaves this file.
+const NO_CAP = 99999;
+
 export default function ShopClient({
   initialProducts = [],
   initialCollections = [],

@@ -88,6 +88,61 @@ final class MaterialClaim
     }
 
     /**
+     * The same total, split by whether a shortfall should stop the sale.
+     *
+     * Pre-order is a promise the owner makes on a product: keep taking orders past the shelf,
+     * because more is coming. Until now nothing in the order path read it, so the storefront
+     * offered "10 on pre-order" and the checkout refused the order anyway - two screens of one
+     * shop disagreeing about the same quantity.
+     *
+     * A pre-order line still consumes real material, so its demand is still held. What changes is
+     * that the hold is allowed to exceed the shelf: that overshoot IS the backorder, and it shows
+     * up in To Buy as the amount to go and buy.
+     *
+     * @param  array<int, array>  $orderItems
+     * @return array{gated: array<string,int>, preorder: array<string,int>}
+     */
+    public static function demandSplit(array $orderItems): array
+    {
+        $gated = $preorder = [];
+
+        foreach ($orderItems as $item) {
+            $product = Product::find($item['productId'] ?? null);
+            $bucket  = (bool) ($product->allowPreorder ?? false) ? 'preorder' : 'gated';
+            foreach (self::demandOf([$item]) as $invId => $qty) {
+                if ($bucket === 'preorder') {
+                    $preorder[$invId] = ($preorder[$invId] ?? 0) + $qty;
+                } else {
+                    $gated[$invId] = ($gated[$invId] ?? 0) + $qty;
+                }
+            }
+        }
+
+        return ['gated' => $gated, 'preorder' => $preorder];
+    }
+
+    /**
+     * Take `qty` regardless of what is on the shelf.
+     *
+     * Only for a line whose product allows pre-order: the shop has said out loud that it will
+     * restock, so the hold going past the stock is the point, not an accident. Everything else
+     * goes through claim().
+     */
+    public static function hold(string $inventoryId, int $qty): void
+    {
+        if ($qty <= 0) {
+            return;
+        }
+
+        DB::connection('mongodb')
+            ->getCollection('inventories')
+            ->updateOne(
+                ['_id' => new ObjectId($inventoryId)],
+                ['$inc' => ['reservedQty' => $qty]]
+            );
+    }
+
+    /**
      * Take `qty` of one material, but only while stock minus what is already reserved still covers
      * it. Returns false when someone else got there first - nothing is written in that case.
      */

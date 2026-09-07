@@ -23,8 +23,10 @@ class ProductController extends Controller
     private function computeAvailability(Product $product): array
     {
         $canProduce       = null;
+        $hasRecipe        = false;
         $variantCanProduce  = null;
         $variantAvailableQty = null;
+        $variantPreorder    = null;
         $canProduceTotal    = null;
 
         // ── Multi-variant BOM product (bomGroupName) ──────────────────────────
@@ -48,6 +50,7 @@ class ProductController extends Controller
                 $boms = $groupBoms;
                 $variantCanProduce  = [];
                 $variantAvailableQty = [];
+                $variantPreorder    = [];
 
                 foreach ($boms as $bom) {
                     $bomId = (string) $bom->_id;
@@ -59,19 +62,22 @@ class ProductController extends Controller
                         if ($qpu <= 0) continue;
                         $min = min($min, (int) floor(max(0, (int) ($inv->stockQty ?? 0) - (int) ($inv->reservedQty ?? 0)) / $qpu));
                     }
-                    $cp = $min === PHP_INT_MAX ? 0 : $min;
+                    // PHP_INT_MAX means nothing counted had a vote - every material in the
+                    // recipe is cost-only. That is "no limit", and it used to be written out as
+                    // ZERO, so a product whose whole recipe was packaging read Out of Stock while
+                    // the checkout would happily have taken the order.
+                    $cp = $min === PHP_INT_MAX ? null : $min;
                     $variantCanProduce[$bomId] = $cp;
 
-                    // Product-level override first, then what the materials themselves allow.
-                    $backorder = $preorder || (bool) ($product->variantBackorder[$bomId] ?? false);
-                    if ($backorder) {
-                        $variantAvailableQty[$bomId] = 9999;
-                    } else {
-                        $manualCap = isset($product->variantStock[$bomId]) && (int) $product->variantStock[$bomId] > 0
-                            ? (int) $product->variantStock[$bomId]
-                            : null;
-                        $variantAvailableQty[$bomId] = $manualCap !== null ? min($cp, $manualCap) : $cp;
-                    }
+                    $manualCap = isset($product->variantStock[$bomId]) && (int) $product->variantStock[$bomId] > 0
+                        ? (int) $product->variantStock[$bomId]
+                        : null;
+                    $variantAvailableQty[$bomId]  = self::cappedQty($cp, $manualCap);
+                    // A flag, not a sentinel. 9999 lived in a field the storefront prints, so the
+                    // shop advertised having 9999 of things, and every sum of these numbers came
+                    // out as nonsense. What pre-order actually changes is whether a shortfall
+                    // stops the sale - which is a yes or no, and belongs in its own field.
+                    $variantPreorder[$bomId] = $preorder || (bool) ($product->variantBackorder[$bomId] ?? false);
                 }
                 $canProduceTotal = $this->sharedCappedTotal($boms, $variantCanProduce);
             } catch (\Exception $e) {
@@ -85,14 +91,17 @@ class ProductController extends Controller
             if ($hasBomCombos) {
                 $variantCanProduce  = [];
                 $variantAvailableQty = [];
+                $variantPreorder    = [];
                 $comboBoms          = [];
                 foreach ($combinations as $combo) {
                     $comboId = $combo['id'] ?? null;
                     $bomId   = $combo['bomId'] ?? null;
                     if (!$comboId) continue;
                     if (!$bomId) {
-                        $variantCanProduce[$comboId]  = 9999;
-                        $variantAvailableQty[$comboId] = 9999;
+                        // No recipe at all - nothing to run out of. Null, not a big number.
+                        $variantCanProduce[$comboId]   = null;
+                        $variantAvailableQty[$comboId] = null;
+                        $variantPreorder[$comboId]     = $preorder;
                         continue;
                     }
                     try {
@@ -106,20 +115,17 @@ class ProductController extends Controller
                             if ($qpu <= 0) continue;
                             $min = min($min, (int) floor(max(0, (int) ($inv->stockQty ?? 0) - (int) ($inv->reservedQty ?? 0)) / $qpu));
                         }
-                        $cp = $min === PHP_INT_MAX ? 0 : $min;
+                        $cp = $min === PHP_INT_MAX ? null : $min;
                         $variantCanProduce[$comboId] = $cp;
-                        $backorder = $preorder || (bool) ($product->variantBackorder[$comboId] ?? false);
-                        if ($backorder) {
-                            $variantAvailableQty[$comboId] = 9999;
-                        } else {
-                            $manualCap = isset($product->variantStock[$comboId]) && (int) $product->variantStock[$comboId] > 0
-                                ? (int) $product->variantStock[$comboId]
-                                : null;
-                            $variantAvailableQty[$comboId] = $manualCap !== null ? min($cp, $manualCap) : $cp;
-                        }
+                        $manualCap = isset($product->variantStock[$comboId]) && (int) $product->variantStock[$comboId] > 0
+                            ? (int) $product->variantStock[$comboId]
+                            : null;
+                        $variantAvailableQty[$comboId] = self::cappedQty($cp, $manualCap);
+                        $variantPreorder[$comboId]    = $preorder || (bool) ($product->variantBackorder[$comboId] ?? false);
                     } catch (\Exception $e) {
                         $variantCanProduce[$comboId]  = 0;
                         $variantAvailableQty[$comboId] = 0;
+                        $variantPreorder[$comboId]    = false;
                     }
                 }
                 $canProduceTotal = $this->sharedCappedTotal($comboBoms, $variantCanProduce);
@@ -138,7 +144,8 @@ class ProductController extends Controller
                         if ($qpu <= 0) continue;
                         $min = min($min, (int) floor(max(0, (int) ($inv->stockQty ?? 0) - (int) ($inv->reservedQty ?? 0)) / $qpu));
                     }
-                    $canProduce = $min === PHP_INT_MAX ? 0 : $min;
+                    $canProduce = $min === PHP_INT_MAX ? null : $min;
+                    $hasRecipe  = true;
                 }
             } catch (\Exception $e) {
                 Log::warning('computeAvailability single BOM failed', ['productId' => (string) $product->_id, 'error' => $e->getMessage()]);
@@ -147,10 +154,16 @@ class ProductController extends Controller
 
         $cap = $product->storeStockCap !== null ? (int) $product->storeStockCap : null;
 
+        // Null on $canProduce means two different things and they get different answers: a recipe
+        // whose every material is cost-only is genuinely unlimited, while no recipe at all falls
+        // back to the product's own stock figure. Collapsing them is how "unlimited" would have
+        // been printed as whatever number happened to sit in `stock`.
         if ($canProduce !== null) {
-            $availableQty = $cap !== null ? min($canProduce, $cap) : $canProduce;
+            $availableQty = self::cappedQty($canProduce, $cap);
+        } elseif (!empty($hasRecipe)) {
+            $availableQty = $cap;
         } else {
-            $base = (int) ($product->stock ?? 0);
+            $base         = (int) ($product->stock ?? 0);
             $availableQty = $cap !== null ? min($base, $cap) : $base;
         }
 
@@ -159,10 +172,27 @@ class ProductController extends Controller
             'availableQty'        => $availableQty,
             'variantCanProduce'   => $variantCanProduce,
             'variantAvailableQty' => $variantAvailableQty,
+            // Whether a shortfall stops the sale on that variant. Replaces the 9999 that used to be
+            // written into variantAvailableQty, a field the storefront prints and sums.
+            'variantPreorder'     => $variantPreorder,
             // What the whole product can make, shared materials accounted for. The card used to
             // add the variant figures up, which is only correct when nothing is shared.
             'canProduceTotal'     => $canProduceTotal,
         ];
+    }
+
+    /**
+     * The number to show, given what the materials allow and what the owner capped it at.
+     *
+     * Null means unlimited on either side - no counted material constrains this variant, or no
+     * manual cap was set - so null and a number are not interchangeable and min() cannot be used
+     * on them directly.
+     */
+    private static function cappedQty(?int $canProduce, ?int $manualCap): ?int
+    {
+        if ($canProduce === null) return $manualCap;
+        if ($manualCap === null)  return $canProduce;
+        return min($canProduce, $manualCap);
     }
 
     /**
@@ -227,8 +257,10 @@ class ProductController extends Controller
         array $inventoryMap
     ): array {
         $canProduce          = null;
+        $hasRecipe           = false;
         $variantCanProduce   = null;
         $variantAvailableQty = null;
+        $variantPreorder     = null;
         $canProduceTotal     = null;
 
         // Must match computeAvailability exactly - the grid and the product page describing the
@@ -246,26 +278,24 @@ class ProductController extends Controller
                 if ($qpu <= 0) continue;
                 $min = min($min, (int) floor(max(0, (int) ($inv->stockQty ?? 0) - (int) ($inv->reservedQty ?? 0)) / $qpu));
             }
-            return $min === PHP_INT_MAX ? 0 : $min;
+            // Null, not zero - see the same decision in computeAvailability.
+            return $min === PHP_INT_MAX ? null : $min;
         };
 
         if (!empty($product->bomGroupName)) {
             $boms = $bomsByGroup[$product->bomGroupName] ?? [];
             $variantCanProduce   = [];
             $variantAvailableQty = [];
+            $variantPreorder     = [];
             foreach ($boms as $bom) {
                 $bomId = (string) $bom->_id;
                 $cp    = $calcMin($bom->components ?? []);
                 $variantCanProduce[$bomId] = $cp;
-                $backorder = $preorder || (bool) ($product->variantBackorder[$bomId] ?? false);
-                if ($backorder) {
-                    $variantAvailableQty[$bomId] = 9999;
-                } else {
-                    $manualCap = isset($product->variantStock[$bomId]) && (int) $product->variantStock[$bomId] > 0
-                        ? (int) $product->variantStock[$bomId]
-                        : null;
-                    $variantAvailableQty[$bomId] = $manualCap !== null ? min($cp, $manualCap) : $cp;
-                }
+                $manualCap = isset($product->variantStock[$bomId]) && (int) $product->variantStock[$bomId] > 0
+                    ? (int) $product->variantStock[$bomId]
+                    : null;
+                $variantAvailableQty[$bomId] = self::cappedQty($cp, $manualCap);
+                $variantPreorder[$bomId]     = $preorder || (bool) ($product->variantBackorder[$bomId] ?? false);
             }
             $canProduceTotal = $this->sharedCappedTotal($boms, $variantCanProduce, $inventoryMap);
         } elseif (!empty($product->combinations)) {
@@ -274,29 +304,27 @@ class ProductController extends Controller
             if ($hasBomCombos) {
                 $variantCanProduce   = [];
                 $variantAvailableQty = [];
+                $variantPreorder     = [];
                 $comboBoms           = [];
                 foreach ($combinations as $combo) {
                     $comboId = $combo['id'] ?? null;
                     $bomId   = $combo['bomId'] ?? null;
                     if (!$comboId) continue;
                     if (!$bomId) {
-                        $variantCanProduce[$comboId]   = 9999;
-                        $variantAvailableQty[$comboId] = 9999;
+                        $variantCanProduce[$comboId]   = null;
+                        $variantAvailableQty[$comboId] = null;
+                        $variantPreorder[$comboId]     = $preorder;
                         continue;
                     }
                     $bom = $bomsById[(string) $bomId] ?? null;
                     $comboBoms[$comboId] = $bom;
                     $cp  = $bom ? $calcMin($bom->components ?? []) : 0;
                     $variantCanProduce[$comboId] = $cp;
-                    $backorder = $preorder || (bool) ($product->variantBackorder[$comboId] ?? false);
-                    if ($backorder) {
-                        $variantAvailableQty[$comboId] = 9999;
-                    } else {
-                        $manualCap = isset($product->variantStock[$comboId]) && (int) $product->variantStock[$comboId] > 0
-                            ? (int) $product->variantStock[$comboId]
-                            : null;
-                        $variantAvailableQty[$comboId] = $manualCap !== null ? min($cp, $manualCap) : $cp;
-                    }
+                    $manualCap = isset($product->variantStock[$comboId]) && (int) $product->variantStock[$comboId] > 0
+                        ? (int) $product->variantStock[$comboId]
+                        : null;
+                    $variantAvailableQty[$comboId] = self::cappedQty($cp, $manualCap);
+                    $variantPreorder[$comboId]     = $preorder || (bool) ($product->variantBackorder[$comboId] ?? false);
                 }
                 $canProduceTotal = $this->sharedCappedTotal($comboBoms, $variantCanProduce, $inventoryMap);
             }
@@ -304,13 +332,20 @@ class ProductController extends Controller
             $bom = $bomsById[(string) $product->bomId] ?? null;
             if ($bom) {
                 $canProduce = $calcMin($bom->components ?? []);
+                $hasRecipe  = true;
             }
         }
 
         $cap = $product->storeStockCap !== null ? (int) $product->storeStockCap : null;
 
+        // Null on $canProduce means two different things and they get different answers: a recipe
+        // whose every material is cost-only is genuinely unlimited, while no recipe at all falls
+        // back to the product's own stock figure. Collapsing them is how "unlimited" would have
+        // been printed as whatever number happened to sit in `stock`.
         if ($canProduce !== null) {
-            $availableQty = $cap !== null ? min($canProduce, $cap) : $canProduce;
+            $availableQty = self::cappedQty($canProduce, $cap);
+        } elseif (!empty($hasRecipe)) {
+            $availableQty = $cap;
         } else {
             $base         = (int) ($product->stock ?? 0);
             $availableQty = $cap !== null ? min($base, $cap) : $base;
@@ -321,6 +356,9 @@ class ProductController extends Controller
             'availableQty'        => $availableQty,
             'variantCanProduce'   => $variantCanProduce,
             'variantAvailableQty' => $variantAvailableQty,
+            // Whether a shortfall stops the sale on that variant. Replaces the 9999 that used to be
+            // written into variantAvailableQty, a field the storefront prints and sums.
+            'variantPreorder'     => $variantPreorder,
             // What the whole product can make, shared materials accounted for. The card used to
             // add the variant figures up, which is only correct when nothing is shared.
             'canProduceTotal'     => $canProduceTotal,

@@ -24,6 +24,10 @@ function applyFlashDiscount(price, sale) {
   return price;
 }
 
+// A quantity input still needs a number for its max. Deliberately not the 9999 that used to
+// travel in the API as a stock figure - this one never leaves the file.
+const NO_CAP = 99999;
+
 export default function ProductDetailPage() {
   const [product, setProduct] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -448,24 +452,30 @@ export default function ProductDetailPage() {
   const effectiveMaxQty = (() => {
     // Nothing is reserved for a quote, so there is no quantity to run out of. Inquiry products are
     // saved with trackInventory true and no BOM, which is why the branch below returned 0 for them.
-    if (isInquiry) return 9999;
-    // Same reason as the shop grid: the checkout refuses on real stock whatever this flag says,
-    // so offering 9999 here only moves the refusal to the worst possible moment.
-    if (!product?.trackInventory) return 9999;
+    if (isInquiry) return NO_CAP;
+    if (!product?.trackInventory) return NO_CAP;
     const comboId = resolveCombinationId(selectedVariants);
+    // Pre-order says a shortfall does not stop the sale. It used to be expressed by writing 9999
+    // into the quantity itself, which then reached the customer as "9999 units available"; it is
+    // a yes or no and now travels as one.
+    if (product?.allowPreorder) return NO_CAP;
+    if (comboId != null && product?.variantPreorder?.[comboId]) return NO_CAP;
     // Multi-variant BOM: use live per-variant availableQty from server
     if (product?.variantAvailableQty && comboId != null && product.variantAvailableQty[comboId] != null) {
       return Math.max(product.variantAvailableQty[comboId], 0);
     }
     // No combo selected yet but variant stock data exists - use max so product isn't shown as OOS before selection
     if (product?.variantAvailableQty && comboId == null) {
-      const vals = Object.values(product.variantAvailableQty).map(v => Number(v) || 0);
+      // A null here means that variant has no ceiling at all, so neither does the product.
+      const raw = Object.values(product.variantAvailableQty);
+      if (raw.some(v => v == null)) return NO_CAP;
+      const vals = raw.map(v => Number(v) || 0);
       if (vals.length > 0) return Math.max(...vals);
     }
     // Single BOM product
     if (product?.canProduce != null) return Math.max(product.availableQty ?? 0, 0);
     // Variant product (no BOM)
-    if (comboId != null && product?.variantBackorder?.[comboId]) return 9999;
+    if (comboId != null && product?.variantBackorder?.[comboId]) return NO_CAP;
     if (comboId != null && product?.variantStock?.[comboId] != null) {
       return Math.max(Number(product.variantStock[comboId]), 0);
     }
@@ -576,8 +586,8 @@ export default function ProductDetailPage() {
     : null;
 
   const activeComboId = product ? resolveCombinationId(selectedVariants) : null;
-  // What can be built from stock TODAY. Once pre-order is on, availableQty jumps to 9999 and can
-  // no longer answer that - so the split has to be measured against canProduce instead.
+  // What can be built from stock TODAY, which is what the ready/pre-order split is measured
+  // against. Null means no counted material constrains it - not zero.
   const readyNow = (() => {
     if (activeComboId != null && product?.variantCanProduce?.[activeComboId] != null)
       return Number(product.variantCanProduce[activeComboId]);
@@ -1151,10 +1161,10 @@ export default function ProductDetailPage() {
             {!product.isMadeToOrder && (() => {
               const LOW = 10;
               const comboId = resolveCombinationId(selectedVariants);
-              // canProduce, not availableQty. The latter becomes 9999 per variant once
-              // pre-order is on - a sentinel meaning "no ceiling" living in a field shaped like
-              // a count - and it reached the customer as "9999 units available". Pre-order
-              // changes whether an order is accepted past this figure, not the figure.
+              // canProduce, not availableQty: pre-order changes whether an order is accepted
+              // past this figure, never the figure. (availableQty used to be overwritten with
+              // 9999 when pre-order was on, and that reached the customer as "9999 units
+              // available"; the allowance is a flag now, and this reads the real count.)
               const variantQty = comboId != null && product?.variantCanProduce?.[comboId] != null
                 ? Number(product.variantCanProduce[comboId])
                 : (comboId != null && product?.variantAvailableQty?.[comboId] != null

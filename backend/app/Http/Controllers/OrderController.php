@@ -482,7 +482,9 @@ class OrderController extends Controller
             // itself, so a losing racer writes nothing, and anything it had already taken is
             // handed straight back.
             $materialClaims = [];
-            foreach (MaterialClaim::demandOf($orderItems) as $invId => $needed) {
+            $materialDemand = MaterialClaim::demandSplit($orderItems);
+
+            foreach ($materialDemand['gated'] as $invId => $needed) {
                 if (MaterialClaim::claim((string) $invId, (int) $needed)) {
                     $materialClaims[(string) $invId] = (int) $needed;
                     continue;
@@ -490,6 +492,13 @@ class OrderController extends Controller
                 $message = MaterialClaim::shortfallMessage((string) $invId, (int) $needed);
                 MaterialClaim::releaseAll($materialClaims);
                 return $this->errorResponse($message, 422);
+            }
+
+            // A pre-order line is allowed past the shelf - that is what the toggle promises. The
+            // hold still happens, so the overshoot lands in To Buy as the amount to go and buy.
+            foreach ($materialDemand['preorder'] as $invId => $needed) {
+                MaterialClaim::hold((string) $invId, (int) $needed);
+                $materialClaims[(string) $invId] = ($materialClaims[(string) $invId] ?? 0) + (int) $needed;
             }
 
             // ── Atomic stock reservation BEFORE order creation ───────────
@@ -2351,8 +2360,10 @@ class OrderController extends Controller
                 ];
             }
 
+            // Only the gated half. A pre-order line is allowed past the shelf at checkout, so
+            // warning about it here would contradict the very gate this mirrors.
             $shortages = [];
-            foreach (MaterialClaim::demandOf($lines) as $invId => $needed) {
+            foreach (MaterialClaim::demandSplit($lines)['gated'] as $invId => $needed) {
                 $inv = Inventory::find($invId);
                 if (!$inv) continue;
 
@@ -2377,6 +2388,8 @@ class OrderController extends Controller
                 $product = Product::find($line['productId'] ?? null);
                 $bom     = MaterialClaim::bomFor($product, $line['variantId'] ?? null);
                 if (!$bom || empty($bom->components)) { $maxes[$idx] = null; continue; }
+                // Null = no ceiling. On a pre-order line there genuinely is none.
+                if ((bool) ($product->allowPreorder ?? false)) { $maxes[$idx] = null; continue; }
 
                 $max = null;
                 foreach ($bom->components as $component) {
