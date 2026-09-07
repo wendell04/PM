@@ -28,8 +28,8 @@
             </p>
 
             {{-- OTP code box --}}
-            <div style="background: #f7f7f5; border: 2px solid #d4a843; border-radius: 12px; text-align: center; padding: 24px; margin: 24px 0;">
-                <div style="font-size: 42px; font-weight: 900; color: #a67c1a; letter-spacing: 12px; font-family: monospace;">
+            <div style="background: #f7f7f5; border: 2px solid #d4a843; border-radius: 12px; text-align: center; padding: 22px 12px; margin: 24px 0;">
+                <div style="font-size: 34px; font-weight: 900; color: #a67c1a; letter-spacing: 8px; margin-right: -8px; white-space: nowrap; font-family: monospace;">
                     {{ $otpCode }}
                 </div>
                 <small style="color: #6b6b6b; font-size: 12px; display: block; margin-top: 8px;">
