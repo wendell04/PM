@@ -20,7 +20,7 @@ import { normalizeStatus } from '@/lib/orderStatus';
 import { orderNo } from '@/lib/orderNumber';
 import { joRisk, RISK_STYLE } from '@/lib/deliveryRisk';
 import { JO_BADGE, JO_STATUSES, JobOrderStatusBadge as StatusBadge, RushBadge, DesignPreview, designUrl, joDocId, fmtJODate, TableSkeleton } from '@/components/dashboard/JobOrderBits';
-import { S, ICONS, SearchBar, SummaryCard, PaginationBar, EmptyState, usePagination, CustomSelect } from '../inventory-v2/shared';
+import { S, ICONS, SearchBar, SummaryCard, PaginationBar, EmptyState, usePagination, CustomSelect, ConfirmModal } from '../inventory-v2/shared';
 import { isCodMethod } from '@/lib/paymentMethod';
 import { needsJobOrder } from '@/lib/jobOrderEligibility';
 
@@ -458,6 +458,9 @@ export default function JobOrdersPage() {
   const [selected, setSelected] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
+  // A job refused for want of material. Without this the page was a dead end: the message arrived
+  // but the decision - do I have it in hand or not - could only be taken on the Production floor.
+  const [joShortage, setJoShortage] = useState(null);
 
   const [orders, setOrders] = useState([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
@@ -533,11 +536,19 @@ export default function JobOrdersPage() {
     finally { setIsSubmitting(false); }
   };
 
-  const handleUpdate = async (payload) => {
+  const handleUpdate = async (payload, materialOverride = false) => {
     if (!selected) return;
     setIsSubmitting(true); setSubmitError('');
-    try { await updateJobOrder(token, joDocId(selected), payload); await loadJobOrders(); closeModal(); }
-    catch (err) { setSubmitError(err.message || 'Failed to update job order.'); }
+    try {
+      await updateJobOrder(token, joDocId(selected), { ...payload, ...(materialOverride ? { materialOverride: true } : {}) });
+      setJoShortage(null);
+      await loadJobOrders();
+      closeModal();
+    }
+    catch (err) {
+      if (err.shortages) setJoShortage({ payload, rows: err.shortages });
+      else setSubmitError(err.message || 'Failed to update job order.');
+    }
     finally { setIsSubmitting(false); }
   };
 
@@ -703,6 +714,29 @@ export default function JobOrdersPage() {
           </div>
         </div>
       )}
+
+      <ConfirmModal
+        open={!!joShortage}
+        onClose={() => setJoShortage(null)}
+        onConfirm={() => joShortage && handleUpdate(joShortage.payload, true)}
+        loading={isSubmitting}
+        confirmStyle="danger"
+        title="Not enough material on the shelf"
+        confirmLabel="Start anyway"
+        message={joShortage
+          ? [
+              `${selected?.joId ?? 'This job'}`,
+              '',
+              ...joShortage.rows.map(r =>
+                `${r.name}: needs ${r.needed}${r.uom ? ' ' + r.uom : ''}, ${r.onHand}${r.uom ? ' ' + r.uom : ''} on hand, short ${r.short}`),
+              '',
+              'Buy it first, or Stock In what you already have in hand. '
+              + 'Starting anyway is recorded against your name.',
+            ].join(`
+`)
+          : ''}
+      />
+
     </ErrorBoundary>
   );
 }
