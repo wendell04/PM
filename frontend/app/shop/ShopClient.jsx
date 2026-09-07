@@ -755,6 +755,10 @@ function ProductCard({ product, onAddToCart, onQuickView, flashSale }) {
             const totalStock = (() => {
               // canProduce, not availableQty: the latter is 9999 per variant once pre-order is
               // on, which summed to "29997 PCS" on the card for a mug the shop can make 50 of.
+              // Adding the variant figures up is only right when the variants share nothing. All
+              // three mug variants draw on the same box, each read 50, and the card said 150 for a
+              // shop that could ship 50. canProduceTotal is that sum with shared materials capped.
+              if (product.canProduceTotal != null) return Number(product.canProduceTotal);
               const vcp = product.variantCanProduce;
               if (vcp && Object.keys(vcp).length > 0) {
                 return Object.values(vcp).reduce((s, v) => s + (Number(v) || 0), 0);

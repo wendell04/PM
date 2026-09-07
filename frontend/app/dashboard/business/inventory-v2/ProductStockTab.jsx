@@ -9,12 +9,19 @@ export function freeStock(mat) {
   return Math.max(0, Number(mat?.stockQty ?? 0) - Number(mat?.reservedQty ?? 0));
 }
 
+// Cost-only materials get no vote. A box does not decide how many mugs the shop can make - it
+// decides what goes on the To Buy list. Counting it here is what made all three mug variants read
+// "50 can build" off one shelf of fifty boxes.
+export function counts(mat) {
+  return !!mat && !mat.isOnDemand;
+}
+
 function calcProducible(bom, matMap) {
   if (!bom?.items?.length) return 0;
   let min = Infinity;
   for (const item of bom.items) {
     const mat = matMap[item.matId];
-    if (!mat) continue;
+    if (!counts(mat)) continue;
     const can = item.qty > 0 ? Math.floor(freeStock(mat) / item.qty) : Infinity;
     if (can < min) min = can;
   }
@@ -189,10 +196,13 @@ function DetailPanel({ variants, matMap }) {
         let bottleneckId = null, bottleneckMin = Infinity;
         for (const item of bom.items || []) {
           const mat = matMap[item.matId];
-          if (!mat) continue;
+          if (!counts(mat)) continue;
           const can = item.qty > 0 ? Math.floor(freeStock(mat) / item.qty) : Infinity;
           if (can < bottleneckMin) { bottleneckMin = can; bottleneckId = item.matId; }
         }
+        const countedNames = (bom.items || [])
+          .map(i => matMap[i.matId]).filter(counts).map(m => m.name);
+        const hasCostOnly = (bom.items || []).some(i => matMap[i.matId] && matMap[i.matId].isOnDemand);
 
         return (
           <div key={vi}>
@@ -214,11 +224,13 @@ function DetailPanel({ variants, matMap }) {
                 {(bom.items || []).map((item, ii) => {
                   const mat = matMap[item.matId];
                   if (!mat) return null;
+                  const counted      = counts(mat);
                   const can          = item.qty > 0 ? Math.floor(freeStock(mat) / item.qty) : Infinity;
-                  const isBottleneck = item.matId === bottleneckId;
+                  const isBottleneck = counted && item.matId === bottleneckId;
                   return (
-                    <tr key={ii}>
+                    <tr key={ii} style={{ opacity: counted ? 1 : 0.62 }}>
                       <td style={{ padding:'4px 8px', fontSize:'12px', color:'var(--gray-light)', fontWeight: isBottleneck ? 600 : 400 }}>
+                        <span style={{ color: counted ? '#1a7f3c' : 'var(--gray)', marginRight:5, fontSize:'10px' }}>{counted ? '●' : '○'}</span>
                         {isBottleneck && <span style={{ fontSize:'9px', fontWeight:700, background:'#fde8e8', color:'#c62828', border:'1px solid #fca5a5', borderRadius:3, padding:'1px 4px', marginRight:5, textTransform:'uppercase' }}>limit</span>}
                         {mat.name}
                       </td>
@@ -229,12 +241,24 @@ function DetailPanel({ variants, matMap }) {
                         )}
                       </td>
                       <td style={{ padding:'4px 8px', fontSize:'12px', color:'var(--gray)' }}>{item.qty} {mat.unit}</td>
-                      <td style={{ padding:'4px 8px', fontSize:'12px', fontWeight:600, color: can===0?'#c62828':can<=10?'#b45309':'#1a7f3c' }}>{can}</td>
+                      {/* A number here on a cost-only row answers a question it was never asked.
+                          The dash says the row does not decide anything. */}
+                      <td style={{ padding:'4px 8px', fontSize:'12px', fontWeight:600, color: !counted ? 'var(--gray)' : can===0?'#c62828':can<=10?'#b45309':'#1a7f3c' }}>
+                        {counted ? can : '-'}
+                        {!counted && <span style={{ marginLeft:6, fontSize:'10px', color:'var(--gray)' }}>cost only</span>}
+                      </td>
                     </tr>
                   );
                 })}
               </tbody>
             </table>
+            <div style={{ padding:'6px 8px 0', fontSize:'11px', color:'var(--gray)', lineHeight:1.5 }}>
+              {countedNames.length
+                ? <>Counted: <b style={{ color:'var(--gray-light)' }}>{countedNames.join(', ')}</b>.</>
+                : <b style={{ color:'#b45309' }}>Nothing is counted - every material here is cost only, so this cannot say when it runs out.</b>}
+              {hasCostOnly && countedNames.length > 0 &&
+                ' Packaging and consumables are costed and appear in To Buy, but do not cap what you can sell.'}
+            </div>
             {vi < variants.length - 1 && <div style={{ borderTop:'1px solid var(--border)', marginTop:'10px' }} />}
           </div>
         );

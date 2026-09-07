@@ -342,7 +342,9 @@ export function ConfirmModal({ open, onClose, onConfirm, title, message, confirm
         </>
       }
     >
-      <p style={{ margin:0, fontSize:'14px', color:'var(--gray-light)', lineHeight:1.6 }}>{message}</p>
+      {/* pre-line so one message can list several lines. A material shortage names a row per
+          material, and collapsing them into a paragraph makes it unreadable. */}
+      <p style={{ margin:0, fontSize:'14px', color:'var(--gray-light)', lineHeight:1.6, whiteSpace:'pre-line' }}>{message}</p>
     </Modal>
   );
 }

@@ -528,21 +528,29 @@ export default function MaterialsTab({ materials, setMaterials, vendors, setVend
             </div>
           </Field>
 
-          {/* Read by the reports, the To Buy list, the forecast and the availability
-              calculation - and settable, until now, from no screen at all, so every material
-              behaved as stocked whatever the shop actually did. Pre-order is deliberately NOT
-              here: a material is shared across recipes, so promising one would promise every
-              product that uses it. That decision belongs to the product. */}
+          {/* Named for its EFFECT, not for a stocking model. The old name said "you do not keep
+              this on the shelf", which was untrue of the shop that needed it most: fifty boxes sit
+              in the back room, they just should not be able to refuse a mug order. What the flag
+              really decides is whether a material gets a vote on availability.
+
+              Read by the reports, the To Buy list, the forecast and the availability calculation.
+              Pre-order is deliberately NOT here: a material is shared across recipes, so promising
+              one would promise every product that uses it. That decision belongs to the product. */}
           <div style={{ ...S.card, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
             <label style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', cursor: 'pointer' }}>
               <input type="checkbox" checked={!!form.isOnDemand}
                 onChange={e => setF('isOnDemand', e.target.checked)}
                 style={{ width: 16, height: 16, accentColor: 'var(--gold)', marginTop: 2, flexShrink: 0, cursor: 'pointer' }} />
               <span>
-                <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--white)' }}>Bought per order</span>
+                <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--white)' }}>Cost only - never blocks a sale</span>
                 <span style={{ display: 'block', fontSize: 11.5, color: 'var(--gray)', marginTop: 2, lineHeight: 1.5 }}>
-                  You do not keep this on the shelf - you buy it when a job needs it. It stops
-                  limiting what can be sold, and its full demand appears in To Buy instead.
+                  Still stocked, still costed, still on the To Buy list - it just never stops an
+                  order. For packaging and consumables you can restock quickly: boxes, transfer
+                  paper, tape.
+                </span>
+                <span style={{ display: 'block', fontSize: 11.5, color: 'var(--gray)', marginTop: 6, lineHeight: 1.5 }}>
+                  Leave it OFF for the blank the product is actually made from. That is the one
+                  that should be able to say you have run out.
                 </span>
               </span>
             </label>

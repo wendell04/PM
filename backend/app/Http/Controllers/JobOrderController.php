@@ -459,6 +459,9 @@ class JobOrderController extends Controller
                 // looks like a record and is not one.
                 'materialsPulled'  => 'sometimes|array',
                 'materialsPulled.*'=> 'string|max:200',
+                // Set by the confirm dialog after it has shown what is short. Kept out of the
+                // model write below - it records a decision, not a property of the job.
+                'materialOverride' => 'sometimes|boolean',
                 'targetCompletion' => 'sometimes|date',
                 'isRush'           => 'sometimes|boolean',
                 'assignedTo'       => 'nullable|string',
@@ -467,6 +470,36 @@ class JobOrderController extends Controller
 
             if (isset($validated['notes'])) {
                 $validated['notes'] = htmlspecialchars(strip_tags(trim($validated['notes'])), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+            }
+
+            // -- Material availability at job release ------------------------------------
+            // Nothing checked this before: a job could be started with an empty shelf and the
+            // shortage only surfaced at QC, by which time the promise had already been made.
+            $override = (bool) ($validated['materialOverride'] ?? false);
+            unset($validated['materialOverride']);
+
+            if (($validated['joStatus'] ?? null) === 'In Progress' && $jobOrder->joStatus !== 'In Progress') {
+                $shortages = $this->materialShortages($jobOrder);
+                if ($shortages && !$override) {
+                    return $this->errorResponse(
+                        'Not enough material on the shelf to start this job.',
+                        422,
+                        ['shortages' => $shortages]
+                    );
+                }
+                // Started anyway. Who decided that is worth keeping - it is the one moment the
+                // shop knowingly went ahead of its own stock.
+                if ($shortages) {
+                    $validated['materialOverride']   = true;
+                    $validated['materialShortAt']    = $shortages;
+                    $validated['materialOverrideAt'] = now();
+                    $validated['materialOverrideBy'] = optional($request->user())->email ?? 'system';
+                    Log::info('Job order started with short material', [
+                        'joId'      => $jobOrder->joId,
+                        'shortages' => $shortages,
+                        'by'        => $validated['materialOverrideBy'],
+                    ]);
+                }
             }
 
             // A job being cancelled stops needing its materials. Release BEFORE the write, while the
@@ -715,7 +748,11 @@ class JobOrderController extends Controller
 
                 foreach (($jobOrder->bomSnapshot['components'] ?? $jobOrder->bomSnapshot ?? []) as $c) {
                     $inv = Inventory::find($c['inventoryId'] ?? null);
-                    if (!$inv || ($inv->isOnDemand ?? false)) continue;
+                    // Cost-only material is not skipped here. It never gates a sale and is never
+                    // reserved, but it is still bought, still counted, and a scrapped job burnt it
+                    // like everything else. Skipping it left the box on the shelf in the system
+                    // after it had gone in the bin, and To Buy then under-reported the next order.
+                    if (!$inv) continue;
                     if (is_array($lost) && !in_array((string) ($c['inventoryId'] ?? ''), $lost, true)) continue;
 
                     // The snapshot stores qtyPerUnit. Reading 'qty' returned 0 for every component,
@@ -770,7 +807,10 @@ class JobOrderController extends Controller
                         if (!$inventoryId) continue;
 
                         $inventory = \App\Models\Inventory::find($inventoryId);
-                        if (!$inventory || $inventory->isOnDemand) continue;
+                        // Cost-only material is consumed here like any other. It is excluded from
+                        // availability and from reservation - not from having been used. reservedQty
+                        // is already 0 for it, and max(0, ...) keeps it there.
+                        if (!$inventory) continue;
 
                         $consumeQty = (float) ($component['qty'] ?? 0) * (int) $joQty;
                         if ($consumeQty <= 0) continue;
@@ -1029,6 +1069,46 @@ class JobOrderController extends Controller
      * Only for a job that has NOT consumed yet. Once QC has passed, the material is gone rather than
      * held, and there is nothing to give back.
      */
+    /**
+     * What this job is short of, right now, on the shelf.
+     *
+     * A different question from the one the storefront asks. Selling is gated on the blank alone -
+     * a box can be bought before the delivery date, so refusing the sale over one loses a job for
+     * eight pesos. Starting the job is the opposite: you need the box in your hand today, and that
+     * includes every cost-only material.
+     *
+     * Measured against stockQty, not stockQty minus reserved: a reservation is a claim on paper,
+     * and what matters at the bench is whether the material is physically there.
+     *
+     * @return array<int, array{inventoryId:string,name:string,uom:?string,needed:int,onHand:int,short:int}>
+     */
+    private function materialShortages(JobOrder $jo): array
+    {
+        $short = [];
+
+        foreach (($jo->bomSnapshot['components'] ?? $jo->bomSnapshot ?? []) as $c) {
+            $inv = Inventory::find($c['inventoryId'] ?? null);
+            if (!$inv) continue;
+
+            $needed = (int) round($c['totalQty'] ?? ((float) ($c['qty'] ?? 0) * (int) ($jo->product['quantity'] ?? 0)));
+            if ($needed <= 0) continue;
+
+            $onHand = (int) ($inv->stockQty ?? 0);
+            if ($onHand >= $needed) continue;
+
+            $short[] = [
+                'inventoryId' => (string) $inv->_id,
+                'name'        => $inv->name,
+                'uom'         => $inv->uom,
+                'needed'      => $needed,
+                'onHand'      => $onHand,
+                'short'       => $needed - $onHand,
+            ];
+        }
+
+        return $short;
+    }
+
     private function releaseJobOrderMaterials(JobOrder $jo, string $why): int
     {
         if (in_array($jo->joStatus, ['QC_Passed', 'Completed'], true)) {
@@ -1125,7 +1205,8 @@ class JobOrderController extends Controller
                 if (is_array($lost) && !in_array($invId, $lost, true)) continue;
 
                 $inv = Inventory::find($c['inventoryId'] ?? null);
-                if (!$inv || ($inv->isOnDemand ?? false)) continue;
+                // Spoilage destroys cost-only material too - see the QC paths above.
+                if (!$inv) continue;
                 $per = (float) ($c['qty'] ?? 0);
                 if ($per <= 0) continue;
 

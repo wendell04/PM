@@ -25,6 +25,7 @@ class ProductController extends Controller
         $canProduce       = null;
         $variantCanProduce  = null;
         $variantAvailableQty = null;
+        $canProduceTotal    = null;
 
         // ── Multi-variant BOM product (bomGroupName) ──────────────────────────
         // This branch finds BOMs by NAME, and a name is editable. Renaming a BOM in Master Data
@@ -72,6 +73,7 @@ class ProductController extends Controller
                         $variantAvailableQty[$bomId] = $manualCap !== null ? min($cp, $manualCap) : $cp;
                     }
                 }
+                $canProduceTotal = $this->sharedCappedTotal($boms, $variantCanProduce);
             } catch (\Exception $e) {
                 Log::warning('computeAvailability variant BOM failed', ['productId' => (string) $product->_id, 'error' => $e->getMessage()]);
             }
@@ -83,6 +85,7 @@ class ProductController extends Controller
             if ($hasBomCombos) {
                 $variantCanProduce  = [];
                 $variantAvailableQty = [];
+                $comboBoms          = [];
                 foreach ($combinations as $combo) {
                     $comboId = $combo['id'] ?? null;
                     $bomId   = $combo['bomId'] ?? null;
@@ -94,6 +97,7 @@ class ProductController extends Controller
                     }
                     try {
                         $bom = \App\Models\BillOfMaterial::find($bomId);
+                        $comboBoms[$comboId] = $bom;
                         $min = PHP_INT_MAX;
                         foreach ($bom?->components ?? [] as $component) {
                             $inv = Inventory::find($component['inventoryId'] ?? null);
@@ -118,6 +122,7 @@ class ProductController extends Controller
                         $variantAvailableQty[$comboId] = 0;
                     }
                 }
+                $canProduceTotal = $this->sharedCappedTotal($comboBoms, $variantCanProduce);
             }
         }
         // ── Single BOM product ────────────────────────────────────────────────
@@ -154,7 +159,65 @@ class ProductController extends Controller
             'availableQty'        => $availableQty,
             'variantCanProduce'   => $variantCanProduce,
             'variantAvailableQty' => $variantAvailableQty,
+            // What the whole product can make, shared materials accounted for. The card used to
+            // add the variant figures up, which is only correct when nothing is shared.
+            'canProduceTotal'     => $canProduceTotal,
         ];
+    }
+
+    /**
+     * How many units of a whole product can be made, across all its variants at once.
+     *
+     * Summing the per-variant figures is wrong the moment two variants draw on the same material:
+     * all three mug variants share Mug Box White 11oz, each read "50 can build" off the same 50
+     * boxes, and the card added them into "150 PCS" for a shop that could ship 50.
+     *
+     * A material used by ONE variant needs no cap here - it is already inside that variant's own
+     * number. Only genuinely shared materials cap the total, and they cap it at the most optimistic
+     * reading (the smallest per-unit amount any variant needs), because this is a ceiling, not a
+     * plan. Cost-only materials are excluded, exactly as they are everywhere availability is decided.
+     *
+     * @param  array   $boms               the variant BOMs
+     * @param  ?array  $variantCanProduce  per-variant capacity already worked out
+     * @param  ?array  $inventoryMap       pre-loaded inventory, when the caller has one
+     */
+    private function sharedCappedTotal($boms, ?array $variantCanProduce, ?array $inventoryMap = null): ?int
+    {
+        if (empty($variantCanProduce)) {
+            return null;
+        }
+
+        $sum    = (int) array_sum($variantCanProduce);
+        $usedBy = [];   // inventoryId => how many variants use it
+        $minQpu = [];   // inventoryId => smallest per-unit amount any variant needs
+        $avail  = [];   // inventoryId => units free for new orders
+
+        foreach ($boms as $bom) {
+            if (!$bom) continue;
+            foreach ($bom->components ?? [] as $component) {
+                $invId = (string) ($component['inventoryId'] ?? '');
+                if ($invId === '') continue;
+
+                $inv = $inventoryMap !== null ? ($inventoryMap[$invId] ?? null) : Inventory::find($invId);
+                if (!$inv || $inv->isOnDemand) continue;
+
+                $qpu = (float) ($component['qty'] ?? 0);
+                if ($qpu <= 0) continue;
+
+                $usedBy[$invId] = ($usedBy[$invId] ?? 0) + 1;
+                $minQpu[$invId] = isset($minQpu[$invId]) ? min($minQpu[$invId], $qpu) : $qpu;
+                $avail[$invId]  = max(0, (int) ($inv->stockQty ?? 0) - (int) ($inv->reservedQty ?? 0));
+            }
+        }
+
+        $cap = null;
+        foreach ($usedBy as $invId => $variantCount) {
+            if ($variantCount < 2) continue;
+            $c   = (int) floor($avail[$invId] / $minQpu[$invId]);
+            $cap = $cap === null ? $c : min($cap, $c);
+        }
+
+        return $cap === null ? $sum : min($sum, $cap);
     }
 
     private function computeAvailabilityBatched(
@@ -166,6 +229,7 @@ class ProductController extends Controller
         $canProduce          = null;
         $variantCanProduce   = null;
         $variantAvailableQty = null;
+        $canProduceTotal     = null;
 
         // Must match computeAvailability exactly - the grid and the product page describing the
         // same item differently is the fault that produced "100 can build" in the CMS beside
@@ -203,12 +267,14 @@ class ProductController extends Controller
                     $variantAvailableQty[$bomId] = $manualCap !== null ? min($cp, $manualCap) : $cp;
                 }
             }
+            $canProduceTotal = $this->sharedCappedTotal($boms, $variantCanProduce, $inventoryMap);
         } elseif (!empty($product->combinations)) {
             $combinations = is_array($product->combinations) ? $product->combinations : [];
             $hasBomCombos = collect($combinations)->contains(fn($c) => !empty($c['bomId'] ?? null));
             if ($hasBomCombos) {
                 $variantCanProduce   = [];
                 $variantAvailableQty = [];
+                $comboBoms           = [];
                 foreach ($combinations as $combo) {
                     $comboId = $combo['id'] ?? null;
                     $bomId   = $combo['bomId'] ?? null;
@@ -219,6 +285,7 @@ class ProductController extends Controller
                         continue;
                     }
                     $bom = $bomsById[(string) $bomId] ?? null;
+                    $comboBoms[$comboId] = $bom;
                     $cp  = $bom ? $calcMin($bom->components ?? []) : 0;
                     $variantCanProduce[$comboId] = $cp;
                     $backorder = $preorder || (bool) ($product->variantBackorder[$comboId] ?? false);
@@ -231,6 +298,7 @@ class ProductController extends Controller
                         $variantAvailableQty[$comboId] = $manualCap !== null ? min($cp, $manualCap) : $cp;
                     }
                 }
+                $canProduceTotal = $this->sharedCappedTotal($comboBoms, $variantCanProduce, $inventoryMap);
             }
         } elseif (!empty($product->bomId)) {
             $bom = $bomsById[(string) $product->bomId] ?? null;
@@ -253,6 +321,9 @@ class ProductController extends Controller
             'availableQty'        => $availableQty,
             'variantCanProduce'   => $variantCanProduce,
             'variantAvailableQty' => $variantAvailableQty,
+            // What the whole product can make, shared materials accounted for. The card used to
+            // add the variant figures up, which is only correct when nothing is shared.
+            'canProduceTotal'     => $canProduceTotal,
         ];
     }
 

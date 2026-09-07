@@ -974,6 +974,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
   // One click here starts real work or hands the batch to the next station, from a compact row in a
   // busy panel. Neither is easy to undo, so both ask first.
   const [joConfirm, setJoConfirm] = useState(null);
+  const [joShortage, setJoShortage] = useState(null);
   // A status change is the one thing on this screen that reaches the CUSTOMER: it emails them and,
   // at the far end, closes the sale. So each one says what it will actually do rather than a bare
   // "Are you sure?", which teaches people to click through without reading.
@@ -1002,16 +1003,21 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
     'QC_Pending':  { title: 'Send to quality control?',   body: 'The batch leaves the bench and QC decides what passes. Anything rejected comes back to be remade.', label: 'Send to QC' },
   };
 
-  const advanceJO = async (jo, joStatus) => {
+  const advanceJO = async (jo, joStatus, materialOverride = false) => {
     const id = joDocId(jo);
     setJoBusyId(id);
     try {
-      await updateJobOrder(token, id, { joStatus });
+      await updateJobOrder(token, id, { joStatus, ...(materialOverride ? { materialOverride: true } : {}) });
       setJoConfirm(null);
+      setJoShortage(null);
       await loadJobOrders();
       const fresh = await refetchOrder();
       if (fresh) setLo(fresh);
-    } catch (e) { setUpdateErr(e.message || 'Could not update the job order.'); }
+    } catch (e) {
+      // Short material is a decision, not an error - see the same handling on the Production floor.
+      if (e.shortages) { setJoConfirm(null); setJoShortage({ jo, to: joStatus, rows: e.shortages }); }
+      else setUpdateErr(e.message || 'Could not update the job order.');
+    }
     finally { setJoBusyId(null); }
   };
 
@@ -2743,6 +2749,28 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
         confirmLabel={joConfirm ? JO_COPY[joConfirm.to]?.label : 'Confirm'}
         message={joConfirm
           ? `${joConfirm.jo.joId} - ${joConfirm.jo.product?.productName || joConfirm.jo.product?.name || 'this item'}. ${JO_COPY[joConfirm.to]?.body ?? ''}`
+          : ''}
+      />
+
+      <ConfirmModal
+        open={!!joShortage}
+        onClose={() => setJoShortage(null)}
+        onConfirm={() => joShortage && advanceJO(joShortage.jo, joShortage.to, true)}
+        loading={!!joBusyId}
+        confirmStyle="danger"
+        title="Not enough material on the shelf"
+        confirmLabel="Start anyway"
+        message={joShortage
+          ? [
+              `${joShortage.jo.joId}`,
+              '',
+              ...joShortage.rows.map(r =>
+                `${r.name}: needs ${r.needed}${r.uom ? ' ' + r.uom : ''}, ${r.onHand}${r.uom ? ' ' + r.uom : ''} on hand, short ${r.short}`),
+              '',
+              'Buy it first, or Stock In what you already have in hand. '
+              + 'Starting anyway is recorded against your name.',
+            ].join(`
+`)
           : ''}
       />
     </div>

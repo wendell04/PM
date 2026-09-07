@@ -107,7 +107,11 @@ export async function updateJobOrder(token, id, payload) {
   if (res.status === 404) throw new Error('Job order not found');
   if (!res.ok) {
     const d = await res.json().catch(() => ({}));
-    throw new Error(d.message || 'Failed to update job order');
+    const err = new Error(d.message || 'Failed to update job order');
+    // A job refused for want of material is not a failure to report and forget - the caller has to
+    // be able to show what is short and offer to start anyway, so the list travels with the error.
+    if (d?.errors?.shortages) err.shortages = d.errors.shortages;
+    throw err;
   }
   const data = await res.json();
   return data.data ?? data;
