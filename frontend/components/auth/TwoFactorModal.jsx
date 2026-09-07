@@ -73,36 +73,36 @@ function MethodSelector({ onSelect, onBack }) {
       key: "email",
       label: "Email OTP",
       desc: "A 6-digit code is sent to your registered email address.",
-      accentColor: "#60a5fa",
+      accentColor: "#d4a843",
       bgColor: "rgba(96,165,250,0.07)",
       borderColor: (active) => active ? "rgba(96,165,250,0.7)" : "rgba(255,255,255,0.09)",
       icon: (active) => (
         <svg width="28" height="28" viewBox="0 0 24 24" fill="none"
-          stroke={active ? "#60a5fa" : "rgba(255,255,255,0.35)"} strokeWidth="1.8">
+          stroke={active ? "#d4a843" : "rgba(255,255,255,0.35)"} strokeWidth="1.8">
           <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
           <polyline points="22,6 12,13 2,6"/>
         </svg>
       ),
       badge: "Recommended",
-      badgeColor: "#60a5fa",
+      badgeColor: "#d4a843",
     },
     {
       key: "totp",
       label: "Authenticator App",
       desc: "Open Google Authenticator or Authy and enter your code. Works offline.",
-      accentColor: "#4ade80",
+      accentColor: "#d4a843",
       bgColor: "rgba(74,222,128,0.07)",
       borderColor: (active) => active ? "rgba(74,222,128,0.7)" : "rgba(255,255,255,0.09)",
       icon: (active) => (
         <svg width="28" height="28" viewBox="0 0 24 24" fill="none"
-          stroke={active ? "#4ade80" : "rgba(255,255,255,0.35)"} strokeWidth="1.8">
+          stroke={active ? "#d4a843" : "rgba(255,255,255,0.35)"} strokeWidth="1.8">
           <rect x="5" y="2" width="14" height="20" rx="2"/>
           <path d="M9 7h6M9 11h6M9 15h4"/>
-          <circle cx="15" cy="15" r="0.5" fill={active ? "#4ade80" : "rgba(255,255,255,0.35)"}/>
+          <circle cx="15" cy="15" r="0.5" fill={active ? "#d4a843" : "rgba(255,255,255,0.35)"}/>
         </svg>
       ),
       badge: "More secure",
-      badgeColor: "#4ade80",
+      badgeColor: "#d4a843",
     },
   ];
 
@@ -359,7 +359,10 @@ function CodeEntry({ token, method, userEmail, persistLogin, onSuccess, onBack, 
   };
 
   const isEmail = method === "email";
-  const accent = isEmail ? "#60a5fa" : "#4ade80";
+  // The shop's gold, written as a literal because the styles below build translucent
+  // variants by appending hex alpha - "var(--gold)" plus "12" is not a colour, and the
+  // badge, the borders and the filled box would all have quietly lost their fill.
+  const accent = "#d4a843";
   const methodIcon = isEmail ? (
     <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke={accent} strokeWidth="1.8">
       <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
