@@ -1014,6 +1014,21 @@ export default function BannerManagementPage() {
                   Unpublish to change
                 </span>
               )}
+              {/* Reframing an image you already uploaded meant finding the original file and
+                  uploading it again, because the cropper only ever opened on a fresh pick. The
+                  saved image is a URL the cropper can load directly - Cloudinary serves it with
+                  CORS, and the cropper already sets crossOrigin - so there is nothing to fetch
+                  from the operator a second time. */}
+              {!isLive && editedBanner?.image && (
+                <button
+                  type="button"
+                  className="banner-btn banner-btn-secondary"
+                  style={{ fontSize: '0.72rem', padding: '0.3rem 0.7rem' }}
+                  onClick={() => setCropSrc(editedBanner.image)}
+                >
+                  Recrop
+                </button>
+              )}
             </div>
             <input
               ref={fileInputRef}
