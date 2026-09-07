@@ -342,8 +342,11 @@ function JobDetail({ jo, onClose, onPreview, onChanged }) {
         <div style={{ marginBottom: 12 }}>
           <div style={{ ...S.label }}>Production artwork - print this</div>
           {prod.length === 0 ? (
-            <div style={{ ...S.note, background: 'var(--st-red-bg)', borderColor: 'rgba(239,68,68,0.35)', color: 'var(--st-red-fg)', marginTop: 6, fontSize: 12 }}>
-              No print-ready file on this job. The proof is a mockup - do not start until the real file is attached.
+            /* A separate print file is optional - plenty of jobs print the approved proof itself.
+               Alarming in red on the normal case taught the operator to ignore the colour, which
+               is the opposite of what a warning is for. */
+            <div style={{ ...S.note, marginTop: 6, fontSize: 12 }}>
+              No separate print file on this job - the approved proof above is what gets printed.
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 6 }}>
