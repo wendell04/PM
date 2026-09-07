@@ -1211,6 +1211,13 @@ export default function OrdersHistoryPage() {
                     <span style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--white)', fontFamily: 'monospace', letterSpacing: '0.5px' }}>
                       {orderNo(selectedOrder)}
                     </span>
+                    {/* A paid quote becomes an ordinary order, which is right - but the prices on
+                        it were negotiated, not listed, and nothing said so. */}
+                    {(selectedOrder.orderRequestId || selectedOrder.orderSource === 'inquiry') && (
+                      <span style={{ fontSize: '0.62rem', fontWeight: 700, padding: '3px 10px', borderRadius: '999px', letterSpacing: '0.03em', background: 'rgba(59,130,246,0.08)', color: '#3b82f6', border: '1px solid rgba(59,130,246,0.25)' }}>
+                        FROM QUOTATION
+                      </span>
+                    )}
                     {selectedOrder.isCustomOrder ? (
                       <span style={{ fontSize: '0.62rem', fontWeight: 700, padding: '3px 10px', borderRadius: '999px', letterSpacing: '0.03em', background: 'rgba(212,168,67,0.08)', color: '#d4a843', border: '1px solid rgba(212,168,67,0.2)' }}>
                         CUSTOM · {customTypeLabel(selectedOrder).toUpperCase()}

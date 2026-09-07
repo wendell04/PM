@@ -1194,6 +1194,10 @@ class OrderController extends Controller
             'paymentDueAt',
             'revisionCount',
             'revisionFees',
+            // A paid quote becomes an ordinary Order, which is right - but nothing on either
+            // screen said where it came from, and there was no way back to the quotation whose
+            // prices and terms the customer actually agreed to.
+            'orderRequestId',
             'designRejectionReason',
             'designFiles',
             'adminDesignUrl',

@@ -3083,6 +3083,13 @@ export default function OrdersPage() {
                         </td>
                         <td style={{ ...S.td }}>
                           <TypeBadge isCustom={o.isCustom} items={o.items} />
+                          {/* Its prices were negotiated in chat, not taken from the catalogue.
+                              Worth knowing before anyone questions a figure on it. */}
+                          {(o.orderRequestId || o.orderSource === 'inquiry') && (
+                            <span style={{ ...S.badge, background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe', fontSize: '10px' }}>
+                              Quote
+                            </span>
+                          )}
                         </td>
                         <td style={{ ...S.td }}>
                           <div style={{ fontWeight:600, fontSize:'13px' }}>{o.customerName}</div>

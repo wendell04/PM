@@ -1,8 +1,10 @@
 'use client';
+
+import AddressPicker from '@/components/shop/AddressPicker';
 import { optionGroupsOf, defaultOptionSelection, selectedOptionList, optionsUnitAdd, optionsOrderAdd, withOptionSuffix, optionKey, groupKey } from '@/lib/shopUtils';
 import NoImage from '@/components/NoImage';
 
-import { useState, useEffect, useRef, Suspense } from 'react';
+import { useState, useEffect, useRef, useCallback, Suspense } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
@@ -108,16 +110,6 @@ function getUnitPrice(p, qty, variants) {
   return null;
 }
 
-function formatAddress(addr) {
-  return [
-    addr.house_number && addr.street ? `${addr.house_number} ${addr.street}` : '',
-    addr.subdivision,
-    addr.barangay ? `Brgy. ${addr.barangay}` : '',
-    addr.city,
-    addr.province,
-    addr.zip,
-  ].filter(Boolean).join(', ');
-}
 
 function CustomOrderInner() {
   const { id } = useParams();
@@ -337,7 +329,9 @@ function CustomOrderInner() {
       .catch(() => setShippingFeeAmt(null));
   }, [selectedAddressId, addresses, storeSettings, courierBooked]);
 
-  useEffect(() => {
+  // Named so the picker can re-run it after saving a new address, instead of the page reloading
+  // and losing whatever the customer had already typed or attached.
+  const fetchAddresses = useCallback((keepSelection = false) => {
     if (!token) return;
     setAddressLoading(true);
     fetchWithTimeout(`${API_URL}/api/addresses`, { headers: { Authorization: `Bearer ${token}` } }, 30000)
@@ -345,12 +339,17 @@ function CustomOrderInner() {
       .then(data => {
         const list = data.addresses || [];
         setAddresses(list);
-        const def = list.find(a => a.is_default);
-        setSelectedAddressId(def?.id ?? list[0]?.id ?? null);
+        setSelectedAddressId(prev => {
+          if (keepSelection && prev && list.some(a => a.id === prev)) return prev;
+          const def = list.find(a => a.is_default);
+          return def?.id ?? list[0]?.id ?? null;
+        });
       })
       .catch(() => {})
       .finally(() => setAddressLoading(false));
   }, [token]);
+
+  useEffect(() => { fetchAddresses(); }, [fetchAddresses]);
 
   const moq = product?.minOrderQty || 1;
 
@@ -1423,43 +1422,16 @@ function CustomOrderInner() {
 
             {/* Step 3: Delivery - shown for both upload and request */}
             {(designMode === 'upload' || designMode === 'request') && !isInquiry && <section style={{ background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '12px', padding: '1.15rem' }}>
-              <h2 style={{ fontSize: '0.74rem', fontWeight: 800, letterSpacing: '0.03em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: '0.85rem' }}>Delivery address</h2>
-              {addressLoading ? (
-                <p style={{ color: 'var(--gray)', fontSize: '0.85rem' }}>Loading addresses...</p>
-              ) : addresses.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '1.25rem 0' }}>
-                  <p style={{ color: 'var(--gray)', fontSize: '0.85rem', marginBottom: '0.75rem' }}>No saved addresses.</p>
-                  <Link href="/shop/profile" style={{ color: 'var(--gold)', fontWeight: 700, fontSize: '0.85rem' }}>+ Add an address in Profile</Link>
-                </div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                  {addresses.map(addr => {
-                    const active = addr.id === selectedAddressId;
-                    return (
-                      <div key={addr.id} onClick={() => setSelectedAddressId(addr.id)}
-                        style={{ padding: '0.875rem 1rem', borderRadius: '10px', border: `1px solid ${active ? 'var(--gold)' : 'var(--border)'}`, background: active ? 'rgba(212,168,67,0.06)' : 'transparent', cursor: 'pointer', display: 'flex', gap: '0.75rem', alignItems: 'flex-start', transition: 'all 0.12s' }}>
-                        <div style={{ width: 16, height: 16, borderRadius: '50%', border: `2px solid ${active ? 'var(--gold)' : 'var(--gray)'}`, flexShrink: 0, marginTop: '2px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          {active && <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--gold)' }} />}
-                        </div>
-                        <div style={{ minWidth: 0 }}>
-                          <p style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '2px' }}>
-                            {addr.label || 'Home'}
-                            {addr.is_default && (
-                              <span style={{ marginLeft: '6px', fontSize: '0.65rem', background: 'rgba(212,168,67,0.15)', color: 'var(--gold)', padding: '1px 6px', borderRadius: '999px', fontWeight: 700 }}>Default</span>
-                            )}
-                          </p>
-                          <p style={{ fontSize: '0.8rem', color: 'var(--gray)', margin: 0 }}>{formatAddress(addr)}</p>
-                          {addr.phone && <p style={{ fontSize: '0.78rem', color: 'var(--gray)', margin: '2px 0 0' }}>{addr.phone}</p>}
-                        </div>
-                      </div>
-                    );
-                  })}
-                  <Link href="/shop/profile" style={{ fontSize: '0.8rem', color: 'var(--gold)', display: 'inline-flex', alignItems: 'center', gap: '4px', marginTop: '0.25rem', textDecoration: 'none' }}>
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                    Manage addresses
-                  </Link>
-                </div>
-              )}
+              {/* One picker for both screens - see components/shop/AddressPicker. Adding an
+                  address used to send people to /shop/profile, and coming back meant a reload,
+                  which threw away every reference photo they had just attached. */}
+              <AddressPicker
+                addresses={addresses}
+                loading={addressLoading}
+                selectedId={selectedAddressId}
+                onSelect={setSelectedAddressId}
+                onSaved={() => fetchAddresses(true)}
+              />
             </section>}
 
             {/* Step 4: Payment - never on this page any more. Request design submits an unpaid

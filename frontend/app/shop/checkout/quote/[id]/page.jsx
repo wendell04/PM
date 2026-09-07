@@ -4,7 +4,6 @@ import NoImage from '@/components/NoImage';
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import dynamic from 'next/dynamic';
 import { useAuth } from '@/contexts/AuthContext';
 import { fetchMyOrderRequest, createOrderRequestPaymentLink } from '@/lib/orderRequestApi';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
@@ -12,14 +11,10 @@ import { formatPeso } from '@/lib/shopUtils';
 import { DEFAULT_CUSTOM_ORDER_TERMS, renderTermsBody } from '@/lib/customOrderTerms';
 import '@/app/shop/shop.css';
 
-const AddressBook = dynamic(() => import('@/components/profile/AddressBook'), { ssr: false });
+import AddressPicker from '@/components/shop/AddressPicker';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
-function addressLine(a) {
-  return [a.house_number, a.street, a.subdivision, a.barangay, a.city, a.province, a.zip]
-    .filter(Boolean).join(', ');
-}
 
 /**
  * Checkout for a single quote.
@@ -48,7 +43,6 @@ export default function QuoteCheckoutPage() {
   const [showTerms, setShowTerms]   = useState(false);
   const [payType, setPayType] = useState('downpayment');
   const [paying, setPaying] = useState(false);
-  const [showPinModal, setShowPinModal] = useState(false);
 
   const fetchAddresses = useCallback(async (keepSelection = false) => {
     if (!token) return;
@@ -140,8 +134,9 @@ export default function QuoteCheckoutPage() {
     if (!agreed) { setError('Please read and agree to the Custom Order Terms before paying.'); return; }
     if (!selectedAddress) { setError('Please select a delivery address first.'); return; }
     if (!selectedAddress.lat || !selectedAddress.lng) {
-      setError('Please pin your delivery location so the seller can book your courier accurately.');
-      setShowPinModal(true);
+      // The picker shows "No map pin yet - pin it" on the address itself, which opens the form
+      // in place; this only has to say why the payment stopped.
+      setError('Please pin your delivery location so the seller can book your courier accurately - use "pin it" on the address above.');
       return;
     }
     if (!selectedAddress.phone?.trim()) {
@@ -222,67 +217,15 @@ export default function QuoteCheckoutPage() {
         {/* LEFT - address + payment choice */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <section style={{ background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: 12, padding: 14 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-              <span style={{ fontSize: '.74rem', fontWeight: 800, letterSpacing: '.03em', textTransform: 'uppercase', color: 'var(--gray)' }}>
-                Delivery address
-              </span>
-              <button
-                onClick={() => setShowPinModal(true)}
-                style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '.78rem', fontWeight: 700, cursor: 'pointer', padding: 0 }}
-              >
-                {addresses.length ? 'Edit / Pin' : 'Add address'}
-              </button>
-            </div>
-
-            {addresses.length === 0 ? (
-              <p style={{ color: 'var(--gray)', fontSize: '.82rem', margin: 0 }}>
-                You have no saved address yet. Add one to continue.
-              </p>
-            ) : (
-              <>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {addresses.map(a => {
-                    const on = a.id === selectedAddressId;
-                    return (
-                      <button key={a.id} type="button" onClick={() => setSelectedAddressId(a.id)}
-                        style={{ display: 'flex', alignItems: 'flex-start', gap: 10, width: '100%', textAlign: 'left',
-                          padding: '10px 12px', borderRadius: 10, cursor: 'pointer', fontFamily: 'inherit',
-                          border: on ? '1px solid var(--gold)' : '1px solid var(--border)',
-                          background: on ? 'rgba(212,168,67,0.07)' : 'var(--dark2)' }}>
-                        <span style={{ width: 14, height: 14, borderRadius: '50%', flexShrink: 0, marginTop: 3,
-                          border: on ? '4.5px solid var(--gold)' : '1.5px solid var(--gray)', boxSizing: 'border-box' }} />
-                        <span style={{ minWidth: 0 }}>
-                          {a.label && (
-                            <span style={{ display: 'inline-block', fontSize: '.66rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--gold)', background: 'rgba(212,168,67,0.12)', border: '1px solid rgba(212,168,67,0.3)', borderRadius: 999, padding: '1px 7px', marginBottom: 4 }}>
-                              {a.label}
-                            </span>
-                          )}
-                          <span style={{ display: 'block', fontSize: '.82rem', lineHeight: 1.45, color: 'var(--white)' }}>
-                            {addressLine(a)}
-                          </span>
-                          {a.phone && (
-                            <span style={{ display: 'block', fontSize: '.76rem', color: 'var(--gray)', marginTop: 2 }}>{a.phone}</span>
-                          )}
-                          {(!a.lat || !a.lng) && (
-                            <span style={{ display: 'block', fontSize: '.72rem', color: '#b45309', marginTop: 3 }}>
-                              No map pin yet
-                            </span>
-                          )}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-                {selectedAddress && (!selectedAddress.lat || !selectedAddress.lng) && (
-                  <p style={{ color: '#b45309', fontSize: '.78rem', margin: '8px 0 0' }}>
-                    This address has no map pin. The seller needs it to book your courier -{' '}
-                    <button onClick={() => setShowPinModal(true)} style={{ background: 'none', border: 'none', color: '#2563eb', fontWeight: 700, cursor: 'pointer', padding: 0, fontSize: '.78rem' }}>
-                      pin it now
-                    </button>.
-                  </p>
-                )}
-              </>
-            )}
+            {/* Same picker as the custom-order page. The blue "Edit / Pin" link belonged to no
+                palette in this app, and the two screens had drifted into different cards. */}
+            <AddressPicker
+              addresses={addresses}
+              selectedId={selectedAddressId}
+              onSelect={setSelectedAddressId}
+              onSaved={() => fetchAddresses(true)}
+              requirePin
+            />
           </section>
 
           <section style={{ background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: 12, padding: 14 }}>
@@ -491,28 +434,6 @@ export default function QuoteCheckoutPage() {
           </Link>
         </aside>
       </div>
-
-      {showPinModal && (
-        // No backdrop-close: holds the address + map-pin form; a stray click would wipe it.
-        <div
-          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', zIndex: 3000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '1rem', overflowY: 'auto' }}
-        >
-          <div style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '16px', padding: '1.5rem', width: '100%', maxWidth: '580px', marginTop: '2rem', marginBottom: '2rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
-              <h2 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--white)', fontWeight: 700 }}>Pin Your Delivery Location</h2>
-              <button onClick={() => setShowPinModal(false)} style={{ background: 'none', border: 'none', color: 'var(--gray)', cursor: 'pointer', padding: '0.25rem', display: 'flex', alignItems: 'center' }}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-                </svg>
-              </button>
-            </div>
-            <AddressBook
-              initialEditAddress={selectedAddress}
-              onSaved={() => { fetchAddresses(true); setShowPinModal(false); }}
-            />
-          </div>
-        </div>
-      )}
 
       <style jsx>{`
         @media (max-width: 820px) {
