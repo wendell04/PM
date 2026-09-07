@@ -520,7 +520,7 @@ class ChatController extends Controller
             ->orderBy('created_at', 'asc')
             ->first();
 
-        $email = $first->sender_email ?? null;
+        $email = $conversation->guest_email ?? $first->sender_email ?? null;
 
         return [
             'id'        => null,

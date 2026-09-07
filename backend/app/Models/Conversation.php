@@ -16,6 +16,9 @@ class Conversation extends Model
         'last_message_at',
         'is_active',
         'subject',      // For email/contact form threads
+        // Which guest a participant-less thread belongs to. Without it every guest collapses
+        // into the single conversation whose only member is the shop.
+        'guest_email',
     ];
 
     protected $casts = [

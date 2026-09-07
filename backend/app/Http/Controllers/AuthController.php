@@ -765,16 +765,27 @@ class AuthController extends Controller
                 sort($participants);
 
                 // Find or create conversation (PHP-level filter avoids exact-array-order match issues)
+                //
+                // A guest has no id to put in participants, so every guest thread has the same
+                // single member - the shop - and this lookup matched the FIRST of them for
+                // everyone. Juan writes, Maria writes, and both land in one thread carrying
+                // Juan's name and address: the shop would answer Juan about Maria's question.
+                // The address is the only thing that distinguishes one guest from another, so
+                // for them the thread is keyed on it as well.
                 $conversation = Conversation::where('participants', (string) ($sender ? $sender->_id : $admin->_id))->get()
-                    ->first(function ($c) use ($participants) {
+                    ->first(function ($c) use ($participants, $sender, $replyEmail) {
                         $parts = array_map('strval', is_array($c->participants) ? $c->participants : []);
                         sort($parts);
-                        return $parts === $participants;
+                        if ($parts !== $participants) {
+                            return false;
+                        }
+                        return $sender ? true : (($c->guest_email ?? null) === $replyEmail);
                     });
                 if (!$conversation) {
                     $conversation = Conversation::create([
                         'participants' => $participants,
                         'subject'      => $subject,
+                        'guest_email'  => $sender ? null : $replyEmail,
                         'last_message_at' => now(),
                         'is_active'    => true
                     ]);
