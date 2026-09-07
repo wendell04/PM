@@ -35,7 +35,7 @@ const ChatModule = ({ user, token, addToCart }) => {
     } catch { /* ignore */ }
   }, [user]);
 
-  // Normalize MongoDB ObjectId to plain string — WebSocket events may deliver {$oid:"..."} objects
+  // Normalize MongoDB ObjectId to plain string - WebSocket events may deliver {$oid:"..."} objects
   const nid = (id) => {
     if (!id) return '';
     if (typeof id === 'string') return id;
@@ -89,7 +89,7 @@ const ChatModule = ({ user, token, addToCart }) => {
     const data = await getConversations(token);
     setConversations(data);
 
-    // Detect new messages for the active conversation via timestamp — text comparison misses same-text messages
+    // Detect new messages for the active conversation via timestamp - text comparison misses same-text messages
     const curr = activeConvRef.current;
     if (curr && !curr._id.startsWith('new_') && curr._id !== 'support_auto') {
       const sameConv = data.find(c => nid(c._id) === nid(curr._id));
@@ -113,7 +113,7 @@ const ChatModule = ({ user, token, addToCart }) => {
       if (!prev) {
         return !isAdmin && data.length > 0 ? data[0] : null;
       }
-      // Always try exact _id match first — prevents accidentally switching conversations
+      // Always try exact _id match first - prevents accidentally switching conversations
       const sameConv = data.find(c => nid(c._id) === nid(prev._id));
       if (sameConv) return sameConv;
       // Only fall back to other_user match for temporary placeholder conversations
@@ -144,7 +144,7 @@ const ChatModule = ({ user, token, addToCart }) => {
     loadConversations();
   }, [loadConversations]);
 
-  // Conversation list polling — refreshes sidebar and online status
+  // Conversation list polling - refreshes sidebar and online status
   useEffect(() => {
     if (!token) return;
     const id = setInterval(async () => {
@@ -153,7 +153,7 @@ const ChatModule = ({ user, token, addToCart }) => {
     return () => clearInterval(id);
   }, [token, applyConversations]);
 
-  // Heartbeat — keeps current user marked online
+  // Heartbeat - keeps current user marked online
   useEffect(() => {
     if (!token) return;
     sendHeartbeat(token);
@@ -161,7 +161,7 @@ const ChatModule = ({ user, token, addToCart }) => {
     return () => clearInterval(id);
   }, [token]);
 
-  // Keep ref in sync — always points to latest activeConversation
+  // Keep ref in sync - always points to latest activeConversation
   useEffect(() => { activeConvRef.current = activeConversation; }, [activeConversation]);
 
   // Clear typing indicator when conversation switches
@@ -199,7 +199,7 @@ const ChatModule = ({ user, token, addToCart }) => {
     loadMessages();
   }, [activeConversation?._id, token]);
 
-  // Message polling — 1.5s fallback for real-time delivery
+  // Message polling - 1.5s fallback for real-time delivery
   useEffect(() => {
     if (!activeConversation ||
         activeConversation._id === 'support_auto' ||
@@ -223,7 +223,7 @@ const ChatModule = ({ user, token, addToCart }) => {
     return () => clearInterval(id);
   }, [activeConversation?._id, token]);
 
-  // Presence channel — track who is online
+  // Presence channel - track who is online
   useEffect(() => {
     if (!user || !token) return;
     const echo = getEcho(token);
@@ -238,7 +238,7 @@ const ChatModule = ({ user, token, addToCart }) => {
     return () => { echo.leave('presence-online'); };
   }, [user, token]);
 
-  // Stable message handler — uses ref so it never has a stale activeConversation
+  // Stable message handler - uses ref so it never has a stale activeConversation
   const handleNewMessage = useCallback((data) => {
     const newMessage = normalizeMsg(data.message);
     const curr = activeConvRef.current;
@@ -261,9 +261,9 @@ const ChatModule = ({ user, token, addToCart }) => {
     }
     // Always refresh sidebar so unread counts and previews update
     try { applyConversations(); } catch { /* ignore */ }
-  }, [applyConversations]); // stable — no activeConversation dep needed
+  }, [applyConversations]); // stable - no activeConversation dep needed
 
-  // Admin-wide channel — stays subscribed regardless of which conversation is open
+  // Admin-wide channel - stays subscribed regardless of which conversation is open
   useEffect(() => {
     if (!user || !token || !isAdmin) return;
     const echo = getEcho(token);
@@ -273,7 +273,7 @@ const ChatModule = ({ user, token, addToCart }) => {
     return () => { ch.stopListening('.message.sent'); };
   }, [user, token, isAdmin, handleNewMessage]);
 
-  // Conversation-specific channel — switches when active conversation changes
+  // Conversation-specific channel - switches when active conversation changes
   useEffect(() => {
     if (!user || !token || !activeConversation ||
         activeConversation._id.startsWith('new_') ||
@@ -349,7 +349,7 @@ const ChatModule = ({ user, token, addToCart }) => {
 
       // Replace the optimistic bubble with the confirmed message. If the realtime socket already
       // delivered the same message (it can beat the HTTP response), drop the placeholder instead of
-      // swapping it in — otherwise we'd get two copies (the duplicate inquiry/quote card bug).
+      // swapping it in - otherwise we'd get two copies (the duplicate inquiry/quote card bug).
       // The socket usually gets here first and has already folded this in, in which case there is
       // no placeholder left to update and nothing to do.
       setMessages(prev => prev.some(m => m._id === newMessage._id && m._id !== tempId)
@@ -372,7 +372,7 @@ const ChatModule = ({ user, token, addToCart }) => {
     }
   };
 
-  // Hide input on the "start conversation" welcome screen — customers only.
+  // Hide input on the "start conversation" welcome screen - customers only.
   // Admins always have the input visible (they initiate without the button).
   const isVirtualEmpty =
     !isAdmin &&

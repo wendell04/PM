@@ -144,7 +144,7 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
   // wherever the previous thread happened to be scrolled to.
   useScrollToLatest(scrollRef, [messages, Object.keys(typingUsers).length, activeConv?._id, open, view]);
 
-  // Keep ref in sync — used in loadConversations to avoid stale closure
+  // Keep ref in sync - used in loadConversations to avoid stale closure
   useEffect(() => { activeConvRef.current = activeConv; }, [activeConv]);
 
   const loadConversations = useCallback(async () => {
@@ -216,7 +216,7 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
     load();
   }, [activeConv?._id, token]);
 
-  // Message polling — 1.5s fallback, normalized ID to handle {$oid} objects
+  // Message polling - 1.5s fallback, normalized ID to handle {$oid} objects
   useEffect(() => {
     if (!activeConv || activeConv._id?.startsWith('new_') || activeConv._id === 'support_auto' || !token) return;
     const convId = nid(activeConv._id);
@@ -243,7 +243,7 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
     return () => clearInterval(id);
   }, [token]);
 
-  // WebSocket real-time — normalized conversation ID
+  // WebSocket real-time - normalized conversation ID
   useEffect(() => {
     if (!user || !token || !activeConv || activeConv._id?.startsWith('new_') || activeConv._id === 'support_auto') return;
     const echo = getEcho(token);
@@ -319,7 +319,7 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
 
       // Replace the optimistic bubble with the confirmed message. If the realtime socket already
       // delivered the same message (it can beat the HTTP response), just drop the placeholder instead
-      // of swapping it in — otherwise we'd end up with two copies (the duplicate inquiry/quote card bug).
+      // of swapping it in - otherwise we'd end up with two copies (the duplicate inquiry/quote card bug).
       setMessages(prev => prev.some(m => m._id === newMessage._id && m._id !== tempId)
         ? prev.filter(m => m._id !== tempId)
         : prev.map(m => m._id === tempId ? { ...newMessage, clientKey: m.clientKey } : m));
@@ -363,7 +363,7 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
     if (pendingCardRef.current) {
       const card = pendingCardRef.current;
       pendingCardRef.current = null;
-      // Dedupe the ACTUAL send — the support_auto → real-conversation transition can re-fire this effect.
+      // Dedupe the ACTUAL send - the support_auto → real-conversation transition can re-fire this effect.
       const key = card.productId || card.productName || '';
       const now = Date.now();
       if (lastInquiryRef.current.key === key && now - lastInquiryRef.current.at < 6000) return;
@@ -384,8 +384,8 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
   };
 
   const openNewChat = () => {
-    // Reuse the existing store conversation (a customer chats with a single store) — prefer the
-    // admin/owner thread, else the most recent one — so we never fragment the history into a fresh
+    // Reuse the existing store conversation (a customer chats with a single store) - prefer the
+    // admin/owner thread, else the most recent one - so we never fragment the history into a fresh
     // "support_auto" thread (which clears messages) when a conversation already exists.
     const supportConv = conversations.find(
       c => c.other_user?.role === 'admin' || c.other_user?.role === 'owner'
@@ -406,7 +406,7 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
   };
 
   // Let other parts of the app (e.g. the "Request a Quote" button) open the chat with a
-  // prefilled first message — reuses the FAQ auto-send path (pendingFaqRef).
+  // prefilled first message - reuses the FAQ auto-send path (pendingFaqRef).
   useEffect(() => {
     const handleOpenChat = (e) => {
       if (!token) { onRequestLogin?.(); return; }

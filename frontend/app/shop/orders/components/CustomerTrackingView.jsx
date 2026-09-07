@@ -165,7 +165,7 @@ export default function CustomerTrackingView({ order }) {
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: '16px' }}>
             <span style={{ fontSize: '0.8rem', color: 'var(--gray)' }}>Estimated Completion</span>
             <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--white)', fontFamily: 'monospace' }}>
-              {order.eta ? formatDate(order.eta) : '—'}
+              {order.eta ? formatDate(order.eta) : '-'}
             </span>
           </div>
 

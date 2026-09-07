@@ -368,11 +368,11 @@ export default function DashboardOverview({ orderStats, salesSummary, inventory 
             >
               {salesSummary?.totalRevenue
                 ? `₱${salesSummary.totalRevenue.toLocaleString("en-PH", { minimumFractionDigits: 2 })}`
-                : "—"}
+                : "-"}
             </div>
           </div>
 
-          {/* SSA Forecast chart — source toggle + real SSA lines */}
+          {/* SSA Forecast chart - source toggle + real SSA lines */}
           {(() => {
             const isInventory = miniSource === "inventory";
             const ssaResult   = miniSource === "quantity" ? ssaQtyResult : ssaRevResult;
@@ -382,7 +382,7 @@ export default function DashboardOverview({ orderStats, salesSummary, inventory 
             const isRevenue   = miniSource === "revenue";
 
             const fmtVal = (v) => {
-              if (v == null) return "—";
+              if (v == null) return "-";
               if (isRevenue) {
                 if (Math.abs(v) >= 1000000) return "₱" + (v / 1000000).toFixed(1) + "M";
                 if (Math.abs(v) >= 1000) return "₱" + (v / 1000).toFixed(1) + "K";
@@ -528,7 +528,7 @@ export default function DashboardOverview({ orderStats, salesSummary, inventory 
             <div>
               <div style={metricLabelStyle}>Total Orders</div>
               <div style={{ fontSize: "1.25rem", fontWeight: 700, color: "var(--white)" }}>
-                {orderStats?.totalOrders ?? "—"}
+                {orderStats?.totalOrders ?? "-"}
               </div>
             </div>
             <div>
@@ -536,7 +536,7 @@ export default function DashboardOverview({ orderStats, salesSummary, inventory 
               <div style={{ fontSize: "1.25rem", fontWeight: 700, color: "var(--gold)" }}>
                 {salesSummary?.totalProfit != null
                   ? `₱${salesSummary.totalProfit.toLocaleString("en-PH", { minimumFractionDigits: 2 })}`
-                  : "—"}
+                  : "-"}
               </div>
             </div>
           </div>
@@ -572,7 +572,7 @@ export default function DashboardOverview({ orderStats, salesSummary, inventory 
           <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
             {topProducts.length === 0 ? (
               <div style={{ textAlign: "center", padding: "2rem", color: "var(--gray)", fontSize: "0.85rem" }}>
-                — No sales data yet —
+                - No sales data yet -
               </div>
             ) : (
               topProducts.map((p, i) => (
@@ -626,19 +626,19 @@ export default function DashboardOverview({ orderStats, salesSummary, inventory 
             <div style={{ ...metricValueStyle, color: salesSummary?.totalRevenue ? "var(--gold)" : "var(--gray)" }}>
               {salesSummary?.totalRevenue != null
                 ? `₱${salesSummary.totalRevenue.toLocaleString("en-PH", { minimumFractionDigits: 2 })}`
-                : "—"}
+                : "-"}
             </div>
           </div>
           <div style={cardStyle}>
             <div style={metricLabelStyle}>Total Orders</div>
             <div style={{ ...metricValueStyle, color: orderStats?.totalOrders ? "var(--white)" : "var(--gray)" }}>
-              {orderStats?.totalOrders ?? "—"}
+              {orderStats?.totalOrders ?? "-"}
             </div>
           </div>
           <div style={cardStyle}>
             <div style={metricLabelStyle}>Cancelled Orders</div>
             <div style={{ ...metricValueStyle, color: orderStats?.cancelledOrders ? "var(--red)" : "var(--gray)" }}>
-              {orderStats?.cancelledOrders ?? "—"}
+              {orderStats?.cancelledOrders ?? "-"}
             </div>
           </div>
         </div>
@@ -654,13 +654,13 @@ export default function DashboardOverview({ orderStats, salesSummary, inventory 
           <div style={cardStyle}>
             <div style={metricLabelStyle}>Pending Orders</div>
             <div style={{ ...metricValueStyle, color: orderStats?.pendingOrders ? "var(--color-text-warning)" : "var(--gray)" }}>
-              {orderStats?.pendingOrders ?? "—"}
+              {orderStats?.pendingOrders ?? "-"}
             </div>
           </div>
           <div style={cardStyle}>
             <div style={metricLabelStyle}>Completed Orders</div>
             <div style={{ ...metricValueStyle, color: orderStats?.completedOrders ? "var(--green)" : "var(--gray)" }}>
-              {orderStats?.completedOrders ?? "—"}
+              {orderStats?.completedOrders ?? "-"}
             </div>
           </div>
           <div style={cardStyle}>
@@ -668,7 +668,7 @@ export default function DashboardOverview({ orderStats, salesSummary, inventory 
             <div style={{ ...metricValueStyle, color: salesSummary?.totalProfit ? "var(--gold)" : "var(--gray)" }}>
               {salesSummary?.totalProfit != null
                 ? `₱${salesSummary.totalProfit.toLocaleString("en-PH", { minimumFractionDigits: 2 })}`
-                : "—"}
+                : "-"}
             </div>
           </div>
         </div>
@@ -1086,7 +1086,7 @@ export default function DashboardOverview({ orderStats, salesSummary, inventory 
                         ₱{(order.totalAmount || 0).toLocaleString("en-PH", { minimumFractionDigits: 2 })}
                       </div>
                       <div style={{ fontSize: "0.65rem", color: "var(--gray)" }}>
-                        {order.createdAt ? new Date(order.createdAt).toLocaleDateString() : "—"}
+                        {order.createdAt ? new Date(order.createdAt).toLocaleDateString() : "-"}
                       </div>
                     </div>
                   </div>
@@ -1100,7 +1100,7 @@ export default function DashboardOverview({ orderStats, salesSummary, inventory 
                     fontSize: "0.85rem",
                   }}
                 >
-                  — No orders yet —
+                  - No orders yet -
                 </div>
               )}
             </div>
@@ -1136,7 +1136,7 @@ export default function DashboardOverview({ orderStats, salesSummary, inventory 
             <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", maxHeight: "320px", overflowY: "auto" }}>
               {recentMovements.length === 0 ? (
                 <div style={{ textAlign: "center", padding: "2rem", color: "var(--gray)", fontSize: "0.85rem" }}>
-                  — No stock movements yet —
+                  - No stock movements yet -
                 </div>
               ) : (
                 recentMovements.slice(0, 5).map((movement, idx) => {

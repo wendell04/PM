@@ -565,7 +565,7 @@ export default function CheckoutPage() {
     if (!luhnCheck(num)) return 'Card number is invalid. Please check and try again.';
     const [m, y] = cardExpiry.split('/');
     if (!m || !y || parseInt(m) < 1 || parseInt(m) > 12 || y.length < 2) return 'Enter a valid expiry date (MM/YY).';
-    if (cardCvc.length < 3) return 'Enter a valid security code (3–4 digits).';
+    if (cardCvc.length < 3) return 'Enter a valid security code (3-4 digits).';
     if (!cardName.trim()) return 'Enter the name on your card.';
     return null;
   }
@@ -748,7 +748,7 @@ export default function CheckoutPage() {
         router.push(`/shop/payment-success?id=${orderId}&method=cod`);
 
       } else {
-        // Custom payment via Payment Intents — bypasses PayMongo hosted checkout
+        // Custom payment via Payment Intents - bypasses PayMongo hosted checkout
         let paymentMethodId = null;
         if (paymentMethod === 'card') {
           paymentMethodId = await tokenizeCard();
@@ -886,7 +886,7 @@ export default function CheckoutPage() {
                     <div key={i} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
                       <span style={{ color: 'var(--gray)', fontSize: '0.82rem' }}>
                         {item.productName || item.product_name || 'Item'}
-                        {item.variantName ? ` — ${item.variantName}` : ''} ×{item.qty || item.quantity}
+                        {item.variantName ? ` - ${item.variantName}` : ''} ×{item.qty || item.quantity}
                       </span>
                       <span style={{ color: 'var(--white)', fontSize: '0.82rem' }}>
                         ₱{Number(item.lineTotal ?? (item.unitPrice * (item.qty || 1)) ?? 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
@@ -953,7 +953,7 @@ export default function CheckoutPage() {
             </div>
             <h2 style={{ color: 'var(--white)', fontWeight: 700, fontSize: '1.3rem', marginBottom: 8 }}>Payment Cancelled</h2>
             <p style={{ color: 'var(--gray)', fontSize: '0.9rem', marginBottom: 28, lineHeight: 1.6 }}>
-              Your payment was not completed. Your cart items are still saved — you can try again anytime.
+              Your payment was not completed. Your cart items are still saved - you can try again anytime.
             </p>
             <button
               onClick={() => setFailedModal(false)}
@@ -965,7 +965,7 @@ export default function CheckoutPage() {
         </div>
       )}
 
-      {/* SECTION 1 — Header */}
+      {/* SECTION 1 - Header */}
       <div className="checkout-header">
         <button
           className="checkout-back-btn"
@@ -982,7 +982,7 @@ export default function CheckoutPage() {
         <h1 className="checkout-title">Checkout</h1>
       </div>
 
-      {/* SECTION 2 — Delivery Address */}
+      {/* SECTION 2 - Delivery Address */}
       <div className="checkout-card" style={{ borderLeft: '3px solid var(--gold)' }}>
         <div className="checkout-card-header">
           <div className="checkout-section-label">
@@ -1009,7 +1009,7 @@ export default function CheckoutPage() {
             <div className="checkout-address-name">
               {currentUser?.firstName || ''} {currentUser?.lastName || ''}
             </div>
-            <div className="checkout-address-phone">{selectedAddress.phone || '—'}</div>
+            <div className="checkout-address-phone">{selectedAddress.phone || '-'}</div>
             <div className="checkout-address-text">{formatAddress(selectedAddress)}</div>
             {!selectedAddress.lat && !selectedAddress.lng && storeSettings?.shippingMode !== 'flat' && (
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem', marginTop: '0.75rem', padding: '0.625rem 0.75rem', background: 'rgba(234,179,8,0.07)', border: '1px solid rgba(234,179,8,0.25)', borderRadius: '8px' }}>
@@ -1048,7 +1048,7 @@ export default function CheckoutPage() {
         )}
       </div>
 
-      {/* SECTION 3 — Order Items */}
+      {/* SECTION 3 - Order Items */}
       <div className="checkout-card">
         <div className="checkout-section-label">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -1150,7 +1150,7 @@ export default function CheckoutPage() {
         })}
       </div>
 
-      {/* SECTION 3B – Design Upload (only shown for custom print products) */}
+      {/* SECTION 3B - Design Upload (only shown for custom print products) */}
       {hasCustomItem && <div className="checkout-card">
         <div className="checkout-section-label" style={{ marginBottom: '0.75rem' }}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1160,11 +1160,11 @@ export default function CheckoutPage() {
           </svg>
           Design File
           <span style={{ marginLeft: '0.5rem', fontStyle: 'normal', fontWeight: 400, color: 'var(--gray)', textTransform: 'none', letterSpacing: 0, fontSize: '0.72rem' }}>
-            — Optional
+            - Optional
           </span>
         </div>
 
-        {/* Design preview from product page — B-06 */}
+        {/* Design preview from product page - B-06 */}
         {((designPreviewUrl && !designFile) || designFilePreviewUrl) && (
           <div style={{
             display: 'flex',
@@ -1318,14 +1318,14 @@ export default function CheckoutPage() {
             }}
           >
             Design Notes
-            <span style={{ marginLeft: '0.375rem', fontWeight: 400, opacity: 0.7 }}>— Optional</span>
+            <span style={{ marginLeft: '0.375rem', fontWeight: 400, opacity: 0.7 }}>- Optional</span>
           </label>
           <textarea
             id="design-notes"
             rows={3}
             maxLength={500}
             className="checkout-notes-input"
-            placeholder="Describe what you want printed — colors, text, placement, size, or any other details..."
+            placeholder="Describe what you want printed - colors, text, placement, size, or any other details..."
             value={designNotes}
             onChange={e => setDesignNotes(e.target.value.slice(0, 500))}
           />
@@ -1359,7 +1359,7 @@ export default function CheckoutPage() {
         </div>
       )}
 
-      {/* SECTION 4C — Delivery speed (order-level Standard / Rush). Same card + toggle design language
+      {/* SECTION 4C - Delivery speed (order-level Standard / Rush). Same card + toggle design language
           as the cart and the per-product custom page. */}
       {rushEnabled && (
         <div className="checkout-card" style={{ display: 'flex', flexDirection: 'column', gap: '0.7rem' }}>
@@ -1434,7 +1434,7 @@ export default function CheckoutPage() {
         </div>
       )}
 
-      {/* SECTION 5 — Order Summary */}
+      {/* SECTION 5 - Order Summary */}
       <div className="checkout-card checkout-summary-card">
         <div className="checkout-summary-row">
           <span>Subtotal</span>
@@ -1464,14 +1464,14 @@ export default function CheckoutPage() {
             if (storeSettings?.shippingMode === 'flat' && !addr)
               return <span className="checkout-shipping-note">Select an address</span>;
             if ((!storeSettings?.storeLat || !storeSettings?.storeLng) && storeSettings?.shippingMode !== 'flat')
-              return <span className="checkout-shipping-note">—</span>;
+              return <span className="checkout-shipping-note">-</span>;
             if (!addr?.lat || !addr?.lng)
               return (
                 <button type="button" className="checkout-shipping-note" style={{ background: 'none', border: 'none', color: 'var(--gold)', cursor: 'pointer', padding: 0, fontWeight: 600, fontSize: 'inherit', textDecoration: 'underline' }} onClick={() => setShowPinModal(true)}>
                   Pin your address
                 </button>
               );
-            return <span className="checkout-shipping-note">—</span>;
+            return <span className="checkout-shipping-note">-</span>;
           })()}
         </div>
         {isRush && rushCharge > 0 && (
@@ -1637,7 +1637,7 @@ export default function CheckoutPage() {
         )}
       </div>
 
-      {/* SECTION 6 — Payment Method */}
+      {/* SECTION 6 - Payment Method */}
       <div className="checkout-card">
         <div className="checkout-section-label" style={{ marginBottom: '0.75rem' }}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -1646,7 +1646,7 @@ export default function CheckoutPage() {
           Payment Method
         </div>
 
-        {/* Payment method cards — COD → GCash → Maya → Card */}
+        {/* Payment method cards - COD → GCash → Maya → Card */}
         {([
           {
             id: 'cod',
@@ -1756,7 +1756,7 @@ export default function CheckoutPage() {
                 }} />
               </div>
 
-              {/* Inline e-wallet panel — appears directly below its own card */}
+              {/* Inline e-wallet panel - appears directly below its own card */}
               {showPanel && (
                 <div style={{
                   marginTop: '4px', marginBottom: '0.625rem',
@@ -1949,7 +1949,7 @@ export default function CheckoutPage() {
                 <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
               </svg>
               <span style={{ fontSize: '0.7rem', color: 'var(--gray)' }}>
-                Card details encrypted and sent directly to PayMongo — never stored on our servers.
+                Card details encrypted and sent directly to PayMongo - never stored on our servers.
               </span>
             </div>
           </div>
@@ -1967,7 +1967,7 @@ export default function CheckoutPage() {
         </div>
       )}
 
-      {/* SECTION 7 — Place Order Button */}
+      {/* SECTION 7 - Place Order Button */}
       {error && (
         <div className="checkout-error">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

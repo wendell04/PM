@@ -48,7 +48,7 @@ export default function PaymentSuccessPage() {
   useEffect(() => {
     sessionStorage.removeItem('checkout_payload');
     sessionStorage.removeItem('pending_payment_order_id');
-    // Cart is cleared only once the order is confirmed settled (see fetchOrder), not on mount —
+    // Cart is cleared only once the order is confirmed settled (see fetchOrder), not on mount -
     // otherwise a payment that fails verification would have already emptied the cart.
   }, [orderId]);
 
@@ -267,7 +267,7 @@ export default function PaymentSuccessPage() {
             : order?.paymentStatus === 'partial'
               ? `Your downpayment of ₱${Number(order?.downPayment ?? 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })} has been received. The remaining balance of ₱${Number(order?.balance ?? 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })} is due before delivery.`
               : (order?.designFeePaid && order?.paymentStatus !== 'paid')
-                ? "Your design fee has been received. Our designer will send you a proof via chat within 24–48 hours. The remaining order balance is due after you approve the design."
+                ? "Your design fee has been received. Our designer will send you a proof via chat within 24-48 hours. The remaining order balance is due after you approve the design."
                 : "Thank you for your order. We've received your payment and will begin processing shortly."}
         </p>
 
@@ -331,7 +331,7 @@ export default function PaymentSuccessPage() {
                   <div key={i} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
                     <span style={{ color: 'var(--gray)', fontSize: '0.82rem', flex: 1, paddingRight: '8px' }}>
                       {item.productName ?? item.product_name ?? 'Item'}
-                      {item.variantName ? ` — ${item.variantName}` : ''} ×{item.qty ?? item.quantity ?? 1}
+                      {item.variantName ? ` - ${item.variantName}` : ''} ×{item.qty ?? item.quantity ?? 1}
                     </span>
                     <span style={{ color: 'var(--white)', fontSize: '0.82rem', flexShrink: 0 }}>
                       ₱{Number(item.lineTotal ?? ((item.unitPrice ?? 0) * (item.qty ?? 1))).toLocaleString('en-PH', { minimumFractionDigits: 2 })}

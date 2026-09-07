@@ -13,7 +13,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { useCart } from '@/context/CartContext';
 import { fetchNotifications, markNotificationRead, markAllNotificationsRead } from '@/lib/notificationApi';
 import CustomerChatModal from '@/components/chat/CustomerChatModal';
-// Shared with the shop layout — one sign-up form (fields, CAPTCHA, password rules, T&C) everywhere.
+// Shared with the shop layout - one sign-up form (fields, CAPTCHA, password rules, T&C) everywhere.
 import RegisterForm from '@/components/auth/RegisterForm';
 import { PasswordGuide } from '@/components/auth/PasswordGuide';
 import '@/components/custom-styles.css';
@@ -351,7 +351,7 @@ const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=
       .catch(() => {});
   }, []);
 
-  // Hero carousel auto-advance — taglines loop, images cycle through all (independent)
+  // Hero carousel auto-advance - taglines loop, images cycle through all (independent)
   useEffect(() => {
     if (heroPaused) return;
     const tags = heroBanners.filter(b => b.heroRole === 'tagline');
@@ -541,7 +541,7 @@ const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=
     }
   };
 
-  // Scroll to first error — runs after DOM paint using name attributes
+  // Scroll to first error - runs after DOM paint using name attributes
   const scrollToFirstError = (errorObj) => {
     const fieldOrder = ['firstName', 'lastName', 'phoneNumber', 'email', 'password', 'confirmPassword'];
     for (const field of fieldOrder) {
@@ -614,7 +614,7 @@ const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=
       setErrors({email: 'Network error. Make sure the backend server is running.'});
     } finally {
       setIsRegistering(false);
-      // Turnstile tokens are single-use — reset so a re-submit (e.g. after a validation error)
+      // Turnstile tokens are single-use - reset so a re-submit (e.g. after a validation error)
       // gets a fresh token instead of reusing a spent one ("Verification failed").
       turnstileRef.current?.reset();
     }
@@ -647,7 +647,7 @@ const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=
       }
       // Check 2FA requirement BEFORE writing to storage
       if (data.data.requires_2fa) {
-        // Store pending credentials under temporary keys — NOT auth_token/auth_user
+        // Store pending credentials under temporary keys - NOT auth_token/auth_user
         // Final storage write happens in 2fa-challenge onSuccess after OTP verified
         sessionStorage.setItem('pmp_pending_token', data.data.token);
         sessionStorage.setItem('pmp_pending_user', JSON.stringify(data.data.user));
@@ -662,7 +662,7 @@ const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=
         return;
       }
 
-      // No 2FA required — write to storage now
+      // No 2FA required - write to storage now
       localStorage.setItem('auth_token', data.data.token);
       localStorage.setItem('auth_user', JSON.stringify(data.data.user));
       if (data.data.expires_at) localStorage.setItem('auth_expires_at', data.data.expires_at);
@@ -723,7 +723,7 @@ const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=
     }
   }, [verificationCode, registeredEmail, pendingAuth]);
 
-// STEP 1 — Send reset link to email
+// STEP 1 - Send reset link to email
 const handleForgotSubmit = async () => {
   if (!forgotEmail.trim()) { setForgotError('Email is required'); return; }
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(forgotEmail)) {
@@ -774,7 +774,7 @@ const handleResetLinkClick = async (token, email) => {
   }
 };
 
-// STEP 2 — User confirmed, now send verification code
+// STEP 2 - User confirmed, now send verification code
 const handleSendResetCode = async () => {
   setForgotError('');
   setIsSendingReset(true);
@@ -797,7 +797,7 @@ const handleSendResetCode = async () => {
   }
 };
 
-// STEP 3 — Verify the 6-digit code
+// STEP 3 - Verify the 6-digit code
 const handleForgotVerifyCode = async () => {
   if (forgotCode.length !== 6) { setForgotError('Please enter the 6-digit code'); return; }
   setForgotError('');
@@ -846,7 +846,7 @@ const handleForgotResend = async () => {
   }
 };
 
-// STEP 4 — Submit new password
+// STEP 4 - Submit new password
 const handleForgotResetPassword = async () => {
   if (!forgotNewPassword) { setForgotError('Password is required'); return; }
   if (forgotNewPassword.length < 8) { setForgotError('Password must be at least 8 characters'); return; }
@@ -865,7 +865,7 @@ const handleForgotResetPassword = async () => {
     });
     const data = await response.json();
     if (!response.ok) { setForgotError(data.message || 'Failed to reset password.'); return; }
-    // Success — close and go to login
+    // Success - close and go to login
     setForgotModal(false);
     setForgotStep(1);
     setForgotCode('');
@@ -880,7 +880,7 @@ const handleForgotResetPassword = async () => {
 };
 
   // From the login screen: when login says "verify your email", resend the code and open the
-  // verification modal so the user can enter it — no need to re-register.
+  // verification modal so the user can enter it - no need to re-register.
   // Which of the two paths opened the verification modal, so its wording can be honest.
   const [verifyingExisting, setVerifyingExisting] = useState(false);
 
@@ -1000,15 +1000,15 @@ const handleForgotResetPassword = async () => {
   const services = [
     { img: '/products/Tshit_printing.jpg', title: 'T-Shirt Printing',     category: 'tshirts', desc: 'Silkscreen & DTF printing available. Starts at ₱300. Final cost depends on quantity, design complexity, material type, and panel print. Perfect for teams, events, and merchandise.' },
     { img: '/products/DTF.jpg',            title: 'DTF Printing',          category: 'tshirts', desc: 'Direct-to-Film printing. Starts at ₱250 per meter. Vivid, full-color prints on fabric. Final cost depends on quantity. Great for custom apparel and fabric items.' },
-    { img: '/products/mugs.jpg',           title: 'Mugs (11oz)',           category: 'mugs', desc: 'Three variants: Ceramic White, Inner Color Mug, and Magic Mug. Starting at ₱50/pc for 501–1000 pcs. Sublimation-printed for lasting, vibrant color.' },
-    { img: '/products/ButtonPins.jpg',     title: 'Button Pins & Badges',  category: 'bags', desc: 'Available as Badge/Button Pin, Magnet Badge, and Keychain Badge (2.25"). Starting at ₱10/pc for 501–1000 pcs. Ideal for promotions, events, and giveaways.' },
+    { img: '/products/mugs.jpg',           title: 'Mugs (11oz)',           category: 'mugs', desc: 'Three variants: Ceramic White, Inner Color Mug, and Magic Mug. Starting at ₱50/pc for 501-1000 pcs. Sublimation-printed for lasting, vibrant color.' },
+    { img: '/products/ButtonPins.jpg',     title: 'Button Pins & Badges',  category: 'bags', desc: 'Available as Badge/Button Pin, Magnet Badge, and Keychain Badge (2.25"). Starting at ₱10/pc for 501-1000 pcs. Ideal for promotions, events, and giveaways.' },
     { img: '/products/ecobags.jpg',        title: 'Canvas Totebag',        category: 'bags', desc: 'Plain and w/ Zipper & Pocket variants. Sizes: Small (10x12"), Medium (12x14"), Large (14x16"). Starting at ₱70/pc for bulk orders. Eco-friendly and customizable.' },
-    { img: '/products/MousePad.jpg',       title: 'Mousepad',              category: 'stickers', desc: 'Rectangle 22x18cm sublimation-printed mousepad. Starting at ₱70/pc for 501–1000 pcs. Full-color custom design on a smooth, non-slip surface.' },
-    { img: '/products/RefMagnet.jpg',      title: 'Ref Magnet',            category: 'stickers', desc: 'Custom refrigerator magnets up to 3" max size. Starting at ₱15/pc for 501–1000 pcs. Popular souvenir and giveaway item for events and occasions.' },
+    { img: '/products/MousePad.jpg',       title: 'Mousepad',              category: 'stickers', desc: 'Rectangle 22x18cm sublimation-printed mousepad. Starting at ₱70/pc for 501-1000 pcs. Full-color custom design on a smooth, non-slip surface.' },
+    { img: '/products/RefMagnet.jpg',      title: 'Ref Magnet',            category: 'stickers', desc: 'Custom refrigerator magnets up to 3" max size. Starting at ₱15/pc for 501-1000 pcs. Popular souvenir and giveaway item for events and occasions.' },
     { img: '/products/Souvenirs.jpg',      title: 'Souvenirs & Gift Items', category: 'books', desc: 'Custom souvenir items for weddings, birthdays, debuts, and corporate events. Wide variety of personalized items available.' },
     { img: '/products/Stickers.jpg',       title: 'Stickers & Labels',     category: 'stickers', desc: 'Kisscut & Diecut. Variants: Vinyl Waterproof, Laminated, Specialty Label, Photopaper, Regular, and Kraft. Priced per A4 sheet. Starting at ₱25.' },
-    { img: '/products/Bookmarks.jpg',      title: 'Magnetic Bookmark',     category: 'books', desc: 'Maximum size 2.5". Starting at ₱15/pc for 501–1000 pcs. Custom-printed magnetic bookmarks — perfect gifts and giveaways for readers and events.' },
-    { img: '/products/Ballpens.jpg',       title: 'Ballpens',              category: 'books', desc: 'Custom printed ballpens — affordable and practical promotional item. Ideal for corporate giveaways, school events, and bulk orders.' },
+    { img: '/products/Bookmarks.jpg',      title: 'Magnetic Bookmark',     category: 'books', desc: 'Maximum size 2.5". Starting at ₱15/pc for 501-1000 pcs. Custom-printed magnetic bookmarks - perfect gifts and giveaways for readers and events.' },
+    { img: '/products/Ballpens.jpg',       title: 'Ballpens',              category: 'books', desc: 'Custom printed ballpens - affordable and practical promotional item. Ideal for corporate giveaways, school events, and bulk orders.' },
     { img: '/products/Caps.jpg',           title: 'Caps',                  category: 'tshirts', desc: 'Custom printed or embroidered caps. Perfect for teams, sports events, corporate uniforms, and merchandise. Contact us for bulk pricing.' },
   ];
 
@@ -1027,17 +1027,17 @@ const handleForgotResetPassword = async () => {
   // CMS pricing cards override the hardcoded defaults when set in the Homepage editor.
   const pricingCards = (pricingContent?.cards?.length) ? pricingContent.cards : publicPricing;
 
-  // Why-Us features + How-It-Works steps + Contact info — CMS override w/ hardcoded fallback.
+  // Why-Us features + How-It-Works steps + Contact info - CMS override w/ hardcoded fallback.
   const DEFAULT_WHYUS = [
     { title: 'Affordable Pricing',   desc: 'Premium prints at prices that make sense. No hidden fees, no overpricing.' },
     { title: 'Fast Turnaround',      desc: 'Standard orders arrive in 4-5 days, rush in 2-3. Ready-made items ship the next day.' },
     { title: 'Design Assistance',    desc: 'No designer? No problem. Request a design and our team will create it for you.' },
-    { title: 'Approval Before Print', desc: 'You see and approve the final design before we print — 100% satisfaction guaranteed.' },
+    { title: 'Approval Before Print', desc: 'You see and approve the final design before we print - 100% satisfaction guaranteed.' },
   ];
   const whyusFeatures = whyusContent?.features?.length ? whyusContent.features : DEFAULT_WHYUS;
 
   const DEFAULT_HIW = [
-    { title: 'Browse Products',  desc: 'Explore our full catalogue of personalizable items — shirts, mugs, bags, stickers, and more.' },
+    { title: 'Browse Products',  desc: 'Explore our full catalogue of personalizable items - shirts, mugs, bags, stickers, and more.' },
     { title: 'Personalize It',   desc: 'Add your name, message, or upload a design. We handle every detail to make it uniquely yours.' },
     { title: 'Place Your Order', desc: 'Review your item and check out. We confirm every order and send a proof before production.' },
     { title: 'Receive & Enjoy',  desc: 'Your personalized item is crafted with care and delivered straight to your door.' },
@@ -1060,7 +1060,7 @@ const handleForgotResetPassword = async () => {
     email:     contactContent?.email     ?? '',
   };
 
-  // Accepted payment methods — single source of truth (footer badges + checkout read this).
+  // Accepted payment methods - single source of truth (footer badges + checkout read this).
   // Shape: { enabled: { cod, gcash, paymaya, card } }. Missing key = enabled (default-on).
   const payEnabled = (paymentContent?.enabled && typeof paymentContent.enabled === 'object') ? paymentContent.enabled : {};
   const hasPay = (id) => payEnabled[id] !== false;
@@ -1083,7 +1083,7 @@ const handleForgotResetPassword = async () => {
     { q: 'I don’t have a design. Can you make one?', a: 'Yes! Pick “Request a Design” when you order and our team will create it for you. You’ll review and approve the proof before we print anything.' },
     { q: 'What files do you accept for custom uploads?', a: 'PNG, JPG, or PDF work best. For the sharpest print, send high-resolution files (around 300 DPI). If your file isn’t print-ready, we’ll let you know.' },
     { q: 'How do I pay?', a: 'We accept GCash, Maya, and credit/debit cards (Visa & Mastercard). For bulk orders, a downpayment option is available at checkout.' },
-    { q: 'Do you deliver?', a: 'Yes — we ship nationwide via courier. The delivery fee depends on your location and is shown at checkout or arranged with the rider for booked couriers.' },
+    { q: 'Do you deliver?', a: 'Yes - we ship nationwide via courier. The delivery fee depends on your location and is shown at checkout or arranged with the rider for booked couriers.' },
     { q: 'Do you offer bulk or wholesale pricing?', a: 'Definitely. Prices drop as quantity goes up. Log in or register to view the complete pricelist with bulk breakdowns for every product.' },
   ];
 
@@ -1274,7 +1274,7 @@ const handleForgotResetPassword = async () => {
       return ao - bo;
     });
 
-  // Collections carousel: arrow scroll (desktop) — touch swipes natively.
+  // Collections carousel: arrow scroll (desktop) - touch swipes natively.
   const colScrollRef = useRef(null);
   const scrollCols = (dir) => {
     const el = colScrollRef.current;
@@ -1282,7 +1282,7 @@ const handleForgotResetPassword = async () => {
     el.scrollBy({ left: dir * el.clientWidth * 0.85, behavior: 'smooth' });
   };
 
-  // Lock background scroll when a sheet is open — phones only
+  // Lock background scroll when a sheet is open - phones only
   useEffect(() => {
     if (!lpCartOpen && !lpNotifOpen || window.innerWidth > 640) return;
     const block = (e) => {
@@ -1543,7 +1543,7 @@ const handleForgotResetPassword = async () => {
         <div style={{position:'fixed',inset:0,zIndex:198}} onClick={() => { setLpCartOpen(false); setLpNotifOpen(false); }} />
       )}
 
-      {/* Cart sheet — at root level so position:fixed is viewport-relative, not navbar-relative */}
+      {/* Cart sheet - at root level so position:fixed is viewport-relative, not navbar-relative */}
       {lpCartOpen && (
         <div className="lp-nav-popup" ref={cartSheetRef}
           onTouchStart={onSheetDragStart}
@@ -1596,7 +1596,7 @@ const handleForgotResetPassword = async () => {
         </div>
       )}
 
-      {/* Notifications sheet — at root level */}
+      {/* Notifications sheet - at root level */}
       {lpNotifOpen && (
         <div className="lp-nav-popup lp-nav-notif-popup" ref={notifSheetRef}
           onTouchStart={onSheetDragStart}
@@ -1635,12 +1635,12 @@ const handleForgotResetPassword = async () => {
         </div>
       )}
 
-      {/* Backdrop — click outside drawer to close */}
+      {/* Backdrop - click outside drawer to close */}
       {mobileMenuOpen && (
         <div className="mm-backdrop" onClick={closeMobile} />
       )}
 
-      {/* MOBILE MENU — Nike right-side drawer */}
+      {/* MOBILE MENU - Nike right-side drawer */}
       <div className={`mobile-menu ${mobileMenuOpen ? 'open' : ''}`}>
 
         {/* ── Level 1: main items ── */}
@@ -1889,7 +1889,7 @@ const handleForgotResetPassword = async () => {
         </div>
       </section>
 
-      {/* COLLECTIONS — Pinnacle-style 4-grid; only collections toggled "Show on Landing Page" appear */}
+      {/* COLLECTIONS - Pinnacle-style 4-grid; only collections toggled "Show on Landing Page" appear */}
       {colSource.length > 0 && (
         <section
           className="lp-pinnacle"
@@ -1921,7 +1921,7 @@ const handleForgotResetPassword = async () => {
               </div>
             </div>
 
-            {/* Collections carousel — square cards. Swipe on touch; arrows on desktop. */}
+            {/* Collections carousel - square cards. Swipe on touch; arrows on desktop. */}
             <div className="lp-pinnacle-mobile-stack" ref={colScrollRef}>
               {colSource.map((col, i) => (
                 <button
@@ -1961,7 +1961,7 @@ const handleForgotResetPassword = async () => {
             <div className="container">
               <div className="section-header center">
                 <h2 className="section-title">Featured <span className="gold-text">Products</span></h2>
-                <p className="section-subtitle">A fresh pick every visit — tap any item to customize and order.</p>
+                <p className="section-subtitle">A fresh pick every visit - tap any item to customize and order.</p>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '18px', marginTop: '8px' }}>
                 {featured.map((p, i) => {
@@ -2001,13 +2001,13 @@ const handleForgotResetPassword = async () => {
         );
       })()}
 
-      {/* SERVICE CAROUSEL — hidden
+      {/* SERVICE CAROUSEL - hidden
       <section id="services">
         <div className="container">
           <div className="section-header center">
             <span className="section-tag">What We Offer</span>
             <h2 className="section-title">Our <span className="gold-text">Print</span> Services</h2>
-            <p className="section-subtitle">From apparel to promotional materials — we bring your ideas to life with precision printing at prices that won't break the bank.</p>
+            <p className="section-subtitle">From apparel to promotional materials - we bring your ideas to life with precision printing at prices that won't break the bank.</p>
           </div>
         </div>
         <div style={{position:'relative'}}>
@@ -2087,7 +2087,7 @@ const handleForgotResetPassword = async () => {
               <div className="section-header">
                 <span className="section-tag">Why Choose Us</span>
                 <h2 className="section-title">Quality You Can <span className="gold-text">Feel</span></h2>
-                <p className="section-subtitle">We're not just a print shop — we're your creative partner. Every order is handled with care, precision, and pride.</p>
+                <p className="section-subtitle">We're not just a print shop - we're your creative partner. Every order is handled with care, precision, and pride.</p>
               </div>
               <div className="feature-list">
                 {whyusFeatures.map((f, i) => (
@@ -2102,17 +2102,17 @@ const handleForgotResetPassword = async () => {
               <div className="feature-card-stack">
                 <div className="fcard"><div className="fcard-inner">
                   <div className="fcard-label">Total Orders</div>
-                  <div className="fcard-value gold-text">{landingStats ? landingStats.orders.toLocaleString() : '—'}</div>
+                  <div className="fcard-value gold-text">{landingStats ? landingStats.orders.toLocaleString() : '-'}</div>
                   <div className="fcard-bar"><div className="fcard-bar-fill" style={{width:'82%',background:'linear-gradient(90deg,var(--gold-dark),var(--gold))'}}/></div>
                 </div></div>
                 <div className="fcard"><div className="fcard-inner">
                   <div className="fcard-label">Satisfaction Rate</div>
-                  <div className="fcard-value red-text">{landingStats?.avgRating ? `${Math.round(landingStats.avgRating / 5 * 100)}%` : '—'}</div>
+                  <div className="fcard-value red-text">{landingStats?.avgRating ? `${Math.round(landingStats.avgRating / 5 * 100)}%` : '-'}</div>
                   <div className="fcard-bar"><div className="fcard-bar-fill" style={{width: landingStats?.avgRating ? `${Math.round(landingStats.avgRating / 5 * 100)}%` : '0%',background:'linear-gradient(90deg,var(--red-dark),var(--red))'}}/></div>
                 </div></div>
                 <div className="fcard"><div className="fcard-inner">
                   <div className="fcard-label">Happy Customers</div>
-                  <div className="fcard-value gold-text">{landingStats ? landingStats.customers.toLocaleString() : '—'}</div>
+                  <div className="fcard-value gold-text">{landingStats ? landingStats.customers.toLocaleString() : '-'}</div>
                   <div style={{fontSize:'.75rem',color:'var(--gray)',marginTop:'.5rem'}}>{landingStats?.reviewsCount ? `${landingStats.reviewsCount} verified review${landingStats.reviewsCount === 1 ? '' : 's'}` : 'and counting'}</div>
                 </div></div>
               </div>
@@ -2210,10 +2210,10 @@ const handleForgotResetPassword = async () => {
           <div className="section-header center">
             <span className="section-tag">Transparent Pricing</span>
             <h2 className="section-title">Our <span className="gold-text">Price</span> List</h2>
-            <p className="section-subtitle">Starting prices for all our products — see the complete bulk pricing breakdowns inside.</p>
+            <p className="section-subtitle">Starting prices for all our products - see the complete bulk pricing breakdowns inside.</p>
           </div>
           <div className="pricing-new-layout">
-            {/* Left — unlock card */}
+            {/* Left - unlock card */}
             <div className="pricing-unlock-card">
               <div className="pricing-unlock-icon">
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -2236,7 +2236,7 @@ const handleForgotResetPassword = async () => {
               )}
             </div>
 
-            {/* Right — pricing grid */}
+            {/* Right - pricing grid */}
             <div className="pub-pricing-grid">
               {pricingCards.map((item, i) => (
                 <div className="pub-pricing-card fade-up" key={i}
@@ -2410,7 +2410,7 @@ const handleForgotResetPassword = async () => {
         <div className="container">
           <div className="cta-banner fade-up">
             <h2>Ready to <span className="red-text">Personalize</span> Something?</h2>
-            <p>Whether it's a shirt for your team or a gift for someone special — we're here to print it perfectly.</p>
+            <p>Whether it's a shirt for your team or a gift for someone special - we're here to print it perfectly.</p>
             <div className="cta-actions">
               <button className="btn-primary" onClick={handleEnterShop}>
                 Browse Products
@@ -2610,7 +2610,7 @@ const handleForgotResetPassword = async () => {
                   <div><h2>Create Account</h2><p>Join Personalize Me Prints</p></div>
                   <button className="auth-close" onClick={closeModal}>✕</button>
                 </div>
-                {/* Shared with the shop layout — one sign-up form everywhere. */}
+                {/* Shared with the shop layout - one sign-up form everywhere. */}
                 <RegisterForm
                   theme={theme}
                   onSwitchToLogin={() => setModal('login')}
@@ -2688,7 +2688,7 @@ const handleForgotResetPassword = async () => {
       )}
 
       {/* ── FORGOT PASSWORD MODAL ── */}
-      {/* No backdrop-close: 3-step email/code/new-password flow — a stray click would wipe progress. */}
+      {/* No backdrop-close: 3-step email/code/new-password flow - a stray click would wipe progress. */}
       {forgotModal && (
         <div className="auth-overlay">
           <div className="auth-modal" onClick={e => e.stopPropagation()} style={{maxWidth:'420px'}}>
@@ -2706,7 +2706,7 @@ const handleForgotResetPassword = async () => {
             </div>
             <div className="auth-modal-body">
 
-              {/* STEP 1 — Enter Email */}
+              {/* STEP 1 - Enter Email */}
               {forgotStep === 1 && (
                 <div style={{display:'flex',flexDirection:'column',gap:'1rem'}}>
                   <p style={{color:'var(--gray)',fontSize:'0.9rem',lineHeight:'1.6',margin:0}}>
@@ -2739,7 +2739,7 @@ const handleForgotResetPassword = async () => {
                 </div>
               )}
 
-              {/* STEP 2 — Confirm it's you (shown after clicking link from email) */}
+              {/* STEP 2 - Confirm it's you (shown after clicking link from email) */}
               {forgotStep === 2 && (
                 <div style={{display:'flex',flexDirection:'column',gap:'1rem'}}>
                   <div style={{textAlign:'center',padding:'0.5rem 0'}}>
@@ -2785,7 +2785,7 @@ const handleForgotResetPassword = async () => {
                 </div>
               )}
 
-              {/* STEP 3 — Enter Verification Code */}
+              {/* STEP 3 - Enter Verification Code */}
               {forgotStep === 3 && (
                 <div style={{display:'flex',flexDirection:'column',gap:'1rem'}}>
                   <div style={{textAlign:'center',padding:'0.5rem 0'}}>
@@ -2840,7 +2840,7 @@ const handleForgotResetPassword = async () => {
                 </div>
               )}
 
-              {/* STEP 4 — New Password */}
+              {/* STEP 4 - New Password */}
               {forgotStep === 4 && (
                 <div style={{display:'flex',flexDirection:'column',gap:'1rem'}}>
                   <p style={{color:'var(--gray)',fontSize:'0.9rem',lineHeight:'1.6',margin:0}}>
@@ -2921,7 +2921,7 @@ const handleForgotResetPassword = async () => {
                     <div className="pl-tiers">
                       {item.tiers.map(([qty, price], j) => (
                         <div className="pl-tier-row" key={j}>
-                          <span className="pl-qty">{qty}</span><span className="pl-dash">—</span><span className="pl-price gold-text">₱{price}</span>
+                          <span className="pl-qty">{qty}</span><span className="pl-dash">-</span><span className="pl-price gold-text">₱{price}</span>
                         </div>
                       ))}
                     </div>
@@ -2934,7 +2934,7 @@ const handleForgotResetPassword = async () => {
                           <div className="pl-tiers">
                             {v.tiers.map(([qty, price], k) => (
                               <div className="pl-tier-row" key={k}>
-                                <span className="pl-qty">{qty}</span><span className="pl-dash">—</span><span className="pl-price gold-text">₱{price}</span>
+                                <span className="pl-qty">{qty}</span><span className="pl-dash">-</span><span className="pl-price gold-text">₱{price}</span>
                               </div>
                             ))}
                           </div>
@@ -2951,7 +2951,7 @@ const handleForgotResetPassword = async () => {
 
       {/* ── EMAIL VERIFICATION ── */}
       {verificationModal && (
-        // No backdrop-close: OTP entry — a stray click would drop the code the user is typing.
+        // No backdrop-close: OTP entry - a stray click would drop the code the user is typing.
         <div className="auth-overlay">
           <div className="verify-modal" onClick={e => e.stopPropagation()}>
             <div className="verify-icon-wrap">
@@ -3030,7 +3030,7 @@ const handleForgotResetPassword = async () => {
         </div>
       )}
 
-      {/* Chat bubble — login gate when not signed in */}
+      {/* Chat bubble - login gate when not signed in */}
       <CustomerChatModal
         user={user}
         token={token}

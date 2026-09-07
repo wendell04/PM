@@ -317,7 +317,7 @@ function CodeEntry({ token, method, userEmail, persistLogin, onSuccess, onBack, 
 
       if (result.verified) {
         // The server mints the real full-access token only now; the pending token used to
-        // reach this point is limited and already revoked — use the new one from here on.
+        // reach this point is limited and already revoked - use the new one from here on.
         const sessionToken = result.token || token;
         if (remember && result.token) {
           try {

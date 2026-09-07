@@ -298,14 +298,14 @@ function TwoFactorSection({ token, twoFactorEnabled, setTwoFactorEnabled }) {
         )}
       </div>
 
-      {/* ── Verification methods — shown when 2FA is enabled ── */}
+      {/* ── Verification methods - shown when 2FA is enabled ── */}
       {twoFactorEnabled && totpStep !== "setup" && totpStep !== "confirm" && totpStep !== "remove" && (
         <div style={{ marginTop: "1.25rem", display: "flex", flexDirection: "column", gap: "0.75rem" }}>
           <p style={{ margin: 0, fontSize: "0.78rem", color: "var(--gray)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>
             Verification Methods
           </p>
 
-          {/* Email OTP — always available */}
+          {/* Email OTP - always available */}
           <div style={{
             display: "flex", alignItems: "center", gap: "0.875rem",
             padding: "0.875rem 1rem", borderRadius: "10px",
@@ -331,7 +331,7 @@ function TwoFactorSection({ token, twoFactorEnabled, setTwoFactorEnabled }) {
             </span>
           </div>
 
-          {/* Authenticator App — setup or active */}
+          {/* Authenticator App - setup or active */}
           <div style={{
             display: "flex", alignItems: "center", gap: "0.875rem",
             padding: "0.875rem 1rem", borderRadius: "10px",
@@ -385,7 +385,7 @@ function TwoFactorSection({ token, twoFactorEnabled, setTwoFactorEnabled }) {
         </div>
       )}
 
-      {/* ── TOTP Setup — Show QR code ── */}
+      {/* ── TOTP Setup - Show QR code ── */}
       {totpStep === "setup" && (
         <div style={{ marginTop: "1.25rem", ...s.card }}>
           <h4
@@ -463,7 +463,7 @@ function TwoFactorSection({ token, twoFactorEnabled, setTwoFactorEnabled }) {
         </div>
       )}
 
-      {/* ── TOTP Confirm — Enter first code ── */}
+      {/* ── TOTP Confirm - Enter first code ── */}
       {totpStep === "confirm" && (
         <div style={{ marginTop: "1.25rem", ...s.card }}>
           <h4
@@ -542,7 +542,7 @@ function TwoFactorSection({ token, twoFactorEnabled, setTwoFactorEnabled }) {
         </div>
       )}
 
-      {/* ── Remove TOTP — password confirmation ── */}
+      {/* ── Remove TOTP - password confirmation ── */}
       {totpStep === "remove" && (
         <div style={{ marginTop: "1.25rem", ...s.card }}>
           <h4
@@ -1694,7 +1694,7 @@ export default function CustomerProfilePage() {
               padding: "2rem",
             }}
           >
-            {/* TAB 1: Overview — Customer Dashboard */}
+            {/* TAB 1: Overview - Customer Dashboard */}
             {activeTab === "overview" && (() => {
               const orders = Array.isArray(overviewOrders) ? overviewOrders : [];
               const inProgressStatuses = ["Pending", "Confirmed", "Processing", "awaiting_production", "pending_design", "proof_sent", "revision_requested", "design_approved", "in_production", "In Production", "for_qc", "For QC", "ready_for_delivery", "for_delivery", "For Delivery", "For Pick-up"];
@@ -1814,7 +1814,7 @@ export default function CustomerProfilePage() {
               // Pending reviews (delivered + paid)
               const pendingReviews = orders.filter(o => o.orderStatus === "Delivered" && o.paymentStatus === "paid");
 
-              // Voucher usage — derived from order data, no extra fetch needed
+              // Voucher usage - derived from order data, no extra fetch needed
               const voucherOrders = orders.filter(o => o.voucherCode && o.voucherCode.trim() !== "");
               const totalVoucherSavings = voucherOrders.reduce((s, o) => s + (parseFloat(o.discountAmount) || 0), 0);
               const uniqueVouchers = [...new Set(voucherOrders.map(o => o.voucherCode.trim().toUpperCase()))];
@@ -1869,7 +1869,7 @@ export default function CustomerProfilePage() {
                         )}
                       </div>
                     </div>
-                    {/* Completeness items — show only if incomplete */}
+                    {/* Completeness items - show only if incomplete */}
                     {completePct < 100 && (
                       <div style={{ marginTop: "1rem", paddingTop: "0.875rem", borderTop: "1px solid var(--border)", display: "flex", gap: "0.625rem", flexWrap: "wrap" }}>
                         {completenessItems.map((c, i) => (
@@ -1892,10 +1892,10 @@ export default function CustomerProfilePage() {
                   {/* ── Stats ── */}
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "0.75rem" }}>
                     {[
-                      { label: "Total Orders",  value: overviewOrdersLoading ? "—" : total },
-                      { label: "In Progress",   value: overviewOrdersLoading ? "—" : inProgress },
-                      { label: "Delivered",     value: overviewOrdersLoading ? "—" : delivered },
-                      { label: "Total Spent",   value: overviewOrdersLoading ? "—" : `₱${totalSpent.toLocaleString("en-PH", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` },
+                      { label: "Total Orders",  value: overviewOrdersLoading ? "-" : total },
+                      { label: "In Progress",   value: overviewOrdersLoading ? "-" : inProgress },
+                      { label: "Delivered",     value: overviewOrdersLoading ? "-" : delivered },
+                      { label: "Total Spent",   value: overviewOrdersLoading ? "-" : `₱${totalSpent.toLocaleString("en-PH", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` },
                     ].map((s, i) => (
                       <div key={i} style={{ background: "var(--dark)", border: "1px solid var(--border)", borderRadius: "10px", padding: "1.125rem 1.25rem" }}>
                         <div style={{ fontSize: "0.62rem", fontWeight: 700, color: "var(--gray)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "0.5rem" }}>{s.label}</div>
@@ -1955,7 +1955,7 @@ export default function CustomerProfilePage() {
                           <Link key={o.id ?? o._id} href="/shop/orders-history" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0.75rem 1rem", borderBottom: idx < needsDesignApproval.length - 1 || paymentDue.length > 0 ? "1px solid var(--border)" : "none", textDecoration: "none" }}>
                             <div style={{ minWidth: 0 }}>
                               <span style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--white)" }}>Order #{String(o.id ?? o._id).slice(-8).toUpperCase()}</span>
-                              <span style={{ fontSize: "0.72rem", color: "var(--gray)", display: "block", marginTop: "0.15rem" }}>Design proof sent — review and approve to proceed to production</span>
+                              <span style={{ fontSize: "0.72rem", color: "var(--gray)", display: "block", marginTop: "0.15rem" }}>Design proof sent - review and approve to proceed to production</span>
                             </div>
                             <span style={{ fontSize: "0.72rem", color: "var(--gold)", fontWeight: 600, flexShrink: 0, marginLeft: "1rem" }}>Review →</span>
                           </Link>
@@ -1985,7 +1985,7 @@ export default function CustomerProfilePage() {
                         <Link href="/shop/orders-history" style={{ fontSize: "0.72rem", color: "var(--gold)", textDecoration: "none", fontWeight: 600, whiteSpace: "nowrap", flexShrink: 0 }}>View details →</Link>
                       </div>
                       <div style={{ padding: "1.25rem 1rem" }}>
-                        {/* Step tracker — full wizard (tablet/desktop) */}
+                        {/* Step tracker - full wizard (tablet/desktop) */}
                         <div className="order-stepper-full" style={{ display: "flex", alignItems: "center", gap: 0, position: "relative" }}>
                           {orderSteps.map((step, i) => {
                             const isPast = i < activeStepIdx;
@@ -2013,7 +2013,7 @@ export default function CustomerProfilePage() {
                             );
                           })}
                         </div>
-                        {/* Step tracker — compact (mobile): status badge + progress bar */}
+                        {/* Step tracker - compact (mobile): status badge + progress bar */}
                         {(() => {
                           const st = statusStyle(activeOrder.orderStatus);
                           const stepNo = Math.max(1, activeStepIdx + 1);
@@ -2103,9 +2103,9 @@ export default function CustomerProfilePage() {
                       <div style={{ background: "var(--dark)", border: "1px solid var(--border)", borderRadius: "10px", overflow: "hidden" }}>
                         {orders.slice(0, 4).map((order, idx) => {
                           const sc = statusStyle(order.orderStatus);
-                          const date = order.createdAt ? new Date(order.createdAt).toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" }) : "—";
+                          const date = order.createdAt ? new Date(order.createdAt).toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" }) : "-";
                           const firstItem = order.items?.[0];
-                          const itemLabel = firstItem ? `${firstItem.productName || firstItem.name || "Item"}${order.items.length > 1 ? ` +${order.items.length - 1} more` : ""}` : "—";
+                          const itemLabel = firstItem ? `${firstItem.productName || firstItem.name || "Item"}${order.items.length > 1 ? ` +${order.items.length - 1} more` : ""}` : "-";
                           return (
                             <div key={order.id ?? order._id} style={{ display: "flex", alignItems: "center", gap: "0.75rem", padding: "0.875rem 1rem", borderBottom: idx < Math.min(orders.length, 4) - 1 ? "1px solid var(--border)" : "none" }}>
                               <div style={{ flex: 1, minWidth: 0 }}>
@@ -2134,7 +2134,7 @@ export default function CustomerProfilePage() {
                         <div style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--white)", marginBottom: "0.15rem" }}>
                           {pendingReviews.length === 1 ? "You have a delivered order" : `You have ${pendingReviews.length} delivered orders`}
                         </div>
-                        <div style={{ fontSize: "0.72rem", color: "var(--gray)" }}>Share your experience — your review helps other shoppers</div>
+                        <div style={{ fontSize: "0.72rem", color: "var(--gray)" }}>Share your experience - your review helps other shoppers</div>
                       </div>
                       <Link href="/shop/orders-history" style={{ fontSize: "0.72rem", color: "var(--gold)", textDecoration: "none", fontWeight: 600, flexShrink: 0, marginLeft: "1rem" }}>Leave a review →</Link>
                     </div>
@@ -2231,7 +2231,7 @@ export default function CustomerProfilePage() {
                         <div style={{ padding: "1rem 1.25rem", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "1rem" }}>
                           <div>
                             <div style={{ fontSize: "0.68rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--gray)", marginBottom: "0.35rem" }}>Email Address</div>
-                            <div style={{ fontSize: "0.925rem", fontWeight: 500, color: "var(--white)" }}>{profileForm.email || "—"}</div>
+                            <div style={{ fontSize: "0.925rem", fontWeight: 500, color: "var(--white)" }}>{profileForm.email || "-"}</div>
                           </div>
                           <span style={{ flexShrink: 0, fontSize: "0.65rem", fontWeight: 600, padding: "2px 8px", borderRadius: "999px", background: "rgba(255,255,255,0.05)", color: "var(--gray)", border: "1px solid var(--border)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Locked</span>
                         </div>
@@ -2811,7 +2811,7 @@ export default function CustomerProfilePage() {
                     <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gray-light)" strokeWidth="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
                       <span style={{ fontSize: "0.8125rem", fontWeight: 600, color: "var(--white)" }}>Active Sessions</span>
-                      <span style={{ fontSize: "0.68rem", color: "var(--gray)" }}>— Devices currently logged in</span>
+                      <span style={{ fontSize: "0.68rem", color: "var(--gray)" }}>- Devices currently logged in</span>
                     </div>
                     <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
                       {sessions.filter((s) => !s.is_current).length > 0 && (
@@ -3108,7 +3108,7 @@ export default function CustomerProfilePage() {
               />
             )}
 
-            {/* Delete Account — Danger Zone */}
+            {/* Delete Account - Danger Zone */}
             {activeTab === "security" && (
               <div style={{ maxWidth: '500px', marginTop: '2rem' }}>
                 <div style={{
@@ -3196,7 +3196,7 @@ export default function CustomerProfilePage() {
                   </div>
 
                   <div style={{ padding: '1.25rem 1.5rem', maxHeight: '80vh', overflowY: 'auto' }}>
-                    {/* What happens — two columns */}
+                    {/* What happens - two columns */}
                     <div className="profile-info-2col" style={{ display: 'grid', gap: '0.625rem', marginBottom: '1.25rem' }}>
                       <div style={{ padding: '0.75rem', background: 'rgba(239,68,68,0.06)', borderRadius: '8px', fontSize: '0.77rem', lineHeight: 1.6, color: 'var(--gray)' }}>
                         <strong style={{ color: 'var(--white)', display: 'block', marginBottom: '0.3rem', fontSize: '0.78rem' }}>Removed</strong>

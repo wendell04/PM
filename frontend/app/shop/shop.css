@@ -112,7 +112,7 @@
           color: var(--gold);
         }
 
-        /* Search bar — B-01 */
+        /* Search bar - B-01 */
         .shop-navbar-search {
           flex: 1;
           max-width: 520px;
@@ -1888,7 +1888,7 @@
             display: none;
           }
 
-          /* Price over variant count, stacked — no cramped single row */
+          /* Price over variant count, stacked - no cramped single row */
           .shop-product-footer {
             margin-top: auto;
             flex-direction: column;
@@ -3221,7 +3221,7 @@
   }
 }
 
-/* Stock badges — B-03 */
+/* Stock badges - B-03 */
 .shop-product-stock {
   margin-bottom: 8px;
 }
@@ -3656,7 +3656,7 @@ html.light .shop-showcase-card:hover {
   box-shadow: 0 8px 24px rgba(0,0,0,0.12);
 }
 
-/* Light mode — collection nav tabs */
+/* Light mode - collection nav tabs */
 html.light .shop-collections-nav {
   background: #fff;
   border-bottom-color: #e5e5e3;
@@ -3788,7 +3788,7 @@ details.shop-footer-col > *:not(summary) { display: block; }
 details.shop-footer-col > .shop-footer-pay-grid { display: flex; }
 /* Tablet/desktop (≥769px): force the details fully open & non-collapsible.
    Modern Chrome hides closed <details> via ::details-content content-visibility,
-   which display:block alone can't override — handle both mechanisms. */
+   which display:block alone can't override - handle both mechanisms. */
 @media (min-width: 769px) {
   details.shop-footer-col::details-content { content-visibility: visible; }
   details.shop-footer-col > summary { pointer-events: none; }
@@ -3900,7 +3900,7 @@ details.shop-footer-col > .shop-footer-pay-grid { display: flex; }
   gap: 1.75rem;
 }
 
-/* Mobile filter toggle — hidden on desktop */
+/* Mobile filter toggle - hidden on desktop */
 .shop-filter-toggle {
   display: none;
   align-items: center;
@@ -3937,7 +3937,7 @@ details.shop-footer-col > .shop-footer-pay-grid { display: flex; }
 }
 .shop-sidebar::-webkit-scrollbar { display: none; }
 
-/* Sidebar header — "Filters" title + clear button */
+/* Sidebar header - "Filters" title + clear button */
 .shop-sidebar-head {
   display: flex;
   align-items: center;
@@ -4891,7 +4891,7 @@ html.light .shop-active-clear:hover { color: #111; }
   }
 }
 
-/* Tablet portrait (769–1023px): the desktop two columns don't fit and wrap,
+/* Tablet portrait (769-1023px): the desktop two columns don't fit and wrap,
    leaving wasted space + a stretched image. Use one centered, width-capped
    column so the gallery stays square. Desktop two-column resumes at ≥1024px. */
 @media (min-width: 769px) and (max-width: 1023px) {
@@ -5065,7 +5065,7 @@ html.light .shop-quick-view-btn:hover { background: #D4A843; color: #111; }
 
 /* ── Mobile filter chip row ── */
 
-/* ── Banner text scaling — keep aspect ratio, scale text to match ── */
+/* ── Banner text scaling - keep aspect ratio, scale text to match ── */
 @media (max-width: 900px) {
   .shop-carousel-content { padding: 2rem 2.5rem !important; }
   .shop-carousel-title { font-size: 1.8rem !important; margin-bottom: 0.5rem !important; }
@@ -5210,7 +5210,7 @@ html.light .shop-quick-view-btn:hover { background: #D4A843; color: #111; }
   html.light .mobile-sort-option { border-color: rgba(0,0,0,0.06); color: #222; }
   html.light .mobile-sort-option.active { color: #a07020; }
 
-  /* Hide entire sort bar on mobile — sort + active chips handled in mobile-filter-bar */
+  /* Hide entire sort bar on mobile - sort + active chips handled in mobile-filter-bar */
   .shop-sort-bar { display: none; }
 }
 

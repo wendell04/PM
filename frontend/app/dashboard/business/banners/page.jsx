@@ -23,7 +23,7 @@ import ErrorBoundary from '@/components/ErrorBoundary';
 import HeroImagePositioner from '@/components/cms/HeroImagePositioner';
 import ImageCropper from '@/components/ImageCropper';
 
-// UX limit — keeps carousel manageable regardless of storage backend
+// UX limit - keeps carousel manageable regardless of storage backend
 // Safe to keep even after MongoDB migration (enforced at API level too)
 const MAX_BANNERS = 5;
 
@@ -893,7 +893,7 @@ export default function BannerManagementPage() {
         }
       `}</style>
 
-      {/* Shop banners only — the landing hero is managed in the Homepage module */}
+      {/* Shop banners only - the landing hero is managed in the Homepage module */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
         <span style={{ padding: '6px 14px', borderRadius: '7px', background: 'var(--dark2)', color: 'var(--white)', fontSize: '0.82rem', fontWeight: 700, fontFamily: "'DM Sans', sans-serif" }}>
           Shop Banners (/shop)
@@ -1208,7 +1208,7 @@ export default function BannerManagementPage() {
             <div className="banner-editor-card">
               <h3 className="banner-editor-card-title">Schedule</h3>
 
-              {/* Custom dark calendar — no browser default inputs */}
+              {/* Custom dark calendar - no browser default inputs */}
               <DateRangePicker
                 startValue={editedBanner?.scheduleStart || ''}
                 endValue={editedBanner?.scheduleEnd || ''}
@@ -1232,7 +1232,7 @@ export default function BannerManagementPage() {
           {hasUnsavedChanges && (
             <div className="banner-unsaved-indicator">
               <div className="banner-unsaved-dot"></div>
-              <span>Unsaved changes — click "Publish Live" to save</span>
+              <span>Unsaved changes - click "Publish Live" to save</span>
             </div>
           )}
         </div>

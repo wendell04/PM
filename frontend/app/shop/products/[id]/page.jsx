@@ -160,7 +160,7 @@ export default function ProductDetailPage() {
     fetchFlashSale();
   }, [product]);
 
-  // Recommendations — stale-while-revalidate with shuffle
+  // Recommendations - stale-while-revalidate with shuffle
   useEffect(() => {
     if (!id) return;
     let active = true;
@@ -272,15 +272,15 @@ export default function ProductDetailPage() {
   }
 
   function formatPeso(n) {
-    if (n == null) return '—';
+    if (n == null) return '-';
     return `₱${Number(n).toLocaleString('en-PH', {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     })}`;
   }
 
-  // Design upload removed — users attach design files at checkout via FormData.
-  // Legacy order-request submit removed — flow is cart + checkout.
+  // Design upload removed - users attach design files at checkout via FormData.
+  // Legacy order-request submit removed - flow is cart + checkout.
 
   // Resolve combination from selectedVariants → { id, name, bomId, ... }
   function resolveCombo(variants) {
@@ -309,7 +309,7 @@ export default function ProductDetailPage() {
     return resolveCombo(variants)?.id ?? null;
   }
 
-  // Add to cart — stays on page
+  // Add to cart - stays on page
   async function handleAddToCart() {
     if (!token) {
       window.dispatchEvent(new CustomEvent('pmp_open_auth', { detail: { type: 'login', returnPath: window.location.pathname } }));
@@ -404,7 +404,7 @@ export default function ProductDetailPage() {
       // variant (e.g. Yellow), not the generic product photo.
       const variantImg = comboId ? (product.variantImageUrls?.[comboId] ?? product.variantImageUrls?.[String(comboId)] ?? null) : null;
       const fsId = flashSale ? (flashSale.id ?? flashSale._id ?? null) : null;
-      // Direct checkout (Buy Now): go straight to checkout with only this item — do NOT add it to
+      // Direct checkout (Buy Now): go straight to checkout with only this item - do NOT add it to
       // the cart, otherwise a leftover item is left behind after the purchase or a cancel.
       const payload = {
         items: [{
@@ -457,7 +457,7 @@ export default function ProductDetailPage() {
     if (product?.variantAvailableQty && comboId != null && product.variantAvailableQty[comboId] != null) {
       return Math.max(product.variantAvailableQty[comboId], 0);
     }
-    // No combo selected yet but variant stock data exists — use max so product isn't shown as OOS before selection
+    // No combo selected yet but variant stock data exists - use max so product isn't shown as OOS before selection
     if (product?.variantAvailableQty && comboId == null) {
       const vals = Object.values(product.variantAvailableQty).map(v => Number(v) || 0);
       if (vals.length > 0) return Math.max(...vals);
@@ -597,7 +597,7 @@ export default function ProductDetailPage() {
       ?? product.variantImageUrls[String(activeComboId)]
       ?? null;
   })();
-  // Stable image list — order never changes when switching variants
+  // Stable image list - order never changes when switching variants
   const displayImages = (() => {
     if (!product) return [];
     const seen = new Set();
@@ -697,7 +697,7 @@ export default function ProductDetailPage() {
         </div>
       )}
 
-      {/* order-request success overlay removed — flow now uses cart + checkout */}
+      {/* order-request success overlay removed - flow now uses cart + checkout */}
 
       {/* PRODUCT DETAIL */}
       {!loading && !error && product && (
@@ -711,12 +711,12 @@ export default function ProductDetailPage() {
           <div className="pdp-body" style={{ display: 'flex', gap: '1.75rem',
             flexWrap: 'wrap', alignItems: 'flex-start' }}>
 
-          {/* LEFT — Images + Pricing below */}
+          {/* LEFT - Images + Pricing below */}
           <div className="pdp-left-col" style={{ flex: '1 1 320px', maxWidth: '460px', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
 
             {/* Image row: thumbnails + main */}
             <div className="pdp-image-row" style={{ display: 'flex', gap: '10px' }}>
-              {/* Vertical thumbnail strip — max 5, 5th shows +N if more */}
+              {/* Vertical thumbnail strip - max 5, 5th shows +N if more */}
               {displayImages.length > 1 && (
                 <div className="pdp-thumbs" style={{ display: 'flex', flexDirection: 'column', gap: '8px', flexShrink: 0, width: '64px' }}>
                   {displayImages.slice(0, 5).map((img, i) => {
@@ -781,7 +781,7 @@ export default function ProductDetailPage() {
               </div>
             </div>
 
-            {/* Pricing — Trove style: header with borderBottom, table in own container */}
+            {/* Pricing - Trove style: header with borderBottom, table in own container */}
             {product.priceType === 'tiered' && tiers.length > 0 && (
               <div>
                 <button
@@ -816,11 +816,11 @@ export default function ProductDetailPage() {
                         return (
                           <div key={tier.id ?? i} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', alignItems: 'center', padding: '0.625rem 1rem', borderTop: '1px solid var(--border)', background: isActive ? 'rgba(212,168,67,0.07)' : '' }}>
                             <span style={{ fontSize: '0.825rem', color: isActive ? 'var(--gold)' : 'var(--white)', fontWeight: isActive ? 700 : 500, display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
-                              {`${tier.minQty}${tier.maxQty ? `–${tier.maxQty}` : '+'} pcs`}
+                              {`${tier.minQty}${tier.maxQty ? `-${tier.maxQty}` : '+'} pcs`}
                               {isActive && <span style={{ fontSize: '0.58rem', background: 'rgba(212,168,67,0.18)', color: 'var(--gold)', padding: '1px 6px', borderRadius: '999px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{optionUnitAdd > 0 ? 'Your qty - base' : 'Your qty'}</span>}
                             </span>
                             <span style={{ fontSize: '0.875rem', fontWeight: 700, color: isActive ? 'var(--gold)' : 'var(--white)', textAlign: 'right' }}>
-                              {unitP ? `${formatPeso(unitP)} / pc` : '—'}
+                              {unitP ? `${formatPeso(unitP)} / pc` : '-'}
                             </span>
                           </div>
                         );
@@ -950,7 +950,7 @@ export default function ProductDetailPage() {
             )}
           </div>
 
-          {/* RIGHT — Info + Order Form */}
+          {/* RIGHT - Info + Order Form */}
           <div className="pdp-right-col" style={{ flex: '1 1 360px',
             display: 'flex', flexDirection: 'column',
             gap: '1.25rem' }}>
@@ -1092,7 +1092,7 @@ export default function ProductDetailPage() {
                   fontWeight: 800, color: 'var(--gold)' }}>
                   {formatPeso(priceRange.min)}
                   {priceRange.max !== priceRange.min
-                    && ` – ${formatPeso(priceRange.max)}`}
+                    && ` - ${formatPeso(priceRange.max)}`}
                   <span style={{ fontSize: '0.8rem',
                     color: 'var(--gray)',
                     fontWeight: 400 }}> / pc</span>
@@ -1114,7 +1114,7 @@ export default function ProductDetailPage() {
             <div style={{ borderTop:
               '1px solid var(--border)' }} />
 
-            {/* Stock badge — hidden for Made to Order */}
+            {/* Stock badge - hidden for Made to Order */}
             {!product.isMadeToOrder && (() => {
               const LOW = 10;
               const comboId = resolveCombinationId(selectedVariants);
@@ -1276,7 +1276,7 @@ export default function ProductDetailPage() {
               </p>
             )}
 
-            {/* Quantity input — hidden when out of stock, and for inquiry (qty is set in the quote) */}
+            {/* Quantity input - hidden when out of stock, and for inquiry (qty is set in the quote) */}
             {!isOutOfStock && !isInquiry && <div>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
                 <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
@@ -1379,7 +1379,7 @@ export default function ProductDetailPage() {
               )}
             </div>}
 
-            {/* Design format download — filtered to selected variant */}
+            {/* Design format download - filtered to selected variant */}
             {product.isCustom && product.designFormats?.length > 0 && (() => {
               const formats = product.designFormats.filter(fmt =>
                 fmt.bomId == null || String(fmt.bomId) === String(activeComboId)
@@ -1506,12 +1506,12 @@ export default function ProductDetailPage() {
                     </button>
                     <p style={{ textAlign: 'center', fontSize: '0.75rem', color: 'var(--gray)', margin: 0, lineHeight: 1.5 }}>
                       {(product.priceType ?? product.pricingMode) === 'inquiry'
-                        ? "No payment now — we'll review your request and send a quote in chat."
+                        ? "No payment now - we'll review your request and send a quote in chat."
                         : "Custom orders are fulfilled separately. You'll upload or request a design on the next step."}
                     </p>
                   </>
                 ) : (
-                  /* Regular product — Add to Cart + Checkout */
+                  /* Regular product - Add to Cart + Checkout */
                   <>
                     <button
                       onClick={handleAddToCart}
@@ -1662,10 +1662,10 @@ export default function ProductDetailPage() {
                   const all = tiers.flatMap(t => t.price != null ? [parseFloat(t.price)] : Object.values(t.prices||{}).map(Number)).filter(v => v > 0);
                   if (!all.length) return 'Price on request';
                   const [mn, mx] = [Math.min(...all), Math.max(...all)];
-                  return mn === mx ? formatPeso(mn) : `${formatPeso(mn)} – ${formatPeso(mx)}`;
+                  return mn === mx ? formatPeso(mn) : `${formatPeso(mn)} - ${formatPeso(mx)}`;
                 }
                 const vp = Object.values(rec.variantPrices||{}).map(Number).filter(v => v > 0);
-                if (vp.length) { const [mn, mx] = [Math.min(...vp), Math.max(...vp)]; return mn === mx ? formatPeso(mn) : `${formatPeso(mn)} – ${formatPeso(mx)}`; }
+                if (vp.length) { const [mn, mx] = [Math.min(...vp), Math.max(...vp)]; return mn === mx ? formatPeso(mn) : `${formatPeso(mn)} - ${formatPeso(mx)}`; }
                 const price = parseFloat(rec.flatPrice || rec.price);
                 return price > 0 ? formatPeso(price) : 'Price on request';
               })();
@@ -1783,7 +1783,7 @@ export default function ProductDetailPage() {
                   {totalPrice != null && <div style={{ fontSize: '0.85rem', color: 'var(--gold)', marginTop: '0.2rem', fontWeight: 600 }}>₱{Number(totalPrice).toLocaleString('en-PH', { minimumFractionDigits: 2 })}</div>}
                 </div>
                 <div style={{ background: 'rgba(96,165,250,0.07)', border: '1px solid rgba(96,165,250,0.2)', borderRadius: '8px', padding: '0.75rem 1rem', marginBottom: '1.25rem', fontSize: '0.8rem', color: 'rgba(147,197,253,0.9)', lineHeight: 1.5 }}>
-                  No design fee — your file goes directly to our team. We&apos;ll print it as-is and message you if there are any issues.
+                  No design fee - your file goes directly to our team. We&apos;ll print it as-is and message you if there are any issues.
                 </div>
                 <div style={{ marginBottom: '1rem' }}>
                   <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--gray)', marginBottom: '0.375rem', fontWeight: 600 }}>
@@ -1915,13 +1915,13 @@ export default function ProductDetailPage() {
                 <div style={{ background: 'rgba(212,168,67,0.08)', border: '1px solid rgba(212,168,67,0.25)', borderRadius: '8px', padding: '0.75rem 1rem', marginBottom: '1.25rem' }}>
                   <div style={{ fontSize: '0.78rem', color: '#D4A843', fontWeight: 700, marginBottom: '0.2rem' }}>Design Service Fee: ₱{designRequestFee.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</div>
                   <div style={{ fontSize: '0.75rem', color: 'rgba(212,168,67,0.75)', lineHeight: 1.5 }}>
-                    Our team will create a design for you. We&apos;ll send a proof via chat — you approve before anything gets printed.
+                    Our team will create a design for you. We&apos;ll send a proof via chat - you approve before anything gets printed.
                   </div>
                 </div>
 
                 <div style={{ marginBottom: '1rem' }}>
                   <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--gray)', marginBottom: '0.375rem', fontWeight: 600 }}>
-                    Reference / Inspiration <span style={{ fontWeight: 400 }}>(optional — jpg, png, pdf · max 10MB)</span>
+                    Reference / Inspiration <span style={{ fontWeight: 400 }}>(optional - jpg, png, pdf · max 10MB)</span>
                   </label>
                   <input
                     key={reqFileKey}

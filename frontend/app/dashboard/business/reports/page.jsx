@@ -48,7 +48,7 @@ function exportCSV(headers, rows, filename) {
 }
 
 function fmtPeso(n) {
-  if (n == null || Number.isNaN(Number(n))) return '—';
+  if (n == null || Number.isNaN(Number(n))) return '-';
   return `₱${Number(n).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
@@ -742,7 +742,7 @@ export default function ReportsPage() {
                     </div>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem', marginBottom: '1.5rem' }}>
                       <StatCard label="Revenue"           value={fmtPeso(ordersData.totalRevenue)} />
-                      <StatCard label="Cancellation Rate" value={ordersData.cancellationRate != null ? `${ordersData.cancellationRate}%` : '—'} />
+                      <StatCard label="Cancellation Rate" value={ordersData.cancellationRate != null ? `${ordersData.cancellationRate}%` : '-'} />
                     </div>
                     <div style={{ marginBottom: '1.5rem' }}>
                       <span style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--white)', display: 'block', marginBottom: '1rem' }}>Orders by Status</span>
@@ -859,7 +859,7 @@ export default function ReportsPage() {
                                 return (
                                   <tr key={String(item._id ?? item.id ?? item.name)} className="rpt-tr">
                                     <td style={{ ...cell, color: 'var(--white)', fontWeight: 600 }}>{item.name}</td>
-                                    <td style={{ ...cell, color: 'var(--gray)' }}>{item.category ?? '—'}</td>
+                                    <td style={{ ...cell, color: 'var(--gray)' }}>{item.category ?? '-'}</td>
                                     <td style={{ ...num, color: 'var(--white)' }}>{item.stockQty ?? 0}</td>
                                     <td style={{ ...num, color: 'var(--gray)' }}>{item.minStockLevel ?? 0}</td>
                                     <td style={cell}>
@@ -982,7 +982,7 @@ export default function ReportsPage() {
                               </div>
                               <div style={{ flex: 1, minWidth: 0 }}>
                                 <div style={{ fontWeight: 700, color: 'var(--white)' }}>{p.productName}</div>
-                                <div style={{ fontSize: '0.8rem', color: 'var(--gray)' }}>{p.category || '—'}</div>
+                                <div style={{ fontSize: '0.8rem', color: 'var(--gray)' }}>{p.category || '-'}</div>
                               </div>
                               <div style={{ textAlign: 'right' }}>
                                 <div style={{ color: 'var(--white)', fontSize: '0.9rem' }}>
@@ -1036,7 +1036,7 @@ export default function ReportsPage() {
                       <StatCard label="Cancelled" value={String(orData.cancelled ?? 0)} />
                       <StatCard
                         label="Conversion Rate"
-                        value={orData.conversionRate != null ? `${orData.conversionRate}%` : '—'}
+                        value={orData.conversionRate != null ? `${orData.conversionRate}%` : '-'}
                       />
                     </div>
                     <div style={{ marginBottom: '1rem', fontSize: '0.95rem', fontWeight: 700, color: 'var(--white)' }}>

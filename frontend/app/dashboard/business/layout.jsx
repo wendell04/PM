@@ -20,13 +20,13 @@ import "./admin-dashboard.css";
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 
 // Roles allowed into the /dashboard/business/* admin area. This layout wraps EVERY admin page,
-// so this single allowlist guards the whole dashboard at once. Anyone else — customers, guests,
-// or any unknown/future role — is redirected out. (Data is independently protected server-side.)
+// so this single allowlist guards the whole dashboard at once. Anyone else - customers, guests,
+// or any unknown/future role - is redirected out. (Data is independently protected server-side.)
 const STAFF_ROLES = ['superAdmin', 'admin', 'owner', 'salesRep', 'productionOperator', 'qualityControl', 'cashier', 'inventoryManager'];
 
 // A user belongs in the business dashboard if they are any authenticated
 // non-customer role. Per-module access is enforced by the backend and reflected
-// by can(); this guard only separates staff from customers/guests — so new roles
+// by can(); this guard only separates staff from customers/guests - so new roles
 // (administrator, manager, salesStaff, productionStaff, financeStaff, and any
 // future custom role) work without editing a hard-coded list.
 const isStaffRole = (role) => typeof role === 'string' && role !== '' && role !== 'customer';
@@ -494,10 +494,10 @@ export default function BusinessDashboardLayout({ children }) {
   }, [token]);
 
   // Owner has full business access. Super Admin (superAdmin/legacy admin) is
-  // governed by the backend access toggle, surfaced via /my/permissions — so
+  // governed by the backend access toggle, surfaced via /my/permissions - so
   // scoped mode hides business modules here too. Everyone else follows their grid.
   const SUPER_ROLES = ["superAdmin", "admin"];
-  // Mirror of backend App\Support\Rbac::gridAllows — bridges coarse module flags
+  // Mirror of backend App\Support\Rbac::gridAllows - bridges coarse module flags
   // and fine module.action keys so can('orders') and can('orders.edit') both work.
   const gridAllows = (perms, key) => {
     if (!perms) return false;
@@ -798,7 +798,7 @@ export default function BusinessDashboardLayout({ children }) {
     return current;
   };
 
-  // Never paint the admin shell for anyone unauthorized — the guard above redirects them.
+  // Never paint the admin shell for anyone unauthorized - the guard above redirects them.
   // This runs after all hooks, so hook order stays stable.
   if (!currentUser || !isStaffRole(currentUser.role)) {
     return null;
@@ -1108,8 +1108,8 @@ export default function BusinessDashboardLayout({ children }) {
                 <span
                   title={
                     superAccess.fullAccess
-                      ? "Full Access — Super Admin bypasses all permission checks (SUPERADMIN_FULL_ACCESS=true). Development mode."
-                      : "Scoped — Super Admin is limited to system tasks (users, roles, audit, settings). Set SUPERADMIN_FULL_ACCESS=true to restore full access."
+                      ? "Full Access - Super Admin bypasses all permission checks (SUPERADMIN_FULL_ACCESS=true). Development mode."
+                      : "Scoped - Super Admin is limited to system tasks (users, roles, audit, settings). Set SUPERADMIN_FULL_ACCESS=true to restore full access."
                   }
                   style={{
                     display: "inline-flex",
@@ -1598,7 +1598,7 @@ export default function BusinessDashboardLayout({ children }) {
         </div>
       )}
 
-      {/* Profile Modal — slide-in panel */}
+      {/* Profile Modal - slide-in panel */}
       {profileModalOpen && (
         <div
           className="profile-modal-overlay profile-modal-overlay--slide"
@@ -1640,7 +1640,7 @@ export default function BusinessDashboardLayout({ children }) {
               <div style={{ fontWeight: 700, fontSize: "1.05rem", color: "var(--white)", textAlign: "center", lineHeight: 1.3 }}>
                 {currentUser?.firstName && currentUser?.lastName
                   ? `${currentUser.firstName} ${currentUser.lastName}`
-                  : currentUser?.email || "—"}
+                  : currentUser?.email || "-"}
               </div>
               <div style={{ fontSize: "0.78rem", color: "var(--gray)", marginTop: "0.2rem", textAlign: "center" }}>
                 {currentUser?.email || ""}
@@ -1657,10 +1657,10 @@ export default function BusinessDashboardLayout({ children }) {
                 </span>
                 <div style={{ display: "flex", flexDirection: "column" }}>
                   {[
-                    { label: "Full Name", value: [profileForm.firstName, profileForm.lastName].filter(Boolean).join(" ") || "—" },
-                    { label: "Email", value: profileForm.email || "—" },
-                    { label: "Phone", value: profileForm.phoneNumber || "—" },
-                    { label: "Address", value: profileForm.address || "—" },
+                    { label: "Full Name", value: [profileForm.firstName, profileForm.lastName].filter(Boolean).join(" ") || "-" },
+                    { label: "Email", value: profileForm.email || "-" },
+                    { label: "Phone", value: profileForm.phoneNumber || "-" },
+                    { label: "Address", value: profileForm.address || "-" },
                   ].map((row, i, arr) => (
                     <div key={row.label} style={{ display: "flex", flexDirection: "column", padding: "0.75rem 0", borderBottom: i < arr.length - 1 ? "1px solid var(--border)" : "none" }}>
                       <span style={{ fontSize: "0.68rem", fontWeight: 600, color: "var(--gray)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.25rem" }}>{row.label}</span>

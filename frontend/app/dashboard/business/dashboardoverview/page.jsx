@@ -186,7 +186,7 @@ export default function DashboardOverviewPage() {
       const allOrders  = ordersJson?.data?.orders ?? ordersJson?.data ?? ordersJson?.orders ?? ordersJson ?? [];
       const orders     = Array.isArray(allOrders) ? allOrders : [];
 
-      // Compute order stats locally from fetched orders — avoids dependency on separate stats endpoint
+      // Compute order stats locally from fetched orders - avoids dependency on separate stats endpoint
       const isDelivered   = (o) => ['Delivered', 'delivered'].includes(o.orderStatus);
       const isCancelled   = (o) => ['Cancelled', 'cancelled'].includes(o.orderStatus);
       const isPending     = (o) => !isDelivered(o) && !isCancelled(o);
@@ -225,7 +225,7 @@ export default function DashboardOverviewPage() {
       orders.filter(o => !isCancelled(o)).forEach(o => {
         (o.items || []).forEach(item => {
           const key = item.productId || item.productName || 'unknown';
-          if (!prodMap[key]) prodMap[key] = { productName: item.productName || '—', category: item.category || '', totalQty: 0, totalRevenue: 0 };
+          if (!prodMap[key]) prodMap[key] = { productName: item.productName || '-', category: item.category || '', totalQty: 0, totalRevenue: 0 };
           prodMap[key].totalQty     += Number(item.qty ?? item.quantity ?? 0);
           prodMap[key].totalRevenue += Number(item.lineTotal ?? 0);
         });

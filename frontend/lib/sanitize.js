@@ -1,4 +1,4 @@
-// Lightweight HTML sanitizer — strips tags and encodes dangerous characters.
+// Lightweight HTML sanitizer - strips tags and encodes dangerous characters.
 // Used as defense-in-depth before sending user input to the API.
 // Backend also validates/sanitizes; this is a client-side layer.
 

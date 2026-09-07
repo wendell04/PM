@@ -1,6 +1,6 @@
 'use client';
 import NoImage from '@/components/NoImage';
-// TwoFactorModal imported for inline 2FA — no page redirect needed
+// TwoFactorModal imported for inline 2FA - no page redirect needed
 import TwoFactorModal from '@/components/auth/TwoFactorModal';
 // Shared with the landing page so the sign-up form (fields, CAPTCHA, password rules, T&C) is identical.
 import RegisterForm from '@/components/auth/RegisterForm';
@@ -313,7 +313,7 @@ function PasswordStrength({ password }) {
           transition: 'width 0.3s ease, background 0.3s ease' }}/>
       </div>
       <div style={{ fontSize: '0.72rem', marginTop: '0.25rem', color: isTooLong ? 'var(--red)' : current.color, transition: 'color 0.3s' }}>
-        {isTooLong ? 'Too Long — recommended max 32 characters' : current.label}
+        {isTooLong ? 'Too Long - recommended max 32 characters' : current.label}
       </div>
     </div>
   );
@@ -366,13 +366,13 @@ const EyeClosed = () => (
 export default function ShopLayout({ children }) {
   const router = useRouter();
   const pathname = usePathname();
-  // Product search only makes sense on browsing pages — hide it on cart/orders/account/checkout.
+  // Product search only makes sense on browsing pages - hide it on cart/orders/account/checkout.
   const SEARCH_HIDDEN_ROUTES = ['/shop/cart', '/shop/orders-history', '/shop/profile', '/shop/checkout', '/shop/payment-success', '/shop/payment-failed'];
   const showSearch = !SEARCH_HIDDEN_ROUTES.some(r => pathname === r || pathname.startsWith(r + '/'));
   const { theme, toggleTheme } = useTheme();
   const { setCartItems, cartItems: globalCartItems, cartCount: globalCartCount, addToCart: globalAddToCart, removeFromCart: globalRemoveFromCart } = useGlobalCart();
   const [user, setUser]       = useState(null);
-  // Owner-controlled payment availability (Homepage CMS) — drives footer badges. Missing key = on.
+  // Owner-controlled payment availability (Homepage CMS) - drives footer badges. Missing key = on.
   const [payEnabled, setPayEnabled] = useState({});
   const hasPay = (id) => payEnabled[id] !== false;
   const [cart, setCart]       = useState([]);
@@ -512,7 +512,7 @@ export default function ShopLayout({ children }) {
     window.addEventListener('storage', handleStorageUpdate);
     window.addEventListener('pmp_user_updated', handleUserUpdate);
 
-    // Cart is managed entirely by CartContext — no fetch needed here
+    // Cart is managed entirely by CartContext - no fetch needed here
     setCartInitialized(true);
     processPendingAdds();
 
@@ -560,7 +560,7 @@ export default function ShopLayout({ children }) {
   // Handle successful login
   const handleLoginSuccess = async (userData, token, rememberMe = false, requires2fa = false) => {
     if (requires2fa) {
-      // Do NOT write to storage yet — hold in state only.
+      // Do NOT write to storage yet - hold in state only.
       // Storage write happens in onSuccess after OTP verified.
       sessionStorage.setItem('pending_2fa', 'true');
       const isAdminUser = userData.role !== 'customer';
@@ -800,7 +800,7 @@ export default function ShopLayout({ children }) {
     // Skip sync before cart is initialized
     if (!cartInitialized) return;
 
-    // Skip sync if local cart is empty — CartContext owns the real data
+    // Skip sync if local cart is empty - CartContext owns the real data
     if (cart.length === 0) return;
 
     // Convert to MongoDB format
@@ -822,7 +822,7 @@ export default function ShopLayout({ children }) {
   }, [cart, cartInitialized]);
 
   // ── Forgot Password Handlers ────────────────────────────────────────────────
-  // STEP 1 — Send reset code to email
+  // STEP 1 - Send reset code to email
   const handleForgotSubmit = async () => {
     if (!forgotEmail.trim()) { setForgotError('Email is required'); return; }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(forgotEmail)) {
@@ -842,7 +842,7 @@ export default function ShopLayout({ children }) {
     }
   };
 
-  // STEP 2 — Verify the 6-digit code
+  // STEP 2 - Verify the 6-digit code
   const handleForgotVerifyCode = async () => {
     if (forgotCode.length !== 6) { setForgotError('Please enter the 6-digit code'); return; }
     setForgotError('');
@@ -873,7 +873,7 @@ export default function ShopLayout({ children }) {
     }
   };
 
-  // STEP 3 — Submit new password
+  // STEP 3 - Submit new password
   const handleForgotResetPassword = async () => {
     if (!forgotNewPassword) { setForgotError('Password is required'); return; }
     if (forgotNewPassword.length < 8) { setForgotError('Password must be at least 8 characters'); return; }
@@ -886,7 +886,7 @@ export default function ShopLayout({ children }) {
     setIsSendingReset(true);
     try {
       await resetPassword({ email: forgotEmail, code: forgotCode, password: forgotNewPassword, password_confirmation: forgotConfirmPassword });
-      // Success — close and show login
+      // Success - close and show login
       setForgotPasswordOpen(false);
       setForgotStep(1);
       setForgotCode('');
@@ -959,9 +959,9 @@ export default function ShopLayout({ children }) {
           setUnreadCount(prev => prev + 1);
         });
     } catch {
-      // Reverb not reachable — polling covers it
+      // Reverb not reachable - polling covers it
     }
-    // Only stop listening to this channel — do NOT disconnect the shared Echo
+    // Only stop listening to this channel - do NOT disconnect the shared Echo
     // singleton here, as ChatModule and other components rely on the same instance.
     return () => {
       try { getEcho(getToken())?.private(`user.${userId}`).stopListening('.notification.created'); } catch { }
@@ -1266,7 +1266,7 @@ export default function ShopLayout({ children }) {
           <div className="shop-navbar-container">
             {/* Left side - Logo and Back button (only show back button when NOT logged in) */}
             <div className="shop-navbar-left">
-              {/* Logo — always links back to landing */}
+              {/* Logo - always links back to landing */}
               <Link href="/" className="shop-navbar-logo">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src="/logos/PersonalizeMe logo.png" alt="Personalize Me Prints" className="shop-navbar-logo-img" />
@@ -1276,7 +1276,7 @@ export default function ShopLayout({ children }) {
               </Link>
             </div>
 
-            {/* Center — Search bar — B-01 (only on product browsing pages) */}
+            {/* Center - Search bar - B-01 (only on product browsing pages) */}
             {showSearch && (
               <div className={`shop-navbar-search${searchFocused ? ' focused' : ''}`}>
                 <svg
@@ -1329,7 +1329,7 @@ export default function ShopLayout({ children }) {
 
             {/* Right side */}
             <div className="shop-navbar-right">
-              {/* Shop button — hidden on storefront browsing pages and landing */}
+              {/* Shop button - hidden on storefront browsing pages and landing */}
               {!(pathname === '/shop' || pathname.startsWith('/shop/products') || pathname.startsWith('/shop/collections') || pathname.startsWith('/shop/search')) && (
                 <Link
                   href="/shop"
@@ -1368,7 +1368,7 @@ export default function ShopLayout({ children }) {
               {/* User section - Show Login/Register if not logged in, or User menu if logged in */}
               {user ? (
                 <>
-                  {/* Notification Bell — logged-in customers only */}
+                  {/* Notification Bell - logged-in customers only */}
                   <div ref={notifRef} style={{ position: 'relative' }}>
                     <button
                       type="button"
@@ -1589,7 +1589,7 @@ export default function ShopLayout({ children }) {
                   />
                 </div>
               ) : (
-                /* RegisterForm renders its own step indicator + .auth-modal-body — wrapping it in
+                /* RegisterForm renders its own step indicator + .auth-modal-body - wrapping it in
                    another .auth-modal-body double-padded it and inset the stepper (landing does not). */
                 <RegisterForm key={`register-${authModalInstanceKey}`} onSuccess={handleRegisterSuccess} onSwitchToLogin={() => setAuthModalType('login')} theme={theme} />
               )}
@@ -1604,7 +1604,7 @@ export default function ShopLayout({ children }) {
             userRole={twoFaRole}
             persistLogin={twoFaPendingRememberMe}
             onSuccess={(redirectTo, sessionToken) => {
-              // OTP verified — write the real full-access token minted by the server on verify.
+              // OTP verified - write the real full-access token minted by the server on verify.
               // The pending token (twoFaToken) is limited and already revoked; never persist it.
               const finalToken = sessionToken || twoFaToken;
               if (twoFaPendingUser && finalToken) {
@@ -1635,8 +1635,8 @@ export default function ShopLayout({ children }) {
           />
         )}
 
-        {/* ── Forgot Password Modal — 3 Step Flow ── */}
-        {/* No backdrop-close: 3-step email/code/new-password flow — a stray click would
+        {/* ── Forgot Password Modal - 3 Step Flow ── */}
+        {/* No backdrop-close: 3-step email/code/new-password flow - a stray click would
             wipe progress. Closes only via the X button. */}
         {forgotPasswordOpen && (
           <div className="auth-overlay" style={{ zIndex: 1000 }}>
@@ -1656,7 +1656,7 @@ export default function ShopLayout({ children }) {
                 </button>
               </div>
               <div className="auth-modal-body">
-                {/* STEP 1 — Enter Email */}
+                {/* STEP 1 - Enter Email */}
                 {forgotStep === 1 && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                     <p style={{ color: 'var(--gray)', fontSize: '0.9rem', lineHeight: 1.6, margin: 0 }}>
@@ -1689,7 +1689,7 @@ export default function ShopLayout({ children }) {
                   </div>
                 )}
 
-                {/* STEP 2 — Enter Verification Code */}
+                {/* STEP 2 - Enter Verification Code */}
                 {forgotStep === 2 && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                     <div style={{ textAlign: 'center', padding: '0.5rem 0' }}>
@@ -1740,7 +1740,7 @@ export default function ShopLayout({ children }) {
                   </div>
                 )}
 
-                {/* STEP 3 — New Password */}
+                {/* STEP 3 - New Password */}
                 {forgotStep === 3 && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                     <p style={{ color: 'var(--gray)', fontSize: '0.9rem', lineHeight: 1.6, margin: 0 }}>
@@ -1808,7 +1808,7 @@ export default function ShopLayout({ children }) {
       </div>
 
 
-      {/* Shop cart / notif sheets — root level so position:fixed is viewport-relative */}
+      {/* Shop cart / notif sheets - root level so position:fixed is viewport-relative */}
       {(cartOpen || notifOpen) && (
         <div className="shop-sheet-backdrop" onClick={() => { setCartOpen(false); setNotifOpen(false); }} />
       )}

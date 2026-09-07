@@ -9,7 +9,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 import { fetchWithTimeout } from './fetchWithTimeout';
 
 /**
- * Fetch a single product by ID (admin view — includes variantImageUrls and full data)
+ * Fetch a single product by ID (admin view - includes variantImageUrls and full data)
  */
 export async function fetchProductById(productId, token) {
   try {
@@ -253,7 +253,7 @@ export async function uploadImage(file, folder = 'pmp-products', token) {
         'Authorization': `Bearer ${token}`,
       },
       body: formData,
-    }, 60000); // 60s — Cloudinary upload can be slow on dev
+    }, 60000); // 60s - Cloudinary upload can be slow on dev
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));

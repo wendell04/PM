@@ -51,8 +51,8 @@ function orderToRow(o) {
   const isCancelled = (o.orderStatus || '').toLowerCase() === 'cancelled' || o.status === 'cancelled';
   return {
     id,
-    orderNumber: o.orderId || o.orderNumber || id?.slice?.(-8) || '—',
-    customerName: o.userSnapshot?.name || o.customerName || '—',
+    orderNumber: o.orderId || o.orderNumber || id?.slice?.(-8) || '-',
+    customerName: o.userSnapshot?.name || o.customerName || '-',
     customerContact: o.userSnapshot?.phone || o.customerContact || null,
     customerEmail: o.userSnapshot?.email || o.customerEmail || null,
     items: (o.items || []).map(item => ({
@@ -95,8 +95,8 @@ function OrderExpandRow({ order, colSpan, cost }) {
           <div>
             <div style={label}>Customer</div>
             <div style={{ fontSize: '13px', color: 'var(--white)', fontWeight: 600 }}>{order.customerName || 'N/A'}</div>
-            <div style={{ fontSize: '12px', color: 'var(--gray)' }}>{order.customerContact || '—'}</div>
-            <div style={{ fontSize: '12px', color: 'var(--gray)', overflow: 'hidden', textOverflow: 'ellipsis' }}>{order.customerEmail || '—'}</div>
+            <div style={{ fontSize: '12px', color: 'var(--gray)' }}>{order.customerContact || '-'}</div>
+            <div style={{ fontSize: '12px', color: 'var(--gray)', overflow: 'hidden', textOverflow: 'ellipsis' }}>{order.customerEmail || '-'}</div>
           </div>
 
           <div>
@@ -126,7 +126,7 @@ function OrderExpandRow({ order, colSpan, cost }) {
               </div>
               );
             }) : (
-              <div style={{ fontSize: '13px', color: 'var(--gray)', fontStyle: 'italic' }}>—</div>
+              <div style={{ fontSize: '13px', color: 'var(--gray)', fontStyle: 'italic' }}>-</div>
             )}
           </div>
 
@@ -181,10 +181,10 @@ function OrderExpandRow({ order, colSpan, cost }) {
 
           <div>
             <div style={label}>Order Notes</div>
-            <div style={{ fontSize: '13px', color: 'var(--gray-light)' }}>{order.notes || '—'}</div>
+            <div style={{ fontSize: '13px', color: 'var(--gray-light)' }}>{order.notes || '-'}</div>
             <div style={{ fontSize: '12px', color: 'var(--gray)', marginTop: '8px' }}>
               <div>Order Date: {new Date(order.orderDate).toLocaleDateString()}</div>
-              <div>Due Date: {order.dueDate ? new Date(order.dueDate).toLocaleDateString() : '—'}</div>
+              <div>Due Date: {order.dueDate ? new Date(order.dueDate).toLocaleDateString() : '-'}</div>
               <div style={{ color: 'var(--gold)', marginTop: '2px' }}>
                 Source: {order.source === 'manual' ? 'Outside System (Manual Sale)' : 'Online Storefront'}
               </div>
@@ -326,7 +326,7 @@ function ReportsView({ reports, hasCostData }) {
             { label: 'Category', render: r => r.name },
             { label: 'Units',    render: r => r.qty },
             { label: 'Revenue',  render: r => formatPrice(r.revenue) },
-            { label: 'Share',    render: r => revenue > 0 ? pct(r.revenue / revenue) : '—' },
+            { label: 'Share',    render: r => revenue > 0 ? pct(r.revenue / revenue) : '-' },
           ]} />
         </Panel>
 
@@ -573,7 +573,7 @@ export default function SalesListPage() {
     const agg = (keyer) => {
       const map = {};
       active.forEach(o => (o.items || []).forEach(i => {
-        const key = keyer(i) || '—';
+        const key = keyer(i) || '-';
         if (!map[key]) map[key] = { name: key, qty: 0, revenue: 0 };
         map[key].qty += Number(i.quantity || 0);
         map[key].revenue += Number(i.unitPrice || 0) * Number(i.quantity || 0);
@@ -786,7 +786,7 @@ export default function SalesListPage() {
 
         {error && <div style={{ ...S.note, background: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b', marginBottom: '10px' }}>{error}</div>}
 
-        {/* Toolbar — separate card above the table, exactly like the Orders module */}
+        {/* Toolbar - separate card above the table, exactly like the Orders module */}
         <div style={{ ...S.card, ...S.rowBetween, marginBottom: '10px', padding: '12px 16px' }}>
           <div style={{ ...S.row, gap: '8px', flex: 1 }}>
             <SearchBar value={searchQuery} onChange={v => { setSearchQuery(v); setSPage(1); }}
@@ -886,7 +886,7 @@ export default function SalesListPage() {
                               where a figure belongs, under a heading it no longer matched. The column
                               answers one question, how much has been received, so it shows that
                               amount and lets the Balance beside it say what is left. */}
-                          {cancelled ? <span style={{ color: 'var(--gray)' }}>—</span>
+                          {cancelled ? <span style={{ color: 'var(--gray)' }}>-</span>
                             : fullyPaid ? (
                               <>
                                 <span style={{ fontWeight: 700, color: 'var(--st-green-fg)' }}>{formatPrice(order.totalPrice)}</span>
@@ -898,11 +898,11 @@ export default function SalesListPage() {
                                 <span style={{ fontWeight: 600, color: 'var(--st-green-fg)' }}>{formatPrice(order.downPayment)}</span>
                                 {order.downpaymentPercent ? <div style={{ fontSize: '11px', color: 'var(--st-green-fg)' }}>{order.downpaymentPercent}% DP</div> : null}
                               </>
-                            ) : <span style={{ color: 'var(--gray)' }}>—</span>}
+                            ) : <span style={{ color: 'var(--gray)' }}>-</span>}
                         </td>
                         <td style={{ ...S.td, textAlign: 'center' }}>
                           <span style={{ fontWeight: 600, color: cancelled ? 'var(--gray)' : (order.balance === 0 ? 'var(--st-green-fg)' : '#e0a43a') }}>
-                            {cancelled ? '—' : formatPrice(order.balance)}
+                            {cancelled ? '-' : formatPrice(order.balance)}
                           </span>
                         </td>
                         <td style={{ ...S.td, textAlign: 'center' }}><StatusPill status={order.status} /></td>

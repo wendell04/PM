@@ -37,7 +37,7 @@ const SECTION_GROUPS = [
   { label: 'Admin',                keys: ['auditLogs', 'userManagement', 'rolePermissions'] },
 ];
 
-// Action catalog — mirrors backend config('rbac.action_catalog').
+// Action catalog - mirrors backend config('rbac.action_catalog').
 const ACTION_CATALOG = {
   orderRequests:   ['view', 'create', 'edit', 'delete', 'approve'],
   orders:          ['view', 'create', 'edit', 'delete', 'updateStatus'],
@@ -349,7 +349,7 @@ export default function RolePermissionsPage() {
               return (
                 <div key={role} style={{ borderTop: idx === 0 ? 'none' : '1px solid var(--border)' }}>
 
-                  {/* Summary row — clickable */}
+                  {/* Summary row - clickable */}
                   <div
                     onClick={() => setExpanded((p) => ({ ...p, [role]: !p[role] }))}
                     style={{
@@ -386,10 +386,10 @@ export default function RolePermissionsPage() {
                           </div>
                           <div style={{ minWidth: 0 }}>
                             <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--white)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                              {`${s.firstName || ''} ${s.lastName || ''}`.trim() || '—'}
+                              {`${s.firstName || ''} ${s.lastName || ''}`.trim() || '-'}
                             </div>
                             <div style={{ fontSize: '0.68rem', color: 'var(--gray)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                              {s.email || '—'}
+                              {s.email || '-'}
                             </div>
                           </div>
                         </div>

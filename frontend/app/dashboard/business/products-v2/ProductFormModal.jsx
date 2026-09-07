@@ -20,7 +20,7 @@ function validate(f) {
   if (!f.category)              e.category = 'Category is required.';
   if (f.description.length > 500) e.description = 'Max 500 characters.';
   if (f.downpaymentPct === '' || isNaN(Number(f.downpaymentPct)) || Number(f.downpaymentPct) < 0 || Number(f.downpaymentPct) > 100)
-                                e.downpaymentPct = 'Enter 0–100.';
+                                e.downpaymentPct = 'Enter 0-100.';
   if (f.type === 'standalone') {
     if (!f.bomId)               e.bomId    = 'Select a BOM.';
     if (!f.price || Number(f.price) <= 0) e.price = 'Price must be > 0.';
@@ -187,7 +187,7 @@ export default function ProductFormModal({ open, onClose, onSave, product, boms 
             <Field label="Bill of Materials (BOM)" required error={errors.bomId}>
               <select value={form.bomId} onChange={e => setF('bomId', e.target.value)}
                 style={errors.bomId ? S.selectErr : S.select}>
-                <option value="">— Select BOM —</option>
+                <option value="">- Select BOM -</option>
                 {boms.map(b => <option key={b.id} value={b.id}>{b.productName}</option>)}
               </select>
             </Field>
@@ -223,7 +223,7 @@ export default function ProductFormModal({ open, onClose, onSave, product, boms 
                   <Field label="BOM" required error={errors[`vbom_${i}`]}>
                     <select value={v.bomId} onChange={e => setVariant(i, 'bomId', e.target.value)}
                       style={errors[`vbom_${i}`] ? S.selectErr : S.select}>
-                      <option value="">— Select —</option>
+                      <option value="">- Select -</option>
                       {boms.map(b => <option key={b.id} value={b.id}>{b.productName}</option>)}
                     </select>
                   </Field>

@@ -5,7 +5,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 /**
  * Fetch all job orders with optional filters
  * @param {string} token
- * @param {Object} filters — { status, isRush, orderId }
+ * @param {Object} filters - { status, isRush, orderId }
  */
 export async function fetchJobOrders(token, filters = {}) {
   const params = new URLSearchParams();
@@ -65,9 +65,9 @@ export async function createJobOrder(token, payload) {
 }
 
 /**
- * Batch create — one job order per selected printable item of a mixed order.
+ * Batch create - one job order per selected printable item of a mixed order.
  * @param {string} token
- * @param {Object} payload — { orderId, items:[{itemIndex, product}], targetCompletion, isRush, notes }
+ * @param {Object} payload - { orderId, items:[{itemIndex, product}], targetCompletion, isRush, notes }
  * @returns {Array} the created job orders
  */
 export async function createJobOrdersBatch(token, payload) {
@@ -114,7 +114,7 @@ export async function updateJobOrder(token, id, payload) {
 }
 
 /**
- * Delete a job order (guarded server-side to Queued/Cancelled — test/junk cleanup).
+ * Delete a job order (guarded server-side to Queued/Cancelled - test/junk cleanup).
  */
 export async function deleteJobOrder(token, id) {
   const res = await fetchWithTimeout(`${API_URL}/api/admin/job-orders/${id}`, {

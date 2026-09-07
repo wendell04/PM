@@ -24,7 +24,7 @@ export async function fetchUnits(token) {
 }
 
 /**
- * POST /api/admin/units — create or update (upsert)
+ * POST /api/admin/units - create or update (upsert)
  */
 export async function saveUnit(payload, token) {
   const res = await fetchWithTimeout(

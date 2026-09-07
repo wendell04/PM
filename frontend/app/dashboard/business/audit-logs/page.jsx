@@ -133,7 +133,7 @@ export default function AuditLogsPage() {
   };
 
   const formatDate = (dateStr) => {
-    if (!dateStr) return '—';
+    if (!dateStr) return '-';
     return new Date(dateStr).toLocaleDateString('en-PH', {
       month: 'short',
       day: 'numeric',
@@ -516,7 +516,7 @@ export default function AuditLogsPage() {
                               textOverflow: 'ellipsis',
                               whiteSpace: 'nowrap',
                             }}>
-                              {log.productName || '—'}
+                              {log.productName || '-'}
                             </div>
                           </td>
 
@@ -533,7 +533,7 @@ export default function AuditLogsPage() {
                               borderRadius: '4px',
                               fontSize: '0.75rem',
                             }}>
-                              {log.category || '—'}
+                              {log.category || '-'}
                             </span>
                           </td>
 
@@ -569,7 +569,7 @@ export default function AuditLogsPage() {
                             textAlign: 'center',
                             color: 'var(--gray)',
                           }}>
-                            {log.stockBefore ?? '—'}
+                            {log.stockBefore ?? '-'}
                           </td>
 
                           {/* Stock After */}
@@ -579,7 +579,7 @@ export default function AuditLogsPage() {
                             color: 'var(--gold)',
                             fontWeight: 600,
                           }}>
-                            {log.stockAfter ?? '—'}
+                            {log.stockAfter ?? '-'}
                           </td>
 
                           {/* Unit Cost */}
@@ -593,7 +593,7 @@ export default function AuditLogsPage() {
                               ? `₱${Number(log.unitCost).toLocaleString('en-PH', {
                                   minimumFractionDigits: 2,
                                   maximumFractionDigits: 2 })}`
-                              : '—'}
+                              : '-'}
                           </td>
 
                           {/* Performed By */}
@@ -602,7 +602,7 @@ export default function AuditLogsPage() {
                             color: 'var(--gray)',
                             fontSize: '0.8rem',
                           }}>
-                            {log.performedBy || '—'}
+                            {log.performedBy || '-'}
                           </td>
 
                           {/* Remarks */}
@@ -617,7 +617,7 @@ export default function AuditLogsPage() {
                               textOverflow: 'ellipsis',
                               whiteSpace: 'nowrap',
                             }} title={log.remarks || ''}>
-                              {log.remarks || '—'}
+                              {log.remarks || '-'}
                             </div>
                           </td>
                         </tr>

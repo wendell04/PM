@@ -32,7 +32,7 @@ input[type="number"] {
 /* ══════════════════════════════════════
    ALWAYS-DARK CHROME
    Only the sidebar logo header and top bar are
-   pinned to dark vars — nav area adapts to theme.
+   pinned to dark vars - nav area adapts to theme.
 ══════════════════════════════════════ */
 .sidebar-header,
 .admin-top-bar {
@@ -2156,7 +2156,7 @@ input[type="text"][inputMode="numeric"] {
   animation: skeletonPulse 1.4s ease-in-out infinite;
 }
 
-/* Page-level skeleton wrapper — replaces .loading-state */
+/* Page-level skeleton wrapper - replaces .loading-state */
 .skeleton-page {
   display: flex;
   flex-direction: column;
@@ -3626,7 +3626,7 @@ input[type="text"][inputMode="numeric"] {
 }
 
 
-/* Collapsed sidebar — icon-only mode */
+/* Collapsed sidebar - icon-only mode */
 .admin-sidebar.collapsed {
   width: 64px;
 }

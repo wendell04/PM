@@ -147,7 +147,7 @@ export default function CustomersPage() {
           </div>
         )}
 
-        {/* Unlock Requests — always visible section */}
+        {/* Unlock Requests - always visible section */}
         {!loading && (
           <div style={{
             marginBottom: '24px',
@@ -223,7 +223,7 @@ export default function CustomersPage() {
                   <div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                       <span style={{ fontWeight: 700, color: 'var(--white)', fontSize: '0.88rem' }}>
-                        {`${c.firstName} ${c.lastName}`.trim() || '—'}
+                        {`${c.firstName} ${c.lastName}`.trim() || '-'}
                       </span>
                       <span style={{
                         fontSize: '0.65rem', fontWeight: 700, padding: '2px 8px',
@@ -233,7 +233,7 @@ export default function CustomersPage() {
                     </div>
                     <div style={{ fontSize: '0.75rem', color: 'var(--gray)', marginTop: '2px' }}>{c.email}</div>
                     <div style={{ fontSize: '0.7rem', color: 'var(--gray)', marginTop: '2px', opacity: 0.8 }}>
-                      Requested: {c.unlock_requested_at ? new Date(c.unlock_requested_at).toLocaleString() : '—'}
+                      Requested: {c.unlock_requested_at ? new Date(c.unlock_requested_at).toLocaleString() : '-'}
                     </div>
                   </div>
                 </div>

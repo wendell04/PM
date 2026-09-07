@@ -133,7 +133,7 @@ function CollectionModal({ existing, onClose, onSave, products, token }) {
     try {
       const result = await uploadImage(file, 'pmp-products', token);
       set('image', result.url ?? result.secure_url ?? result);
-      set('landing_image_position', 'center center'); // crop is baked in — reset focus point
+      set('landing_image_position', 'center center'); // crop is baked in - reset focus point
       setUploadErr('');
     } catch {
       setUploadErr('Upload failed. Please try again.');
@@ -162,7 +162,7 @@ function CollectionModal({ existing, onClose, onSave, products, token }) {
           onCancel={() => { if (cropSrc.startsWith('blob:')) URL.revokeObjectURL(cropSrc); setCropSrc(null); }}
           onConfirm={uploadCropped} />
       )}
-      {/* No backdrop-close: form input — a stray click would wipe it. */}
+      {/* No backdrop-close: form input - a stray click would wipe it. */}
       <div style={{ background: 'var(--dark)', borderRadius: '12px', width: '100%', maxWidth: '580px',
         maxHeight: '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden',
         boxShadow: '0 20px 60px rgba(0,0,0,0.18)', border: '1px solid var(--border)' }}>
@@ -247,7 +247,7 @@ function CollectionModal({ existing, onClose, onSave, products, token }) {
                     </div>
                     {imgErr && (
                       <div style={{ fontSize: '11px', color: '#dc2626', textAlign: 'center', marginTop: '6px' }}>
-                        Couldn&apos;t load this image URL — remove (×) and try upload/drag instead.
+                        Couldn&apos;t load this image URL - remove (×) and try upload/drag instead.
                       </div>
                     )}
                   </div>
@@ -314,9 +314,9 @@ function CollectionModal({ existing, onClose, onSave, products, token }) {
                   <div>
                     <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--gray-light)' }}>Show on Landing Page</div>
                     <div style={{ fontSize: '11px', color: 'var(--gray)', marginTop: '2px' }}>
-                      {!form.isPublished ? 'Draft — publish first to show it on the landing page'
+                      {!form.isPublished ? 'Draft - publish first to show it on the landing page'
                         : form.landing_order === -1 ? 'Hidden from landing page'
-                        : form.landing_order > 0 ? `Shown — order position: ${form.landing_order}`
+                        : form.landing_order > 0 ? `Shown - order position: ${form.landing_order}`
                         : 'Shown on landing page (default)'}
                     </div>
                   </div>
@@ -333,7 +333,7 @@ function CollectionModal({ existing, onClose, onSave, products, token }) {
                     </label>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <input
-                        type="number" min="1" max="100" placeholder="—"
+                        type="number" min="1" max="100" placeholder="-"
                         value={form.landing_order > 0 ? form.landing_order : ''}
                         onChange={e => { const n = parseInt(e.target.value); set('landing_order', n > 0 ? n : null); }}
                         style={{ ...S.input, width: '80px', textAlign: 'center' }}

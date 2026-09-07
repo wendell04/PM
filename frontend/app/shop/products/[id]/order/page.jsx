@@ -377,7 +377,7 @@ function CustomOrderInner() {
     return Math.max(product.availableQty ?? product.stock ?? 0, 0);
   })();
   const qtyCeiling = Math.max(moq, Math.min(maxQty, MAX_QTY));
-  // Inquiry (quotation) products have no computable price — they go through the quote flow
+  // Inquiry (quotation) products have no computable price - they go through the quote flow
   // (request now, owner sends a quote, customer pays it later), never a direct ₱0 checkout.
   const isInquiry = (product?.priceType ?? product?.pricingMode) === 'inquiry';
 
@@ -678,7 +678,7 @@ function CustomOrderInner() {
       return;
     }
 
-    // Inquiry (quotation) products: submit a quote request only — no address, no payment.
+    // Inquiry (quotation) products: submit a quote request only - no address, no payment.
     // The owner reviews it, sends a quote; the customer pays that quote later.
     if (isInquiry) {
       setSubmitError(null);
@@ -959,7 +959,7 @@ function CustomOrderInner() {
         </div>
         <h2 style={{ color: 'var(--white)', fontWeight: 700, fontSize: '1.3rem', marginBottom: 8 }}>Payment Cancelled</h2>
         <p style={{ color: 'var(--gray)', fontSize: '0.9rem', marginBottom: 28, lineHeight: 1.6 }}>
-          Your payment was not completed. Your order has been saved — you can try again below.
+          Your payment was not completed. Your order has been saved - you can try again below.
         </p>
         <button onClick={() => setFailedModal(false)}
           style={{ width: '100%', padding: '12px', background: 'var(--gold)', color: '#000', border: 'none', borderRadius: 9, fontWeight: 700, cursor: 'pointer', fontSize: '0.9rem' }}>
@@ -977,7 +977,7 @@ function CustomOrderInner() {
         </div>
         <h2 style={{ color: 'var(--white)', fontWeight: 700, fontSize: '1.3rem', marginBottom: 8 }}>Quote request submitted</h2>
         <p style={{ color: 'var(--gray)', fontSize: '0.9rem', marginBottom: 28, lineHeight: 1.6 }}>
-          We&apos;ve received your request for <strong style={{ color: 'var(--white)' }}>{product.name}</strong>. We&apos;ll review the details and send you a quote via chat — you only pay once you approve it.
+          We&apos;ve received your request for <strong style={{ color: 'var(--white)' }}>{product.name}</strong>. We&apos;ll review the details and send you a quote via chat - you only pay once you approve it.
         </p>
         <button onClick={() => router.push('/shop')}
           style={{ width: '100%', padding: '12px', background: 'var(--gold)', color: '#000', border: 'none', borderRadius: 9, fontWeight: 700, cursor: 'pointer', fontSize: '0.9rem' }}>
@@ -1092,7 +1092,7 @@ function CustomOrderInner() {
                       <div key={group.id ?? group.name ?? gi} style={{ display: 'flex', alignItems: 'baseline', gap: '0.6rem' }}>
                         <p style={{ fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--gray)', margin: 0, minWidth: '90px' }}>{group.name}</p>
                         <p style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--white)', margin: 0 }}>
-                          {chosen ? optLabel(chosen) : '—'}
+                          {chosen ? optLabel(chosen) : '-'}
                         </p>
                       </div>
                     );
@@ -1421,7 +1421,7 @@ function CustomOrderInner() {
               )}
             </section>
 
-            {/* Step 3: Delivery — shown for both upload and request */}
+            {/* Step 3: Delivery - shown for both upload and request */}
             {(designMode === 'upload' || designMode === 'request') && !isInquiry && <section style={{ background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '12px', padding: '1.15rem' }}>
               <h2 style={{ fontSize: '0.74rem', fontWeight: 800, letterSpacing: '0.03em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: '0.85rem' }}>Delivery address</h2>
               {addressLoading ? (
@@ -1682,7 +1682,7 @@ function CustomOrderInner() {
 
               {designMode === 'request' && !isInquiry && (
                 <div style={{ padding: '0.75rem', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border)', borderRadius: '8px', marginBottom: '1rem', fontSize: '0.75rem', color: 'var(--gray)', lineHeight: 1.6 }}>
-                  Our designer will send a proof via chat within 24–48 hrs. Production starts once you approve.
+                  Our designer will send a proof via chat within 24-48 hrs. Production starts once you approve.
                   {/* Said here, before the order exists, rather than only in the terms behind a link. A
                       customer who first meets the revision limit while asking for a fourth change reads
                       it as a penalty; one who was told up front reads it as the deal. Figures come from

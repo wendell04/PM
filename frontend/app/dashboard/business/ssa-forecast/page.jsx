@@ -64,7 +64,7 @@ const RFM_COLORS = {
 };
 
 const SEGMENT_DESC = {
-  "Champions":           "Buy very recently, very often, and spend the most. Reward them — they drive the most revenue.",
+  "Champions":           "Buy very recently, very often, and spend the most. Reward them - they drive the most revenue.",
   "Loyal Customers":     "Buy regularly and spend well. Keep them engaged with exclusive offers.",
   "Potential Loyalists": "Bought recently with growing frequency. Nurture them to become loyal.",
   "New Customers":       "Made their first purchase recently. Onboard them with a good experience.",
@@ -72,14 +72,14 @@ const SEGMENT_DESC = {
   "At Risk":             "Used to buy often but have gone quiet. Send a win-back campaign now.",
   "Can't Lose Them":     "High purchase frequency but absent recently. High-value churn risk.",
   "Hibernating":         "Low frequency, haven't bought in a while. Re-engage with a discount.",
-  "Lost":                "Lowest scores across all dimensions — likely churned.",
+  "Lost":                "Lowest scores across all dimensions - likely churned.",
   "Need Attention":      "Moderate scores; inconsistent behavior. Need targeted follow-up.",
 };
 
 const ABC_DESC = {
-  A: { label: "Best sellers — top 70% of revenue",  tip: "Protect these. Prioritize stock, quality, and promotion." },
-  B: { label: "Steady — next 20%",                  tip: "Grow these. Small improvements here have outsized returns." },
-  C: { label: "Low performers — the rest",          tip: "Review these. Consider bundling, discounting, or phasing out." },
+  A: { label: "Best sellers - top 70% of revenue",  tip: "Protect these. Prioritize stock, quality, and promotion." },
+  B: { label: "Steady - next 20%",                  tip: "Grow these. Small improvements here have outsized returns." },
+  C: { label: "Low performers - the rest",          tip: "Review these. Consider bundling, discounting, or phasing out." },
 };
 
 function AnalyticsSkeleton() {
@@ -392,7 +392,7 @@ const pageStyles = `
     opacity: 0.45;
   }
 
-  /* ════════════ Demand Forecast — two-column workspace ════════════ */
+  /* ════════════ Demand Forecast - two-column workspace ════════════ */
   .ssa-layout {
     display: grid;
     grid-template-columns: 256px minmax(0, 1fr);
@@ -649,7 +649,7 @@ const pageStyles = `
     transition: all 0.15s;
   }
   .ssa-icon-btn:hover { color: var(--white); border-color: rgba(212,168,67,0.4); }
-  /* Sales Quantity — units planning summary strip */
+  /* Sales Quantity - units planning summary strip */
   .ssa-units-summary {
     display: flex;
     flex-wrap: wrap;
@@ -748,7 +748,7 @@ function computeInventoryPolicy({ rawRows, currentStock, leadTimeDays, periodTyp
   const variance = n > 1 ? series.reduce((a, b) => a + (b - mean) ** 2, 0) / (n - 1) : 0;
   const sigma = Math.sqrt(variance);
 
-  // Intermittency (Syntetos–Boylan): ADI = avg gap between demands, CV² of sizes.
+  // Intermittency (Syntetos-Boylan): ADI = avg gap between demands, CV² of sizes.
   const adi = nz.length ? n / nz.length : Infinity;
   const nzMean = nz.length ? nz.reduce((a, b) => a + b, 0) / nz.length : 0;
   const nzVar = nz.length > 1 ? nz.reduce((a, b) => a + (b - nzMean) ** 2, 0) / (nz.length - 1) : 0;
@@ -782,11 +782,11 @@ function computeInventoryPolicy({ rawRows, currentStock, leadTimeDays, periodTyp
 }
 
 const DEMAND_CLASS = {
-  steady:       { label: "Steady",       color: "#4ade80", note: "regular demand — time-series forecast is reliable" },
-  variable:     { label: "Variable",     color: "#fbbf24", note: "regular but uneven sizes — treat the rate as approximate" },
-  intermittent: { label: "Intermittent", color: "#fbbf24", note: "sparse demand — estimated with Croston's/SBA (a flat demand rate)" },
-  lumpy:        { label: "Lumpy",        color: "#f87171", note: "sparse and uneven demand — Croston's/SBA rate; treat as a guide" },
-  new:          { label: "New / sparse", color: "#9ca3af", note: "too little history to model — using a simple average" },
+  steady:       { label: "Steady",       color: "#4ade80", note: "regular demand - time-series forecast is reliable" },
+  variable:     { label: "Variable",     color: "#fbbf24", note: "regular but uneven sizes - treat the rate as approximate" },
+  intermittent: { label: "Intermittent", color: "#fbbf24", note: "sparse demand - estimated with Croston's/SBA (a flat demand rate)" },
+  lumpy:        { label: "Lumpy",        color: "#f87171", note: "sparse and uneven demand - Croston's/SBA rate; treat as a guide" },
+  new:          { label: "New / sparse", color: "#9ca3af", note: "too little history to model - using a simple average" },
 };
 
 // Adaptive precision for demand figures: slow sellers have sub-unit demand
@@ -818,7 +818,7 @@ function resolveAccuracy(accuracy, isHighVolatility = false) {
   const mapeReliable = accuracy.mape_reliable !== false;
 
   if (mape != null) {
-    // For high-volatility spike-demand data, high MAPE is expected — the model
+    // For high-volatility spike-demand data, high MAPE is expected - the model
     // tracks the revenue trend, not the exact timing of individual order spikes.
     // For annual forecasts backed by only 1 full-year backtest bin, MAPE is
     // statistically unreliable (single-observation estimate).
@@ -838,16 +838,16 @@ function resolveAccuracy(accuracy, isHighVolatility = false) {
       display: `${mape.toFixed(1)}%`,
       label: unreliable ? "MAPE (LOW CONFIDENCE)" : "FORECAST ACCURACY (MAPE)",
       sublabel: btN
-        ? `tested on ${btN} ${btNz != null ? `periods (${btNz} with sales)` : "periods"}${unreliable ? (isHighVolatility ? " — sparse/spike data" : " — limited backtest data") : ""}`
+        ? `tested on ${btN} ${btNz != null ? `periods (${btNz} with sales)` : "periods"}${unreliable ? (isHighVolatility ? " - sparse/spike data" : " - limited backtest data") : ""}`
         : "insufficient data",
       color,
       tooltip: unreliable
         ? isHighVolatility
-          ? "MAPE exceeds 300% because sales are sparse and spike-driven — the model cannot reliably predict the exact timing of individual orders. Use the forecast as a directional trend guide, not a precise estimate."
+          ? "MAPE exceeds 300% because sales are sparse and spike-driven - the model cannot reliably predict the exact timing of individual orders. Use the forecast as a directional trend guide, not a precise estimate."
           : "Annual MAPE is based on fewer than 2 full calendar-year backtest periods, making it a single-observation estimate and statistically unreliable. Use it as a rough guide only."
         : isHighVolatility
-          ? "MAPE measures forecast accuracy on weeks with actual sales. For irregular spike-demand businesses, high MAPE is expected — the model tracks your revenue trend, not individual order timing. The forecast baseline is more useful than this number alone."
-          : "MAPE (Mean Absolute % Error): measures forecast accuracy only on periods with real sales, ignoring zero-sale periods. Lower is better. Under 30% = good, 30–60% = fair, above 60% = poor.",
+          ? "MAPE measures forecast accuracy on weeks with actual sales. For irregular spike-demand businesses, high MAPE is expected - the model tracks your revenue trend, not individual order timing. The forecast baseline is more useful than this number alone."
+          : "MAPE (Mean Absolute % Error): measures forecast accuracy only on periods with real sales, ignoring zero-sale periods. Lower is better. Under 30% = good, 30-60% = fair, above 60% = poor.",
     };
   }
 
@@ -857,7 +857,7 @@ function resolveAccuracy(accuracy, isHighVolatility = false) {
       value: maeRatio,
       display: `~${maeRatio.toFixed(1)}%`,
       label: "ERROR VS AVG SALE",
-      sublabel: "backtest weeks had no sales — using MAE ratio",
+      sublabel: "backtest weeks had no sales - using MAE ratio",
       color,
       tooltip:
         "All backtest weeks had zero actual sales, so MAPE cannot be computed. This shows MAE ÷ average non-zero sale × 100. It estimates how large the forecast error is relative to a typical sale.",
@@ -939,7 +939,7 @@ export default function SSAForecastPage() {
       .then((d) => {
         const items = d.data ?? d ?? [];
         const all = Array.isArray(items) ? items : [];
-        // Exclude parent containers — only leaf/variant items can be forecasted
+        // Exclude parent containers - only leaf/variant items can be forecasted
         const list = all.filter((item) => !item.hasVariants);
         setInventoryList(list);
         if (list.length > 0)
@@ -1063,7 +1063,7 @@ export default function SSAForecastPage() {
         const history  = Array.isArray(histData.data  ?? histData)  ? (histData.data  ?? histData)  : [];
         const allSales = Array.isArray(salesData.data ?? salesData) ? (salesData.data ?? salesData) : [];
 
-        // Build stock history staircase — raw events sorted chronologically (left of today)
+        // Build stock history staircase - raw events sorted chronologically (left of today)
         const sortedHistory = [...history]
           .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
           .map(h => ({
@@ -1098,7 +1098,7 @@ export default function SSAForecastPage() {
         setDepletionMethod(rows.length >= 10 ? "ssa" : "none");
       }
 
-      // Inventory never hard-fails on sparse data — use the average-demand
+      // Inventory never hard-fails on sparse data - use the average-demand
       // fallback so the depletion view always renders.
       if (dataSource === "inventory_stock" && rows.length < 10) {
         applyInvFallback(rows);
@@ -1149,7 +1149,7 @@ export default function SSAForecastPage() {
       // removed. It was detaching the forecast from the historical series and
       // creating a multi-month gap in the chart. The backend already computes
       // correct forward-looking dates starting from the week after the last
-      // historical data point — no frontend override needed.
+      // historical data point - no frontend override needed.
 
       if (data.safe_max != null) {
         setDynamicMaxCount(data.safe_max);
@@ -1164,10 +1164,10 @@ export default function SSAForecastPage() {
       setRawRows(rows);
       setLastRunAt(new Date());
 
-      // FIX: Use raw DB row count for "Historical Data Points" — this is the
+      // FIX: Use raw DB row count for "Historical Data Points" - this is the
       // true input size before SSA weekly/monthly aggregation. Previously we
       // used data.historical.dates.length which is the trimmed daily display
-      // array and was returning 1094 instead of the correct 1095–1096.
+      // array and was returning 1094 instead of the correct 1095-1096.
       setDataPointCount(rows.length);
       setTrainingPeriods(data.training_n ?? null);
 
@@ -1184,7 +1184,7 @@ export default function SSAForecastPage() {
       }
     } catch (err) {
       // Inventory always degrades to an average-demand projection rather than
-      // showing an error — so the depletion view works even if SSA is down or
+      // showing an error - so the depletion view works even if SSA is down or
       // rejected the (sparse) data.
       if (dataSource === "inventory_stock") {
         applyInvFallback(rows);
@@ -1289,7 +1289,7 @@ export default function SSAForecastPage() {
   };
 
   // Auto-load the analytics tabs the first time they're opened, so users don't
-  // have to click "Run Analysis" — the data that needs projecting loads itself.
+  // have to click "Run Analysis" - the data that needs projecting loads itself.
   useEffect(() => {
     if (!token) return;
     if (activeTab === "segments" && !rfmResult && !analyticsLoading && !rfmError) {
@@ -1351,7 +1351,7 @@ export default function SSAForecastPage() {
   const pickerMatchIdx  = pickerDate ? fcDatesForPicker.indexOf(pickerDate) : -1;
   const pickerMatchDate = pickerMatchIdx >= 0 ? fcDatesForPicker[pickerMatchIdx] : null;
   const todayIso        = new Date().toISOString().slice(0, 10);
-  // Compare against the START of the current period, not the raw date — otherwise
+  // Compare against the START of the current period, not the raw date - otherwise
   // a monthly forecast point dated "2026-06-01" is wrongly skipped when today is
   // June 22, pushing the Today marker onto July instead of the current month.
   const todayPeriodStart = (() => {
@@ -1407,7 +1407,7 @@ export default function SSAForecastPage() {
     const histSlice = HIST_SLICES[submittedConfig?.period?.type] ?? 6;
     const startIdx  = showAllHistory ? 0 : Math.max(0, trainDates.length - histSlice);
 
-    // Historical slice — aggregated at period granularity, unfloored values
+    // Historical slice - aggregated at period granularity, unfloored values
     for (let i = startIdx; i < trainDates.length; i++) {
       const btPoint = backtestData.find((b) => b.date === trainDates[i]);
       data.push({
@@ -1423,7 +1423,7 @@ export default function SSAForecastPage() {
     // Fill the gap between the last recorded sale and today (or the forecast
     // start) with explicit ZERO-sales periods. The backend trims trailing empty
     // periods, so without this the chart shows a blank gap that hides the fact
-    // that there were simply no sales on those days — those 0-sales periods must
+    // that there were simply no sales on those days - those 0-sales periods must
     // be drawn, not left empty, or the timeline looks broken / stuck in the past.
     if (trainDates.length > 0) {
       const hasCount = parseInt(forecastCount, 10) > 0;
@@ -1452,7 +1452,7 @@ export default function SSAForecastPage() {
       }
     }
 
-    // Forecast — only included when user has a count entered
+    // Forecast - only included when user has a count entered
     if (parseInt(forecastCount, 10) > 0) {
       for (let i = 0; i < fcDates.length; i++) {
         data.push({
@@ -1506,12 +1506,12 @@ export default function SSAForecastPage() {
         cur.setUTCDate(cur.getUTCDate() + 1);
       }
     } else {
-      // No history — anchor at today with current stock level
+      // No history - anchor at today with current stock level
       data.push({ date: todayStr, StockActual: currentStockQty ?? 0, StockForecast: null });
     }
 
     // Right side: subtract SSA-forecasted demand from current stock to get projected
-    // remaining. Only drawn once the user enters a look-ahead — no auto-projection
+    // remaining. Only drawn once the user enters a look-ahead - no auto-projection
     // on load. Until then the chart shows just the recorded stock staircase up to today.
     if (result && currentStockQty !== null && parseInt(forecastCount, 10) > 0) {
       // Anchor the projection at today so the gold line starts from the current
@@ -1519,7 +1519,7 @@ export default function SSAForecastPage() {
       if (data.length > 0) data[data.length - 1].StockForecast = currentStockQty;
       const fcDates  = result.forecast?.dates  || [];
       const fcValues = result.forecast?.values || [];
-      let remaining = currentStockQty; // float — keep sub-unit demand so slow sellers still deplete
+      let remaining = currentStockQty; // float - keep sub-unit demand so slow sellers still deplete
       for (let i = 0; i < fcDates.length; i++) {
         if (fcDates[i] <= todayStr) continue;
         remaining = Math.max(0, remaining - Math.max(0, fcValues[i] ?? 0));
@@ -1587,10 +1587,10 @@ export default function SSAForecastPage() {
 
   // ── Unit-aware value formatting ───────────────────────────────────────
   // Revenue is money (₱, 2 decimals); Quantity and Inventory are discrete
-  // whole units — you can't sell 0.82 of an item, so they round to integers.
+  // whole units - you can't sell 0.82 of an item, so they round to integers.
   const isMoneySource = (src) => src === "sales_revenue";
   const fmtSourceValue = (v, src, withUnit = false) => {
-    if (v == null || Number.isNaN(v)) return "—";
+    if (v == null || Number.isNaN(v)) return "-";
     if (isMoneySource(src))
       return "₱" + v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const n = Math.round(v).toLocaleString("en-US");
@@ -1814,7 +1814,7 @@ export default function SSAForecastPage() {
                 </button>
               </>
 
-            {/* Model info — populated after a successful sales forecast */}
+            {/* Model info - populated after a successful sales forecast */}
             {dataSource !== "inventory_stock" && result && submittedConfig?.source === dataSource && (
               <>
                 <div className="ssa-side-divider" />
@@ -1844,7 +1844,7 @@ export default function SSAForecastPage() {
                     </div>
                     <div className="ssa-model-row">
                       <span className="k">Auto window (L)</span>
-                      <span className="v gold">{result?.auto_L?.L_used ?? "—"}</span>
+                      <span className="v gold">{result?.auto_L?.L_used ?? "-"}</span>
                     </div>
                     <div className="ssa-model-row">
                       <span className="k">
@@ -1852,12 +1852,12 @@ export default function SSAForecastPage() {
                           Period detected
                           <span style={{ marginLeft: "4px", opacity: 0.5, fontSize: "0.65rem" }}>ⓘ</span>
                           <span className="ssa-tooltip-text" style={{ left: 0, transform: "none", width: 210 }}>
-                            How often your sales pattern repeats, based on your past sales. The model finds it automatically — it has nothing to do with how far ahead you forecast.
+                            How often your sales pattern repeats, based on your past sales. The model finds it automatically - it has nothing to do with how far ahead you forecast.
                           </span>
                         </span>
                       </span>
                       <span className="v">
-                        {result?.auto_L?.period_detected ? `${result.auto_L.period_detected} steps` : "—"}
+                        {result?.auto_L?.period_detected ? `${result.auto_L.period_detected} steps` : "-"}
                       </span>
                     </div>
                     <div className="ssa-model-row">
@@ -1869,7 +1869,7 @@ export default function SSAForecastPage() {
                       <span className="v">
                         {lastRunAt
                           ? lastRunAt.toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })
-                          : "—"}
+                          : "-"}
                       </span>
                     </div>
                   </div>
@@ -1877,7 +1877,7 @@ export default function SSAForecastPage() {
               </>
             )}
 
-            {/* Export — available once a forecast with values exists */}
+            {/* Export - available once a forecast with values exists */}
             {dataSource !== "inventory_stock" && result && submittedConfig?.source === dataSource && parseInt(forecastCount, 10) > 0 && (
               <>
                 <div className="ssa-side-divider" />
@@ -1945,7 +1945,7 @@ export default function SSAForecastPage() {
             const hasForecastCount = parseInt(forecastCount, 10) > 0;
             const vals = result?.historical?.values || [];
             // last_period_value is the unfloored weekly aggregate for the last
-            // training period — meaningful for weekly forecast context.
+            // training period - meaningful for weekly forecast context.
             const lastVal =
               result?.last_period_value ??
               (vals.length > 0 ? vals[vals.length - 1] : null);
@@ -1964,7 +1964,7 @@ export default function SSAForecastPage() {
             const mae = result?.accuracy?.mae;
             const fcDatesM = result?.forecast?.dates || [];
             const horizonRange = fcDatesM.length
-              ? `${formatDateLabel(fcDatesM[0], submittedConfig?.period?.type, true)} – ${formatDateLabel(fcDatesM[fcDatesM.length - 1], submittedConfig?.period?.type, true)}`
+              ? `${formatDateLabel(fcDatesM[0], submittedConfig?.period?.type, true)} - ${formatDateLabel(fcDatesM[fcDatesM.length - 1], submittedConfig?.period?.type, true)}`
               : null;
 
             // ── Inventory-native figures (only used when isInvCard) ──
@@ -1994,7 +1994,7 @@ export default function SSAForecastPage() {
             const policy = invPolicy;
             const belowROP = policy && currentStockQty != null && currentStockQty <= policy.ROP;
             const invColor = currentStockQty === 0 ? "#f87171" : belowROP ? "#fbbf24" : "var(--gold)";
-            let reorderByLabel = "—";
+            let reorderByLabel = "-";
             if (policy && currentStockQty != null) {
               if (currentStockQty === 0 || belowROP) reorderByLabel = "Now";
               else if (policy.d > 0) {
@@ -2014,7 +2014,7 @@ export default function SSAForecastPage() {
                   {firstLoad ? <div className="ssa-skeleton" /> : (
                     <>
                       <div className="ssa-stat-value" style={{ color: invColor, fontSize: "1.5rem" }}>
-                        {currentStockQty != null ? `${currentStockQty.toLocaleString("en-US")} units` : "—"}
+                        {currentStockQty != null ? `${currentStockQty.toLocaleString("en-US")} units` : "-"}
                       </div>
                       <div style={{ fontSize: "0.72rem", color: "var(--gray)", marginTop: "0.2rem" }}>
                         {currentStockQty === 0 ? "Out of stock" : belowROP ? "At/below reorder point" : "Above reorder point"}
@@ -2087,7 +2087,7 @@ export default function SSAForecastPage() {
                   </div>
                   <div>
                     <span className="k">Coverage</span>
-                    <span className="v">{policy.coverage == null ? "—" : `${policy.coverage > 99 ? "99+" : policy.coverage.toFixed(1)} ${unitSingular}s`}</span>
+                    <span className="v">{policy.coverage == null ? "-" : `${policy.coverage > 99 ? "99+" : policy.coverage.toFixed(1)} ${unitSingular}s`}</span>
                   </div>
                   <div style={{ flex: "1 1 220px", minWidth: 180 }}>
                     <span className="k">Method</span>
@@ -2103,7 +2103,7 @@ export default function SSAForecastPage() {
               </>
             ) : (
               <div className="ssa-metric-cards">
-                {/* 1 — Forecast accuracy */}
+                {/* 1 - Forecast accuracy */}
                 <div className="ssa-metric-card">
                   <div className="ssa-stat-label">
                     <span className="ssa-tooltip">
@@ -2133,7 +2133,7 @@ export default function SSAForecastPage() {
                   )}
                 </div>
 
-                {/* 2 — MAE */}
+                {/* 2 - MAE */}
                 <div className="ssa-metric-card">
                   <div className="ssa-stat-label">MAE ({forecastPeriod.unit.replace(/s$/, "")})</div>
                   {firstLoad ? (
@@ -2154,7 +2154,7 @@ export default function SSAForecastPage() {
                   )}
                 </div>
 
-                {/* 3 — Last period value / current stock */}
+                {/* 3 - Last period value / current stock */}
                 <div className="ssa-metric-card">
                   <div className="ssa-stat-label">
                     {(result ? submittedConfig?.source : dataSource) === "inventory_stock"
@@ -2220,7 +2220,7 @@ export default function SSAForecastPage() {
                   <line x1="12" y1="17" x2="12.01" y2="17" />
                 </svg>
                 <span>
-                  <strong style={{ color: "#f87171" }}>Predicted stockout —</strong>{" "}
+                  <strong style={{ color: "#f87171" }}>Predicted stockout -</strong>{" "}
                   Based on current demand trends, <strong style={{ color: "var(--white)" }}>{selectedItemName}</strong> is projected to run out around{" "}
                   <strong style={{ color: "var(--white)" }}>{formatDateLabel(stockoutDate, submittedConfig?.period?.type)}</strong>.{" "}
                   Consider restocking soon.
@@ -2234,7 +2234,7 @@ export default function SSAForecastPage() {
                 </svg>
                 <span>
                   <strong style={{ color: "#4ade80" }}>Stock sufficient</strong>{" "}
-                  — No stockout predicted within the {submittedConfig.count} {submittedConfig.period.unit} forecast window.
+                  - No stockout predicted within the {submittedConfig.count} {submittedConfig.period.unit} forecast window.
                 </span>
               </div>
             )}
@@ -2246,7 +2246,7 @@ export default function SSAForecastPage() {
                   <line x1="12" y1="16" x2="12.01" y2="16" />
                 </svg>
                 <span>
-                  <strong style={{ color: "#fbbf24" }}>Average-demand estimate —</strong>{" "}
+                  <strong style={{ color: "#fbbf24" }}>Average-demand estimate -</strong>{" "}
                   a full SSA forecast wasn't available for this item ({dataPointCount} sale record{dataPointCount !== 1 ? "s" : ""}), so the projection uses its average demand from past sales. Treat it as directional.
                 </span>
               </div>
@@ -2288,7 +2288,7 @@ export default function SSAForecastPage() {
                   </svg>
                   <span>
                     <strong style={{ color: "#fbbf24" }}>
-                      Limited historical data —
+                      Limited historical data -
                     </strong>{" "}
                     This forecast is based on only{" "}
                     {result.data_quality.hist_agg_count}{" "}
@@ -2340,7 +2340,7 @@ export default function SSAForecastPage() {
                 </svg>
                 <span>
                   <strong style={{ color: "#fbbf24" }}>
-                    High demand volatility detected —{" "}
+                    High demand volatility detected -{" "}
                   </strong>
                   Sales follow an irregular spike pattern (variability:{" "}
                   {result.cv?.toFixed(2)}×). SSA captures the long-run{" "}
@@ -2375,7 +2375,7 @@ export default function SSAForecastPage() {
                 </svg>
                 <span>
                   <strong style={{ color: "#fbbf24" }}>
-                    Forecast was dampened —
+                    Forecast was dampened -
                   </strong>{" "}
                   The model projected values significantly above your recent
                   sales average, likely due to a past spike being treated as a
@@ -2545,7 +2545,7 @@ export default function SSAForecastPage() {
                   <span style={{ color: "#4ade80", fontWeight: 600 }}>
                     ● Backtest Actual
                   </span>
-                  {" — real sales during the held-out test window. "}
+                  {" - real sales during the held-out test window. "}
                   The closer this is to the Forecast line, the more reliable
                   your model is. Gap between them = MAE / MAPE shown in the
                   stats above.
@@ -2892,7 +2892,7 @@ export default function SSAForecastPage() {
                           const startStock = currentStockQty ?? 0;
                           const reorderPt = invPolicy?.ROP ?? (inventoryList.find((it) => (it._id ?? it.id) === selectedInventoryId)?.minStockLevel ?? 0);
                           const tblRows = [];
-                          let cumDemand = 0;   // float — accumulate sub-unit demand
+                          let cumDemand = 0;   // float - accumulate sub-unit demand
                           let displayIdx = 0;
                           for (let i = 0; i < fcDates.length; i++) {
                             if (fcDates[i] <= todayStr) continue;
@@ -3066,8 +3066,8 @@ export default function SSAForecastPage() {
                     <div>
                       <h2 className="ssa-card-title">Customer Groups</h2>
                       <p style={{fontSize:"0.8rem",color:"var(--gray)",marginTop:"0.3rem",lineHeight:1.5}}>
-                        Customers are grouped by their buying habits — <strong style={{color:"var(--white)"}}>how recently</strong> they bought,{" "}
-                        <strong style={{color:"var(--white)"}}>how often</strong> they buy, and <strong style={{color:"var(--white)"}}>how much</strong> they spend —
+                        Customers are grouped by their buying habits - <strong style={{color:"var(--white)"}}>how recently</strong> they bought,{" "}
+                        <strong style={{color:"var(--white)"}}>how often</strong> they buy, and <strong style={{color:"var(--white)"}}>how much</strong> they spend -
                         so you can see who your best customers are and who needs winning back.
                       </p>
                     </div>
@@ -3079,10 +3079,10 @@ export default function SSAForecastPage() {
                   {[
                     { label: "Total Customers", value: rfmResult.total_customers },
                     { label: "Groups Found",  value: rfmResult.summary?.length ?? 0 },
-                    { label: "Largest Group", value: [...(rfmResult.summary ?? [])].sort((a,b) => b.count - a.count)[0]?.segment ?? "—" },
+                    { label: "Largest Group", value: [...(rfmResult.summary ?? [])].sort((a,b) => b.count - a.count)[0]?.segment ?? "-" },
                     { label: "Avg Spend / Customer", value: (rfmResult.customers?.length ?? 0) > 0
                       ? "₱" + (rfmResult.customers.reduce((s,c) => s + (c.monetary ?? 0), 0) / rfmResult.customers.length).toLocaleString("en-US",{maximumFractionDigits:0})
-                      : "—" },
+                      : "-" },
                   ].map(({ label, value }) => (
                     <div key={label} className="ssa-stat-card">
                       <div className="ssa-stat-label">{label}</div>
@@ -3095,7 +3095,7 @@ export default function SSAForecastPage() {
                   <div style={{marginBottom:"1rem"}}>
                     <h2 className="ssa-card-title">Group Overview</h2>
                     <p style={{fontSize:"0.78rem",color:"var(--gray)",marginTop:"0.3rem"}}>
-                      What each customer group means for your business — and what to do about it.
+                      What each customer group means for your business - and what to do about it.
                     </p>
                   </div>
                   <div style={{display:"flex",flexDirection:"column",gap:"0.6rem"}}>
@@ -3212,10 +3212,10 @@ export default function SSAForecastPage() {
                     <div>
                       <h2 className="ssa-card-title">Products &amp; Services</h2>
                       <p style={{fontSize:"0.8rem",color:"var(--gray)",marginTop:"0.3rem",lineHeight:1.55}}>
-                        Ranks every product by how much revenue it brings in, and sorts them into three tiers —
+                        Ranks every product by how much revenue it brings in, and sorts them into three tiers -
                         <strong style={{color:"var(--white)"}}> Best sellers</strong> (top 70% of revenue),{" "}
                         <strong style={{color:"var(--white)"}}>Steady</strong> (next 20%), and{" "}
-                        <strong style={{color:"var(--white)"}}>Low performers</strong> (the rest) — alongside how often each sells and its average sale value.
+                        <strong style={{color:"var(--white)"}}>Low performers</strong> (the rest) - alongside how often each sells and its average sale value.
                       </p>
                     </div>
                     <button type="button" className="ssa-run-btn" onClick={loadProducts}>Refresh</button>
@@ -3240,10 +3240,10 @@ export default function SSAForecastPage() {
                 {/* ── summary metrics ── */}
                 <div className="ssa-metrics-grid">
                   {[
-                    { label: "Total Products",    value: serviceResult?.total_services ?? "—",   sub: "distinct products / services" },
-                    { label: "Total Revenue",      value: serviceResult ? "₱" + (serviceResult.total_revenue ?? 0).toLocaleString("en-US",{maximumFractionDigits:0}) : "—", sub: "from all recorded sales" },
-                    { label: "Best Sellers",       value: (serviceResult?.services ?? []).filter(s => s.abc_class === "A").length || "—", sub: "top 70% of revenue" },
-                    { label: "Top Earner",         value: serviceResult?.top_services?.[0]?.service ?? "—",                        sub: "highest revenue product" },
+                    { label: "Total Products",    value: serviceResult?.total_services ?? "-",   sub: "distinct products / services" },
+                    { label: "Total Revenue",      value: serviceResult ? "₱" + (serviceResult.total_revenue ?? 0).toLocaleString("en-US",{maximumFractionDigits:0}) : "-", sub: "from all recorded sales" },
+                    { label: "Best Sellers",       value: (serviceResult?.services ?? []).filter(s => s.abc_class === "A").length || "-", sub: "top 70% of revenue" },
+                    { label: "Top Earner",         value: serviceResult?.top_services?.[0]?.service ?? "-",                        sub: "highest revenue product" },
                   ].map(({ label, value, sub }) => (
                     <div key={label} className="ssa-stat-card">
                       <div className="ssa-stat-label">{label}</div>
@@ -3284,7 +3284,7 @@ export default function SSAForecastPage() {
                                     background: svc.abc_class === "A" ? "rgba(74,222,128,0.12)" : svc.abc_class === "B" ? "rgba(251,191,36,0.12)" : "rgba(248,113,113,0.12)",
                                     color:      svc.abc_class === "A" ? "#4ade80"               : svc.abc_class === "B" ? "#fbbf24"               : "#f87171",
                                   }}>
-                                    {svc.abc_class} — {ABC_DESC[svc.abc_class]?.label.split("—")[0].trim()}
+                                    {svc.abc_class} - {ABC_DESC[svc.abc_class]?.label.split("-")[0].trim()}
                                   </span>
                                 </td>
                                 <td style={{color:"var(--gold)",fontWeight:600,textAlign:"right"}}>₱{svc.total_revenue?.toLocaleString("en-US",{maximumFractionDigits:0})}</td>

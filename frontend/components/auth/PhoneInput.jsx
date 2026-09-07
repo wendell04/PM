@@ -32,7 +32,7 @@ const COUNTRIES = getCountries()
   .sort((a, b) => a.name.localeCompare(b.name));
 
 /**
- * Phone field with a country selector. Defaults to the Philippines but any country can be picked —
+ * Phone field with a country selector. Defaults to the Philippines but any country can be picked -
  * libphonenumber-js enforces that country's own length/format, so nothing is hard-coded.
  * Emits the E.164 string (e.g. +639272518750) via onChange.
  */

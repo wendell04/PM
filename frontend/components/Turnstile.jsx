@@ -9,7 +9,7 @@ const SCRIPT_SRC = 'https://challenges.cloudflare.com/turnstile/v0/api.js';
 /**
  * Cloudflare Turnstile (CAPTCHA) widget. Theme-aware (light/dark to match the app) and centered/
  * responsive. Calls onVerify(token) when solved, onVerify('') on expire/error. Tokens are
- * single-use — call the exposed reset() (via ref) after each submit for a fresh token.
+ * single-use - call the exposed reset() (via ref) after each submit for a fresh token.
  */
 const Turnstile = forwardRef(function Turnstile({ onVerify, theme = 'light' }, ref) {
   const containerRef = useRef(null);

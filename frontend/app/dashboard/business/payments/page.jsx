@@ -261,7 +261,7 @@ export default function PaymentsPage() {
                     <td style={S.td}>
                       {bal > 0
                         ? <span style={{ ...S.badge, background: bk.tone.bg, color: bk.tone.fg, border: 'none', fontSize: 10, fontWeight: 700 }}>{days}d</span>
-                        : <span style={{ color: 'var(--gray)' }}>—</span>}
+                        : <span style={{ color: 'var(--gray)' }}>-</span>}
                     </td>
                     <td style={S.td}><StatusBadge status={o.paymentStatus || 'unpaid'} /></td>
                     <td style={{ ...S.td, textAlign: 'right', whiteSpace: 'nowrap' }}>
@@ -329,7 +329,7 @@ export default function PaymentsPage() {
                     {e.note && <div style={{ fontSize: 12, color: 'var(--gray)', marginBottom: 4 }}>{e.note}</div>}
                     <div style={{ fontSize: 11, color: 'var(--gray)', opacity: 0.8 }}>
                       {e.recordedBy ? `${e.recordedBy} · ` : ''}
-                      {(e.recordedAt || e.paidAt) ? new Date(e.recordedAt || e.paidAt).toLocaleString('en-PH') : '—'}
+                      {(e.recordedAt || e.paidAt) ? new Date(e.recordedAt || e.paidAt).toLocaleString('en-PH') : '-'}
                     </div>
                   </div>
                 ))}

@@ -12,7 +12,7 @@ import { CustomSelect } from './../inventory-v2/shared';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import ImageCropper from '@/components/ImageCropper';
 
-// Google Places (New) — best PH landmark coverage for the store-location search. Falls back to OSM when unset/failed.
+// Google Places (New) - best PH landmark coverage for the store-location search. Falls back to OSM when unset/failed.
 const GOOGLE_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || '';
 
 // Structured store-address parts (himay-himay, like the customer address) + helpers to combine/parse them.
@@ -1144,13 +1144,13 @@ export default function SettingsPage() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', padding: '0.875rem 1.25rem', borderBottom: '1px solid var(--border)' }}>
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--gray-light)" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
                   <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--white)' }}>Identity</span>
-                  <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>— Your name as it appears on your account.</span>
+                  <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>- Your name as it appears on your account.</span>
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
                   {[{ label: 'First Name', value: profileForm.firstName }, { label: 'Last Name', value: profileForm.lastName }].map(({ label, value }, i) => (
                     <div key={label} style={{ padding: '1rem 1.25rem', borderRight: i === 0 ? '1px solid var(--border)' : 'none' }}>
                       <div style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.35rem' }}>{label}</div>
-                      <div style={{ fontSize: '0.925rem', color: 'var(--white)', fontWeight: 500 }}>{value || '—'}</div>
+                      <div style={{ fontSize: '0.925rem', color: 'var(--white)', fontWeight: 500 }}>{value || '-'}</div>
                     </div>
                   ))}
                 </div>
@@ -1161,12 +1161,12 @@ export default function SettingsPage() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', padding: '0.875rem 1.25rem', borderBottom: '1px solid var(--border)' }}>
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--gray-light)" strokeWidth="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
                   <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--white)' }}>Contact</span>
-                  <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>— Email, phone, and address on file.</span>
+                  <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>- Email, phone, and address on file.</span>
                 </div>
                 <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <div>
                     <div style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.35rem' }}>Email Address</div>
-                    <div style={{ fontSize: '0.925rem', color: 'var(--white)', fontWeight: 500 }}>{profileForm.email || '—'}</div>
+                    <div style={{ fontSize: '0.925rem', color: 'var(--white)', fontWeight: 500 }}>{profileForm.email || '-'}</div>
                   </div>
                   <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '2px 8px', borderRadius: '4px', border: '1px solid var(--border)', color: 'var(--gray)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>Locked</span>
                 </div>
@@ -1174,7 +1174,7 @@ export default function SettingsPage() {
                   {[{ label: 'Phone Number', value: profileForm.phoneNumber }, { label: 'Address', value: profileForm.address }].map(({ label, value }, i) => (
                     <div key={label} style={{ padding: '1rem 1.25rem', borderRight: i === 0 ? '1px solid var(--border)' : 'none' }}>
                       <div style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.35rem' }}>{label}</div>
-                      <div style={{ fontSize: '0.925rem', color: 'var(--white)', fontWeight: 500 }}>{value || '—'}</div>
+                      <div style={{ fontSize: '0.925rem', color: 'var(--white)', fontWeight: 500 }}>{value || '-'}</div>
                     </div>
                   ))}
                 </div>
@@ -1236,7 +1236,7 @@ export default function SettingsPage() {
       <div style={{ padding: '0.875rem 1.25rem', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--gray-light)" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
         <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--white)' }}>Change Password</span>
-        <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>— Change it regularly to keep your account safe.</span>
+        <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>- Change it regularly to keep your account safe.</span>
       </div>
       <div style={{ padding: '1.5rem' }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', maxWidth: '520px' }}>
@@ -1327,7 +1327,7 @@ export default function SettingsPage() {
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--gray-light)" strokeWidth="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
           <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--white)' }}>Active Sessions</span>
-          <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>— Devices currently logged into your account.</span>
+          <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>- Devices currently logged into your account.</span>
         </div>
         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
           {sessions.filter(s => !s.is_current).length > 0 && (
@@ -1424,7 +1424,7 @@ export default function SettingsPage() {
             Verification Methods
           </p>
 
-          {/* Email OTP — always available */}
+          {/* Email OTP - always available */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.875rem', padding: '0.875rem 1rem', borderRadius: '10px', border: '1.5px solid rgba(96,165,250,0.35)', background: 'rgba(96,165,250,0.05)' }}>
             <div style={{ width: '38px', height: '38px', borderRadius: '9px', flexShrink: 0, background: 'rgba(96,165,250,0.12)', border: '1px solid rgba(96,165,250,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" strokeWidth="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
@@ -1527,7 +1527,7 @@ export default function SettingsPage() {
     <div style={{ padding: '0.875rem 1.25rem', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--gray-light)" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
       <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--white)' }}>Business Details</span>
-      <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>— Public information shown to your customers.</span>
+      <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>- Public information shown to your customers.</span>
     </div>
     <div style={{ padding: '1.5rem' }}>
 
@@ -1551,7 +1551,7 @@ export default function SettingsPage() {
       </div>
       <div className="profile-form-field">
         <label>Operating hours</label>
-        <input type="text" value={businessForm.operatingHours} onChange={e => setBusinessForm(f => ({ ...f, operatingHours: e.target.value }))} placeholder="Mon–Sat 9:00–18:00" maxLength={100} />
+        <input type="text" value={businessForm.operatingHours} onChange={e => setBusinessForm(f => ({ ...f, operatingHours: e.target.value }))} placeholder="Mon-Sat 9:00-18:00" maxLength={100} />
       </div>
       <div className="profile-form-field">
         <label>Business address</label>
@@ -1580,7 +1580,7 @@ export default function SettingsPage() {
                 <div style={{ padding: '0.875rem 1.25rem', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--gray-light)" strokeWidth="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
                   <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--white)' }}>Shipping Location</span>
-                  <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>— Pin where orders ship from. Shipping fee and courier pickup are based on this point.</span>
+                  <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>- Pin where orders ship from. Shipping fee and courier pickup are based on this point.</span>
                 </div>
                 <div style={{ padding: '1.5rem' }}>
                 <p style={{ margin: '0 0 1.25rem', fontSize: '0.8125rem', color: 'var(--gray)', display: 'none' }}>
@@ -1664,10 +1664,10 @@ export default function SettingsPage() {
                   </div>
                 </div>
 
-                {/* Store Address — structured by-fields (auto-fills from search/pin, editable) */}
+                {/* Store Address - structured by-fields (auto-fills from search/pin, editable) */}
                 <div style={{ marginTop: '0.75rem' }}>
                   <label style={{ fontSize: '0.8rem', color: 'var(--gray)', marginBottom: '0.5rem', display: 'block' }}>
-                    Store Address <span style={{ fontSize: '0.75rem', color: 'var(--gray)', fontWeight: 400 }}>(displayed to customers — auto-fills from the search/pin, editable)</span>
+                    Store Address <span style={{ fontSize: '0.75rem', color: 'var(--gray)', fontWeight: 400 }}>(displayed to customers - auto-fills from the search/pin, editable)</span>
                   </label>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
                     {[
@@ -1694,7 +1694,7 @@ export default function SettingsPage() {
                     ))}
                   </div>
                   <p style={{ margin: '0.6rem 0 0', fontSize: '0.72rem', color: 'var(--gray)' }}>
-                    Full address (shown to customers): <span style={{ color: 'var(--gray-light)' }}>{shippingForm.storeAddress || '—'}</span>
+                    Full address (shown to customers): <span style={{ color: 'var(--gray-light)' }}>{shippingForm.storeAddress || '-'}</span>
                   </p>
                 </div>
 
@@ -1722,7 +1722,7 @@ export default function SettingsPage() {
                 <div style={{ padding: '0.875rem 1.25rem', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--gray-light)" strokeWidth="2"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
                   <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--white)' }}>Shipping Method</span>
-                  <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>— Choose how shipping is calculated at checkout.</span>
+                  <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>- Choose how shipping is calculated at checkout.</span>
                 </div>
                 <div style={{ padding: '1.5rem' }}>
                 <p style={{ margin: '0 0 1.25rem', fontSize: '0.8125rem', color: 'var(--gray)', display: 'none' }}>
@@ -1732,7 +1732,7 @@ export default function SettingsPage() {
                 {/* Mode toggle */}
                 <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.25rem', flexWrap: 'wrap' }}>
                   {[
-                    { id: 'courier_booked', label: 'Courier Booked', sub: 'No system fee — you book on-demand' },
+                    { id: 'courier_booked', label: 'Courier Booked', sub: 'No system fee - you book on-demand' },
                     { id: 'distance', label: 'Distance-based', sub: 'Base + ₱/km via OSRM route' },
                     { id: 'flat',     label: 'Flat Rate',      sub: 'Fixed by Metro / Non-Metro' },
                   ].map(({ id, label, sub }) => {
@@ -1763,7 +1763,7 @@ export default function SettingsPage() {
                   <div style={{ padding: '1rem 1.25rem', background: 'rgba(212,168,67,0.06)', border: '1px solid rgba(212,168,67,0.2)', borderRadius: '10px', fontSize: '0.82rem', color: 'var(--gray-light)', lineHeight: 1.6 }}>
                     <div style={{ fontWeight: 700, color: 'var(--gold)', marginBottom: '0.4rem' }}>No system-calculated shipping fee</div>
                     Checkout shows <em>“Shipping: arranged after order.”</em> Customers pay only the item total upfront.
-                    After an order comes in, you book your courier (Lalamove / Grab) using the customer’s pinned drop-off —
+                    After an order comes in, you book your courier (Lalamove / Grab) using the customer’s pinned drop-off -
                     the order page gives you one-tap <strong>Google Maps / Waze / copy-coordinates</strong> links. You can then
                     add the real courier fee to the order, and the customer’s total updates. Recommended when you have no
                     partnered logistics.
@@ -2301,7 +2301,7 @@ export default function SettingsPage() {
               <div style={{ padding: '0.875rem 1.25rem', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--gray-light)" strokeWidth="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
                 <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--white)' }}>Notifications</span>
-                <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>— Preferences are stored on this device.</span>
+                <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>- Preferences are stored on this device.</span>
               </div>
               <div style={{ padding: '1.5rem' }}>
               {[
@@ -2345,7 +2345,7 @@ export default function SettingsPage() {
     <div style={{ padding: '0.875rem 1.25rem', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--gray-light)" strokeWidth="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
       <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--white)' }}>Appearance</span>
-      <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>— Choose how the dashboard looks to you.</span>
+      <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>- Choose how the dashboard looks to you.</span>
     </div>
     <div style={{ padding: '1.5rem' }}>
 

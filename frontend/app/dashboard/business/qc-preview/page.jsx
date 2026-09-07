@@ -159,7 +159,7 @@ export default function QualityControlPage() {
                 return (
                   <tr key={id} style={S.tr}>
                     <td style={{ ...S.td, fontFamily: 'monospace', fontWeight: 600 }}>
-                      {j.joId || '—'}
+                      {j.joId || '-'}
                       <RushBadge isRush={j.isRush} />
                     </td>
                     <td style={{ ...S.td, width: 60 }}>
@@ -169,14 +169,14 @@ export default function QualityControlPage() {
                       {prodName(j)}
                       {j.designNotes && <div style={{ fontSize: 11, color: 'var(--gold)', marginTop: 2 }}>Note: {j.designNotes}</div>}
                     </td>
-                    <td style={S.td}>{j.product?.quantity ?? '—'}</td>
-                    <td style={{ ...S.td, fontFamily: 'monospace' }}>{j.orderId ? orderNo(j.orderId) : '—'}</td>
+                    <td style={S.td}>{j.product?.quantity ?? '-'}</td>
+                    <td style={{ ...S.td, fontFamily: 'monospace' }}>{j.orderId ? orderNo(j.orderId) : '-'}</td>
                     <td style={S.td}>
                       {fmtJODate(j.targetCompletion)}
                       {risk && <div style={{ marginTop: 3 }}><span style={{ ...S.badge, ...RISK_STYLE[risk.color], fontSize: 9, fontWeight: 700 }}>{risk.label}</span></div>}
                     </td>
                     <td style={S.td}><JobOrderStatusBadge status={j.joStatus} /></td>
-                    <td style={{ ...S.td, color: 'var(--gray)', maxWidth: 220 }}>{j.qcResult?.defects || '—'}</td>
+                    <td style={{ ...S.td, color: 'var(--gray)', maxWidth: 220 }}>{j.qcResult?.defects || '-'}</td>
                     <td style={{ ...S.td, textAlign: 'right', whiteSpace: 'nowrap' }}>
                       <button disabled={busy}
                         onClick={() => {

@@ -29,7 +29,7 @@ function getDisplayPrice(product) {
       if (!prices.length) return 'Price on request';
       const min = Math.min(...prices);
       const max = Math.max(...prices);
-      return min === max ? fmt(min) : `${fmt(min)} – ${fmt(max)}`;
+      return min === max ? fmt(min) : `${fmt(min)} - ${fmt(max)}`;
     }
     const p = parseFloat(product.flatPrice || product.price);
     if (p > 0) return fmt(p);
@@ -42,7 +42,7 @@ function getDisplayPrice(product) {
     if (!allPrices.length) return 'Price on request';
     const min = Math.min(...allPrices);
     const max = Math.max(...allPrices);
-    return min === max ? fmt(min) : `${fmt(min)} – ${fmt(max)}`;
+    return min === max ? fmt(min) : `${fmt(min)} - ${fmt(max)}`;
   }
   const fallback = parseFloat(product.flatPrice || product.price);
   if (fallback > 0) return fmt(fallback);
@@ -109,7 +109,7 @@ function QuickViewModal({ product, flashSale, onClose, onToast }) {
     return match;
   };
 
-  const fmt = n => n == null ? '—' : `₱${Number(n).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const fmt = n => n == null ? '-' : `₱${Number(n).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   const mode = product.priceType || product.pricingMode || 'fixed';
   // Nothing preselected here either, and the quick view refuses to add until the choice is made -
   // otherwise the one door that skipped the question would be the fastest door in the shop.
@@ -248,7 +248,7 @@ function QuickViewModal({ product, flashSale, onClose, onToast }) {
   const handleCheckout = () => {
     if (isOOS) return;
     const { productForCart, comboId: cid, variantLabel } = buildCart();
-    // Direct checkout (Buy Now): straight to checkout with only this item — do NOT add it to the
+    // Direct checkout (Buy Now): straight to checkout with only this item - do NOT add it to the
     // cart. The selected variant's image goes first so the checkout thumbnail matches the choice.
     const variantImg = cid ? (product.variantImageUrls?.[cid] ?? product.variantImageUrls?.[String(cid)] ?? null) : null;
     const payload = {
@@ -345,7 +345,7 @@ function QuickViewModal({ product, flashSale, onClose, onToast }) {
             )}
           </div>
 
-          {/* Right: details — mirrors product page layout */}
+          {/* Right: details - mirrors product page layout */}
           <div className="shop-qv-details">
             {/* Category + badges row */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px' }}>
@@ -385,7 +385,7 @@ function QuickViewModal({ product, flashSale, onClose, onToast }) {
                 </>
               ) : priceRange ? (
                 <span className="shop-qv-price-main">
-                  {fmt(priceRange.min)}{priceRange.max !== priceRange.min && ` – ${fmt(priceRange.max)}`}
+                  {fmt(priceRange.min)}{priceRange.max !== priceRange.min && ` - ${fmt(priceRange.max)}`}
                   <span style={{ fontSize: '0.8rem', fontWeight: 400, color: '#888' }}> / pc</span>
                 </span>
               ) : (
@@ -547,7 +547,7 @@ function QuickViewModal({ product, flashSale, onClose, onToast }) {
                 Customize This Product
               </Link>
             ) : mode === 'inquiry' ? (
-              // Price-on-request items can't be bought at a fixed price — send to the PDP to inquire,
+              // Price-on-request items can't be bought at a fixed price - send to the PDP to inquire,
               // never show Add to Cart / Checkout (would let the item be bought at ₱0).
               <Link href={`/shop/products/${product.slug || toSlug(product.name)}`} className="shop-qv-btn-cart" onClick={onClose}>
                 Inquire / Get a Quote
@@ -565,7 +565,7 @@ function QuickViewModal({ product, flashSale, onClose, onToast }) {
               </>
             )}
 
-            {/* Pricing accordion — tiered products only */}
+            {/* Pricing accordion - tiered products only */}
             {mode === 'tiered' && getTiers().length > 0 && (
               <>
                 <div>
@@ -597,11 +597,11 @@ function QuickViewModal({ product, flashSale, onClose, onToast }) {
                           return (
                             <div key={tier.id ?? i} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', alignItems: 'center', padding: '9px 14px', borderTop: '1px solid var(--border)', background: isActive ? 'rgba(212,168,67,0.07)' : 'var(--dark)' }}>
                               <span style={{ fontSize: '0.82rem', color: isActive ? '#b8922f' : '#333', fontWeight: isActive ? 700 : 500, display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                                {`${tier.minQty}${tier.maxQty ? `–${tier.maxQty}` : '+'} pcs`}
+                                {`${tier.minQty}${tier.maxQty ? `-${tier.maxQty}` : '+'} pcs`}
                                 {isActive && <span style={{ fontSize: '0.6rem', background: 'rgba(212,168,67,0.15)', color: '#b8922f', padding: '1px 6px', borderRadius: '999px', fontWeight: 700, textTransform: 'uppercase' }}>Your qty</span>}
                               </span>
                               <span style={{ fontSize: '0.875rem', fontWeight: 700, color: isActive ? '#b8922f' : '#333', textAlign: 'right' }}>
-                                {tierPrice ? `${fmt(tierPrice)} / pc` : '—'}
+                                {tierPrice ? `${fmt(tierPrice)} / pc` : '-'}
                               </span>
                             </div>
                           );
@@ -742,7 +742,7 @@ function ProductCard({ product, onAddToCart, onQuickView, flashSale }) {
             </div>
           )}
 
-          {/* Stock image badge — top left */}
+          {/* Stock image badge - top left */}
           {(() => {
             // Price-on-request items are quoted, not stocked. "IN STOCK" on one is a claim about a
             // shelf that does not exist, and it sits directly beside "Price on request".
@@ -815,7 +815,7 @@ function ProductCard({ product, onAddToCart, onQuickView, flashSale }) {
             </div>
           )}
 
-          {/* Quick View trigger — circle + button */}
+          {/* Quick View trigger - circle + button */}
           <button
             className="shop-quick-view-btn"
             onClick={(e) => { e.preventDefault(); e.stopPropagation(); onQuickView(product); }}
@@ -1010,7 +1010,7 @@ export default function ShopClient({
       });
       setFlashSales(map);
     } catch {
-      // Non-fatal — shop works without flash sale data
+      // Non-fatal - shop works without flash sale data
     }
   }
 
@@ -1369,7 +1369,7 @@ export default function ShopClient({
               <span className="mobile-active-chip">{productType === 'customizable' ? 'Customizable' : 'Ready Made'} <button onClick={() => setProductType('')} aria-label="Remove"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></span>
             )}
             {priceFilterActive && (
-              <span className="mobile-active-chip">₱{priceMin.toLocaleString()}–{priceMax < Infinity ? `₱${priceMax.toLocaleString()}` : 'Any'} <button onClick={() => { setPriceMin(0); setPriceMax(Infinity); }} aria-label="Remove"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></span>
+              <span className="mobile-active-chip">₱{priceMin.toLocaleString()}-{priceMax < Infinity ? `₱${priceMax.toLocaleString()}` : 'Any'} <button onClick={() => { setPriceMin(0); setPriceMax(Infinity); }} aria-label="Remove"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></span>
             )}
             <button className="mobile-active-clear" onClick={() => { setAvailability('all'); setSelectedSlugs(new Set()); setPriceMin(0); setPriceMax(Infinity); setProductType(''); }}>Clear all</button>
           </div>
@@ -1625,7 +1625,7 @@ export default function ShopClient({
                   )}
                   {priceFilterActive && (
                     <span className="shop-active-chip">
-                      ₱{priceMin.toLocaleString()} – {priceMax < Infinity ? `₱${priceMax.toLocaleString()}` : 'Any'}
+                      ₱{priceMin.toLocaleString()} - {priceMax < Infinity ? `₱${priceMax.toLocaleString()}` : 'Any'}
                       <button onClick={() => { setPriceMin(0); setPriceMax(Infinity); }} aria-label="Remove">
                         <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                       </button>

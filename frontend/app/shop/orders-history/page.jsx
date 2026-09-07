@@ -437,7 +437,7 @@ function CustomOrderTracker({ orderStatus, designType, designStatus, paymentStat
       )}
       {orderStatus === 'revision_requested' && (
         <div style={{ marginTop: '14px', padding: '10px 14px', background: 'rgba(249,115,22,0.06)', border: '1px solid rgba(249,115,22,0.2)', borderRadius: '8px', fontSize: '0.8rem', color: '#f97316' }}>
-          Revision submitted — we're working on the updated design and will notify you when ready.
+          Revision submitted - we're working on the updated design and will notify you when ready.
         </div>
       )}
     </div>
@@ -1002,7 +1002,7 @@ export default function OrdersHistoryPage() {
                 : tab === 'Custom' ? visibleOrders.filter(o => o.isCustomOrder).length
                 : visibleOrders.filter(o => orderBucket(o) === tab).length;
               const isActive = activeTab === tab;
-              // Hide empty filters to cut clutter — keep "All" and whatever is currently selected.
+              // Hide empty filters to cut clutter - keep "All" and whatever is currently selected.
               if (count === 0 && tab !== 'All' && !isActive) return null;
               return (
                 <button
@@ -1660,7 +1660,7 @@ export default function OrdersHistoryPage() {
                       </div>
                     )}
 
-                    {/* Review — only after payment confirmed */}
+                    {/* Review - only after payment confirmed */}
                     {selectedOrder.orderStatus?.toLowerCase() === 'delivered' && selectedOrder.paymentStatus === 'paid' && (
                       <div>
                         <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '10px' }}>Your Review</div>
@@ -1977,7 +1977,7 @@ export default function OrdersHistoryPage() {
                           </div>
                         )}
 
-                        {/* DP / Full toggle — only if no DP paid yet and order supports DP */}
+                        {/* DP / Full toggle - only if no DP paid yet and order supports DP */}
                         {selectedOrder.orderStatus === 'awaiting_payment' && !selectedOrder.downPayment && selectedOrder.requiresDownpayment && selectedOrder.downpaymentPercent > 0 && (() => {
                           const owed = Math.max(0, (selectedOrder.totalAmount || 0) - feeCredit);
                           const dpAmt = Math.round(owed * selectedOrder.downpaymentPercent / 100 * 100) / 100;

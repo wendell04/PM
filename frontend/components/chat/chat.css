@@ -1276,7 +1276,7 @@
 }
 
 /* ══════════════════════════════════════════════════════════════
-   Admin Chat — Redesign
+   Admin Chat - Redesign
    ══════════════════════════════════════════════════════════════ */
 
 /* Sidebar header override */
@@ -1388,7 +1388,7 @@
   animation: shimmer 1.5s ease-in-out infinite;
 }
 
-/* Chat item — two-row layout */
+/* Chat item - two-row layout */
 .chat-item-row {
   display: flex;
   align-items: center;

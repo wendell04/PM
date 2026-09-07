@@ -179,7 +179,7 @@ export default function UserManagementPage() {
         }));
         setAvailableRoles(roles);
       }
-    } catch { /* silent — form shows empty dropdown if roles fail */ }
+    } catch { /* silent - form shows empty dropdown if roles fail */ }
   }, [token]);
 
   const handleAddRole = async () => {
@@ -521,7 +521,7 @@ export default function UserManagementPage() {
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(380px, 1fr))', gap: '12px', alignItems: 'start' }}>
           {pagedStaff.map((member) => {
-            const fullName = `${member.firstName || ''} ${member.lastName || ''}`.trim() || '—';
+            const fullName = `${member.firstName || ''} ${member.lastName || ''}`.trim() || '-';
             const role = member.role;
             const badge = getRoleBadgeStyle(role, availableRoles);
             const roleLabel = PROTECTED_ROLE_LABELS[role] ?? availableRoles.find((r) => r.value === role)?.label ?? role;
@@ -545,7 +545,7 @@ export default function UserManagementPage() {
                 <div style={{ flex: '1 1 200px', minWidth: 0 }}>
                   <div style={{ fontWeight: 700, color: 'var(--white)', marginBottom: '4px' }}>{fullName}</div>
                   <div style={{ fontSize: '0.8rem', color: 'var(--gray)', marginBottom: '8px', wordBreak: 'break-all' }}>
-                    {member.email || '—'}
+                    {member.email || '-'}
                   </div>
                   <span
                     style={{
@@ -753,7 +753,7 @@ export default function UserManagementPage() {
                 </label>
                 {availableRoles.length === 0 ? (
                   <div style={{ ...inputBase, display: 'flex', alignItems: 'center', color: 'var(--gray)', fontSize: '0.8rem' }}>
-                    No roles yet — use <strong style={{ color: 'var(--gold)', margin: '0 4px' }}>+ Add Role</strong> to create one first.
+                    No roles yet - use <strong style={{ color: 'var(--gold)', margin: '0 4px' }}>+ Add Role</strong> to create one first.
                   </div>
                 ) : (
                   <CustomSelect
@@ -771,7 +771,7 @@ export default function UserManagementPage() {
                   Password{' '}
                   {!selectedStaff
                     ? <span style={{ color: 'var(--red)' }}>*</span>
-                    : <span style={{ color: 'var(--gray)', fontWeight: 400 }}>(optional — leave blank to keep current)</span>}
+                    : <span style={{ color: 'var(--gray)', fontWeight: 400 }}>(optional - leave blank to keep current)</span>}
                 </label>
                 <div style={{ position: 'relative' }}>
                   <input
@@ -798,7 +798,7 @@ export default function UserManagementPage() {
                 </div>
               </div>
 
-              {/* Password strength — only show when typing */}
+              {/* Password strength - only show when typing */}
               {form.password && (() => {
                 const strength = getPasswordStrength(form.password);
                 const checks = PASSWORD_CHECKS(form.password);

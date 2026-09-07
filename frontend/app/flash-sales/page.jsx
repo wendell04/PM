@@ -65,7 +65,7 @@ export default function FlashSalesStorefront() {
         </h1>
         <p style={{ color: 'var(--gray)', fontSize: '0.95rem',
           marginTop: '0.5rem' }}>
-          Limited-time deals — grab them before they expire!
+          Limited-time deals - grab them before they expire!
         </p>
       </div>
 

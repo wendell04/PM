@@ -1,4 +1,4 @@
-// ── MOCK DATA — inventory-v2 prototype ───────────────────────────────────────
+// ── MOCK DATA - inventory-v2 prototype ───────────────────────────────────────
 // Replace with real API calls once prototype is approved.
 
 export const initVendors = [
@@ -30,14 +30,14 @@ export const initMaterials = [
 // Each batch = one stock receive event.
 // remainingQty = qtyReceived minus FIFO deductions from stock outs/reductions.
 export const initBatches = [
-  // White T-Shirt — 2 batches (different unit costs)
+  // White T-Shirt - 2 batches (different unit costs)
   { id:'bt1',  matId:'m1',  invoiceNo:'OR-2025-001', date:'2025-03-15', vendorId:'v1', vendorName:'Tiara Garments Supply', qtyReceived:80,  unitCost:92,  remainingQty:75,  notes:'' },
   { id:'bt2',  matId:'m1',  invoiceNo:'OR-2025-008', date:'2025-04-10', vendorId:'v1', vendorName:'Tiara Garments Supply', qtyReceived:50,  unitCost:95,  remainingQty:45,  notes:'Price increase from supplier' },
   // Black T-Shirt
   { id:'bt3',  matId:'m2',  invoiceNo:'OR-2025-001', date:'2025-03-15', vendorId:'v1', vendorName:'Tiara Garments Supply', qtyReceived:85,  unitCost:100, remainingQty:85,  notes:'' },
-  // Sublimation Paper — 2 batches
+  // Sublimation Paper - 2 batches
   { id:'bt4',  matId:'m3',  invoiceNo:'OR-2025-002', date:'2025-04-05', vendorId:'v2', vendorName:'PrintMart Philippines', qtyReceived:300, unitCost:4,   remainingQty:280, notes:'' },
-  { id:'bt5',  matId:'m3',  invoiceNo:'OR-2025-009', date:'2025-04-20', vendorId:'v3', vendorName:'Sublimation Hub PH',    qtyReceived:200, unitCost:4.5, remainingQty:200, notes:'Switched supplier — slight price diff' },
+  { id:'bt5',  matId:'m3',  invoiceNo:'OR-2025-009', date:'2025-04-20', vendorId:'v3', vendorName:'Sublimation Hub PH',    qtyReceived:200, unitCost:4.5, remainingQty:200, notes:'Switched supplier - slight price diff' },
   // DTF Film Roll (low stock)
   { id:'bt6',  matId:'m4',  invoiceNo:'OR-2025-003', date:'2025-03-28', vendorId:'v2', vendorName:'PrintMart Philippines', qtyReceived:20,  unitCost:85,  remainingQty:18,  notes:'' },
   // Mugs
@@ -79,7 +79,7 @@ export const initBadOrders = [
 // reason: production | damaged | lost | write_off | quality_check | other
 export const initStockOuts = [
   { id:'so1', ref:'JO-2025-045', type:'production', matId:'m7',  matName:'Button Pin Base 2.25"', date:'2025-04-12', qty:0,  reason:'production', unitCost:8,  totalCost:0,   notes:'JO-2025-045 batch' },
-  { id:'so2', ref:'ADJ-001',     type:'adjustment', matId:'m5',  matName:'Inner Color Mug 11oz',  date:'2025-04-08', qty:5,  reason:'write_off',  unitCost:65, totalCost:325, notes:'Broken mugs from bad order batch — written off' },
+  { id:'so2', ref:'ADJ-001',     type:'adjustment', matId:'m5',  matName:'Inner Color Mug 11oz',  date:'2025-04-08', qty:5,  reason:'write_off',  unitCost:65, totalCost:325, notes:'Broken mugs from bad order batch - written off' },
   { id:'so3', ref:'JO-2025-048', type:'production', matId:'m3',  matName:'Sublimation Paper A4',  date:'2025-04-15', qty:20, reason:'production', unitCost:4,  totalCost:80,  notes:'JO-2025-048 batch' },
   { id:'so4', ref:'ADJ-002',     type:'adjustment', matId:'m1',  matName:'Blank White T-Shirt',   date:'2025-04-16', qty:5,  reason:'damaged',    unitCost:95, totalCost:475, notes:'Water damage in stockroom' },
 ];
@@ -87,8 +87,8 @@ export const initStockOuts = [
 // resolutionType: credit | replacement | pending
 // status: pending | completed
 export const initReturns = [
-  { id:'ret1', matId:'m4',  matName:'DTF Film Roll',        vendorId:'v2', vendorName:'PrintMart Philippines', date:'2025-03-30', qty:2,  unitCost:85,  totalValue:170,  reason:'Defective — splice defects',      resolutionType:'replacement', replacementQty:0, notes:'Awaiting vendor replacement',  status:'pending',   linkedBadOrderId:'bo3' },
-  { id:'ret2', matId:'m3',  matName:'Sublimation Paper A4', vendorId:'v2', vendorName:'PrintMart Philippines', date:'2025-04-06', qty:20, unitCost:4,   totalValue:80,   reason:'Shortage — 20 sheets unreceived', resolutionType:'credit',      replacementQty:0, notes:'Credit applied to next order', status:'completed', linkedBadOrderId:'bo1' },
+  { id:'ret1', matId:'m4',  matName:'DTF Film Roll',        vendorId:'v2', vendorName:'PrintMart Philippines', date:'2025-03-30', qty:2,  unitCost:85,  totalValue:170,  reason:'Defective - splice defects',      resolutionType:'replacement', replacementQty:0, notes:'Awaiting vendor replacement',  status:'pending',   linkedBadOrderId:'bo3' },
+  { id:'ret2', matId:'m3',  matName:'Sublimation Paper A4', vendorId:'v2', vendorName:'PrintMart Philippines', date:'2025-04-06', qty:20, unitCost:4,   totalValue:80,   reason:'Shortage - 20 sheets unreceived', resolutionType:'credit',      replacementQty:0, notes:'Credit applied to next order', status:'completed', linkedBadOrderId:'bo1' },
 ];
 
 export const initBoms = [

@@ -113,7 +113,7 @@ function toDatetimeLocal(iso) {
   return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 function formatDate(iso) {
-  if (!iso) return '—';
+  if (!iso) return '-';
   return new Date(iso).toLocaleString('en-PH', {
     year: 'numeric', month: 'short', day: 'numeric',
     hour: '2-digit', minute: '2-digit',
@@ -400,7 +400,7 @@ function VouchersTab({ token }) {
                           {v.discountType === 'percentage' ? `${v.discountValue}%` : `₱${Number(v.discountValue).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} OFF
                         </span>
                       ) : (
-                        <span style={{ color: 'var(--gray)' }}>{typeMeta?.label || v.benefitType || '—'}</span>
+                        <span style={{ color: 'var(--gray)' }}>{typeMeta?.label || v.benefitType || '-'}</span>
                       )}
                       {v.benefitDescription && (
                         <div style={{ fontSize: '0.72rem', color: 'var(--gray)', marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '200px' }}>
@@ -410,7 +410,7 @@ function VouchersTab({ token }) {
                     </td>
 
                     <td style={{ padding: '11px 14px', fontSize: '0.82rem', color: 'var(--white)' }}>
-                      {v.minOrderAmount != null ? `₱${Number(v.minOrderAmount).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
+                      {v.minOrderAmount != null ? `₱${Number(v.minOrderAmount).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '-'}
                     </td>
 
                     <td style={{ padding: '11px 14px', fontSize: '0.82rem', color: 'var(--white)', whiteSpace: 'nowrap' }}>
@@ -425,7 +425,7 @@ function VouchersTab({ token }) {
                     </td>
 
                     <td style={{ padding: '11px 14px', fontSize: '0.82rem', color: isExpired ? 'var(--red)' : 'var(--white)', whiteSpace: 'nowrap' }}>
-                      {v.expiresAt ? new Date(v.expiresAt).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
+                      {v.expiresAt ? new Date(v.expiresAt).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }) : '-'}
                     </td>
 
                     <td style={{ padding: '11px 14px' }}>
@@ -575,7 +575,7 @@ function VoucherModal({ form, setForm, formError, saving, editTarget, onSave, on
                 </div>
               </div>
               <div>
-                <label style={lbl}>Minimum Order Amount (₱) <span style={{ color: 'var(--gray)', textTransform: 'none' }}>— optional</span></label>
+                <label style={lbl}>Minimum Order Amount (₱) <span style={{ color: 'var(--gray)', textTransform: 'none' }}>- optional</span></label>
                 <input type="number" min="0" step="0.01" value={form.minOrderAmount} onChange={e => setForm(f => ({ ...f, minOrderAmount: e.target.value }))} placeholder="e.g. 500" style={inp} />
               </div>
             </>
@@ -584,7 +584,7 @@ function VoucherModal({ form, setForm, formError, saving, editTarget, onSave, on
           {/* Non-monetary description */}
           {!isMonetary && (
             <div>
-              <label style={lbl}>Benefit Description <span style={{ color: 'var(--gray)', textTransform: 'none' }}>— shown to customer on redemption</span></label>
+              <label style={lbl}>Benefit Description <span style={{ color: 'var(--gray)', textTransform: 'none' }}>- shown to customer on redemption</span></label>
               <textarea
                 value={form.benefitDescription}
                 onChange={e => setForm(f => ({ ...f, benefitDescription: e.target.value }))}
@@ -598,11 +598,11 @@ function VoucherModal({ form, setForm, formError, saving, editTarget, onSave, on
           {/* Common fields */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
             <div>
-              <label style={lbl}>Max Uses <span style={{ color: 'var(--gray)', textTransform: 'none' }}>— optional</span></label>
+              <label style={lbl}>Max Uses <span style={{ color: 'var(--gray)', textTransform: 'none' }}>- optional</span></label>
               <input type="number" min="1" step="1" value={form.maxUses} onChange={e => setForm(f => ({ ...f, maxUses: e.target.value }))} placeholder="∞ unlimited" style={inp} />
             </div>
             <div>
-              <label style={lbl}>Expiry Date <span style={{ color: 'var(--gray)', textTransform: 'none' }}>— optional</span></label>
+              <label style={lbl}>Expiry Date <span style={{ color: 'var(--gray)', textTransform: 'none' }}>- optional</span></label>
               <input type="date" value={form.expiresAt} onChange={e => setForm(f => ({ ...f, expiresAt: e.target.value }))} style={inp} />
             </div>
           </div>
@@ -793,7 +793,7 @@ function FlashSalesTab({ token }) {
                           ? <img src={sale.productThumbnail} alt="" style={{ width: '32px', height: '32px', borderRadius: '6px', objectFit: 'cover', border: '1px solid var(--border)', flexShrink: 0 }} />
                           : <div style={{ width: '32px', height: '32px', borderRadius: '6px', background: 'var(--dark2)', border: '1px solid var(--border)', flexShrink: 0 }} />
                         }
-                        <span style={{ fontSize: '0.875rem', color: 'var(--white)', fontWeight: 500, maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sale.productName || '—'}</span>
+                        <span style={{ fontSize: '0.875rem', color: 'var(--white)', fontWeight: 500, maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sale.productName || '-'}</span>
                       </div>
                     </td>
 
@@ -804,20 +804,20 @@ function FlashSalesTab({ token }) {
                     </td>
 
                     <td style={{ padding: '11px 14px', color: 'var(--gray)', fontSize: '0.85rem' }}>
-                      {sale.originalPrice != null ? `₱${Number(sale.originalPrice).toLocaleString('en-PH', { minimumFractionDigits: 2 })}` : '—'}
+                      {sale.originalPrice != null ? `₱${Number(sale.originalPrice).toLocaleString('en-PH', { minimumFractionDigits: 2 })}` : '-'}
                     </td>
 
                     <td style={{ padding: '11px 14px', color: 'var(--gold)', fontWeight: 700, fontSize: '0.85rem' }}>
-                      {sale.discountedPrice != null ? `₱${Number(sale.discountedPrice).toLocaleString('en-PH', { minimumFractionDigits: 2 })}` : '—'}
+                      {sale.discountedPrice != null ? `₱${Number(sale.discountedPrice).toLocaleString('en-PH', { minimumFractionDigits: 2 })}` : '-'}
                     </td>
 
-                    {/* Quantity column — progress bar */}
+                    {/* Quantity column - progress bar */}
                     <td style={{ padding: '11px 14px', minWidth: '110px' }}>
                       {sale.isOnDemand ? (
                         <span style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>On-demand</span>
                       ) : sale.stockLimit == null ? (
                         <span style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>
-                          {sale.stockUsed > 0 ? `${sale.stockUsed} sold` : '—'}
+                          {sale.stockUsed > 0 ? `${sale.stockUsed} sold` : '-'}
                         </span>
                       ) : (
                         <div>
@@ -954,8 +954,8 @@ function FlashSaleModal({ form, setForm, formError, saving, editTarget, products
           </div>
 
           <div>
-            <label style={lbl}>Stock Limit <span style={{ color: 'var(--gray)', textTransform: 'none' }}>— optional</span></label>
-            <input type="number" min="1" step="1" value={form.stockLimit} onChange={e => setForm(f => ({ ...f, stockLimit: e.target.value }))} onKeyDown={e => ['e','E','+','-'].includes(e.key) && e.preventDefault()} placeholder="e.g. 50 — leave blank for unlimited" style={inp} />
+            <label style={lbl}>Stock Limit <span style={{ color: 'var(--gray)', textTransform: 'none' }}>- optional</span></label>
+            <input type="number" min="1" step="1" value={form.stockLimit} onChange={e => setForm(f => ({ ...f, stockLimit: e.target.value }))} onKeyDown={e => ['e','E','+','-'].includes(e.key) && e.preventDefault()} placeholder="e.g. 50 - leave blank for unlimited" style={inp} />
           </div>
 
           <label style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', cursor: 'pointer' }}>

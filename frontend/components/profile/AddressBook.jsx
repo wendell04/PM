@@ -14,7 +14,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 // When the key is set the address search uses TomTom; otherwise it falls back to free OSM/Nominatim.
 const TOMTOM_KEY = process.env.NEXT_PUBLIC_TOMTOM_API_KEY || '';
 
-// Google Places (New) — best PH landmark/POI coverage. Browser key (restrict by HTTP referrer + quota caps).
+// Google Places (New) - best PH landmark/POI coverage. Browser key (restrict by HTTP referrer + quota caps).
 // When set, the address search uses Google; any failure/quota falls back to TomTom/OSM (never breaks).
 const GOOGLE_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || '';
 
@@ -41,8 +41,8 @@ const haversineKm = (lat1, lon1, lat2, lon2) => {
   return 6371 * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
 };
 
-// Normalize a TomTom Fuzzy Search result into { title, subtitle, lat, lon, address:{...} } — POI name on
-// top, full address beneath — so the suggestion UI + autoFillPsgc read the same shape as the OSM path.
+// Normalize a TomTom Fuzzy Search result into { title, subtitle, lat, lon, address:{...} } - POI name on
+// top, full address beneath - so the suggestion UI + autoFillPsgc read the same shape as the OSM path.
 const normalizeTomTom = (r) => {
   const a = r.address || {};
   const poiName = r.poi?.name;
@@ -50,7 +50,7 @@ const normalizeTomTom = (r) => {
   return {
     title:    poiName || a.streetName || line,
     subtitle: line,
-    display_name: poiName ? (line ? `${poiName} — ${line}` : poiName) : line,
+    display_name: poiName ? (line ? `${poiName} - ${line}` : poiName) : line,
     lat: r.position?.lat,
     lon: r.position?.lon,
     address: {
@@ -154,7 +154,7 @@ export default function AddressBook({ onSaved, initialEditAddress }) {
   const [cities, setCities]         = useState([]);
   const [barangays, setBarangays]   = useState([]);
 
-  // Address search (autocomplete) — convenience: pre-fills pin + free-text +
+  // Address search (autocomplete) - convenience: pre-fills pin + free-text +
   // best-effort the PSGC dropdowns. User confirms the dropdowns.
   const [addressSearch, setAddressSearch] = useState('');
   const [suggestions, setSuggestions]     = useState([]);
@@ -210,7 +210,7 @@ export default function AddressBook({ onSaved, initialEditAddress }) {
           const p = await fetchProvinces(formData.region_code);
           if (!cancelled) setProvinces(p);
         }
-      } catch { /* network — leave lists as-is */ }
+      } catch { /* network - leave lists as-is */ }
     })();
     return () => { cancelled = true; };
   }, [formData.region_code]);
@@ -307,7 +307,7 @@ export default function AddressBook({ onSaved, initialEditAddress }) {
 
   // ── Address search (free, OpenStreetMap/Nominatim, PH-filtered) ──
   // TomTom (commercial POI, when a key is set): finds named landmarks that OSM lacks. PH-filtered + pin-biased.
-  // Any failure — including a 429 when the daily free quota (2,500) is spent — returns [] so the caller
+  // Any failure - including a 429 when the daily free quota (2,500) is spent - returns [] so the caller
   // silently falls back to free OSM/Nominatim; the search never breaks for the user.
   const runTomTom = async (val) => {
     try {
@@ -462,7 +462,7 @@ export default function AddressBook({ onSaved, initialEditAddress }) {
     setSuggestions([]);
     setShowSuggestions(false);
     setAddressSearch('');
-    // Google predictions carry only a placeId — resolve coordinates + address via Place Details on select.
+    // Google predictions carry only a placeId - resolve coordinates + address via Place Details on select.
     let sel = s;
     if (s.google_place_id && (!s.lat || !s.lon)) {
       setIsGeocoding(true);
@@ -524,7 +524,7 @@ export default function AddressBook({ onSaved, initialEditAddress }) {
         street:       prev.street || a.road || a.pedestrian || a.footway || '',
         zip:          prev.zip || (a.postcode ? a.postcode.replace(/\D/g, '').slice(0, 4) : ''),
       }));
-    } catch { /* Nominatim unavailable — keep existing fields */ }
+    } catch { /* Nominatim unavailable - keep existing fields */ }
     finally { setIsGeocoding(false); }
   };
 
@@ -682,7 +682,7 @@ export default function AddressBook({ onSaved, initialEditAddress }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
 
-      {/* Header — title comes from the parent page; keep only the Add Address action here */}
+      {/* Header - title comes from the parent page; keep only the Add Address action here */}
       {!showForm && (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
           <button onClick={openAddForm} style={{ padding: '0.625rem 1.25rem', background: 'var(--gold)', border: 'none', borderRadius: '8px', color: 'var(--black)', fontSize: '0.875rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -793,7 +793,7 @@ export default function AddressBook({ onSaved, initialEditAddress }) {
               </svg>
               {mapExpanded ? 'Hide Map' : (formData.lat && formData.lng ? 'Update Pin Location' : 'Pin Location on Map')}
               <span style={{ fontSize: '0.72rem', color: formErrors.pin ? 'var(--red)' : 'var(--gray)', fontWeight: 400 }}>
-                {formErrors.pin ? '— required' : '— for exact delivery location'}
+                {formErrors.pin ? '- required' : '- for exact delivery location'}
               </span>
             </button>
             {formErrors.pin && !mapExpanded && (
@@ -829,7 +829,7 @@ export default function AddressBook({ onSaved, initialEditAddress }) {
                   </div>
                 )}
                 <p style={{ margin: 0, fontSize: '0.72rem', color: 'var(--gray)', lineHeight: 1.5 }}>
-                  Drag the pin to your exact doorstep. This precise location is what the seller uses to book your courier — select your Region, City and Barangay from the dropdowns below.
+                  Drag the pin to your exact doorstep. This precise location is what the seller uses to book your courier - select your Region, City and Barangay from the dropdowns below.
                 </p>
               </div>
             )}

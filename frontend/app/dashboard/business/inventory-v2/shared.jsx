@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import useLockBodyScroll from '@/lib/useLockBodyScroll';
-// ── shared.jsx — inventory-v2 shared components ───────────────────────────────
+// ── shared.jsx - inventory-v2 shared components ───────────────────────────────
 
 // ── Styles ────────────────────────────────────────────────────────────────────
 // Theme-aware shared styles. Colors use the global CSS variables so these
@@ -65,7 +65,7 @@ export const ICONS = {
   download:<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>,
 };
 
-// ── IntegerInput — digits only, max 999999 ────────────────────────────────────
+// ── IntegerInput - digits only, max 999999 ────────────────────────────────────
 export function IntegerInput({ value, onChange, placeholder = '0', style, max = 999999, ...rest }) {
   const handleKey = (e) => { if (['e','E','+','-','.'].includes(e.key)) e.preventDefault(); };
   const handleChange = (e) => {
@@ -88,7 +88,7 @@ export function IntegerInput({ value, onChange, placeholder = '0', style, max = 
   );
 }
 
-// ── DecimalInput — up to 2 decimal places, max 999999.99 ─────────────────────
+// ── DecimalInput - up to 2 decimal places, max 999999.99 ─────────────────────
 export function DecimalInput({ value, onChange, placeholder = '0.00', style, ...rest }) {
   const handleKey = (e) => { if (['e','E','+','-'].includes(e.key)) e.preventDefault(); };
   const handleChange = (e) => {
@@ -141,7 +141,7 @@ export function Note({ type = 'warn', children }) {
   );
 }
 
-// ── CustomSelect — styled dropdown, max 8 visible rows then scroll ────────────
+// ── CustomSelect - styled dropdown, max 8 visible rows then scroll ────────────
 // `searchable` adds a type-to-filter box at the top of the list (for long option
 // lists like PSGC barangays); it is opt-in so existing short-list usages are unchanged.
 export function CustomSelect({ value, onChange, options = [], placeholder = 'Select…', style, error, disabled, emptyLabel, searchable = false }) {
@@ -293,7 +293,7 @@ export function StatusBadge({ status, label }) {
 }
 
 // ── Modal ─────────────────────────────────────────────────────────────────────
-// Backdrop click does NOT close by default — these modals hold form input (quotation,
+// Backdrop click does NOT close by default - these modals hold form input (quotation,
 // stock-in, etc.) and an accidental backdrop click would wipe everything typed. Only the
 // X button and footer buttons close. Pass closeOnBackdrop for throwaway/read-only dialogs.
 export function Modal({ open, onClose, title, width = 520, children, footer, closeOnBackdrop = false }) {
@@ -313,7 +313,7 @@ export function Modal({ open, onClose, title, width = 520, children, footer, clo
           <span style={{ fontWeight:700, fontSize:'16px', color:'var(--white)' }}>{title}</span>
           <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:'var(--gray)', padding:'4px', borderRadius:'5px', display:'flex' }}>{ICONS.x}</button>
         </div>
-        {/* body — overflowX hidden so one long label can never turn the whole modal
+        {/* body - overflowX hidden so one long label can never turn the whole modal
             into a sideways scroller; content is expected to ellipsis instead. */}
         <div style={{ overflowY:'auto', overflowX:'hidden', flex:1, padding:'18px 20px' }}>{children}</div>
         {/* footer */}
@@ -327,7 +327,7 @@ export function Modal({ open, onClose, title, width = 520, children, footer, clo
   );
 }
 
-// ── ConfirmModal — replaces browser confirm() ─────────────────────────────────
+// ── ConfirmModal - replaces browser confirm() ─────────────────────────────────
 export function ConfirmModal({ open, onClose, onConfirm, title, message, confirmLabel = 'Confirm', confirmStyle = 'danger', loading = false }) {
   if (!open) return null;
   const btnStyle = confirmStyle === 'danger' ? S.btnDanger : S.btnPrimary;
@@ -347,7 +347,7 @@ export function ConfirmModal({ open, onClose, onConfirm, title, message, confirm
   );
 }
 
-// ── WarnModal — soft warning before proceeding ────────────────────────────────
+// ── WarnModal - soft warning before proceeding ────────────────────────────────
 export function WarnModal({ open, onClose, onProceed, title, message, proceedLabel = 'Proceed Anyway' }) {
   if (!open) return null;
   return (
@@ -441,7 +441,7 @@ export function PaginationBar({ total, page, perPage, onPage, onPerPage }) {
   return (
     <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:'10px', marginTop:'14px' }}>
       <span style={{ fontSize:'12px', color:'var(--gray)' }}>
-        {total === 0 ? 'No items' : `Showing ${from}–${to} of ${total}`}
+        {total === 0 ? 'No items' : `Showing ${from}-${to} of ${total}`}
       </span>
       <div style={{ display:'flex', alignItems:'center', gap:'6px' }}>
         <span style={{ fontSize:'12px', color:'var(--gray)', marginRight:'4px' }}>Rows per page:</span>

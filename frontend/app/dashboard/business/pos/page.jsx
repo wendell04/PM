@@ -68,7 +68,7 @@ function resolvePrice(product, qty = 1, variantId = null) {
 }
 
 function formatPrice(n) {
-  if (n == null || isNaN(n)) return '—';
+  if (n == null || isNaN(n)) return '-';
   return '₱' + Number(n).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
@@ -605,7 +605,7 @@ export default function PosPage() {
             <div style={{ borderTop: '1px solid var(--border)', paddingTop: '0.75rem', marginTop: '0.75rem' }}>
               {(receipt.items ?? []).map((item, i) => (
                 <div key={`${item.productId ?? 'line'}-${i}`} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: 'var(--gray)', marginBottom: '0.25rem' }}>
-                  <span>{item.productName}{item.variantName ? ` — ${item.variantName}` : ''} × {item.qty}</span>
+                  <span>{item.productName}{item.variantName ? ` - ${item.variantName}` : ''} × {item.qty}</span>
                   <span>{formatPrice(item.lineTotal)}</span>
                 </div>
               ))}
@@ -1219,7 +1219,7 @@ export default function PosPage() {
                 <div key={c.key} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem', color: 'var(--gray)' }}>
                   <span>
                     {c.product.name}
-                    {c.variantName ? ` — ${c.variantName}` : ''} × {c.qty}
+                    {c.variantName ? ` - ${c.variantName}` : ''} × {c.qty}
                   </span>
                   <span style={{ color: 'var(--white)', fontWeight: 600 }}>{formatPrice(c.unitPrice * c.qty)}</span>
                 </div>

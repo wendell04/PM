@@ -70,7 +70,7 @@ export default function ProductStockTab({ boms, materials, products }) {
     const standalone = (boms || [])
       .filter(b => !usedBomIds.has(b.id))
       .map(b => ({
-        id: b.id, name: b.productName, category: '—',
+        id: b.id, name: b.productName, category: '-',
         variants: [{ label: null, bom: b, producible: calcProducible(b, matMap) }],
         minProd: calcProducible(b, matMap), standalone: true,
       }));
@@ -78,7 +78,7 @@ export default function ProductStockTab({ boms, materials, products }) {
     return { rows: [...rows, ...standalone], usedBomIds };
   }, [products, boms, bomMap, matMap]);
 
-  const categories = useMemo(() => ['All', ...new Set(rows.filter(r => !r.standalone && r.category && r.category !== '—').map(r => r.category))], [rows]);
+  const categories = useMemo(() => ['All', ...new Set(rows.filter(r => !r.standalone && r.category && r.category !== '-').map(r => r.category))], [rows]);
 
   const q = search.toLowerCase();
   const filtered = rows.filter(r => {
@@ -146,7 +146,7 @@ export default function ProductStockTab({ boms, materials, products }) {
                     <td style={{ ...S.td, fontWeight:600 }}>{row.name}</td>
                     <td style={{ ...S.td, fontSize:'12px', color:'var(--gray)' }}>{row.standalone ? <span style={{ color:'var(--gray)', fontStyle:'italic' }}>BOM only</span> : row.category}</td>
                     <td style={{ ...S.td, textAlign:'center', fontSize:'12px', color:'var(--gray)' }}>
-                      {row.variants.length > 1 ? `${row.variants.length} variants` : '—'}
+                      {row.variants.length > 1 ? `${row.variants.length} variants` : '-'}
                     </td>
                     <td style={{ ...S.td, textAlign:'center' }}>
                       <StatusBadge status={stockStatus(row.minProd)} />

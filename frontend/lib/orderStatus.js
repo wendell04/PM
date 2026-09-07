@@ -1,5 +1,5 @@
 /**
- * Canonical order FULFILLMENT status — frontend source of truth (Phase 1).
+ * Canonical order FULFILLMENT status - frontend source of truth (Phase 1).
  * Mirrors backend App\Support\OrderStatus. Stored values are lowercase codes; UI shows labels.
  * normalizeStatus() maps any legacy/mixed-case value (incl. old design states once kept in
  * orderStatus) to a canonical code, so old and new data render/filter correctly during rollout.

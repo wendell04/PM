@@ -110,7 +110,7 @@ function MediaLibraryModal({ multi = false, onSelect, onClose, existingImages = 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1000,
       display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      {/* No backdrop-close: large product form — a stray click would discard all edits. */}
+      {/* No backdrop-close: large product form - a stray click would discard all edits. */}
       <div style={{ background: 'var(--dark)', borderRadius: '12px', width: '620px', maxWidth: '95vw',
         maxHeight: '82vh', display: 'flex', flexDirection: 'column', overflow: 'hidden',
         boxShadow: '0 20px 60px rgba(0,0,0,0.25)' }}>
@@ -224,7 +224,7 @@ function StorefrontPreview({ name, description, thumbnail, priceRange, variantCo
       <div style={{ background: 'var(--dark)', border: '1px solid var(--border)',
         borderRadius: '12px', overflow: 'hidden' }}>
 
-        {/* Image area — 1:1 aspect */}
+        {/* Image area - 1:1 aspect */}
         <div style={{ aspectRatio: '1/1', width: '100%',
           background: 'var(--dark2)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -331,7 +331,7 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
   const [errors,         setErrors]        = useState({});
   const [variantImages,  setVariantImages] = useState({});
   const [uploadingCount, setUploadingCount] = useState(0);
-  const [prodCrop, setProdCrop] = useState(null); // { src, target } — square-crop a single picked image
+  const [prodCrop, setProdCrop] = useState(null); // { src, target } - square-crop a single picked image
 
   // ── Media picker state ──────────────────────────────────────────────────────
   const [mediaMenuOpen,  setMediaMenuOpen] = useState(false);
@@ -670,7 +670,7 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
             }))
           : [emptyTier(keys)];
       }
-      // Inquiry products are made-to-order (quoted + produced per order) — enable MTO automatically.
+      // Inquiry products are made-to-order (quoted + produced per order) - enable MTO automatically.
       const isMadeToOrder = newMode === 'inquiry' ? true : p.isMadeToOrder;
       return { ...p, pricingMode: newMode, tiers, isMadeToOrder };
     });
@@ -1325,7 +1325,7 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
                     <DecimalInput value={form.price} onChange={v => setF('price', v)}
                       placeholder="0.00" style={errors.price ? S.inputErr : undefined} />
                     {standaloneBelowCost && (
-                      <Note type="warn">Below BOM cost — you would lose P{(floorCostMap[form.bomId] - Number(form.price)).toFixed(2)} per unit.</Note>
+                      <Note type="warn">Below BOM cost - you would lose P{(floorCostMap[form.bomId] - Number(form.price)).toFixed(2)} per unit.</Note>
                     )}
                   </Field>
                 )}

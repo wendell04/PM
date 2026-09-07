@@ -257,7 +257,7 @@ function CustomOrderInner() {
   }, [token]);
 
   const moq = product?.minOrderQty || 1;
-  // Inquiry (quotation) products have no computable price — they go through the quote flow
+  // Inquiry (quotation) products have no computable price - they go through the quote flow
   // (request now, owner sends a quote, customer pays it later), never a direct ₱0 checkout.
   const isInquiry = (product?.priceType ?? product?.pricingMode) === 'inquiry';
   const unitPrice = getUnitPrice(product, quantity, selectedVariants);
@@ -305,7 +305,7 @@ function CustomOrderInner() {
       return;
     }
 
-    // Inquiry (quotation) products: submit a quote request only — no address, no payment.
+    // Inquiry (quotation) products: submit a quote request only - no address, no payment.
     // The owner reviews it, sends a quote; the customer pays that quote later.
     if (isInquiry) {
       setSubmitError(null);
@@ -505,7 +505,7 @@ function CustomOrderInner() {
         </div>
         <h2 style={{ color: 'var(--white)', fontWeight: 700, fontSize: '1.3rem', marginBottom: 8 }}>Payment Cancelled</h2>
         <p style={{ color: 'var(--gray)', fontSize: '0.9rem', marginBottom: 28, lineHeight: 1.6 }}>
-          Your payment was not completed. Your order has been saved — you can try again below.
+          Your payment was not completed. Your order has been saved - you can try again below.
         </p>
         <button onClick={() => setFailedModal(false)}
           style={{ width: '100%', padding: '12px', background: 'var(--gold)', color: '#000', border: 'none', borderRadius: 9, fontWeight: 700, cursor: 'pointer', fontSize: '0.9rem' }}>
@@ -523,7 +523,7 @@ function CustomOrderInner() {
         </div>
         <h2 style={{ color: 'var(--white)', fontWeight: 700, fontSize: '1.3rem', marginBottom: 8 }}>Quote request submitted</h2>
         <p style={{ color: 'var(--gray)', fontSize: '0.9rem', marginBottom: 28, lineHeight: 1.6 }}>
-          We&apos;ve received your request for <strong style={{ color: 'var(--white)' }}>{product.name}</strong>. We&apos;ll review the details and send you a quote via chat — you only pay once you approve it.
+          We&apos;ve received your request for <strong style={{ color: 'var(--white)' }}>{product.name}</strong>. We&apos;ll review the details and send you a quote via chat - you only pay once you approve it.
         </p>
         <button onClick={() => router.push('/shop')}
           style={{ width: '100%', padding: '12px', background: 'var(--gold)', color: '#000', border: 'none', borderRadius: 9, fontWeight: 700, cursor: 'pointer', fontSize: '0.9rem' }}>
@@ -564,7 +564,7 @@ function CustomOrderInner() {
 
             {/* Step 1: Product Config */}
             <section style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border)', borderRadius: '12px', padding: '1.5rem' }}>
-              <h2 style={{ fontSize: '0.85rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--gold)', marginBottom: '1.25rem' }}>1 — Product Details</h2>
+              <h2 style={{ fontSize: '0.85rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--gold)', marginBottom: '1.25rem' }}>1 - Product Details</h2>
 
               {/* The variant was already chosen on the product page, so it is confirmed
                   here rather than asked again. "Change" goes back to that picker. */}
@@ -576,7 +576,7 @@ function CustomOrderInner() {
                       <div key={group.id} style={{ display: 'flex', alignItems: 'baseline', gap: '0.6rem' }}>
                         <p style={{ fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--gray)', margin: 0, minWidth: '90px' }}>{group.name}</p>
                         <p style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--white)', margin: 0 }}>
-                          {chosen ? optLabel(chosen) : '—'}
+                          {chosen ? optLabel(chosen) : '-'}
                         </p>
                       </div>
                     );
@@ -615,7 +615,7 @@ function CustomOrderInner() {
 
             {/* Step 2: Design */}
             <section style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border)', borderRadius: '12px', padding: '1.5rem' }}>
-              <h2 style={{ fontSize: '0.85rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--gold)', marginBottom: '1.25rem' }}>2 — Your Design</h2>
+              <h2 style={{ fontSize: '0.85rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--gold)', marginBottom: '1.25rem' }}>2 - Your Design</h2>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '1.25rem' }}>
                 <button onClick={() => setDesignMode('upload')}
@@ -688,7 +688,7 @@ function CustomOrderInner() {
               {designMode === 'request' && (
                 <div>
                   <p style={{ fontSize: '0.8rem', color: 'var(--gray)', marginBottom: '0.5rem' }}>
-                    Describe what you need (optional — our designer will contact you via chat to finalize):
+                    Describe what you need (optional - our designer will contact you via chat to finalize):
                   </p>
                   <textarea value={designNotes} onChange={e => setDesignNotes(e.target.value)}
                     placeholder="E.g. Company logo in blue and white, add 'ABC Corp' in bold. Minimalist style."
@@ -698,9 +698,9 @@ function CustomOrderInner() {
               )}
             </section>
 
-            {/* Step 3: Delivery — shown for both upload and request */}
+            {/* Step 3: Delivery - shown for both upload and request */}
             {(designMode === 'upload' || designMode === 'request') && !isInquiry && <section style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border)', borderRadius: '12px', padding: '1.5rem' }}>
-              <h2 style={{ fontSize: '0.85rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--gold)', marginBottom: '1.25rem' }}>3 — Delivery Address</h2>
+              <h2 style={{ fontSize: '0.85rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--gold)', marginBottom: '1.25rem' }}>3 - Delivery Address</h2>
               {addressLoading ? (
                 <p style={{ color: 'var(--gray)', fontSize: '0.85rem' }}>Loading addresses...</p>
               ) : addresses.length === 0 ? (
@@ -741,7 +741,7 @@ function CustomOrderInner() {
 
             {/* Step 4: Payment */}
             {(designMode === 'request' || (designMode === 'upload' && downpaymentRequired)) && !isInquiry && <section style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border)', borderRadius: '12px', padding: '1.5rem' }}>
-              <h2 style={{ fontSize: '0.85rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--gold)', marginBottom: '1.25rem' }}>4 — Payment Method</h2>
+              <h2 style={{ fontSize: '0.85rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--gold)', marginBottom: '1.25rem' }}>4 - Payment Method</h2>
 
               <div style={{ padding: '0.75rem 1rem', background: 'rgba(212,168,67,0.08)', border: '1px solid rgba(212,168,67,0.2)', borderRadius: '8px', marginBottom: '1rem', fontSize: '0.8rem', color: 'var(--gray)', lineHeight: 1.5 }}>
                 {designMode === 'request'
@@ -912,7 +912,7 @@ function CustomOrderInner() {
 
               {designMode === 'request' && !isInquiry && (
                 <div style={{ padding: '0.75rem', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border)', borderRadius: '8px', marginBottom: '1rem', fontSize: '0.75rem', color: 'var(--gray)', lineHeight: 1.6 }}>
-                  Our designer will send a proof via chat within 24–48 hrs. Production starts once you approve.
+                  Our designer will send a proof via chat within 24-48 hrs. Production starts once you approve.
                 </div>
               )}
 
@@ -942,7 +942,7 @@ function CustomOrderInner() {
 
               <p style={{ textAlign: 'center', fontSize: '0.72rem', color: 'var(--gray)', marginTop: '0.75rem', lineHeight: 1.5 }}>
                 {isInquiry
-                  ? 'No charge now — we\'ll send your quote after review.'
+                  ? 'No charge now - we\'ll send your quote after review.'
                   : designMode === 'upload'
                     ? 'You\'ll only pay after your file is reviewed and approved.'
                     : 'By placing this order you agree to our terms of service.'}

@@ -75,18 +75,18 @@ const FILTER_OPTIONS = [
 ];
 
 function formatPeso(n) {
-  if (n == null) return '—';
+  if (n == null) return '-';
   return `₱${Number(n).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 function formatDate(dateStr) {
-  if (!dateStr) return '—';
+  if (!dateStr) return '-';
   const d = new Date(dateStr);
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 function formatTimestamp(dateStr) {
-  if (!dateStr) return '—';
+  if (!dateStr) return '-';
   const d = new Date(dateStr);
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
@@ -163,7 +163,7 @@ export default function OrderRequestsPage() {
     loadInventory(token).then(({ mats }) => setMaterialsList(mats || [])).catch(() => {});
   }, [token]);
 
-  // Auto-refresh every 30s — skipped when a modal is active or submitting
+  // Auto-refresh every 30s - skipped when a modal is active or submitting
   const pollRef = useRef(null);
   useEffect(() => {
     if (!token) return;
@@ -173,7 +173,7 @@ export default function OrderRequestsPage() {
         const result = await fetchOrderRequests(token);
         setRequests(result.data);
       } catch {
-        // silent — do not overwrite existing error state on poll failure
+        // silent - do not overwrite existing error state on poll failure
       }
     }, 30000);
     return () => clearInterval(pollRef.current);
@@ -282,7 +282,7 @@ export default function OrderRequestsPage() {
     }
   }
 
-  // ── Per-order BOM (materials) helpers — assembled at quote time, drives COGS ──
+  // ── Per-order BOM (materials) helpers - assembled at quote time, drives COGS ──
   const materialsCostTotal = updateMaterials.reduce((s, m) => s + (Number(m.qty) || 0) * (Number(m.unitCost) || 0), 0);
   const addMaterialRow = () => setUpdateMaterials(prev => [...prev, { inventoryId: '', materialName: '', qty: '', unitCost: 0 }]);
   const removeMaterialRow = (i) => setUpdateMaterials(prev => prev.filter((_, j) => j !== i));
@@ -450,8 +450,8 @@ export default function OrderRequestsPage() {
                     <tr key={req.id} style={{ borderBottom: '1px solid var(--border)', background: 'var(--dark)' }}>
                       <td style={{ padding: '0.75rem 1rem', fontSize: '0.85rem', color: 'var(--gray)' }}>{idx + 1}</td>
                       <td style={{ padding: '0.75rem 1rem' }}>
-                        <div style={{ fontSize: '0.875rem', color: 'var(--white)', fontWeight: 600 }}>{req.customerName || '—'}</div>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>{req.customerEmail || '—'}</div>
+                        <div style={{ fontSize: '0.875rem', color: 'var(--white)', fontWeight: 600 }}>{req.customerName || '-'}</div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>{req.customerEmail || '-'}</div>
                       </td>
                       <td style={{ padding: '0.75rem 1rem' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -464,7 +464,7 @@ export default function OrderRequestsPage() {
                             </div>
                           )}
                           <div>
-                            <div style={{ fontSize: '0.85rem', color: 'var(--white)', fontWeight: 600 }}>{req.productName || '—'}</div>
+                            <div style={{ fontSize: '0.85rem', color: 'var(--white)', fontWeight: 600 }}>{req.productName || '-'}</div>
                             {req.category && (
                               <span style={{ fontSize: '0.65rem', background: 'rgba(255,255,255,0.08)', color: 'var(--gray)', padding: '0.125rem 0.5rem', borderRadius: '999px', marginTop: '0.25rem', display: 'inline-block' }}>{req.category}</span>
                             )}
@@ -507,7 +507,7 @@ export default function OrderRequestsPage() {
               </button>
             </div>
             <div style={{ display: 'flex', gap: '1.5rem', padding: '1.5rem', flexWrap: 'wrap' }}>
-              {/* Left Column — Order Details */}
+              {/* Left Column - Order Details */}
               <div style={{ flex: '1 1 340px', minWidth: '280px' }}>
                 <h3 style={{ margin: '0 0 1rem', fontSize: '0.9rem', fontWeight: 700, color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Order Details</h3>
 
@@ -522,7 +522,7 @@ export default function OrderRequestsPage() {
                     </div>
                   )}
                   <div>
-                    <div style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--white)', marginBottom: '0.375rem' }}>{selectedRequest.productName || '—'}</div>
+                    <div style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--white)', marginBottom: '0.375rem' }}>{selectedRequest.productName || '-'}</div>
                     {selectedRequest.category && (
                       <span style={{ fontSize: '0.7rem', background: 'rgba(255,255,255,0.08)', color: 'var(--gray)', padding: '0.125rem 0.5rem', borderRadius: '999px' }}>{selectedRequest.category}</span>
                     )}
@@ -532,8 +532,8 @@ export default function OrderRequestsPage() {
                 {/* Customer */}
                 <div style={{ marginBottom: '1rem' }}>
                   <div style={{ fontSize: '0.75rem', color: 'var(--gray)', marginBottom: '0.25rem' }}>Customer</div>
-                  <div style={{ fontSize: '0.9rem', color: 'var(--white)', fontWeight: 600 }}>{selectedRequest.customerName || '—'}</div>
-                  <div style={{ fontSize: '0.8rem', color: 'var(--gray)' }}>{selectedRequest.customerEmail || '—'}</div>
+                  <div style={{ fontSize: '0.9rem', color: 'var(--white)', fontWeight: 600 }}>{selectedRequest.customerName || '-'}</div>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--gray)' }}>{selectedRequest.customerEmail || '-'}</div>
                 </div>
 
                 {/* Quantity */}
@@ -568,7 +568,7 @@ export default function OrderRequestsPage() {
                 <div style={{ marginBottom: '1rem' }}>
                   <div style={{ fontSize: '0.75rem', color: 'var(--gray)', marginBottom: '0.25rem' }}>Final Price</div>
                   <div style={{ fontSize: '0.9rem', color: 'var(--white)', fontWeight: 600 }}>
-                    {selectedRequest.finalPrice != null ? formatPeso(selectedRequest.finalPrice) : '—'}
+                    {selectedRequest.finalPrice != null ? formatPeso(selectedRequest.finalPrice) : '-'}
                   </div>
                 </div>
 
@@ -578,7 +578,7 @@ export default function OrderRequestsPage() {
                   <div style={{ fontSize: '0.9rem', color: 'var(--white)', fontWeight: 600 }}>
                     {selectedRequest.eta
                       ? new Date(selectedRequest.eta).toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' })
-                      : '—'}
+                      : '-'}
                   </div>
                 </div>
 
@@ -586,7 +586,7 @@ export default function OrderRequestsPage() {
                 <div style={{ marginBottom: '1rem' }}>
                   <div style={{ fontSize: '0.75rem', color: 'var(--gray)', marginBottom: '0.25rem' }}>Down Payment</div>
                   <div style={{ fontSize: '0.9rem', color: 'var(--white)', fontWeight: 600 }}>
-                    {selectedRequest.downPayment != null ? formatPeso(selectedRequest.downPayment) : '—'}
+                    {selectedRequest.downPayment != null ? formatPeso(selectedRequest.downPayment) : '-'}
                   </div>
                 </div>
 
@@ -595,7 +595,7 @@ export default function OrderRequestsPage() {
                   <div style={{ fontSize: '0.75rem', color: 'var(--gray)', marginBottom: '0.25rem' }}>Payment Status</div>
                   {(() => {
                     const s = PAYMENT_STATUS_STYLES[selectedRequest.paymentStatus];
-                    if (!s) return <span style={{ color: 'var(--gray)' }}>—</span>;
+                    if (!s) return <span style={{ color: 'var(--gray)' }}>-</span>;
                     return (
                       <span style={{
                         background:   s.background,
@@ -668,7 +668,7 @@ export default function OrderRequestsPage() {
                 </div>
               </div>
 
-              {/* Right Column — Status Management */}
+              {/* Right Column - Status Management */}
               <div style={{ flex: '1 1 300px', minWidth: '280px' }}>
                 <h3 style={{ margin: '0 0 1rem', fontSize: '0.9rem', fontWeight: 700, color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Status Management</h3>
 
@@ -828,11 +828,11 @@ export default function OrderRequestsPage() {
                       />
                     </div>
 
-                    {/* Materials (per-order BOM) — assembled at quote time; drives COGS/profit */}
+                    {/* Materials (per-order BOM) - assembled at quote time; drives COGS/profit */}
                     <div style={{ marginBottom: '1rem' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.375rem' }}>
                         <label style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>
-                          Materials <span style={{ color: 'var(--gray)', fontWeight: 400 }}>(per-order BOM — sets cost / COGS)</span>
+                          Materials <span style={{ color: 'var(--gray)', fontWeight: 400 }}>(per-order BOM - sets cost / COGS)</span>
                         </label>
                         <button type="button" onClick={addMaterialRow}
                           style={{ fontSize: '0.72rem', color: 'var(--gold)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}>
@@ -846,7 +846,7 @@ export default function OrderRequestsPage() {
                         <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 60px 68px 22px', gap: '6px', alignItems: 'center', marginBottom: '6px' }}>
                           <select value={m.inventoryId} onChange={e => setMaterialRow(i, e.target.value)}
                             style={{ padding: '6px 8px', fontSize: '0.78rem', background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--white)' }}>
-                            <option value="">— Material —</option>
+                            <option value="">- Material -</option>
                             {materialsList.map(mat => <option key={mat.id} value={mat.id}>{mat.name}</option>)}
                           </select>
                           <input type="number" min="0" value={m.qty} onChange={e => setMaterialQty(i, e.target.value)} placeholder="Qty"
@@ -867,7 +867,7 @@ export default function OrderRequestsPage() {
                     {/* Mockup URL */}
                     <div style={{ marginBottom: '1rem' }}>
                       <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--gray)', marginBottom: '0.375rem' }}>
-                        Mockup URL <span style={{ color: 'var(--gray)', fontWeight: 400 }}>(optional — revised design link)</span>
+                        Mockup URL <span style={{ color: 'var(--gray)', fontWeight: 400 }}>(optional - revised design link)</span>
                       </label>
                       <input
                         type="url"

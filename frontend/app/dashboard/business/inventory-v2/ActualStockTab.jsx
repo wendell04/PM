@@ -111,7 +111,7 @@ function StockOutModal({ open, onClose, material, currentStock, materialBatches,
             </div>
             {availBatches.map(b => (
               <label key={b.id} style={{ display:'grid', gridTemplateColumns:'1fr auto auto auto', gap:'8px', alignItems:'center', padding:'9px 12px', cursor:'pointer', borderTop:'1px solid var(--border)', background: batchId === b.id ? 'var(--gold-subtle)' : 'var(--dark)', transition:'background .1s' }}>
-                <span style={{ fontSize:'12px', fontFamily:'monospace', color:'var(--gray-light)' }}>{b.invoiceNo || '—'}</span>
+                <span style={{ fontSize:'12px', fontFamily:'monospace', color:'var(--gray-light)' }}>{b.invoiceNo || '-'}</span>
                 <span style={{ fontSize:'12px', color:'var(--gray)' }}>{b.date}</span>
                 <span style={{ fontSize:'12px', fontWeight:600, textAlign:'right', color: b.remainingQty <= 10 ? '#b45309' : '#2e7d32' }}>{b.remainingQty} {material?.unit}</span>
                 <input type="radio" name="batchPick" value={b.id} checked={batchId === b.id}
@@ -363,7 +363,7 @@ export default function ActualStockTab({ materials, batches, setBatches, badOrde
                 return (
                   <tr key={s.id} style={S.tr} onMouseEnter={e => e.currentTarget.style.background='var(--dark2)'} onMouseLeave={e => e.currentTarget.style.background=''}>
                     <td style={{ ...S.td, whiteSpace:'nowrap' }}>{formatDate(s.date)}</td>
-                    <td style={{ ...S.td, fontFamily:'monospace', fontSize:'12px', color:'var(--gray)' }}>{s.ref || '—'}</td>
+                    <td style={{ ...S.td, fontFamily:'monospace', fontSize:'12px', color:'var(--gray)' }}>{s.ref || '-'}</td>
                     <td style={S.td}>
                       <span style={{ background: isProduction ? '#f0f4ff' : isSale ? '#f0fdf4' : isLoss ? '#fee2e2' : 'var(--dark2)', color: isProduction ? '#1e40af' : isSale ? '#166534' : isLoss ? '#991b1b' : 'var(--gray-light)', borderRadius:'5px', padding:'2px 8px', fontSize:'11px', fontWeight:600 }}>
                         {isProduction ? 'Production' : isSale ? 'Sale' : isLoss ? 'Loss' : 'Adjustment'}

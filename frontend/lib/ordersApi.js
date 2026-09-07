@@ -92,7 +92,7 @@ function normalizeOrder(apiOrder) {
   if (items.length === 1) {
     const name    = items[0].product_name || items[0].productName || 'Product';
     const variant = items[0].variantName  || items[0].variant_name || null;
-    productName   = variant ? `${name} — ${variant}` : name;
+    productName   = variant ? `${name} - ${variant}` : name;
   } else if (items.length > 1) {
     const names       = items.map(i => i.product_name || i.productName || 'Product');
     const uniqueNames = [...new Set(names)];
@@ -341,7 +341,7 @@ export async function updateOrderStatusNew(orderId, status, token) {
 }
 
 /**
- * Update order (admin) — maps to PATCH /orders/{id}/status
+ * Update order (admin) - maps to PATCH /orders/{id}/status
  * Accepts a partial order object; only orderStatus is sent to backend.
  * @param {string} orderId
  * @param {Object} updatedOrder - { orderStatus: string, ...rest ignored by backend }
@@ -411,7 +411,7 @@ export async function updateJobOrderStatus(joId, joStatus, token) {
     }
   } catch (error) {
     console.error('Error updating job order status:', error);
-    // Non-fatal — do not rethrow. Order status update already succeeded.
+    // Non-fatal - do not rethrow. Order status update already succeeded.
   }
 }
 

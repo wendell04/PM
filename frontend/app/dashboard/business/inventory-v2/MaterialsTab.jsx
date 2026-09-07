@@ -524,7 +524,7 @@ export default function MaterialsTab({ materials, setMaterials, vendors, setVend
           <Field label="Lead Time (days)">
             <IntegerInput value={form.leadTime} onChange={v => setF('leadTime', v)} placeholder="7" />
             <div style={{ fontSize:'11px', color:'var(--gray)', marginTop:'4px' }}>
-              How long replenishment takes — used to compute the reorder point in the Forecast page.
+              How long replenishment takes - used to compute the reorder point in the Forecast page.
             </div>
           </Field>
 
@@ -583,7 +583,7 @@ export default function MaterialsTab({ materials, setMaterials, vendors, setVend
         materials={materials}
       />
 
-      {/* Quick-add vendor — conditional render so state resets with current category on each open */}
+      {/* Quick-add vendor - conditional render so state resets with current category on each open */}
       {showQVendor && (
         <QuickAddVendorModal
           open={showQVendor}

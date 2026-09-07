@@ -188,7 +188,7 @@ export default function QuoteCheckoutPage() {
   if (quote.convertedOrderId) {
     return <div className="shop-container" style={{ maxWidth: 640, margin: '0 auto', padding: '3rem 1rem', textAlign: 'center' }}>
       <p style={{ fontWeight: 700, marginBottom: 6 }}>This quote is already an order</p>
-      <p style={{ color: 'var(--gray)', fontSize: '.88rem', marginBottom: 16 }}>You&apos;ve paid for this quote — track it in your orders.</p>
+      <p style={{ color: 'var(--gray)', fontSize: '.88rem', marginBottom: 16 }}>You&apos;ve paid for this quote - track it in your orders.</p>
       <Link href="/shop/orders-history" style={{ color: '#2563eb', fontWeight: 700, textDecoration: 'none' }}>Go to My Orders &rarr;</Link>
     </div>;
   }
@@ -219,7 +219,7 @@ export default function QuoteCheckoutPage() {
       )}
 
       <div className="quote-checkout-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,340px)', gap: 16, alignItems: 'start' }}>
-        {/* LEFT — address + payment choice */}
+        {/* LEFT - address + payment choice */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <section style={{ background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: 12, padding: 14 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
@@ -275,7 +275,7 @@ export default function QuoteCheckoutPage() {
                 </div>
                 {selectedAddress && (!selectedAddress.lat || !selectedAddress.lng) && (
                   <p style={{ color: '#b45309', fontSize: '.78rem', margin: '8px 0 0' }}>
-                    This address has no map pin. The seller needs it to book your courier —{' '}
+                    This address has no map pin. The seller needs it to book your courier -{' '}
                     <button onClick={() => setShowPinModal(true)} style={{ background: 'none', border: 'none', color: '#2563eb', fontWeight: 700, cursor: 'pointer', padding: 0, fontSize: '.78rem' }}>
                       pin it now
                     </button>.
@@ -321,7 +321,7 @@ export default function QuoteCheckoutPage() {
           </section>
         </div>
 
-        {/* RIGHT — quote summary */}
+        {/* RIGHT - quote summary */}
         <aside style={{ background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: 12, padding: 14, position: 'sticky', top: 16 }}>
           <span style={{ display: 'block', fontSize: '.74rem', fontWeight: 800, letterSpacing: '.03em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 10 }}>
             Your quote
@@ -469,7 +469,7 @@ export default function QuoteCheckoutPage() {
               border: `1px solid ${isExpired ? '#fecaca' : '#bbf7d0'}` }}>
               {isExpired
                 ? 'This quote has expired. Please ask the seller for a new quote.'
-                : `Quote valid — expires in ${daysLeft} day${daysLeft === 1 ? '' : 's'} (${new Date(quote.expiresAt).toLocaleDateString()}).`}
+                : `Quote valid - expires in ${daysLeft} day${daysLeft === 1 ? '' : 's'} (${new Date(quote.expiresAt).toLocaleDateString()}).`}
             </div>
           )}
           {!alreadyPaid && (

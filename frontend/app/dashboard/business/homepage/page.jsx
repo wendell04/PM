@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * HOMEPAGE CMS — landing page by section.
+ * HOMEPAGE CMS - landing page by section.
  * Hero = TWO lists (Taglines + Hero Images), reusing the banners collection via a
  * `heroRole` discriminator. The live hero pairs tagline[i%T] + image[i%I].
  * Shop promo strips live in the separate Banners module.
@@ -57,7 +57,7 @@ const SEED_IMAGES = [
   ['Caps', '/products/Caps.jpg', 'center 60%'],
 ];
 
-// Mirrors the landing's hardcoded pricing — owner starts from these, then edits.
+// Mirrors the landing's hardcoded pricing - owner starts from these, then edits.
 const DEFAULT_PRICING = [
   { category: 'T-Shirt Printing', startingAt: '₱300', note: 'Final cost depends on quantity, design, material & panel print.' },
   { category: 'DTF Printing', startingAt: '₱250', note: 'Per meter. Final cost depends on quantity.' },
@@ -72,12 +72,12 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
 
 const DEFAULT_WHYUS = [
   { title: 'Affordable Pricing', desc: 'Premium prints at prices that make sense. No hidden fees, no overpricing.' },
-  { title: 'Fast Turnaround', desc: 'Most orders ready within 24–48 hours. Rush orders? We can make it work.' },
+  { title: 'Fast Turnaround', desc: 'Most orders ready within 24-48 hours. Rush orders? We can make it work.' },
   { title: 'Design Assistance', desc: 'No designer? No problem. Request a design and our team will create it for you.' },
-  { title: 'Approval Before Print', desc: 'You see and approve the final design before we print — 100% satisfaction guaranteed.' },
+  { title: 'Approval Before Print', desc: 'You see and approve the final design before we print - 100% satisfaction guaranteed.' },
 ];
 const DEFAULT_HIW = [
-  { title: 'Browse Products', desc: 'Explore our full catalogue of personalizable items — shirts, mugs, bags, stickers, and more.' },
+  { title: 'Browse Products', desc: 'Explore our full catalogue of personalizable items - shirts, mugs, bags, stickers, and more.' },
   { title: 'Personalize It', desc: 'Add your name, message, or upload a design. We handle every detail to make it uniquely yours.' },
   { title: 'Place Your Order', desc: 'Review your item and check out. We confirm every order and send a proof before production.' },
   { title: 'Receive & Enjoy', desc: 'Your personalized item is crafted with care and delivered straight to your door.' },
@@ -245,7 +245,7 @@ export default function HomepageCmsPage() {
     },
   });
 
-  // ── Pricing cards (CMS — site_content key 'pricing'; falls back to defaults) ──
+  // ── Pricing cards (CMS - site_content key 'pricing'; falls back to defaults) ──
   const [pricing, setPricing] = useState(null);
   useEffect(() => {
     fetch(`${API_URL}/api/storefront/content/pricing`)
@@ -265,7 +265,7 @@ export default function HomepageCmsPage() {
         body: JSON.stringify({ data: { cards: pricing } }),
       });
       if (!r.ok) throw new Error((await r.json().catch(() => ({}))).message || 'Save failed');
-      setModal({ type: 'success', title: 'Saved', message: 'Pricing updated — live on the homepage.' }); setTimeout(() => setModal(null), 1400);
+      setModal({ type: 'success', title: 'Saved', message: 'Pricing updated - live on the homepage.' }); setTimeout(() => setModal(null), 1400);
     } catch (err) { setModal({ type: 'error', title: 'Save Failed', message: err.message }); }
     finally { setBusy(false); }
   };
@@ -287,7 +287,7 @@ export default function HomepageCmsPage() {
     try {
       const r = await fetch(`${API_URL}/api/admin/content/${key}`, { method: 'PUT', headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ data }) });
       if (!r.ok) throw new Error((await r.json().catch(() => ({}))).message || 'Save failed');
-      setModal({ type: 'success', title: 'Saved', message: msg || 'Saved — live on the homepage.' }); setTimeout(() => setModal(null), 1400);
+      setModal({ type: 'success', title: 'Saved', message: msg || 'Saved - live on the homepage.' }); setTimeout(() => setModal(null), 1400);
     } catch (err) { setModal({ type: 'error', title: 'Save Failed', message: err.message }); }
     finally { setBusy(false); }
   };
@@ -339,7 +339,7 @@ export default function HomepageCmsPage() {
                 <button onClick={() => save('tag')} disabled={busy} style={{ ...inp, width: 'auto', cursor: 'pointer', background: 'transparent', fontWeight: 600, opacity: 1 }}>Save</button>
                 <button onClick={() => togglePub('tag')} disabled={busy} style={pubBtn(tagLive)}>{tagLive ? 'Unpublish' : 'Publish'}</button>
               </div>
-              {tagLive && <div style={{ fontSize: '0.72rem', color: 'var(--gold)' }}>● Live — saving applies to the homepage immediately.</div>}
+              {tagLive && <div style={{ fontSize: '0.72rem', color: 'var(--gold)' }}>● Live - saving applies to the homepage immediately.</div>}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }} className="hp-2col">
                 <div><label style={lbl}>Name (internal)</label><input style={inp} value={editTag.name || ''} onChange={e => setT('name', e.target.value.slice(0, 50))} maxLength={50} /></div>
                 <div><label style={lbl}>Tag pill</label><input style={inp} value={editTag.tag || ''} onChange={e => setT('tag', e.target.value.slice(0, 40))} maxLength={40} /></div>
@@ -375,8 +375,8 @@ export default function HomepageCmsPage() {
                       <button type="button" onClick={() => setParts([...parts, { text: '', color: 'gold', newLine: false }])} style={{ padding: '0.45rem 0.8rem', borderRadius: 6, border: '1px dashed var(--border)', background: 'transparent', color: 'var(--white)', fontSize: '0.78rem', cursor: 'pointer' }}>+ Add part</button>
                       <span style={{ fontSize: '0.72rem', color: 'var(--gray)' }}>Each part is one color. White = normal text. Toggle ⏎ to start a new line. Same word twice in different colors = just two parts.</span>
                     </div>
-                    {dupIdx > -1 && <div style={{ marginTop: 6, fontSize: '0.72rem', color: 'var(--gold)' }}>Note: parts {dupIdx} &amp; {dupIdx + 1} are the same word in the same color — fine if intentional, but you may have meant different colors.</div>}
-                    {darkParts.length > 0 && <div style={{ marginTop: 6, fontSize: '0.72rem', color: '#f59e0b' }}>Low contrast: part{darkParts.length > 1 ? 's' : ''} {darkParts.join(', ')} use a dark color that may be hard to read on the hero — pick a lighter shade.</div>}
+                    {dupIdx > -1 && <div style={{ marginTop: 6, fontSize: '0.72rem', color: 'var(--gold)' }}>Note: parts {dupIdx} &amp; {dupIdx + 1} are the same word in the same color - fine if intentional, but you may have meant different colors.</div>}
+                    {darkParts.length > 0 && <div style={{ marginTop: 6, fontSize: '0.72rem', color: '#f59e0b' }}>Low contrast: part{darkParts.length > 1 ? 's' : ''} {darkParts.join(', ')} use a dark color that may be hard to read on the hero - pick a lighter shade.</div>}
                     <div style={{ marginTop: 10 }}>
                       <label style={lbl}>Preview</label>
                       <div style={{ background: 'linear-gradient(135deg,#0f0f0f,#1f1f1f)', borderRadius: 8, padding: '0.9rem 1rem', fontSize: '1.4rem', fontWeight: 800, lineHeight: 1.25 }}>
@@ -418,7 +418,7 @@ export default function HomepageCmsPage() {
                   <button onClick={() => save('img')} disabled={busy} style={{ ...inp, width: 'auto', cursor: 'pointer', background: 'transparent', fontWeight: 600, opacity: 1 }}>Save</button>
                   <button onClick={() => togglePub('img')} disabled={busy} style={pubBtn(imgLive)}>{imgLive ? 'Unpublish' : 'Publish'}</button>
                 </div>
-                {imgLive && <div style={{ fontSize: '0.72rem', color: 'var(--gold)' }}>● Live — saving applies to the homepage immediately.</div>}
+                {imgLive && <div style={{ fontSize: '0.72rem', color: 'var(--gold)' }}>● Live - saving applies to the homepage immediately.</div>}
                 <div><label style={lbl}>Label (internal)</label><input style={inp} value={editImg.name || ''} onChange={e => setI('name', e.target.value.slice(0, 50))} maxLength={50} /></div>
                 <div>
                   <label style={lbl}>Image</label>
@@ -503,7 +503,7 @@ export default function HomepageCmsPage() {
                   <input style={inp} placeholder="Description" value={f.desc || ''} onChange={e => setRow(setWhyus, i, 'desc', e.target.value)} />
                 </div>
               ))}
-              <button onClick={() => saveContent('why_us', { features: whyus }, 'Why-Us updated — live on the homepage.')} disabled={busy} style={{ ...pubBtn(false), alignSelf: 'flex-end' }}>{busy ? 'Saving…' : 'Save'}</button>
+              <button onClick={() => saveContent('why_us', { features: whyus }, 'Why-Us updated - live on the homepage.')} disabled={busy} style={{ ...pubBtn(false), alignSelf: 'flex-end' }}>{busy ? 'Saving…' : 'Save'}</button>
             </div>
           )}
         </div>
@@ -520,7 +520,7 @@ export default function HomepageCmsPage() {
                   <input style={inp} placeholder="Step description" value={s.desc || ''} onChange={e => setRow(setHiw, i, 'desc', e.target.value)} />
                 </div>
               ))}
-              <button onClick={() => saveContent('how_it_works', { steps: hiw }, 'How-It-Works updated — live on the homepage.')} disabled={busy} style={{ ...pubBtn(false), alignSelf: 'flex-end' }}>{busy ? 'Saving…' : 'Save'}</button>
+              <button onClick={() => saveContent('how_it_works', { steps: hiw }, 'How-It-Works updated - live on the homepage.')} disabled={busy} style={{ ...pubBtn(false), alignSelf: 'flex-end' }}>{busy ? 'Saving…' : 'Save'}</button>
             </div>
           )}
         </div>
@@ -550,7 +550,7 @@ export default function HomepageCmsPage() {
                 </div>
               </div>
               <div style={{ gridColumn: '1 / -1', fontSize: '.74rem', color: 'var(--gray)', marginTop: '-.3rem' }}>Leave any social blank to hide that icon on the homepage &amp; footer.</div>
-              <div style={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'flex-end' }}><button onClick={() => saveContent('contact', contact, 'Contact updated — live on the homepage.')} disabled={busy} style={pubBtn(false)}>{busy ? 'Saving…' : 'Save'}</button></div>
+              <div style={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'flex-end' }}><button onClick={() => saveContent('contact', contact, 'Contact updated - live on the homepage.')} disabled={busy} style={pubBtn(false)}>{busy ? 'Saving…' : 'Save'}</button></div>
             </div>
           )}
         </div>
@@ -577,7 +577,7 @@ export default function HomepageCmsPage() {
                 );
               })}
               <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                <button onClick={() => saveContent('payment_methods', { enabled: payment }, 'Payment methods updated — live on the storefront.')} disabled={busy} style={pubBtn(false)}>{busy ? 'Saving…' : 'Save'}</button>
+                <button onClick={() => saveContent('payment_methods', { enabled: payment }, 'Payment methods updated - live on the storefront.')} disabled={busy} style={pubBtn(false)}>{busy ? 'Saving…' : 'Save'}</button>
               </div>
             </div>
           )}
@@ -586,7 +586,7 @@ export default function HomepageCmsPage() {
         {/* Other sections */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }} className="hp-2col">
           <div style={card}><h2 style={cardTitle}>Shop by Collections</h2><p style={{ color: 'var(--gray)', fontSize: '0.85rem', margin: '0 0 1rem', lineHeight: 1.6 }}>Managed in the Collections module (order + per-image focus).</p><Link href="/dashboard/business/collections" style={{ display: 'inline-flex', gap: '0.4rem', padding: '0.55rem 1.1rem', borderRadius: 8, background: 'var(--dark2)', border: '1px solid var(--border)', color: 'var(--white)', textDecoration: 'none', fontSize: '0.82rem', fontWeight: 600 }}>Open Collections →</Link></div>
-          <div style={card}><h2 style={cardTitle}>All set</h2><p style={{ color: 'var(--gray)', fontSize: '0.85rem', margin: 0, lineHeight: 1.6 }}>Every homepage section is editable here — Hero, Work Gallery, Pricing, Why-Us, How It Works &amp; Contact. Saving applies to the live homepage right away.</p></div>
+          <div style={card}><h2 style={cardTitle}>All set</h2><p style={{ color: 'var(--gray)', fontSize: '0.85rem', margin: 0, lineHeight: 1.6 }}>Every homepage section is editable here - Hero, Work Gallery, Pricing, Why-Us, How It Works &amp; Contact. Saving applies to the live homepage right away.</p></div>
         </div>
 
         {modal && (

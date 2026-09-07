@@ -574,7 +574,7 @@ export async function verifyTwoFactorOtp(token, payload) {
 }
 
 /**
- * Setup TOTP — get QR code and secret
+ * Setup TOTP - get QR code and secret
  * @param {string} token - Auth token
  * @returns {Promise<Object>} { secret, qr_code, manual_entry }
  */
@@ -597,7 +597,7 @@ export async function setupTotp(token) {
 }
 
 /**
- * Confirm TOTP setup — verify first code after scanning
+ * Confirm TOTP setup - verify first code after scanning
  * @param {string} token - Auth token
  * @param {string} code  - 6-digit code from authenticator app
  */
@@ -648,7 +648,7 @@ export async function verifyTotp(token, code, rememberMe = false) {
 }
 
 /**
- * Remove TOTP — requires password confirmation
+ * Remove TOTP - requires password confirmation
  * @param {string} token    - Auth token
  * @param {string} password - Current account password
  */
@@ -672,7 +672,7 @@ export async function removeTotp(token, password) {
 }
 
 /**
- * Update 2FA method — 'email' or 'totp'
+ * Update 2FA method - 'email' or 'totp'
  * @param {string} token  - Auth token
  * @param {string} method - 'email' | 'totp'
  */
