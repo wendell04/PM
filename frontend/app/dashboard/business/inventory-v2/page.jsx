@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { S, TabBar, ToastContainer, useToast } from './shared';
 import { loadInventory, loadSuppliers, loadBoms, loadReturns, loadStockOuts, loadAdminProducts } from './api';
@@ -46,6 +46,7 @@ function getSection(tabId) {
 export default function InventoryV2() {
   const { token } = useAuth();
   const searchParams = useSearchParams();
+  const router = useRouter();
 
   const [tab,        setTab]        = useState(() => searchParams.get('tab') || 'materials');
   const [materials,  setMaterials]  = useState([]);
@@ -109,7 +110,14 @@ export default function InventoryV2() {
   return (
     <div style={S.page}>
       <div style={{ marginBottom:'20px' }}>
-        <TabBar tabs={visibleTabs} active={tab} onChange={setTab} />
+        <TabBar tabs={visibleTabs} active={tab} onChange={(t) => {
+          setTab(t);
+          // Put it in the address bar too, so a reload, a Back, and a shared link all return
+          // to the tab that was open instead of the one the URL was last written with.
+          const q = new URLSearchParams(Array.from(searchParams.entries()));
+          q.set('tab', t);
+          router.replace(`?${q.toString()}`, { scroll: false });
+        }} />
       </div>
 
       {tab === 'materials'  && (

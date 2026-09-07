@@ -88,10 +88,6 @@ export default function ToBuyPage() {
 
   return (
     <div style={{ ...S.page, padding: '24px' }}>
-      <div style={{ ...S.rowBetween, marginBottom: '18px', justifyContent: 'flex-end' }}>
-        <button type="button" onClick={load} style={S.btnGhost}>Refresh</button>
-      </div>
-
       <div style={{ ...S.row, marginBottom: '18px' }}>
         <SummaryCard label="Materials to buy" value={totals.totalItems} accent />
         <SummaryCard label="Estimated cost" value={peso(totals.estimatedCost)} />
@@ -109,9 +105,12 @@ export default function ToBuyPage() {
         ))}
       </div>
 
-      {tab === 'materials' && (
-      <SearchBar value={search} onChange={setSearch} placeholder="Search material or supplier…" style={{ marginBottom: '14px', maxWidth: '340px' }} />
-      )}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px', flexWrap: 'wrap' }}>
+        {tab === 'materials' && (
+          <SearchBar value={search} onChange={setSearch} placeholder="Search material or supplier…" style={{ maxWidth: '340px', flex: '1 1 240px' }} />
+        )}
+        <button type="button" onClick={load} style={{ ...S.btnGhost, marginLeft: 'auto' }}>Refresh</button>
+      </div>
 
       {error && (
         <div style={{ ...S.card, borderColor: '#c62828', color: '#e05252', fontSize: '13px' }}>
@@ -187,7 +186,10 @@ export default function ToBuyPage() {
             </div>
             <div style={{ ...S.row, gap: '10px' }}>
               <span style={{ fontSize: '14px', fontWeight: 700, color: 'var(--gold)' }}>{peso(g.cost)}</span>
-              <button type="button" onClick={() => copyList(g)} style={{ ...S.btnSm }}>Copy list</button>
+              <button type="button" onClick={() => copyList(g)} style={{ ...S.btnSm }} title="Copy this list to paste to the supplier">Copy</button>
+              <a href="/dashboard/business/inventory-v2?tab=stockin"
+                style={{ ...S.btnSm, textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}
+                title="Record the delivery once it arrives">Stock In</a>
             </div>
           </div>
 
