@@ -17,17 +17,28 @@ const formatConvTime = (ts) => {
 
 const ChatSidebar = ({ conversations, activeConversation, onSelectConversation, isLoading, onlineUsers = new Set() }) => {
   const [search, setSearch] = useState('');
+  // Contact-form messages from people with no account cannot be answered here, and there is no
+  // account behind them to vouch for who wrote them - so they arrive in volume and they arrive
+  // unverified. Mixed into the customer list they bury the conversations that can actually be
+  // replied to, which is what happened: one thread of test sends sat between two real orders.
+  const [box, setBox] = useState('customers');
+
+  const guests    = useMemo(() => conversations.filter(c => c.other_user?.is_guest), [conversations]);
+  const customers = useMemo(() => conversations.filter(c => !c.other_user?.is_guest), [conversations]);
 
   const filtered = useMemo(() => {
+    const base = box === 'guests' ? guests : customers;
     const q = search.trim().toLowerCase();
-    if (!q) return conversations;
-    return conversations.filter(c =>
+    if (!q) return base;
+    return base.filter(c =>
       (c.other_user?.name || '').toLowerCase().includes(q) ||
+      (c.other_user?.email || '').toLowerCase().includes(q) ||
       (c.last_message || '').toLowerCase().includes(q)
     );
-  }, [conversations, search]);
+  }, [guests, customers, box, search]);
 
-  const totalUnread = conversations.reduce((s, c) => s + (c.unread_count || 0), 0);
+  const totalUnread = customers.reduce((s, c) => s + (c.unread_count || 0), 0);
+  const guestUnread = guests.reduce((s, c) => s + (c.unread_count || 0), 0);
   const onlineCount = conversations.filter(c =>
     onlineUsers.has(c.other_user?.id) || isRecentlySeen(c.other_user?.last_seen_at)
   ).length;
@@ -39,13 +50,36 @@ const ChatSidebar = ({ conversations, activeConversation, onSelectConversation, 
           <div>
             <div className="chat-sidebar-title">Inbox</div>
             <div className="chat-sidebar-meta">
-              {conversations.length} conversation{conversations.length !== 1 ? 's' : ''} · {onlineCount} online
+              {box === 'guests'
+                ? `${guests.length} guest message${guests.length !== 1 ? 's' : ''} · reply by email`
+                : `${customers.length} conversation${customers.length !== 1 ? 's' : ''} · ${onlineCount} online`}
             </div>
           </div>
           {totalUnread > 0 && (
             <span className="chat-total-badge">{totalUnread > 99 ? '99+' : totalUnread}</span>
           )}
         </div>
+        <div style={{ display: 'flex', gap: '6px', margin: '0 0 8px' }}>
+          {[['customers', 'Customers', totalUnread], ['guests', 'Guests', guestUnread]].map(([id, label, unread]) => (
+            <button key={id} type="button" onClick={() => setBox(id)}
+              style={{ flex: 1, padding: '6px 8px', borderRadius: '7px', cursor: 'pointer',
+                fontSize: '0.78rem', fontWeight: box === id ? 700 : 600,
+                background: box === id ? 'var(--gold)' : 'transparent',
+                color: box === id ? '#111' : 'var(--gray)',
+                border: `1px solid ${box === id ? 'var(--gold)' : 'var(--border)'}`,
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px' }}>
+              {label}
+              {unread > 0 && (
+                <span style={{ background: box === id ? 'rgba(0,0,0,0.18)' : 'var(--red)',
+                  color: box === id ? '#111' : '#fff', borderRadius: '999px',
+                  padding: '0 5px', fontSize: '0.68rem', fontWeight: 800 }}>
+                  {unread > 99 ? '99+' : unread}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+
         <div className="chat-search-wrap">
           <svg className="chat-search-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
             <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>

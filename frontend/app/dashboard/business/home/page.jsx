@@ -25,6 +25,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import { S, ICONS, SummaryCard, EmptyState, Note } from '../inventory-v2/shared';
+import { needsJobOrder } from '@/lib/jobOrderEligibility';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 const SSA_API_URL = process.env.NEXT_PUBLIC_SSA_API_URL || 'http://localhost:8001';
@@ -136,10 +137,10 @@ export default function StaffHome() {
       href: '/dashboard/business/orders', tone: 'warn',
     });
 
-    const paidNoJob = open.filter(o =>
-      ['paid', 'partial'].includes(String(o.paymentStatus ?? '')) &&
-      !(o.productionJobs?.length) && !o.joId &&
-      ['processing', 'pending'].includes(st(o)));
+    // Was its own looser rule: paid and in processing, which swept in ready-made orders that
+    // never need a job order and custom ones whose design was not approved yet. It reported five
+    // when two could be created. Same rule as the Job Orders dropdown now.
+    const paidNoJob = open.filter(needsJobOrder);
     if (paidNoJob.length) rows.push({
       n: paidNoJob.length, label: 'paid but no job order yet',
       sub: 'The customer has paid and the clock is running, but nothing has reached the bench.',

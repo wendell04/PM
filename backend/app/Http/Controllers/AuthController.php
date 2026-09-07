@@ -741,12 +741,16 @@ class AuthController extends Controller
 
             $name    = $authUser
                 ? trim(($authUser->firstName ?? '') . ' ' . ($authUser->lastName ?? ''))
-                : htmlspecialchars(strip_tags(trim($request->name)), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+                : strip_tags(trim($request->name));
             if ($name === '') {
-                $name = htmlspecialchars(strip_tags(trim($request->name)), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+                $name = strip_tags(trim($request->name));
             }
             $subject = str_replace(["\r", "\n", "\0"], '', strip_tags(trim($request->subject)));
-            $messageText = htmlspecialchars(strip_tags(trim($request->message)), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+            // strip_tags removes markup; escaping is left to whoever renders it. React and Blade
+            // both escape on output, so doing it here escaped a second time and an apostrophe
+            // reached the admin's screen as &#039;. Stored mangled, it could not be undone at
+            // display time either.
+            $messageText = strip_tags(trim($request->message));
 
             // ── CHAT INTEGRATION ──
             // A guest stays a guest. Matching a stranger's typed address to an account is what

@@ -400,7 +400,7 @@ const ChatWindow = ({ activeConversation, messages, user, isLoading, isAdmin, on
             />
           </div>
         ) : msg.body ? (
-          <div style={{ wordBreak: 'break-word' }}>{msg.body}</div>
+          <div style={{ wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>{msg.body}</div>
         ) : null}
         <div className="bubble-time" style={{ display: 'flex', alignItems: 'center', gap: '4px', justifyContent: 'flex-end' }}>
           {msg.failed ? (

@@ -22,6 +22,7 @@ import { joRisk, RISK_STYLE } from '@/lib/deliveryRisk';
 import { JO_BADGE, JO_STATUSES, JobOrderStatusBadge as StatusBadge, RushBadge, DesignPreview, designUrl, joDocId, fmtJODate, TableSkeleton } from '@/components/dashboard/JobOrderBits';
 import { S, ICONS, SearchBar, SummaryCard, PaginationBar, EmptyState, usePagination, CustomSelect } from '../inventory-v2/shared';
 import { isCodMethod } from '@/lib/paymentMethod';
+import { needsJobOrder } from '@/lib/jobOrderEligibility';
 
 // Backward-scheduling buffers: the JO must FINISH before the delivery promise, leaving room to QC,
 // pack, and ship. Target = (customer need-by || delivery promise) - shipping transit - QC/pack.
@@ -558,26 +559,7 @@ export default function JobOrdersPage() {
   // Only orders that can actually be produced: not already job-ordered, not finished/cancelled,
   // paid (DP/partial/paid or COD), and - for custom - past the design-approval stage.
   // (Custom orders carry their design state in orderStatus until Phase 1b separates it.)
-  const PRE_APPROVAL = ['pending_review', 'pending_design', 'proof_sent', 'revision_requested', 'rejected'];
-  const eligibleOrders = orders.filter(o => {
-    if (o.joId) return false;
-    const st = normalizeStatus(o.orderStatus);
-    if (['delivered', 'cancelled', 'returned'].includes(st)) return false;
-    const isCOD = isCodMethod(o.paymentMethod);
-    const paid = isCOD || ['partial', 'paid'].includes(o.paymentStatus) || Number(o.downPayment) > 0;
-    if (!paid) return false;
-    const isCustom = o.isCustomOrder ?? o.isCustom;
-    const rawStatus = String(o.orderStatus || '').toLowerCase().replace(/[\s-]+/g, '_');
-    if (isCustom && PRE_APPROVAL.includes(rawStatus)) return false;
-    // designStatus is the real artwork gate (mirrors JobOrderController Gate 2). Only a custom
-    // order whose design is approved may be produced - keeps this list from showing orders that
-    // would then fail on Create Job Order.
-    if (isCustom && o.designStatus && o.designStatus !== 'approved') return false;
-    // Must need a production run: customizable or made-to-order. Ready-made stocked items (e.g. a
-    // plain Scrunchie) ship from stock - no Job Order. Material is still deducted at order time.
-    if (!(o.items || []).some(it => it.isCustom || it.isMadeToOrder)) return false;
-    return true;
-  });
+  const eligibleOrders = orders.filter(needsJobOrder);
 
   const counts = {
     total:      jobOrders.length,

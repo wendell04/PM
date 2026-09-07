@@ -1222,6 +1222,9 @@
   font-size: 0.875rem;
   line-height: 1.55;
   word-break: break-word;
+  /* A message written across several lines arrived as one run-on line: HTML collapses newlines,
+     and the contact form stores "Subject: X" with a blank line before the message. */
+  white-space: pre-wrap;
 }
 
 .cw-bubble.me {
