@@ -4656,3 +4656,12 @@ html.light .lp-pinnacle-prod-img { border-color: #e5e5e3; }
     scroll-snap-align: start;
   }
 }
+
+/* Replaces the numbered step list in the account-verification modal. One line of type where
+   three rows of chrome used to be, which is most of why that modal read as a form. */
+.verify-hint {
+  margin: 10px 0 4px;
+  text-align: center;
+  font-size: 0.78rem;
+  color: var(--gray);
+}

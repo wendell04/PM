@@ -18,6 +18,7 @@ import RegisterForm from '@/components/auth/RegisterForm';
 import { PasswordGuide } from '@/components/auth/PasswordGuide';
 import '@/components/custom-styles.css';
 import useLockBodyScroll from '@/lib/useLockBodyScroll';
+import OtpInput from '@/components/auth/OtpInput';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
@@ -3028,16 +3029,17 @@ const handleForgotResetPassword = async () => {
               {registeredEmail}
             </div>
             <div className="verify-code-wrap">
-              <input type="text" className="verify-code-input" placeholder="Enter 6-digit code" maxLength={6}
-                value={verificationCode} onChange={e => setVerificationCode(e.target.value.replace(/\D/g, ''))}/>
+              {/* Was one text box asking for six digits, while the 2FA screen asked the same
+                  question as six boxes that advance, step back and take a pasted code. Same
+                  component in both places now, so they cannot drift again. */}
+              <OtpInput value={verificationCode} onChange={setVerificationCode} autoFocus />
               {verifyError   && <span className="error-message" style={{display:'block',marginTop:'0.4rem',textAlign:'center'}}>{verifyError}</span>}
               {resendSuccess && <span style={{display:'block',fontSize:'0.8rem',color:'var(--color-text-success)',background:'var(--color-background-success)',border:'1px solid var(--color-border-success)',padding:'0.5rem 0.75rem',borderRadius:'6px',marginTop:'0.4rem',textAlign:'center'}}>A new code has been sent to your email.</span>}
             </div>
-            <div className="verify-steps">
-              <div className="verify-step"><div className="verify-step-num">1</div><span>Check your inbox (and spam folder)</span></div>
-              <div className="verify-step"><div className="verify-step-num">2</div><span>Enter the 6-digit code</span></div>
-              <div className="verify-step"><div className="verify-step-num">3</div><span>Click verify to activate your account</span></div>
-            </div>
+            {/* A numbered three-step list explaining "enter the 6-digit code" to someone already
+                looking at the code field is what made this read as a long form rather than a
+                modal. The only part that carried information is the spam folder. */}
+            <p className="verify-hint">Not in your inbox? Check the spam folder.</p>
             <div className="verify-actions">
               <button
                 className="btn-primary verify-login-btn"

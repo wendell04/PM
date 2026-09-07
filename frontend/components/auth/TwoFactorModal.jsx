@@ -396,6 +396,15 @@ function CodeEntry({ token, method, userEmail, persistLogin, onSuccess, onBack, 
   return (
     <div style={overlayStyle}>
       <div style={cardStyle}>
+        {/* The shop's mark, as every other modal on the site carries. Without it this screen -
+            which is the one asking for a security code - looked like it belonged to something
+            else, which is the opposite of what a verification step should feel like. */}
+        <div style={{ display: "flex", justifyContent: "center", marginBottom: "14px" }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logos/PersonalizeMe logo.png" alt="Personalize Me Prints"
+            style={{ width: 54, height: 54, borderRadius: "50%", objectFit: "cover" }} />
+        </div>
+
         {/* Method badge */}
         <div style={{ display: "flex", justifyContent: "center", marginBottom: "18px" }}>
           <div style={{
