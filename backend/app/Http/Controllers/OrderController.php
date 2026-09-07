@@ -1428,10 +1428,16 @@ class OrderController extends Controller
                                 ? 'Your delivery fee for order #' . strtoupper(substr((string) $order->_id, -8))
                                     . ' is ₱' . number_format($newFee, 2) . '. Together with your order this is ₱'
                                     . number_format($onArrival, 2) . ' to hand the rider on arrival.'
-                                : 'Your delivery fee for order #' . strtoupper(substr((string) $order->_id, -8))
-                                    . ' is ₱' . number_format($newFee, 2)
-                                    . '. You can pay this in cash to the rider on delivery, or send it '
-                                    . 'ahead via GCash or Maya. It is separate from the item total.',
+                                : ($stillDue > 0.009
+                                    ? 'Your delivery fee for order #' . strtoupper(substr((string) $order->_id, -8))
+                                        . ' is ₱' . number_format($newFee, 2) . '. Your order balance of ₱'
+                                        . number_format($stillDue, 2) . ' is paid here in My Orders, separately '
+                                        . 'from this - the rider only collects the delivery.'
+                                    : 'Your delivery fee for order #' . strtoupper(substr((string) $order->_id, -8))
+                                        . ' is ₱' . number_format($newFee, 2)
+                                        . '. You can pay this in cash to the rider on delivery, or send it '
+                                        . 'ahead - message us for our GCash or Maya details. It is separate '
+                                        . 'from the item total.'),
                             'is_read'    => false,
                             'data'       => ['orderId' => (string) $order->_id, 'courierFee' => $newFee],
                             'created_at' => now(),
@@ -1444,11 +1450,20 @@ class OrderController extends Controller
                                     . number_format($newFee, 2) . '. Your order is P' . number_format($stillDue, 2)
                                     . ', so please have P' . number_format($onArrival, 2) . ' ready for the rider '
                                     . 'on arrival - one payment covers both. If you would rather send the delivery '
-                                    . 'part ahead by GCash or Maya, message us here and we will confirm it.'
-                                : 'Your order has been booked with a third-party courier. The delivery fee is P'
-                                    . number_format($newFee, 2) . '. You can hand this to the rider in cash on '
-                                    . 'delivery, or send it ahead via GCash or Maya and we will confirm here. '
-                                    . 'This is the courier\'s charge - it is not part of the item total you already paid.',
+                                    . 'part ahead, message us here for our GCash or Maya details and we will '
+                                    . 'confirm it.'
+                                : ($stillDue > 0.009
+                                    ? 'Your order has been booked with a third-party courier. The delivery fee is P'
+                                        . number_format($newFee, 2) . ', and it is separate from your order. Your '
+                                        . 'order balance of P' . number_format($stillDue, 2) . ' is still open and '
+                                        . 'is paid here in My Orders - the rider collects only the P'
+                                        . number_format($newFee, 2) . ' delivery. You can hand that to the rider in '
+                                        . 'cash, or send it ahead - message us here for our GCash or Maya details.'
+                                    : 'Your order has been booked with a third-party courier. The delivery fee is P'
+                                        . number_format($newFee, 2) . '. You can hand this to the rider in cash on '
+                                        . 'delivery, or send it ahead - message us here for our GCash or Maya '
+                                        . 'details and we will confirm it. This is the courier\'s charge '
+                                        . '- it is not part of the item total you already paid.'),
                             ['courierFee' => $newFee]
                         );
 
