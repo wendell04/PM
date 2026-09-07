@@ -20,6 +20,13 @@ COPY Caddyfile /etc/caddy/Caddyfile
 RUN mkdir -p storage/framework/{sessions,views,cache,testing} storage/logs bootstrap/cache \
     && chmod -R 777 storage bootstrap/cache
 
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
 EXPOSE 80 443 8080
 
+# The entrypoint starts Laravel's scheduler beside the web server and then hands over to it, so the
+# container still is the web server - it just is not ONLY the web server. Nothing called
+# schedule:run before this, and every scheduled job had never run.
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 CMD ["frankenphp", "run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]
