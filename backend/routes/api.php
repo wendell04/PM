@@ -75,6 +75,13 @@ Route::get('/user', function (Request $request) {
 Route::get('/public/registration-terms', [SettingsController::class, 'publicRegistrationTerms']);
 Route::get('/public/settings', [SettingsController::class, 'public']);
 
+// Read-only mirror of the material check the checkout runs, so a cart can warn about a quantity
+// while the customer is still looking at the line rather than after the address form. Kept out of
+// the 60/min product group and given room of its own: it fires as someone edits a quantity, and
+// with no TrustProxies every limiter here is one shared bucket - a busy cart would lock the shop
+// out of its own catalogue.
+Route::post('/cart/availability', [OrderController::class, 'cartAvailability'])->middleware('throttle:240,1');
+
 // ─── Products (Public — no auth required) ────────────────────────────────────
 Route::middleware('throttle:60,1')->group(function () {
     Route::get('/products/search',        [ProductController::class, 'search']);

@@ -227,6 +227,42 @@ export default function CartPage() {
     : 0;
   const selectedTotal = selectedBaseTotal + selectedDesignFee;
 
+  // The checkout refuses a cart that needs more material than the shop has, and it has to - that is
+  // the only moment the claim can be made atomically. But being refused there means being refused
+  // after the address, the delivery speed and the payment method, over a quantity that was never
+  // possible. This asks the same question read-only so the answer arrives while the line that
+  // caused it is still on screen. Advisory by nature: someone else can take the last of it between
+  // here and checkout, which is why the real refusal stays where it is.
+  const [shortages, setShortages] = useState([]);
+
+  const checkKey = selectedCartItems
+    .map(i => `${i.product?._id ?? ''}:${i.variantId ?? ''}:${i.qty}`)
+    .join('|');
+
+  useEffect(() => {
+    if (!checkKey) { setShortages([]); return; }
+    let dropped = false;
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetchWithTimeout(`${API_URL}/api/cart/availability`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            items: selectedCartItems.map(i => ({
+              productId: i.product?._id,
+              variantId: i.variantId ?? null,
+              qty: i.qty,
+            })),
+          }),
+        }, 12000);
+        const d = await res.json().catch(() => ({}));
+        if (dropped || !res.ok) return;
+        setShortages((d?.data ?? d)?.shortages ?? []);
+      } catch { /* a helper that fails stays quiet - it must never block a cart */ }
+    }, 700);
+    return () => { dropped = true; clearTimeout(timer); };
+  }, [checkKey]);
+
   const handleRemoveItem = (lineId, index) => {
     setRemovingId(lineId);
     if (removeTimerRef.current) clearTimeout(removeTimerRef.current);
@@ -834,6 +870,25 @@ export default function CartPage() {
               />
               <span style={{ display: 'block', textAlign: 'right', fontSize: '.7rem', color: 'var(--gray)' }}>{notes.length}/500</span>
             </div>
+
+            {shortages.length > 0 && (
+              <div style={{
+                marginTop: 12, padding: '10px 12px', borderRadius: 9,
+                background: 'rgba(180,83,9,0.08)', border: '1px solid rgba(180,83,9,0.35)',
+              }}>
+                <div style={{ fontSize: '.8rem', fontWeight: 700, color: '#b45309', marginBottom: 4 }}>
+                  This is more than we can make right now
+                </div>
+                {shortages.map((m, i) => (
+                  <div key={i} style={{ fontSize: '.76rem', color: 'var(--gray)', lineHeight: 1.6 }}>
+                    {m.name}: {m.available}{m.uom ? ` ${m.uom}` : ''} available, this cart needs {m.needed}{m.uom ? ` ${m.uom}` : ''}
+                  </div>
+                ))}
+                <div style={{ fontSize: '.76rem', color: 'var(--gray)', marginTop: 5, lineHeight: 1.5 }}>
+                  Lower a quantity or untick a line. Checkout will refuse it as it stands.
+                </div>
+              </div>
+            )}
 
             <button
               onClick={handlePlaceOrder}

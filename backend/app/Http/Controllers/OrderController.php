@@ -2318,6 +2318,68 @@ class OrderController extends Controller
     }
 
     /**
+     * POST /api/cart/availability
+     *
+     * What a cart would be refused for, before the customer has typed an address.
+     *
+     * The gate itself lives at order creation, where it has to be - that is the only moment a
+     * claim can be made atomically. But finding out there means finding out after the delivery
+     * address, the delivery speed and the payment method, which is a bad place to learn that a
+     * quantity was never possible. This asks the same question read-only, so the cart can say so
+     * while the customer is still looking at the line they would change.
+     *
+     * Read-only and approximate by nature: someone else can take the last boxes between this call
+     * and checkout. That is why the real refusal stays where it is.
+     */
+    public function cartAvailability(Request $request)
+    {
+        try {
+            $items = $request->input('items', []);
+            if (!is_array($items) || empty($items)) {
+                return $this->successResponse('Nothing to check.', ['ok' => true, 'shortages' => []]);
+            }
+
+            // Same shape MaterialClaim reads at checkout, so the two cannot answer differently.
+            $lines = [];
+            foreach (array_slice($items, 0, 50) as $item) {
+                $qty = (int) ($item['qty'] ?? 0);
+                if ($qty <= 0) continue;
+                $lines[] = [
+                    'productId' => $item['productId'] ?? null,
+                    'variantId' => $item['variantId'] ?? null,
+                    'qty'       => $qty,
+                ];
+            }
+
+            $shortages = [];
+            foreach (MaterialClaim::demandOf($lines) as $invId => $needed) {
+                $inv = Inventory::find($invId);
+                if (!$inv) continue;
+
+                $available = max(0, (int) ($inv->stockQty ?? 0) - (int) ($inv->reservedQty ?? 0));
+                if ($needed <= $available) continue;
+
+                $shortages[] = [
+                    'name'      => $inv->name,
+                    'uom'       => $inv->uom,
+                    'available' => $available,
+                    'needed'    => (int) $needed,
+                    'short'     => (int) $needed - $available,
+                ];
+            }
+
+            return $this->successResponse('Availability checked.', [
+                'ok'        => empty($shortages),
+                'shortages' => $shortages,
+            ]);
+        } catch (\Exception $e) {
+            // Never break a cart over a check that only exists to be helpful.
+            Log::warning('cartAvailability failed', ['error' => $e->getMessage()]);
+            return $this->successResponse('Availability unavailable.', ['ok' => true, 'shortages' => []]);
+        }
+    }
+
+    /**
      * GET /api/admin/orders/{id}/cancel-settlement
      *
      * What cancelling this order would do to inventory, per material. Read-only - it decides
