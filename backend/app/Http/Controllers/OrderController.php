@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use App\Events\OrderStatusUpdated;
 use App\Mail\AdminNewOrderMail;
 use App\Mail\DeliveryFeeMail;
+use App\Mail\ProofReadyMail;
+use App\Mail\PaymentReceivedMail;
 use App\Mail\OrderConfirmationMail;
 use App\Mail\OrderStatusMail;
 use App\Models\Order;
@@ -2802,6 +2804,29 @@ class OrderController extends Controller
             $order->updatedAt      = now();
             $order->save();
 
+            // Money is the one record a customer may need months later, for a reimbursement or a
+            // dispute, and it should exist somewhere the shop does not control. It also closes the
+            // loop on a GCash or Maya transfer, where until now they had no way of knowing we saw
+            // it. Failure to send must not fail the payment that was already written.
+            try {
+                $to = $order->userSnapshot['email'] ?? null;
+                if ($to) {
+                    $whole = trim((string) ($order->userSnapshot['name'] ?? ''));
+                    $first = $whole !== '' ? explode(' ', $whole)[0] : 'there';
+                    Mail::to($to)->send(new PaymentReceivedMail(
+                        $first,
+                        strtoupper(substr((string) $order->_id, -8)),
+                        (float) $validated['amount'],
+                        (string) $validated['method'],
+                        (float) $totalPaid,
+                        (float) max(0, $balance),
+                        $validated['note'] ?? null
+                    ));
+                }
+            } catch (\Throwable $mailErr) {
+                Log::warning('recordPayment: receipt email failed', ['error' => $mailErr->getMessage()]);
+            }
+
             return $this->successResponse('Payment recorded successfully.', $order);
 
         } catch (\Illuminate\Validation\ValidationException $e) {
@@ -4237,6 +4262,25 @@ class OrderController extends Controller
                     'itemIndex' => is_numeric($itemIndex) ? (int) $itemIndex : null,
                 ]
             );
+
+            // Nothing moves until this is approved - no job order, no production, and on the
+            // deposit model the balance is not even payable yet. A bell notification is seen only
+            // by someone who happens to open the app, so the order could sit still for days with
+            // the shop waiting on a customer who never learned it was their turn.
+            try {
+                $to = $order->userSnapshot['email'] ?? null;
+                if ($to) {
+                    $whole = trim((string) ($order->userSnapshot['name'] ?? ''));
+                    $first = $whole !== '' ? explode(' ', $whole)[0] : 'there';
+                    Mail::to($to)->send(new ProofReadyMail(
+                        $first,
+                        strtoupper(substr((string) $order->_id, -8)),
+                        array_map(fn ($u) => $this->watermarkedProof($u), array_slice($adminDesignUrls, 0, 3))
+                    ));
+                }
+            } catch (\Throwable $mailErr) {
+                Log::warning('adminUploadDesign: proof email failed', ['error' => $mailErr->getMessage()]);
+            }
 
             return $this->successResponse('Design draft uploaded. Customer has been notified.', $order);
 
