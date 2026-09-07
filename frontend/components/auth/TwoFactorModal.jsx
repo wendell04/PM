@@ -323,8 +323,10 @@ function CodeEntry({ token, method, userEmail, persistLogin, onSuccess, onBack, 
           try {
             const dr = await rememberDevice(sessionToken);
             if (dr.device_token) {
-              const storage = persistLogin ? localStorage : sessionStorage;
-              storage.setItem("device_token", dr.device_token);
+              // Always localStorage. This recognises the DEVICE for 90 days and is separate from
+              // how long the login itself lasts - putting it in sessionStorage tied a 90-day
+              // promise to the life of a tab.
+              localStorage.setItem("device_token", dr.device_token);
             }
           } catch { /* non-fatal */ }
         }

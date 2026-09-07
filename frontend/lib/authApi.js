@@ -64,7 +64,13 @@ export async function login(credentials) {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(credentials),
+        body: JSON.stringify({
+          // Attached here so every caller gets it - the shop layout was sending it and the
+          // landing page's own login was not, which is why "remember this device" appeared to
+          // work in one place and not the other.
+          device_token: (typeof window !== 'undefined' && localStorage.getItem('device_token')) || null,
+          ...credentials,
+        }),
       },
       30000,
     ); // 30 second timeout

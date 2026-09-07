@@ -17,6 +17,7 @@ import CustomerChatModal from '@/components/chat/CustomerChatModal';
 import RegisterForm from '@/components/auth/RegisterForm';
 import { PasswordGuide } from '@/components/auth/PasswordGuide';
 import '@/components/custom-styles.css';
+import useLockBodyScroll from '@/lib/useLockBodyScroll';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
@@ -77,6 +78,11 @@ const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=
   const [sessionMessage, setSessionMessage] = useState('');
   const [errors, setErrors]             = useState({});
   const [verificationModal, setVerificationModal] = useState(false);
+
+  // Every modal on this page left the landing page scrolling behind it. Declared here rather
+  // than beside `modal`, because the other two flags are defined further down and reading them
+  // earlier is a temporal-dead-zone ReferenceError, not a warning.
+  useLockBodyScroll(!!modal || !!verificationModal || !!tAndCModalOpen);
   const [registeredEmail, setRegisteredEmail]     = useState('');
   const [verificationCode, setVerificationCode]   = useState('');
   const [verifyError, setVerifyError]             = useState('');
