@@ -206,8 +206,10 @@ function QuickViewModal({ product, flashSale, onClose, onToast }) {
     // Sold out on the shelf but still orderable, because the shop said it can restock.
     if (product.allowPreorder && readyNow != null && readyNow <= 0) return { label: 'Pre-order', type: 'gold' };
     if (isOOS) return { label: 'Out of Stock', type: 'red' };
-    if (comboId != null && product.variantAvailableQty?.[comboId] != null) {
-      const n = Number(product.variantAvailableQty[comboId]);
+    // What the shop can actually build today, never the backorder sentinel. Pre-order changes
+    // whether an order is accepted past this number - it does not change the number.
+    if (readyNow != null) {
+      const n = Number(readyNow);
       if (n <= 10) return { label: `Only ${n} left!`, type: 'gold' };
       return { label: `${n} units available`, type: 'gold' };
     }
@@ -751,7 +753,12 @@ function ProductCard({ product, onAddToCart, onQuickView, flashSale }) {
               <div className="shop-stock-img-badge in-stock">In Stock</div>
             );
             const totalStock = (() => {
-              // BOM-computed (from computeAvailability on the API)
+              // canProduce, not availableQty: the latter is 9999 per variant once pre-order is
+              // on, which summed to "29997 PCS" on the card for a mug the shop can make 50 of.
+              const vcp = product.variantCanProduce;
+              if (vcp && Object.keys(vcp).length > 0) {
+                return Object.values(vcp).reduce((s, v) => s + (Number(v) || 0), 0);
+              }
               const vaq = product.variantAvailableQty;
               if (vaq && Object.keys(vaq).length > 0) {
                 return Object.values(vaq).reduce((s, v) => s + (Number(v) || 0), 0);

@@ -1151,9 +1151,15 @@ export default function ProductDetailPage() {
             {!product.isMadeToOrder && (() => {
               const LOW = 10;
               const comboId = resolveCombinationId(selectedVariants);
-              const variantQty = comboId != null && product?.variantAvailableQty?.[comboId] != null
-                ? Number(product.variantAvailableQty[comboId])
-                : null;
+              // canProduce, not availableQty. The latter becomes 9999 per variant once
+              // pre-order is on - a sentinel meaning "no ceiling" living in a field shaped like
+              // a count - and it reached the customer as "9999 units available". Pre-order
+              // changes whether an order is accepted past this figure, not the figure.
+              const variantQty = comboId != null && product?.variantCanProduce?.[comboId] != null
+                ? Number(product.variantCanProduce[comboId])
+                : (comboId != null && product?.variantAvailableQty?.[comboId] != null
+                    ? Number(product.variantAvailableQty[comboId])
+                    : null);
               const displayQty = variantQty ?? product.availableQty ?? null;
 
               const BADGE_GOLD = { color: '#b8922f', background: 'rgba(212,168,67,0.12)', border: '1px solid rgba(212,168,67,0.35)' };
@@ -1167,6 +1173,19 @@ export default function ProductDetailPage() {
                   </div>
                 );
               }
+              // Sold out on the shelf but still orderable, because the shop said it can restock.
+              // This is what pre-order actually changes: the badge and whether the order is
+              // accepted - not the count above it.
+              if (product.allowPreorder && displayQty != null && displayQty <= 0) {
+                return (
+                  <div style={{ display: 'flex' }}>
+                    <span style={{ fontSize: '0.8rem', fontWeight: 700, ...BADGE_GOLD, borderRadius: '999px', padding: '0.25rem 0.75rem' }}>
+                      Pre-order
+                    </span>
+                  </div>
+                );
+              }
+
               if (isOutOfStock) {
                 return (
                   <div style={{ display: 'flex' }}>
