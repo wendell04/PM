@@ -17,14 +17,14 @@ use BaconQrCode\Writer;
 
 class TwoFactorController extends Controller
 {
-    // ─── Send OTP (email only — skips if user chose TOTP) ─────────────────
+    // ─── Send OTP (email only - skips if user chose TOTP) ─────────────────
     public function sendOtp(Request $request)
     {
         try {
             $user   = $request->user();
             $method = $user->two_factor_method ?? 'email';
 
-            // TOTP users use their authenticator app — nothing to send
+            // TOTP users use their authenticator app - nothing to send
             if ($method === 'totp') {
                 return response()->json([
                     'message'  => 'Use your authenticator app to get your code.',
@@ -116,7 +116,7 @@ class TwoFactorController extends Controller
         }
     }
 
-    // ─── Verify OTP (email path — unchanged) ──────────────────────────────
+    // ─── Verify OTP (email path - unchanged) ──────────────────────────────
     public function verifyOtp(Request $request)
     {
         $request->validate(['code' => 'required|string|size:6']);
@@ -191,7 +191,7 @@ class TwoFactorController extends Controller
     /**
      * Mint the real full-access session token after a successful 2FA challenge, and revoke the
      * limited "2fa-pending" token that was used to reach this endpoint. No full-access token
-     * exists until the code is verified — this is what enforces 2FA on the server.
+     * exists until the code is verified - this is what enforces 2FA on the server.
      */
     private function promoteToFullSession(Request $request, $user): string
     {
@@ -208,7 +208,7 @@ class TwoFactorController extends Controller
         return $user->createToken($deviceName, ['*'], $expiresAt)->plainTextToken;
     }
 
-    // ─── TOTP Setup — generate secret + QR code ───────────────────────────
+    // ─── TOTP Setup - generate secret + QR code ───────────────────────────
     public function setupTotp(Request $request)
     {
         try {
@@ -257,7 +257,7 @@ class TwoFactorController extends Controller
         }
     }
 
-    // ─── TOTP Confirm — verify first scan before activating ───────────────
+    // ─── TOTP Confirm - verify first scan before activating ───────────────
     public function confirmTotp(Request $request)
     {
         $request->validate(['code' => 'required|string|digits:6']);
@@ -300,7 +300,7 @@ class TwoFactorController extends Controller
         }
     }
 
-    // ─── TOTP Verify — used at login ──────────────────────────────────────
+    // ─── TOTP Verify - used at login ──────────────────────────────────────
     public function verifyTotp(Request $request)
     {
         $request->validate(['code' => 'required|string|digits:6']);
@@ -349,7 +349,7 @@ class TwoFactorController extends Controller
                 ], 422);
             }
 
-            // Success — reset counters
+            // Success - reset counters
             $user->totp_failed_attempts = 0;
             $user->otp_locked_until     = null;
             $user->save();
@@ -373,7 +373,7 @@ class TwoFactorController extends Controller
         }
     }
 
-    // ─── Remove TOTP — requires password confirmation ─────────────────────
+    // ─── Remove TOTP - requires password confirmation ─────────────────────
     public function removeTotp(Request $request)
     {
         $request->validate(['password' => 'required|string']);
@@ -404,7 +404,7 @@ class TwoFactorController extends Controller
         }
     }
 
-    // ─── Update 2FA method — email or totp ────────────────────────────────
+    // ─── Update 2FA method - email or totp ────────────────────────────────
     public function updateMethod(Request $request)
     {
         $request->validate([

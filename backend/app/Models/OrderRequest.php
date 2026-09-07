@@ -12,7 +12,7 @@ class OrderRequest extends Model
     /**
      * The quote as the CUSTOMER is allowed to see it.
      *
-     * What a job costs us is our negotiating position — it must never reach the
+     * What a job costs us is our negotiating position - it must never reach the
      * customer's copy, and "we don't render it" is not protection when the whole
      * document is one DevTools tab away. Strip it at the source instead.
      */
@@ -108,7 +108,7 @@ class OrderRequest extends Model
      * Canonical line items for a quote.
      *
      * A quote may hold several products (admin builds it in the chat quotation modal), but
-     * customer-raised inquiries — and every quote written before multi-item support — only
+     * customer-raised inquiries - and every quote written before multi-item support - only
      * carry the singular product fields. Both are folded into one shape here so readers
      * never have to care which kind they got. Legacy rows have no stored unit price, so it
      * is derived by peeling the design/delivery fees back off finalPrice.

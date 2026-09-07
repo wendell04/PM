@@ -28,11 +28,11 @@ class IsAdminMiddleware
             return response()->json(['message' => 'Forbidden. Insufficient role.'], 403);
         }
 
-        // No specific roles required — FAIL CLOSED via the central staff gate:
+        // No specific roles required - FAIL CLOSED via the central staff gate:
         // Super Admin / Owner always pass; any other role must be provisioned in
         // the role_permissions registry. Customers and any null/empty/unknown
         // role are denied. Fine-grained per-feature checks still run per-controller
-        // via hasPermission() — this is only the coarse admin-surface gate.
+        // via hasPermission() - this is only the coarse admin-surface gate.
         if (Rbac::isStaff($user)) {
             return $next($request);
         }

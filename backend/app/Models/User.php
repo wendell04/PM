@@ -85,10 +85,10 @@ class User extends Authenticatable
         'two_factor_method'      => 'string',
         'totp_confirmed'         => 'boolean',
         'totp_failed_attempts'   => 'integer',
-        // PII encrypted at rest using APP_KEY — decrypted transparently on read
+        // PII encrypted at rest using APP_KEY - decrypted transparently on read
         'address'                => 'encrypted',
         // phoneNumber intentionally not encrypted: used in uniqueness index queries
-        // totp_secret encrypted — never queried by value, only read per-user
+        // totp_secret encrypted - never queried by value, only read per-user
         'totp_secret'            => 'encrypted',
     ];
 

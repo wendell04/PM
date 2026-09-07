@@ -8,7 +8,7 @@ use App\Support\OrderStatus;
 use Illuminate\Console\Command;
 
 /**
- * Phase 1 — one-time remap of legacy/mixed order statuses to the canonical machine.
+ * Phase 1 - one-time remap of legacy/mixed order statuses to the canonical machine.
  * Idempotent + re-runnable. DRY-RUN by default; pass --apply to write.
  * BACK UP the `orders` collection before running with --apply.
  *
@@ -21,7 +21,7 @@ class MigrateOrderStatuses extends Command
     protected $description = 'Remap legacy order/JO statuses to the canonical status machine (Phase 1).';
 
     // Design states currently kept in orderStatus. Phase 1 LEAVES these as-is (normalize() bridges
-    // them for filtering/badges). Fully separating them into designStatus is Phase 1b — it requires
+    // them for filtering/badges). Fully separating them into designStatus is Phase 1b - it requires
     // updating every read site first, so this migration intentionally skips them.
     private array $designStates = [
         'pending_design', 'pending_review', 'proof_sent',
@@ -53,7 +53,7 @@ class MigrateOrderStatuses extends Command
             $legacyKey = strtolower(trim(str_replace([' ', '-'], '_', (string) $legacy)));
             $changed = false;
 
-            // Skip design states (Phase 1b separates them) — only canonicalize fulfillment casing.
+            // Skip design states (Phase 1b separates them) - only canonicalize fulfillment casing.
             if (in_array($legacyKey, $this->designStates, true)) {
                 $skippedDesign++;
             } else {
@@ -99,7 +99,7 @@ class MigrateOrderStatuses extends Command
             $this->line('orderStatus remaps:');
             foreach ($summary as $k => $n) $this->line("  {$k}  ({$n})");
         }
-        if (!$apply) $this->warn('Dry run only — nothing written. Re-run with --apply after backing up `orders`.');
+        if (!$apply) $this->warn('Dry run only - nothing written. Re-run with --apply after backing up `orders`.');
 
         return self::SUCCESS;
     }

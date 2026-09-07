@@ -292,7 +292,7 @@ class ChatController extends Controller
             }
 
             // Dedupe: ignore a repeat inquiry from the same sender within 20s (the chat widget can
-            // fire the inquiry send more than once). Match on `body` (top-level — reliable in MongoDB,
+            // fire the inquiry send more than once). Match on `body` (top-level - reliable in MongoDB,
             // and identical per product) rather than a nested metadata field. Return the existing one.
             if ($request->type === 'inquiry' && !empty($request->body)) {
                 $existing = Message::where('sender_id', $user->_id)
@@ -331,7 +331,7 @@ class ChatController extends Controller
                 'last_message_at' => now(),
             ]);
 
-            // Broadcast real-time event — NON-FATAL: the message is already persisted above, so a
+            // Broadcast real-time event - NON-FATAL: the message is already persisted above, so a
             // broadcast failure (e.g. the Reverb/websocket server not running) must NOT fail the send.
             try {
                 broadcast(new MessageSent($message))->toOthers();
@@ -455,7 +455,7 @@ class ChatController extends Controller
     }
 
     /**
-     * Heartbeat — keeps last_seen_at fresh while the user has chat open.
+     * Heartbeat - keeps last_seen_at fresh while the user has chat open.
      */
     public function heartbeat(Request $request)
     {

@@ -47,7 +47,7 @@ Broadcast::channel('admin.chat', function ($user) {
     return in_array($user->role ?? null, ['admin', 'owner']);
 });
 
-// Presence channel — tracks who is currently online in chat
+// Presence channel - tracks who is currently online in chat
 Broadcast::channel('presence-online', function ($user) {
     return [
         'id'   => (string)($user->_id ?? $user->id),

@@ -179,7 +179,7 @@ class RealDataSeeder extends Seeder
         // Packaging
         $mMugBox   = $mat(['name'=>'Mug Box White 11oz',             'sku'=>'PKG-MUG-BOX-11',    'uom'=>'pcs', 'cat'=>'Consumables', 'qty'=>100, 'cost'=>5.00,  'min'=>20,  'sup'=>$sup1]);
         $mBadgePkg = $mat(['name'=>'Button Badge OPP Bag 2.25"',     'sku'=>'PKG-BADGE-OPP-225', 'uom'=>'pcs', 'cat'=>'Consumables', 'qty'=>500, 'cost'=>0.50,  'min'=>100, 'sup'=>$sup3]);
-        // Accessories — Scrunchie colors
+        // Accessories - Scrunchie colors
         $mScrchY = $mat(['name'=>'Scrunchie - Yellow', 'sku'=>'ACC-SCRCH-YEL', 'uom'=>'pcs', 'cat'=>'Accessories', 'qty'=>50, 'cost'=>18.00, 'min'=>10, 'sup'=>$sup3]);
         $mScrchO = $mat(['name'=>'Scrunchie - Orange', 'sku'=>'ACC-SCRCH-ORG', 'uom'=>'pcs', 'cat'=>'Accessories', 'qty'=>50, 'cost'=>18.00, 'min'=>10, 'sup'=>$sup3]);
 
@@ -298,7 +298,7 @@ class RealDataSeeder extends Seeder
 
         $bid = fn($b) => $b->_id;
 
-        // Mugs — multi-variant (Ceramic White / Inner Color / Magic Mug)
+        // Mugs - multi-variant (Ceramic White / Inner Color / Magic Mug)
         $pMug = $prod([
             'name'           => 'Custom Mug 11oz',
             'description'    => 'Personalized sublimation-printed mug, 11oz. Choose from Ceramic White, Inner Color, or Magic Mug.',
@@ -323,7 +323,7 @@ class RealDataSeeder extends Seeder
             ]),
         ]);
 
-        // Canvas Totebags — multi-variant per style (3 sizes each)
+        // Canvas Totebags - multi-variant per style (3 sizes each)
         $pBagPlain = $prod([
             'name'           => 'Canvas Totebag - Plain',
             'description'    => 'Custom sublimation-printed canvas totebag, plain. Available in Small (10x12"), Medium (12x14"), and Large (14x16").',
@@ -397,7 +397,7 @@ class RealDataSeeder extends Seeder
             ]),
         ]);
 
-        // Button Badges — multi-variant (Button Pin / Magnet Badge / Keychain Badge)
+        // Button Badges - multi-variant (Button Pin / Magnet Badge / Keychain Badge)
         $pBadge = $prod([
             'name'                => 'Custom Badge 2.25"',
             'description'         => 'Custom-printed badge, 2.25" diameter. Choose from Button Pin, Magnet Badge, or Keychain Badge.',
@@ -498,7 +498,7 @@ class RealDataSeeder extends Seeder
         ]);
         $pMBkm = $prod(['name'=>'Magnetic Bookmark 2.5"', 'description'=>'Custom-printed magnetic bookmark. Maximum size: 2.5".', 'category'=>'Souvenirs', 'subCategoryName'=>'Magnetic Bookmark 2.5"', 'priceType'=>'tiered', 'priceTiers'=>$t([[1,20,30],[21,30,28],[31,50,25],[51,100,23],[101,300,20],[301,500,18],[501,null,15]]), 'bomId'=>$bid($bMBkm), 'requiresDownpayment'=>false, 'downpaymentPercent'=>0]);
 
-        // Stickers & Labels — multi-variant per finish (price per A4 sheet, tiers start at 1-30)
+        // Stickers & Labels - multi-variant per finish (price per A4 sheet, tiers start at 1-30)
         $pSVP = $prod([
             'name'                => 'Vinyl Sticker Waterproof (Kisscut/Diecut)',
             'description'         => 'Waterproof vinyl sticker. Choose from Glossy, Matte, or Transparent. Price per A4 sheet.',
@@ -675,7 +675,7 @@ class RealDataSeeder extends Seeder
         $pHP   = $svc(['name'=>'Heat Press Subcon',    'description'=>'Heat press sublimation subcontracting. Prices start at ₱5 per press. Final cost depends on quantity, design, and panel print.',                       'category'=>'Printing Services', 'subCategoryName'=>'Heat Press Subcon']);
         $pTsh  = $svc(['name'=>'T-Shirt Printing',     'description'=>'Custom t-shirt printing via DTF or sublimation. Prices start at ₱300. Final cost depends on quantity, design, material, and panel print.',           'category'=>'Printing Services', 'subCategoryName'=>'T-Shirt Printing']);
 
-        // Scrunchie — non-customizable, ready-made, color variants
+        // Scrunchie - non-customizable, ready-made, color variants
         $pScrch = $prod([
             'name'                => 'Scrunchie',
             'description'         => 'Plain scrunchie, ready-made. Available in Yellow or Orange. Perfect as an add-on gift item.',

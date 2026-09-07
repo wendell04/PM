@@ -372,7 +372,7 @@ class InventoryController extends Controller
                 $performerId = (string) ($m->performedBy ?? '');
                 $performedBy = ($performerId !== '' && isset($userMap[$performerId]))
                     ? $userMap[$performerId]->name
-                    : '—';
+                    : '-';
                 return [
                     'item'        => $inv ? $inv->name : 'Unknown Item',
                     'qty'         => (int) $m->quantity,

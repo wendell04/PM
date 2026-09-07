@@ -3,9 +3,9 @@
 namespace App\Support;
 
 /**
- * Canonical order FULFILLMENT status (Phase 1 — status machine unification).
+ * Canonical order FULFILLMENT status (Phase 1 - status machine unification).
  * Stored as lowercase codes; UI renders labels. Design proofing lives in `designStatus`,
- * payment in `paymentStatus` — NOT here. normalize() maps any legacy/mixed-case value to a
+ * payment in `paymentStatus` - NOT here. normalize() maps any legacy/mixed-case value to a
  * canonical code so old and new data coexist safely during rollout.
  */
 class OrderStatus
@@ -91,7 +91,7 @@ class OrderStatus
     /**
      * Map any legacy / mixed-case value to a canonical fulfillment code.
      * Legacy custom design states (stored in orderStatus before Phase 1) collapse to their
-     * fulfillment equivalent — the design detail belongs in `designStatus`.
+     * fulfillment equivalent - the design detail belongs in `designStatus`.
      */
     public static function normalize(?string $v): ?string
     {

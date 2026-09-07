@@ -139,7 +139,7 @@ class OrderRequestController extends Controller
         ]);
 
         try {
-            // Inquiry requests are handled entirely via chat / Messenger — skip the "request received" email.
+            // Inquiry requests are handled entirely via chat / Messenger - skip the "request received" email.
             if (($orderRequest->priceType ?? '') !== 'inquiry') {
                 Mail::to($orderRequest->customerEmail)
                     ->send(new OrderSubmittedMail(
@@ -305,7 +305,7 @@ class OrderRequestController extends Controller
             // Push the quote into the customer's chat + an in-app notification so they can pay.
             $this->notifyQuoteInChat($req);
 
-            // Inquiries are a chat-first channel — the quote card above is the notice, no email.
+            // Inquiries are a chat-first channel - the quote card above is the notice, no email.
             if ($req->priceType !== 'inquiry') {
                 try {
                     Mail::to($req->customerEmail)
@@ -468,7 +468,7 @@ class OrderRequestController extends Controller
                     'orderRequestId' => (string) $req->_id,
                     'error'          => $saleErr->getMessage(),
                 ]);
-                // Non-fatal — do not block the status update
+                // Non-fatal - do not block the status update
             }
         }
 
@@ -479,7 +479,7 @@ class OrderRequestController extends Controller
      * GET /my/order-requests
      */
     /**
-     * POST /admin/quotations — the admin builds a quote straight from the chat.
+     * POST /admin/quotations - the admin builds a quote straight from the chat.
      * Creates a CONFIRMED OrderRequest (the RFQ backbone) for the customer, then posts
      * the View & Pay quotation card into their chat. Works whether or not the customer
      * came through the product "Inquire" button (free-text product/service description).
@@ -516,8 +516,8 @@ class OrderRequestController extends Controller
             return $this->errorResponse('Customer not found.', 404);
         }
 
-        // Every line is resolved against the real catalog item so the quote — and the Order it
-        // later converts into — carries ids/thumbnails, not typed strings. Name/thumbnail come
+        // Every line is resolved against the real catalog item so the quote - and the Order it
+        // later converts into - carries ids/thumbnails, not typed strings. Name/thumbnail come
         // from the product; only qty and price are the admin's to set.
         $lineItems     = [];
         $goodsTotal    = 0.0;
@@ -590,12 +590,12 @@ class OrderRequestController extends Controller
         $designFee   = round((float) ($validated['designFee'] ?? 0), 2);
         $deliveryFee = round((float) ($validated['deliveryFee'] ?? 0), 2);
         $total       = round($goodsTotal + $designFee + $deliveryFee, 2);
-        // Absent (blank) means "use the 50% default" — nullable rules drop the key entirely, so it
+        // Absent (blank) means "use the 50% default" - nullable rules drop the key entirely, so it
         // must be coalesced rather than read directly.
         $downPayment = isset($validated['downPayment']) ? round((float) $validated['downPayment'], 2) : null;
 
         // A design the owner attaches to the quote is already the agreed artwork (settled in
-        // chat), so it is marked approved — the converted order skips the proof-approval gate
+        // chat), so it is marked approved - the converted order skips the proof-approval gate
         // and goes straight to production. (Customer-uploaded custom designs are NOT approved
         // here; those still route through review on the product-page custom-order flow.)
         $designUrl   = !empty($validated['designUrl']) ? $validated['designUrl'] : null;
@@ -608,7 +608,7 @@ class OrderRequestController extends Controller
             'customerName'  => trim(($customer->firstName ?? '') . ' ' . ($customer->lastName ?? '')),
             'customerEmail' => $customer->email ?? null,
             'items'         => $lineItems,
-            // Singular mirrors of the first line — kept populated so anything still reading the
+            // Singular mirrors of the first line - kept populated so anything still reading the
             // old fields (list previews, legacy screens) keeps working. lineItems is the truth.
             'productId'        => $first['productId'],
             'productName'      => $first['productName'],
@@ -633,7 +633,7 @@ class OrderRequestController extends Controller
             'designApproved'=> $designUrl ? true : false,
             'status'        => 'confirmed',
             'paymentStatus' => 'unpaid',
-            // Quote validity — after this the customer can no longer pay the quoted price (default 7 days).
+            // Quote validity - after this the customer can no longer pay the quoted price (default 7 days).
             'expiresAt'     => now()->addDays((int) ($validated['expiresInDays'] ?? 7)),
             'statusHistory' => [['status' => 'confirmed', 'at' => now()->toISOString()]],
             'createdAt'     => now(),
@@ -652,7 +652,7 @@ class OrderRequestController extends Controller
     /**
      * Post the confirmed quote into the customer's chat as a quotation card (with a
      * View & Pay CTA deep-links to /shop/checkout/quote/{id}) plus an in-app notification.
-     * Chat-first channel for inquiries — replaces the confirmation email. Best-effort/non-fatal.
+     * Chat-first channel for inquiries - replaces the confirmation email. Best-effort/non-fatal.
      */
     private function notifyQuoteInChat(OrderRequest $req, array $extraMeta = []): void
     {
@@ -664,7 +664,7 @@ class OrderRequestController extends Controller
             }
             $adminId = (string) $admin->_id;
 
-            // Find or create the 1-to-1 conversation (string participants — matches ChatController).
+            // Find or create the 1-to-1 conversation (string participants - matches ChatController).
             $participants = [$customerId, $adminId];
             sort($participants);
             $conversation = Conversation::where('participants', $customerId)->get()

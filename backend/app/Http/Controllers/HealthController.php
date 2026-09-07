@@ -31,7 +31,7 @@ class HealthController extends Controller
         $checks['storage'] = ['status' => $storageOk ? 'ok' : 'error'];
         if (!$storageOk) $allOk = false;
 
-        // Queue — check that the jobs table/collection is reachable
+        // Queue - check that the jobs table/collection is reachable
         try {
             $pending = DB::connection('mongodb')->collection('jobs')->count();
             $checks['queue'] = ['status' => 'ok', 'pending_jobs' => $pending];
@@ -40,7 +40,7 @@ class HealthController extends Controller
             // Queue failure is degraded but not fatal
         }
 
-        // Cache — write + read a test key
+        // Cache - write + read a test key
         try {
             $cacheKey = 'health_check_' . time();
             Cache::put($cacheKey, 'ok', 5);
@@ -51,16 +51,16 @@ class HealthController extends Controller
             $checks['cache'] = ['status' => 'error', 'message' => 'Cache read/write failed'];
         }
 
-        // Mail — check SMTP config is present (does NOT send an actual email)
+        // Mail - check SMTP config is present (does NOT send an actual email)
         $mailConfigured = !empty(config('mail.mailers.smtp.host'))
             && !empty(config('mail.from.address'));
         $checks['mail'] = ['status' => $mailConfigured ? 'ok' : 'misconfigured'];
 
-        // WebSocket / Reverb — check that the broadcasting connection is set
+        // WebSocket / Reverb - check that the broadcasting connection is set
         $broadcastDriver = config('broadcasting.default');
         $checks['broadcast'] = ['status' => 'ok', 'driver' => $broadcastDriver];
 
-        // External API — PayMongo reachability (HEAD request, 3s timeout)
+        // External API - PayMongo reachability (HEAD request, 3s timeout)
         try {
             $response = Http::timeout(3)->head('https://api.paymongo.com');
             $checks['paymongo'] = ['status' => $response->successful() || $response->status() === 401 ? 'ok' : 'degraded'];
@@ -68,7 +68,7 @@ class HealthController extends Controller
             $checks['paymongo'] = ['status' => 'unreachable'];
         }
 
-        // Backup storage — verify last backup is not too old (warn if > 25 hours)
+        // Backup storage - verify last backup is not too old (warn if > 25 hours)
         $backupDir   = storage_path('backups');
         $latestBackup = null;
         if (is_dir($backupDir)) {

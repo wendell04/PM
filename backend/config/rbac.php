@@ -4,7 +4,7 @@
  * Role-Based Access Control configuration.
  *
  * Single place that defines WHO holds system authority, who holds business
- * authority, and — critically — the Super Admin access toggle. All runtime
+ * authority, and - critically - the Super Admin access toggle. All runtime
  * authorization decisions read from here via App\Support\Rbac.
  */
 return [
@@ -15,7 +15,7 @@ return [
     |--------------------------------------------------------------------------
     | Roles treated as system-level Super Admin. `admin` is the LEGACY key for
     | what is being renamed to `superAdmin`; both are recognized so the split
-    | takes effect WITHOUT a forced data migration — existing `admin` accounts
+    | takes effect WITHOUT a forced data migration - existing `admin` accounts
     | keep working and are, from now on, Super Admins.
     */
     'super_admin_roles' => ['superAdmin', 'admin'],
@@ -34,11 +34,11 @@ return [
     | TRUE  (default, development): Super Admin BYPASSES every permission check
     |        and can reach every module. Needed while we build, debug and test.
     |
-    | FALSE (scoped / production):  Super Admin is limited to its REAL job —
+    | FALSE (scoped / production):  Super Admin is limited to its REAL job -
     |        system administration only (users, roles, audit logs, settings).
     |        Business modules then follow normal permission checks.
     |
-    | Driven by env so it can never be flipped by an HTTP request — a security
+    | Driven by env so it can never be flipped by an HTTP request - a security
     | bypass must not be toggleable from the browser. Flip it in .env, then run
     | `php artisan config:clear` (or config:cache) for it to take effect.
     */
@@ -48,7 +48,7 @@ return [
     |--------------------------------------------------------------------------
     | Super Admin scope (used when full access is OFF)
     |--------------------------------------------------------------------------
-    | The permission keys Super Admin keeps when NOT in full-access mode — its
+    | The permission keys Super Admin keeps when NOT in full-access mode - its
     | actual system-administration responsibilities. Everything else is denied.
     */
     'super_admin_scope' => [
@@ -61,7 +61,7 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Business keys (Owner's unrestricted scope — reserved for the Owner-scoping
+    | Business keys (Owner's unrestricted scope - reserved for the Owner-scoping
     | phase; Owner currently retains full access and is unchanged)
     |--------------------------------------------------------------------------
     */
@@ -91,7 +91,7 @@ return [
         'owner'      => 90,
         'administrator' => 70,
         'manager'       => 50,
-        // department staff — target names + current keys
+        // department staff - target names + current keys
         'financeStaff'      => 30,
         'salesStaff'        => 30,
         'productionStaff'   => 30,
@@ -141,7 +141,7 @@ return [
     |--------------------------------------------------------------------------
     | grants: module => 'full' (all actions) | 'view' (view only) | [actions] |
     | 'none' (omitted modules default to none). superAdmin/owner are protected
-    | and NOT seeded here — they bypass via App\Support\Rbac.
+    | and NOT seeded here - they bypass via App\Support\Rbac.
     */
     'role_templates' => [
         'administrator' => [

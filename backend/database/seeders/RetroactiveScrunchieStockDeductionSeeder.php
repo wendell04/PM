@@ -42,11 +42,11 @@ class RetroactiveScrunchieStockDeductionSeeder extends Seeder
             // Skip if this order already has StockHistory records
             $alreadyProcessed = StockHistory::where('orderId', $orderId)->exists();
             if ($alreadyProcessed) {
-                $this->command->warn("Order {$orderId} already has StockHistory records — skipping.");
+                $this->command->warn("Order {$orderId} already has StockHistory records - skipping.");
                 continue;
             }
 
-            $this->command->info("Processing order {$orderId} — {$customerName}");
+            $this->command->info("Processing order {$orderId} - {$customerName}");
 
             foreach ($order->items ?? [] as $item) {
                 $prod      = Product::find($item['productId'] ?? null);
@@ -55,7 +55,7 @@ class RetroactiveScrunchieStockDeductionSeeder extends Seeder
 
                 if (!$prod || stripos($prod->name, 'scrunchie') === false) continue;
 
-                // Resolve BOM — same three-path logic as OrderController
+                // Resolve BOM - same three-path logic as OrderController
                 $bom = null;
                 if (!empty($prod->bomGroupName) && $variantId) {
                     $bom = BillOfMaterial::find($variantId);
@@ -72,7 +72,7 @@ class RetroactiveScrunchieStockDeductionSeeder extends Seeder
                 }
 
                 if (!$bom || empty($bom->components)) {
-                    $this->command->warn("  No BOM found for product {$prod->name} variant {$variantId} — skipping.");
+                    $this->command->warn("  No BOM found for product {$prod->name} variant {$variantId} - skipping.");
                     continue;
                 }
 
@@ -106,7 +106,7 @@ class RetroactiveScrunchieStockDeductionSeeder extends Seeder
                         'productId'    => (string) $prod->_id,
                         'productName'  => $prod->name ?? '',
                         'customerName' => $customerName,
-                        'remarks'      => "Retroactive — Order: {$orderId}",
+                        'remarks'      => "Retroactive - Order: {$orderId}",
                         'createdAt'    => $order->createdAt ?? now(),
                     ]);
 

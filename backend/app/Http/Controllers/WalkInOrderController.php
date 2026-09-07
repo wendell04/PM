@@ -22,7 +22,7 @@ class WalkInOrderController extends Controller
      * Creates an instant walk-in / POS order.
      * - No userId required (walk-in customer)
      * - orderSource = 'walk-in'
-     * - orderStatus  = 'Delivered'  (instant — customer takes goods immediately)
+     * - orderStatus  = 'Delivered'  (instant - customer takes goods immediately)
      * - paymentStatus = 'paid'
      * - paymentMethod = 'cash' | 'gcash'
      * - Immediately creates Sale records + deducts inventory (same as completeOrder)
@@ -39,7 +39,7 @@ class WalkInOrderController extends Controller
             }
 
             $v = Validator::make($request->all(), [
-                // POS contract (frontend) — keep backward-compatible aliases
+                // POS contract (frontend) - keep backward-compatible aliases
                 'customerName'    => 'nullable|string|max:120',
                 'items'           => 'required|array|min:1',
                 'items.*.productId'     => 'required|string',
@@ -85,7 +85,7 @@ class WalkInOrderController extends Controller
                 'deliveryAddress', 'targetDate',
             ]);
 
-            // Build order items — resolve price server-side as a sanity check
+            // Build order items - resolve price server-side as a sanity check
             $orderItems  = [];
             $totalAmount = 0.0;
 

@@ -10,7 +10,7 @@ class SiteContentController extends Controller
 {
     /**
      * GET /api/storefront/content/{key}
-     * Public — returns the section's data, or null if not set (frontend falls
+     * Public - returns the section's data, or null if not set (frontend falls
      * back to its hardcoded default).
      */
     public function show($key)
@@ -25,7 +25,7 @@ class SiteContentController extends Controller
 
     /**
      * PUT /api/admin/content/{key}
-     * Admin — upserts the section's data (an arbitrary JSON object/array).
+     * Admin - upserts the section's data (an arbitrary JSON object/array).
      */
     public function update(Request $request, $key)
     {

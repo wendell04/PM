@@ -35,7 +35,7 @@ class TwoFactorMail extends Mailable
     public function envelope(): Envelope
     {
         return new Envelope(
-            subject: 'Your verification code — Personalize Me Prints',
+            subject: 'Your verification code - Personalize Me Prints',
         );
     }
 

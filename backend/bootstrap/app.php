@@ -60,7 +60,7 @@ return Application::configure(basePath: dirname(__DIR__))
             }
         })->stop();
 
-        // Handle unauthenticated requests — return 401 JSON
+        // Handle unauthenticated requests - return 401 JSON
         // instead of redirecting to non-existent login route
         $exceptions->render(function (AuthenticationException $e, $request) {
             if ($request->is('api/*') || $request->expectsJson()) {
@@ -71,7 +71,7 @@ return Application::configure(basePath: dirname(__DIR__))
             }
         });
 
-        // Database unavailable (MongoDB timeout) — return 503 so clients keep the session
+        // Database unavailable (MongoDB timeout) - return 503 so clients keep the session
         $exceptions->render(function (HttpException $e, $request) {
             if ($e->getStatusCode() === 503 && ($request->is('api/*') || $request->expectsJson())) {
                 return response()->json([

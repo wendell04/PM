@@ -31,7 +31,7 @@ class AppServiceProvider extends ServiceProvider
             \App\Models\PersonalAccessToken::class
         );
 
-        // Login flood limiter — scoped per ACCOUNT (email+IP), not per raw IP, so one stuck tab,
+        // Login flood limiter - scoped per ACCOUNT (email+IP), not per raw IP, so one stuck tab,
         // a 2FA re-submit, or shared network can't lock out a legitimate user. Brute-force is handled
         // by the account lockout in AuthController (3 wrong passwords -> 15-min lock). A loose per-IP
         // ceiling still guards against flooding.
@@ -47,7 +47,7 @@ class AppServiceProvider extends ServiceProvider
             ];
         });
 
-        // Sign-up flood limiter — per IP, env-tunable (default 10/min, a safe production value).
+        // Sign-up flood limiter - per IP, env-tunable (default 10/min, a safe production value).
         // Raise REGISTER_THROTTLE in .env only for a controlled load test (e.g. a shared-IP lab),
         // then revert; the default keeps production protected without any code change. If config is
         // cached and the env var isn't set, it falls back to the secure default.
@@ -60,7 +60,7 @@ class AppServiceProvider extends ServiceProvider
             return Limit::perMinute($perMin)->by($request->ip())->response(fn () => $msg);
         });
 
-        // Email/code verification limiter — per IP, env-tunable (default 10/min). Covers verify-email
+        // Email/code verification limiter - per IP, env-tunable (default 10/min). Covers verify-email
         // and resend-code (the burst right after sign-up). Same test-override behavior via VERIFY_THROTTLE.
         RateLimiter::for('verify', function (Request $request) {
             $perMin = max(1, (int) env('VERIFY_THROTTLE', 10));

@@ -29,7 +29,7 @@ class OrderStatusMail extends Mailable implements ShouldQueue
     public function envelope(): Envelope
     {
         return new Envelope(
-            subject: 'Your Order Status Has Been Updated — Personalize Me Prints',
+            subject: 'Your Order Status Has Been Updated - Personalize Me Prints',
         );
     }
 

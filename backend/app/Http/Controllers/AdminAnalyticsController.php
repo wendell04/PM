@@ -48,7 +48,7 @@ class AdminAnalyticsController extends Controller
                         $name = $o->customerName
                             ?? data_get($o->userSnapshot, 'name')
                             ?? data_get($o->customer, 'name')
-                            ?? '—';
+                            ?? '-';
                         return [
                             '_id'          => (string) $o->_id,
                             'orderId'      => $o->orderId ?? (string) $o->_id,

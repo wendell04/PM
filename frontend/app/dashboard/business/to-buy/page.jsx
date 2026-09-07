@@ -13,6 +13,7 @@
  */
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { S, ICONS, SearchBar, SummaryCard } from '../inventory-v2/shared';
 
@@ -29,7 +30,22 @@ export default function ToBuyPage() {
   // this page said nothing about it. It is a different question - buy the thing, not what it is
   // made of - so it gets its own tab rather than being mixed into the supplier groups.
   const [productRows, setProductRows] = useState([]);
-  const [tab, setTab] = useState('materials');
+  // In the URL like every other tab in this dashboard, so a link to "no material plan" lands
+  // there, the back button steps between them, and a reload does not throw the choice away.
+  const router       = useRouter();
+  const pathname     = usePathname();
+  const searchParams = useSearchParams();
+  const urlTab       = searchParams.get('tab');
+  const [tab, setTab] = useState(urlTab === 'products' ? 'products' : 'materials');
+
+  useEffect(() => {
+    setTab(searchParams.get('tab') === 'products' ? 'products' : 'materials');
+  }, [searchParams]);
+
+  const selectTab = (id) => {
+    setTab(id);
+    router.replace(id === 'materials' ? pathname : pathname + '?tab=' + id, { scroll: false });
+  };
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState('');
   const [search, setSearch]   = useState('');
@@ -96,7 +112,7 @@ export default function ToBuyPage() {
 
       <div style={{ display: 'flex', gap: '6px', marginBottom: '14px' }}>
         {[['materials', `By material (${totals.totalItems})`], ['products', `No material plan (${productRows.length})`]].map(([id, label]) => (
-          <button key={id} type="button" onClick={() => setTab(id)}
+          <button key={id} type="button" onClick={() => selectTab(id)}
             style={{ ...S.btnSm, background: tab === id ? 'var(--gold)' : 'transparent',
               color: tab === id ? '#111' : 'var(--gray)', fontWeight: tab === id ? 700 : 600,
               border: `1px solid ${tab === id ? 'var(--gold)' : 'var(--border)'}` }}>

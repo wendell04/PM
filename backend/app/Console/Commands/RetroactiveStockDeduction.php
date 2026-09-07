@@ -54,7 +54,7 @@ class RetroactiveStockDeduction extends Command
             $customerName = $order->userSnapshot['name'] ?? '';
 
             if (empty($items)) {
-                $this->line("  [SKIP] Order {$orderId} — no items");
+                $this->line("  [SKIP] Order {$orderId} - no items");
                 $skippedOrders++;
                 continue;
             }
@@ -89,7 +89,7 @@ class RetroactiveStockDeduction extends Command
                 }
 
                 if (!$bom || empty($bom->components)) {
-                    $this->line("  [SKIP] {$prod->name} — no BOM linked");
+                    $this->line("  [SKIP] {$prod->name} - no BOM linked");
                     continue;
                 }
 
@@ -131,7 +131,7 @@ class RetroactiveStockDeduction extends Command
                             'productName'  => $prod->name ?? '',
                             'customerName' => $customerName,
                             'performedBy'  => 'system_retroactive',
-                            'remarks'      => 'Retroactive — Order: ' . (string) $order->_id,
+                            'remarks'      => 'Retroactive - Order: ' . (string) $order->_id,
                             'createdAt'    => $order->createdAt ?? now(),
                         ]);
                     }

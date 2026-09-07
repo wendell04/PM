@@ -47,7 +47,7 @@ class VerifyTurnstile
             );
             $success = $resp->ok() && ($resp->json('success') === true);
         } catch (\Throwable $e) {
-            // Cloudflare unreachable — fail open so a network blip doesn't block legitimate sign-ups.
+            // Cloudflare unreachable - fail open so a network blip doesn't block legitimate sign-ups.
             Log::warning('Turnstile verify error (allowing through): ' . $e->getMessage());
             return $next($request);
         }

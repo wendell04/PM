@@ -34,13 +34,13 @@ return [
     ]))),
 
     'allowed_origins_patterns' => array_values(array_filter([
-        // Production domains — always allowed.
+        // Production domains - always allowed.
         '#^https://personalizemeprints\.com$#',
         '#^https://www\.personalizemeprints\.com$#',
-        // Cloudflare Pages preview/branch deployments (*.pages.dev) — anyone can host on these,
+        // Cloudflare Pages preview/branch deployments (*.pages.dev) - anyone can host on these,
         // so with supports_credentials=true they'd be exploitable in production. Allowed only
         // OUTSIDE production (for previews/testing). In production, pin the exact deployed
-        // frontend via FRONTEND_URL (allowed_origins above) — or use the custom domain, which
+        // frontend via FRONTEND_URL (allowed_origins above) - or use the custom domain, which
         // is always allowed above.
         env('APP_ENV') === 'production' ? null : '#^https://[^.]+\.pages\.dev$#',
     ])),

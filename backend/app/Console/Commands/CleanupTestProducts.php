@@ -28,7 +28,7 @@ class CleanupTestProducts extends Command
         $idStrs = $products->map(fn($p) => (string) $p->_id)->toArray();
 
         foreach ($products as $p) {
-            $this->line("Found: {$p->name} — _id={$p->_id}");
+            $this->line("Found: {$p->name} - _id={$p->_id}");
         }
 
         $this->newLine();

@@ -536,7 +536,7 @@ class ProductController extends Controller
 
     /**
      * GET /api/admin/products/{id}
-     * Returns a single product by ID (admin view — includes variantImageUrls and all fields)
+     * Returns a single product by ID (admin view - includes variantImageUrls and all fields)
      */
     public function adminShow(Request $request, $id)
     {
@@ -566,7 +566,7 @@ class ProductController extends Controller
      *
      * Resolved BOM for one product line, enriched with live stock and cost, so a
      * quotation can pre-fill the materials it will actually consume. Resolution goes
-     * through Product::resolveBom() — the same path the payment flow deducts with — so
+     * through Product::resolveBom() - the same path the payment flow deducts with - so
      * what the owner is quoted on cannot drift from what gets taken out of stock.
      */
     public function bomComponents(Request $request, $id)
@@ -588,7 +588,7 @@ class ProductController extends Controller
             $variantPrices = is_array($product->variantPrices ?? null) ? $product->variantPrices : [];
             $basePrice     = (float) ($product->flatPrice ?: $product->price ?: 0);
 
-            // Whatever the owner already configured for this variant — the quote should
+            // Whatever the owner already configured for this variant - the quote should
             // start from it rather than making them retype a price they've already set.
             $priceOf = function ($vid) use ($variantPrices, $basePrice) {
                 return (float) ($variantPrices[$vid] ?? $basePrice);
@@ -621,7 +621,7 @@ class ProductController extends Controller
             }
 
             // A standalone product is just a product with exactly one BOM. Returning it as
-            // a single "variant" keeps the quote UI to ONE shape — a product with one BOM
+            // a single "variant" keeps the quote UI to ONE shape - a product with one BOM
             // and a product with three should not look like different features.
             $single = $variants ? null : $product->resolveBom(null);
             if ($single) {
@@ -634,10 +634,10 @@ class ProductController extends Controller
             return $this->successResponse('BOM components fetched successfully.', [
                 'hasBom'     => (bool) $variants,
                 'variants'   => $variants,
-                // Kept for a service with no BOM at all — nothing to pre-fill, the owner
+                // Kept for a service with no BOM at all - nothing to pre-fill, the owner
                 // searches Master Data by hand.
                 'components' => [],
-                // Quantity breaks the owner already set — the quote applies them as the
+                // Quantity breaks the owner already set - the quote applies them as the
                 // quantity changes instead of making them remember the price list.
                 'priceTiers' => is_array($product->priceTiers ?? null) ? $product->priceTiers : [],
                 'basePrice'  => $basePrice,
@@ -654,7 +654,7 @@ class ProductController extends Controller
      * One BOM described for the quote UI: each component with live stock, lead time and
      * best-known cost, plus how many units the current stock could build.
      *
-     * `canBuild` is null when nothing constrains it — every component is bought per order,
+     * `canBuild` is null when nothing constrains it - every component is bought per order,
      * so capacity is a question of lead time, not of stock on hand.
      */
     private function describeBom($bom, array &$invCache = []): array
@@ -664,7 +664,7 @@ class ProductController extends Controller
 
         foreach ($bom->components ?? [] as $component) {
             // Variants of the same product share most of their materials, so cache the
-            // lookups — a 3-variant mug went from 9 round trips to 4, which matters a lot
+            // lookups - a 3-variant mug went from 9 round trips to 4, which matters a lot
             // when the Atlas connection is slow.
             $invId = (string) ($component['inventoryId'] ?? '');
             if ($invId === '') continue;

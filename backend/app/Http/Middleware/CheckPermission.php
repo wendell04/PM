@@ -7,7 +7,7 @@ use Illuminate\Http\Request;
 use App\Support\Rbac;
 
 /**
- * Route-level permission gate. Requires ANY of the given permission keys —
+ * Route-level permission gate. Requires ANY of the given permission keys -
  * e.g. `permission:banners` or `permission:jobOrders,production` (matching
  * hasAnyPermission semantics for screens that serve more than one role).
  *

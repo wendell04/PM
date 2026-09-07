@@ -35,7 +35,7 @@ class AdminNewOrderMail extends Mailable implements ShouldQueue
     public function envelope(): Envelope
     {
         return new Envelope(
-            subject: 'New Order Received — Personalize Me Prints',
+            subject: 'New Order Received - Personalize Me Prints',
         );
     }
 

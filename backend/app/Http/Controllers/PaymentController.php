@@ -49,7 +49,7 @@ class PaymentController extends Controller
      *
      * Multi-variant products carry a PER-VARIANT BOM (bomGroupName + the variant's
      * BOM id); single products carry one bomId. Stock pre-validation already handled
-     * both, but the deduction pass checked `bomId` only — so per-variant products were
+     * both, but the deduction pass checked `bomId` only - so per-variant products were
      * validated and then never deducted, silently drifting inventory away from reality.
      * Both passes now resolve through here so they can't disagree again.
      */
@@ -198,7 +198,7 @@ class PaymentController extends Controller
                         'error'  => $fileErr->getMessage(),
                         'userId' => (string) $user->_id,
                     ]);
-                    // Non-fatal — order proceeds without file
+                    // Non-fatal - order proceeds without file
                 }
             }
 
@@ -206,7 +206,7 @@ class PaymentController extends Controller
             $shippingFee  = (float) ($validated['shippingFee'] ?? 0);
             $totalAmount += $shippingFee;
 
-            // ── Voucher discount — atomic claim ───────────────────────────
+            // ── Voucher discount - atomic claim ───────────────────────────
             $discountAmount = 0.0;
             $appliedVoucher = null;
 
@@ -433,7 +433,7 @@ class PaymentController extends Controller
                     if ($bom && !empty($bom->components)) {
                         // Made-to-order / custom items RESERVE materials now (consumed at QC pass via the
                         // Job Order). Stocked ready-made items DEDUCT now (no production step). This MUST
-                        // match OrderController@store — deducting stockQty here for a produced item would
+                        // match OrderController@store - deducting stockQty here for a produced item would
                         // double-deduct, because submitQC subtracts it again on QC pass.
                         $producedItem = (bool) ($bomProd->isMadeToOrder ?? false) || (bool) ($bomProd->isCustom ?? false);
                         foreach ($bom->components as $component) {
@@ -500,7 +500,7 @@ class PaymentController extends Controller
                     $lineItem = [
                         'currency' => 'PHP',
                         'amount'   => (int) round(($item['unitPrice'] ?? 0) * 100),
-                        'name'     => ($item['productName'] ?? 'Product') . ($item['variantName'] ? ' — ' . $item['variantName'] : ''),
+                        'name'     => ($item['productName'] ?? 'Product') . ($item['variantName'] ? ' - ' . $item['variantName'] : ''),
                         'quantity' => (int) ($item['qty'] ?? 1),
                     ];
                     if (!empty($item['thumbnail'])) {
@@ -510,7 +510,7 @@ class PaymentController extends Controller
                 }, $orderItems);
             }
 
-            // Delivery fee — only shown when a real fee is set (manually booked courier).
+            // Delivery fee - only shown when a real fee is set (manually booked courier).
             // Omitted entirely when 0 so PayMongo does not display a ₱0 fee row.
             if ($shippingFee > 0) {
                 $pmLineItems[] = [
@@ -548,7 +548,7 @@ class PaymentController extends Controller
                 ]);
 
             if (!$response->successful()) {
-                // Order exists but link failed — log, order stays unpaid
+                // Order exists but link failed - log, order stays unpaid
                 Log::error('PayMongo createLink failed', [
                     'order_id' => $orderId,
                     'status'   => $response->status(),
@@ -654,7 +654,7 @@ class PaymentController extends Controller
     /**
      * POST /api/payment/initiate
      *
-     * Custom payment flow using Payment Intents — bypasses PayMongo hosted checkout.
+     * Custom payment flow using Payment Intents - bypasses PayMongo hosted checkout.
      * paymentType: gcash | paymaya | card
      * paymentMethodId: card PM ID created client-side with the public key (card only)
      */
@@ -1139,7 +1139,7 @@ class PaymentController extends Controller
             $designFeeTotal = $isDesignFeeOnly ? $orderDesignFee : 0.0;
 
             if ($isDesignFeeOnly && $designFeeTotal <= 0) {
-                // designFee not set on product — fall back to full amount
+                // designFee not set on product - fall back to full amount
                 // This prevents charging ₱0 or wrong amount
                 Log::warning('initiatePayment: isDesignFeeOnly=true but designFeeTotal=0', [
                     'orderId' => $orderId,
@@ -1170,7 +1170,7 @@ class PaymentController extends Controller
                         'payment_method_options' => ['card' => ['request_three_d_secure' => 'any']],
                         'currency'               => 'PHP',
                         'capture_type'           => 'automatic',
-                        'description'            => 'Personalize Me Prints — Order #' . strtoupper(substr($orderId, -8)),
+                        'description'            => 'Personalize Me Prints - Order #' . strtoupper(substr($orderId, -8)),
                         'metadata'               => ['order_id' => $orderId],
                     ]]
                 ]);
@@ -1307,7 +1307,7 @@ class PaymentController extends Controller
                 return $this->errorResponse('Forbidden.', 403);
             }
 
-            // Quote expiry — an unpaid quote past its expiresAt can no longer be paid at the quoted price.
+            // Quote expiry - an unpaid quote past its expiresAt can no longer be paid at the quoted price.
             if ($orderRequest->expiresAt
                 && ($orderRequest->paymentStatus ?? 'unpaid') === 'unpaid'
                 && now()->greaterThan($orderRequest->expiresAt)) {
@@ -1397,7 +1397,7 @@ class PaymentController extends Controller
             $amountInCentavos = (int) round($amount * 100);
             $frontendUrl      = config('app.frontend_url', 'http://localhost:3000');
             $orderId          = $validated['orderRequestId'];
-            $description      = "PersonalizeMe Prints — Custom Order {$label} #{$orderId}";
+            $description      = "PersonalizeMe Prints - Custom Order {$label} #{$orderId}";
 
             $response = Http::withBasicAuth($this->secretKey, '')
                 ->post("{$this->baseUrl}/checkout_sessions", [
@@ -1523,7 +1523,7 @@ class PaymentController extends Controller
 
     private function convertOrderRequestToOrder(OrderRequest $orderRequest, string $paymentType, array $paymentMeta = []): ?Order
     {
-        // Idempotency guard — never mint a second order for the same quote.
+        // Idempotency guard - never mint a second order for the same quote.
         if (!empty($orderRequest->convertedOrderId)) {
             return Order::find($orderRequest->convertedOrderId);
         }
@@ -1542,7 +1542,7 @@ class PaymentController extends Controller
 
         // Canonical order item shape (matches OrderController@store). A quote can hold several
         // products; lineItems normalises both the multi-item and the legacy single-product shape.
-        // Prices come straight from the quote lines — design/delivery fees stay OUT of unitPrice
+        // Prices come straight from the quote lines - design/delivery fees stay OUT of unitPrice
         // (they are separate components of finalPrice, not part of what a piece costs).
         $items = array_map(fn ($line) => [
             'productId'     => (string) ($line['productId'] ?? ''),
@@ -1585,7 +1585,7 @@ class PaymentController extends Controller
             ],
             'items'                => $items,
             'totalAmount'          => $finalPrice,
-            // Informational — the delivery fee the admin set on the quote is already inside finalPrice.
+            // Informational - the delivery fee the admin set on the quote is already inside finalPrice.
             'shippingFee'          => round((float) ($orderRequest->shippingFee ?? 0), 2),
             'orderStatus'          => 'awaiting_production',
             'paymentStatus'        => $paidInFull ? 'paid' : 'partial',
@@ -1682,7 +1682,7 @@ class PaymentController extends Controller
      *
      * PayMongo sends payment.paid event.
      * Extracts orderId from reference_number, marks order as paid.
-     * No auth middleware — verified by signature.
+     * No auth middleware - verified by signature.
      */
     public function webhook(Request $request)
     {
@@ -1765,7 +1765,7 @@ class PaymentController extends Controller
 
                 if ($paymentType === 'down' && $orderRequest->paymentStatus === 'unpaid') {
                     $orderRequest->paymentStatus = 'downpayment_paid';
-                    // Keep the downpayment the admin set on the quote — do NOT overwrite with 50%.
+                    // Keep the downpayment the admin set on the quote - do NOT overwrite with 50%.
                     if ($orderRequest->downPayment === null || (float) $orderRequest->downPayment <= 0) {
                         $orderRequest->downPayment = round((float) $orderRequest->finalPrice * 0.5, 2);
                     }
@@ -1871,7 +1871,7 @@ class PaymentController extends Controller
                 if ($isDesignFeeOnly) {
                     $order->designFeePaid = true;
                     $order->designFeePaidAmount = $paidAmount;
-                    // paymentStatus stays 'unpaid' — design fee is separate from order payment
+                    // paymentStatus stays 'unpaid' - design fee is separate from order payment
                 } elseif (($order->pendingPaymentType ?? null) === 'design_fee') {
                     // Request-design fee (first payment). Goods stay unpaid until the downpayment.
                     $order->designFeePaid        = true;
@@ -1990,7 +1990,7 @@ class PaymentController extends Controller
      * POST /api/payment/verify-intent
      *
      * Checks the stored Payment Intent status directly against PayMongo and marks
-     * the order as paid if the intent has succeeded. Used as a webhook fallback —
+     * the order as paid if the intent has succeeded. Used as a webhook fallback -
      * the payment-success page calls this once so local dev (no webhook) still works.
      */
     /**
@@ -2247,7 +2247,7 @@ class PaymentController extends Controller
 
             if ($isDesignFeeOnly) {
                 $order->designFeePaid = true;
-                // paymentStatus stays 'unpaid' — design fee is separate from order payment
+                // paymentStatus stays 'unpaid' - design fee is separate from order payment
             } elseif (($order->pendingPaymentType ?? null) === 'design_fee') {
                 // Request-design fee (first payment). Goods stay unpaid until the downpayment.
                 $order->designFeePaid        = true;

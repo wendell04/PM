@@ -165,7 +165,7 @@ class JobOrderController extends Controller
                 return $this->errorResponse('Linked order not found.', 404);
             }
 
-            // Gate 1 — payment: a downpayment (or COD) is required before production. Mirrors the
+            // Gate 1 - payment: a downpayment (or COD) is required before production. Mirrors the
             // gate in OrderController@updateStatus so creating a JO can't bypass it.
             $payMethod  = strtolower((string) ($linkedOrder->paymentMethod ?? ''));
             $hasPayment = ($linkedOrder->downPayment ?? 0) > 0
@@ -175,7 +175,7 @@ class JobOrderController extends Controller
                 return $this->errorResponse('A downpayment is required before this order can go into production.', 422);
             }
 
-            // Gate 2 — design: a custom order must have an approved design before production.
+            // Gate 2 - design: a custom order must have an approved design before production.
             if (($linkedOrder->isCustomOrder ?? false) && ($linkedOrder->designStatus ?? null) !== 'approved') {
                 return $this->errorResponse('The customer must approve the design before this order can go into production.', 422);
             }
@@ -197,7 +197,7 @@ class JobOrderController extends Controller
             ]);
 
             // Snapshot the product's BOM raw materials onto the JO so Production/QC can see what it
-            // needs to make (e.g. DTF film, white mug, mug box). Display only — no stock change here.
+            // needs to make (e.g. DTF film, white mug, mug box). Display only - no stock change here.
             $snap = $this->computeBomSnapshot(
                 $validated['product']['productId'] ?? null,
                 $validated['product']['variantId'] ?? null,
@@ -230,7 +230,7 @@ class JobOrderController extends Controller
     }
 
     /**
-     * Batch create — one Job Order PER printable item of a mixed order. Each item prints its own
+     * Batch create - one Job Order PER printable item of a mixed order. Each item prints its own
      * artwork with its own recipe/QC, so a 2-custom-item order produces 2 JOs (JOB-001, JOB-002)
      * that share the order's backward-scheduled target date and rush flag. Ready-made items carry
      * no design and are never sent here (fulfilled from stock). The pay/design gates run ONCE.
@@ -263,7 +263,7 @@ class JobOrderController extends Controller
                 return $this->errorResponse('Linked order not found.', 404);
             }
 
-            // Gate 1 — payment (downpayment or COD), mirrors store().
+            // Gate 1 - payment (downpayment or COD), mirrors store().
             $payMethod  = strtolower((string) ($linkedOrder->paymentMethod ?? ''));
             $hasPayment = ($linkedOrder->downPayment ?? 0) > 0
                 || count($linkedOrder->paymentHistory ?? []) > 0
@@ -272,7 +272,7 @@ class JobOrderController extends Controller
                 return $this->errorResponse('A downpayment is required before this order can go into production.', 422);
             }
 
-            // Gate 2 — design: custom order must be design-approved (order-level aggregate = approved
+            // Gate 2 - design: custom order must be design-approved (order-level aggregate = approved
             // only when every custom item is approved).
             if (($linkedOrder->isCustomOrder ?? false) && ($linkedOrder->designStatus ?? null) !== 'approved') {
                 return $this->errorResponse('The customer must approve the design before this order can go into production.', 422);
@@ -380,7 +380,7 @@ class JobOrderController extends Controller
 
     /**
      * Aggregate readiness across ALL of an order's job orders. A multi-item order produces one JO per
-     * item, so a single JO completing must NOT release the whole order — only when EVERY non-cancelled
+     * item, so a single JO completing must NOT release the whole order - only when EVERY non-cancelled
      * JO is done (QC-passed / Completed) does the order become Ready for Delivery. Idempotent and
      * self-guarding; safe to call after any JO status change or deletion.
      */
@@ -388,7 +388,7 @@ class JobOrderController extends Controller
     {
         $order = Order::where('_id', $orderId)->first();
         if (!$order) return;
-        // Already at/past ready — never walk it back from here.
+        // Already at/past ready - never walk it back from here.
         if (in_array(OrderStatus::normalize($order->orderStatus), [OrderStatus::READY_FOR_DELIVERY, OrderStatus::FOR_DELIVERY, OrderStatus::DELIVERED, OrderStatus::CANCELLED], true)) {
             return;
         }
@@ -397,7 +397,7 @@ class JobOrderController extends Controller
 
         $allDone = $jobs->every(fn ($j) => in_array($j->joStatus, ['QC_Passed', 'Completed'], true));
         if (!$allDone) {
-            // Partial progress — keep it in production, just reflect that work has started.
+            // Partial progress - keep it in production, just reflect that work has started.
             $order->joStatus  = 'In Progress';
             $order->updatedAt = now();
             $order->save();
@@ -545,7 +545,7 @@ class JobOrderController extends Controller
     /**
      * DELETE /api/admin/job-orders/{id}
      * Hard-delete a job order. GUARDED to test/junk cleanup: only a JO that has produced nothing
-     * (still 'Queued', or already 'Cancelled') may be deleted — anything In Progress / QC-passed /
+     * (still 'Queued', or already 'Cancelled') may be deleted - anything In Progress / QC-passed /
      * Completed has consumed materials or has QC history and must be CANCELLED (soft) instead, so the
      * audit trail and inventory stay intact. On delete the linked order is relinked (the joId is
      * pulled from its joIds); if no job orders remain, the order drops back to Processing so it can be
@@ -876,7 +876,7 @@ class JobOrderController extends Controller
 
             } else {
                 // ── QC FAILED ──────────────────────────────────────────────────
-                // reservedQty stays — materials still committed for reprint
+                // reservedQty stays - materials still committed for reprint
                 // Do NOT deduct stockQty
                 // Partly good is not the same as failed. If some units were accepted, the job is not
                 // in a rework loop - it simply still owes the balance, so it goes back to production
@@ -890,7 +890,7 @@ class JobOrderController extends Controller
                 $jobOrder->updatedAt = now();
                 $jobOrder->save();
 
-                // Log the failure for audit — no inventory change
+                // Log the failure for audit - no inventory change
                 Log::info('submitQC: QC failed, materials remain reserved for reprint', [
                     'jobOrderId' => (string) $jobOrder->_id,
                     'joId'       => $jobOrder->joId,

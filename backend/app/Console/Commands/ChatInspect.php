@@ -68,7 +68,7 @@ class ChatInspect extends Command
         }
         $frag = array_filter($byPair, fn ($n) => $n > 1);
         if (!empty($frag)) {
-            $this->warn('FRAGMENTATION DETECTED — same participant set spread across multiple conversations:');
+            $this->warn('FRAGMENTATION DETECTED - same participant set spread across multiple conversations:');
             foreach ($frag as $key => $n) {
                 $this->line("  {$n} conversations for participants [{$key}]");
             }
@@ -86,7 +86,7 @@ class ChatInspect extends Command
         $convCount = Conversation::count();
         $msgCount  = Message::count();
         $this->warn("This will permanently delete {$convCount} conversation(s) and {$msgCount} message(s).");
-        if (!$this->confirm('Proceed with chat reset? (dev only — cannot be undone)')) {
+        if (!$this->confirm('Proceed with chat reset? (dev only - cannot be undone)')) {
             $this->info('Cancelled.');
             return 0;
         }

@@ -136,7 +136,7 @@ class Product extends Model
      * Resolve this product's Bill of Materials for a given variant.
      *
      * A product can carry its BOM in three different shapes, and every caller that
-     * checks stock or deducts inventory must agree on which one wins — when they
+     * checks stock or deducts inventory must agree on which one wins - when they
      * disagreed before, variants were validated and then never deducted, so stock
      * silently drifted away from reality. This is the single source of truth.
      */

@@ -6,7 +6,7 @@ return [
     // Capture errors in local env too (set false in .env for local dev if noisy)
     'environment' => env('APP_ENV', 'production'),
 
-    // Performance monitoring — sample 10% of transactions in production
+    // Performance monitoring - sample 10% of transactions in production
     'traces_sample_rate' => env('SENTRY_TRACES_SAMPLE_RATE', 0.1),
 
     // Profile 10% of sampled transactions

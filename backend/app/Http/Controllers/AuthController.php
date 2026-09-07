@@ -29,7 +29,7 @@ class AuthController extends Controller
                 'middleInitial' => 'nullable|string|max:2',
                 'lastName'    => 'required|string|min:2',
                 'address'     => 'nullable|string',
-                // E.164 (any country) — the client picks the country and validates its exact
+                // E.164 (any country) - the client picks the country and validates its exact
                 // length/format; this is the shape check for what it sends.
                 'phoneNumber' => ['required', 'string', 'regex:/^\+[1-9]\d{6,14}$/'],
                 'email'       => ['required', 'email'],
@@ -58,7 +58,7 @@ class AuthController extends Controller
                 ]);
             }
 
-            // Phone number is contact info, not an identity — email is the unique key. Same phone with
+            // Phone number is contact info, not an identity - email is the unique key. Same phone with
             // a different email is allowed (households/family), consistent with standard e-commerce.
 
             // Additional email validation
@@ -75,7 +75,7 @@ class AuthController extends Controller
                 return $this->errorResponse('Please provide a valid email address.', 422);
             }
 
-            // Domain whitelist and DNS MX lookup removed — they blocked legitimate
+            // Domain whitelist and DNS MX lookup removed - they blocked legitimate
             // institutional/subdomain emails (e.g. novaliches.sti.edu.ph).
             // Disposable domain check above is sufficient protection.
 
@@ -115,7 +115,7 @@ class AuthController extends Controller
             ]);
 
             // Send the OTP AFTER the HTTP response is flushed. The account already exists at this
-            // point, so registration must never hang waiting on the mail server — a slow or blocked
+            // point, so registration must never hang waiting on the mail server - a slow or blocked
             // SMTP host (Railway blocks outbound port 587) would otherwise stall the request until
             // the client times out. If delivery fails the customer can use "Resend code".
             $verifyEmail = $request->email;
@@ -232,7 +232,7 @@ class AuthController extends Controller
             $user->login_locked_until    = null;
 
             // Decide whether this login still needs a 2FA challenge BEFORE minting the token, so a
-            // pending login receives only a limited, short-lived token — never a full session.
+            // pending login receives only a limited, short-lived token - never a full session.
             $requires2fa  = false;
             $twoFaEnabled = (bool) ($user->two_factor_enabled ?? false);
 
@@ -264,7 +264,7 @@ class AuthController extends Controller
             if ($requires2fa) {
                 // 2FA still pending: issue a LIMITED token that can ONLY reach the 2FA-completion
                 // endpoints (enforced by EnsureTwoFactorComplete). The real full-access token is
-                // minted by TwoFactorController after the code is verified — so the second factor
+                // minted by TwoFactorController after the code is verified - so the second factor
                 // is enforced server-side, not merely by the frontend redirect.
                 $expiresAt    = now()->addMinutes(15);
                 $sanctumToken = $user->createToken($deviceName, ['2fa-pending'], $expiresAt)->plainTextToken;
@@ -693,12 +693,12 @@ class AuthController extends Controller
             $user->reset_token = null;
             $user->reset_token_expires_at = null;
             // Self-service unlock: confirming identity via reset clears any active login lockout
-            // (standard "unlock on identity confirmation" — no admin needed).
+            // (standard "unlock on identity confirmation" - no admin needed).
             $user->login_locked_until    = null;
             $user->failed_login_attempts = 0;
             $user->save();
 
-            // Notify the owner that the password changed — alerts them if it wasn't them. Non-fatal.
+            // Notify the owner that the password changed - alerts them if it wasn't them. Non-fatal.
             try {
                 Mail::to($user->email)->send(new AccountSecurityAlertMail(
                     userName:    $user->firstName ?? 'there',
@@ -893,7 +893,7 @@ class AuthController extends Controller
         try {
             $request->validate(['email' => 'required|email']);
 
-            // Any locked account (customer or staff) may request an unlock — a locked admin must not
+            // Any locked account (customer or staff) may request an unlock - a locked admin must not
             // be shut out. Primary self-service recovery is still password reset (which clears the lock).
             $user = User::where('email', $request->email)->first();
 

@@ -82,7 +82,7 @@
                     Phone
                   </td>
                   <td style="padding:10px 16px;font-size:13px;color: #111111;">
-                    {{ $customerPhone ?: '—' }}
+                    {{ $customerPhone ?: '-' }}
                   </td>
                 </tr>
               </table>

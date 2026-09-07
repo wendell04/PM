@@ -364,7 +364,7 @@ class OrderController extends Controller
 
             $paymentMethod = $validated['paymentMethod'] ?? 'cod';
 
-            // ── COD guard — reject if any product disallows COD ──────────
+            // ── COD guard - reject if any product disallows COD ──────────
             if (PaymentMethod::isCod($paymentMethod)) {
                 foreach ($validated['items'] as $item) {
                     $prod = Product::find($item['productId'] ?? null);
@@ -374,7 +374,7 @@ class OrderController extends Controller
                 }
             }
 
-            // ── Voucher discount — atomic claim ───────────────────────────
+            // ── Voucher discount - atomic claim ───────────────────────────
             $discountAmount = 0.0;
             $appliedVoucher = null;
 
@@ -747,7 +747,7 @@ class OrderController extends Controller
             // Notify owner
             $this->notifyOwner($order);
 
-            // In-app notification to admin — B-13
+            // In-app notification to admin - B-13
             try {
                 $admin = \App\Models\User::where('role', 'admin')->first();
                 if ($admin) {
@@ -766,7 +766,7 @@ class OrderController extends Controller
                 Log::warning('store: admin notification failed', ['error' => $e->getMessage()]);
             }
 
-            // Notify customer — order confirmation
+            // Notify customer - order confirmation
             try {
                 $customerEmail = $order->userSnapshot['email'] ?? null;
                 $customerName  = $order->userSnapshot['name'] ?? '';
@@ -1240,7 +1240,7 @@ class OrderController extends Controller
             || \App\Support\Rbac::allows($user, 'sales.view')
             || \App\Support\Rbac::allows($user, 'pos');
         if ($canSeeMoney) {
-            return $orders; // full financial view — unchanged
+            return $orders; // full financial view - unchanged
         }
 
         $keys  = $this->orderFinancialKeys();
@@ -1290,7 +1290,7 @@ class OrderController extends Controller
                 'paymentStatus' => 'sometimes|in:unpaid,partial,paid',
                 'notes'         => 'nullable|string|max:1000',
                 'shippingFee'   => 'sometimes|numeric|min:0|max:50000',
-                // Courier-booked delivery fee — paid by the customer directly to the
+                // Courier-booked delivery fee - paid by the customer directly to the
                 // rider on delivery. Informational only: does NOT change the order total.
                 'courierFee'    => 'sometimes|numeric|min:0|max:50000',
                 // Whether the customer has already settled the courier fee - by GCash ahead of the
@@ -1305,7 +1305,7 @@ class OrderController extends Controller
 
             $prevDeliveryMax = $order->estimatedDeliveryMax ?? null;
 
-            // Balance gate — a non-COD order must be fully paid before it can be released for
+            // Balance gate - a non-COD order must be fully paid before it can be released for
             // delivery/marked delivered (COD collects on delivery, so it's exempt). Casing-tolerant.
             if (isset($validated['orderStatus'])) {
                 $targetNorm = OrderStatus::normalize($validated['orderStatus']);
@@ -1328,7 +1328,7 @@ class OrderController extends Controller
                     }
                 }
 
-                // Production gate — a custom order enters production only by creating a Job Order,
+                // Production gate - a custom order enters production only by creating a Job Order,
                 // which enforces downpayment-paid + design-approved and gives Production/QC a JO to
                 // work on. Block a manual jump straight to In Production that would bypass both gates
                 // and leave the Production module with nothing to build.
@@ -1355,7 +1355,7 @@ class OrderController extends Controller
 
             $oldStatus = $order->orderStatus;
 
-            // Store courier info when moving to (Out for) Delivery — casing-tolerant.
+            // Store courier info when moving to (Out for) Delivery - casing-tolerant.
             if (isset($validated['orderStatus']) && OrderStatus::normalize($validated['orderStatus']) === OrderStatus::FOR_DELIVERY) {
                 $order->courierName    = $request->input('courierName') ?: null;
                 $order->trackingNumber = $request->input('trackingNumber') ?: null;
@@ -1431,7 +1431,7 @@ class OrderController extends Controller
             }
 
             // Courier-booked delivery fee: store as informational only (paid by the
-            // customer to the rider on delivery — NOT added to the shop's order total).
+            // customer to the rider on delivery - NOT added to the shop's order total).
             // Notify the customer so they have cash ready.
             if (array_key_exists('courierFee', $validated)) {
                 $newFee = (float) $validated['courierFee'];
@@ -1665,7 +1665,7 @@ class OrderController extends Controller
     private function completeOrder(Order $order): void
     {
         try {
-            // Idempotency guard — if sales already exist for this order, skip entirely
+            // Idempotency guard - if sales already exist for this order, skip entirely
             $existingSale = Sale::where('notes', 'like', '%' . ($order->orderId ?? $order->_id) . '%')->first();
             if ($existingSale) {
                 Log::warning('completeOrder: sales already exist for order, skipping to prevent duplication', [
@@ -1783,7 +1783,7 @@ class OrderController extends Controller
                 'requested'   => $qty,
                 'available'   => $available,
             ]);
-            // Fall back to stockQty only — batches may be unpopulated
+            // Fall back to stockQty only - batches may be unpopulated
             $inventory->stockQty = max(0, (int) ($inventory->stockQty ?? 0) - $qty);
             $inventory->updatedAt = now();
             $inventory->save();
@@ -1984,7 +1984,7 @@ class OrderController extends Controller
             $order = Order::find($id);
 
             // Fall back to suffix match if not found and input looks like a short code
-            // (8 hex chars, case-insensitive — matches the #XXXXXXXX shown on receipts)
+            // (8 hex chars, case-insensitive - matches the #XXXXXXXX shown on receipts)
             if (!$order && preg_match('/^[0-9a-fA-F]{8}$/', $id)) {
                 $order = Order::whereRaw([
                     '$expr' => [
@@ -2035,7 +2035,7 @@ class OrderController extends Controller
             }
 
             // Phase 1: validate transitions canonically (casing-tolerant) but STORE the raw value
-            // unchanged — the admin Orders UI still reads the legacy casing until its focused rewire.
+            // unchanged - the admin Orders UI still reads the legacy casing until its focused rewire.
             $newRaw    = $validated['orderStatus'];
             $oldStatus = OrderStatus::normalize($order->orderStatus);
             $newStatus = OrderStatus::normalize($newRaw);
@@ -2053,7 +2053,7 @@ class OrderController extends Controller
                 ], 422);
             }
 
-            // Payment gate — downpayment required before entering production
+            // Payment gate - downpayment required before entering production
             // COD orders are exempt from this gate if paymentMethod is 'cod'
             // or if at least one payment has been recorded via paymentHistory.
             if ($newStatus === OrderStatus::IN_PRODUCTION) {
@@ -2520,7 +2520,7 @@ class OrderController extends Controller
                 $qty = (int) ($item['qty'] ?? 0);
                 if ($qty <= 0) continue;
 
-                // Atomic restore — mirrors the atomic reservation on order creation
+                // Atomic restore - mirrors the atomic reservation on order creation
                 $updated = DB::connection('mongodb')
                     ->getCollection('inventories')
                     ->findOneAndUpdate(
@@ -2748,7 +2748,7 @@ class OrderController extends Controller
     private function cancelLinkedJobOrder(Order $order): void
     {
         try {
-            // A multi-item order has one job order per item — cancel ALL of them that are still
+            // A multi-item order has one job order per item - cancel ALL of them that are still
             // in-flight, not just the first, or the rest orphan in Production/QC.
             $jobOrders = \App\Models\JobOrder::where('orderId', (string) $order->_id)
                 ->whereIn('joStatus', ['Queued', 'In Progress'])
@@ -3708,7 +3708,7 @@ class OrderController extends Controller
 
     /**
      * POST /api/orders/my/{id}/cancel
-     * Customer cancels their own order — only allowed when Pending.
+     * Customer cancels their own order - only allowed when Pending.
      */
     public function cancelMyOrder(Request $request, $id)
     {
@@ -3826,7 +3826,7 @@ class OrderController extends Controller
                 ]);
             }
 
-            // In-app notification to admin — B-13
+            // In-app notification to admin - B-13
             try {
                 $admin = \App\Models\User::where('role', 'admin')->first();
                 if ($admin) {

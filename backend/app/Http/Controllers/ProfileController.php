@@ -193,7 +193,7 @@ class ProfileController extends Controller
                 );
             }
 
-            // Anonymize PII — order/transaction records are retained for BIR compliance
+            // Anonymize PII - order/transaction records are retained for BIR compliance
             $user->firstName          = 'Deleted';
             $user->lastName           = 'User';
             $user->middleInitial      = null;

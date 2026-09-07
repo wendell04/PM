@@ -11,10 +11,10 @@ use App\Models\BillOfMaterial;
  * every kind of product, not just those with a directly-linked inventory item.
  *
  * Priority (first match wins):
- *   1. BOM  (product->bomId)       — made-to-order: sum of the BOM's material costs per finished unit.
- *   2. Inventory (product->inventoryId) — finished goods: the stocked item's averageCost.
- *   3. Product.cost                — a manual supplier buy price for no-BOM / no-inventory products.
- *   4. 0                           — no cost source configured (profit will look like 100% margin;
+ *   1. BOM  (product->bomId)       - made-to-order: sum of the BOM's material costs per finished unit.
+ *   2. Inventory (product->inventoryId) - finished goods: the stocked item's averageCost.
+ *   3. Product.cost                - a manual supplier buy price for no-BOM / no-inventory products.
+ *   4. 0                           - no cost source configured (profit will look like 100% margin;
  *                                     the admin should set a cost).
  */
 class CostResolver
@@ -26,7 +26,7 @@ class CostResolver
             return 0.0;
         }
 
-        // 1. BOM — per-finished-unit material cost.
+        // 1. BOM - per-finished-unit material cost.
         if ($product->bomId) {
             $bom = BillOfMaterial::find($product->bomId);
             if ($bom) {

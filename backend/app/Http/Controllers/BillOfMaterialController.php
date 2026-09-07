@@ -109,7 +109,7 @@ class BillOfMaterialController extends Controller
                 'components.*.unitCost'     => 'required|numeric|min:0',
             ]);
 
-            // Generate SKU — BOM-XXXX sequential
+            // Generate SKU - BOM-XXXX sequential
             $last = BillOfMaterial::orderBy('createdAt', 'desc')->first();
             $lastNum = 0;
             if ($last && isset($last->sku) && str_starts_with($last->sku, 'BOM-')) {
@@ -195,7 +195,7 @@ class BillOfMaterialController extends Controller
     /**
      * DELETE /api/admin/bom/{id}
      * Soft-deletes a BOM by setting isActive = false.
-     * Never hard-deletes — historical JO records reference BOM data.
+     * Never hard-deletes - historical JO records reference BOM data.
      */
     public function destroy(Request $request, string $id)
     {

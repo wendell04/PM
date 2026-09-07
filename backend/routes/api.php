@@ -63,7 +63,7 @@ Route::post('/reset-password',  [AuthController::class, 'resetPassword'])->middl
 Route::post('/contact',         [AuthController::class, 'contact'])->middleware(['throttle:5,1', 'throttle:20,60', \App\Http\Middleware\VerifyTurnstile::class]);
 Route::post('/unlock-request',  [AuthController::class, 'unlockRequest'])->middleware('throttle:3,1');
 
-// ─── Auth (Protected — any logged-in user) ───────────────────────────────────
+// ─── Auth (Protected - any logged-in user) ───────────────────────────────────
 Route::get('/user', function (Request $request) {
     $user = $request->user();
     // Surface the current token's expiry so the client can warn before it lapses.
@@ -82,7 +82,7 @@ Route::get('/public/settings', [SettingsController::class, 'public']);
 // out of its own catalogue.
 Route::post('/cart/availability', [OrderController::class, 'cartAvailability'])->middleware('throttle:240,1');
 
-// ─── Products (Public — no auth required) ────────────────────────────────────
+// ─── Products (Public - no auth required) ────────────────────────────────────
 Route::middleware('throttle:60,1')->group(function () {
     Route::get('/products/search',        [ProductController::class, 'search']);
     Route::get('/products',               [ProductController::class, 'index']);
@@ -95,7 +95,7 @@ Route::middleware('throttle:60,1')->group(function () {
     Route::get('/storefront/collections/{slug}',   [CollectionController::class, 'storefrontShow']);
 });
 
-// ─── Protected — any authenticated user ──────────────────────────────────────
+// ─── Protected - any authenticated user ──────────────────────────────────────
 Route::middleware('auth:sanctum')->group(function () {
     // Reverb broadcasting auth
     Route::post('/broadcasting/auth', function (Request $request) {
@@ -162,7 +162,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::patch('/chat/heartbeat',              [ChatController::class, 'heartbeat']);
 });
 
-// ─── Owner/Admin only — store config, staff management, role permissions ─────
+// ─── Owner/Admin only - store config, staff management, role permissions ─────
 Route::middleware(['auth:sanctum', 'isAdmin:owner,admin'])->group(function () {
     Route::get('/admin/settings',                   [SettingsController::class, 'show']);
     Route::put('/admin/settings',                   [SettingsController::class, 'update']);
@@ -197,7 +197,7 @@ Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
     Route::get('/admin/orders/stats',            [OrderController::class, 'stats']);
     Route::get('/admin/orders/cost-of-goods',    [OrderController::class, 'orderCostOfGoods']);
 
-    // ─── Dashboard & reports (stubs — see AdminAnalyticsController) ───────────
+    // ─── Dashboard & reports (stubs - see AdminAnalyticsController) ───────────
     Route::get('/admin/dashboard/stats',         [AdminAnalyticsController::class, 'dashboardStats']);
     Route::get('/admin/reports/sales',           [AdminAnalyticsController::class, 'reportsSales']);
     Route::get('/admin/reports/inventory',       [AdminAnalyticsController::class, 'reportsInventory']);
@@ -227,7 +227,7 @@ Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
     Route::post('/admin/upload-image',           [ProductController::class, 'uploadImage']);
     Route::post('/admin/upload-file',            [ProductController::class, 'uploadFile']);
 
-    // Customer address lookup — used when drafting a quote (delivery fee / courier booking)
+    // Customer address lookup - used when drafting a quote (delivery fee / courier booking)
     Route::get('/admin/customers/{id}/addresses', [AddressController::class, 'adminIndex']);
 
     // ─── Inventory ───────────────────────────────────────────────────────────
@@ -255,7 +255,7 @@ Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
     Route::post('/admin/returns',                     [InventoryReturnController::class, 'store']);
     Route::put('/admin/returns/{id}',                 [InventoryReturnController::class, 'update']);
 
-    // ─── Orders (Admin) — SECURITY: only admin can list/view all orders ───────
+    // ─── Orders (Admin) - SECURITY: only admin can list/view all orders ───────
     Route::get('/orders',               [OrderController::class, 'index']);
     Route::get('/orders/{id}',          [OrderController::class, 'show']);
     Route::patch('/orders/{id}/status', [OrderController::class, 'updateStatus']);
@@ -286,7 +286,7 @@ Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
     Route::post('/admin/orders/{id}/convert-to-design', [OrderController::class, 'convertToDesignJob']);
     Route::post('/admin/orders/{id}/remind-balance', [OrderController::class, 'remindBalance']);
     Route::post('/admin/orders/{id}/write-off',      [OrderController::class, 'writeOffOrder']);
-    // RBAC: system settings — Owner / Super Admin only (no staff grid grants `systemSettings`)
+    // RBAC: system settings - Owner / Super Admin only (no staff grid grants `systemSettings`)
     Route::post('/admin/settings/registration-terms', [SettingsController::class, 'registrationTermsUpdate'])
         ->middleware('permission:systemSettings');
     Route::delete('/payment/cancel-pending/{orderId}', [PaymentController::class, 'cancelPending'])
@@ -350,7 +350,7 @@ Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
     Route::delete('/admin/job-orders/{id}/production-files/{index}', [JobOrderController::class, 'deleteProductionFile']);
     Route::post('/admin/job-orders/{id}/qc',          [JobOrderController::class, 'submitQC']);
 
-    // ─── Admin notifications (aliases — same handlers as /api/notifications) ────
+    // ─── Admin notifications (aliases - same handlers as /api/notifications) ────
     Route::get('/admin/notifications',                 [NotificationController::class, 'index']);
     Route::patch('/admin/notifications/{id}/read',     [NotificationController::class, 'markRead']);
 
@@ -404,11 +404,11 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/shop/order-requests/{id}',       [ShopOrderRequestController::class, 'show']);
 });
 
-// ─── Storefront (Public — no auth required) ───────────────────────────────────
+// ─── Storefront (Public - no auth required) ───────────────────────────────────
 Route::get('/storefront/banners',                [BannerController::class, 'storefront']);
 Route::get('/storefront/flash-sales',            [FlashSaleController::class, 'storefront']);
 
-// ─── 2FA (Protected — auth:sanctum) ─────────────────────────────────────────
+// ─── 2FA (Protected - auth:sanctum) ─────────────────────────────────────────
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/2fa/send',          [TwoFactorController::class, 'sendOtp']);
     Route::post('/2fa/verify',        [TwoFactorController::class, 'verifyOtp']);
