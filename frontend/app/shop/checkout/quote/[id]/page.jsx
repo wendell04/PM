@@ -358,15 +358,27 @@ export default function QuoteCheckoutPage() {
             </div>
           )}
 
+          {/* A quote has no separate proof step - the terms say so - so paying it IS the
+              approval. Showing the artwork as a 44px thumbnail labelled "Your design" asked
+              the customer to approve something they could not actually see. It is the size of
+              the decision now, and says plainly what paying means. */}
           {quote.designUrl && (
-            <a href={quote.designUrl} target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, padding: '8px 10px', background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: 8, textDecoration: 'none' }}>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={quote.designUrl} alt="" style={{ width: 44, height: 44, borderRadius: 6, objectFit: 'cover', flexShrink: 0 }} />
-              <span style={{ minWidth: 0 }}>
-                <span style={{ display: 'block', fontSize: '.8rem', fontWeight: 700, color: 'var(--white)' }}>Your design</span>
-                <span style={{ display: 'block', fontSize: '.72rem', color: '#2563eb' }}>View full artwork</span>
-              </span>
-            </a>
+            <div style={{ marginBottom: 12, border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden', background: 'var(--dark2)' }}>
+              <a href={quote.designUrl} target="_blank" rel="noopener noreferrer" style={{ display: 'block', textDecoration: 'none' }}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={quote.designUrl} alt="Mockup for this quote"
+                  style={{ display: 'block', width: '100%', maxHeight: 320, objectFit: 'contain', background: 'var(--dark3)' }} />
+              </a>
+              <div style={{ padding: '9px 11px' }}>
+                <div style={{ fontSize: '.8rem', fontWeight: 700, color: 'var(--white)' }}>This is what we will print</div>
+                <div style={{ fontSize: '.72rem', color: 'var(--gray)', lineHeight: 1.5, marginTop: 2 }}>
+                  There is no separate approval step on a quote - paying it approves this artwork.
+                  Check it first, and{' '}
+                  <a href={quote.designUrl} target="_blank" rel="noopener noreferrer" style={{ color: '#2563eb', fontWeight: 600 }}>open it full size</a>
+                  {' '}if you need a closer look. Message us if anything is wrong.
+                </div>
+              </div>
+            </div>
           )}
 
           <div style={{ borderTop: '1px solid var(--border)', paddingTop: 10, display: 'flex', flexDirection: 'column', gap: 4 }}>

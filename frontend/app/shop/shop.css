@@ -106,7 +106,7 @@
           color: var(--gold);
         }
         html.light .shop-navbar-logo-text {
-          color: rgba(245,245,245,0.9);
+          color: var(--white);
         }
         html.light .shop-navbar-logo-text span {
           color: var(--gold);
@@ -3369,20 +3369,75 @@
 /* ══════════════════════════════════════
    LIGHT MODE OVERRIDES
 ══════════════════════════════════════ */
+/* The header and footer used to stay dark in light mode, which left the page with two
+   themes at once. Everything inside them was coloured for a dark ground - light text,
+   translucent white borders, white-tinted fills - so turning the surface light without
+   turning those had to be done in one pass or half of it would have gone white on white. */
 html.light .shop-navbar {
-  background: rgba(15, 15, 15, 0.97);
+  background: rgba(255, 255, 255, 0.97);
+  border-bottom: 1px solid var(--border);
+}
+html.light .shop-navbar-logo-text,
+html.light .shop-navbar-menu-item,
+html.light .shop-navbar-user-name-full,
+html.light .shop-navbar-user-btn,
+html.light .shop-navbar-cart,
+html.light .shop-navbar-notif-btn,
+html.light .shop-navbar-back,
+html.light .shop-navbar-login-btn {
+  color: var(--white);
+}
+html.light .shop-navbar-user-label,
+html.light .shop-navbar-search-icon {
+  color: var(--gray);
+}
+html.light .shop-navbar-logo-text span {
+  color: var(--gold);
 }
 html.light .shop-navbar-search-input {
-  color: rgba(245,245,245,0.9);
-  background: rgba(255,255,255,0.06);
-  border-color: rgba(255,255,255,0.1);
+  color: var(--white);
+  background: rgba(0,0,0,0.05);
+  border-color: rgba(0,0,0,0.12);
 }
 html.light .shop-navbar-search-input::placeholder {
-  color: #888;
+  color: var(--gray);
 }
 html.light .shop-navbar-search-input:focus {
-  background: rgba(255,255,255,0.09);
+  background: rgba(0,0,0,0.03);
   border-color: var(--gold);
+}
+html.light .shop-navbar-user-menu {
+  background: var(--dark);
+  border-color: var(--border);
+}
+html.light .shop-navbar-logo-img {
+  background: var(--dark3);
+}
+
+html.light .shop-footer {
+  background: var(--dark2);
+  border-top: 1px solid var(--border);
+}
+html.light .shop-footer-brand-name,
+html.light .shop-footer-col,
+html.light .shop-footer-chevron {
+  color: var(--white);
+}
+html.light .shop-footer-tagline,
+html.light .shop-footer-copy,
+html.light .shop-footer-bottom {
+  color: var(--gray);
+}
+html.light .shop-footer-social-btn,
+html.light .shop-footer-pay-badge {
+  border-color: var(--border);
+  color: var(--white);
+}
+html.light .shop-footer-bottom {
+  border-top-color: var(--border);
+}
+html.light .shop-footer-logo {
+  background: var(--dark3);
 }
 html.light .shop-notif-item {
   border-bottom-color: var(--border);
