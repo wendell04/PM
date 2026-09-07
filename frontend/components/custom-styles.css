@@ -4624,3 +4624,35 @@ html.light .lp-pinnacle-prod-img { border-color: #e5e5e3; }
   .lp-pinnacle-grid { grid-template-rows: 160px 130px 130px; }
   .lp-pinnacle-products { grid-template-columns: repeat(3, 1fr); }
 }
+
+/* Featured products. Desktop is the five-across grid it always was; the phone gets the same
+   side-slide the collections row uses, because five product cards stacked vertically turn a
+   glance into a long scroll. Tablets are wide enough for the grid, so the switch is at 640. */
+.lp-featured-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 18px;
+  margin-top: 8px;
+}
+@media (max-width: 640px) {
+  .lp-featured-grid {
+    display: flex;
+    flex-direction: row;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    gap: 14px;
+    /* Room at the end so the last card can snap clear of the edge. */
+    padding: 0 1.2rem 0 0;
+    margin-right: -1.2rem;
+  }
+  .lp-featured-grid::-webkit-scrollbar { display: none; }
+  .lp-featured-grid > a {
+    /* Just over half, so a second card is always half-visible - that peek is what tells someone
+       there is more to swipe. A full-width card looks like the whole section. */
+    flex: 0 0 60%;
+    min-width: 60%;
+    scroll-snap-align: start;
+  }
+}

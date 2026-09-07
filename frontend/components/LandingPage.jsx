@@ -1991,7 +1991,7 @@ const handleForgotResetPassword = async () => {
                 <h2 className="section-title">Featured <span className="gold-text">Products</span></h2>
                 <p className="section-subtitle">A fresh pick every visit - tap any item to customize and order.</p>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '18px', marginTop: '8px' }}>
+              <div className="lp-featured-grid">
                 {featured.map((p, i) => {
                   const price = priceOf(p);
                   const img = imgOf(p);
