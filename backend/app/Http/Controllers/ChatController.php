@@ -54,7 +54,7 @@ class ChatController extends Controller
                         'avatar'      => $other->avatar,
                         'role'        => $other->role,
                         'last_seen_at' => $other->last_seen_at ? $other->last_seen_at->toIso8601String() : null,
-                    ] : ['name' => 'Unknown User']
+                    ] : $this->guestParty($c),
                 ];
             }
 
@@ -500,5 +500,36 @@ class ChatController extends Controller
         } catch (\Exception $e) {
             return $this->serverErrorResponse($e, 'Failed to mark messages as read.');
         }
+    }
+
+    /**
+     * Who a conversation with no second participant belongs to.
+     *
+     * The contact form files a message from someone with no account, so the thread is created
+     * with the shop as its only member. The list then found no other party and labelled it
+     * "Unknown User" - a thread with no name, no address, and no sign that the person cannot
+     * read a reply typed into it. Anything sent there goes nowhere, which is worse than an
+     * empty inbox because it looks like it was answered.
+     *
+     * Their name and address were on the message all along.
+     */
+    private function guestParty($conversation): array
+    {
+        $first = Message::where('conversation_id', (string) $conversation->_id)
+            ->where('sender_id', 'guest')
+            ->orderBy('created_at', 'asc')
+            ->first();
+
+        $email = $first->sender_email ?? null;
+
+        return [
+            'id'        => null,
+            'name'      => $first->sender_name ?? 'Guest',
+            'email'     => $email,
+            'role'      => 'guest',
+            'is_guest'  => true,
+            // The shop must answer by email: this person has no account to read a reply in.
+            'reply_to'  => $email,
+        ];
     }
 }

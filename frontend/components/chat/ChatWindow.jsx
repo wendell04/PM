@@ -444,11 +444,21 @@ const ChatWindow = ({ activeConversation, messages, user, isLoading, isAdmin, on
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div className="chat-header-name">{activeConversation.other_user?.name || 'Chat'}</div>
                   <div className="chat-header-meta">
-                    <span className={`chat-header-status ${isOnline ? 'online' : 'offline'}`}>
-                      {isOnline ? 'Online' : 'Offline'}
-                    </span>
-                    <span className="chat-header-dot">·</span>
-                    <span className="chat-header-role">{roleLabel}</span>
+                    {activeConversation.other_user?.is_guest ? (
+                      /* No account means no inbox to read a reply in. Saying so in the header,
+                         where the name is, is the only place it arrives before you start typing. */
+                      <span className="chat-header-role" style={{ color: 'var(--gold)' }}>
+                        Guest - reply by email{activeConversation.other_user?.email ? `: ${activeConversation.other_user.email}` : ''}
+                      </span>
+                    ) : (
+                      <>
+                        <span className={`chat-header-status ${isOnline ? 'online' : 'offline'}`}>
+                          {isOnline ? 'Online' : 'Offline'}
+                        </span>
+                        <span className="chat-header-dot">·</span>
+                        <span className="chat-header-role">{roleLabel}</span>
+                      </>
+                    )}
                   </div>
                 </div>
               </>

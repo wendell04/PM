@@ -406,7 +406,22 @@ const ChatModule = ({ user, token, addToCart }) => {
           typingUsers={typingUsers}
         />
 
-        {activeConversation && !isVirtualEmpty && (
+        {/* A guest thread has only the shop in it, so anything typed here reaches nobody.
+            The composer is replaced by the address to answer, rather than left live to
+            swallow a reply that looks sent. */}
+        {activeConversation?.other_user?.is_guest ? (
+          <div style={{ padding: '14px 16px', borderTop: '1px solid var(--border)', background: 'var(--dark2)', fontSize: '0.82rem', color: 'var(--gray)', lineHeight: 1.6 }}>
+            This message came from the contact form and the sender has no account, so they
+            cannot see a reply here.{' '}
+            {activeConversation.other_user?.email ? (
+              <>Answer them at{' '}
+                <a href={`mailto:${activeConversation.other_user.email}`} style={{ color: 'var(--gold)', fontWeight: 600 }}>
+                  {activeConversation.other_user.email}
+                </a>.
+              </>
+            ) : 'They left no address, so there is no way to answer this one.'}
+          </div>
+        ) : activeConversation && !isVirtualEmpty && (
           <ChatInput
             onSendMessage={handleSendMessage}
             isSending={isSending}
