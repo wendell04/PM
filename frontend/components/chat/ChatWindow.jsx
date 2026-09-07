@@ -333,14 +333,10 @@ const ChatWindow = ({ activeConversation, messages, user, isLoading, isAdmin, on
               {m.orderRequestId && m.downPayment != null && (
                 <div className="quotation-line"><span>Downpayment ({m.downPaymentPct ?? 50}%)</span><span>&#8369;{fmt(m.downPayment)}</span></div>
               )}
-              {!isAdmin && !isMe && !m.orderRequestId && addToCart && (
-                <button
-                  onClick={handleAddQuotationToCart}
-                  disabled={alreadyAdded}
-                  className={`btn-add-cart${alreadyAdded ? ' added' : ''}`}
-                >
-                  {alreadyAdded ? 'Added to Cart' : 'Add to Cart'}
-                </button>
+              {!isAdmin && !isMe && !m.orderRequestId && (
+                <div style={{ fontSize: '0.72rem', color: 'var(--gray)', lineHeight: 1.5, marginTop: 6 }}>
+                  A quote is a fixed offer, so it is never added to the cart - change the quantity there and the agreed price would no longer apply. This one was sent before quotes carried their own checkout, so message us and we will reissue it with a pay link.
+                </div>
               )}
             </div>
             <div className="quotation-timestamp" style={{ textAlign: isMe ? 'right' : 'left' }}>

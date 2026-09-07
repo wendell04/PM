@@ -839,10 +839,10 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
                                   <a href={`/shop/checkout/quote/${m.orderRequestId}`} className="btn-add-cart" style={{ display: 'block', textAlign: 'center', textDecoration: 'none' }}>
                                     View &amp; Pay
                                   </a>
-                                ) : addToCart && (
-                                  <button className="btn-add-cart" onClick={() => addToCart({ _id: `quotation_${msgKey}`, name: `${m.productName} (${m.qty} pcs)`, flatPrice: m.total, isCustom: true, thumbnail: null }, 1, null, null, null, m.note ? { notes: m.note } : null)}>
-                                    Add to Cart
-                                  </button>
+                                ) : (
+                                  <div style={{ fontSize: '0.72rem', color: 'var(--gray)', lineHeight: 1.5, marginTop: 6 }}>
+                                    A quote is a fixed offer, so it is never added to the cart - change the quantity there and the agreed price would no longer apply. This one was sent before quotes carried their own checkout, so message us and we will reissue it with a pay link.
+                                  </div>
                                 ))}
                               </div>
                               <div className="quotation-timestamp">{formatTime(msg.created_at)}</div>
