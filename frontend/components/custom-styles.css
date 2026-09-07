@@ -2347,6 +2347,10 @@
   }
   @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
+  /* The card itself does not scroll - its body does.
+     Scrolling the whole card took the logo, the title and the step indicator out of view the
+     moment anyone reached the password fields, and left the scrollbar running down the outside
+     of the rounded corner. Header stays put, only the form moves. */
   .auth-modal {
     background: var(--dark2);
     border: 1px solid rgba(212,168,67,.2);
@@ -2354,7 +2358,9 @@
     width: 100%;
     max-width: 500px;
     max-height: 90vh;
-    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
     animation: slideUp .25s ease;
   }
 
@@ -2378,6 +2384,7 @@
     padding: 1.5rem 1.75rem 1.25rem;
     border-bottom: 1px solid var(--border);
     position: relative;
+    flex-shrink: 0;
   }
 
   .auth-modal-logo {
@@ -2418,10 +2425,29 @@
   }
 
   .auth-modal-body {
-    padding: 1.5rem 1.75rem 1.75rem;
+    /* min-height:0 is the part that is easy to miss: without it a flex child refuses to shrink
+       below its content and never scrolls at all. The right margin is what pulls the scrollbar
+       in off the card's edge, so it sits inside the rounded corner instead of across it. */
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    margin-right: 6px;
+    padding: 1.5rem 1.25rem 1.75rem 1.75rem;
     display: flex;
     flex-direction: column;
     gap: 1rem;
+  }
+
+  /* Short screens - a laptop at 100%, or any window under about 820px tall - get tighter spacing
+     rather than smaller text. Shrinking the type is the obvious move and the wrong one: below 16px
+     iOS Safari zooms the page the moment an input is focused, and touch targets stop being
+     comfortable. Padding and gaps can go without costing anyone anything. */
+  @media (max-height: 820px) {
+    .auth-modal-header { padding: 1rem 1.5rem .85rem; }
+    .auth-modal-logo   { width: 38px; height: 38px; }
+    .auth-modal-body   { padding: 1rem 1.1rem 1.15rem 1.5rem; gap: .65rem; }
+    .auth-modal-body form { gap: .35rem; }
   }
 
   .auth-modal-body form {

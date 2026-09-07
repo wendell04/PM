@@ -193,7 +193,8 @@ function CollectionModal({ existing, onClose, onSave, products, token }) {
         </div>
 
         {/* Body */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '20px' }}>
+        {/* Same inset as the shared Modal - the bar sits inside the corner, not across it. */}
+        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', marginRight: '6px', padding: '20px 14px 20px 20px' }}>
           {tab === 'basic' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
 

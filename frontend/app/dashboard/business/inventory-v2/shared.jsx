@@ -315,7 +315,9 @@ export function Modal({ open, onClose, title, width = 520, children, footer, clo
         </div>
         {/* body - overflowX hidden so one long label can never turn the whole modal
             into a sideways scroller; content is expected to ellipsis instead. */}
-        <div style={{ overflowY:'auto', overflowX:'hidden', flex:1, padding:'18px 20px' }}>{children}</div>
+        {/* marginRight pulls the scrollbar in off the card's edge so it sits inside the rounded
+            corner; the padding is reduced by the same amount, so the content does not move. */}
+        <div style={{ overflowY:'auto', overflowX:'hidden', flex:1, minHeight:0, marginRight:'6px', padding:'18px 14px 18px 20px' }}>{children}</div>
         {/* footer */}
         {footer && (
           <div style={{ padding:'14px 20px', borderTop:'1px solid var(--border)', display:'flex', justifyContent:'flex-end', gap:'8px', flexShrink:0 }}>
