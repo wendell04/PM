@@ -1137,6 +1137,58 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
   const [refundMethod,   setRefundMethod]   = useState('gcash');
   const [refundErr,      setRefundErr]      = useState('');
 
+  // What cancelling would do to the material, per line, from the backend that will actually do it -
+  // so the modal shows the plan the code follows instead of a guess that can contradict it.
+  const [settlement,     setSettlement]     = useState(null);
+  const [settlementErr,  setSettlementErr]  = useState('');
+  const [keepBack,       setKeepBack]       = useState({});
+
+  useEffect(() => {
+    if (String(selStatus).toLowerCase() !== 'cancelled') return;
+    let dropped = false;
+    (async () => {
+      setSettlementErr('');
+      try {
+        const res = await fetchWithTimeout(
+          `${API_URL}/api/admin/orders/${lo.id}/cancel-settlement`,
+          { headers: { Authorization: `Bearer ${token}` } },
+          15000,
+        );
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(d.message || d.error || 'Could not work out what cancelling would do.');
+        if (dropped) return;
+        const plan = d?.data ?? d;
+        setSettlement(plan);
+        // Written off by default - the safe direction. The shop assumes the material is spent and
+        // the person at the bench says otherwise, rather than inventing stock nobody has.
+        const seed = {};
+        (plan?.items ?? []).forEach(row => {
+          if (row.action !== 'consume') return;
+          (row.materials ?? []).forEach(m => { seed[m.inventoryId] = 0; });
+        });
+        setKeepBack(seed);
+      } catch (err) {
+        if (!dropped) setSettlementErr(err.message || 'Could not work out what cancelling would do.');
+      }
+    })();
+    return () => { dropped = true; };
+  }, [selStatus, lo.id, token]);
+
+  // Only lines whose material was already pulled onto the bench are a question. A released
+  // reservation comes back whole, and a settled job has nothing left to give.
+  const consumeRows = (settlement?.items ?? []).filter(r => r.action === 'consume');
+  const settlementSummary = (() => {
+    let back = 0, off = 0, offValue = 0;
+    consumeRows.forEach(r => (r.materials ?? []).forEach(m => {
+      const survived = Math.min(Math.max(0, Number(keepBack[m.inventoryId] ?? 0)), m.qty);
+      const spoiled  = m.qty - survived;
+      back += survived;
+      off  += spoiled;
+      offValue += spoiled * (m.unitCost || 0);
+    }));
+    return { back, off, offValue };
+  })();
+
   const handleMarkRefunded = async () => {
     setPayingRefund(true); setRefundErr('');
     try {
@@ -1177,6 +1229,12 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
       if (String(selStatus).toLowerCase() === 'cancelled') {
         payload.cancelReason = cancelReason === 'Other' ? cancelOther.trim() : cancelReason;
         if (refundAmt !== '') payload.refundAmount = Number(refundAmt);
+        // Sent only when something actually survived. Absent, the backend writes off the whole held
+        // amount exactly as it did before this modal existed.
+        const survived = Object.entries(keepBack)
+          .filter(([, n]) => Number(n) > 0)
+          .reduce((acc, [id, n]) => { acc[id] = Number(n); return acc; }, {});
+        if (Object.keys(survived).length) payload.stockSettlement = survived;
       }
       const res = await fetchWithTimeout(`${API_URL}/api/admin/orders/${lo.id}`, {
         method:'PUT', headers:{ 'Content-Type':'application/json', Authorization:`Bearer ${token}` },
@@ -2214,6 +2272,71 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                     {cancelReason === 'Other' && (
                       <input value={cancelOther} onChange={e => setCancelOther(e.target.value)} maxLength={200}
                         placeholder="Say what happened - the customer is told this" style={S.input} />
+                    )}
+
+                    {settlementErr && (
+                      <div style={{ fontSize:'11.5px', color:'#b91c1c' }}>{settlementErr}</div>
+                    )}
+
+                    {consumeRows.length > 0 && (
+                      <div style={{ marginTop:'4px', padding:'10px 12px', borderRadius:'6px',
+                        background:'rgba(212,168,67,0.05)', border:'1px solid rgba(212,168,67,0.25)' }}>
+                        <div style={{ fontSize:'12px', fontWeight:700, color:'var(--white)', marginBottom:'3px' }}>
+                          Production had already started
+                        </div>
+                        <div style={{ fontSize:'11.5px', color:'var(--gray)', lineHeight:1.5, marginBottom:'9px' }}>
+                          How much of the material can still go back on the shelf? Only you can say -
+                          the mug carries a name, the transfer paper is spent, the box was never opened.
+                        </div>
+
+                        {consumeRows.map(row => (
+                          <div key={row.itemIndex} style={{ marginBottom:'10px' }}>
+                            <div style={{ fontSize:'11px', fontWeight:700, color:'var(--gray)',
+                              textTransform:'uppercase', letterSpacing:'.4px', marginBottom:'5px' }}>
+                              {row.itemName}{row.variantName ? ` - ${row.variantName}` : ''} &times;{row.qty}
+                              {row.jobStage ? ` (${row.jobStage})` : ''}
+                            </div>
+                            {(row.materials ?? []).map(m => (
+                              <div key={`${row.itemIndex}-${m.inventoryId}`}
+                                style={{ display:'flex', alignItems:'center', gap:'8px', padding:'4px 0' }}>
+                                <div style={{ flex:1, minWidth:0, fontSize:'12px', color:'var(--white)',
+                                  overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                                  {m.name}
+                                </div>
+                                <div style={{ fontSize:'11px', color:'var(--gray)', whiteSpace:'nowrap' }}>
+                                  held {m.qty}{m.uom ? ` ${m.uom}` : ''}
+                                </div>
+                                <input
+                                  value={keepBack[m.inventoryId] ?? 0}
+                                  onChange={e => {
+                                    const raw = e.target.value.replace(/[^0-9]/g, '');
+                                    // Capped at what this line actually held, so a mistyped figure
+                                    // cannot invent stock the shop never had.
+                                    const n = raw === '' ? '' : Math.min(Number(raw), m.qty);
+                                    setKeepBack(p => ({ ...p, [m.inventoryId]: n }));
+                                  }}
+                                  inputMode="numeric" maxLength={6}
+                                  style={{ ...S.input, width:'72px', textAlign:'center', padding:'5px 6px' }} />
+                                <button type="button" onClick={() => setKeepBack(p => ({ ...p, [m.inventoryId]: m.qty }))}
+                                  style={{ ...S.btnSmGhost, padding:'4px 9px', fontSize:'11px' }}>All</button>
+                                <button type="button" onClick={() => setKeepBack(p => ({ ...p, [m.inventoryId]: 0 }))}
+                                  style={{ ...S.btnSmGhost, padding:'4px 9px', fontSize:'11px' }}>None</button>
+                              </div>
+                            ))}
+                          </div>
+                        ))}
+
+                        <div style={{ display:'flex', justifyContent:'space-between', gap:'10px', paddingTop:'8px',
+                          borderTop:'1px solid var(--border)', fontSize:'12px' }}>
+                          <span style={{ color:'var(--gray)' }}>
+                            Back to stock <b style={{ color:'var(--white)' }}>{settlementSummary.back}</b>
+                          </span>
+                          <span style={{ color:'var(--gray)' }}>
+                            Written off <b style={{ color:'#b91c1c' }}>{settlementSummary.off}</b>
+                            {settlementSummary.offValue > 0 && ` (\u20B1${fmt(settlementSummary.offValue)})`}
+                          </span>
+                        </div>
+                      </div>
                     )}
 
                     {paidSoFar(lo) > 0 && (
