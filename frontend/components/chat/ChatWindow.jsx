@@ -349,7 +349,7 @@ const ChatWindow = ({ activeConversation, messages, user, isLoading, isAdmin, on
 
     return (
       <div key={msgKey} className={`bubble ${isMe ? 'me' : 'them'}`}
-        style={msg.pending ? { opacity: 0.6 } : msg.failed ? { opacity: 0.7 } : undefined}>
+        style={{ transition: 'opacity .22s ease', opacity: msg.pending ? 0.6 : msg.failed ? 0.7 : 1 }}>
         {/* A document has nothing to look at, so it gets a card that names it and opens it -
             the one thing a reader can usefully do with a PDF in a conversation. */}
         {msg.type === 'file' && msg.file_url ? (
@@ -405,10 +405,17 @@ const ChatWindow = ({ activeConversation, messages, user, isLoading, isAdmin, on
         <div className="bubble-time" style={{ display: 'flex', alignItems: 'center', gap: '4px', justifyContent: 'flex-end' }}>
           {msg.failed ? (
             <span style={{ color: '#ef4444', fontSize: '10px' }}>Failed to send</span>
-          ) : msg.pending ? (
-            <span style={{ fontSize: '10px', opacity: 0.7 }}>Sending…</span>
           ) : (
-            new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            /* Both states are always mounted and cross-faded, so the line never empties between
+               them - an element that unmounts and remounts is what read as a blink. */
+            <span style={{ position: 'relative', display: 'inline-block', minWidth: '46px', textAlign: 'right' }}>
+              <span style={{ fontSize: '10px', opacity: msg.pending ? 0.7 : 0, transition: 'opacity .18s ease' }}>
+                Sending&hellip;
+              </span>
+              <span aria-hidden={msg.pending} style={{ position: 'absolute', inset: 0, opacity: msg.pending ? 0 : 1, transition: 'opacity .18s ease' }}>
+                {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              </span>
+            </span>
           )}
         </div>
       </div>

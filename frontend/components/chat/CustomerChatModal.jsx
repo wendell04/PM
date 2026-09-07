@@ -854,7 +854,7 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
                       const body = msg.body || msg.text || msg.message || '';
                       return (
                         <div key={msgKey} className={`cw-bubble-wrap ${isMe ? 'me' : 'them'}`}
-                          style={msg.pending ? { opacity: 0.6 } : msg.failed ? { opacity: 0.7 } : undefined}>
+                          style={{ transition: 'opacity .22s ease', opacity: msg.pending ? 0.6 : msg.failed ? 0.7 : 1 }}>
                           <div className={`cw-bubble ${isMe ? 'me' : 'them'}`}>{body}</div>
                           <div className="cw-bubble-time">
                             {msg.failed ? (
