@@ -176,7 +176,7 @@ export default function QuoteCheckoutPage() {
     return <div className="shop-container" style={{ maxWidth: 640, margin: '0 auto', padding: '3rem 1rem', textAlign: 'center' }}>
       <p style={{ fontWeight: 700, marginBottom: 6 }}>Quote unavailable</p>
       <p style={{ color: 'var(--gray)', fontSize: '.88rem', marginBottom: 16 }}>{loadError || 'This quote could not be found.'}</p>
-      <Link href="/shop/orders-history" style={{ color: '#2563eb', fontWeight: 700, textDecoration: 'none' }}>Back to My Orders</Link>
+      <Link href="/shop/orders-history" style={{ color: 'var(--gold)', fontWeight: 700, textDecoration: 'none' }}>Back to My Orders</Link>
     </div>;
   }
 
@@ -184,7 +184,7 @@ export default function QuoteCheckoutPage() {
     return <div className="shop-container" style={{ maxWidth: 640, margin: '0 auto', padding: '3rem 1rem', textAlign: 'center' }}>
       <p style={{ fontWeight: 700, marginBottom: 6 }}>This quote is already an order</p>
       <p style={{ color: 'var(--gray)', fontSize: '.88rem', marginBottom: 16 }}>You&apos;ve paid for this quote - track it in your orders.</p>
-      <Link href="/shop/orders-history" style={{ color: '#2563eb', fontWeight: 700, textDecoration: 'none' }}>Go to My Orders &rarr;</Link>
+      <Link href="/shop/orders-history" style={{ color: 'var(--gold)', fontWeight: 700, textDecoration: 'none' }}>Go to My Orders &rarr;</Link>
     </div>;
   }
 
@@ -196,7 +196,7 @@ export default function QuoteCheckoutPage() {
           ? 'Payment for this quote has already been received.'
           : 'The store is still preparing your price. You will be notified in chat once the quote is ready.'}
       </p>
-      <Link href="/shop/orders-history" style={{ color: '#2563eb', fontWeight: 700, textDecoration: 'none' }}>Back to My Orders</Link>
+      <Link href="/shop/orders-history" style={{ color: 'var(--gold)', fontWeight: 700, textDecoration: 'none' }}>Back to My Orders</Link>
     </div>;
   }
 
@@ -317,7 +317,7 @@ export default function QuoteCheckoutPage() {
                 <div style={{ fontSize: '.72rem', color: 'var(--gray)', lineHeight: 1.5, marginTop: 2 }}>
                   There is no separate approval step on a quote - paying it approves this artwork.
                   Check it first, and{' '}
-                  <a href={quote.designUrl} target="_blank" rel="noopener noreferrer" style={{ color: '#2563eb', fontWeight: 600 }}>open it full size</a>
+                  <a href={quote.designUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--gold)', fontWeight: 600 }}>open it full size</a>
                   {' '}if you need a closer look. Message us if anything is wrong.
                 </div>
               </div>
