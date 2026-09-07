@@ -1180,7 +1180,7 @@ const handleForgotResetPassword = async () => {
         {text: '4-5 Days', className: 'gold-text'},
       ],
       subtitle: 'Rush service brings that down to 2-3 days, and ready-made items ship the next day.',
-      cta: {label: 'View Services', href: '#services'},
+      cta: {label: 'View Services', href: '/shop?collection=printing-services'},
       cta2: {label: 'Get a Quote', action: 'login'},
     },
     {
@@ -2416,7 +2416,7 @@ const handleForgotResetPassword = async () => {
                 Browse Products
                 <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
               </button>
-              <a href="#services" className="btn-secondary">View Services</a>
+              <a href="/shop?collection=printing-services" className="btn-secondary">View Services</a>
             </div>
           </div>
         </div>
