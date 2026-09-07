@@ -927,8 +927,15 @@ export default function ProductDetailPage() {
                       {reviews.map((r, i) => (
                         <div key={i} style={{ padding: '12px', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border)', borderRadius: '10px' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px', flexWrap: 'wrap' }}>
-                            <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: 'rgba(212,168,67,0.15)', border: '1px solid rgba(212,168,67,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem', fontWeight: 700, color: 'var(--gold)', flexShrink: 0 }}>
-                              {(r.customerName || 'C').charAt(0).toUpperCase()}
+                            {/* The reviewer's own photo when they have one. The initial is not a
+                                placeholder for a missing image - it is what a reviewer who never
+                                set a photo, or who has since deleted their account, gets. */}
+                            <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: 'rgba(212,168,67,0.15)', border: '1px solid rgba(212,168,67,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem', fontWeight: 700, color: 'var(--gold)', flexShrink: 0, overflow: 'hidden' }}>
+                              {r.avatar ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img src={r.avatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                  onError={e => { e.currentTarget.style.display = 'none'; }} />
+                              ) : (r.customerName || 'C').charAt(0).toUpperCase()}
                             </div>
                             <div>
                               <div style={{ fontSize: '0.825rem', fontWeight: 700, color: 'var(--white)' }}>{r.customerName || 'Customer'}</div>

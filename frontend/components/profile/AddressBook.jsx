@@ -153,6 +153,9 @@ export default function AddressBook({ onSaved, initialEditAddress }) {
   const [provinces, setProvinces]   = useState([]);
   const [cities, setCities]         = useState([]);
   const [barangays, setBarangays]   = useState([]);
+  // Names to resolve back into PSGC codes while editing an address saved before the dropdowns
+  // existed. Cleared level by level as each one matches; see the backfill effects below.
+  const backfillRef = useRef(null);
 
   // Address search (autocomplete) - convenience: pre-fills pin + free-text +
   // best-effort the PSGC dropdowns. User confirms the dropdowns.
@@ -231,6 +234,44 @@ export default function AddressBook({ onSaved, initialEditAddress }) {
       .then(b => { if (!cancelled) setBarangays(b); }).catch(() => {});
     return () => { cancelled = true; };
   }, [formData.city_code]);
+
+  // Each of these fires when its list arrives, matches the saved name, and sets the code - which
+  // makes the next list load, and so on down the cascade. Case- and space-insensitive, because a
+  // name typed by a geocoder years ago will not match the PSGC string exactly.
+  const sameName = (a, b) =>
+    String(a || '').trim().toLowerCase().replace(/\s+/g, ' ') ===
+    String(b || '').trim().toLowerCase().replace(/\s+/g, ' ');
+
+  useEffect(() => {
+    const want = backfillRef.current;
+    if (!want?.region || formData.region_code || regions.length === 0) return;
+    const hit = regions.find(r => sameName(r.name, want.region));
+    if (hit) setFormData(prev => ({ ...prev, region: hit.name, region_code: hit.code }));
+  }, [regions, formData.region_code]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const want = backfillRef.current;
+    if (!want?.province || formData.province_code || provinces.length === 0) return;
+    const hit = provinces.find(p => sameName(p.name, want.province));
+    if (hit) setFormData(prev => ({ ...prev, province: hit.name, province_code: hit.code }));
+  }, [provinces, formData.province_code]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const want = backfillRef.current;
+    if (!want?.city || formData.city_code || cities.length === 0) return;
+    const hit = cities.find(c => sameName(c.name, want.city));
+    if (hit) setFormData(prev => ({ ...prev, city: hit.name, city_code: hit.code }));
+  }, [cities, formData.city_code]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const want = backfillRef.current;
+    if (!want?.barangay || formData.barangay_code || barangays.length === 0) return;
+    const hit = barangays.find(b => sameName(b.name, want.barangay));
+    if (hit) {
+      setFormData(prev => ({ ...prev, barangay: hit.name, barangay_code: hit.code }));
+      backfillRef.current = null;   // whole cascade resolved
+    }
+  }, [barangays, formData.barangay_code]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleRegionChange = (code) => {
     const r = regions.find(x => x.code === code);
@@ -584,6 +625,16 @@ export default function AddressBook({ onSaved, initialEditAddress }) {
 
   const handleEdit = (address) => {
     setEditingAddress(address);
+    // Addresses saved before the PSGC dropdowns carry the NAMES and no codes. The selects are
+    // driven by code, so all four came up blank on a row whose text fields were perfectly filled -
+    // and saving from there would have written the region away. Match the names back to codes
+    // instead of making anyone re-pick what they already chose.
+    backfillRef.current = address.region_code ? null : {
+      region:   address.region   || '',
+      province: address.province || '',
+      city:     address.city     || '',
+      barangay: address.barangay || '',
+    };
     setFormData({
       label:         address.label         || '',
       house_number:  address.house_number  || '',

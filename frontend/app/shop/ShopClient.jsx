@@ -658,7 +658,14 @@ function QuickViewModal({ product, flashSale, onClose, onToast }) {
                   {reviews.map((r, i) => (
                     <div key={i} className="shop-qv-review-card">
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px', flexWrap: 'wrap' }}>
-                        <div className="shop-qv-avatar">{(r.customerName || 'C').charAt(0).toUpperCase()}</div>
+                        {/* Their photo when they have one, the initial when they do not. */}
+                        <div className="shop-qv-avatar">
+                          {r.avatar ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={r.avatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }}
+                              onError={e => { e.currentTarget.style.display = 'none'; }} />
+                          ) : (r.customerName || 'C').charAt(0).toUpperCase()}
+                        </div>
                         <div>
                           <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#111' }}>{r.customerName || 'Customer'}</div>
                           <div style={{ display: 'flex', gap: '2px' }}>
