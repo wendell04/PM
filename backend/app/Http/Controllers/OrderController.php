@@ -2088,7 +2088,15 @@ class OrderController extends Controller
             // Handle completion: create sales records and deduct inventory
             if ($newStatus === OrderStatus::DELIVERED && $oldStatus !== OrderStatus::DELIVERED) {
                 $this->completeOrder($order);
+            }
 
+            // Settled on EVERY save of a delivered COD order, not only on the transition into
+            // Delivered. An order marked delivered before this rule existed can never cross that
+            // edge again, so it sat delivered and unpaid forever with no way back but recording the
+            // payment by hand - which is the bug this rule was written to remove. Keyed on what is
+            // true now (delivered, COD, still owing) rather than on catching a moment, it also
+            // repairs the ones already stuck.
+            if ($newStatus === OrderStatus::DELIVERED) {
                 // COD delivered IS COD collected - that is what the words mean, and if the rider did
                 // not collect then the order should not be marked delivered. Until now nothing said
                 // so: completeOrder wrote the Sale rows, so the money appeared in Reports, while the
