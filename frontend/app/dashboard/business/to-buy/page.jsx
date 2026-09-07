@@ -25,6 +25,11 @@ export default function ToBuyPage() {
   const { token } = useAuth();
   const [rows, setRows]       = useState([]);
   const [totals, setTotals]   = useState({ totalItems: 0, estimatedCost: 0 });
+  // A finished good bought in and resold has no BOM, so it never produced a material line and
+  // this page said nothing about it. It is a different question - buy the thing, not what it is
+  // made of - so it gets its own tab rather than being mixed into the supplier groups.
+  const [productRows, setProductRows] = useState([]);
+  const [tab, setTab] = useState('materials');
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState('');
   const [search, setSearch]   = useState('');
@@ -41,6 +46,7 @@ export default function ToBuyPage() {
       const data = d?.data ?? d;
       setRows(Array.isArray(data?.items) ? data.items : []);
       setTotals({ totalItems: data?.totalItems ?? 0, estimatedCost: data?.estimatedCost ?? 0 });
+      setProductRows(Array.isArray(data?.products) ? data.products : []);
     } catch {
       setError('Could not load purchase requirements.');
     } finally {
@@ -92,7 +98,20 @@ export default function ToBuyPage() {
         <SummaryCard label="Suppliers to contact" value={groups.length} />
       </div>
 
+      <div style={{ display: 'flex', gap: '6px', marginBottom: '14px' }}>
+        {[['materials', `By material (${totals.totalItems})`], ['products', `By product (${productRows.length})`]].map(([id, label]) => (
+          <button key={id} type="button" onClick={() => setTab(id)}
+            style={{ ...S.btnSm, background: tab === id ? 'var(--gold)' : 'transparent',
+              color: tab === id ? '#111' : 'var(--gray)', fontWeight: tab === id ? 700 : 600,
+              border: `1px solid ${tab === id ? 'var(--gold)' : 'var(--border)'}` }}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'materials' && (
       <SearchBar value={search} onChange={setSearch} placeholder="Search material or supplier…" style={{ marginBottom: '14px', maxWidth: '340px' }} />
+      )}
 
       {error && (
         <div style={{ ...S.card, borderColor: '#c62828', color: '#e05252', fontSize: '13px' }}>
@@ -105,7 +124,49 @@ export default function ToBuyPage() {
       )}
 
       {/* An empty list is the good outcome, so it should read like one. */}
-      {!error && !loading && groups.length === 0 && (
+      {!error && !loading && tab === 'products' && (
+        productRows.length === 0 ? (
+          <div style={{ ...S.card, textAlign: 'center', padding: '36px 20px' }}>
+            <div style={{ fontSize: '15px', fontWeight: 700, marginBottom: '4px' }}>Nothing to restock</div>
+            <div style={{ fontSize: '13px', color: 'var(--gray)' }}>
+              Every ready-made item on an open order is covered by stock on hand.
+            </div>
+          </div>
+        ) : (
+          <div style={{ ...S.card, padding: 0, overflow: 'hidden', marginBottom: '14px' }}>
+            <div style={{ ...S.rowBetween, padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
+              <div style={{ fontSize: '14px', fontWeight: 700 }}>Ready-made items to restock</div>
+              <span style={{ fontSize: '14px', fontWeight: 700, color: 'var(--gold)' }}>
+                {peso(productRows.reduce((t, r) => t + (Number(r.estimatedCost) || 0), 0))}
+              </span>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 90px 90px 90px 110px', gap: '8px',
+              padding: '8px 16px', fontSize: '10px', fontWeight: 700, letterSpacing: '.05em',
+              textTransform: 'uppercase', color: 'var(--gray)', borderBottom: '1px solid var(--border)' }}>
+              <span>Product</span><span>Ordered</span><span>On hand</span><span>To buy</span><span>Est. cost</span>
+            </div>
+            {productRows.map(r => (
+              <div key={r.productId + (r.variant || '')} style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 90px 90px 90px 110px',
+                gap: '8px', padding: '10px 16px', fontSize: '13px', borderBottom: '1px solid var(--border)', alignItems: 'center' }}>
+                <span style={{ minWidth: 0 }}>
+                  <span style={{ fontWeight: 600 }}>{r.name}</span>
+                  {r.variant && <span style={{ color: 'var(--gray)' }}> - {r.variant}</span>}
+                  <span style={{ display: 'block', fontSize: '11px', color: 'var(--gray)' }}>
+                    {r.hasInventory ? r.supplierName : 'No inventory record - stock is not tracked for this one'}
+                    {r.orders?.length ? ` · ${r.orders.join(', ')}` : ''}
+                  </span>
+                </span>
+                <span>{r.needed}</span>
+                <span>{r.onHand}</span>
+                <span style={{ fontWeight: 700, color: 'var(--gold)' }}>{r.shortfall}</span>
+                <span>{peso(r.estimatedCost)}</span>
+              </div>
+            ))}
+          </div>
+        )
+      )}
+
+      {!error && !loading && tab === 'materials' && groups.length === 0 && (
         <div style={{ ...S.card, textAlign: 'center', padding: '36px 20px' }}>
           <div style={{ fontSize: '15px', fontWeight: 700, marginBottom: '4px' }}>Nothing to buy</div>
           <div style={{ fontSize: '13px', color: 'var(--gray)' }}>
@@ -114,7 +175,7 @@ export default function ToBuyPage() {
         </div>
       )}
 
-      {!error && !loading && groups.map(g => (
+      {!error && !loading && tab === 'materials' && groups.map(g => (
         <div key={g.supplier} style={{ ...S.card, marginBottom: '14px', padding: 0, overflow: 'hidden' }}>
           <div style={{ ...S.rowBetween, padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
             <div>

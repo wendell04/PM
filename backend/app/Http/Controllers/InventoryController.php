@@ -61,6 +61,10 @@ class InventoryController extends Controller
             $demand   = [];   // inventoryId => qty needed
             $sources  = [];   // inventoryId => [order refs]
             $bomCache = [];
+            // A finished good bought in and resold has no BOM, so the loop below resolved no
+            // materials for it and it contributed nothing - the one list that says what to buy
+            // was silent about the things bought as themselves. Counted separately, by product.
+            $goods    = [];   // productId => ['qty' => n, 'variant' => label, 'orders' => []]
 
             foreach ($orders as $order) {
                 foreach ($order->items ?? [] as $item) {
@@ -82,6 +86,18 @@ class InventoryController extends Controller
                             'inventoryId' => $c['inventoryId'] ?? null,
                             'qty'         => (float) ($c['qty'] ?? 0) * $qty,
                         ], $bomCache[$key]);
+                    }
+
+                    if (!$materials) {
+                        $pid = (string) ($item['productId'] ?? '');
+                        if ($pid !== '') {
+                            $ref = '#' . strtoupper(substr((string) $order->_id, -8));
+                            $key = $pid . '|' . ($item['variantId'] ?? '');
+                            $goods[$key]['productId'] = $pid;
+                            $goods[$key]['variant']   = $item['variantName'] ?? ($item['variantId'] ?? null);
+                            $goods[$key]['qty']       = ($goods[$key]['qty'] ?? 0) + max(1, (int) ($item['qty'] ?? 1));
+                            if (!in_array($ref, $goods[$key]['orders'] ?? [], true)) $goods[$key]['orders'][] = $ref;
+                        }
                     }
 
                     foreach ($materials as $m) {
@@ -128,10 +144,44 @@ class InventoryController extends Controller
             // Biggest money first - that is the order the owner should work in.
             usort($rows, fn ($a, $b) => $b['estimatedCost'] <=> $a['estimatedCost']);
 
+            // Finished goods with no BOM: what was ordered against what is on the shelf.
+            $productRows = [];
+            foreach ($goods as $g) {
+                $product = \App\Models\Product::find($g['productId']);
+                if (!$product) continue;
+
+                $inv     = $product->inventoryId ? Inventory::find($product->inventoryId) : null;
+                $onHand  = (int) ($inv->stockQty ?? 0);
+                $need    = (int) $g['qty'];
+                $short   = $need - $onHand;
+                if ($short <= 0) continue;
+
+                $unitCost = (float) ($inv->lastUnitCost ?? 0 ?: $inv->averageCost ?? 0 ?: $inv->baseCost ?? 0 ?: 0);
+
+                $productRows[] = [
+                    'productId'     => (string) $product->_id,
+                    'name'          => $product->name,
+                    'variant'       => $g['variant'] ?: null,
+                    'sku'           => $product->sku ?? ($inv->sku ?? null),
+                    'supplierName'  => $inv->supplierName ?? 'No supplier set',
+                    'needed'        => $need,
+                    'onHand'        => $onHand,
+                    'shortfall'     => $short,
+                    'unitCost'      => $unitCost,
+                    'estimatedCost' => round($short * $unitCost, 2),
+                    'orders'        => array_slice($g['orders'] ?? [], 0, 6),
+                    'hasInventory'  => (bool) $inv,
+                ];
+            }
+            usort($productRows, fn ($a, $b) => $b['estimatedCost'] <=> $a['estimatedCost']);
+
             return $this->successResponse('Purchase requirements fetched successfully.', [
                 'items'         => $rows,
                 'totalItems'    => count($rows),
                 'estimatedCost' => round(array_sum(array_column($rows, 'estimatedCost')), 2),
+                'products'      => $productRows,
+                'totalProducts' => count($productRows),
+                'productsCost'  => round(array_sum(array_column($productRows, 'estimatedCost')), 2),
             ]);
         } catch (\Throwable $e) {
             Log::error('toBuy failed', ['error' => $e->getMessage()]);
