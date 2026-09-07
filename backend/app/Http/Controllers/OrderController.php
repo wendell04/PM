@@ -88,15 +88,11 @@ class OrderController extends Controller
      * order. A line with none is picked off the shelf, whatever the product is also capable of.
      * `isMadeToOrder` still counts, because those are produced regardless of decoration.
      */
+    /** Delegates to App\Support\OrderLine so the purchase list and the cancel path cannot drift
+     *  from what order creation actually did. */
     private function lineIsProduced($product, array $item): bool
     {
-        if ((bool) ($product->isMadeToOrder ?? false)) return true;
-
-        return !empty($item['designUrl'])
-            || !empty($item['designFiles'])
-            || !empty($item['designRequested'])
-            || ($item['designMode'] ?? null) === 'request'
-            || !empty($item['isCustom']);
+        return \App\Support\OrderLine::isProduced($product, $item);
     }
 
     private function normalizeOrderForCustomer(Order $order): array
@@ -1491,8 +1487,9 @@ class OrderController extends Controller
 
             // Handle cancellation: cancel linked JobOrder and restore inventory
             if (isset($validated['orderStatus']) && $order->orderStatus === 'Cancelled' && $oldStatus !== 'Cancelled') {
+                $jobStages = $this->jobStagesFor($order);
                 $this->cancelLinkedJobOrder($order);
-                $this->restoreStockOnCancel($order);
+                $this->restoreStockOnCancel($order, $jobStages);
             }
 
             // Handle return: restore inventory
@@ -2145,9 +2142,10 @@ class OrderController extends Controller
 
             // Handle cancellation: cancel linked JobOrder and restore inventory
             if ($newStatus === OrderStatus::CANCELLED) {
+                $jobStages = $this->jobStagesFor($order);
                 $this->cancelLinkedJobOrder($order);
                 if ($oldStatus !== OrderStatus::CANCELLED) {
-                    $this->restoreStockOnCancel($order);
+                    $this->restoreStockOnCancel($order, $jobStages);
 
                     // Why the SHOP cancelled. Returns record a reason and a customer's own
                     // cancellation records a reason; this path recorded nothing, so the one
@@ -2272,10 +2270,45 @@ class OrderController extends Controller
      */
     public function releaseReservationsFor(Order $order): void
     {
-        $this->restoreStockOnCancel($order);
+        $this->restoreStockOnCancel($order, $this->jobStagesFor($order));
     }
 
-    private function restoreStockOnCancel(Order $order): void
+    /**
+     * How far each item got, keyed by itemIndex, read BEFORE the job orders are cancelled.
+     *
+     * cancelLinkedJobOrder() sets every open JO to Cancelled, which destroys the only record of
+     * whether anything had actually been pulled and worked on. Read it first or the settlement
+     * below has nothing to decide with - the same ordering trap that made the courier-fee
+     * notification compare a value to itself.
+     */
+    private function jobStagesFor(Order $order): array
+    {
+        $stages = [];
+        try {
+            foreach (\App\Models\JobOrder::where('orderId', (string) $order->_id)->get() as $jo) {
+                $idx = $jo->itemIndex;
+                if ($idx === null) continue;
+                $stages[(int) $idx] = (string) ($jo->joStatus ?? '');
+            }
+        } catch (\Throwable $e) {
+            Log::warning('jobStagesFor failed', ['order' => (string) $order->_id, 'error' => $e->getMessage()]);
+        }
+        return $stages;
+    }
+
+    /** Material was pulled from the shelf and worked on, so it cannot go back. */
+    private function stageConsumedMaterial(?string $joStatus): bool
+    {
+        return in_array($joStatus, ['In Progress', 'QC_Pending', 'QC_Failed'], true);
+    }
+
+    /** QC pass already cut stockQty and released the reservation - nothing left to settle. */
+    private function stageAlreadySettled(?string $joStatus): bool
+    {
+        return in_array($joStatus, ['QC_Passed', 'Completed'], true);
+    }
+
+    private function restoreStockOnCancel(Order $order, array $jobStages = []): void
     {
         try {
             foreach ($order->items as $item) {
@@ -2367,7 +2400,7 @@ class OrderController extends Controller
             }
 
             // Restore BOM raw materials deducted at order creation
-            foreach ($order->items as $item) {
+            foreach ($order->items as $itemIdx => $item) {
                 $bomProduct = Product::find($item['productId'] ?? null);
                 if (!$bomProduct) continue;
                 $variantId = $item['variantId'] ?? null;
@@ -2397,7 +2430,45 @@ class OrderController extends Controller
                         $qty = (int) round(($component['qty'] ?? 0) * ($item['qty'] ?? 0));
                         if ($qty <= 0) continue;
                         if ($producedItem) {
+                            $stage = $jobStages[$itemIdx] ?? null;
+
+                            // Already consumed at QC pass - stockQty was cut and the reservation
+                            // released there. Touching it again would resurrect burnt material.
+                            if ($this->stageAlreadySettled($stage)) {
+                                continue;
+                            }
+
                             // Materials were RESERVED (consumed only at QC) → release the reservation.
+                            // But a reservation is only releasable while the material is still on
+                            // the shelf. Once the job started, the mug carries someone's name and
+                            // the transfer paper is spent: releasing it says "available again"
+                            // about something that no longer exists. So past that point it is
+                            // consumed and recorded as spoilage instead, which is what the deposit
+                            // is there to cover.
+                            if ($this->stageConsumedMaterial($stage)) {
+                                $rawInv->stockQty    = max(0, (int) ($rawInv->stockQty ?? 0) - $qty);
+                                $rawInv->reservedQty = max(0, (int) ($rawInv->reservedQty ?? 0) - $qty);
+                                $rawInv->save();
+                                StockHistory::create([
+                                    'inventoryId'  => (string) $rawInv->_id,
+                                    'quantity'     => $qty,
+                                    'remainingQty' => (int) ($rawInv->stockQty ?? 0),
+                                    'unitCost'     => $this->unitCostOf($rawInv),
+                                    'totalCost'    => round($this->unitCostOf($rawInv) * $qty, 2),
+                                    'reason'       => 'production_spoilage',
+                                    'type'         => 'adjustment',
+                                    'performedBy'  => 'system',
+                                    'orderId'      => (string) $order->_id,
+                                    'productId'    => (string) ($bomProduct->_id ?? ''),
+                                    'productName'  => $bomProduct->name ?? '',
+                                    'customerName' => $order->userSnapshot['name'] ?? '',
+                                    'remarks'      => 'Cancelled mid-production (' . ($stage ?: 'in production')
+                                        . ') - material already worked and cannot be returned: ' . (string) $order->_id,
+                                    'createdAt'    => now(),
+                                ]);
+                                continue;
+                            }
+
                             $rawInv->reservedQty = max(0, (int) ($rawInv->reservedQty ?? 0) - $qty);
                             $rawInv->save();
                             StockHistory::create([
@@ -3480,8 +3551,9 @@ class OrderController extends Controller
             $order->updatedAt    = now();
             $order->save();
 
-            // Restore inventory reserved at order creation
-            $this->restoreStockOnCancel($order);
+            // Restore inventory reserved at order creation - stage-aware, so anything already
+            // worked on is written off rather than handed back to the shelf.
+            $this->restoreStockOnCancel($order, $this->jobStagesFor($order));
 
             // The gate above lets a PAID order be cancelled - correctly, since nothing has been
             // made yet - but the money was never mentioned anywhere: the order flipped to Cancelled,

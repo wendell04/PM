@@ -20,7 +20,7 @@ export default function ProductsV2() {
   const [saving,        setSaving]        = useState(false);
   const [view,          setView]          = useState('list');
   const [formTarget,    setFormTarget]    = useState(null);
-  const [tab,           setTab]           = useState('all');
+  const [tab,           setTab]           = useState('all');   // seeded from ?tab= below
   const [search,        setSearch]        = useState('');
   const [colFilter,     setColFilter]     = useState('All');
   const [delTarget,     setDelTarget]     = useState(null);
@@ -224,6 +224,8 @@ export default function ProductsV2() {
   // until there is a product to match it against.
   useEffect(() => {
     if (loading) return;
+    const t = searchParams.get('tab');
+    if (t && ['all', 'published', 'draft'].includes(t)) setTab(t);
     const editId = searchParams.get('edit');
     const isNew  = searchParams.get('new');
     if (editId) {
@@ -392,7 +394,14 @@ export default function ProductsV2() {
         {/* Tabs */}
         <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', padding: '0 16px' }}>
           {[['all', 'All'], ['published', 'Published'], ['draft', 'Draft']].map(([k, label]) => (
-            <button key={k} onClick={() => setTab(k)}
+            <button key={k} onClick={() => {
+              setTab(k);
+              // Same reason as Inventory Overview: a tab held only in React state is gone on
+              // reload, and the address bar keeps whatever it was opened with.
+              const q = new URLSearchParams(Array.from(searchParams.entries()));
+              q.set('tab', k);
+              router.replace(`?${q.toString()}`, { scroll: false });
+            }}
               style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '12px 16px', fontSize: '13px', fontWeight: 600,
                 color: tab === k ? 'var(--gold)' : 'var(--gray)', borderBottom: tab === k ? '2px solid var(--gold)' : '2px solid transparent',
                 marginBottom: '-1px', display: 'flex', alignItems: 'center', gap: '6px' }}>

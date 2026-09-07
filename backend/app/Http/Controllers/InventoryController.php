@@ -66,19 +66,34 @@ class InventoryController extends Controller
             // was silent about the things bought as themselves. Counted separately, by product.
             $goods    = [];   // productId => ['qty' => n, 'variant' => label, 'orders' => []]
 
+            $productCache = [];
             foreach ($orders as $order) {
                 foreach ($order->items ?? [] as $item) {
+                    $productId = (string) ($item['productId'] ?? '');
+                    if (!array_key_exists($productId, $productCache)) {
+                        $productCache[$productId] = $productId ? \App\Models\Product::find($productId) : null;
+                    }
+                    $lineProduct = $productCache[$productId];
+
+                    // A ready-made line took its materials off the shelf the moment the order was
+                    // placed - deductInventoryFIFO cut stockQty there and then. Counting the same
+                    // quantity again here, against the stock it already reduced, asked the shop to
+                    // buy what it had just used: 21 needed against 18 on hand, when the 21 were
+                    // the reason it was 18. Only a produced line still has its materials sitting
+                    // on the shelf waiting to be consumed at QC.
+                    if ($lineProduct && !\App\Support\OrderLine::isProduced($lineProduct, (array) $item)) {
+                        continue;
+                    }
+
                     // A quote records the materials it will actually consume - including for
                     // services whose product has no BOM at all - so trust that when present.
                     $materials = $item['materials'] ?? null;
 
                     if (!$materials) {
-                        $productId = (string) ($item['productId'] ?? '');
                         $variantId = $item['variantId'] ?? null;
                         $key       = $productId . '|' . ($variantId ?? '');
                         if (!array_key_exists($key, $bomCache)) {
-                            $product = $productId ? \App\Models\Product::find($productId) : null;
-                            $bom     = $product ? $product->resolveBom($variantId) : null;
+                            $bom = $lineProduct ? $lineProduct->resolveBom($variantId) : null;
                             $bomCache[$key] = $bom->components ?? [];
                         }
                         $qty = max(1, (int) ($item['qty'] ?? 1));
@@ -89,7 +104,7 @@ class InventoryController extends Controller
                     }
 
                     if (!$materials) {
-                        $pid = (string) ($item['productId'] ?? '');
+                        $pid = $productId;
                         if ($pid !== '') {
                             $ref = '#' . strtoupper(substr((string) $order->_id, -8));
                             $key = $pid . '|' . ($item['variantId'] ?? '');

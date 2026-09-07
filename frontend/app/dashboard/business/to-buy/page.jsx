@@ -95,7 +95,7 @@ export default function ToBuyPage() {
       </div>
 
       <div style={{ display: 'flex', gap: '6px', marginBottom: '14px' }}>
-        {[['materials', `By material (${totals.totalItems})`], ['products', `By product (${productRows.length})`]].map(([id, label]) => (
+        {[['materials', `By material (${totals.totalItems})`], ['products', `No material plan (${productRows.length})`]].map(([id, label]) => (
           <button key={id} type="button" onClick={() => setTab(id)}
             style={{ ...S.btnSm, background: tab === id ? 'var(--gold)' : 'transparent',
               color: tab === id ? '#111' : 'var(--gray)', fontWeight: tab === id ? 700 : 600,
@@ -126,15 +126,21 @@ export default function ToBuyPage() {
       {!error && !loading && tab === 'products' && (
         productRows.length === 0 ? (
           <div style={{ ...S.card, textAlign: 'center', padding: '36px 20px' }}>
-            <div style={{ fontSize: '15px', fontWeight: 700, marginBottom: '4px' }}>Nothing to restock</div>
+            <div style={{ fontSize: '15px', fontWeight: 700, marginBottom: '4px' }}>Every job has a material plan</div>
             <div style={{ fontSize: '13px', color: 'var(--gray)' }}>
-              Every ready-made item on an open order is covered by stock on hand.
+              Nothing committed is being made from materials we are not tracking.
             </div>
           </div>
         ) : (
           <div style={{ ...S.card, padding: 0, overflow: 'hidden', marginBottom: '14px' }}>
             <div style={{ ...S.rowBetween, padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
-              <div style={{ fontSize: '14px', fontWeight: 700 }}>Ready-made items to restock</div>
+              <div>
+                <div style={{ fontSize: '14px', fontWeight: 700 }}>Jobs with no material plan</div>
+                <div style={{ fontSize: '11px', color: 'var(--gray)', marginTop: '2px' }}>
+                  Committed work whose product has no BOM - usually a quoted service. Attach its
+                  materials on the quotation and it moves to By material.
+                </div>
+              </div>
               <span style={{ fontSize: '14px', fontWeight: 700, color: 'var(--gold)' }}>
                 {peso(productRows.reduce((t, r) => t + (Number(r.estimatedCost) || 0), 0))}
               </span>
