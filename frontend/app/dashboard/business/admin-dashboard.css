@@ -256,7 +256,12 @@ input[type="number"] {
    the light one - the same failure as a white divider on a white card. It also only became
    visible on hover, so the one person who needs to see it (someone with no wheel, looking for
    something to drag) had to find it first. It is now a solid grey in both themes, at rest. */
-.sidebar-nav { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.34) transparent; }
+/* Scoped to browsers with no ::-webkit-scrollbar. From Chrome 121, setting the standard
+   scrollbar-width switches to the native scrollbar and every pseudo-element rule is
+   ignored - including the one hiding the stepper arrows. See app/globals.css. */
+@supports not selector(::-webkit-scrollbar) {
+  .sidebar-nav { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.34) transparent; }
+}
 .sidebar-nav::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.34);
   border-radius: 6px;
@@ -273,7 +278,9 @@ input[type="number"] {
   background-clip: content-box;
 }
 
-html.light .sidebar-nav { scrollbar-color: rgba(0,0,0,0.3) transparent; }
+@supports not selector(::-webkit-scrollbar) {
+  html.light .sidebar-nav { scrollbar-color: rgba(0,0,0,0.3) transparent; }
+}
 html.light .sidebar-nav::-webkit-scrollbar-thumb {
   background: rgba(0, 0, 0, 0.3);
   background-clip: content-box;
@@ -1625,7 +1632,6 @@ input[type="text"][inputMode="numeric"] {
   min-width: 100%;
   display: block;
   box-sizing: border-box;
-  scrollbar-width: thin;
 }
 
 .tier-table {
@@ -2018,7 +2024,6 @@ input[type="text"][inputMode="numeric"] {
   width: 100%; max-width: 640px; max-height: 90vh;
   overflow-y: auto;
   display: flex; flex-direction: column;
-  scrollbar-width: thin;
 }
 .preview-modal-header { padding: 1.5rem 1.5rem 1rem; border-bottom: 1px solid var(--border); position: relative; }
 .preview-modal-title { font-family: inherit; font-size: 1.1rem; font-weight: 700; color: var(--white); margin-bottom: 0.25rem; }
@@ -2893,7 +2898,6 @@ input[type="text"][inputMode="numeric"] {
   max-height: 90vh;
   overflow-y: auto;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
-  scrollbar-width: thin;
   padding: 0 1.5rem 1.5rem;
   box-sizing: border-box;
 }

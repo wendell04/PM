@@ -227,6 +227,10 @@ export default function CartPage() {
     : 0;
   const selectedTotal = selectedBaseTotal + selectedDesignFee;
 
+  // The server's answer wins when it has one: it is live and it knows about the materials this
+  // line shares with others. The snapshot cap is the fallback for a line nothing has checked yet.
+  const lineCap = (item) => (lineMax[item.lineId] ?? item.stockCap);
+
   // The checkout refuses a cart that needs more material than the shop has, and it has to - that is
   // the only moment the claim can be made atomically. But being refused there means being refused
   // after the address, the delivery speed and the payment method, over a quantity that was never
@@ -234,6 +238,10 @@ export default function CartPage() {
   // caused it is still on screen. Advisory by nature: someone else can take the last of it between
   // here and checkout, which is why the real refusal stays where it is.
   const [shortages, setShortages] = useState([]);
+  // lineId -> the ceiling the server worked out for that line. The cart used to guess this from the
+  // snapshot taken when the line was added, and fell back to a flat 99 when the snapshot had no
+  // trackInventory flag - which is how a mug with fifty blanks accepted ninety-nine.
+  const [lineMax, setLineMax] = useState({});
 
   const checkKey = selectedCartItems
     .map(i => `${i.product?._id ?? ''}:${i.variantId ?? ''}:${i.qty}`)
@@ -257,9 +265,16 @@ export default function CartPage() {
         }, 12000);
         const d = await res.json().catch(() => ({}));
         if (dropped || !res.ok) return;
-        setShortages((d?.data ?? d)?.shortages ?? []);
+        const body = d?.data ?? d;
+        setShortages(body?.shortages ?? []);
+        const maxes = {};
+        (body?.lineMax ?? []).forEach((m, i) => {
+          const line = selectedCartItems[i];
+          if (line && m != null) maxes[line.lineId] = Number(m);
+        });
+        setLineMax(maxes);
       } catch { /* a helper that fails stays quiet - it must never block a cart */ }
-    }, 700);
+    }, 250);
     return () => { dropped = true; clearTimeout(timer); };
   }, [checkKey]);
 
@@ -738,9 +753,9 @@ export default function CartPage() {
                             {item.qty}
                           </span>
                           <button
-                            onClick={() => updateQty(item.lineId, Math.min(item.qty + 1, item.stockCap))}
-                            disabled={item.qty >= item.stockCap}
-                            style={{ width: 30, height: 30, border: 'none', background: 'transparent', fontSize: '1rem', fontWeight: 700, cursor: item.qty >= item.stockCap ? 'not-allowed' : 'pointer', opacity: item.qty >= item.stockCap ? 0.35 : 1 }}
+                            onClick={() => updateQty(item.lineId, Math.min(item.qty + 1, lineCap(item)))}
+                            disabled={item.qty >= lineCap(item)}
+                            style={{ width: 30, height: 30, border: 'none', background: 'transparent', fontSize: '1rem', fontWeight: 700, cursor: item.qty >= lineCap(item) ? 'not-allowed' : 'pointer', opacity: item.qty >= lineCap(item) ? 0.35 : 1 }}
                           >
                             +
                           </button>
@@ -890,14 +905,17 @@ export default function CartPage() {
               </div>
             )}
 
+            {/* Advisory was the wrong call. Letting someone through to the address form to be
+                refused there is worse than stopping them here, where the line they would change is
+                still on screen - and the checkout refuses this cart anyway. */}
             <button
               onClick={handlePlaceOrder}
-              disabled={selectedItems.size === 0 || isCheckingOut}
+              disabled={selectedItems.size === 0 || isCheckingOut || shortages.length > 0}
               style={{
                 width: '100%', marginTop: 10, padding: '11px 12px', borderRadius: 10, border: 'none',
                 background: 'var(--white)', color: 'var(--dark)', fontWeight: 800, fontSize: '.88rem',
-                cursor: (selectedItems.size === 0 || isCheckingOut) ? 'not-allowed' : 'pointer',
-                opacity: (selectedItems.size === 0 || isCheckingOut) ? 0.5 : 1,
+                cursor: (selectedItems.size === 0 || isCheckingOut || shortages.length > 0) ? 'not-allowed' : 'pointer',
+                opacity: (selectedItems.size === 0 || isCheckingOut || shortages.length > 0) ? 0.5 : 1,
               }}
             >
               {isCheckingOut ? 'Preparing checkout...' : `Check out (${selectedItems.size})`}

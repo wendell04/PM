@@ -2368,9 +2368,35 @@ class OrderController extends Controller
                 ];
             }
 
+            // Each line's own ceiling, ignoring the others - what the + button should stop at. The
+            // cart used to guess this from a snapshot taken when the line was added, and fell back
+            // to a flat 99 whenever the snapshot had no trackInventory flag, which is how a mug with
+            // fifty blanks accepted ninety-nine.
+            $maxes = [];
+            foreach ($lines as $idx => $line) {
+                $product = Product::find($line['productId'] ?? null);
+                $bom     = MaterialClaim::bomFor($product, $line['variantId'] ?? null);
+                if (!$bom || empty($bom->components)) { $maxes[$idx] = null; continue; }
+
+                $max = null;
+                foreach ($bom->components as $component) {
+                    $inv = Inventory::find($component['inventoryId'] ?? null);
+                    if (!$inv || $inv->isOnDemand) continue;
+                    $qpu = (float) ($component['qty'] ?? 0);
+                    if ($qpu <= 0) continue;
+                    $free = max(0, (int) ($inv->stockQty ?? 0) - (int) ($inv->reservedQty ?? 0));
+                    $can  = (int) floor($free / $qpu);
+                    $max  = $max === null ? $can : min($max, $can);
+                }
+                // Null means nothing counted constrains it - not zero. Zero here would read as
+                // "sold out" on a product whose every material is cost-only.
+                $maxes[$idx] = $max;
+            }
+
             return $this->successResponse('Availability checked.', [
                 'ok'        => empty($shortages),
                 'shortages' => $shortages,
+                'lineMax'   => $maxes,
             ]);
         } catch (\Exception $e) {
             // Never break a cart over a check that only exists to be helpful.

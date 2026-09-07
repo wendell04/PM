@@ -2356,8 +2356,14 @@
     max-height: 90vh;
     overflow-y: auto;
     animation: slideUp .25s ease;
-    scrollbar-width: thin;
-    scrollbar-color: var(--gold-dark) transparent;
+  }
+
+  /* These two lines used to sit on .auth-modal itself, which is exactly what put the stepper
+     arrows back on the sign-up form: from Chrome 121 the standard properties switch the browser
+     to the native scrollbar and make it ignore every ::-webkit rule, arrows included. Scoped
+     here, Chrome falls through to the app-wide slim thumb in globals.css. */
+  @supports not selector(::-webkit-scrollbar) {
+    .auth-modal { scrollbar-width: thin; scrollbar-color: var(--gold-dark) transparent; }
   }
 
   @keyframes slideUp {
