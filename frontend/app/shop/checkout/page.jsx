@@ -1434,6 +1434,30 @@ export default function CheckoutPage() {
         </div>
       )}
 
+      {/* A cart with nothing to produce has no Standard-or-Rush choice to make, so the whole
+          card was hidden - and the delivery date went with it. The choice was the only part
+          that did not apply. Someone buying a scrunchie still needs to know when it arrives,
+          and for them the answer is better than usual, because it skips production entirely. */}
+      {!rushEnabled && items.length > 0 && (
+        <div className="checkout-card" style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 700, fontSize: '0.92rem' }}>
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="1" y="3" width="15" height="13"/><path d="M16 8h4l3 3v5h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/>
+            </svg>
+            Expected delivery
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, padding: '11px 13px', borderRadius: '10px', border: '1px solid rgba(212,168,67,0.3)', background: 'rgba(212,168,67,0.06)' }}>
+            <span style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--gold)' }}>Get by {getByRange(0)}</span>
+            <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#16a34a' }}>Free</span>
+          </div>
+          <div style={{ fontSize: '0.75rem', color: 'var(--gray)', lineHeight: 1.55 }}>
+            Ready-made items are already on the shelf, so they skip production and
+            <strong style={{ color: '#16a34a' }}> often arrive sooner than this</strong>. We message
+            you as soon as yours is on the way.
+          </div>
+        </div>
+      )}
+
       {/* SECTION 5 - Order Summary */}
       <div className="checkout-card checkout-summary-card">
         <div className="checkout-summary-row">
