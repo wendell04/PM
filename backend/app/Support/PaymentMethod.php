@@ -24,6 +24,19 @@ final class PaymentMethod
         'cashondelivery',
     ];
 
+    /**
+     * Every stored spelling, for a query that has to match in the database rather than in PHP.
+     * Includes the upper-case forms because a Mongo whereIn is case-sensitive.
+     */
+    public static function codAliases(): array
+    {
+        return array_values(array_unique(array_merge(
+            self::COD_ALIASES,
+            array_map('strtoupper', self::COD_ALIASES),
+            array_map('ucfirst', self::COD_ALIASES),
+        )));
+    }
+
     public static function isCod($method): bool
     {
         $normal = strtolower(trim((string) ($method ?? '')));

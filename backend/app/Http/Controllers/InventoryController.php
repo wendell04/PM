@@ -47,8 +47,15 @@ class InventoryController extends Controller
 
             $done = ['delivered', 'Delivered', 'cancelled', 'Cancelled', 'returned', 'Returned'];
 
+            // A COD order is unpaid by definition until the rider collects, so a filter on
+            // paymentStatus hid every one of them and the shop never saw the materials it had
+            // to buy to fulfil them - it would find out at production time, with nothing on the
+            // shelf. What commits the shop here is the order existing, not the money arriving.
             $orders = \App\Models\Order::whereNotIn('orderStatus', $done)
-                ->whereIn('paymentStatus', ['paid', 'partial'])
+                ->where(function ($q) {
+                    $q->whereIn('paymentStatus', ['paid', 'partial'])
+                      ->orWhereIn('paymentMethod', \App\Support\PaymentMethod::codAliases());
+                })
                 ->get();
 
             $demand   = [];   // inventoryId => qty needed
