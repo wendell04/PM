@@ -7,6 +7,7 @@ use App\Models\OrderRequest;
 use App\Models\Voucher;
 use App\Models\Product;
 use App\Models\Inventory;
+use App\Support\MaterialClaim;
 use App\Models\StockHistory;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
@@ -292,16 +293,21 @@ class PaymentController extends Controller
                 } elseif ($bomProd->storeStockCap !== null && $itemQty > (int) $bomProd->storeStockCap) {
                     return $this->errorResponse("\"{$bomProd->name}\" has a storefront limit of {$bomProd->storeStockCap} unit(s).", 422);
                 }
-                $canProduce = PHP_INT_MAX;
-                foreach ($bom->components as $component) {
-                    $rawInv = Inventory::find($component['inventoryId'] ?? null);
-                    if (!$rawInv || $rawInv->isOnDemand) continue;
-                    $qpu = (float) ($component['qty'] ?? 0);
-                    if ($qpu <= 0) continue;
-                    $canProduce = min($canProduce, (int) floor(max(0, (int) ($rawInv->stockQty ?? 0) - (int) ($rawInv->reservedQty ?? 0)) / $qpu));
+                // Material availability moved out of this per-line loop: it read a reservedQty
+                // this request had not written yet, so every line in one cart cleared the same
+                // shelf. See MaterialClaim.
+            }
+
+            // -- Claim raw material for the whole cart, atomically -------
+            $materialClaims = [];
+            foreach (MaterialClaim::demandOf($orderItems) as $invId => $needed) {
+                if (MaterialClaim::claim((string) $invId, (int) $needed)) {
+                    $materialClaims[(string) $invId] = (int) $needed;
+                    continue;
                 }
-                if ($canProduce !== PHP_INT_MAX && $itemQty > $canProduce)
-                    return $this->errorResponse("\"{$bomProd->name}\" can only produce {$canProduce} unit(s) with current materials.", 422);
+                $message = MaterialClaim::shortfallMessage((string) $invId, (int) $needed);
+                MaterialClaim::releaseAll($materialClaims);
+                return $this->errorResponse($message, 422);
             }
 
             // ── Atomic stock reservation BEFORE order creation ──────────
@@ -334,6 +340,7 @@ class PaymentController extends Controller
                                 ['$inc' => ['stockQty' => $r['qty']]]
                             );
                     }
+                    MaterialClaim::releaseAll($materialClaims);
                     $currentStock = (int) ($inv->stockQty ?? 0);
                     return $this->errorResponse(
                         "\"{$prod->name}\" only has {$currentStock} item(s) in stock.",
@@ -350,6 +357,10 @@ class PaymentController extends Controller
             }
 
             // ── Create order (paymentStatus: unpaid) ──────────────────
+            // From here the order owns what is held; cancelling it is what gives the material
+            // back, so the rollback list must not be able to take it away.
+            $materialClaims = [];
+
             $order = Order::create([
                 'userId'          => (string) $user->_id,
                 'userSnapshot'    => [
@@ -422,8 +433,9 @@ class PaymentController extends Controller
                             $deductQty = (int) round(($component['qty'] ?? 0) * ($item['qty'] ?? 1));
                             if ($deductQty <= 0) continue;
                             if ($producedItem) {
-                                $rawInv->reservedQty = (int) ($rawInv->reservedQty ?? 0) + $deductQty;
-                                $rawInv->save();
+                                // Held already by the cart-wide claim; a second increment here
+                                // would hold the material twice.
+                                $rawInv->refresh();
                                 StockHistory::create([
                                     'inventoryId' => (string) $rawInv->_id, 'quantity' => $deductQty,
                                     'remainingQty' => (int) ($rawInv->stockQty ?? 0), 'unitCost' => $rawInv->averageCost ?? 0,
@@ -432,6 +444,9 @@ class PaymentController extends Controller
                                     'createdAt' => now(),
                                 ]);
                             } else {
+                                // The hold goes back before the shelf is actually reduced, or the
+                                // material is counted against availability twice.
+                                MaterialClaim::release((string) $rawInv->_id, $deductQty);
                                 $updatedRaw = DB::connection('mongodb')->getCollection('inventories')
                                     ->findOneAndUpdate(
                                         ['_id' => new \MongoDB\BSON\ObjectId((string) $rawInv->_id)],
@@ -877,16 +892,21 @@ class PaymentController extends Controller
                 } elseif ($bomProd->storeStockCap !== null && $itemQty > (int) $bomProd->storeStockCap) {
                     return $this->errorResponse("\"{$bomProd->name}\" has a storefront limit of {$bomProd->storeStockCap} unit(s).", 422);
                 }
-                $canProduce = PHP_INT_MAX;
-                foreach ($bom->components as $component) {
-                    $rawInv = Inventory::find($component['inventoryId'] ?? null);
-                    if (!$rawInv || $rawInv->isOnDemand) continue;
-                    $qpu = (float) ($component['qty'] ?? 0);
-                    if ($qpu <= 0) continue;
-                    $canProduce = min($canProduce, (int) floor(max(0, (int) ($rawInv->stockQty ?? 0) - (int) ($rawInv->reservedQty ?? 0)) / $qpu));
+                // Material availability moved out of this per-line loop: it read a reservedQty
+                // this request had not written yet, so every line in one cart cleared the same
+                // shelf. See MaterialClaim.
+            }
+
+            // -- Claim raw material for the whole cart, atomically -------
+            $materialClaims = [];
+            foreach (MaterialClaim::demandOf($orderItems) as $invId => $needed) {
+                if (MaterialClaim::claim((string) $invId, (int) $needed)) {
+                    $materialClaims[(string) $invId] = (int) $needed;
+                    continue;
                 }
-                if ($canProduce !== PHP_INT_MAX && $itemQty > $canProduce)
-                    return $this->errorResponse("\"{$bomProd->name}\" can only produce {$canProduce} unit(s) with current materials.", 422);
+                $message = MaterialClaim::shortfallMessage((string) $invId, (int) $needed);
+                MaterialClaim::releaseAll($materialClaims);
+                return $this->errorResponse($message, 422);
             }
 
             $stockReservations = [];
@@ -908,6 +928,7 @@ class PaymentController extends Controller
                         DB::connection('mongodb')->getCollection('inventories')
                             ->updateOne(['_id' => new \MongoDB\BSON\ObjectId($r['invId'])], ['$inc' => ['stockQty' => $r['qty']]]);
                     }
+                    MaterialClaim::releaseAll($materialClaims);
                     return $this->errorResponse("\"{$prod->name}\" only has {$inv->stockQty} item(s) in stock.", 422);
                 }
 
@@ -954,6 +975,10 @@ class PaymentController extends Controller
                 ?? ($anyUploaded ? 'upload' : ($anyRequested ? 'request' : null));
 
             // ── Create order ──────────────────────────────────────────
+            // From here the order owns what is held; cancelling it is what gives the material
+            // back, so the rollback list must not be able to take it away.
+            $materialClaims = [];
+
             $order = Order::create([
                 'userId'          => (string) $user->_id,
                 'userSnapshot'    => ['name' => trim("{$user->firstName} {$user->lastName}"), 'email' => $user->email, 'phone' => $user->phoneNumber ?? ''],
@@ -1034,8 +1059,9 @@ class PaymentController extends Controller
                         $deductQty = (int) round(($component['qty'] ?? 0) * ($item['qty'] ?? 1));
                         if ($deductQty <= 0) continue;
                         if ($producedItem) {
-                            $rawInv->reservedQty = (int) ($rawInv->reservedQty ?? 0) + $deductQty;
-                            $rawInv->save();
+                            // Held already by the cart-wide claim; a second increment here would
+                            // hold the material twice.
+                            $rawInv->refresh();
                             StockHistory::create([
                                 'inventoryId'  => (string) $rawInv->_id,
                                 'quantity'     => $deductQty,
@@ -1054,6 +1080,9 @@ class PaymentController extends Controller
                             ]);
                             continue;
                         }
+                        // The hold goes back before the shelf is actually reduced, or the
+                        // material is counted against availability twice.
+                        MaterialClaim::release((string) $rawInv->_id, $deductQty);
                         $updatedRaw = DB::connection('mongodb')->getCollection('inventories')
                             ->findOneAndUpdate(
                                 ['_id' => new \MongoDB\BSON\ObjectId((string) $rawInv->_id)],

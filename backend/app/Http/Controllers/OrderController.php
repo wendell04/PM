@@ -14,6 +14,7 @@ use App\Models\Product;
 use App\Models\User;
 use App\Models\Sale;
 use App\Models\Inventory;
+use App\Support\MaterialClaim;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -470,22 +471,25 @@ class OrderController extends Controller
                     );
                 }
 
-                $canProduce = PHP_INT_MAX;
-                foreach ($bom->components as $component) {
-                    $rawInv = Inventory::find($component['inventoryId'] ?? null);
-                    if (!$rawInv || $rawInv->isOnDemand) continue;
-                    $qpu = (float) ($component['qty'] ?? 0);
-                    if ($qpu <= 0) continue;
-                    // Available for new orders = physical stock minus what's already reserved for production.
-                    $available = max(0, (int) ($rawInv->stockQty ?? 0) - (int) ($rawInv->reservedQty ?? 0));
-                    $canProduce = min($canProduce, (int) floor($available / $qpu));
+                // Material availability is no longer decided here. It was, per line, against a
+                // reservedQty that this request had not written yet - so every line in a cart saw
+                // the shelf untouched and three lines of 50 mugs each cleared the same 50 boxes.
+                // The whole cart is totalled and claimed below instead.
+            }
+
+            // -- Claim raw material for the whole cart, atomically -------
+            // First cart in wins. The guard compares stock against reserved inside the update
+            // itself, so a losing racer writes nothing, and anything it had already taken is
+            // handed straight back.
+            $materialClaims = [];
+            foreach (MaterialClaim::demandOf($orderItems) as $invId => $needed) {
+                if (MaterialClaim::claim((string) $invId, (int) $needed)) {
+                    $materialClaims[(string) $invId] = (int) $needed;
+                    continue;
                 }
-                if ($canProduce !== PHP_INT_MAX && $itemQty > $canProduce) {
-                    return $this->errorResponse(
-                        "\"{$bomProd->name}\" can only produce {$canProduce} unit(s) with current materials.",
-                        422
-                    );
-                }
+                $message = MaterialClaim::shortfallMessage((string) $invId, (int) $needed);
+                MaterialClaim::releaseAll($materialClaims);
+                return $this->errorResponse($message, 422);
             }
 
             // ── Atomic stock reservation BEFORE order creation ───────────
@@ -521,6 +525,7 @@ class OrderController extends Controller
                                 ['$inc' => ['stockQty' => $r['qty']]]
                             );
                     }
+                    MaterialClaim::releaseAll($materialClaims);
                     $currentStock = (int) ($inv->stockQty ?? 0);
                     return $this->errorResponse(
                         "\"{$prod->name}\" only has {$currentStock} item(s) in stock.",
@@ -669,8 +674,9 @@ class OrderController extends Controller
                         $deductQty = (int) round(($component['qty'] ?? 0) * ($item['qty'] ?? 1));
                         if ($deductQty <= 0) continue;
                         if ($producedItem) {
-                            $rawInv->reservedQty = (int) ($rawInv->reservedQty ?? 0) + $deductQty;
-                            $rawInv->save();
+                            // Already held by the cart-wide claim above; incrementing again here
+                            // would double the hold. Only the paper trail is left to write.
+                            $rawInv->refresh();
                             StockHistory::create([
                                 'inventoryId'  => (string) $rawInv->_id,
                                 'quantity'     => $deductQty,
@@ -688,6 +694,10 @@ class OrderController extends Controller
                                 'createdAt'    => now(),
                             ]);
                         } else {
+                            // A ready-made line turns its hold into a real deduction, so the hold
+                            // has to go first or the material is counted against the shelf twice.
+                            MaterialClaim::release((string) $rawInv->_id, $deductQty);
+                            $rawInv->refresh();
                             $this->deductInventoryFIFO(
                                 inventory:    $rawInv,
                                 qty:          $deductQty,
@@ -708,6 +718,11 @@ class OrderController extends Controller
                     ]);
                 }
             }
+
+            // The order now owns what is still held, and cancelling it is what gives that back.
+            // Left in the list, a later failure - a broadcast, an email - would have the catch
+            // release material the order is genuinely holding.
+            $materialClaims = [];
 
             // Broadcast new order to admin channel
             try {
@@ -767,8 +782,12 @@ class OrderController extends Controller
             return $this->successResponse('Order placed successfully!', $order, 201);
 
         } catch (\Illuminate\Validation\ValidationException $e) {
+            MaterialClaim::releaseAll($materialClaims ?? []);
             return $this->validationErrorResponse($e);
         } catch (\Exception $e) {
+            // A claim that outlives the request that made it holds material against an order that
+            // was never created, and nothing later would ever give it back.
+            MaterialClaim::releaseAll($materialClaims ?? []);
             return $this->serverErrorResponse($e, 'An unexpected error occurred while placing your order.');
         }
     }
