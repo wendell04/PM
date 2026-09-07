@@ -695,7 +695,6 @@ class ProductController extends Controller
                 'variantImageUrls'  => 'nullable|array',
                 'isMadeToOrder'       => 'nullable|boolean',
                 'allowPreorder'       => 'nullable|boolean',
-                'allowPreorder'       => 'nullable|boolean',
                 // Above this quantity the product stops quoting its tiers and offers a conversation.
                 'quoteAboveQty'       => 'nullable|integer|min:1|max:1000000',
                 'minOrderQty'         => 'nullable|integer|min:1',

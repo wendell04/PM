@@ -2638,7 +2638,7 @@ const handleForgotResetPassword = async () => {
                           width:'14px', height:'14px', borderRadius:'50%', verticalAlign:'middle',
                           background:'var(--border)', color:'var(--gray)', fontSize:'0.65rem',
                           marginLeft:'4px', cursor:'help', flexShrink: 0 }}
-                          title="Keep you logged in for 30 days. Don't use on shared devices.">?</span>
+                          title="Keeps you signed in on this device, and skips the emailed code next time. 90 days for customers, 30 for staff. Do not use on a shared computer.">?</span>
                       </label>
                       <button type="button" className="auth-link"
                         onClick={() => { setModal(null); setForgotModal(true); setForgotEmail(''); setForgotError(''); setForgotSent(false); setForgotStep(1); setForgotCode(''); setForgotNewPassword(''); setForgotConfirmPassword(''); }}>

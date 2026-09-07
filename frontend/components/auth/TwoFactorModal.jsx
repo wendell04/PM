@@ -244,7 +244,6 @@ function CodeEntry({ token, method, userEmail, persistLogin, onSuccess, onBack, 
   const [error, setError] = useState(null);
   const [isLocked, setIsLocked] = useState(false);
   const [lockedUntil, setLockedUntil] = useState(null);
-  const [remember, setRemember] = useState(false);
   const [countdown, setCountdown] = useState(30);
   const [canResend, setCanResend] = useState(false);
 
@@ -296,7 +295,7 @@ function CodeEntry({ token, method, userEmail, persistLogin, onSuccess, onBack, 
         // The server mints the real full-access token only now; the pending token used to
         // reach this point is limited and already revoked - use the new one from here on.
         const sessionToken = result.token || token;
-        if (remember && result.token) {
+        if (persistLogin && result.token) {
           try {
             const dr = await rememberDevice(sessionToken);
             if (dr.device_token) {
@@ -455,19 +454,13 @@ function CodeEntry({ token, method, userEmail, persistLogin, onSuccess, onBack, 
           {loading ? "Verifying…" : sending ? "Sending code…" : "Verify"}
         </button>
 
-        {/* Remember device */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", marginTop: "16px" }}>
-          <input
-            type="checkbox"
-            id="tfa-remember"
-            checked={remember}
-            onChange={(e) => setRemember(e.target.checked)}
-            style={{ width: "16px", height: "16px", accentColor: accent, cursor: "pointer" }}
-          />
-          <label htmlFor="tfa-remember" style={{ fontSize: "13px", color: "var(--gray, #888)", cursor: "pointer" }}>
-            Remember this device for 90 days
-          </label>
-        </div>
+        {/* The device is remembered when the login said to remember it - see persistLogin.
+            A second checkbox here asked the same question twice in one flow. */}
+        {persistLogin && (
+          <p style={{ marginTop: "16px", fontSize: "12px", color: "var(--gray, #888)" }}>
+            We will not ask for a code on this device for 90 days.
+          </p>
+        )}
 
         {/* Resend (email only) */}
         {!isTOTP && (
