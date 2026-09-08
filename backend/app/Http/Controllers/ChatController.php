@@ -291,9 +291,23 @@ class ChatController extends Controller
                 ];
             }
 
-            // Dedupe: ignore a repeat inquiry from the same sender within 20s (the chat widget can
-            // fire the inquiry send more than once). Match on `body` (top-level - reliable in MongoDB,
-            // and identical per product) rather than a nested metadata field. Return the existing one.
+            // Dedupe on the client's own key first. Every send already carries one and the column
+            // already stores it - it was only ever read back to match an optimistic bubble to its
+            // confirmed twin, never to stop the same send landing twice. An exact key beats a time
+            // window: a retried request carries the same key however long the network took, and two
+            // deliberate sends carry different keys however close together they are.
+            $clientKey = $request->input('client_key');
+            if ($clientKey) {
+                $existing = Message::where('sender_id', $user->_id)
+                    ->where('client_key', $clientKey)
+                    ->first();
+                if ($existing) {
+                    return response()->json($existing, 200);
+                }
+            }
+
+            // The time window stays as the net under it, for the case the key cannot catch: the
+            // widget firing the inquiry twice as two separate sends, each with its own key.
             if ($request->type === 'inquiry' && !empty($request->body)) {
                 $existing = Message::where('sender_id', $user->_id)
                     ->where('type', 'inquiry')

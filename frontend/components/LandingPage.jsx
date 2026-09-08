@@ -2186,6 +2186,14 @@ const handleForgotResetPassword = async () => {
                       </div>
                       <p className="review-comment">&ldquo;{rv.comment}&rdquo;</p>
                       <div className="review-meta">
+                        {/* The reviewer's own photo when they have one; the initial otherwise -
+                            same rule as the product page and the quick view. */}
+                        <span className="review-avatar" aria-hidden="true">
+                          {rv.avatar ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={rv.avatar} alt="" onError={e => { e.currentTarget.style.display = 'none'; }} />
+                          ) : (rv.customerName || 'C').charAt(0).toUpperCase()}
+                        </span>
                         <span className="review-name">{rv.customerName}</span>
                         {rv.created_at && (
                           <span className="review-date">
