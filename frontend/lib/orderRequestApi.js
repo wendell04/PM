@@ -180,7 +180,7 @@ export async function createAdminQuotation(token, { recipientId, items, designFe
   return data.data ?? data;
 }
 
-export async function createOrderRequestPaymentLink(token, orderRequestId, type, deliveryAddress = null, terms = null) {
+export async function createOrderRequestPaymentLink(token, orderRequestId, type, deliveryAddress = null, terms = null, payment = null) {
   const res = await fetchWithTimeout(`${API_URL}/api/payment/order-request-link`, {
     method: 'POST',
     headers: {
@@ -192,6 +192,10 @@ export async function createOrderRequestPaymentLink(token, orderRequestId, type,
       orderRequestId, type,
       ...(deliveryAddress ? { deliveryAddress } : {}),
       ...(terms ? terms : {}),
+      // With a method the backend builds a Payment Intent and the customer authorises it
+      // directly; without one it falls back to PayMongo's hosted page, which is what every
+      // older client will keep doing.
+      ...(payment ? payment : {}),
     }),
   }, 30000);
   const data = await res.json();

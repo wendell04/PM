@@ -1284,6 +1284,12 @@ class PaymentController extends Controller
                 'orderRequestId'  => 'required|string|size:24',
                 'type'            => 'required|in:downpayment,balance,full',
                 'deliveryAddress' => 'nullable|array',
+                // Chosen on our own screen, the way the cart checkout does it, instead of handing
+                // the customer to PayMongo's hosted page to choose again. Absent, the hosted
+                // session below still runs, so an older client keeps working.
+                'paymentType'     => 'nullable|in:gcash,paymaya,card',
+                'paymentMethodId' => 'nullable|string|max:120',
+                'eWalletPhone'    => 'nullable|string|max:20',
                 // The clickwrap on the quote checkout. Paying a quotation is accepting an offer, and
                 // this is the record of what was accepted - every clause, verbatim, at the version
                 // in force at the time, so a later edit to the shop's terms cannot rewrite history.
@@ -1397,6 +1403,102 @@ class PaymentController extends Controller
             $amountInCentavos = (int) round($amount * 100);
             $frontendUrl      = config('app.frontend_url', 'http://localhost:3000');
             $orderId          = $validated['orderRequestId'];
+            // ── Payment Intent flow (GCash, Maya, Card) ──────────────────────────────
+            // Same shape the cart checkout uses: the method is picked on our screen and the
+            // customer goes straight to authorising it, rather than landing on a second picker.
+            $paymentType = $validated['paymentType'] ?? null;
+
+            if ($paymentType) {
+                $intentRes = Http::withBasicAuth($this->secretKey, '')
+                    ->post("{$this->baseUrl}/payment_intents", [
+                        'data' => ['attributes' => [
+                            'amount'                 => $amountInCentavos,
+                            'payment_method_allowed' => [$paymentType],
+                            'payment_method_options' => ['card' => ['request_three_d_secure' => 'any']],
+                            'currency'               => 'PHP',
+                            'capture_type'           => 'automatic',
+                            // The reference goes in the description AND the metadata. A quote's
+                            // Order does not exist until the money lands, so losing the
+                            // confirmation loses the whole order - not just its paid flag. The
+                            // webhook can match on either of these when reference_number, which
+                            // intents do not carry, comes back empty.
+                            'description'            => $referenceNumber,
+                            'metadata'               => [
+                                'order_request_id' => $orderId,
+                                'reference_number' => $referenceNumber,
+                            ],
+                        ]]
+                    ]);
+
+                if (!$intentRes->successful()) {
+                    Log::error('createOrderRequestLink: intent failed', [
+                        'orderRequestId' => $orderId, 'body' => $intentRes->body(),
+                    ]);
+                    return $this->errorResponse('Payment gateway error. Please try again.', 502);
+                }
+
+                $intentId        = $intentRes->json()['data']['id'];
+                $paymentMethodId = $validated['paymentMethodId'] ?? null;
+
+                if ($paymentType !== 'card') {
+                    $rawPhone = !empty($validated['eWalletPhone'])
+                        ? $validated['eWalletPhone']
+                        : ($user->phoneNumber ?? '');
+                    $phone = ltrim(preg_replace('/^\+?63/', '', preg_replace('/\s+/', '', $rawPhone)), '0');
+
+                    $pmRes = Http::withBasicAuth($this->secretKey, '')
+                        ->post("{$this->baseUrl}/payment_methods", [
+                            'data' => ['attributes' => [
+                                'type'    => $paymentType,
+                                'billing' => [
+                                    'name'  => trim("{$user->firstName} {$user->lastName}"),
+                                    'email' => $user->email,
+                                    'phone' => $phone,
+                                ],
+                            ]]
+                        ]);
+
+                    if (!$pmRes->successful()) {
+                        return $this->errorResponse('Failed to initialize payment method.', 502);
+                    }
+                    $paymentMethodId = $pmRes->json()['data']['id'];
+                }
+
+                if (!$paymentMethodId) {
+                    return $this->errorResponse('Card payment method ID is required.', 422);
+                }
+
+                $attachRes = Http::withBasicAuth($this->secretKey, '')
+                    ->post("{$this->baseUrl}/payment_intents/{$intentId}/attach", [
+                        'data' => ['attributes' => [
+                            'payment_method' => $paymentMethodId,
+                            'return_url'     => "{$frontendUrl}/shop/payment-success?id={$orderId}&type=order_request",
+                        ]]
+                    ]);
+
+                if (!$attachRes->successful()) {
+                    Log::error('createOrderRequestLink: attach failed', [
+                        'orderRequestId' => $orderId, 'body' => $attachRes->body(),
+                    ]);
+                    return $this->errorResponse('Failed to attach payment. Please try again.', 502);
+                }
+
+                $attachData   = $attachRes->json()['data'];
+                $intentStatus = $attachData['attributes']['status'];
+                $redirectUrl  = $attachData['attributes']['next_action']['redirect']['url'] ?? null;
+
+                $orderRequest->paymongoIntentId   = $intentId;
+                $orderRequest->paymongoReference  = $referenceNumber;
+                $orderRequest->save();
+
+                return $this->successResponse('Payment initiated.', [
+                    'intentId'    => $intentId,
+                    'status'      => $intentStatus,
+                    'redirectUrl' => $redirectUrl,
+                    'orderId'     => $orderId,
+                ]);
+            }
+
             $description      = "PersonalizeMe Prints - Custom Order {$label} #{$orderId}";
 
             $response = Http::withBasicAuth($this->secretKey, '')
@@ -1544,11 +1646,26 @@ class PaymentController extends Controller
         // products; lineItems normalises both the multi-item and the legacy single-product shape.
         // Prices come straight from the quote lines - design/delivery fees stay OUT of unitPrice
         // (they are separate components of finalPrice, not part of what a piece costs).
+        // A quote can hold a ready-made item as easily as a bespoke one. Both flags used to be
+        // hardcoded true, so a quoted stock item got a job order and a production queue for work
+        // that does not exist, and its material was reserved rather than taken off the shelf.
+        // Read them off the product. A line with no product behind it is bespoke by definition -
+        // a service, a one-off - so it keeps made-to-order.
+        $lineFlags = function (array $line): array {
+            $product = !empty($line['productId']) ? Product::find($line['productId']) : null;
+            if (!$product) {
+                return ['isCustom' => true, 'isMadeToOrder' => true];
+            }
+            return [
+                'isCustom'      => (bool) ($product->isCustom ?? false),
+                'isMadeToOrder' => (bool) ($product->isMadeToOrder ?? false) || (bool) ($product->isCustom ?? false),
+            ];
+        };
+
         $items = array_map(fn ($line) => [
             'productId'     => (string) ($line['productId'] ?? ''),
             'productName'   => $line['productName'] ?? null,
-            'isCustom'      => true,
-            'isMadeToOrder' => true,
+            ...$lineFlags($line),
             'thumbnail'     => $line['thumbnail'] ?? null,
             // Carry the quoted variant through - without it the order cannot tell which
             // BOM was priced, and production would have to guess the colour.
@@ -1731,6 +1848,17 @@ class PaymentController extends Controller
             // ── Extract orderId from reference_number ─────────────────
             $data    = $payload['data']['attributes']['data'] ?? [];
             $remarks = $data['attributes']['reference_number'] ?? '';
+
+            // A payment made through a Payment Intent carries no reference_number - only what the
+            // intent put in its description and metadata. Without these two fallbacks an intent
+            // payment on a QUOTE would leave the money taken and no Order created at all, because
+            // a quote's Order is built by this handler and does not exist beforehand.
+            if ($remarks === '') {
+                $remarks = (string) ($data['attributes']['description'] ?? '');
+            }
+            if ($remarks === '') {
+                $remarks = (string) ($data['attributes']['metadata']['reference_number'] ?? '');
+            }
 
             // Route: OR-{24hexId}-down or OR-{24hexId}-bal → OrderRequest
             // Route: raw 24-hex → Order

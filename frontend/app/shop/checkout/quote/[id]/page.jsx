@@ -12,6 +12,7 @@ import { DEFAULT_CUSTOM_ORDER_TERMS, renderTermsBody } from '@/lib/customOrderTe
 import '@/app/shop/shop.css';
 
 import AddressPicker from '@/components/shop/AddressPicker';
+import PaymentMethods, { ONLINE_METHODS, tokenizeCard } from '@/components/shop/PaymentMethods';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
@@ -27,11 +28,17 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 export default function QuoteCheckoutPage() {
   const { id } = useParams();
   const router = useRouter();
-  const { token } = useAuth();
+  const { token, user } = useAuth();
 
   const [quote, setQuote] = useState(null);
   const [addresses, setAddresses] = useState([]);
   const [selectedAddressId, setSelectedAddressId] = useState('');
+  // The method is chosen here now, not on PayMongo's page. COD is not offered: a quote is a priced
+  // offer the shop has already scheduled work against, with nothing to collect at a door.
+  const [payEnabled,   setPayEnabled]   = useState({});
+  const [payMethod,    setPayMethod]    = useState('gcash');
+  const [eWalletPhone, setEWalletPhone] = useState('');
+  const [card,         setCard]         = useState({});
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
   const [error, setError] = useState(null);
@@ -84,6 +91,20 @@ export default function QuoteCheckoutPage() {
   }, [token, id, fetchAddresses]);
 
   const selectedAddress = addresses.find(a => a.id === selectedAddressId) ?? null;
+
+  useEffect(() => {
+    fetch(`${API_URL}/api/storefront/content/payment_methods`)
+      .then(r => r.json())
+      .then(d => { if (d?.data?.enabled && typeof d.data.enabled === 'object') setPayEnabled(d.data.enabled); })
+      .catch(() => {});
+  }, []);
+
+  // If the owner switches off whatever was selected, fall to the first one still offered rather
+  // than leaving a dead choice on screen.
+  const offered = ONLINE_METHODS.filter(m => payEnabled[m.id] !== false).map(m => m.id);
+  useEffect(() => {
+    if (offered.length && !offered.includes(payMethod)) setPayMethod(offered[0]);
+  }, [offered.join(','), payMethod]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const finalPrice = Number(quote?.finalPrice) || 0;
   const isExpired = quote?.expiresAt ? new Date(quote.expiresAt).getTime() < Date.now() : false;
@@ -148,13 +169,27 @@ export default function QuoteCheckoutPage() {
 
     setPaying(true);
     try {
+      const payment = { paymentType: payMethod };
+      if (payMethod === 'card') {
+        payment.paymentMethodId = await tokenizeCard(card, user);
+      } else if (eWalletPhone.trim()) {
+        payment.eWalletPhone = `+63${eWalletPhone.trim()}`;
+      }
+
       const res = await createOrderRequestPaymentLink(token, id, payType, buildAddressPayload(selectedAddress), {
         agreedToTerms: true,
         termsVersion,
         termsAgreedAt: new Date().toISOString(),
         termsSnapshot,
-      });
-      if (res.checkoutUrl) {
+      }, payment);
+
+      // An intent that needs authorising hands back a redirect; one that cleared outright (a saved
+      // card, no 3DS) is already done. checkoutUrl is the hosted-page fallback.
+      if (res.redirectUrl) {
+        window.location.href = res.redirectUrl;
+      } else if (res.status === 'succeeded') {
+        window.location.href = `/shop/payment-success?id=${id}&type=order_request`;
+      } else if (res.checkoutUrl) {
         window.location.href = res.checkoutUrl;
       } else {
         setError('Could not start the payment. Please try again.');
@@ -258,9 +293,24 @@ export default function QuoteCheckoutPage() {
                 );
               })}
             </div>
-            <p style={{ color: 'var(--gray)', fontSize: '.75rem', margin: '10px 0 0' }}>
-              You&apos;ll choose GCash, Maya or card on the secure payment page.
-            </p>
+          </section>
+
+          <section style={{ background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: 12, padding: 14 }}>
+            <span style={{ display: 'block', fontSize: '.74rem', fontWeight: 800, letterSpacing: '.03em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 10 }}>
+              Payment method
+            </span>
+            {/* Picked here rather than on PayMongo's page. The line that used to sit under the
+                amount - "You'll choose GCash, Maya or card on the secure payment page" - was an
+                apology for making the customer decide twice. */}
+            <PaymentMethods
+              value={payMethod}
+              onChange={setPayMethod}
+              enabled={payEnabled}
+              eWalletPhone={eWalletPhone}
+              onEWalletPhone={setEWalletPhone}
+              card={card}
+              onCard={setCard}
+            />
           </section>
         </div>
 
