@@ -59,6 +59,59 @@ class JobOrderController extends Controller
     }
 
     /**
+     * The job's material list, from the product's BOM or - failing that - from the quote.
+     *
+     * A quotation can be for something with no BOM at all: "T-shirt printing" is a service, and
+     * the shirts, the film and the ink are chosen by the admin while drafting the quote. Those
+     * choices are carried onto the order line. Without this fallback the job order came out with
+     * an empty snapshot, so Production and QC showed no materials for the job, and QC pass
+     * consumed nothing - leaving the stock the quote had already reserved held for good, on an
+     * order that was finished and delivered.
+     *
+     * A quote line records a TOTAL for the line, not a per-unit figure, so it is divided back out
+     * to match the shape a BOM produces.
+     */
+    private function snapshotFor(?Order $order, $itemIndex, $productId, $variantId, int $qty): array
+    {
+        $snap = $this->computeBomSnapshot($productId, $variantId, $qty);
+        if (!empty($snap)) {
+            return $snap;
+        }
+
+        $items = $order?->items ?? [];
+        $line  = is_numeric($itemIndex) ? ($items[(int) $itemIndex] ?? null) : null;
+
+        // Single-JO path has no item index; fall back to the line for this product.
+        if (!$line && $productId) {
+            foreach ($items as $it) {
+                if ((string) ($it['productId'] ?? '') === (string) $productId) { $line = $it; break; }
+            }
+        }
+
+        $mats = $line['materials'] ?? [];
+        if (empty($mats)) {
+            return [];
+        }
+
+        $units    = max(1, $qty);
+        $snapshot = [];
+        foreach ($mats as $m) {
+            $invId = $m['inventoryId'] ?? null;
+            $inv   = $invId ? Inventory::find($invId) : null;
+            $total = (float) ($m['qty'] ?? 0);
+            if ($total <= 0) continue;
+            $snapshot[] = [
+                'inventoryId' => $invId ? (string) $invId : null,
+                'name'        => $inv->name ?? ($m['name'] ?? 'Material'),
+                'unit'        => $inv->uom ?? ($m['unit'] ?? ''),
+                'qtyPerUnit'  => $total / $units,
+                'totalQty'    => $total,
+            ];
+        }
+        return $snapshot;
+    }
+
+    /**
      * GET /api/admin/job-orders
      * Returns all job orders with optional filters
      */
@@ -147,6 +200,9 @@ class JobOrderController extends Controller
                 'product.quantity' => 'required|integer|min:1',
                 'product.productId'=> 'nullable|string',
                 'product.variantId'=> 'nullable|string',
+                // Which order line this job is for. Only used to find the line's own materials
+                // when the product has no BOM - a quoted service, where the admin chose them.
+                'itemIndex'        => 'nullable|integer|min:0',
                 'targetCompletion' => 'required|date',
                 'isRush'           => 'boolean',
                 'assignedTo'       => 'nullable|string',
@@ -198,7 +254,9 @@ class JobOrderController extends Controller
 
             // Snapshot the product's BOM raw materials onto the JO so Production/QC can see what it
             // needs to make (e.g. DTF film, white mug, mug box). Display only - no stock change here.
-            $snap = $this->computeBomSnapshot(
+            $snap = $this->snapshotFor(
+                $linkedOrder,
+                $validated['itemIndex'] ?? null,
                 $validated['product']['productId'] ?? null,
                 $validated['product']['variantId'] ?? null,
                 (int) ($validated['product']['quantity'] ?? 1)
@@ -342,7 +400,9 @@ class JobOrderController extends Controller
                     'updatedAt'        => now(),
                 ]);
 
-                $snap = $this->computeBomSnapshot(
+                $snap = $this->snapshotFor(
+                    $linkedOrder,
+                    $idx,
                     $product['productId'] ?? null,
                     $product['variantId'] ?? null,
                     (int) ($product['quantity'] ?? 1)
