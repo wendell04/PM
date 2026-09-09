@@ -1585,12 +1585,39 @@ class PaymentController extends Controller
      */
     private function reserveQuoteMaterials(OrderRequest $orderRequest, Order $order): void
     {
-        foreach ($orderRequest->lineItems ?? [] as $line) {
+        // A quote can hold both kinds of line at once - a printed hoodie beside a stocked mug -
+        // which makes the order mixed, and the two are settled differently. A produced line holds
+        // its material until QC passes and consumes it. A ready-made line has no production step
+        // and therefore no QC to consume anything, so holding it would hold it forever: it comes
+        // off the shelf now, the same way the cart checkout takes it.
+        //
+        // This only became reachable once quote lines stopped claiming to be custom regardless of
+        // the product. Before that every line got a job order, so every hold was eventually
+        // consumed by one.
+        $items = $order->items ?? [];
+
+        foreach ($orderRequest->lineItems ?? [] as $idx => $line) {
+            $item     = $items[$idx] ?? [];
+            $produced = !empty($item['isCustom']) || !empty($item['isMadeToOrder']);
+
             foreach ($line['materials'] ?? [] as $mat) {
                 try {
                     $inv = Inventory::find($mat['inventoryId'] ?? null);
                     $qty = (int) round((float) ($mat['qty'] ?? 0));
                     if (!$inv || $inv->isOnDemand || $qty <= 0) continue;
+
+                    if (!$produced) {
+                        // This controller's FIFO helper takes only these four - the attribution
+                        // arguments belong to OrderController's copy of it. Passing them here
+                        // would be a fatal at runtime that no linter reports.
+                        $this->deductInventoryFIFO(
+                            inventory: $inv,
+                            qty:       $qty,
+                            reason:    'sale_reserved',
+                            orderId:   (string) $order->_id,
+                        );
+                        continue;
+                    }
 
                     $inv->reservedQty = (int) ($inv->reservedQty ?? 0) + $qty;
                     $inv->save();
