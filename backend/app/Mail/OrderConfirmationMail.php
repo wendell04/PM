@@ -22,6 +22,8 @@ class OrderConfirmationMail extends Mailable implements ShouldQueue
     public float $amountPaid;
     public float $balanceDue;
     public bool $designFeeOnly;
+    public string $nextStep;
+    public ?string $mixedNote;
 
     public function __construct(
         string $firstName,
@@ -35,7 +37,9 @@ class OrderConfirmationMail extends Mailable implements ShouldQueue
         // paid and a thousand had not, and read as though the whole thing was settled.
         float $amountPaid = 0.0,
         float $balanceDue = 0.0,
-        bool $designFeeOnly = false
+        bool $designFeeOnly = false,
+        string $nextStep = '',
+        ?string $mixedNote = null
     ) {
         $this->firstName   = $firstName;
         $this->orderId     = $orderId;
@@ -46,6 +50,8 @@ class OrderConfirmationMail extends Mailable implements ShouldQueue
         $this->amountPaid    = $amountPaid;
         $this->balanceDue    = $balanceDue;
         $this->designFeeOnly = $designFeeOnly;
+        $this->nextStep      = $nextStep;
+        $this->mixedNote     = $mixedNote;
     }
 
     public function envelope(): Envelope

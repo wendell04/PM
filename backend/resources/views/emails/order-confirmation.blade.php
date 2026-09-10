@@ -129,6 +129,26 @@
                 @endif
               </table>
 
+              {{-- What happens next, worked out from the lines rather than from six templates
+                   that would have to be kept in step with each other. --}}
+              @if($nextStep)
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+                style="margin-top:16px;background:#f7f7f5;border:1px solid #e5e3de;border-radius:8px;">
+                <tr>
+                  <td style="padding:14px 16px;">
+                    <span style="font-size:11px;color:#6b6b6b;text-transform:uppercase;letter-spacing:1px;">
+                      What happens next
+                    </span><br>
+                    <span style="font-size:13px;color:#444444;line-height:1.65;">{{ $nextStep }}</span>
+                    @if($mixedNote)
+                    <br><br>
+                    <span style="font-size:13px;color:#444444;line-height:1.65;">{{ $mixedNote }}</span>
+                    @endif
+                  </td>
+                </tr>
+              </table>
+              @endif
+
               @if($designFeeOnly && $balanceDue > 0.009)
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
                 style="margin-top:16px;background:#fff8e1;border:1px solid #f0d9a0;border-radius:8px;">
