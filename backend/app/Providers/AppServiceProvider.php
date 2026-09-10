@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use Illuminate\Support\ServiceProvider;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
@@ -24,6 +25,14 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // Every mail replies to the shop's own inbox. The sender has to be the verified domain
+        // - Resend refuses anything else and Railway blocks the SMTP that would let us send as
+        // Gmail directly - so this is what actually carries a customer's reply to the owner.
+        // ContactFormMail overrides it with the writer's address; see the note there.
+        if ($replyTo = config('mail.reply_to.address')) {
+            Mail::alwaysReplyTo($replyTo, config('mail.reply_to.name'));
+        }
+
         Sanctum::usePersonalAccessTokenModel(PersonalAccessToken::class);
 
         $this->app->bind(

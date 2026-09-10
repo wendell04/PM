@@ -136,6 +136,24 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Reply-To
+    |--------------------------------------------------------------------------
+    |
+    | Where a customer's reply should land. A relay may only send as a domain it
+    | is authorised for, so the shop's own Gmail cannot be the From address - but
+    | it can be the one a reply goes to, which is the part that matters to them.
+    |
+    | Leave unset and mail carries no Reply-To, so replies go to From as before.
+    |
+    */
+
+    'reply_to' => [
+        'address' => env('MAIL_REPLY_TO_ADDRESS'),
+        'name'    => env('MAIL_REPLY_TO_NAME', env('MAIL_FROM_NAME', 'Personalize Me Prints')),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Security Mail Lane
     |--------------------------------------------------------------------------
     |

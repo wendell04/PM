@@ -40,8 +40,14 @@ class ContactFormMail extends Mailable implements ShouldQueue
         // domain it is authorised for, so sending "from" whatever was typed into the form fails
         // SPF/DKIM - Gmail silently rewrites it and Resend refuses it outright. Reply-To gets the
         // shop the same one-click reply without forging a sender.
+        // alwaysReplyTo() has already put the shop's own inbox on this message, and a Mailable's
+        // ->replyTo() appends rather than replaces - which would have the shop replying to itself
+        // alongside the writer. Replace the header outright so one click answers the person who
+        // actually wrote in.
         return $this->from(config('mail.from.address'), config('mail.from.name'))
-                    ->replyTo($this->email, $this->name)
+                    ->withSymfonyMessage(fn ($m) => $m->replyTo(
+                        new \Symfony\Component\Mime\Address($this->email, (string) $this->name)
+                    ))
                     ->subject('Contact Form: ' . $this->subject)
                     ->markdown('emails.contact');
     }
