@@ -69,6 +69,13 @@ return [
             'transport' => 'resend',
         ],
 
+        // Registered by hand in AppServiceProvider - Laravel ships no Brevo driver, only the
+        // Symfony bridge. The API transport, never the SMTP one: Railway blocks outbound 587.
+        'brevo' => [
+            'transport' => 'brevo',
+            'key' => env('BREVO_API_KEY'),
+        ],
+
         'sendmail' => [
             'transport' => 'sendmail',
             'path' => env('MAIL_SENDMAIL_PATH', '/usr/sbin/sendmail -bs -i'),
@@ -83,11 +90,15 @@ return [
             'transport' => 'array',
         ],
 
+        // The notification lane. Brevo first for its 300 a day; Resend catches the overflow and
+        // any outage, which is what keeps an order confirmation from disappearing into a caught
+        // exception on the one day the shop is busiest. Both send over HTTPS, so both survive
+        // Railway's block on outbound SMTP.
         'failover' => [
             'transport' => 'failover',
             'mailers' => [
-                'smtp',
-                'log',
+                'brevo',
+                'resend',
             ],
             'retry_after' => 60,
         ],

@@ -25,6 +25,19 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // Laravel has no Brevo driver, so the Symfony bridge is wired in by hand. The API
+        // transport is the only usable one here - BrevoSmtpTransport would go out over 587, which
+        // Railway blocks on this plan.
+        Mail::extend('brevo', function (array $config) {
+            return (new \Symfony\Component\Mailer\Bridge\Brevo\Transport\BrevoTransportFactory())
+                ->create(new \Symfony\Component\Mailer\Transport\Dsn(
+                    'brevo+api',
+                    'default',
+                    // The bridge reads the API key off the DSN's user, not its password.
+                    (string) ($config['key'] ?? ''),
+                ));
+        });
+
         // Every mail replies to the shop's own inbox. The sender has to be the verified domain
         // - Resend refuses anything else and Railway blocks the SMTP that would let us send as
         // Gmail directly - so this is what actually carries a customer's reply to the owner.
