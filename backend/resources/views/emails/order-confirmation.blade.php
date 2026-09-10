@@ -155,7 +155,6 @@
                     <span style="font-size:13px;color:#444444;line-height:1.7;">
                       Your receipt is attached to this email as
                       <strong style="color:#111111;">{{ \App\Support\ReceiptPdf::filename($orderId) }}</strong>.
-                      Save or print it any time, no sign-in needed.
                     </span>
                   </td>
                 </tr>
