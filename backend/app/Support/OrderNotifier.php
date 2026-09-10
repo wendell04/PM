@@ -83,13 +83,23 @@ final class OrderNotifier
             $name      = $order->userSnapshot['name'] ?? '';
             $firstName = explode(' ', trim($name))[0] ?: 'Customer';
 
+            // Sum what has actually been collected rather than trusting a single field: a
+            // design-fee-first order carries its hundred pesos in paymentHistory while
+            // paymentStatus still says unpaid, and both are correct.
+            $paid = collect($order->paymentHistory ?? [])
+                ->sum(fn ($p) => (float) ($p['amount'] ?? 0));
+            $total = (float) ($order->totalAmount ?? 0);
+
             Mail::to($email)->send(new OrderConfirmationMail(
-                firstName:   $firstName,
-                orderId:     (string) $order->_id,
-                items:       $order->items ?? [],
-                totalAmount: (float) ($order->totalAmount ?? 0),
-                status:      $order->orderStatus ?? 'Pending',
-                notes:       $order->notes ?? ''
+                firstName:     $firstName,
+                orderId:       (string) $order->_id,
+                items:         $order->items ?? [],
+                totalAmount:   $total,
+                status:        $order->orderStatus ?? 'Pending',
+                notes:         $order->notes ?? '',
+                amountPaid:    round($paid, 2),
+                balanceDue:    round(max(0, $total - $paid), 2),
+                designFeeOnly: (bool) ($order->designFeePaid ?? false) && ($order->paymentStatus ?? '') !== 'paid'
             ));
         } catch (\Exception $e) {
             Log::error('OrderNotifier@customer: ' . $e->getMessage(), ['order_id' => (string) $order->_id]);

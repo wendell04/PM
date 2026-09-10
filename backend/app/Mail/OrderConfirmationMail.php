@@ -19,15 +19,33 @@ class OrderConfirmationMail extends Mailable implements ShouldQueue
     public float  $totalAmount;
     public string $status;
     public string $notes;
+    public float $amountPaid;
+    public float $balanceDue;
+    public bool $designFeeOnly;
 
-    public function __construct(string $firstName, string $orderId, array $items, float $totalAmount, string $status, string $notes = '')
-    {
+    public function __construct(
+        string $firstName,
+        string $orderId,
+        array $items,
+        float $totalAmount,
+        string $status,
+        string $notes = '',
+        // What has actually been collected, and what is still owed. Without these the mail
+        // showed one figure - the order total - on an order where a hundred pesos had been
+        // paid and a thousand had not, and read as though the whole thing was settled.
+        float $amountPaid = 0.0,
+        float $balanceDue = 0.0,
+        bool $designFeeOnly = false
+    ) {
         $this->firstName   = $firstName;
         $this->orderId     = $orderId;
         $this->items       = $items;
         $this->totalAmount = $totalAmount;
         $this->status      = $status;
         $this->notes       = $notes;
+        $this->amountPaid    = $amountPaid;
+        $this->balanceDue    = $balanceDue;
+        $this->designFeeOnly = $designFeeOnly;
     }
 
     public function envelope(): Envelope

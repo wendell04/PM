@@ -42,7 +42,7 @@
                       Order ID
                     </span><br>
                     <strong style="font-size:15px;color: #a67c1a;font-family:monospace;">
-                      #{{ strtoupper(substr($orderId, -10)) }}
+                      ORD-{{ strtoupper(substr($orderId, -8)) }}
                     </strong>
                   </td>
                 </tr>

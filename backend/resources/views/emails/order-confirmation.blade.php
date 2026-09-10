@@ -28,7 +28,7 @@
                 Order Received
               </p>
               <p style="margin:0 0 24px;font-size:14px;color: #6b6b6b;line-height:1.7;">
-                Hi {{ $firstName }}, thank you for your order. We've received it and will begin processing shortly.
+                Hi {{ $firstName }}, thank you for your order. @if($designFeeOnly && $balanceDue > 0.009)We have it, and your design is being worked on now.@else We've received it and will begin processing shortly.@endif
               </p>
 
               {{-- Order ID --}}
@@ -39,7 +39,7 @@
                   <td style="padding:12px 16px;">
                     <span style="font-size:11px;color: #6b6b6b;text-transform:uppercase;letter-spacing:1px;">Order ID</span><br>
                     <strong style="font-size:15px;color: #a67c1a;font-family:monospace;">
-                      #{{ strtoupper(substr($orderId, -10)) }}
+                      ORD-{{ strtoupper(substr($orderId, -8)) }}
                     </strong>
                   </td>
                 </tr>
@@ -101,7 +101,48 @@
                     &#8369;{{ number_format($totalAmount, 2) }}
                   </td>
                 </tr>
+                {{-- Paid and still due. One figure on its own read as settled, on an order where a
+                     hundred pesos had been collected and a thousand had not. --}}
+                @if($amountPaid > 0)
+                <tr>
+                  <td colspan="2" align="right"
+                    style="padding:6px 8px;border-top:1px solid rgba(0,0,0,0.06);font-size:13px;color: #444444;">
+                    {{ $designFeeOnly ? 'Design fee paid' : 'Paid' }}
+                  </td>
+                  <td align="right"
+                    style="padding:6px 16px;border-top:1px solid rgba(0,0,0,0.06);font-size:13px;color: #1a7f3c;font-weight:600;">
+                    &#8369;{{ number_format($amountPaid, 2) }}
+                  </td>
+                </tr>
+                @endif
+                @if($balanceDue > 0.009)
+                <tr>
+                  <td colspan="2" align="right"
+                    style="padding:6px 8px 12px;font-size:13px;font-weight:700;color: #444444;">
+                    Still due
+                  </td>
+                  <td align="right"
+                    style="padding:6px 16px 12px;font-size:15px;font-weight:800;color: #b45309;">
+                    &#8369;{{ number_format($balanceDue, 2) }}
+                  </td>
+                </tr>
+                @endif
               </table>
+
+              @if($designFeeOnly && $balanceDue > 0.009)
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+                style="margin-top:16px;background:#fff8e1;border:1px solid #f0d9a0;border-radius:8px;">
+                <tr>
+                  <td style="padding:14px 16px;font-size:13px;color:#5b4708;line-height:1.65;">
+                    <strong style="color:#7a5c05;">This is not paid in full yet, and that is on purpose.</strong><br>
+                    You have paid the design fee. Our designer is working on your proof - we will
+                    send it in chat and it also appears in My Orders, waiting for you to approve it.
+                    The remaining &#8369;{{ number_format($balanceDue, 2) }} is paid from My Orders
+                    after you approve, so you see the artwork before you pay for the goods.
+                  </td>
+                </tr>
+              </table>
+              @endif
 
               @if($notes)
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
