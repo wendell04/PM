@@ -1654,7 +1654,11 @@ function CustomOrderInner() {
 
               {designMode === 'request' && !isInquiry && (
                 <div style={{ padding: '0.75rem', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border)', borderRadius: '8px', marginBottom: '1rem', fontSize: '0.75rem', color: 'var(--gray)', lineHeight: 1.6 }}>
-                  Our designer will send a proof via chat within 24-48 hrs. Production starts once you approve.
+                  {/* No hours quoted. A number here is a promise the shop has to keep on its
+                      busiest week, and it was the thing customers measured us against. What they
+                      actually need is where to look, since a proof waiting in chat is easy to miss. */}
+                  Our designer will send a proof via chat. You can also find it in My Orders, waiting
+                  for you to approve it - production starts once you do.
                   {/* Said here, before the order exists, rather than only in the terms behind a link. A
                       customer who first meets the revision limit while asking for a fourth change reads
                       it as a penalty; one who was told up front reads it as the deal. Figures come from

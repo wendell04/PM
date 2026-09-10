@@ -267,7 +267,7 @@ export default function PaymentSuccessPage() {
             : order?.paymentStatus === 'partial'
               ? `Your downpayment of ₱${Number(order?.downPayment ?? 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })} has been received. The remaining balance of ₱${Number(order?.balance ?? 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })} is due before delivery.`
               : (order?.designFeePaid && order?.paymentStatus !== 'paid')
-                ? "Your design fee has been received. Our designer will send you a proof via chat within 24-48 hours. The remaining order balance is due after you approve the design."
+                ? "Your design fee has been received. Our designer will send you a proof via chat, and it also appears in My Orders waiting for your approval. The rest of the order is paid once you approve it."
                 : "Thank you for your order. We've received your payment and will begin processing shortly."}
         </p>
 

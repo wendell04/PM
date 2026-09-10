@@ -1598,12 +1598,25 @@ export default function CheckoutPage() {
           </div>
         )}
         {eligibleForDeposit && (
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', marginTop: '6px', padding: '8px 10px', background: 'rgba(212,168,67,0.08)', borderRadius: '8px', border: '1px solid rgba(212,168,67,0.2)' }}>
-            <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--gold)' }}>Due Now</span>
-            <span style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--gold)' }}>₱{amountDue.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+          /* Sized to be read by someone skimming. The figure a customer is about to be charged
+             was the same weight as the subtotal above it, so on a request-design order - where
+             the amount is a hundred pesos against a total of eleven hundred - the eye went to
+             the bigger number and the surprise came at the gateway. The sentence that explains
+             the gap is the one that stops the "why is it only P100" message, so it is bold. */
+          <div style={{ marginTop: '6px', padding: '12px 14px', background: 'rgba(212,168,67,0.1)', borderRadius: '10px', border: '1.5px solid rgba(212,168,67,0.45)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '0.9rem', fontWeight: 800, color: 'var(--gold)', letterSpacing: '.01em' }}>Due Now</span>
+              <span style={{ fontSize: '1.5rem', fontWeight: 900, color: 'var(--gold)', lineHeight: 1.1 }}>
+                ₱{amountDue.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </span>
+            </div>
             {designFeeOnly && (
-              <span style={{ display: 'block', width: '100%', fontSize: '0.72rem', color: 'var(--gray)', marginTop: 4, lineHeight: 1.5 }}>
-                Design fee only, and it is non-refundable - it pays for the designer&apos;s time. The remaining ₱{remainingBalance.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (goods + delivery) is paid from My Orders once you approve the proof, so you see the artwork before you pay for the order.
+              <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--gray-light)', marginTop: 8, lineHeight: 1.6 }}>
+                <strong style={{ color: 'var(--white)', fontWeight: 700 }}>
+                  The remaining ₱{remainingBalance.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (goods + delivery) is paid from My Orders once you approve the proof.
+                </strong>
+                {' '}Today you are paying the design fee only. It is non-refundable because it pays
+                for the designer&apos;s time, and you see the artwork before you pay for the order.
               </span>
             )}
           </div>
