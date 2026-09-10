@@ -22,12 +22,20 @@ class NotifyOrderPlaced extends Command
 {
     protected $signature = 'orders:notify-placed
                             {order : Full order id, or the last 8 characters shown as ORD-XXXXXXXX}
-                            {--dry-run : Show who would be written to and send nothing}';
+                            {--dry-run : Show who would be written to and send nothing}
+                            {--base= : Override FRONTEND_URL for this send, so a mail triggered from
+                                       a developer machine links to the live site rather than localhost}';
 
     protected $description = 'Re-send the order-placed emails and admin notice for one existing order';
 
     public function handle(): int
     {
+        // Links in the mail are built from config, and a send triggered from a laptop would
+        // otherwise hand the customer a localhost address.
+        if ($base = $this->option('base')) {
+            config(['app.frontend_url' => rtrim($base, '/')]);
+        }
+
         $ref   = trim($this->argument('order'));
         $short = strtoupper(preg_replace('/^ORD-/i', '', $ref));
 
@@ -58,14 +66,25 @@ class NotifyOrderPlaced extends Command
         $this->line('Customer : ' . ($customer ?: 'NONE - no confirmation can be sent'));
         $this->line('Owner    : ' . ($owner ?: 'NONE - mail.admin_recipient is not set'));
         $this->line('Sending as: ' . config('mail.from.address') . ' via ' . config('mail.default'));
+        $this->line('Links to  : ' . (config('app.frontend_url') ?: 'NONE - links will be omitted'));
 
         if ($this->option('dry-run')) {
             $this->warn('Dry run - nothing sent.');
             return self::SUCCESS;
         }
 
-        OrderNotifier::placed($order);
-        $this->info('Sent. Anything that failed is in the log rather than here - the notifier swallows errors on purpose, because it normally runs after the money has moved.');
+        // Render before sending. The notifier swallows its own errors - correctly, since it
+        // normally runs after the money has moved - and that swallowed a broken Blade template
+        // while this command cheerfully reported "Sent".
+        try {
+            $order->refresh();
+            OrderNotifier::placed($order);
+        } catch (\Throwable $e) {
+            $this->error('Failed: ' . $e->getMessage());
+            return self::FAILURE;
+        }
+
+        $this->info('Sent.');
 
         return self::SUCCESS;
     }

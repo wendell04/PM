@@ -27,138 +27,137 @@
               <p style="margin:0 0 6px;font-size:20px;font-weight:700;color: #111111;">
                 Order Received
               </p>
-              <p style="margin:0 0 24px;font-size:14px;color: #6b6b6b;line-height:1.7;">
+              <p style="margin:0 0 24px;font-size:14px;color: #6b6b6b;line-height:1.7;text-align:justify;">
                 Hi {{ $firstName }}, thank you for your order. @if($designFeeOnly && $balanceDue > 0.009)We have it, and your design is being worked on now.@else We've received it and will begin processing shortly.@endif
               </p>
 
-              {{-- Order ID --}}
-              <table role="presentation" cellpadding="0" cellspacing="0"
-                style="background: #f7f7f5;border-radius:8px;border:1px solid rgba(255,255,255,0.07);
-                       border-left: 3px solid #d4a843;margin-bottom:24px;">
+              {{-- One card, receipt-shaped.
+                   The paid and still-due figures used to hang off the end of the summary table in
+                   their own shading, so they read as a stray strip below the card rather than part
+                   of the bill. And the design fee was in the total but in no row, so the items came
+                   to 1,000 under a total of 1,100 with nothing to explain the gap. --}}
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+                style="background:#f7f7f5;border:1px solid #e5e3de;border-radius:10px;border-collapse:separate;border-spacing:0;">
+
                 <tr>
-                  <td style="padding:12px 16px;">
-                    <span style="font-size:11px;color: #6b6b6b;text-transform:uppercase;letter-spacing:1px;">Order ID</span><br>
-                    <strong style="font-size:15px;color: #a67c1a;font-family:monospace;">
-                      ORD-{{ strtoupper(substr($orderId, -8)) }}
-                    </strong>
+                  <td colspan="2" style="padding:14px 18px 10px;">
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                      <tr>
+                        <td align="left" style="font-size:11px;color:#6b6b6b;text-transform:uppercase;letter-spacing:1px;font-weight:700;">
+                          Order Summary
+                        </td>
+                        <td align="right" style="font-size:13px;color:#a67c1a;font-family:monospace;font-weight:700;">
+                          ORD-{{ strtoupper(substr($orderId, -8)) }}
+                        </td>
+                      </tr>
+                    </table>
                   </td>
                 </tr>
-              </table>
 
-              {{-- Items Table --}}
-              <p style="margin:0 0 10px;font-size:12px;font-weight:700;color: #a67c1a;
-                         text-transform:uppercase;letter-spacing:1px;">
-                Order Summary
-              </p>
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
-                style="background: #f7f7f5;border-radius:8px;border:1px solid rgba(255,255,255,0.07);
-                       border-collapse:separate;border-spacing:0;">
-                <tr>
-                  <th align="left"
-                    style="padding:10px 16px;border-bottom:1px solid rgba(255,255,255,0.07);
-                           font-size:11px;color: #6b6b6b;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">
-                    Item
-                  </th>
-                  <th align="center"
-                    style="padding:10px 8px;border-bottom:1px solid rgba(255,255,255,0.07);
-                           font-size:11px;color: #6b6b6b;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">
-                    Qty
-                  </th>
-                  <th align="right"
-                    style="padding:10px 16px;border-bottom:1px solid rgba(255,255,255,0.07);
-                           font-size:11px;color: #6b6b6b;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">
-                    Total
-                  </th>
-                </tr>
                 @foreach($items as $item)
                 <tr>
-                  <td style="padding:10px 16px;border-bottom:1px solid rgba(255,255,255,0.05);
-                             font-size:13px;color: #111111;">
-                    {{ $item['productName'] }}
+                  <td align="left" style="padding:7px 18px;font-size:13px;color:#111111;line-height:1.5;">
+                    {{ $item['productName'] ?? 'Item' }}
                     @if(!empty($item['variantName']))
-                      <span style="color: #6b6b6b;">&nbsp;({{ $item['variantName'] }})</span>
+                      <span style="color:#6b6b6b;">({{ $item['variantName'] }})</span>
                     @endif
+                    <span style="color:#6b6b6b;">&times;{{ $item['qty'] }}</span>
                   </td>
-                  <td align="center"
-                    style="padding:10px 8px;border-bottom:1px solid rgba(255,255,255,0.05);
-                           font-size:13px;color: #444444;">
-                    x{{ $item['qty'] }}
-                  </td>
-                  <td align="right"
-                    style="padding:10px 16px;border-bottom:1px solid rgba(255,255,255,0.05);
-                           font-size:13px;color: #111111;">
+                  <td align="right" style="padding:7px 18px;font-size:13px;color:#111111;white-space:nowrap;">
                     &#8369;{{ number_format($item['lineTotal'], 2) }}
                   </td>
                 </tr>
                 @endforeach
+
+                @if($designFee > 0.009)
                 <tr>
-                  <td colspan="2" align="right"
-                    style="padding:12px 8px;font-size:13px;font-weight:600;color: #444444;">
+                  <td align="left" style="padding:7px 18px;font-size:13px;color:#111111;">Design fee</td>
+                  <td align="right" style="padding:7px 18px;font-size:13px;color:#111111;white-space:nowrap;">
+                    &#8369;{{ number_format($designFee, 2) }}
+                  </td>
+                </tr>
+                @endif
+
+                <tr>
+                  <td align="left" style="padding:12px 18px 10px;border-top:1px solid #e5e3de;font-size:14px;font-weight:700;color:#111111;">
                     Order Total
                   </td>
-                  <td align="right"
-                    style="padding:12px 16px;font-size:16px;font-weight:700;color: #a67c1a;">
+                  <td align="right" style="padding:12px 18px 10px;border-top:1px solid #e5e3de;font-size:16px;font-weight:800;color:#111111;white-space:nowrap;">
                     &#8369;{{ number_format($totalAmount, 2) }}
                   </td>
                 </tr>
-                {{-- Paid and still due. One figure on its own read as settled, on an order where a
-                     hundred pesos had been collected and a thousand had not. --}}
-                @if($amountPaid > 0)
+
+                @if($amountPaid > 0.009)
                 <tr>
-                  <td colspan="2" align="right"
-                    style="padding:6px 8px;border-top:1px solid rgba(0,0,0,0.06);font-size:13px;color: #444444;">
+                  <td align="left" style="padding:4px 18px;font-size:13px;color:#444444;">
                     {{ $designFeeOnly ? 'Design fee paid' : 'Paid' }}
                   </td>
-                  <td align="right"
-                    style="padding:6px 16px;border-top:1px solid rgba(0,0,0,0.06);font-size:13px;color: #1a7f3c;font-weight:600;">
+                  <td align="right" style="padding:4px 18px;font-size:13px;font-weight:700;color:#1a7f3c;white-space:nowrap;">
                     &#8369;{{ number_format($amountPaid, 2) }}
                   </td>
                 </tr>
                 @endif
+
                 @if($balanceDue > 0.009)
                 <tr>
-                  <td colspan="2" align="right"
-                    style="padding:6px 8px 12px;font-size:13px;font-weight:700;color: #444444;">
-                    Still due
-                  </td>
-                  <td align="right"
-                    style="padding:6px 16px 12px;font-size:15px;font-weight:800;color: #b45309;">
+                  <td align="left" style="padding:4px 18px;font-size:13px;font-weight:700;color:#444444;">Still due</td>
+                  <td align="right" style="padding:4px 18px;font-size:15px;font-weight:800;color:#111111;white-space:nowrap;">
                     &#8369;{{ number_format($balanceDue, 2) }}
+                  </td>
+                </tr>
+                @endif
+
+                @if($paymentLabel)
+                <tr>
+                  <td align="left" style="padding:10px 18px 14px;border-top:1px solid #e5e3de;font-size:12px;color:#6b6b6b;">
+                    Payment status
+                  </td>
+                  <td align="right" style="padding:10px 18px 14px;border-top:1px solid #e5e3de;font-size:12px;font-weight:700;color:#111111;">
+                    {{ $paymentLabel }}
                   </td>
                 </tr>
                 @endif
               </table>
 
-              {{-- What happens next, worked out from the lines rather than from six templates
-                   that would have to be kept in step with each other. --}}
+              {{-- What happens next, worked out from the lines rather than from six templates that
+                   would have to be kept in step with each other. Where the rest of the money goes
+                   belongs in here too - it was floating outside the one block on the page that
+                   answers the question it is answering. --}}
               @if($nextStep)
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
-                style="margin-top:16px;background:#f7f7f5;border:1px solid #e5e3de;border-radius:8px;">
+                style="margin-top:16px;background:#f7f7f5;border:1px solid #e5e3de;border-radius:10px;">
                 <tr>
-                  <td style="padding:14px 16px;">
-                    <span style="font-size:11px;color:#6b6b6b;text-transform:uppercase;letter-spacing:1px;">
+                  <td style="padding:14px 18px;">
+                    <span style="font-size:11px;color:#6b6b6b;text-transform:uppercase;letter-spacing:1px;font-weight:700;">
                       What happens next
-                    </span><br>
-                    <span style="font-size:13px;color:#444444;line-height:1.65;">{{ $nextStep }}</span>
+                    </span>
+                    {{-- One paragraph. What we are doing and where the rest of the money goes are
+                         the same thought, and splitting them made the second half look like a
+                         separate notice. --}}
+                    <p style="margin:6px 0 0;font-size:13px;color:#444444;line-height:1.7;text-align:justify;">
+                      {{ $nextStep }}@if($designFeeOnly && $balanceDue > 0.009) The remaining &#8369;{{ number_format($balanceDue, 2) }} is paid from My Orders after you approve the proof, so you see the artwork before you pay for the goods.@endif
+                    </p>
+                    {{-- Shipping stays its own paragraph: it is a different subject, and it only
+                         appears when the order actually mixes printed and stocked items. --}}
                     @if($mixedNote)
-                    <br><br>
-                    <span style="font-size:13px;color:#444444;line-height:1.65;">{{ $mixedNote }}</span>
+                    <p style="margin:8px 0 0;font-size:13px;color:#444444;line-height:1.7;text-align:justify;">{{ $mixedNote }}</p>
                     @endif
                   </td>
                 </tr>
               </table>
               @endif
 
-              @if($designFeeOnly && $balanceDue > 0.009)
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
-                style="margin-top:16px;background:#fff8e1;border:1px solid #f0d9a0;border-radius:8px;">
+              {{-- Two ways back in. The receipt is the same page the app's View Receipt button
+                   opens, so the email and the printout cannot say different things. --}}
+              @if($receiptUrl)
+              <table role="presentation" cellpadding="0" cellspacing="0" style="margin-top:20px;">
                 <tr>
-                  <td style="padding:14px 16px;font-size:13px;color:#5b4708;line-height:1.65;">
-                    <strong style="color:#7a5c05;">This is not paid in full yet, and that is on purpose.</strong><br>
-                    You have paid the design fee. Our designer is working on your proof - we will
-                    send it in chat and it also appears in My Orders, waiting for you to approve it.
-                    The remaining &#8369;{{ number_format($balanceDue, 2) }} is paid from My Orders
-                    after you approve, so you see the artwork before you pay for the goods.
+                  <td>
+                    <a href="{{ $receiptUrl }}"
+                      style="display:inline-block;background:#d4a843;color:#111111;font-size:13px;font-weight:800;
+                             text-decoration:none;padding:11px 24px;border-radius:8px;">
+                      Print receipt
+                    </a>
                   </td>
                 </tr>
               </table>
@@ -172,13 +171,13 @@
                     <span style="font-size:11px;color: #6b6b6b;text-transform:uppercase;letter-spacing:1px;">
                       Order Notes
                     </span><br>
-                    <span style="font-size:13px;color: #444444;line-height:1.6;">{{ $notes }}</span>
+                    <span style="display:block;margin-top:4px;font-size:13px;color: #444444;line-height:1.7;text-align:justify;">{{ $notes }}</span>
                   </td>
                 </tr>
               </table>
               @endif
 
-              <p style="margin:24px 0 0;font-size:13px;color: #6b6b6b;line-height:1.6;">
+              <p style="margin:24px 0 0;font-size:13px;color: #6b6b6b;line-height:1.7;">
                 We will notify you as your order progresses.
                 For questions, contact us at
                 <a href="mailto:personalizemeprints@gmail.com"

@@ -24,6 +24,10 @@ class OrderConfirmationMail extends Mailable implements ShouldQueue
     public bool $designFeeOnly;
     public string $nextStep;
     public ?string $mixedNote;
+    public float $designFee;
+    public string $paymentLabel;
+    public string $orderUrl;
+    public string $receiptUrl;
 
     public function __construct(
         string $firstName,
@@ -39,7 +43,13 @@ class OrderConfirmationMail extends Mailable implements ShouldQueue
         float $balanceDue = 0.0,
         bool $designFeeOnly = false,
         string $nextStep = '',
-        ?string $mixedNote = null
+        ?string $mixedNote = null,
+        // Its own row, so the breakdown adds up on screen instead of the reader having to work out
+        // why the items say 1,000 and the total says 1,100.
+        float $designFee = 0.0,
+        string $paymentLabel = '',
+        string $orderUrl = '',
+        string $receiptUrl = ''
     ) {
         $this->firstName   = $firstName;
         $this->orderId     = $orderId;
@@ -52,6 +62,10 @@ class OrderConfirmationMail extends Mailable implements ShouldQueue
         $this->designFeeOnly = $designFeeOnly;
         $this->nextStep      = $nextStep;
         $this->mixedNote     = $mixedNote;
+        $this->designFee     = $designFee;
+        $this->paymentLabel  = $paymentLabel;
+        $this->orderUrl      = $orderUrl;
+        $this->receiptUrl    = $receiptUrl;
     }
 
     public function envelope(): Envelope

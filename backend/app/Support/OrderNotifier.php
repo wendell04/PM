@@ -147,6 +147,24 @@ final class OrderNotifier
             $total = (float) ($order->totalAmount ?? 0);
             $next  = self::nextStep($order);
 
+            // The design fee is inside totalAmount but not inside any line, which is why the items
+            // summed to 1,000 under a total of 1,100 with nothing to account for the gap.
+            $designFee = (float) ($order->designFee ?? 0);
+            if ($designFee <= 0 && !empty($order->designFeePaidAmount)) {
+                $designFee = (float) $order->designFeePaidAmount;
+            }
+
+            $paid       = round($paid, 2);
+            $balanceDue = round(max(0, $total - $paid), 2);
+            $feeOnly    = (bool) ($order->designFeePaid ?? false) && ($order->paymentStatus ?? '') !== 'paid';
+
+            $label = $feeOnly            ? 'Design Fee Paid - Order Unpaid'
+                   : ($balanceDue <= 0.009 ? 'Paid in full'
+                   : ($paid > 0            ? 'Partly paid' : 'Unpaid'));
+
+            $base    = rtrim((string) config('app.frontend_url', ''), '/');
+            $orderId = (string) $order->_id;
+
             Mail::to($email)->send(new OrderConfirmationMail(
                 firstName:     $firstName,
                 orderId:       (string) $order->_id,
@@ -154,11 +172,18 @@ final class OrderNotifier
                 totalAmount:   $total,
                 status:        $order->orderStatus ?? 'Pending',
                 notes:         $order->notes ?? '',
-                amountPaid:    round($paid, 2),
-                balanceDue:    round(max(0, $total - $paid), 2),
-                designFeeOnly: (bool) ($order->designFeePaid ?? false) && ($order->paymentStatus ?? '') !== 'paid',
+                amountPaid:    $paid,
+                balanceDue:    $balanceDue,
+                designFeeOnly: $feeOnly,
                 nextStep:      $next[0],
-                mixedNote:     $next[1]
+                mixedNote:     $next[1],
+                designFee:     round($designFee, 2),
+                paymentLabel:  $label,
+                orderUrl:      $base ? "{$base}/shop/orders-history" : '',
+                // A URL that says receipt. It used to point at payment-success?view=1, which
+                // announces a payment succeeded on an order where a thousand pesos have not been
+                // paid - and it was the first thing the customer read.
+                receiptUrl:    $base ? "{$base}/shop/receipt/{$orderId}" : ''
             ));
         } catch (\Exception $e) {
             Log::error('OrderNotifier@customer: ' . $e->getMessage(), ['order_id' => (string) $order->_id]);
