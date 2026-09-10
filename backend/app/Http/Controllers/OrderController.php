@@ -3,11 +3,9 @@
 namespace App\Http\Controllers;
 
 use App\Events\OrderStatusUpdated;
-use App\Mail\AdminNewOrderMail;
 use App\Mail\DeliveryFeeMail;
 use App\Mail\ProofReadyMail;
 use App\Mail\PaymentReceivedMail;
-use App\Mail\OrderConfirmationMail;
 use App\Mail\OrderStatusMail;
 use App\Models\Order;
 use App\Models\Product;
@@ -15,6 +13,7 @@ use App\Models\User;
 use App\Models\Sale;
 use App\Models\Inventory;
 use App\Support\MaterialClaim;
+use App\Support\OrderNotifier;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -744,49 +743,10 @@ class OrderController extends Controller
                 Log::warning('OrderController@store: broadcast failed', ['error' => $e->getMessage()]);
             }
 
-            // Notify owner
-            $this->notifyOwner($order);
-
-            // In-app notification to admin - B-13
-            try {
-                $admin = \App\Models\User::where('role', 'admin')->first();
-                if ($admin) {
-                    Notification::create([
-                        'user_id'    => (string) $admin->_id,
-                        'type'       => 'new_order',
-                        'title'      => 'New Order Received',
-                        'message'    => 'Order #' . strtoupper(substr((string) $order->_id, -8)) .
-                                        ' placed by ' . ($order->userSnapshot['name'] ?? 'Unknown') . '.',
-                        'is_read'    => false,
-                        'data'       => ['orderId' => (string) $order->_id],
-                        'created_at' => now(),
-                    ]);
-                }
-            } catch (\Exception $e) {
-                Log::warning('store: admin notification failed', ['error' => $e->getMessage()]);
-            }
-
-            // Notify customer - order confirmation
-            try {
-                $customerEmail = $order->userSnapshot['email'] ?? null;
-                $customerName  = $order->userSnapshot['name'] ?? '';
-                $firstName     = explode(' ', trim($customerName))[0] ?? 'Customer';
-                if ($customerEmail) {
-                    Mail::to($customerEmail)->send(new OrderConfirmationMail(
-                        firstName:   $firstName,
-                        orderId:     (string) $order->_id,
-                        items:       $order->items ?? [],
-                        totalAmount: (float) ($order->totalAmount ?? 0),
-                        status:      $order->orderStatus ?? 'Pending',
-                        notes:       $order->notes ?? ''
-                    ));
-                }
-            } catch (\Exception $e) {
-                Log::error('OrderController @store: Failed to send confirmation email', [
-                    'order_id' => (string) $order->_id,
-                    'error'    => $e->getMessage(),
-                ]);
-            }
+            // One copy of this, shared with the payment paths that create orders too - they had
+            // none of it, so a customer who paid a design fee heard nothing at all. See
+            // App\Support\OrderNotifier.
+            OrderNotifier::placed($order);
 
             return $this->successResponse('Order placed successfully!', $order, 201);
 
@@ -2840,27 +2800,6 @@ class OrderController extends Controller
     /**
      * Sends a branded email to the store owner when a new order is placed.
      */
-    private function notifyOwner(Order $order): void
-    {
-        try {
-            // env() outside a config file returns null once config is cached, so in production this
-            // was addressing owner mail to nothing at all.
-            $ownerEmail = config('mail.admin_recipient');
-            if (!$ownerEmail) return;
-
-            Mail::to($ownerEmail)->send(new AdminNewOrderMail(
-                orderId:       (string) $order->_id,
-                customerName:  $order->userSnapshot['name']  ?? 'Unknown',
-                customerEmail: $order->userSnapshot['email'] ?? '',
-                customerPhone: $order->userSnapshot['phone'] ?? '',
-                items:         $order->items ?? [],
-                totalAmount:   (float) ($order->totalAmount ?? 0),
-                notes:         $order->notes ?? ''
-            ));
-        } catch (\Exception $e) {
-            Log::error('OrderController@notifyOwner: ' . $e->getMessage());
-        }
-    }
 
     /**
      * POST /api/admin/orders/{id}/record-payment

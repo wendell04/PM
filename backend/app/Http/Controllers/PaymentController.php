@@ -8,6 +8,7 @@ use App\Models\Voucher;
 use App\Models\Product;
 use App\Models\Inventory;
 use App\Support\MaterialClaim;
+use App\Support\OrderNotifier;
 use App\Models\StockHistory;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
@@ -396,6 +397,10 @@ class PaymentController extends Controller
                 'createdAt'       => now(),
                 'updatedAt'       => now(),
             ]);
+            
+            // Orders born here used to be created in silence: no confirmation to the
+            // customer who had just paid, and no word to the shop. See OrderNotifier.
+            OrderNotifier::placed($order);
 
             // Deduct flash sale stock only after order is persisted
             foreach ($pendingFlashSaleIncrements as [$flashSale, $qty]) {
@@ -1042,6 +1047,10 @@ class PaymentController extends Controller
                 'createdAt'       => now(),
                 'updatedAt'       => now(),
             ]);
+            
+            // Orders born here used to be created in silence: no confirmation to the
+            // customer who had just paid, and no word to the shop. See OrderNotifier.
+            OrderNotifier::placed($order);
 
             foreach ($pendingFlashSaleIncrements as [$fs, $qty]) $fs->increment('stockUsed', $qty);
 
@@ -1766,6 +1775,10 @@ class PaymentController extends Controller
             'createdAt'            => now(),
             'updatedAt'            => now(),
         ]);
+        
+        // Orders born here used to be created in silence: no confirmation to the
+        // customer who had just paid, and no word to the shop. See OrderNotifier.
+        OrderNotifier::placed($order);
 
         $orderRequest->convertedOrderId = (string) $order->_id;
         $orderRequest->save();
