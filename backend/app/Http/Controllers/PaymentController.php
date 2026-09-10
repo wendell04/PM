@@ -2036,6 +2036,10 @@ class PaymentController extends Controller
                 $paidAmount      = round((float) ($paymentAttrs['amount'] ?? $paymentAttrs['net_amount'] ?? ($orderTotal * 100)) / 100, 2);
                 $isDesignFeeOnly = (bool) ($order->isDesignFeeOnly ?? false);
 
+                if ($this->settleCourierFee($order, $paidAmount, $paymentMethod, (string) ($paymentId ?? ''))) {
+                    return $this->successResponse('Delivery fee received.', ['courierFeePaid' => true]);
+                }
+
                 if ($isDesignFeeOnly) {
                     $order->designFeePaid = true;
                     $order->designFeePaidAmount = $paidAmount;
@@ -2278,6 +2282,10 @@ class PaymentController extends Controller
                 // `isDesignFeeOnly` describes how the order STARTED and is never cleared, so it may
                 // only be trusted while the design fee is still unpaid. Once it has been collected,
                 // any further payment on this order is for the goods.
+                if ($this->settleCourierFee($order, $paidAmount, $paymentMethod, (string) $sessionId)) {
+                    return $this->successResponse('Delivery fee received.', ['courierFeePaid' => true]);
+                }
+
                 if (!empty($order->pendingPaymentType) || ($order->designFeePaid ?? false)) {
                     $isDesignFeeOnly = false;
                 }
@@ -2409,6 +2417,10 @@ class PaymentController extends Controller
 
             // The flag describes how the order STARTED and is never cleared, so it may only be
             // trusted while the design fee is still unpaid.
+            if ($this->settleCourierFee($order, $paidAmount, $paymentMethod, (string) $intentId)) {
+                return $this->successResponse('Delivery fee received.', ['courierFeePaid' => true]);
+            }
+
             if (!empty($order->pendingPaymentType) || ($order->designFeePaid ?? false)) {
                 $isDesignFeeOnly = false;
             }
@@ -2585,6 +2597,68 @@ class PaymentController extends Controller
         }
     }
 
+    /**
+     * A confirmed payment that was for the courier, not for the goods.
+     *
+     * Returns true when it handled the payment, so the three confirm paths can stop before the
+     * code that settles an order - none of which should run here. The fee is money owed to a
+     * third-party rider that the shop is only collecting; recording it as a payment on the order
+     * would inflate the sale, break the receipt, and on a fully-paid order push paymentHistory
+     * past totalAmount.
+     */
+    private function settleCourierFee($order, float $paidAmount, ?string $paymentMethod, string $reference): bool
+    {
+        if (($order->pendingPaymentType ?? null) !== 'courier_fee') {
+            return false;
+        }
+
+        // A webhook and a verify can both land on the same payment. Second one through does
+        // nothing but say yes.
+        if (($order->courierFeePaid ?? false) && ($order->courierFeePaymentRef ?? null) === $reference) {
+            return true;
+        }
+
+        $order->courierFeePaid       = true;
+        $order->courierFeePaidAmount = $paidAmount;
+        $order->courierFeePaidAt     = now();
+        $order->courierFeePaymentRef = $reference;
+        $order->courierFeePaidMethod = $paymentMethod;
+        $order->pendingPaymentType   = null;
+        $order->pendingPaymentAmount = null;
+        $order->updatedAt            = now();
+        $order->save();
+
+        // The shop has to know before it hands the parcel over, or it pays the rider twice.
+        try {
+            $admin = User::where('role', 'admin')->first();
+            if ($admin) {
+                Notification::create([
+                    'user_id'    => (string) $admin->_id,
+                    'type'       => 'new_order',
+                    'title'      => 'Delivery Fee Paid',
+                    'message'    => ($order->userSnapshot['name'] ?? 'The customer') . ' paid the P'
+                                    . number_format($paidAmount, 2) . ' delivery fee for order #'
+                                    . strtoupper(substr((string) $order->_id, -8))
+                                    . '. Do not collect it from the rider.',
+                    'is_read'    => false,
+                    'data'       => ['orderId' => (string) $order->_id, 'courierFee' => $paidAmount],
+                    'created_at' => now(),
+                ]);
+            }
+        } catch (\Exception $e) {
+            Log::warning('settleCourierFee: notification failed', ['error' => $e->getMessage()]);
+        }
+
+        Log::info('Courier fee paid online', [
+            'orderId'   => (string) $order->_id,
+            'amount'    => $paidAmount,
+            'method'    => $paymentMethod,
+            'reference' => $reference,
+        ]);
+
+        return true;
+    }
+
     public function createOrderPayLink(Request $request)
     {
         try {
@@ -2598,7 +2672,13 @@ class PaymentController extends Controller
                 'eWalletPhone'    => 'nullable|string|max:20',
                 'payFull'         => 'nullable|boolean',
                 'designFeeOnly'   => 'nullable|boolean',
+                'courierFeeOnly'  => 'nullable|boolean',
             ]);
+
+            // Read before the guards below, because a courier fee is payable on an order whose
+            // goods are already settled - which is the usual case, since the courier is booked
+            // after production is finished.
+            $payCourierFee = filter_var($request->input('courierFeeOnly', false), FILTER_VALIDATE_BOOLEAN);
 
             $order = Order::where('_id', $validated['orderId'])
                           ->where('userId', (string) $user->_id)
@@ -2606,15 +2686,26 @@ class PaymentController extends Controller
 
             if (!$order) return $this->notFoundResponse('Order');
 
-            if ($order->paymentStatus === 'paid') {
+            if (!$payCourierFee && $order->paymentStatus === 'paid') {
                 return $this->errorResponse('This order has already been fully paid.', 422);
             }
 
             $totalPaid = collect($order->paymentHistory ?? [])->sum('amount');
             $amountDue = round(max(0, (float) ($order->totalAmount ?? 0) - $totalPaid), 2);
 
-            if ($amountDue <= 0) {
+            if (!$payCourierFee && $amountDue <= 0) {
                 return $this->errorResponse('No outstanding balance on this order.', 422);
+            }
+
+            $courierFee = round((float) ($order->courierFee ?? 0), 2);
+
+            if ($payCourierFee) {
+                if ($courierFee <= 0) {
+                    return $this->errorResponse('There is no delivery fee on this order yet.', 422);
+                }
+                if ($order->courierFeePaid ?? false) {
+                    return $this->errorResponse('The delivery fee on this order is already settled.', 422);
+                }
             }
 
             $orderId        = (string) $order->_id;
@@ -2648,10 +2739,16 @@ class PaymentController extends Controller
                 }
             }
 
-            $chargeAmount   = $payDesignFee ? round((float) $order->designFee, 2) : ($isDP ? $dpAmount : $amountDue);
+            $chargeAmount   = $payCourierFee
+                ? $courierFee
+                : ($payDesignFee ? round((float) $order->designFee, 2) : ($isDP ? $dpAmount : $amountDue));
             $amountCentavos = (int) round($chargeAmount * 100);
 
-            if ($payDesignFee) {
+            if ($payCourierFee) {
+                $order->pendingPaymentType   = 'courier_fee';
+                $order->pendingPaymentAmount = $courierFee;
+                $order->save();
+            } elseif ($payDesignFee) {
                 $order->pendingPaymentType   = 'design_fee';
                 $order->pendingPaymentAmount = $chargeAmount;
                 $order->save();
@@ -2672,8 +2769,13 @@ class PaymentController extends Controller
                             'payment_method_options' => ['card' => ['request_three_d_secure' => 'any']],
                             'currency'               => 'PHP',
                             'capture_type'           => 'automatic',
-                            'description'            => 'Order #' . strtoupper(substr($orderId, -8)),
-                            'metadata'               => ['order_id' => $orderId],
+                            'description'            => $payCourierFee
+                                ? 'Delivery for ORD-' . strtoupper(substr($orderId, -8))
+                                : 'Order #' . strtoupper(substr($orderId, -8)),
+                            'metadata'               => [
+                                'order_id'    => $orderId,
+                                'payment_for' => $payCourierFee ? 'courier_fee' : 'order',
+                            ],
                         ]]
                     ]);
 

@@ -820,7 +820,8 @@ export default function OrdersHistoryPage() {
   };
 
   // Called by the shared PaymentPicker with (method, cardData). opts.designFeeOnly charges
-  // only the request-design fee (first payment); otherwise it pays the DP/balance.
+  // only the request-design fee (first payment); opts.courierFeeOnly charges only the courier's
+  // delivery fee, which is not part of the order total at all; otherwise it pays the DP/balance.
   const handlePayNow = async (method, cardData, opts = {}) => {
     if (!selectedOrder || !token || !method) return;
     setPayNowLoading(true); setPayNowError(null);
@@ -853,6 +854,7 @@ export default function OrdersHistoryPage() {
           paymentMethod: method,
           payFull: payFullToggle,
           ...(opts.designFeeOnly ? { designFeeOnly: true } : {}),
+          ...(opts.courierFeeOnly ? { courierFeeOnly: true } : {}),
           ...(method === 'card' && paymentMethodId ? { paymentMethodId } : {}),
         }),
       }, 15000);
@@ -1815,12 +1817,12 @@ export default function OrdersHistoryPage() {
                       <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                         <span style={{ fontSize: '12px', color: 'var(--gray)' }}>Shipping</span>
                         {(() => {
-                          const courierMode = selectedOrder.shippingMode === 'courier_booked'
-                            && !(Number(selectedOrder.shippingFee) > 0);
-                          if (!courierMode) return (
-                            <span style={{ fontSize: '12px', color: 'var(--white)' }}>{formatPeso(selectedOrder.shippingFee ?? 0)}</span>
-                          );
                           const cf = Number(selectedOrder.courierFee ?? 0);
+                          const sf = Number(selectedOrder.shippingFee ?? 0);
+                          // A shop-charged shipping fee is part of the order total and prints plainly.
+                          if (cf <= 0 && sf > 0) return (
+                            <span style={{ fontSize: '12px', color: 'var(--white)' }}>{formatPeso(sf)}</span>
+                          );
                           return (
                             <span style={{ fontSize: '12px', color: '#d4a843', textAlign: 'right' }}>
                               {cf > 0 ? formatPeso(cf) : 'Billed separately'}
@@ -1829,7 +1831,7 @@ export default function OrdersHistoryPage() {
                                   ? 'We will send the exact fee in chat'
                                   : selectedOrder.courierFeePaid
                                     ? 'Received - nothing to pay the rider'
-                                    : 'Paid to the rider, separate from your order total'}
+                                    : 'Pay it below, or hand it to the rider on arrival'}
                               </span>
                             </span>
                           );
@@ -1898,6 +1900,44 @@ export default function OrdersHistoryPage() {
                           methods={['gcash', 'paymaya', 'card'].filter(m => payEnabled[m] !== false)}
                           amount={Number(selectedOrder.designFee)}
                           onPay={(m, c) => handlePayNow(m, c, { designFeeOnly: true })}
+                          loading={payNowLoading}
+                          error={payNowError}
+                        />
+                      </div>
+                    )}
+
+                    {/* The courier's fee, payable on its own.
+
+                        It is not part of the order total and never has been - the customer hands it
+                        to the rider. That works, but it means the shop cannot know it is covered
+                        until the parcel is already out, and a customer who would rather settle it
+                        now had to ask in chat and wait for someone to answer.
+
+                        Shown whenever a fee has been set and not yet received. Cash to the rider
+                        stays available; this is an option, not a replacement. COD is excluded
+                        because there the fee is already bundled into what the rider collects. */}
+                    {Number(selectedOrder.courierFee) > 0
+                      && !selectedOrder.courierFeePaid
+                      && selectedOrder.paymentMethod !== 'cod'
+                      && !['cancelled', 'delivered', 'completed'].includes(String(selectedOrder.orderStatus))
+                      && (
+                      <div style={{ padding: '0 18px 18px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '2px' }}>Pay Delivery Fee</div>
+                        <div style={{ padding: '10px 12px', background: 'var(--dark)', borderRadius: '8px', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '4px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', fontWeight: 700 }}>
+                            <span style={{ color: 'var(--white)' }}>Delivery fee</span>
+                            <span style={{ color: '#d4a843' }}>{formatPeso(selectedOrder.courierFee)}</span>
+                          </div>
+                          <span style={{ fontSize: '0.72rem', color: 'var(--gray)', lineHeight: 1.5 }}>
+                            This is the courier&apos;s charge, separate from your order total. Pay it here
+                            and there is nothing to hand the rider, or skip this and pay them in cash
+                            on arrival.
+                          </span>
+                        </div>
+                        <PaymentPicker
+                          methods={['gcash', 'paymaya', 'card'].filter(m => payEnabled[m] !== false)}
+                          amount={Number(selectedOrder.courierFee)}
+                          onPay={(m, c) => handlePayNow(m, c, { courierFeeOnly: true })}
                           loading={payNowLoading}
                           error={payNowError}
                         />
