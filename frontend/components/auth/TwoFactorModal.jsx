@@ -458,7 +458,7 @@ function CodeEntry({ token, method, userEmail, persistLogin, onSuccess, onBack, 
             A second checkbox here asked the same question twice in one flow. */}
         {persistLogin && (
           <p style={{ marginTop: "16px", fontSize: "12px", color: "var(--gray, #888)" }}>
-            We will not ask for a code on this device for 90 days.
+            We will not ask for a code on this device next time.
           </p>
         )}
 

@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import dynamic from 'next/dynamic';
+import useLockBodyScroll from '@/lib/useLockBodyScroll';
 
 const AddressBook = dynamic(() => import('@/components/profile/AddressBook'), { ssr: false });
 
@@ -38,6 +39,10 @@ export default function AddressPicker({
 }) {
   const [editing, setEditing] = useState(null);   // null = closed, {} = new, addr = edit
   const selected = addresses.find(a => a.id === selectedId) ?? null;
+
+  // The page behind a modal must not scroll - it is what made the form feel like it had no edges,
+  // because the wheel moved the order page instead of the fields.
+  useLockBodyScroll(!!editing);
 
   const open  = (addr) => setEditing(addr ?? {});
   const close = () => setEditing(null);
@@ -118,9 +123,14 @@ export default function AddressPicker({
 
       {editing && (
         // No backdrop-close: this holds a form, and a stray click would wipe it.
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', zIndex: 3000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '1rem', overflowY: 'auto' }}>
-          <div style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: 16, padding: '1.5rem', width: '100%', maxWidth: 580, margin: '2rem 0' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
+        // The overlay used to be the thing that scrolled, so the card grew as tall as the form and
+        // the whole page moved under it - the title and the close button went off the top the
+        // moment anyone reached the ZIP field. The card is a flex column that does not scroll; the
+        // header stays and the form inside it does. min-height:0 on that body is what makes it
+        // scroll at all: without it a flex child refuses to shrink below its own content.
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+          <div style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: 16, width: '100%', maxWidth: 580, maxHeight: 'calc(100vh - 2rem)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1.25rem 1.5rem 1rem', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
               <h2 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--white)', fontWeight: 700 }}>
                 {editing.id ? 'Edit address' : 'Add address'}
               </h2>
@@ -132,11 +142,15 @@ export default function AddressPicker({
               </button>
             </div>
             {/* onSaved refetches in the parent - the page never reloads, so nothing already typed
-                or attached is lost. That was the whole reason the profile link had to go. */}
-            <AddressBook
-              initialEditAddress={editing.id ? editing : null}
-              onSaved={(saved) => { close(); onSaved?.(saved); }}
-            />
+                or attached is lost. That was the whole reason the profile link had to go.
+                marginRight pulls the scrollbar in off the card's edge; the padding gives the same
+                amount back so the form does not shift. */}
+            <div style={{ flex: '1 1 auto', minHeight: 0, overflowY: 'auto', overflowX: 'hidden', marginRight: 6, padding: '1.25rem 1rem 1.5rem 1.5rem' }}>
+              <AddressBook
+                initialEditAddress={editing.id ? editing : null}
+                onSaved={(saved) => { close(); onSaved?.(saved); }}
+              />
+            </div>
           </div>
         </div>
       )}
