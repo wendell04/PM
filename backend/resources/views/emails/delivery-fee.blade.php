@@ -28,8 +28,8 @@
                 Your delivery fee is ready
               </p>
               <p style="margin:0 0 24px;font-size:14px;color: #6b6b6b;line-height:1.7;">
-                Hi {{ $firstName }}, we have booked a courier for your order. Here is what the
-                delivery costs.
+                Hi {{ $firstName }}, we have worked out the delivery for your order. Here is
+                what the courier charges.
               </p>
 
               {{-- Order ID --}}
@@ -110,7 +110,8 @@
                   <td style="padding:14px 16px;">
                     <strong style="font-size:13px;color: #111111;">Send it ahead</strong>
                     <p style="margin:4px 0 0;font-size:13px;color: #6b6b6b;line-height:1.6;">
-                      Send it by GCash or Maya and reply in the chat so we can confirm it.
+                      Message us in your order chat any time and we will send our GCash or
+                      Maya details. We confirm it there once it lands.
                     </p>
                   </td>
                 </tr>
