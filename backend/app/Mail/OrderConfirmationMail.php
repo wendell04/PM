@@ -5,6 +5,7 @@ namespace App\Mail;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Mail\Mailable;
+use Illuminate\Mail\Mailables\Attachment;
 use Illuminate\Mail\Mailables\Content;
 use Illuminate\Mail\Mailables\Envelope;
 use Illuminate\Queue\SerializesModels;
@@ -71,7 +72,10 @@ class OrderConfirmationMail extends Mailable implements ShouldQueue
     public function envelope(): Envelope
     {
         return new Envelope(
-            subject: 'Order Received - Personalize Me Prints',
+            // The reference belongs in the subject. Without it every order from the same
+            // customer shares one, Gmail threads them and hides the newer body behind a "..."
+            // as repeated content - on the mail that says what they just paid for.
+            subject: 'Order Received ' . \App\Support\ReceiptPdf::ref($this->orderId) . ' - Personalize Me Prints',
         );
     }
 
@@ -80,5 +84,28 @@ class OrderConfirmationMail extends Mailable implements ShouldQueue
         return new Content(
             view: 'emails.order-confirmation',
         );
+    }
+
+    /**
+     * The receipt travels with the mail.
+     *
+     * A link to one is opened from an inbox, usually on a phone, usually in a browser with no
+     * session - so it asked the customer to sign in to read what they had just paid for. A PDF
+     * needs none of that and is already saved by the time they see it.
+     *
+     * Returns nothing if the render fails: a receipt must never cost the customer their email.
+     */
+    public function attachments(): array
+    {
+        $pdf = \App\Support\ReceiptPdf::forOrder($this->orderId);
+
+        if (!$pdf) {
+            return [];
+        }
+
+        return [
+            Attachment::fromData(fn () => $pdf, \App\Support\ReceiptPdf::filename($this->orderId))
+                ->withMime('application/pdf'),
+        ];
     }
 }

@@ -147,21 +147,19 @@
               </table>
               @endif
 
-              {{-- Two ways back in. The receipt is the same page the app's View Receipt button
-                   opens, so the email and the printout cannot say different things. --}}
-              @if($receiptUrl)
-              <table role="presentation" cellpadding="0" cellspacing="0" style="margin-top:20px;">
+              {{-- The receipt is attached, not linked. A link lands in a browser with no session,
+                   on a phone, and asks them to sign in to read what they just paid for. --}}
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:20px;">
                 <tr>
-                  <td>
-                    <a href="{{ $receiptUrl }}"
-                      style="display:inline-block;background:#d4a843;color:#111111;font-size:13px;font-weight:800;
-                             text-decoration:none;padding:11px 24px;border-radius:8px;">
-                      Print receipt
-                    </a>
+                  <td style="padding:12px 14px;background:#f7f7f5;border-radius:8px;">
+                    <span style="font-size:13px;color:#444444;line-height:1.7;">
+                      Your receipt is attached to this email as
+                      <strong style="color:#111111;">{{ \App\Support\ReceiptPdf::filename($orderId) }}</strong>.
+                      Save or print it any time, no sign-in needed.
+                    </span>
                   </td>
                 </tr>
               </table>
-              @endif
 
               @if($notes)
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0"

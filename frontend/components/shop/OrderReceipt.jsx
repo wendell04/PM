@@ -1,5 +1,8 @@
 'use client';
 
+import { orderNo } from '@/lib/orderNumber';
+import { paymentLabel, receiptStatus } from '@/lib/paymentLabel';
+
 /**
  * The printed receipt for one order.
  *
@@ -15,7 +18,6 @@ export default function OrderReceipt({ order }) {
 
   const rItems = order.items ?? [];
   const rSubtotal = rItems.reduce((s, i) => s + Number(i.lineTotal ?? ((i.unitPrice ?? 0) * (i.qty ?? 1))), 0);
-  const rNum = String(order._id ?? order.id ?? '').slice(-8).toUpperCase();
   const rName = order.userSnapshot?.name || 'Customer';
   const rDate = order.createdAt ? new Date(order.createdAt).toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' }) : '';
   const a = order.deliveryAddress || {};
@@ -30,6 +32,7 @@ export default function OrderReceipt({ order }) {
   const receiptPaid = (order.paymentHistory ?? []).reduce((t, x) => t + (Number(x.amount) || 0), 0);
   const settled     = order.paymentStatus === 'paid';
   const receiptOwed = Math.max(0, Number(order.totalAmount ?? order.finalPrice ?? 0) - receiptPaid);
+  const statusText  = receiptStatus(order, order.paymentHistory ?? [], receiptPaid);
   const GOLD = '#c8922e';
   const th = { padding: '9px 12px', fontWeight: 700 };
   const tot = (label, val, strong) => (
@@ -50,7 +53,7 @@ export default function OrderReceipt({ order }) {
       <div style={{ display: 'flex', gap: 40, fontSize: 12, color: '#333', borderTop: '2px solid #111', borderBottom: '1px solid #ddd', padding: '10px 0', marginBottom: 20 }}>
         <div><div style={{ color: '#888', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>Order No.</div><div style={{ fontWeight: 700, marginTop: 2 }}>{orderNo(order)}</div></div>
         <div><div style={{ color: '#888', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>Date</div><div style={{ fontWeight: 700, marginTop: 2 }}>{rDate || '-'}</div></div>
-        <div><div style={{ color: '#888', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>Status</div><div style={{ fontWeight: 700, marginTop: 2, color: settled ? '#166534' : '#b45309' }}>{settled ? 'Fully Paid' : receiptOwed > 0 && Number(order.balance) > 0 ? 'Downpayment Paid' : 'Design Fee Paid - Order Unpaid'}</div></div>
+        <div><div style={{ color: '#888', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>Status</div><div style={{ fontWeight: 700, marginTop: 2, color: settled ? '#166534' : '#b45309' }}>{statusText}</div></div>
       </div>
       <div style={{ display: 'flex', gap: 40, marginBottom: 22 }}>
         <div style={{ flex: 1 }}>

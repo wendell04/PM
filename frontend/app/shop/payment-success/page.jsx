@@ -8,27 +8,11 @@ import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import OrderReceipt from '@/components/shop/OrderReceipt';
 import { useCart } from '@/context/CartContext';
 import { orderNo } from '@/lib/orderNumber';
+import { paymentLabel } from '@/lib/paymentLabel';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
 
-// Payment rows were labelled by POSITION - first is a "Downpayment", the rest are "Balance payment".
-// On a request-design order the first payment is the DESIGN FEE, so the receipt called the design fee
-// a downpayment and the actual downpayment a balance payment. Read the note the payment carries
-// instead; it says what the payment was for.
-function paymentLabel(pmt, index, total) {
-  // Payments recorded from now on carry what they were FOR. Older rows have only the gateway
-  // reference in their note, so they still fall through to the guesses below.
-  const byType = { design_fee: 'Design fee', downpayment: 'Downpayment', balance: 'Balance payment', payment: 'Payment' };
-  if (pmt?.type && byType[pmt.type]) return byType[pmt.type];
-
-  const note = String(pmt?.note ?? '').toLowerCase();
-  if (note.includes('design fee') || note.includes('design_fee')) return 'Design fee';
-  if (note.includes('downpayment') || note.includes('deposit'))   return 'Downpayment';
-  if (note.includes('balance'))                                   return 'Balance payment';
-  if (total <= 1) return 'Payment';
-  return index === 0 ? 'Downpayment' : 'Balance payment';
-}
 
 export default function PaymentSuccessPage() {
   const searchParams  = useSearchParams();
