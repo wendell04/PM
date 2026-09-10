@@ -381,6 +381,10 @@ class PaymentController extends Controller
                 'items'           => $orderItems,
                 'totalAmount'     => $totalAmount,
                 'shippingFee'     => $shippingFee,
+                // How shipping was charged AT THE TIME. A zero fee means two different things -
+                // free delivery, or the recipient pays the rider - so without this an old order
+                // re-labels itself the day the owner switches mode. Mirrors OrderController@store.
+                'shippingMode'    => optional(User::where('role', 'owner')->first() ?? User::where('role', 'admin')->first())->shippingMode ?? 'courier_booked',
                 'discountAmount'  => $discountAmount > 0 ? $discountAmount : null,
                 'voucherCode'     => $appliedVoucher?->code ?? null,
                 'orderStatus'     => 'Pending',
@@ -1008,6 +1012,10 @@ class PaymentController extends Controller
                 'items'           => $orderItems,
                 'totalAmount'     => $totalAmount,
                 'shippingFee'     => $shippingFee,
+                // How shipping was charged AT THE TIME. A zero fee means two different things -
+                // free delivery, or the recipient pays the rider - so without this an old order
+                // re-labels itself the day the owner switches mode. Mirrors OrderController@store.
+                'shippingMode'    => optional(User::where('role', 'owner')->first() ?? User::where('role', 'admin')->first())->shippingMode ?? 'courier_booked',
                 'discountAmount'  => $discountAmount > 0 ? $discountAmount : null,
                 'voucherCode'     => $appliedVoucher?->code ?? null,
                 'orderStatus'     => $this->resolveCustomOrderStatus($request),

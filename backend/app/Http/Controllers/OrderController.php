@@ -1404,7 +1404,14 @@ class OrderController extends Controller
                 // consistent for the notification payloads below.
                 $order->courierFee = $newFee;
 
-                if ($newFee > 0 && abs($newFee - $prevFee) > 0.001) {
+                // Announce it only when the customer still owes it. On a flat-rate or
+                // distance-priced order the shipping is already inside the total they paid, and
+                // telling them a delivery fee is due reads as being charged twice. The field
+                // stays writable either way - it is also how the shop records what the courier
+                // actually cost it.
+                $shippingAlreadyCharged = (float) ($order->shippingFee ?? 0) > 0;
+
+                if ($newFee > 0 && abs($newFee - $prevFee) > 0.001 && !$shippingAlreadyCharged) {
                     try {
                         $isCOD    = PaymentMethod::isCod($order->paymentMethod);
                         $stillDue = max(0.0, round((float) ($order->totalAmount ?? $order->totalPrice ?? 0) - $this->paidSoFar($order), 2));
