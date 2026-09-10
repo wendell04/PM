@@ -538,6 +538,9 @@ export default function OrdersHistoryPage() {
   const [payNowError, setPayNowError]     = useState(null);
   const [payMethod, setPayMethod]         = useState(null);
   const [payFullToggle, setPayFullToggle] = useState(false);
+  // Defaults on. Two payments for one order is the thing this exists to avoid, so the customer
+  // has to opt OUT of settling it now, not opt in.
+  const [includeCourier, setIncludeCourier] = useState(true);
   // Owner-controlled method availability (Homepage CMS -> Payment Methods). Missing = enabled.
   const [payEnabled, setPayEnabled] = useState({});
   // Revision allowance and the price of a paid round live in shop settings, so the modal can state
@@ -855,6 +858,7 @@ export default function OrdersHistoryPage() {
           payFull: payFullToggle,
           ...(opts.designFeeOnly ? { designFeeOnly: true } : {}),
           ...(opts.courierFeeOnly ? { courierFeeOnly: true } : {}),
+          ...(opts.includeCourierFee ? { includeCourierFee: true } : {}),
           ...(method === 'card' && paymentMethodId ? { paymentMethodId } : {}),
         }),
       }, 15000);
@@ -1918,6 +1922,7 @@ export default function OrdersHistoryPage() {
                         because there the fee is already bundled into what the rider collects. */}
                     {Number(selectedOrder.courierFee) > 0
                       && !selectedOrder.courierFeePaid
+                      && selectedOrder.paymentStatus === 'paid'
                       && selectedOrder.paymentMethod !== 'cod'
                       && !['cancelled', 'delivered', 'completed'].includes(String(selectedOrder.orderStatus))
                       && (
@@ -2065,17 +2070,42 @@ export default function OrdersHistoryPage() {
                           const balanceAmt = selectedOrder.balance != null && selectedOrder.balance !== ''
                             ? Number(selectedOrder.balance)
                             : Math.max(0, (selectedOrder.totalAmount || 0) - (selectedOrder.downPayment || 0));
-                          const chargeAmount = isUnpaidFirst
+                          const orderAmount = isUnpaidFirst
                             ? ((selectedOrder.requiresDownpayment && selectedOrder.downpaymentPercent > 0 && !payFullToggle) ? dpAmt : owed)
                             : balanceAmt;
+                          // The courier fee is usually set before the balance is settled, so
+                          // offering it here is what keeps this to one payment for one order.
+                          const courierDue = Number(selectedOrder.courierFee ?? 0);
+                          const canRide = courierDue > 0
+                            && !selectedOrder.courierFeePaid
+                            && selectedOrder.paymentMethod !== 'cod';
+                          const withCourier = canRide && includeCourier;
+                          const chargeAmount = orderAmount + (withCourier ? courierDue : 0);
                           return (
+                            <>
+                            {canRide && (
+                              <label style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', padding: '9px 11px', marginBottom: '8px', background: 'var(--dark)', border: `1px solid ${includeCourier ? '#d4a843' : 'var(--border)'}`, borderRadius: '8px', cursor: 'pointer' }}>
+                                <input type="checkbox" checked={includeCourier} onChange={(e) => setIncludeCourier(e.target.checked)}
+                                  style={{ accentColor: '#d4a843', marginTop: '2px', cursor: 'pointer' }} />
+                                <span style={{ fontSize: '0.74rem', lineHeight: 1.5, color: 'var(--gray)' }}>
+                                  <span style={{ color: 'var(--white)', fontWeight: 700 }}>
+                                    Include the {formatPeso(courierDue)} delivery fee
+                                  </span>
+                                  <span style={{ display: 'block', marginTop: '1px' }}>
+                                    Settle it now and there is nothing to hand the rider. Untick to pay
+                                    them in cash on arrival instead.
+                                  </span>
+                                </span>
+                              </label>
+                            )}
                             <PaymentPicker
                               methods={['gcash', 'paymaya', 'card'].filter(m => payEnabled[m] !== false)}
                               amount={chargeAmount}
-                              onPay={handlePayNow}
+                              onPay={(m, c) => handlePayNow(m, c, withCourier ? { includeCourierFee: true } : {})}
                               loading={payNowLoading}
                               error={payNowError}
                             />
+                            </>
                           );
                         })()}
                       </div>

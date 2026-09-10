@@ -2040,6 +2040,8 @@ class PaymentController extends Controller
                     return $this->successResponse('Delivery fee received.', ['courierFeePaid' => true]);
                 }
 
+                $paidAmount = $this->splitCourierPortion($order, $paidAmount, $paymentMethod, (string) ($paymentId ?? ''));
+
                 if ($isDesignFeeOnly) {
                     $order->designFeePaid = true;
                     $order->designFeePaidAmount = $paidAmount;
@@ -2286,6 +2288,8 @@ class PaymentController extends Controller
                     return $this->successResponse('Delivery fee received.', ['courierFeePaid' => true]);
                 }
 
+                $paidAmount = $this->splitCourierPortion($order, $paidAmount, $paymentMethod, (string) $sessionId);
+
                 if (!empty($order->pendingPaymentType) || ($order->designFeePaid ?? false)) {
                     $isDesignFeeOnly = false;
                 }
@@ -2420,6 +2424,8 @@ class PaymentController extends Controller
             if ($this->settleCourierFee($order, $paidAmount, $paymentMethod, (string) $intentId)) {
                 return $this->successResponse('Delivery fee received.', ['courierFeePaid' => true]);
             }
+
+            $paidAmount = $this->splitCourierPortion($order, $paidAmount, $paymentMethod, (string) $intentId);
 
             if (!empty($order->pendingPaymentType) || ($order->designFeePaid ?? false)) {
                 $isDesignFeeOnly = false;
@@ -2659,6 +2665,40 @@ class PaymentController extends Controller
         return true;
     }
 
+    /**
+     * Take the courier's share out of a payment that carried both.
+     *
+     * Returns what is left for the order itself, so every caller downstream - the balance
+     * arithmetic, paymentHistory, the receipt - sees only the shop's own sale. Without this the
+     * courier's money would be recorded as a payment against the goods, pushing paymentHistory
+     * past totalAmount and printing a receipt that does not add up.
+     */
+    private function splitCourierPortion($order, float $paidAmount, ?string $paymentMethod, string $reference): float
+    {
+        $portion = round((float) ($order->pendingCourierPortion ?? 0), 2);
+
+        if ($portion <= 0) {
+            return $paidAmount;
+        }
+
+        // Never let a rounding slip or a short capture eat the goods payment.
+        $portion = min($portion, $paidAmount);
+
+        // settleCourierFee gates on pendingPaymentType and then clears it - but the code after
+        // this reads the same field to tell a downpayment from a balance. Borrow it and give it
+        // back, or a deposit paid together with the delivery fee is recorded as a full payment.
+        $resume = $order->pendingPaymentType ?? null;
+
+        $order->pendingCourierPortion = null;
+        $order->pendingPaymentType    = 'courier_fee';
+        $this->settleCourierFee($order, $portion, $paymentMethod, $reference);
+
+        $order->pendingPaymentType = $resume === 'courier_fee' ? null : $resume;
+        $order->save();
+
+        return round($paidAmount - $portion, 2);
+    }
+
     public function createOrderPayLink(Request $request)
     {
         try {
@@ -2673,6 +2713,7 @@ class PaymentController extends Controller
                 'payFull'         => 'nullable|boolean',
                 'designFeeOnly'   => 'nullable|boolean',
                 'courierFeeOnly'  => 'nullable|boolean',
+                'includeCourierFee' => 'nullable|boolean',
             ]);
 
             // Read before the guards below, because a courier fee is payable on an order whose
@@ -2739,10 +2780,31 @@ class PaymentController extends Controller
                 }
             }
 
+            // The fee is usually known before the balance is settled, because the shop sets it
+            // as soon as it knows the address. Making the customer pay twice for one order is the
+            // friction the standalone payment was meant to remove, so it rides along instead.
+            $courierPortion = 0.0;
+            if (!$payCourierFee
+                && !$payDesignFee
+                && $courierFee > 0
+                && !($order->courierFeePaid ?? false)
+                && strtolower((string) ($order->paymentMethod ?? '')) !== 'cod'
+                && filter_var($request->input('includeCourierFee', false), FILTER_VALIDATE_BOOLEAN)) {
+                $courierPortion = $courierFee;
+            }
+
             $chargeAmount   = $payCourierFee
                 ? $courierFee
                 : ($payDesignFee ? round((float) $order->designFee, 2) : ($isDP ? $dpAmount : $amountDue));
+            $chargeAmount   = round($chargeAmount + $courierPortion, 2);
             $amountCentavos = (int) round($chargeAmount * 100);
+
+            // Remembered on the order, not in the gateway metadata, because the confirm paths all
+            // read the order and a webhook may arrive with nothing else to go on.
+            $order->pendingCourierPortion = $courierPortion > 0 ? $courierPortion : null;
+            if ($courierPortion > 0) {
+                $order->save();
+            }
 
             if ($payCourierFee) {
                 $order->pendingPaymentType   = 'courier_fee';
