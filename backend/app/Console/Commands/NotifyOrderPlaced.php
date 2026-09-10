@@ -23,8 +23,7 @@ class NotifyOrderPlaced extends Command
     protected $signature = 'orders:notify-placed
                             {order : Full order id, or the last 8 characters shown as ORD-XXXXXXXX}
                             {--dry-run : Show who would be written to and send nothing}
-                            {--base= : Override FRONTEND_URL for this send, so a mail triggered from
-                                       a developer machine links to the live site rather than localhost}';
+                            {--base= : Override FRONTEND_URL so a send from a laptop links to the live site}';
 
     protected $description = 'Re-send the order-placed emails and admin notice for one existing order';
 
