@@ -1591,9 +1591,15 @@ export default function CheckoutPage() {
             </svg>
             {/* Named plainly rather than left as "arranged after order": what it costs varies with
                 what is being shipped, so the honest promise is that the shop will say - not a number
-                that would have to be walked back once the courier actually quotes the vehicle. */}
+                that would have to be walked back once the courier actually quotes the vehicle.
+                Where the number comes from is said too, because "we will tell you later" otherwise
+                reads as "we will make one up". */}
             <span style={{ fontSize: '0.75rem', color: 'var(--gray-light)', lineHeight: 1.5 }}>
-              Delivery is not included. We book a courier once your order is confirmed and send you the fee in chat - usually paid in cash to the rider.
+              Delivery is not included here. Once your order is confirmed we price it in our courier&apos;s
+              app - it depends on how much you ordered and how far it is going - and send you the exact
+              amount in chat.{' '}
+              <strong style={{ color: 'var(--white)' }}>You can add it to your next payment</strong>, or
+              hand it to the rider in cash on arrival. Whichever you prefer.
             </span>
           </div>
         )}
@@ -2095,7 +2101,7 @@ export default function CheckoutPage() {
               ? 'By placing this order, you agree to our terms. You\'ll be redirected to Maya to complete payment.'
               : 'By placing this order, you agree to our terms. Your card details are processed securely by PayMongo.'}
         {courierBooked && paymentMethod !== 'cod'
-          ? ' Delivery is not included - the seller books the courier after your order is confirmed and sends you the exact fee in chat.'
+          ? ' Delivery is not included - once your order is confirmed the seller prices it in the courier app and sends you the exact fee in chat, to add to your next payment or hand to the rider in cash.'
           : ''}
       </p>
 

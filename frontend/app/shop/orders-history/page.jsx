@@ -2013,9 +2013,19 @@ export default function OrdersHistoryPage() {
                               <span style={{ color: 'var(--gray)' }}>Items subtotal</span>
                               <span style={{ color: 'var(--white)' }}>{formatPeso((selectedOrder.items || []).reduce((s, it) => s + (it.lineTotal || (it.unitPrice || 0) * (it.qty || 1)), 0))}</span>
                             </div>
+                            {/* shippingFee is 0 on a courier-booked order, so this printed
+                                "Shipping P0.00" directly above a button asking for the delivery
+                                fee as well. Show whichever one this order actually carries. */}
                             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem' }}>
-                              <span style={{ color: 'var(--gray)' }}>Shipping</span>
-                              <span style={{ color: 'var(--white)' }}>{formatPeso(selectedOrder.shippingFee ?? 0)}</span>
+                              <span style={{ color: 'var(--gray)' }}>
+                                {Number(selectedOrder.courierFee) > 0 && !(Number(selectedOrder.shippingFee) > 0)
+                                  ? 'Delivery' : 'Shipping'}
+                              </span>
+                              <span style={{ color: 'var(--white)' }}>
+                                {formatPeso(Number(selectedOrder.shippingFee) > 0
+                                  ? selectedOrder.shippingFee
+                                  : (selectedOrder.courierFee ?? 0))}
+                              </span>
                             </div>
                             {feeCredit > 0 && (
                               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem' }}>
