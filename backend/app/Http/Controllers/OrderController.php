@@ -1437,20 +1437,20 @@ class OrderController extends Controller
                             $order,
                             'delivery_fee',
                             $isCOD
-                                ? 'Your order has been booked with a third-party courier. The delivery fee is P'
+                                ? 'Your delivery fee for this order is P'
                                     . number_format($newFee, 2) . '. Your order is P' . number_format($stillDue, 2)
                                     . ', so please have P' . number_format($onArrival, 2) . ' ready for the rider '
                                     . 'on arrival - one payment covers both. If you would rather send the delivery '
                                     . 'part ahead, message us here for our GCash or Maya details and we will '
                                     . 'confirm it.'
                                 : ($stillDue > 0.009
-                                    ? 'Your order has been booked with a third-party courier. The delivery fee is P'
+                                    ? 'Your delivery fee for this order is P'
                                         . number_format($newFee, 2) . ', and it is separate from your order. Your '
                                         . 'order balance of P' . number_format($stillDue, 2) . ' is still open and '
                                         . 'is paid here in My Orders - the rider collects only the P'
                                         . number_format($newFee, 2) . ' delivery. You can hand that to the rider in '
                                         . 'cash, or send it ahead - message us here for our GCash or Maya details.'
-                                    : 'Your order has been booked with a third-party courier. The delivery fee is P'
+                                    : 'Your delivery fee for this order is P'
                                         . number_format($newFee, 2) . '. You can hand this to the rider in cash on '
                                         . 'delivery, or send it ahead - message us here for our GCash or Maya '
                                         . 'details and we will confirm it. This is the courier\'s charge '
