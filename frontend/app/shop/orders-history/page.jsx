@@ -1311,6 +1311,17 @@ export default function OrdersHistoryPage() {
                             }
                           </div>
                         ))}
+                        {/* The same thing checkout says, said again where the date actually lives.
+                            It is the latest a customer should expect, not a target - and reading it
+                            as a target is what turns an early delivery into a broken promise the
+                            other way round. */}
+                        {selectedOrder.estimatedDeliveryMin
+                          && !['delivered','Delivered','cancelled','Cancelled','returned','Returned'].includes(selectedOrder.orderStatus) && (
+                          <p style={{ margin: '6px 0 0', fontSize: '11.5px', color: 'var(--gray)', lineHeight: 1.5 }}>
+                            This is the latest you should expect it. Orders often arrive earlier when
+                            our production queue is light - we message you as soon as yours is ready.
+                          </p>
+                        )}
                       </div>
                     </div>
 
