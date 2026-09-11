@@ -1937,32 +1937,14 @@ export default function OrdersHistoryPage() {
                           <span style={{ fontSize: '12px', color: 'var(--white)' }}>{formatPeso(selectedOrder.subtotal)}</span>
                         </div>
                       )}
-                      {/* A zero shipping fee means two different things - delivery is free, or the
-                          recipient pays the rider on arrival. Showing P0.00 for both lets a customer
-                          reasonably believe they owe nothing, then meet a rider asking for money. */}
-                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <span style={{ fontSize: '12px', color: 'var(--gray)' }}>Shipping</span>
-                        {(() => {
-                          const cf = Number(selectedOrder.courierFee ?? 0);
-                          const sf = Number(selectedOrder.shippingFee ?? 0);
-                          // A shop-charged shipping fee is part of the order total and prints plainly.
-                          if (cf <= 0 && sf > 0) return (
-                            <span style={{ fontSize: '12px', color: 'var(--white)' }}>{formatPeso(sf)}</span>
-                          );
-                          return (
-                            <span style={{ fontSize: '12px', color: '#d4a843', textAlign: 'right' }}>
-                              {cf > 0 ? formatPeso(cf) : 'Billed separately'}
-                              <span style={{ display: 'block', fontSize: '10.5px', color: 'var(--gray)', fontWeight: 400, marginTop: '1px' }}>
-                                {cf <= 0
-                                  ? 'We will send the exact fee in chat'
-                                  : selectedOrder.courierFeePaid
-                                    ? 'Received - nothing to pay the rider'
-                                    : 'Pay it below, or hand it to the rider on arrival'}
-                              </span>
-                            </span>
-                          );
-                        })()}
-                      </div>
+                      {/* Only a shop-charged shipping fee is part of the total, so only it sits above the Total.
+                          The courier's fee is not, and is listed below the Total - see the next block. */}
+                      {Number(selectedOrder.courierFee ?? 0) <= 0 && Number(selectedOrder.shippingFee ?? 0) > 0 && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span style={{ fontSize: '12px', color: 'var(--gray)' }}>Shipping</span>
+                          <span style={{ fontSize: '12px', color: 'var(--white)' }}>{formatPeso(selectedOrder.shippingFee)}</span>
+                        </div>
+                      )}
                       {selectedOrder.isRush && Number(selectedOrder.rushFee) > 0 && (
                         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                           <span style={{ fontSize: '12px', color: 'var(--gray)' }}>Rush fee</span>
@@ -2004,6 +1986,34 @@ export default function OrdersHistoryPage() {
                         <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--white)' }}>Total</span>
                         <span style={{ fontSize: '13px', fontWeight: 700, color: '#d4a843' }}>{formatPeso(selectedOrder.totalAmount)}</span>
                       </div>
+                      {/* The courier's charge, kept OUT of the figures above so they add up to the Total.
+                          Customers used to marketplaces read a shipping line above a total as included in it.
+                          A zero here is not free delivery - the fee is simply not known yet. */}
+                      {(() => {
+                        const cf = Number(selectedOrder.courierFee ?? 0);
+                        const sf = Number(selectedOrder.shippingFee ?? 0);
+                        if (cf <= 0 && sf > 0) return null;
+                        const riderCollects = selectedOrder.courierFeeOnDelivery ?? true;
+                        const dispatched = ['for_delivery', 'shipped', 'ready_for_pickup', 'out_for_delivery'].includes(String(selectedOrder.orderStatus));
+                        const note = cf <= 0
+                          ? 'We will send the exact fee in chat'
+                          : selectedOrder.courierFeePaid
+                            ? 'Received - nothing to pay the rider'
+                            : !riderCollects
+                              ? 'Pay it below before we ship'
+                              : dispatched
+                                ? 'Have it ready in cash for the rider'
+                                : 'Pay it below, or hand it to the rider on arrival';
+                        return (
+                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px' }}>
+                            <span style={{ fontSize: '12px', color: 'var(--gray)' }}>Delivery fee <span style={{ fontSize: '10.5px' }}>(not in total)</span></span>
+                            <span style={{ fontSize: '12px', color: '#d4a843', textAlign: 'right' }}>
+                              {cf > 0 ? formatPeso(cf) : 'To follow'}
+                              <span style={{ display: 'block', fontSize: '10.5px', color: 'var(--gray)', fontWeight: 400, marginTop: '1px' }}>{note}</span>
+                            </span>
+                          </div>
+                        );
+                      })()}
                     </div>
 
                     {/* Pay Design Fee - the FIRST payment on a request-design order, collected
@@ -2155,25 +2165,33 @@ export default function OrdersHistoryPage() {
                               <span style={{ color: 'var(--gray)' }}>Items subtotal</span>
                               <span style={{ color: 'var(--white)' }}>{formatPeso((selectedOrder.items || []).reduce((s, it) => s + (it.lineTotal || (it.unitPrice || 0) * (it.qty || 1)), 0))}</span>
                             </div>
-                            {/* Three states, not two. A courier-booked order with no fee set yet
-                                carries 0 in both fields, and printing "Shipping P0.00" claimed free
-                                delivery - while the summary directly above this said "Billed
-                                separately". One order, two answers. */}
-                            {(() => {
-                              const cf = Number(selectedOrder.courierFee ?? 0);
-                              const sf = Number(selectedOrder.shippingFee ?? 0);
-                              const label = cf > 0 && !(sf > 0) ? 'Delivery' : 'Shipping';
-                              return (
-                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem' }}>
-                                  <span style={{ color: 'var(--gray)' }}>{label}</span>
-                                  {sf > 0 || cf > 0 ? (
-                                    <span style={{ color: 'var(--white)' }}>{formatPeso(sf > 0 ? sf : cf)}</span>
-                                  ) : (
-                                    <span style={{ color: '#d4a843' }}>Billed separately</span>
-                                  )}
-                                </div>
-                              );
-                            })()}
+                            {/* Every charge inside Total Due is listed above it, so the lines add up. The design
+                                fee used to be subtracted below without ever being listed, and the courier fee was
+                                listed without being in the total - the figures matched neither way. */}
+                            {Number(selectedOrder.courierFee ?? 0) <= 0 && Number(selectedOrder.shippingFee ?? 0) > 0 && (
+                              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem' }}>
+                                <span style={{ color: 'var(--gray)' }}>Shipping</span>
+                                <span style={{ color: 'var(--white)' }}>{formatPeso(selectedOrder.shippingFee)}</span>
+                              </div>
+                            )}
+                            {Number(selectedOrder.designFeePaidAmount ?? selectedOrder.designFee ?? 0) > 0 && (
+                              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem' }}>
+                                <span style={{ color: 'var(--gray)' }}>Design fee</span>
+                                <span style={{ color: 'var(--white)' }}>{formatPeso(Number(selectedOrder.designFeePaidAmount ?? selectedOrder.designFee ?? 0))}</span>
+                              </div>
+                            )}
+                            {selectedOrder.isRush && Number(selectedOrder.rushFee) > 0 && (
+                              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem' }}>
+                                <span style={{ color: 'var(--gray)' }}>Rush fee</span>
+                                <span style={{ color: 'var(--white)' }}>{formatPeso(selectedOrder.rushFee)}</span>
+                              </div>
+                            )}
+                            {selectedOrder.discountAmount > 0 && (
+                              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem' }}>
+                                <span style={{ color: 'var(--gray)' }}>Discount</span>
+                                <span style={{ color: '#22c55e' }}>-{formatPeso(selectedOrder.discountAmount)}</span>
+                              </div>
+                            )}
                             {feeCredit > 0 && (
                               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem' }}>
                                 <span style={{ color: '#22c55e' }}>Design fee paid</span>
@@ -2194,6 +2212,28 @@ export default function OrdersHistoryPage() {
                                 {formatPeso(selectedOrder.downPayment > 0 ? selectedOrder.balance : Math.max(0, (selectedOrder.totalAmount || 0) - feeCredit))}
                               </span>
                             </div>
+                            {(() => {
+                              const cf = Number(selectedOrder.courierFee ?? 0);
+                              const sf = Number(selectedOrder.shippingFee ?? 0);
+                              if (cf <= 0 && sf > 0) return null;
+                              const riderCollects = selectedOrder.courierFeeOnDelivery ?? true;
+                              const note = cf <= 0
+                                ? 'We will send the exact fee in chat'
+                                : selectedOrder.courierFeePaid
+                                  ? 'Already paid'
+                                  : riderCollects
+                                    ? 'Add it with the checkbox below, or hand it to the rider'
+                                    : 'Pay it with this payment - a parcel courier cannot take cash';
+                              return (
+                                <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', fontSize: '0.75rem', marginTop: '2px' }}>
+                                  <span style={{ color: 'var(--gray)' }}>Delivery fee <span style={{ fontSize: '0.68rem' }}>(not in total)</span></span>
+                                  <span style={{ color: '#d4a843', textAlign: 'right' }}>
+                                    {cf > 0 ? formatPeso(cf) : 'To follow'}
+                                    <span style={{ display: 'block', fontSize: '0.68rem', color: 'var(--gray)', marginTop: '1px' }}>{note}</span>
+                                  </span>
+                                </div>
+                              );
+                            })()}
                           </div>
                         )}
 
