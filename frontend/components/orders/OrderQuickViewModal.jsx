@@ -15,15 +15,19 @@ function getAvailableStatuses(order) {
   if (order.isCustomOrder) {
     // Keyed by BOTH canonical and legacy codes - a custom order now starts at plain
     // "pending", which this map did not know about, leaving it with no transitions at all.
+    // Same map as the Orders page. A custom order enters production ONLY by a Job Order, which
+    // checks payment and approval and gives Production and QC something to build - so In Production
+    // is never offered by hand here, and Cancel stays on offer until production starts.
+    const paidCustom = isCOD || ['partial', 'paid'].includes(order.paymentStatus) || Number(order.downPayment) > 0;
     const map = {
-      pending:             ['in_production', 'Cancelled'],
-      Pending:             ['in_production', 'Cancelled'],
-      pending_review:      ['awaiting_payment'],
-      design_approved:     ['awaiting_payment'],
-      awaiting_payment:    ['in_production'],
-      awaiting_production: ['in_production'],
-      processing:          ['in_production', 'Cancelled'],
-      Processing:          ['in_production', 'Cancelled'],
+      pending:             ['Cancelled'],
+      Pending:             ['Cancelled'],
+      pending_review:      paidCustom ? ['Cancelled'] : ['awaiting_payment', 'Cancelled'],
+      design_approved:     paidCustom ? ['Cancelled'] : ['awaiting_payment', 'Cancelled'],
+      awaiting_payment:    ['Cancelled'],
+      awaiting_production: ['Cancelled'],
+      processing:          ['Cancelled'],
+      Processing:          ['Cancelled'],
       in_production:       ['for_qc'],
       for_qc:              order.paymentStatus === 'paid' ? ['for_delivery'] : ['ready_for_delivery'],
       ready_for_delivery:  ['for_delivery'],

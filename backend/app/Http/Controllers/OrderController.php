@@ -3537,12 +3537,13 @@ class OrderController extends Controller
             if ($awaitingPayment) {
                 $order->orderStatus = 'awaiting_payment';
             } elseif ($order->designStatus === 'approved' && $this->isBeforeProduction($order->orderStatus)) {
-                // Already paid - an upload is paid at checkout. The customer-approve path moves such
-                // an order to design_approved; approving it here used to leave it on "pending", so the
-                // same order read two ways depending on who clicked Approve.
-                $order->orderStatus   = 'design_approved';
+                // Already paid - an upload is paid at checkout. Approved and paid is exactly where a
+                // request-design order lands when its deposit arrives, so it takes the same status.
+                // This used to leave it on "pending", so the same order read two ways depending on
+                // who clicked Approve.
+                $order->orderStatus   = 'awaiting_production';
                 $history              = $order->statusHistory ?? [];
-                $history[]            = ['status' => 'design_approved', 'at' => now()->toISOString(), 'by' => 'admin'];
+                $history[]            = ['status' => 'awaiting_production', 'at' => now()->toISOString(), 'by' => 'admin', 'note' => 'Design approved - paid'];
                 $order->statusHistory = $history;
             }
             $order->updatedAt    = now();
@@ -4106,7 +4107,11 @@ class OrderController extends Controller
                 // goods are still owed. Move to awaiting_payment - that is the state the customer's
                 // "Pay Now" panel keys on - and give them a window to settle before the hold lapses.
                 $awaitingPayment = ($order->paymentStatus ?? 'unpaid') === 'unpaid';
-                $order->orderStatus = $awaitingPayment ? 'awaiting_payment' : 'design_approved';
+                // Paid (deposit or in full) and approved is ready for a job order - the same
+                // awaiting_production a request order reaches when its deposit lands.
+                if ($this->isBeforeProduction($order->orderStatus)) {
+                    $order->orderStatus = $awaitingPayment ? 'awaiting_payment' : 'awaiting_production';
+                }
                 if ($awaitingPayment) {
                     $dueDays = (int) (User::where('role', 'owner')->first()->depositDueDays ?? 7);
                     $order->paymentDueAt = now()->addDays(max(1, $dueDays));
@@ -4116,7 +4121,7 @@ class OrderController extends Controller
             $order->updatedAt     = now();
             $order->save();
 
-            try { broadcast(new \App\Events\OrderStatusUpdated((string) $order->_id, $awaitingPayment ? 'awaiting_payment' : 'design_approved', null)); } catch (\Throwable) {}
+            try { broadcast(new \App\Events\OrderStatusUpdated((string) $order->_id, (string) $order->orderStatus, null)); } catch (\Throwable) {}
 
             // The moment the goods fall due is the moment to say so, in the place the customer is
             // already looking. The card carries the figures but not the checkout: paying needs the
@@ -4704,7 +4709,7 @@ class OrderController extends Controller
             // An upload is paid at checkout, so most arrive here paid. Sending every one to
             // awaiting_payment told a paid customer to pay again.
             $isUnpaid  = ($order->paymentStatus ?? 'unpaid') === 'unpaid';
-            $next      = $isUnpaid ? 'awaiting_payment' : 'design_approved';
+            $next      = $isUnpaid ? 'awaiting_payment' : 'awaiting_production';
             $history   = $order->statusHistory ?? [];
             $history[] = ['status' => $next, 'at' => now()->toISOString(), 'by' => 'admin', 'note' => $isUnpaid ? 'Upload approved - awaiting customer payment' : 'Upload approved'];
             if ($this->isBeforeProduction($order->orderStatus)) {
