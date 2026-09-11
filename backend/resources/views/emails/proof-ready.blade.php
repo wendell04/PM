@@ -5,7 +5,7 @@
     <meta name="color-scheme" content="light">
     <meta name="supported-color-schemes" content="light">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Your Delivery Fee</title>
+  <title>Your Proof Is Ready</title>
 </head>
 <body style="margin:0;padding:0;background-color: #ffffff;font-family:Arial,sans-serif;">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color: #ffffff;">
@@ -45,21 +45,38 @@
                 </p>
               @endif
 
-              <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 20px;">
+              {{-- No button. The one that was here rendered black text on a black cell, so it
+                   read as an empty bar. Approval happens on the site, and saying where - and what
+                   comes after - is what the customer actually needs from this mail. --}}
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+                style="margin:0 0 20px;background:#f7f7f5;border-radius:8px;border:1px solid rgba(0,0,0,0.07);">
                 <tr>
-                  <td style="background: #0f0f0f;border-radius:8px;">
-                    <a href="https://personalizemeprints.com/shop/orders-history"
-                      style="display:inline-block;padding:12px 26px;font-size:14px;font-weight:700;color: #0f0f0f;text-decoration:none;">
-                      Review the proof
-                    </a>
+                  <td style="padding:14px 16px;">
+                    <p style="margin:0 0 6px;font-size:11px;font-weight:700;color:#6b6b6b;text-transform:uppercase;letter-spacing:1px;">
+                      How to approve
+                    </p>
+                    <p style="margin:0;font-size:13px;color:#444444;line-height:1.7;">
+                      Sign in at <strong style="color:#111111;">personalizemeprints.com</strong>, open
+                      <strong style="color:#111111;">My Orders</strong>, and choose order
+                      <strong style="color:#111111;">{{ $orderRef }}</strong>. You can approve the
+                      proof there or in your order chat.
+                      @if ($balanceAfter > 0)
+                        <strong style="color:#111111;">Once you approve, the remaining
+                        &#8369;{{ number_format($balanceAfter, 2) }} is paid from the same page</strong>,
+                        and production starts as soon as it clears.
+                      @else
+                        <strong style="color:#111111;">Once you approve, we start production.</strong>
+                      @endif
+                    </p>
                   </td>
                 </tr>
               </table>
 
               <p style="margin:0 0 18px;font-size:14px;color: #444444;line-height:1.65;">
-                If something is off, ask for changes in the order chat and we will redraw it. If it
-                is right, approving it starts production.
+                If something is off, ask for changes in the order chat and we will redraw it.
               </p>
+
+              <p style="margin:0;font-size:13px;color: #6b6b6b;line-height:1.6;">
                 Questions? Reply in your order chat, or email us at
                 <a href="mailto:personalizemeprints@gmail.com"
                   style="color: #a67c1a;text-decoration:none;">

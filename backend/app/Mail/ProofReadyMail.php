@@ -26,12 +26,18 @@ class ProofReadyMail extends Mailable implements ShouldQueue
     public string $orderRef;
     /** Watermarked proof images, already sized down by the caller. */
     public array  $proofs;
+    /**
+     * What is still owed on the goods. Above zero, approving is what makes it payable (a
+     * request-design order has only paid its design fee); zero, approving starts production.
+     */
+    public float  $balanceAfter;
 
-    public function __construct(string $firstName, string $orderRef, array $proofs = [])
+    public function __construct(string $firstName, string $orderRef, array $proofs = [], float $balanceAfter = 0.0)
     {
-        $this->firstName = $firstName !== '' ? $firstName : 'there';
-        $this->orderRef  = $orderRef;
-        $this->proofs    = array_slice($proofs, 0, 3);
+        $this->firstName    = $firstName !== '' ? $firstName : 'there';
+        $this->orderRef     = $orderRef;
+        $this->proofs       = array_slice($proofs, 0, 3);
+        $this->balanceAfter = max(0.0, round($balanceAfter, 2));
     }
 
     public function envelope(): Envelope

@@ -4626,7 +4626,9 @@ class OrderController extends Controller
                     Mail::to($to)->send(new ProofReadyMail(
                         $first,
                         strtoupper(substr((string) $order->_id, -8)),
-                        array_map(fn ($u) => $this->watermarkedProof($u), array_slice($adminDesignUrls, 0, 3))
+                        array_map(fn ($u) => $this->watermarkedProof($u), array_slice($adminDesignUrls, 0, 3)),
+                        // So the mail can say what approving leads to: a payment, or production.
+                        max(0.0, round((float) ($order->totalAmount ?? 0) - $this->paidSoFar($order), 2))
                     ));
                 }
             } catch (\Throwable $mailErr) {

@@ -1908,6 +1908,15 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                   );
                 }
                 return (
+                  <>
+                  {/* Shown on request once the line is approved - so it can be put away again. */}
+                  {aiStatus === 'approved' && (
+                    <button type="button"
+                      onClick={() => setShowRefFor(m => ({ ...m, [activeItemIdx]: false }))}
+                      style={{ marginBottom:'6px', padding:'4px 10px', fontSize:'11px', fontWeight:600, borderRadius:'6px', border:'1px solid var(--border)', background:'transparent', color:'var(--gray)', cursor:'pointer', fontFamily:'inherit' }}>
+                      Hide the customer&apos;s reference
+                    </button>
+                  )}
                   <div style={{ display:'flex', flexWrap:'wrap', gap:'8px', marginBottom:'8px' }}>
                     {files.map((f, i) => {
                       const raw = f.url;
@@ -1943,6 +1952,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                       );
                     })}
                   </div>
+                  </>
                 );
               })()}
 
