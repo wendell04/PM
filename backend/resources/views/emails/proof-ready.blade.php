@@ -51,8 +51,8 @@
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
                 style="margin:0 0 20px;background:#f7f7f5;border-radius:8px;border:1px solid rgba(0,0,0,0.07);">
                 <tr>
-                  <td style="padding:14px 16px;">
-                    <p style="margin:0 0 6px;font-size:11px;font-weight:700;color:#6b6b6b;text-transform:uppercase;letter-spacing:1px;">
+                  <td style="padding:14px 16px;text-align:justify;" align="justify">
+                    <p style="margin:0 0 6px;font-size:11px;font-weight:700;color:#6b6b6b;text-transform:uppercase;letter-spacing:1px;text-align:left;">
                       How to approve
                     </p>
                     <p style="margin:0;font-size:13px;color:#444444;line-height:1.7;text-align:justify;">

@@ -48,7 +48,9 @@ class ProofReadyMail extends Mailable implements ShouldQueue
 
     public function envelope(): Envelope
     {
-        return new Envelope(subject: 'Your proof is ready to review - Personalize Me Prints');
+        // The reference belongs in the subject. Without it every proof for every order shares
+        // one, Gmail threads them together, and the newest arrives collapsed under the old ones.
+        return new Envelope(subject: 'Your proof is ready to review - ORD-' . $this->orderRef . ' - Personalize Me Prints');
     }
 
     public function content(): Content
