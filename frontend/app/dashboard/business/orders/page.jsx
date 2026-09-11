@@ -942,6 +942,8 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
   // Which custom line the admin is acting on (per-item design, Option 2 mixed cart).
   const [activeItemIdx, setActiveItemIdx] = useState(0);
   const [showProof, setShowProof] = useState(false);   // T&C acceptance proof panel
+  // Per line: the customer's reference folds away once that line's proof is approved.
+  const [showRefFor, setShowRefFor] = useState({});
   // Same upload panel, two jobs: a proof asks the customer to approve, a mockup only shows them.
   const [mockupMode, setMockupMode] = useState(false);
   const [delivDate,   setDelivDate]   = useState('');
@@ -1639,10 +1641,14 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
               {!(Number(lo.shippingFee) > 0) && (
                 <div style={{ marginTop:'10px', padding:'10px 12px', background:'var(--dark2)', border:'1px solid var(--border)', borderRadius:'8px' }}>
                   <div style={{ fontSize:'11px', fontWeight:600, color:'var(--gray-light)', marginBottom:'2px' }}>Delivery fee (paid by customer to rider)</div>
+                  {/* Once it is settled, everything below this is an answer to a question nobody is
+                      asking any more. The record of what was charged and how stays; the controls go. */}
+                  {!lo.courierFeePaid && (
                   <div style={{ fontSize:'10.5px', color:'var(--gray)', marginBottom:'8px' }}>
                     Enter the fee once you know it. Pick who collects it - that decides what the customer
                     is told and whether they can leave it for the rider.
                   </div>
+                  )}
 
                   {/* The fee is not needed to send a proof - that is a conversation about artwork,
                       and the address can still change after approval. It is needed the moment the
@@ -1662,6 +1668,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                   {/* An on-demand rider can take cash at the door; a parcel network is prepaid at
                       the branch. Getting this wrong on a provincial order means the shop pays the
                       courier and never collects. */}
+                  {!lo.courierFeePaid && (
                   <div style={{ display:'flex', gap:'6px', marginBottom:'8px', flexWrap:'wrap' }}>
                     {[
                       { on:true,  label:'Rider collects it',      hint:'Lalamove, Grab, same-day' },
@@ -1682,6 +1689,9 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                       );
                     })}
                   </div>
+                  )}
+
+                  {!lo.courierFeePaid && (
                   <div style={{ display:'flex', gap:'6px', alignItems:'center', flexWrap:'wrap' }}>
                     <div style={{ display:'flex', alignItems:'center', border:'1px solid var(--border)', borderRadius:'6px', overflow:'hidden', background:'var(--dark)' }}>
                       <span style={{ padding:'0 8px', fontSize:'12px', color:'var(--gray)' }}>₱</span>
@@ -1702,6 +1712,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                       </span>
                     )}
                   </div>
+                  )}
 
                   {/* Only offered once a fee exists - there is nothing to settle before that. */}
                   {Number(lo.courierFee) > 0 && (
@@ -1884,6 +1895,18 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
               {(() => {
                 const files = aiFiles;
                 if (!files.length) return null;
+                // Approved: the proof is the artwork now, and this is only the inspiration it was
+                // drawn from. Leading with it puts "do not print them" at the top of the screen
+                // someone reads before printing.
+                if (aiStatus === 'approved' && !showRefFor[activeItemIdx]) {
+                  return (
+                    <button type="button"
+                      onClick={() => setShowRefFor(m => ({ ...m, [activeItemIdx]: true }))}
+                      style={{ marginBottom:'8px', padding:'5px 10px', fontSize:'11px', fontWeight:600, borderRadius:'6px', border:'1px solid var(--border)', background:'transparent', color:'var(--gray)', cursor:'pointer', fontFamily:'inherit' }}>
+                      Show the customer&apos;s reference ({files.length})
+                    </button>
+                  );
+                }
                 return (
                   <div style={{ display:'flex', flexWrap:'wrap', gap:'8px', marginBottom:'8px' }}>
                     {files.map((f, i) => {
@@ -1925,7 +1948,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
 
               <ImageLightbox url={lightboxUrl} kind={lightboxKind} onClose={() => { setLightboxUrl(null); setLightboxKind(null); }} />
 
-              {aiHasFile && aiRequested && (
+              {aiHasFile && aiRequested && !(aiStatus === 'approved' && !showRefFor[activeItemIdx]) && (
                 <div style={{ fontSize: 11.5, color: 'var(--gold)', fontWeight: 600, marginBottom: 4 }}>
                   Reference from the customer - design from these, do not print them
                 </div>
