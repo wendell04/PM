@@ -112,6 +112,9 @@ Route::middleware('auth:sanctum')->group(function () {
     // ─── Orders (Customer) ────────────────────────────────────────────────────
     Route::get('/orders/my',                            [OrderController::class, 'myOrders']);
     Route::get('/orders/my/{id}',                       [OrderController::class, 'myOrderShow']);
+    // The same PDF the confirmation email attaches, so the copy they save and the copy in their
+    // inbox cannot drift apart. Not every customer owns a printer.
+    Route::get('/orders/my/{id}/receipt-pdf',           [OrderController::class, 'myReceiptPdf']);
     Route::post('/orders/my/{id}/cancel',               [OrderController::class, 'cancelMyOrder']);
     Route::post('/orders/my/{id}/reupload-design',       [OrderController::class, 'reuploadDesign'])->middleware('throttle:20,1');
     Route::post('/orders/my/{id}/approve-admin-design', [OrderController::class, 'approveAdminDesign']);

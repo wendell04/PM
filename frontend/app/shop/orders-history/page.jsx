@@ -18,6 +18,8 @@ import ImageLightbox from '@/components/shop/ImageLightbox';
 import ProofGallery from '@/components/shop/ProofGallery';
 import { watermarkProofs } from '@/lib/proofWatermark';
 import { isCodMethod } from '@/lib/paymentMethod';
+import AccountTabs from '@/components/shop/AccountTabs';
+import OrderReceipt from '@/components/shop/OrderReceipt';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
@@ -541,6 +543,8 @@ export default function OrdersHistoryPage() {
   // Defaults on. Two payments for one order is the thing this exists to avoid, so the customer
   // has to opt OUT of settling it now, not opt in.
   const [includeCourier, setIncludeCourier] = useState(true);
+  const [receiptOpen, setReceiptOpen] = useState(false);
+  const [receiptSaving, setReceiptSaving] = useState(false);
   // Owner-controlled method availability (Homepage CMS -> Payment Methods). Missing = enabled.
   const [payEnabled, setPayEnabled] = useState({});
   // Revision allowance and the price of a paid round live in shop settings, so the modal can state
@@ -876,6 +880,33 @@ export default function OrdersHistoryPage() {
     finally { setPayNowLoading(false); }
   };
 
+  // An <a href> cannot carry a bearer token, and the receipt is scoped to the signed-in
+  // customer, so the file is fetched and handed to the browser as a blob.
+  const handleDownloadReceipt = async () => {
+    const id = selectedOrder?._id ?? selectedOrder?.id;
+    if (!id || !token) return;
+    setReceiptSaving(true);
+    try {
+      const res = await fetchWithTimeout(`${API_URL}/api/orders/my/${id}/receipt-pdf`, {
+        headers: apiHeaders(token),
+      }, 30000);
+      if (!res.ok) throw new Error('Could not build the receipt.');
+      const blob = await res.blob();
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href = url;
+      a.download = `Receipt-${orderNo(selectedOrder)}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      // Printing still works, and the same PDF is already in their email.
+    } finally {
+      setReceiptSaving(false);
+    }
+  };
+
   // After any per-item design action the backend returns the updated order (with the re-synced
   // aggregate). Merge it back so both the item card and the overall tracker reflect the change.
   const mergeUpdatedOrder = (data) => {
@@ -991,6 +1022,8 @@ export default function OrdersHistoryPage() {
     <div style={{ minHeight: '100vh' }}>
 
       <div style={{ maxWidth: '1040px', margin: '0 auto', padding: '28px 16px 48px' }}>
+
+        <AccountTabs active="orders" />
 
         {/* Page header */}
         <div style={{ marginBottom: '20px', display: 'flex', alignItems: 'baseline', gap: '12px', flexWrap: 'wrap' }}>
@@ -1206,6 +1239,64 @@ export default function OrdersHistoryPage() {
         `}</style>
         <div onClick={closeModal} style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
           <ImageLightbox url={lightboxUrl} onClose={() => setLightboxUrl(null)} />
+
+          {/* The receipt, where the order is. One layer above the details overlay, so closing it
+              returns to the order rather than to the list. */}
+          {receiptOpen && selectedOrder && (
+            <div
+              onClick={() => setReceiptOpen(false)}
+              style={{ position: 'fixed', inset: 0, zIndex: 1200, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}
+            >
+              <div
+                className="oh-receipt-panel"
+                onClick={e => e.stopPropagation()}
+                style={{ background: '#ffffff', borderRadius: '14px', width: '100%', maxWidth: '760px', maxHeight: '92vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 24px 70px rgba(0,0,0,0.45)' }}
+              >
+                <div style={{ padding: '13px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', borderBottom: '1px solid #eee', flexShrink: 0 }}>
+                  <span style={{ fontSize: '0.72rem', fontWeight: 800, letterSpacing: '1.2px', textTransform: 'uppercase', color: '#888' }}>Receipt</span>
+                  <button type="button" onClick={() => setReceiptOpen(false)} aria-label="Close receipt"
+                    style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#666', padding: '2px', lineHeight: 0, fontFamily: 'inherit' }}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                  </button>
+                </div>
+
+                {/* min-height:0 is what lets this scroll inside the card instead of growing it. */}
+                <div style={{ flex: '1 1 auto', minHeight: 0, overflowY: 'auto', padding: '24px 28px' }}>
+                  <OrderReceipt order={selectedOrder} />
+                </div>
+
+                <div style={{ padding: '12px 18px', borderTop: '1px solid #eee', display: 'flex', justifyContent: 'flex-end', gap: '9px', flexShrink: 0 }}>
+                  <button type="button" onClick={handleDownloadReceipt} disabled={receiptSaving}
+                    style={{ padding: '9px 16px', borderRadius: '8px', border: '1px solid #c8922e', background: 'transparent', color: '#a67c1a', fontSize: '0.83rem', fontWeight: 700, cursor: receiptSaving ? 'wait' : 'pointer', fontFamily: 'inherit' }}>
+                    {receiptSaving ? 'Preparing...' : 'Download PDF'}
+                  </button>
+                  <button type="button" onClick={() => window.print()}
+                    style={{ padding: '9px 16px', borderRadius: '8px', border: 'none', background: '#c8922e', color: '#fff', fontSize: '0.83rem', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>
+                    Print
+                  </button>
+                </div>
+              </div>
+
+              {/* Print the document, not the page around it. The receipt is portaled nowhere, so
+                  everything else is hidden and the panel is unwrapped to plain flow. */}
+              <style jsx global>{`
+                @media print {
+                  body * { visibility: hidden !important; }
+                  .oh-receipt-panel, .oh-receipt-panel * { visibility: visible !important; }
+                  .oh-receipt-panel {
+                    position: fixed !important; inset: 0 !important;
+                    max-width: none !important; max-height: none !important;
+                    box-shadow: none !important; border-radius: 0 !important;
+                    overflow: visible !important;
+                  }
+                  .oh-receipt-panel > div:first-child,
+                  .oh-receipt-panel > div:last-child { display: none !important; }
+                  .oh-receipt-panel > div { overflow: visible !important; }
+                  @page { margin: 12mm; }
+                }
+              `}</style>
+            </div>
+          )}
           <div className="oh-modal-panel" onClick={e => e.stopPropagation()} style={{ background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '16px', width: '100%', maxWidth: '880px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 24px 70px rgba(0,0,0,0.35)', fontFamily: 'Inter, system-ui, sans-serif' }}>
 
             {/* Modal header */}
@@ -2160,17 +2251,18 @@ export default function OrdersHistoryPage() {
                     {reorderLoading ? 'Adding...' : 'Reorder'}
                   </button>
                 )}
-                {/* View Receipt - re-accessible anytime (payment-success renders the receipt from the
-                    order id: shows the downpayment receipt while partial, the fully-paid one once paid). */}
+                {/* Opens here rather than in a new tab. It used to link to payment-success?view=1 -
+                    a URL announcing a payment succeeded, on an order where only a design fee had
+                    been taken. */}
                 {!detailLoading && !detailError && (['partial', 'paid'].includes(selectedOrder?.paymentStatus) || selectedOrder?.designFeePaid) && (
-                  <a
-                    href={`/shop/payment-success?id=${selectedOrder?._id ?? selectedOrder?.id}&view=1`}
-                    target="_blank" rel="noopener noreferrer"
-                    style={{ padding: '9px 18px', borderRadius: '8px', border: '1px solid var(--gold)', background: 'transparent', color: 'var(--gold)', fontSize: '0.875rem', fontWeight: 700, cursor: 'pointer', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                  <button
+                    type="button"
+                    onClick={() => setReceiptOpen(true)}
+                    style={{ padding: '9px 18px', borderRadius: '8px', border: '1px solid var(--gold)', background: 'transparent', color: 'var(--gold)', fontSize: '0.875rem', fontWeight: 700, cursor: 'pointer', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '6px', fontFamily: 'inherit' }}
                   >
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/></svg>
                     View Receipt
-                  </a>
+                  </button>
                 )}
                 <button onClick={closeModal} style={{ padding: '9px 20px', borderRadius: '8px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--gray)', fontSize: '0.875rem', cursor: 'pointer' }}>
                   Close

@@ -122,6 +122,11 @@ const getPasswordStrength = (pwd) => {
   return levels[score - 1] ?? levels[0];
 };
 
+// Distance-based shipping is built and working, and wrong for this shop: see the note beside the
+// mode picker. Flip to true the day they partner with a courier that prices by the kilometre.
+const DISTANCE_SHIPPING_ENABLED = false;
+
+
 export default function SettingsPage() {
   const { token, currentUser, setCurrentUser } = useAuth();
   const { theme, toggleTheme } = useTheme();
@@ -1779,7 +1784,16 @@ export default function SettingsPage() {
                 <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.25rem', flexWrap: 'wrap' }}>
                   {[
                     { id: 'courier_booked', label: 'Courier Booked', sub: 'No system fee - you book on-demand' },
-                    { id: 'distance', label: 'Distance-based', sub: 'Base + ₱/km via OSRM route' },
+                    // Distance pricing is an on-demand rider's model: base plus a rate per km. The
+                    // shop's far deliveries go by parcel network, where distant is often cheaper
+                    // per km, not dearer - so the formula runs backwards on exactly the orders it
+                    // would matter most on. It also quotes through router.project-osrm.org, a free
+                    // demo endpoint with no SLA; a rate-limit mid-checkout leaves the customer with
+                    // no figure and no error. Hidden rather than deleted: it is right again the day
+                    // the shop partners with a courier that prices by distance.
+                    ...(DISTANCE_SHIPPING_ENABLED
+                      ? [{ id: 'distance', label: 'Distance-based', sub: 'Base + ₱/km via OSRM route' }]
+                      : []),
                     { id: 'flat',     label: 'Flat Rate',      sub: 'Fixed by Metro / Non-Metro' },
                   ].map(({ id, label, sub }) => {
                     const active = shippingForm.shippingMode === id;
@@ -1816,7 +1830,7 @@ export default function SettingsPage() {
                   </div>
                 )}
 
-                {shippingForm.shippingMode === 'distance' && (() => {
+                {DISTANCE_SHIPPING_ENABLED && shippingForm.shippingMode === 'distance' && (() => {
                   const base = parseFloat(shippingForm.shippingBaseRate || 0);
                   const near = parseFloat(shippingForm.shippingPerKmRate || 0);
                   const far  = parseFloat(shippingForm.shippingPerKmRateFar || near);

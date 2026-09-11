@@ -1960,6 +1960,39 @@ class OrderController extends Controller
      * GET /api/orders/{id}
      * Returns a single order by ID (new schema).
      */
+    /**
+     * The customer's own receipt, as a file.
+     *
+     * Scoped to the signed-in customer's orders: a receipt carries an address and a phone number,
+     * so it is never fetched by id alone.
+     */
+    public function myReceiptPdf(Request $request, $id)
+    {
+        try {
+            $user = $request->user();
+            if (!$user) {
+                return $this->unauthorizedResponse();
+            }
+
+            $order = Order::where('_id', $id)->where('userId', (string) $user->_id)->first();
+            if (!$order) {
+                return $this->notFoundResponse('Order');
+            }
+
+            $pdf = \App\Support\ReceiptPdf::forOrder((string) $order->_id);
+            if (!$pdf) {
+                return $this->errorResponse('We could not build that receipt just now.', 500);
+            }
+
+            return response($pdf, 200, [
+                'Content-Type'        => 'application/pdf',
+                'Content-Disposition' => 'attachment; filename="' . \App\Support\ReceiptPdf::filename((string) $order->_id) . '"',
+            ]);
+        } catch (\Exception $e) {
+            return $this->serverErrorResponse($e, 'Failed to build the receipt.');
+        }
+    }
+
     public function show(Request $request, $id)
     {
         try {
