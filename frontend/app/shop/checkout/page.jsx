@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import { useAuth } from '@/contexts/AuthContext';
+import { billingName } from '@/lib/billingName';
 import { useCart } from '@/context/CartContext';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import '@/app/shop/shop.css';
@@ -587,7 +588,7 @@ export default function CheckoutPage() {
           cvc: cardCvc,
         },
         billing: {
-          name: cardName.trim() || currentUser?.name || '',
+          name: cardName.trim() || billingName(currentUser),
           email: currentUser?.email || '',
           phone: '',
         },
@@ -599,7 +600,7 @@ export default function CheckoutPage() {
       if (detail.includes('card_number')) throw new Error('Card number is invalid. Please check and try again.');
       if (detail.includes('exp_month') || detail.includes('exp_year')) throw new Error('Expiry date is invalid. Use MM/YY format.');
       if (detail.includes('cvc')) throw new Error('Security code is invalid.');
-      throw new Error('Invalid card details. Please check and try again.');
+      throw new Error(detail || 'Invalid card details. Please check and try again.');
     }
     return data.data.id;
   }

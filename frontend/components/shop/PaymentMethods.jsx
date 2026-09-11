@@ -1,5 +1,7 @@
 'use client';
 
+import { billingName } from '@/lib/billingName';
+
 /**
  * The payment method tiles, and the card details a card needs.
  *
@@ -174,7 +176,7 @@ export async function tokenizeCard(card, user) {
         cvc: card.cvc || '',
       },
       billing: {
-        name: (card.name || '').trim() || [user?.firstName, user?.lastName].filter(Boolean).join(' '),
+        name: (card.name || '').trim() || billingName(user),
         email: user?.email || '',
         phone: '',
       },

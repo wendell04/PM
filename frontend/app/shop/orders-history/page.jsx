@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
+import { billingName } from '@/lib/billingName';
 import { fetchMyShopOrders, fetchMyShopOrder } from '@/lib/orderTrackingApi';
 import { orderNo } from '@/lib/orderNumber';
 import { StatusBadge, humanizeStatus, formatDate, formatPeso } from '@/lib/shopUtils';
@@ -839,7 +840,7 @@ export default function OrdersHistoryPage() {
         const pmRes = await fetch('https://api.paymongo.com/v1/payment_methods', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Basic ${btoa(publicKey+':')}` },
-          body: JSON.stringify({ data: { attributes: { type: 'card', details: { card_number: (cardData?.number || '').replace(/\s/g,''), exp_month: parseInt(expMonth), exp_year: parseInt('20'+(expYear||'')), cvc: cardData?.cvc }, billing: { name: (cardData?.name || '').trim() || currentUser?.name || '', email: currentUser?.email || '', phone: '' } } } }),
+          body: JSON.stringify({ data: { attributes: { type: 'card', details: { card_number: (cardData?.number || '').replace(/\s/g,''), exp_month: parseInt(expMonth), exp_year: parseInt('20'+(expYear||'')), cvc: cardData?.cvc }, billing: { name: billingName(currentUser), email: currentUser?.email || '', phone: '' } } } }),
         });
         const pmData = await pmRes.json();
         if (!pmRes.ok) {
@@ -847,7 +848,7 @@ export default function OrdersHistoryPage() {
           if (detail.includes('card_number')) throw new Error('Card number is invalid.');
           if (detail.includes('exp_month')||detail.includes('exp_year')) throw new Error('Expiry date is invalid.');
           if (detail.includes('cvc')) throw new Error('Security code is invalid.');
-          throw new Error('Invalid card details. Please check and try again.');
+          throw new Error(detail || 'Invalid card details. Please check and try again.');
         }
         paymentMethodId = pmData.data.id;
       }

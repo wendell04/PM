@@ -28,7 +28,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 export default function QuoteCheckoutPage() {
   const { id } = useParams();
   const router = useRouter();
-  const { token, user } = useAuth();
+  const { token, currentUser: user } = useAuth();
 
   const [quote, setQuote] = useState(null);
   const [addresses, setAddresses] = useState([]);

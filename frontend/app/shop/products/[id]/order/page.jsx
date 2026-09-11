@@ -8,6 +8,7 @@ import { useState, useEffect, useRef, useCallback, Suspense } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
+import { billingName } from '@/lib/billingName';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import { uploadDesignFile } from '@/lib/orderRequestApi';
 import { useCart } from '@/context/CartContext';
@@ -115,7 +116,7 @@ function CustomOrderInner() {
   const { id } = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { token, user: authUser } = useAuth();
+  const { token, currentUser: authUser } = useAuth();
   const { addToCart } = useCart();
 
   const [product, setProduct] = useState(null);
@@ -863,7 +864,7 @@ function CustomOrderInner() {
           const pmRes = await fetch('https://api.paymongo.com/v1/payment_methods', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Authorization: `Basic ${btoa(publicKey+':')}` },
-            body: JSON.stringify({ data: { attributes: { type: 'card', details: { card_number: cardNumber.replace(/\s/g,''), exp_month: parseInt(expMonth), exp_year: parseInt('20'+expYear), cvc: cardCvc }, billing: { name: cardName.trim() || [authUser?.firstName, authUser?.lastName].filter(Boolean).join(' ') || authUser?.name || '', email: authUser?.email || '', phone: '' } } } }),
+            body: JSON.stringify({ data: { attributes: { type: 'card', details: { card_number: cardNumber.replace(/\s/g,''), exp_month: parseInt(expMonth), exp_year: parseInt('20'+expYear), cvc: cardCvc }, billing: { name: cardName.trim() || billingName(authUser), email: authUser?.email || '', phone: '' } } } }),
           });
           const pmData = await pmRes.json();
           if (!pmRes.ok) {
