@@ -45,7 +45,8 @@
                 <p style="margin:0 0 18px;font-size:12px;color: #6b6b6b;line-height:1.6;">
                   These previews are watermarked. The printed piece is not.
                   @if ($hasVideo && $orderUrl)
-                    This proof is a video - tap the preview to play it in your order.
+                    This proof is a video - the watermarked clip is attached, or tap the preview to
+                    play it in your order.
                   @elseif ($orderUrl)
                     Tap the preview to open your order.
                   @endif

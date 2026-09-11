@@ -5,6 +5,7 @@ namespace App\Mail;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Mail\Mailable;
+use Illuminate\Mail\Mailables\Attachment;
 use Illuminate\Mail\Mailables\Content;
 use Illuminate\Mail\Mailables\Envelope;
 use Illuminate\Queue\SerializesModels;
@@ -35,6 +36,8 @@ class ProofReadyMail extends Mailable implements ShouldQueue
     public string $orderUrl;
     /** A clip cannot play inside an email, so the mail says to open it instead. */
     public bool   $hasVideo;
+    /** The watermarked clips themselves, kept before the still-frame swap so they can be attached. */
+    public array  $videoUrls = [];
 
     public function __construct(string $firstName, string $orderRef, array $proofs = [], float $balanceAfter = 0.0, string $orderUrl = '')
     {
@@ -53,6 +56,10 @@ class ProofReadyMail extends Mailable implements ShouldQueue
             array_slice($proofs, 0, 3)
         );
         $this->balanceAfter = max(0.0, round($balanceAfter, 2));
+        $this->videoUrls    = array_values(array_filter(
+            array_slice($proofs, 0, 3),
+            fn ($u) => (bool) preg_match('/\.(mp4|webm|mov|m4v|ogg)(\?|$)/i', (string) $u)
+        ));
     }
 
     public function envelope(): Envelope
@@ -65,5 +72,35 @@ class ProofReadyMail extends Mailable implements ShouldQueue
     public function content(): Content
     {
         return new Content(view: 'emails.proof-ready');
+    }
+
+    /**
+     * The watermarked clip, attached while it stays small enough to email.
+     *
+     * A mockup is a few seconds; past the cap it would bloat the mail or be refused by the inbox,
+     * and the still frame linking to the order is still there. A failed fetch costs the
+     * attachment, never the email.
+     */
+    public function attachments(): array
+    {
+        $out   = [];
+        $count = count($this->videoUrls);
+        foreach ($this->videoUrls as $i => $url) {
+            try {
+                $res = \Illuminate\Support\Facades\Http::timeout(25)->get($url);
+                if (!$res->successful()) {
+                    continue;
+                }
+                $bytes = $res->body();
+                if ($bytes === '' || strlen($bytes) > 8 * 1024 * 1024) {
+                    continue;
+                }
+                $name  = 'Proof-ORD-' . $this->orderRef . ($count > 1 ? '-' . ($i + 1) : '') . '.mp4';
+                $out[] = Attachment::fromData(fn () => $bytes, $name)->withMime('video/mp4');
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning('ProofReadyMail: clip not attached', ['error' => $e->getMessage()]);
+            }
+        }
+        return $out;
     }
 }
