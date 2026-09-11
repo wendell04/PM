@@ -2687,7 +2687,7 @@ class PaymentController extends Controller
             $paidTotal = (float) collect($order->paymentHistory ?? [])->sum(fn ($p) => (float) ($p['amount'] ?? 0));
             $balance   = max(0.0, round((float) ($order->totalAmount ?? 0) - $paidTotal, 2));
 
-            \Illuminate\Support\Facades\Mail::to($to)->send(new \App\Mail\PaymentReceivedMail(
+            $mail = new \App\Mail\PaymentReceivedMail(
                 $first,
                 strtoupper(substr((string) $order->_id, -8)),
                 round($goodsAmount + $deliveryAmount, 2),
@@ -2697,7 +2697,17 @@ class PaymentController extends Controller
                 null,
                 (string) $order->_id,
                 round($deliveryAmount, 2)
-            ));
+            );
+            // After the response. Building the PDF cold takes ~10 s on its own; held inside the
+            // request it pushed the customer's Pay button past its timeout, and the browser sent
+            // the payment again. The payment is already recorded - only the email waits.
+            \Illuminate\Support\defer(function () use ($to, $mail, $order) {
+                try {
+                    \Illuminate\Support\Facades\Mail::to($to)->send($mail);
+                } catch (\Throwable $e) {
+                    Log::warning('mailPaymentReceipt failed', ['order' => (string) $order->_id, 'error' => $e->getMessage()]);
+                }
+            });
         } catch (\Throwable $e) {
             Log::warning('mailPaymentReceipt failed', ['order' => (string) $order->_id, 'error' => $e->getMessage()]);
         }

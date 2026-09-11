@@ -866,7 +866,7 @@ export default function OrdersHistoryPage() {
           ...(opts.includeCourierFee ? { includeCourierFee: true } : {}),
           ...(method === 'card' && paymentMethodId ? { paymentMethodId } : {}),
         }),
-      }, 15000);
+      }, 60000);
       const data = await res.json();
       if (!res.ok) { setPayNowError(data.message || 'Failed to create payment link.'); return; }
       if (data.data?.status === 'succeeded') {
@@ -886,7 +886,21 @@ export default function OrdersHistoryPage() {
         sessionStorage.setItem('pending_paynow_order_id', orderId);
         window.location.href = data.data.checkoutUrl;
       }
-    } catch (err) { setPayNowError(err.message || 'Failed to create payment link.'); }
+    } catch (err) {
+      // A timeout is not a failure: the card may have been charged while the answer was on its way.
+      // Re-read the order so the screen shows what actually happened, and warn against paying again.
+      if (/timed out/i.test(err?.message || '')) {
+        try {
+          const fresh = await fetchMyShopOrder(token, selectedOrder._id ?? selectedOrder.id);
+          const detail = fresh?.data ?? fresh;
+          if (detail) setSelectedOrder(detail);
+        } catch {}
+        loadOrders(true);
+        setPayNowError('We could not confirm this payment yet. Check your email or this order in a minute before trying again, so you are not charged twice.');
+      } else {
+        setPayNowError(err.message || 'Failed to create payment link.');
+      }
+    }
     finally { setPayNowLoading(false); }
   };
 
