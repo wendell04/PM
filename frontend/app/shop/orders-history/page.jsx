@@ -1957,7 +1957,9 @@ export default function OrdersHistoryPage() {
                       })()}
                       {selectedOrder.requiresDownpayment && selectedOrder.downPayment > 0 && (
                         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                          <span style={{ fontSize: '12px', color: 'var(--gray)' }}>Down Payment</span>
+                          {/* downPayment holds the full amount once an order is paid off, and
+                              labelling that "Down Payment" misread a full payment as a deposit. */}
+                          <span style={{ fontSize: '12px', color: 'var(--gray)' }}>{selectedOrder.paymentStatus === 'paid' ? 'Paid' : 'Down Payment'}</span>
                           <span style={{ fontSize: '12px', color: 'var(--white)' }}>{formatPeso(selectedOrder.downPayment)}</span>
                         </div>
                       )}
@@ -2001,6 +2003,22 @@ export default function OrdersHistoryPage() {
                       </div>
                     )}
 
+                    {/* Out for delivery with the fee still owed to a rider who collects: the online
+                        option has closed, so say plainly what happens instead. */}
+                    {Number(selectedOrder.courierFee) > 0
+                      && !selectedOrder.courierFeePaid
+                      && selectedOrder.paymentMethod !== 'cod'
+                      && (selectedOrder.courierFeeOnDelivery ?? true)
+                      && ['for_delivery', 'shipped', 'ready_for_pickup', 'out_for_delivery'].includes(String(selectedOrder.orderStatus))
+                      && (
+                      <div style={{ padding: '0 18px 18px' }}>
+                        <div style={{ padding: '10px 12px', background: 'var(--dark)', borderRadius: '8px', border: '1px solid rgba(212,168,67,0.35)', fontSize: '0.78rem', color: 'var(--gray-light)', lineHeight: 1.55 }}>
+                          <strong style={{ color: 'var(--white)' }}>Your order is on its way.</strong>{' '}
+                          Have {formatPeso(selectedOrder.courierFee)} ready in cash for the rider - that is the delivery fee.
+                        </div>
+                      </div>
+                    )}
+
                     {/* The courier's fee, payable on its own.
 
                         It is not part of the order total and never has been - the customer hands it
@@ -2016,6 +2034,8 @@ export default function OrdersHistoryPage() {
                       && selectedOrder.paymentStatus === 'paid'
                       && selectedOrder.paymentMethod !== 'cod'
                       && !['cancelled', 'delivered', 'completed'].includes(String(selectedOrder.orderStatus))
+                      && !(['for_delivery', 'shipped', 'ready_for_pickup', 'out_for_delivery'].includes(String(selectedOrder.orderStatus))
+                        && (selectedOrder.courierFeeOnDelivery ?? true))
                       && (
                       <div style={{ padding: '0 18px 18px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                         <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '2px' }}>Pay Delivery Fee</div>
@@ -2025,9 +2045,9 @@ export default function OrdersHistoryPage() {
                             <span style={{ color: '#d4a843' }}>{formatPeso(selectedOrder.courierFee)}</span>
                           </div>
                           <span style={{ fontSize: '0.72rem', color: 'var(--gray)', lineHeight: 1.5 }}>
-                            This is the courier&apos;s charge, separate from your order total. Pay it here
-                            and there is nothing to hand the rider, or skip this and pay them in cash
-                            on arrival.
+                            {(selectedOrder.courierFeeOnDelivery ?? true)
+                              ? <>The courier&apos;s charge, separate from your order total. <strong style={{ color: 'var(--white)' }}>Pay it here before we send your order out</strong> and there is nothing to hand the rider. If you don&apos;t, have {formatPeso(selectedOrder.courierFee)} ready in cash when it arrives.</>
+                              : <>This one ships by parcel courier, so the delivery is <strong style={{ color: 'var(--white)' }}>paid here before we send it out</strong> - the courier cannot take cash at the door.</>}
                           </span>
                         </div>
                         <PaymentPicker

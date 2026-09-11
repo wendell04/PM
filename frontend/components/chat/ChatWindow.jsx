@@ -182,9 +182,10 @@ const ChatWindow = ({ activeConversation, messages, user, isLoading, isAdmin, on
                 {/* proofActionState is per-session, so a reload put live Approve buttons back on a
                     proof that had already been settled. The message carries the outcome now. */}
                 {m.settled || proofActionState?.[m.orderId] === 'done' ? (
-                  <div style={{ fontSize: '0.78rem', fontWeight: 700, color: m.settledOutcome === 'changes_requested' ? '#b45309' : '#166534' }}>
+                  <div style={{ fontSize: '0.78rem', fontWeight: 700, color: m.settledOutcome === 'changes_requested' ? '#b45309' : m.settledOutcome === 'superseded' ? '#6b6b6b' : '#166534' }}>
                     {m.settledOutcome === 'changes_requested'
                       ? 'Changes requested - we are redrawing this.'
+                                        : m.settledOutcome === 'superseded' ? 'Replaced by a newer proof below.'
                       : 'Approved - thank you.'}
                   </div>
                 ) : (
@@ -206,7 +207,12 @@ const ChatWindow = ({ activeConversation, messages, user, isLoading, isAdmin, on
             {/* Payment stays in the order modal: it needs the full breakdown - subtotal, shipping, the
                 design fee already paid, deposit against full - and "what was I shown when I paid" is
                 the question every payment dispute turns on. One tap away, not reproduced here. */}
-            {m.kind === 'deposit_due' && !isAdmin && (
+            {m.kind === 'deposit_due' && !isAdmin && m.settled && (
+              <div style={{ padding: '2px 12px 10px', fontSize: '0.78rem', fontWeight: 700, color: '#166534' }}>
+                Paid - thank you.
+              </div>
+            )}
+            {m.kind === 'deposit_due' && !isAdmin && !m.settled && (
               <div style={{ padding: '2px 12px 10px' }}>
                 <div style={{ fontSize: '0.78rem', color: 'var(--gray-light)', lineHeight: 1.6, marginBottom: 8 }}>
                   {m.dueNow != null && <div>Due now: <strong style={{ color: '#111' }}>{m.dueNow}</strong>{m.dueFull ? <> or pay in full <strong style={{ color: '#111' }}>{m.dueFull}</strong></> : null}</div>}

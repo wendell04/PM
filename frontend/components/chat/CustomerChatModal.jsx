@@ -377,6 +377,21 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
     handleSendMessage({ body: q, type: 'text', conversation_id: activeConv._id });
   }, [view, activeConv]);
 
+  // Arriving at /#contact from another page, the browser jumps before the landing page has
+  // rendered the section, so the visitor lands at the top. Try again until the section exists.
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const id = window.location.hash.replace('#', '');
+    if (!id) return undefined;
+    let tries = 0;
+    const t = setInterval(() => {
+      const el = document.getElementById(id);
+      if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'start' }); clearInterval(t); }
+      else if (++tries > 30) clearInterval(t);
+    }, 100);
+    return () => clearInterval(t);
+  }, []);
+
   const handleFaqClick = (question) => {
     if (!token) { onRequestLogin?.(); return; }
     pendingFaqRef.current = question;
@@ -750,9 +765,10 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
                                       back on a proof that had already been settled. The message
                                       itself carries the outcome now. */}
                                   {m.settled || busy === 'done' ? (
-                                    <div style={{ fontSize: '0.78rem', fontWeight: 700, color: m.settledOutcome === 'changes_requested' ? '#b45309' : '#166534' }}>
+                                    <div style={{ fontSize: '0.78rem', fontWeight: 700, color: m.settledOutcome === 'changes_requested' ? '#b45309' : m.settledOutcome === 'superseded' ? '#6b6b6b' : '#166534' }}>
                                       {m.settledOutcome === 'changes_requested'
                                         ? 'Changes requested - we are redrawing this.'
+                                        : m.settledOutcome === 'superseded' ? 'Replaced by a newer proof below.'
                                         : 'Approved - thank you.'}
                                     </div>
                                   ) : (
@@ -773,7 +789,14 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
                                 </div>
                               )}
 
-                              {m.kind === 'deposit_due' && (
+                              {/* Worked out from the order on load, so a deposit already paid no
+                                  longer offers Pay now. */}
+                              {m.kind === 'deposit_due' && m.settled && (
+                                <div style={{ padding: '2px 12px 10px', fontSize: '0.78rem', fontWeight: 700, color: '#166534' }}>
+                                  Paid - thank you.
+                                </div>
+                              )}
+                              {m.kind === 'deposit_due' && !m.settled && (
                                 <div style={{ padding: '2px 12px 10px' }}>
                                   <div style={{ fontSize: '0.78rem', color: 'var(--gray-light)', lineHeight: 1.6, marginBottom: 8 }}>
                                     {m.dueNow && <div>Due now: <strong style={{ color: '#111' }}>{m.dueNow}</strong>{m.dueFull ? <> or in full <strong style={{ color: '#111' }}>{m.dueFull}</strong></> : null}</div>}

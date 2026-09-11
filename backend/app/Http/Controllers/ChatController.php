@@ -122,6 +122,99 @@ class ChatController extends Controller
     /**
      * Get messages for a specific conversation.
      */
+    /**
+     * Work out, from the orders as they are now, which chat cards still need acting on.
+     *
+     * A card is a stored message, but whether it is still actionable is a fact about the order.
+     * Deriving it here on every read means cards from before any stamping existed read correctly,
+     * a proof reverted to review becomes actionable again, and an older proof card for the same
+     * line is shown as replaced once a newer one was sent. Nothing is written back.
+     */
+    private function settleCardsFromOrders($messages): void
+    {
+        try {
+            $cards = $messages->filter(fn ($m) => ($m->type ?? null) === 'order_reference'
+                && is_array($m->metadata ?? null)
+                && in_array($m->metadata['kind'] ?? null, ['proof_ready', 'deposit_due', 'delivery_fee'], true)
+                && !empty($m->metadata['orderId']));
+            if ($cards->isEmpty()) {
+                return;
+            }
+
+            $orders = \App\Models\Order::whereIn('_id', $cards->map(fn ($m) => (string) $m->metadata['orderId'])->unique()->values()->all())
+                ->get()
+                ->keyBy(fn ($o) => (string) $o->_id);
+
+            // Messages arrive oldest first, so the last proof card seen for a line is the current one.
+            $lineKey = function (array $meta): string {
+                $idx = $meta['itemIndexes'] ?? (isset($meta['itemIndex']) ? [$meta['itemIndex']] : []);
+                $idx = array_map('intval', array_filter((array) $idx, fn ($v) => $v !== null));
+                sort($idx);
+                return (string) $meta['orderId'] . '|' . implode(',', $idx);
+            };
+            $latestProof = [];
+            foreach ($cards as $pos => $m) {
+                if (($m->metadata['kind'] ?? null) === 'proof_ready') {
+                    $latestProof[$lineKey($m->metadata)] = $pos;
+                }
+            }
+
+            foreach ($cards as $pos => $m) {
+                $meta  = $m->metadata;
+                $order = $orders->get((string) $meta['orderId']);
+                if (!$order) {
+                    continue;
+                }
+
+                $settled = false;
+                $outcome = null;
+
+                if ($meta['kind'] === 'proof_ready') {
+                    if (($latestProof[$lineKey($meta)] ?? $pos) !== $pos) {
+                        // A newer proof went out for this line. Keep what happened to this one if
+                        // it was recorded at the time; otherwise it was simply replaced.
+                        $settled = true;
+                        $outcome = $meta['settledOutcome'] ?? 'superseded';
+                    } else {
+                        $idx = $meta['itemIndexes'] ?? (isset($meta['itemIndex']) ? [$meta['itemIndex']] : []);
+                        $statuses = [];
+                        foreach ((array) $idx as $i) {
+                            if ($i === null) continue;
+                            $s = $order->items[(int) $i]['designStatus'] ?? null;
+                            if ($s !== null) $statuses[] = $s;
+                        }
+                        if (!$statuses) {
+                            $statuses = [$order->designStatus ?? null];
+                        }
+                        if (in_array('revision_requested', $statuses, true)) {
+                            $settled = true;
+                            $outcome = 'changes_requested';
+                        } elseif (count(array_filter($statuses, fn ($s) => $s === 'approved')) === count($statuses)) {
+                            $settled = true;
+                            $outcome = 'approved';
+                        }
+                    }
+                } elseif ($meta['kind'] === 'deposit_due') {
+                    if (in_array($order->paymentStatus ?? null, ['paid', 'partial'], true)) {
+                        $settled = true;
+                        $outcome = 'paid';
+                    }
+                } elseif ($meta['kind'] === 'delivery_fee') {
+                    if ($order->courierFeePaid ?? false) {
+                        $settled = true;
+                        $outcome = 'paid';
+                    }
+                }
+
+                $meta['settled']        = $settled;
+                $meta['settledOutcome'] = $settled ? $outcome : null;
+                $m->metadata = $meta;
+            }
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('settleCardsFromOrders failed', ['error' => $e->getMessage()]);
+        }
+    }
+
     public function show(Request $request, $id)
     {
         try {
@@ -142,6 +235,8 @@ class ChatController extends Controller
             $messages = Message::where('conversation_id', $id)
                 ->orderBy('created_at', 'asc')
                 ->get();
+
+            $this->settleCardsFromOrders($messages);
 
             return $this->successResponse('Messages fetched successfully', $messages);
         } catch (\Exception $e) {

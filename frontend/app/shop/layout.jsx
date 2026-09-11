@@ -1935,6 +1935,12 @@ export default function ShopLayout({ children }) {
         user={user}
         token={getToken()}
         addToCart={globalAddToCart}
+        // Only the landing page used to pass this, so "Chat about an order" did nothing here.
+        onRequestLogin={() => {
+          setAuthModalType('login');
+          setAuthModalSubtitle('Sign in to chat about your order.');
+          setAuthModalOpen(true);
+        }}
       />
 
     </>

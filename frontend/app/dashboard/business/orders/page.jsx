@@ -1764,7 +1764,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                         <>
                           <span style={{ fontSize:'11px', color:'var(--gray)' }}>
                             {(lo.courierFeeOnDelivery ?? true)
-                              ? 'Did they send it ahead (GCash / Maya)?'
+                              ? 'Paid the rider in cash, or sent it ahead by GCash / Maya?'
                               : 'Settle it here if they paid you another way.'}
                           </span>
                           <button type="button" onClick={() => handleCourierFeePaid(true)} disabled={savingFee}
