@@ -733,6 +733,7 @@ class PaymentController extends Controller
             $totalAmount              = 0;
             $pendingFlashSaleIncrements = [];
             $firstProduct             = null;
+            $lineDpPcts               = [];
 
             foreach ($validated['items'] as $item) {
                 $product = Product::where('_id', $item['productId'])
@@ -744,6 +745,13 @@ class PaymentController extends Controller
                 }
 
                 if (!$firstProduct) $firstProduct = $product;
+
+                // Mirrors lineDpPct() in checkout, which is where the money is actually worked
+                // out. A line "requires" a deposit if the flag is set or a percent is configured,
+                // and a flag with no percent means half - the same default the storefront shows.
+                $linePct      = (int) ($product->downpaymentPercent ?? 0);
+                $lineRequires = (bool) ($product->requiresDownpayment ?? false) || $linePct > 0;
+                $lineDpPcts[] = $lineRequires ? ($linePct > 0 ? $linePct : 50) : 0;
 
                 $qty         = (int) $item['qty'];
                 $variantId   = $item['variantId'] ?? null;
@@ -802,8 +810,16 @@ class PaymentController extends Controller
                 ];
             }
 
-            $requiresDownpayment = (bool) ($firstProduct?->requiresDownpayment ?? false);
-            $orderDownpaymentPct = $requiresDownpayment ? (int) ($firstProduct?->downpaymentPercent ?? 0) : 0;
+            // Taken from the first product, this made the recorded deposit rule depend on the
+            // order things were added to the cart. A percentage is only meaningful for the whole
+            // order when every line agrees on it; when they do not, there is no single number to
+            // quote and the balance is simply whatever is left.
+            $requiresDownpayment  = count(array_filter($lineDpPcts)) > 0;
+            $dpPctsAgree          = $requiresDownpayment
+                && count(array_unique($lineDpPcts)) === 1
+                && $lineDpPcts[0] > 0;
+            $orderDownpaymentPct  = $dpPctsAgree ? (int) $lineDpPcts[0] : 0;
+            $orderDownpaymentMixed = $requiresDownpayment && !$dpPctsAgree;
 
             // ONE design fee for the order - the same rule the cart and checkout display.
             // It was shown to the customer and then never charged: the storefront quoted
@@ -1033,6 +1049,9 @@ class PaymentController extends Controller
                 'isDesignFeeOnly'      => $isDesignFeeOnly,
                 'designFee'            => $orderDesignFee > 0 ? $orderDesignFee : null,
                 'requiresDownpayment'  => $requiresDownpayment,
+                // True when the lines disagree, so nothing downstream quotes a percentage that was
+                // never the whole cart's.
+                'downpaymentMixed'     => $orderDownpaymentMixed,
                 'downpaymentPercent'   => $orderDownpaymentPct > 0 ? $orderDownpaymentPct : null,
                 'isRush'               => $isRush,
                 'rushFee'              => $isRush ? $rushFeeAmt : null,
@@ -1752,7 +1771,10 @@ class PaymentController extends Controller
             'paymentStatus'        => $paidInFull ? 'paid' : 'partial',
             'downPayment'          => $paidAmount,
             'balance'              => $balance,
-            'requiresDownpayment'  => true,
+            // Hardcoded true, with the percentage derived from what was paid - so a quote
+            // settled in full was recorded as requiring a 100% downpayment. It requires one only
+            // if something is still owed.
+            'requiresDownpayment'  => $balance > 0,
             'downpaymentPercent'   => $dpPct,
             'paymentMethod'        => $paymentMeta['method'] ?? null,
             'paymentDate'          => now(),
@@ -2775,7 +2797,10 @@ class PaymentController extends Controller
             // ── Downpayment vs full-payment resolution ────────────────────
             if (!$payDesignFee && !$payFull && $order->paymentStatus === 'unpaid') {
                 $dpPercent = (int) ($order->downpaymentPercent ?? 0);
-                if ($dpPercent <= 0) {
+                // The fallback reads the first line's product, which is the same first-product bias
+                // that made the recorded rule wrong in the first place. On a cart whose lines
+                // disagree there is no percentage to offer - what is left is simply what is left.
+                if ($dpPercent <= 0 && !($order->downpaymentMixed ?? false)) {
                     $firstProdId = $order->items[0]['productId'] ?? null;
                     if ($firstProdId) {
                         $prod = Product::find($firstProdId);

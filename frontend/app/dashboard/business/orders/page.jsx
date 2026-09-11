@@ -1644,6 +1644,21 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                     is told and whether they can leave it for the rider.
                   </div>
 
+                  {/* The fee is not needed to send a proof - that is a conversation about artwork,
+                      and the address can still change after approval. It is needed the moment the
+                      customer is about to pay, because then it can ride on the same payment
+                      instead of becoming a second one. */}
+                  {!(Number(lo.courierFee) > 0) && lo.paymentStatus !== 'paid'
+                    && ['Awaiting Payment', 'awaiting_payment'].includes(String(lo.orderStatus)) && (
+                    <div style={{ display:'flex', gap:'7px', alignItems:'flex-start', padding:'8px 10px', marginBottom:'8px', background:'rgba(245,158,11,0.08)', border:'1px solid rgba(245,158,11,0.3)', borderRadius:'7px' }}>
+                      <span style={{ color:'#b45309', fontWeight:900, fontSize:'11px', lineHeight:1.5 }}>!</span>
+                      <span style={{ fontSize:'10.5px', color:'#b45309', lineHeight:1.5 }}>
+                        No delivery fee set. The customer is about to pay - set it now and they can
+                        settle both in one go. Leave it and they will have to pay the delivery separately later.
+                      </span>
+                    </div>
+                  )}
+
                   {/* An on-demand rider can take cash at the door; a parcel network is prepaid at
                       the branch. Getting this wrong on a provincial order means the shop pays the
                       courier and never collects. */}

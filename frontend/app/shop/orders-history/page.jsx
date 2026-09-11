@@ -2147,7 +2147,10 @@ export default function OrdersHistoryPage() {
                         )}
 
                         {/* DP / Full toggle - only if no DP paid yet and order supports DP */}
-                        {selectedOrder.orderStatus === 'awaiting_payment' && !selectedOrder.downPayment && selectedOrder.requiresDownpayment && selectedOrder.downpaymentPercent > 0 && (() => {
+                        {/* A cart whose lines carry different deposit rules has no single
+                            percentage to offer - downpaymentMixed says so, and what is left is
+                            simply what is left. */}
+                        {selectedOrder.orderStatus === 'awaiting_payment' && !selectedOrder.downPayment && selectedOrder.requiresDownpayment && !selectedOrder.downpaymentMixed && selectedOrder.downpaymentPercent > 0 && (() => {
                           const owed = Math.max(0, (selectedOrder.totalAmount || 0) - feeCredit);
                           const dpAmt = Math.round(owed * selectedOrder.downpaymentPercent / 100 * 100) / 100;
                           return (

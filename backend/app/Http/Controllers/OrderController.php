@@ -1123,6 +1123,7 @@ class OrderController extends Controller
             'total',
             'totalPrice',
             'downPayment',
+            'downpaymentMixed',
             'balance',
             'paymentMethod',
             'paymentHistory',
