@@ -4121,6 +4121,10 @@ class OrderController extends Controller
                 Log::warning('approveAdminDesign: notification failed', ['error' => $notifErr->getMessage()]);
             }
 
+            // The proof card in chat is a stored message and would otherwise keep offering
+            // Approve on a design that is already through.
+            $this->settleOrderCards($order, ['proof_ready'], 'approved');
+
             return $this->successResponse('Design approved. We\'ll proceed to production.', $this->normalizeOrderForCustomer($order));
 
         } catch (\Exception $e) {
@@ -4237,6 +4241,10 @@ class OrderController extends Controller
                 Log::warning('requestDesignRevision: notification failed', ['error' => $notifErr->getMessage()]);
             }
 
+            // Same card, other outcome: the proof it points at is being redrawn, so approving
+            // it from chat would approve something that no longer stands.
+            $this->settleOrderCards($order, ['proof_ready'], 'changes_requested');
+
             return $this->successResponse('Revision request sent. We\'ll update the design and notify you.', $this->normalizeOrderForCustomer($order));
 
         } catch (\Illuminate\Validation\ValidationException $e) {
@@ -4280,6 +4288,35 @@ class OrderController extends Controller
      * The card carries only what it needs to render and to act - the order id, what it covers, and
      * the figures - because a chat message is a pointer to the order, never a second copy of it.
      */
+    /**
+     * Retire the action buttons on cards this order has moved past.
+     *
+     * A chat card is a stored message, so it outlives the state that made it actionable. Without
+     * this, a proof approved last week still offers Approve today - and pressing it acts on a
+     * design stage that has already moved on.
+     *
+     * The message is stamped rather than deleted: the customer should still see that a proof was
+     * sent and what happened to it.
+     */
+    private function settleOrderCards(Order $order, array $kinds, string $outcome): void
+    {
+        try {
+            Message::where('metadata.orderId', (string) $order->_id)
+                ->whereIn('metadata.kind', $kinds)
+                ->where('metadata.settled', '!=', true)
+                ->get()
+                ->each(function ($m) use ($outcome) {
+                    $meta = $m->metadata ?? [];
+                    $meta['settled']        = true;
+                    $meta['settledOutcome'] = $outcome;
+                    $m->metadata = $meta;
+                    $m->save();
+                });
+        } catch (\Throwable $e) {
+            Log::warning('settleOrderCards failed', ['order' => (string) $order->_id, 'error' => $e->getMessage()]);
+        }
+    }
+
     private function postOrderCardToChat(Order $order, string $kind, string $body, array $extra = []): void
     {
         try {

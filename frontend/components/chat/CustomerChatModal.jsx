@@ -746,8 +746,15 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
                                       ))}
                                     </div>
                                   )}
-                                  {busy === 'done' ? (
-                                    <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#166534' }}>Approved - thank you.</div>
+                                  {/* `busy` is per-session UI state, so on a reload the buttons came
+                                      back on a proof that had already been settled. The message
+                                      itself carries the outcome now. */}
+                                  {m.settled || busy === 'done' ? (
+                                    <div style={{ fontSize: '0.78rem', fontWeight: 700, color: m.settledOutcome === 'changes_requested' ? '#b45309' : '#166534' }}>
+                                      {m.settledOutcome === 'changes_requested'
+                                        ? 'Changes requested - we are redrawing this.'
+                                        : 'Approved - thank you.'}
+                                    </div>
                                   ) : (
                                     <>
                                       <div style={{ display: 'flex', gap: 6 }}>

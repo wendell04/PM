@@ -179,8 +179,14 @@ const ChatWindow = ({ activeConversation, messages, user, isLoading, isAdmin, on
                     ))}
                   </div>
                 )}
-                {proofActionState?.[m.orderId] === 'done' ? (
-                  <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#166534' }}>Approved - thank you.</div>
+                {/* proofActionState is per-session, so a reload put live Approve buttons back on a
+                    proof that had already been settled. The message carries the outcome now. */}
+                {m.settled || proofActionState?.[m.orderId] === 'done' ? (
+                  <div style={{ fontSize: '0.78rem', fontWeight: 700, color: m.settledOutcome === 'changes_requested' ? '#b45309' : '#166534' }}>
+                    {m.settledOutcome === 'changes_requested'
+                      ? 'Changes requested - we are redrawing this.'
+                      : 'Approved - thank you.'}
+                  </div>
                 ) : (
                   <div style={{ display: 'flex', gap: 6 }}>
                     <button type="button" disabled={proofActionState?.[m.orderId] === 'busy'}
