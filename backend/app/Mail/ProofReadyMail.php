@@ -36,7 +36,13 @@ class ProofReadyMail extends Mailable implements ShouldQueue
     {
         $this->firstName    = $firstName !== '' ? $firstName : 'there';
         $this->orderRef     = $orderRef;
-        $this->proofs       = array_slice($proofs, 0, 3);
+        // No email client plays video, and an <img> on an .mp4 is a broken box. Cloudinary
+        // returns a still frame for the same asset when asked for .jpg - the same swap the chat
+        // widget makes for its thumbnails.
+        $this->proofs       = array_map(
+            fn ($u) => preg_replace('/\.(mp4|webm|mov|m4v|ogg)(\?|$)/i', '.jpg$2', (string) $u),
+            array_slice($proofs, 0, 3)
+        );
         $this->balanceAfter = max(0.0, round($balanceAfter, 2));
     }
 

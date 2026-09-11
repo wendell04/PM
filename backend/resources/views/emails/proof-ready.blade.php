@@ -55,7 +55,7 @@
                     <p style="margin:0 0 6px;font-size:11px;font-weight:700;color:#6b6b6b;text-transform:uppercase;letter-spacing:1px;">
                       How to approve
                     </p>
-                    <p style="margin:0;font-size:13px;color:#444444;line-height:1.7;">
+                    <p style="margin:0;font-size:13px;color:#444444;line-height:1.7;text-align:justify;">
                       Sign in at <strong style="color:#111111;">personalizemeprints.com</strong>, open
                       <strong style="color:#111111;">My Orders</strong>, and choose order
                       <strong style="color:#111111;">{{ $orderRef }}</strong>. You can approve the
