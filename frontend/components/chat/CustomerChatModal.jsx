@@ -524,6 +524,10 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
                   </button>
                 )}
 
+                {/* Hidden while signed out. These are not help articles - each one calls
+                    handleFaqClick, which puts the question into a chat thread, and a guest has no
+                    thread, so every row was a login modal under a heading promising answers. */}
+                {user && (
                 <div className="cw-faq-section">
                   <div className="cw-faq-label">Search for help</div>
                   {FAQS.map((f, i) => (
@@ -533,6 +537,7 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
                     </button>
                   ))}
                 </div>
+                )}
               </div>
             </>
           )}

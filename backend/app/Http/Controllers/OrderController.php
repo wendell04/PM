@@ -1115,6 +1115,8 @@ class OrderController extends Controller
             'courierFee',
             'courierFeePaid',
             'courierFeeOnDelivery',
+            // What was actually collected, which is not the same as the fee once the fee changes.
+            'courierFeePaidAmount',
             'totalAmount',
             'total',
             'totalPrice',

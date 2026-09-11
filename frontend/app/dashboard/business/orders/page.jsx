@@ -1693,9 +1693,27 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                     <div style={{ display:'flex', alignItems:'center', gap:'8px', flexWrap:'wrap', marginTop:'8px', paddingTop:'8px', borderTop:'1px solid var(--border)' }}>
                       {lo.courierFeePaid ? (
                         <>
-                          <span style={{ fontSize:'11px', fontWeight:700, color:'#166534' }}>
-                            Delivery fee received - nothing for the rider to collect
-                          </span>
+                          {/* Raising the fee after it was paid used to leave the shop short in
+                              silence. Chasing the difference or absorbing it is a judgement call,
+                              so this reports rather than re-opens a payment. */}
+                          {(() => {
+                            const paid  = Number(lo.courierFeePaidAmount ?? 0);
+                            const now   = Number(lo.courierFee ?? 0);
+                            const short = Math.round((now - paid) * 100) / 100;
+                            if (!(paid > 0) || short <= 0.009) return (
+                              <span style={{ fontSize:'11px', fontWeight:700, color:'#166534' }}>
+                                Delivery fee received - nothing for the rider to collect
+                              </span>
+                            );
+                            return (
+                              <span style={{ fontSize:'11px', fontWeight:700, color:'#b45309', lineHeight:1.5 }}>
+                                Paid ₱{fmt(paid)}, fee is now ₱{fmt(now)} - ₱{fmt(short)} short.
+                                <span style={{ display:'block', fontWeight:500, color:'var(--gray)' }}>
+                                  Ask for it in chat, or absorb it. Nothing is billed automatically.
+                                </span>
+                              </span>
+                            );
+                          })()}
                           <button type="button" onClick={() => handleCourierFeePaid(false)} disabled={savingFee}
                             style={{ padding:'3px 9px', fontSize:'10.5px', fontWeight:600, borderRadius:'6px', border:'1px solid var(--border)', background:'transparent', color:'var(--gray)', cursor: savingFee ? 'not-allowed' : 'pointer' }}>
                             Undo
