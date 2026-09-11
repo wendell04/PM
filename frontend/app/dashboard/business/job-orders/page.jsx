@@ -450,7 +450,9 @@ export default function JobOrdersPage() {
   const [jobOrders, setJobOrders] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [statusFilter, setStatusFilter] = useState('');
+  // Opens on the queue - the job orders waiting to be started - rather than every one ever made,
+  // where finished work buries what is new. All Statuses is still one click away.
+  const [statusFilter, setStatusFilter] = useState('Queued');
   const [rushFilter, setRushFilter] = useState('');
   const [search, setSearch] = useState('');
 
@@ -471,7 +473,6 @@ export default function JobOrdersPage() {
     setIsLoading(true); setError(null);
     try {
       const f = {};
-      if (statusFilter) f.status = statusFilter;
       if (rushFilter !== '') f.isRush = rushFilter === 'true';
       const data = await fetchJobOrders(token, f);
       setJobOrders(Array.isArray(data) ? data : []);
@@ -479,7 +480,7 @@ export default function JobOrdersPage() {
       if (err.message === 'Unauthorized') { router.push('/'); return; }
       setError(err.message || 'Failed to load job orders.');
     } finally { setIsLoading(false); }
-  }, [token, statusFilter, rushFilter, router]);
+  }, [token, rushFilter, router]);
 
   useEffect(() => { loadJobOrders(); }, [loadJobOrders]);
 
@@ -581,6 +582,9 @@ export default function JobOrdersPage() {
   };
 
   const filtered = jobOrders.filter(jo => {
+    // Status is filtered here, not in the fetch. Filtering in the fetch made the tiles above count
+    // only the filtered rows, so a Queued default would have read "Completed 0" every time.
+    if (statusFilter && jo.joStatus !== statusFilter) return false;
     const q = search.toLowerCase();
     return !q || prodName(jo).toLowerCase().includes(q) || (jo.joId || '').toLowerCase().includes(q) || (jo.orderId || '').toLowerCase().includes(q);
   });
