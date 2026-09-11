@@ -1700,9 +1700,24 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                             const paid  = Number(lo.courierFeePaidAmount ?? 0);
                             const now   = Number(lo.courierFee ?? 0);
                             const short = Math.round((now - paid) * 100) / 100;
+                            const how  = String(lo.courierFeePaidMethod || '').toLowerCase();
+                            const when = lo.courierFeePaidAt
+                              ? new Date(lo.courierFeePaidAt).toLocaleDateString('en-PH', { month:'short', day:'numeric' })
+                              : '';
+                            // Money in PayMongo and a ticked box are not the same fact, and the
+                            // shop has to reconcile one of them against a statement.
+                            const source = !how ? ''
+                              : how === 'manual'
+                                ? `Marked received by you${when ? ' - ' + when : ''}`
+                                : `Paid online via ${how.toUpperCase()}${when ? ' - ' + when : ''}`;
                             if (!(paid > 0) || short <= 0.009) return (
-                              <span style={{ fontSize:'11px', fontWeight:700, color:'#166534' }}>
+                              <span style={{ fontSize:'11px', fontWeight:700, color:'#166534', lineHeight:1.5 }}>
                                 Delivery fee received - nothing for the rider to collect
+                                {source && (
+                                  <span style={{ display:'block', fontWeight:500, color:'var(--gray)' }}>
+                                    {source}{paid > 0 ? ` · ₱${fmt(paid)}` : ''}
+                                  </span>
+                                )}
                               </span>
                             );
                             return (

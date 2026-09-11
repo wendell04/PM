@@ -1558,6 +1558,12 @@ html.light .cw-launcher-badge {
   border-color: #d4a843;
 }
 
+/* Signed out, the home view is two tiles - so the panel is as tall as they are rather than
+   holding a fixed 560px with a gap beneath. max-height still caps it on a short screen. */
+.cw-panel--compact {
+  height: auto;
+}
+
 html.light .cw-panel {
   background: #ffffff;
   border-color: #e0e0e0;

@@ -362,15 +362,11 @@ export default function RegisterForm({ onSuccess, onSwitchToLogin, theme = 'ligh
                 I have read and agree to the Terms and Conditions
               </label>
             </div>
-            {/* Cancel had equal weight to Create Account and sat beside an X that already
-                closes this - two ways out, both louder than the way forward. It is the quiet one
-                on the left now, and the action they came here for carries the room. */}
-            <div style={{ padding: '0 1.5rem 1.25rem', display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
-              <button className="btn-secondary" style={{ flex: '0 0 auto', padding: '0.6rem 1.1rem', fontSize: '0.82rem' }}
-                onClick={() => setTAndCOpen(false)}>
-                Cancel
-              </button>
-              <button className="btn-auth-submit" style={{ flex: 1 }}
+            {/* One button. The X above and the backdrop both already close this, so a Cancel
+                was a third way out of a two-line decision, competing with the only thing anyone
+                opened this modal to do. */}
+            <div style={{ padding: '0 1.5rem 1.25rem' }}>
+              <button className="btn-auth-submit" style={{ width: '100%' }}
                 disabled={!formData.agreeToTerms || loading}
                 onClick={submitRegistration}>
                 {loading ? 'Creating Account...' : 'Create Account'}

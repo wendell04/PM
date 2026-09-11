@@ -467,9 +467,11 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
         )}
       </button>
 
-      {/* Widget panel */}
+      {/* Widget panel. A signed-out home view is two tiles, and at the fixed 560px the rest was
+          empty space under them, which reads as something that failed to load - so that state
+          sizes to its content. */}
       {open && (
-        <div className="cw-panel">
+        <div className={`cw-panel${!user && view === 'home' ? ' cw-panel--compact' : ''}`}>
 
           {/* ── Home view ── */}
           {view === 'home' && (

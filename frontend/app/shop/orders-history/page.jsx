@@ -18,7 +18,6 @@ import ImageLightbox from '@/components/shop/ImageLightbox';
 import ProofGallery from '@/components/shop/ProofGallery';
 import { watermarkProofs } from '@/lib/proofWatermark';
 import { isCodMethod } from '@/lib/paymentMethod';
-import AccountTabs from '@/components/shop/AccountTabs';
 import OrderReceipt from '@/components/shop/OrderReceipt';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
@@ -1023,8 +1022,6 @@ export default function OrdersHistoryPage() {
 
       <div style={{ maxWidth: '1040px', margin: '0 auto', padding: '28px 16px 48px' }}>
 
-        <AccountTabs active="orders" />
-
         {/* Page header */}
         <div style={{ marginBottom: '20px', display: 'flex', alignItems: 'baseline', gap: '12px', flexWrap: 'wrap' }}>
           <h1 style={{ margin: 0, fontSize: '1.65rem', fontWeight: 800, color: 'var(--white)', letterSpacing: '-0.3px' }}>My Orders</h1>
@@ -1237,7 +1234,10 @@ export default function OrdersHistoryPage() {
             .oh-modal-right { width:100%; flex-shrink:0; overflow-y:visible; height:auto; }
           }
         `}</style>
-        <div onClick={closeModal} style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
+        {/* No backdrop close. This modal carries proofs, a payment choice and a receipt, and a
+            misclick used to throw all of it away with nothing to bring it back. The X in the header
+            and the Close button are the ways out. */}
+        <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
           <ImageLightbox url={lightboxUrl} onClose={() => setLightboxUrl(null)} />
 
           {/* The receipt, where the order is. One layer above the details overlay, so closing it

@@ -1117,6 +1117,8 @@ class OrderController extends Controller
             'courierFeeOnDelivery',
             // What was actually collected, which is not the same as the fee once the fee changes.
             'courierFeePaidAmount',
+            'courierFeePaidAt',
+            'courierFeePaidMethod',
             'totalAmount',
             'total',
             'totalPrice',
@@ -1378,6 +1380,16 @@ class OrderController extends Controller
                 && (bool) $validated['courierFeePaid'] && !$prevCourierFeePaid) {
                 try {
                     $fee = (float) ($order->courierFee ?? 0);
+
+                    // The online path records all of this; ticking the box recorded only the
+                    // boolean, so the two were indistinguishable afterwards - and the shortfall
+                    // check had no earlier amount to compare against. 'manual' is the honest
+                    // method name: the shop saw the money somewhere this system cannot.
+                    $order->courierFeePaidAmount = $fee;
+                    $order->courierFeePaidAt     = now();
+                    $order->courierFeePaidMethod = 'manual';
+                    $order->save();
+
                     Notification::create([
                         'user_id'    => (string) $order->userId,
                         'type'       => 'delivery_fee_settled',
@@ -1405,6 +1417,17 @@ class OrderController extends Controller
             // customer to the rider on delivery - NOT added to the shop's order total).
             // Notify the customer so they have cash ready.
             // Set before the fee block below, so the wording it chooses already knows.
+            // Undoing it has to clear the evidence too, or the next reader sees an amount and
+            // a timestamp on a fee nobody has paid.
+            if (array_key_exists('courierFeePaid', $validated)
+                && !(bool) $validated['courierFeePaid'] && $prevCourierFeePaid) {
+                $order->courierFeePaidAmount = null;
+                $order->courierFeePaidAt     = null;
+                $order->courierFeePaidMethod = null;
+                $order->courierFeePaymentRef = null;
+                $order->save();
+            }
+
             if (array_key_exists('courierFeeOnDelivery', $validated)) {
                 $order->courierFeeOnDelivery = (bool) $validated['courierFeeOnDelivery'];
             }

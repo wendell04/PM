@@ -18,7 +18,6 @@ import ImageCropper from "../../../components/ImageCropper";
 import { useAuth } from "../../../contexts/AuthContext";
 import "../shop.css";
 import { CustomSelect } from '@/app/dashboard/business/inventory-v2/shared';
-import AccountTabs from '@/components/shop/AccountTabs';
 
 const ReadOnlyPinMap = dynamic(
   () => import("@/components/maps/ReadOnlyPinMap"),
@@ -1253,8 +1252,7 @@ export default function CustomerProfilePage() {
           }
         }
       `}</style>
-      {/* Back to Shop lives inside the tab strip now, so both account pages open the same way
-          and each one can reach the others without the browser's Back button. */}
+      {/* Back to Shop - standalone below global navbar */}
       <div
         style={{
           maxWidth: "1200px",
@@ -1262,7 +1260,22 @@ export default function CustomerProfilePage() {
           padding: "0.75rem 2rem 0",
         }}
       >
-        <AccountTabs active="profile" />
+        <Link href="/shop" className="back-to-shop-btn">
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <line x1="19" y1="12" x2="5" y2="12" />
+            <polyline points="12 19 5 12 12 5" />
+          </svg>
+          Back to Shop
+        </Link>
       </div>
 
       {/* Main Content */}
