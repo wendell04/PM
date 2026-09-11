@@ -2104,20 +2104,25 @@ export default function OrdersHistoryPage() {
                               <span style={{ color: 'var(--gray)' }}>Items subtotal</span>
                               <span style={{ color: 'var(--white)' }}>{formatPeso((selectedOrder.items || []).reduce((s, it) => s + (it.lineTotal || (it.unitPrice || 0) * (it.qty || 1)), 0))}</span>
                             </div>
-                            {/* shippingFee is 0 on a courier-booked order, so this printed
-                                "Shipping P0.00" directly above a button asking for the delivery
-                                fee as well. Show whichever one this order actually carries. */}
-                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem' }}>
-                              <span style={{ color: 'var(--gray)' }}>
-                                {Number(selectedOrder.courierFee) > 0 && !(Number(selectedOrder.shippingFee) > 0)
-                                  ? 'Delivery' : 'Shipping'}
-                              </span>
-                              <span style={{ color: 'var(--white)' }}>
-                                {formatPeso(Number(selectedOrder.shippingFee) > 0
-                                  ? selectedOrder.shippingFee
-                                  : (selectedOrder.courierFee ?? 0))}
-                              </span>
-                            </div>
+                            {/* Three states, not two. A courier-booked order with no fee set yet
+                                carries 0 in both fields, and printing "Shipping P0.00" claimed free
+                                delivery - while the summary directly above this said "Billed
+                                separately". One order, two answers. */}
+                            {(() => {
+                              const cf = Number(selectedOrder.courierFee ?? 0);
+                              const sf = Number(selectedOrder.shippingFee ?? 0);
+                              const label = cf > 0 && !(sf > 0) ? 'Delivery' : 'Shipping';
+                              return (
+                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem' }}>
+                                  <span style={{ color: 'var(--gray)' }}>{label}</span>
+                                  {sf > 0 || cf > 0 ? (
+                                    <span style={{ color: 'var(--white)' }}>{formatPeso(sf > 0 ? sf : cf)}</span>
+                                  ) : (
+                                    <span style={{ color: '#d4a843' }}>Billed separately</span>
+                                  )}
+                                </div>
+                              );
+                            })()}
                             {feeCredit > 0 && (
                               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem' }}>
                                 <span style={{ color: '#22c55e' }}>Design fee paid</span>
