@@ -2994,35 +2994,19 @@ class PaymentController extends Controller
                 $order->save();
 
                 if ($intentStatus === 'succeeded') {
-                    $updates = [
-                        'paymentMethod' => $paymentType,
-                        'paymentDate'   => now(),
-                    ];
-                    if ($payDesignFee) {
-                        // Request-design fee (first payment). Goods stay unpaid.
-                        $updates['designFeePaid']         = true;
-                        $updates['designFeePaidAmount']   = $chargeAmount;
-                        $updates['pendingPaymentType']    = null;
-                        $updates['pendingPaymentAmount']  = null;
-                    } elseif ($isDP) {
-                        $updates['paymentStatus']         = 'partial';
-                        $updates['downPayment']           = $dpAmount;
-                        $updates['balance']               = round($amountDue - $dpAmount, 2);
-                        $updates['pendingPaymentType']    = null;
-                        $updates['pendingPaymentAmount']  = null;
-                        if ($order->isCustomOrder && $order->orderStatus === 'awaiting_payment') {
-                            $updates['orderStatus'] = 'awaiting_production';
-                        }
-                    } else {
-                        $updates['paymentStatus'] = 'paid';
-                        if ($order->isCustomOrder && $order->orderStatus === 'awaiting_payment') {
-                            $updates['orderStatus'] = 'awaiting_production';
-                        }
-                        if ($order->orderStatus === 'ready_for_delivery') {
-                            $updates['orderStatus'] = 'for_delivery';
-                        }
-                    }
-                    $order->update($updates);
+                    // A card that clears without 3-D Secure never goes back through payment-success,
+                    // so this branch used to record the payment itself - by setting a status and
+                    // stopping there. No row went into paymentHistory, so the receipt showed nothing
+                    // paid; a delivery fee riding on the charge was never split out or marked paid;
+                    // a card-paid delivery fee on its own was not recorded at all; and no receipt
+                    // email went out. verifyIntent already does every one of those, exactly once, so
+                    // the card is confirmed through it - the same path GCash and Maya take.
+                    $confirm = Request::create('/api/payment/verify-intent', 'POST', [
+                        'orderId'  => $orderId,
+                        'intentId' => $intentId,
+                    ]);
+                    $confirm->setUserResolver(fn () => $user);
+                    $this->verifyIntent($confirm);
                     return $this->successResponse('Payment completed.', [
                         'orderId' => $orderId,
                         'status'  => 'succeeded',
