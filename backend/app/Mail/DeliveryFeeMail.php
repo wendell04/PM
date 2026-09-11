@@ -29,6 +29,8 @@ class DeliveryFeeMail extends Mailable implements ShouldQueue
     public bool   $isCod;
     /** What the customer hands the rider: goods plus courier on COD, courier alone otherwise. */
     public float  $onArrival;
+    /** False when a parcel courier carries it - then nothing can be handed over at the door. */
+    public bool   $onDelivery;
 
     public function __construct(
         string $firstName,
@@ -36,7 +38,8 @@ class DeliveryFeeMail extends Mailable implements ShouldQueue
         float $fee,
         float $itemTotal,
         bool $isCod = false,
-        ?float $onArrival = null
+        ?float $onArrival = null,
+        bool $onDelivery = true
     ) {
         $this->firstName = $firstName;
         $this->orderId   = $orderId;
@@ -44,6 +47,7 @@ class DeliveryFeeMail extends Mailable implements ShouldQueue
         $this->itemTotal = $itemTotal;
         $this->isCod     = $isCod;
         $this->onArrival = $onArrival ?? $fee;
+        $this->onDelivery = $onDelivery;
     }
 
     public function envelope(): Envelope

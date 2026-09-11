@@ -88,6 +88,28 @@
                     </td>
                   </tr>
                 </table>
+              @elseif(!($onDelivery ?? true))
+              {{-- A parcel courier is prepaid at the branch, so there is no rider to hand
+                   anything to. Offering that would leave the shop out of pocket for a delivery
+                   it has already paid for. --}}
+              <p style="margin:0 0 10px;font-size:13px;font-weight:700;color: #111111;">
+                How to settle it
+              </p>
+              <table role="presentation" cellpadding="0" cellspacing="0"
+                style="background: #f7f7f5;border-radius:8px;border:1px solid rgba(0,0,0,0.07);
+                       margin-bottom:24px;width:100%;">
+                <tr>
+                  <td style="padding:14px 16px;">
+                    <p style="margin:0;font-size:13px;color: #6b6b6b;line-height:1.6;">
+                      This one goes out through a parcel courier rather than a booked rider, so it
+                      cannot be paid at your door. Open the order in
+                      <strong style="color:#111111;">My Orders</strong> and settle the
+                      &#8369;{{ number_format($fee, 2) }} there - if your order still has a balance,
+                      you can pay both together. We send it out once it clears.
+                    </p>
+                  </td>
+                </tr>
+              </table>
               @else
               {{-- The two ways to settle it. Stated plainly, because one of them needs doing
                    before the rider arrives and the other does not. --}}
@@ -108,10 +130,10 @@
                 </tr>
                 <tr>
                   <td style="padding:14px 16px;">
-                    <strong style="font-size:13px;color: #111111;">Send it ahead</strong>
+                    <strong style="font-size:13px;color: #111111;">Pay it in My Orders</strong>
                     <p style="margin:4px 0 0;font-size:13px;color: #6b6b6b;line-height:1.6;">
-                      Message us in your order chat any time and we will send our GCash or
-                      Maya details. We confirm it there once it lands.
+                      Open the order and settle it by GCash, Maya or card. If the order still has a
+                      balance, you can pay both in one go and there is nothing left for the rider.
                     </p>
                   </td>
                 </tr>

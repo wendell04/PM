@@ -2089,21 +2089,26 @@ export default function OrdersHistoryPage() {
                           const canRide = courierDue > 0
                             && !selectedOrder.courierFeePaid
                             && selectedOrder.paymentMethod !== 'cod';
-                          const withCourier = canRide && includeCourier;
+                          // A parcel courier is prepaid at the branch - there is no rider to hand
+                          // it to, so declining is not one of the choices on offer.
+                          const riderCollects = selectedOrder.courierFeeOnDelivery ?? true;
+                          const withCourier = canRide && (includeCourier || !riderCollects);
                           const chargeAmount = orderAmount + (withCourier ? courierDue : 0);
                           return (
                             <>
                             {canRide && (
-                              <label style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', padding: '9px 11px', marginBottom: '8px', background: 'var(--dark)', border: `1px solid ${includeCourier ? '#d4a843' : 'var(--border)'}`, borderRadius: '8px', cursor: 'pointer' }}>
-                                <input type="checkbox" checked={includeCourier} onChange={(e) => setIncludeCourier(e.target.checked)}
-                                  style={{ accentColor: '#d4a843', marginTop: '2px', cursor: 'pointer' }} />
+                              <label style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', padding: '9px 11px', marginBottom: '8px', background: 'var(--dark)', border: `1px solid ${withCourier ? '#d4a843' : 'var(--border)'}`, borderRadius: '8px', cursor: riderCollects ? 'pointer' : 'default' }}>
+                                <input type="checkbox" checked={withCourier} disabled={!riderCollects}
+                                  onChange={(e) => setIncludeCourier(e.target.checked)}
+                                  style={{ accentColor: '#d4a843', marginTop: '2px', cursor: riderCollects ? 'pointer' : 'default' }} />
                                 <span style={{ fontSize: '0.74rem', lineHeight: 1.5, color: 'var(--gray)' }}>
                                   <span style={{ color: 'var(--white)', fontWeight: 700 }}>
                                     Include the {formatPeso(courierDue)} delivery fee
                                   </span>
                                   <span style={{ display: 'block', marginTop: '1px' }}>
-                                    Settle it now and there is nothing to hand the rider. Untick to pay
-                                    them in cash on arrival instead.
+                                    {riderCollects
+                                      ? 'Settle it now and there is nothing to hand the rider. Untick to pay them in cash on arrival instead.'
+                                      : 'This one ships by parcel courier, so it cannot be paid at your door. It goes out once this clears.'}
                                   </span>
                                 </span>
                               </label>
@@ -2115,6 +2120,11 @@ export default function OrdersHistoryPage() {
                               loading={payNowLoading}
                               error={payNowError}
                             />
+                            {canRide && !withCourier && (
+                              <p style={{ margin: '6px 2px 0', fontSize: '0.7rem', color: 'var(--gray)', lineHeight: 1.5 }}>
+                                You will hand {formatPeso(courierDue)} to the rider in cash when your order arrives.
+                              </p>
+                            )}
                             </>
                           );
                         })()}

@@ -1063,6 +1063,25 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
     finally { setSavingFee(false); }
   };
 
+  // Which courier this is decides what the customer may be told. An on-demand rider can take
+  // cash at the door; a parcel network is prepaid at the branch, and promising the rider there
+  // leaves the shop paying for a delivery it never collected.
+  const handleCourierMode = async (onDelivery) => {
+    setSavingFee(true); setFeeErr('');
+    try {
+      const res = await fetchWithTimeout(`${API_URL}/api/admin/orders/${lo.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type':'application/json', Authorization:`Bearer ${token}` },
+        body: JSON.stringify({ courierFeeOnDelivery: onDelivery }),
+      }, 15000);
+      if (!res.ok) { const d = await res.json().catch(()=>({})); throw new Error(d.message || 'Failed to update'); }
+      const updated = { ...lo, courierFeeOnDelivery: onDelivery };
+      setLo(updated);
+      if (onStatusUpdated) onStatusUpdated(lo.id, updated);
+    } catch (err) { setFeeErr(err.message || 'Failed to update'); }
+    finally { setSavingFee(false); }
+  };
+
   const handleSaveCourierFee = async () => {
     const val = parseFloat(feeInput);
     if (isNaN(val) || val < 0) { setFeeErr('Enter a valid amount.'); return; }
@@ -1620,9 +1639,33 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
               {!(Number(lo.shippingFee) > 0) && (
                 <div style={{ marginTop:'10px', padding:'10px 12px', background:'var(--dark2)', border:'1px solid var(--border)', borderRadius:'8px' }}>
                   <div style={{ fontSize:'11px', fontWeight:600, color:'var(--gray-light)', marginBottom:'2px' }}>Delivery fee (paid by customer to rider)</div>
-                  <div style={{ fontSize:'10.5px', color:'var(--gray)', marginBottom:'6px' }}>
-                    After you book the courier, enter the fee. The customer is told what it is and can either
-                    hand it to the rider or send it ahead - mark it received here when they do.
+                  <div style={{ fontSize:'10.5px', color:'var(--gray)', marginBottom:'8px' }}>
+                    Enter the fee once you know it. Pick who collects it - that decides what the customer
+                    is told and whether they can leave it for the rider.
+                  </div>
+
+                  {/* An on-demand rider can take cash at the door; a parcel network is prepaid at
+                      the branch. Getting this wrong on a provincial order means the shop pays the
+                      courier and never collects. */}
+                  <div style={{ display:'flex', gap:'6px', marginBottom:'8px', flexWrap:'wrap' }}>
+                    {[
+                      { on:true,  label:'Rider collects it',      hint:'Lalamove, Grab, same-day' },
+                      { on:false, label:'Paid before we ship',    hint:'J&T, parcel, provincial' },
+                    ].map(opt => {
+                      const active = (lo.courierFeeOnDelivery ?? true) === opt.on;
+                      return (
+                        <button key={String(opt.on)} type="button" disabled={savingFee}
+                          onClick={() => handleCourierMode(opt.on)}
+                          style={{ flex:'1 1 150px', textAlign:'left', padding:'7px 10px', borderRadius:'7px',
+                                   border:`1px solid ${active ? 'var(--gold)' : 'var(--border)'}`,
+                                   background: active ? 'rgba(212,168,67,0.1)' : 'transparent',
+                                   color: active ? 'var(--gold)' : 'var(--gray)',
+                                   cursor: savingFee ? 'not-allowed' : 'pointer', lineHeight:1.35 }}>
+                          <span style={{ display:'block', fontSize:'11px', fontWeight:700 }}>{opt.label}</span>
+                          <span style={{ display:'block', fontSize:'10px', opacity:0.75 }}>{opt.hint}</span>
+                        </button>
+                      );
+                    })}
                   </div>
                   <div style={{ display:'flex', gap:'6px', alignItems:'center', flexWrap:'wrap' }}>
                     <div style={{ display:'flex', alignItems:'center', border:'1px solid var(--border)', borderRadius:'6px', overflow:'hidden', background:'var(--dark)' }}>
@@ -1661,7 +1704,9 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                       ) : (
                         <>
                           <span style={{ fontSize:'11px', color:'var(--gray)' }}>
-                            Did they send it ahead (GCash / Maya)?
+                            {(lo.courierFeeOnDelivery ?? true)
+                              ? 'Did they send it ahead (GCash / Maya)?'
+                              : 'Settle it here if they paid you another way.'}
                           </span>
                           <button type="button" onClick={() => handleCourierFeePaid(true)} disabled={savingFee}
                             style={{ padding:'4px 11px', fontSize:'11px', fontWeight:700, borderRadius:'6px', border:'1px solid #166534', background:'transparent', color:'#166534', cursor: savingFee ? 'not-allowed' : 'pointer' }}>

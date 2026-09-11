@@ -1114,6 +1114,7 @@ class OrderController extends Controller
             'shippingFee',
             'courierFee',
             'courierFeePaid',
+            'courierFeeOnDelivery',
             'totalAmount',
             'total',
             'totalPrice',
@@ -1261,6 +1262,10 @@ class OrderController extends Controller
                 // rider, usually. Without it the shop had no way to record that, so the chat kept
                 // telling the customer to have cash ready for something they had already sent.
                 'courierFeePaid' => 'sometimes|boolean',
+                // Whether this courier takes cash at the door. True for an on-demand rider
+                // (Lalamove, Grab); false for a parcel network like J&T, which is prepaid at the
+                // branch. Only the shop knows which it is about to book, so the shop says.
+                'courierFeeOnDelivery' => 'sometimes|boolean',
                 // Admin can adjust the promised delivery window (e.g. production backlog); the
                 // customer is notified below when it changes.
                 'estimatedDeliveryMin' => 'sometimes|nullable|date',
@@ -1397,6 +1402,11 @@ class OrderController extends Controller
             // Courier-booked delivery fee: store as informational only (paid by the
             // customer to the rider on delivery - NOT added to the shop's order total).
             // Notify the customer so they have cash ready.
+            // Set before the fee block below, so the wording it chooses already knows.
+            if (array_key_exists('courierFeeOnDelivery', $validated)) {
+                $order->courierFeeOnDelivery = (bool) $validated['courierFeeOnDelivery'];
+            }
+
             if (array_key_exists('courierFee', $validated)) {
                 $newFee = (float) $validated['courierFee'];
                 $prevFee = $prevCourierFee;
@@ -1418,24 +1428,53 @@ class OrderController extends Controller
                         // What the customer actually hands over on arrival. For COD that is the
                         // goods plus the courier; for a prepaid order it is the courier alone.
                         $onArrival = $isCOD ? round($stillDue + $newFee, 2) : $newFee;
+
+                        // Can this courier take cash at the door? An on-demand rider can; a parcel
+                        // network cannot, and telling a provincial customer to pay the rider leaves
+                        // the shop out of pocket for a delivery it already prepaid. Defaults true:
+                        // that is what this was built for, and how any older order was booked.
+                        $onDelivery = (bool) ($order->courierFeeOnDelivery ?? true);
+                        $ref        = '#' . strtoupper(substr((string) $order->_id, -8));
+                        $peso       = '₱' . number_format($newFee, 2);
+
+                        if (!$onDelivery) {
+                            $noticeMessage = "Your delivery fee for order {$ref} is {$peso}. This one ships by parcel "
+                                . 'courier, so it is settled in My Orders before we send it out - they cannot take '
+                                . 'cash at the door.';
+                            $chatMessage = 'Your delivery fee for this order is P' . number_format($newFee, 2)
+                                . '. This one goes out through a parcel courier rather than a booked rider, so it '
+                                . 'cannot be paid on arrival. Settle it in My Orders and we will send it out. It is '
+                                . 'separate from your order total.';
+                        } elseif ($isCOD) {
+                            $noticeMessage = "Your delivery fee for order {$ref} is {$peso}. Together with your order "
+                                . 'this is ₱' . number_format($onArrival, 2) . ' to hand the rider on arrival.';
+                            $chatMessage = 'Your delivery fee for this order is P' . number_format($newFee, 2)
+                                . '. Your order is P' . number_format($stillDue, 2) . ', so please have P'
+                                . number_format($onArrival, 2) . ' ready for the rider on arrival - one payment '
+                                . 'covers both. If you would rather send the delivery part ahead, message us here '
+                                . 'for our GCash or Maya details and we will confirm it.';
+                        } elseif ($stillDue > 0.009) {
+                            $noticeMessage = "Your delivery fee for order {$ref} is {$peso}. Your order balance of ₱"
+                                . number_format($stillDue, 2) . ' is paid here in My Orders - you can add the '
+                                . 'delivery to that payment, or hand it to the rider in cash.';
+                            $chatMessage = 'Your delivery fee for this order is P' . number_format($newFee, 2)
+                                . ', and it is separate from your order. Your order balance of P'
+                                . number_format($stillDue, 2) . ' is still open in My Orders, and you can add the '
+                                . 'delivery to that payment. Or leave it and hand P' . number_format($newFee, 2)
+                                . ' to the rider in cash.';
+                        } else {
+                            $noticeMessage = "Your delivery fee for order {$ref} is {$peso}. Pay it in My Orders, or "
+                                . 'hand it to the rider in cash on arrival. It is separate from the item total.';
+                            $chatMessage = 'Your delivery fee for this order is P' . number_format($newFee, 2)
+                                . '. You can pay it in My Orders, or hand it to the rider in cash on delivery. '
+                                . 'This is the courier\'s charge - it is not part of the item total you already paid.';
+                        }
+
                         Notification::create([
                             'user_id'    => (string) $order->userId,
                             'type'       => 'delivery_fee_set',
                             'title'      => 'Delivery Fee',
-                            'message'    => $isCOD
-                                ? 'Your delivery fee for order #' . strtoupper(substr((string) $order->_id, -8))
-                                    . ' is ₱' . number_format($newFee, 2) . '. Together with your order this is ₱'
-                                    . number_format($onArrival, 2) . ' to hand the rider on arrival.'
-                                : ($stillDue > 0.009
-                                    ? 'Your delivery fee for order #' . strtoupper(substr((string) $order->_id, -8))
-                                        . ' is ₱' . number_format($newFee, 2) . '. Your order balance of ₱'
-                                        . number_format($stillDue, 2) . ' is paid here in My Orders, separately '
-                                        . 'from this - the rider only collects the delivery.'
-                                    : 'Your delivery fee for order #' . strtoupper(substr((string) $order->_id, -8))
-                                        . ' is ₱' . number_format($newFee, 2)
-                                        . '. You can pay this in cash to the rider on delivery, or send it '
-                                        . 'ahead - message us for our GCash or Maya details. It is separate '
-                                        . 'from the item total.'),
+                            'message'    => $noticeMessage,
                             'is_read'    => false,
                             'data'       => ['orderId' => (string) $order->_id, 'courierFee' => $newFee],
                             'created_at' => now(),
@@ -1443,26 +1482,8 @@ class OrderController extends Controller
                         $this->postOrderCardToChat(
                             $order,
                             'delivery_fee',
-                            $isCOD
-                                ? 'Your delivery fee for this order is P'
-                                    . number_format($newFee, 2) . '. Your order is P' . number_format($stillDue, 2)
-                                    . ', so please have P' . number_format($onArrival, 2) . ' ready for the rider '
-                                    . 'on arrival - one payment covers both. If you would rather send the delivery '
-                                    . 'part ahead, message us here for our GCash or Maya details and we will '
-                                    . 'confirm it.'
-                                : ($stillDue > 0.009
-                                    ? 'Your delivery fee for this order is P'
-                                        . number_format($newFee, 2) . ', and it is separate from your order. Your '
-                                        . 'order balance of P' . number_format($stillDue, 2) . ' is still open and '
-                                        . 'is paid here in My Orders - the rider collects only the P'
-                                        . number_format($newFee, 2) . ' delivery. You can hand that to the rider in '
-                                        . 'cash, or send it ahead - message us here for our GCash or Maya details.'
-                                    : 'Your delivery fee for this order is P'
-                                        . number_format($newFee, 2) . '. You can hand this to the rider in cash on '
-                                        . 'delivery, or send it ahead - message us here for our GCash or Maya '
-                                        . 'details and we will confirm it. This is the courier\'s charge '
-                                        . '- it is not part of the item total you already paid.'),
-                            ['courierFee' => $newFee]
+                            $chatMessage,
+                            ['courierFee' => $newFee, 'courierFeeOnDelivery' => $onDelivery]
                         );
 
                         $to = $order->userSnapshot['email'] ?? null;
@@ -1475,7 +1496,8 @@ class OrderController extends Controller
                                 $newFee,
                                 (float) ($order->totalAmount ?? 0),
                                 $isCOD,
-                                $onArrival
+                                $onArrival,
+                                $onDelivery
                             ));
                         }
                     } catch (\Exception $e) {
