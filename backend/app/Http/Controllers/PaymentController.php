@@ -2746,7 +2746,7 @@ class PaymentController extends Controller
                     'message'    => ($order->userSnapshot['name'] ?? 'The customer') . ' paid the P'
                                     . number_format($paidAmount, 2) . ' delivery fee for order #'
                                     . strtoupper(substr((string) $order->_id, -8))
-                                    . '. Do not collect it from the rider.',
+                                    . '. The money is with you - pay the courier yourself, and tell the rider not to collect from the customer.',
                     'is_read'    => false,
                     'data'       => ['orderId' => (string) $order->_id, 'courierFee' => $paidAmount],
                     'created_at' => now(),

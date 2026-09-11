@@ -3536,6 +3536,14 @@ class OrderController extends Controller
             $awaitingPayment = ($order->paymentStatus ?? 'unpaid') === 'unpaid' && $order->designStatus === 'approved';
             if ($awaitingPayment) {
                 $order->orderStatus = 'awaiting_payment';
+            } elseif ($order->designStatus === 'approved' && $this->isBeforeProduction($order->orderStatus)) {
+                // Already paid - an upload is paid at checkout. The customer-approve path moves such
+                // an order to design_approved; approving it here used to leave it on "pending", so the
+                // same order read two ways depending on who clicked Approve.
+                $order->orderStatus   = 'design_approved';
+                $history              = $order->statusHistory ?? [];
+                $history[]            = ['status' => 'design_approved', 'at' => now()->toISOString(), 'by' => 'admin'];
+                $order->statusHistory = $history;
             }
             $order->updatedAt    = now();
             $order->save();
@@ -4693,9 +4701,15 @@ class OrderController extends Controller
             $order = Order::find($id);
             if (!$order) return $this->notFoundResponse('Order');
 
+            // An upload is paid at checkout, so most arrive here paid. Sending every one to
+            // awaiting_payment told a paid customer to pay again.
+            $isUnpaid  = ($order->paymentStatus ?? 'unpaid') === 'unpaid';
+            $next      = $isUnpaid ? 'awaiting_payment' : 'design_approved';
             $history   = $order->statusHistory ?? [];
-            $history[] = ['status' => 'awaiting_payment', 'at' => now()->toISOString(), 'by' => 'admin', 'note' => 'Upload approved - awaiting customer payment'];
-            $order->orderStatus   = 'awaiting_payment';
+            $history[] = ['status' => $next, 'at' => now()->toISOString(), 'by' => 'admin', 'note' => $isUnpaid ? 'Upload approved - awaiting customer payment' : 'Upload approved'];
+            if ($this->isBeforeProduction($order->orderStatus)) {
+                $order->orderStatus = $next;
+            }
             $order->statusHistory = $history;
 
             // This is the OTHER approve path - the quick-view modal posts here while the expanded
@@ -4717,7 +4731,7 @@ class OrderController extends Controller
             $order->updatedAt     = now();
             $order->save();
 
-            try { broadcast(new \App\Events\OrderStatusUpdated((string) $order->_id, 'awaiting_payment', null)); } catch (\Throwable) {}
+            try { broadcast(new \App\Events\OrderStatusUpdated((string) $order->_id, (string) $order->orderStatus, null)); } catch (\Throwable) {}
 
             try {
                 Notification::create([
@@ -4726,7 +4740,9 @@ class OrderController extends Controller
                     'title'   => 'Your Design Was Approved!',
                     'message' => 'Your uploaded design for order #' .
                         strtoupper(substr((string) $order->_id, -8)) .
-                        ' has been approved. Please complete your payment to begin production.',
+                        ($isUnpaid
+                            ? ' has been approved. Please complete your payment to begin production.'
+                            : ' has been approved. We\'ll begin production shortly.'),
                     'is_read' => false,
                     'data'    => ['orderId' => (string) $order->_id],
                     'created_at' => now(),
@@ -4735,9 +4751,21 @@ class OrderController extends Controller
                 Log::warning('approveUploadDesign: notification failed', ['error' => $e->getMessage()]);
             }
 
-            return $this->successResponse('Upload approved. Customer notified to complete payment.', $order);
+            return $this->successResponse($isUnpaid ? 'Upload approved. Customer notified to complete payment.' : 'Upload approved.', $order);
         } catch (\Exception $e) {
             return $this->serverErrorResponse($e, 'Failed to approve upload.');
         }
+    }
+
+    /**
+     * Still before production: approving a design may move the order's status from here, and
+     * nowhere later - a design approved on an order already being made must not rewind it.
+     */
+    private function isBeforeProduction(?string $status): bool
+    {
+        return in_array((string) $status, [
+            'pending', 'Pending', 'pending_review', 'pending_design', 'proof_sent',
+            'revision_requested', 'processing', 'Processing', 'awaiting_payment', 'design_approved',
+        ], true);
     }
 }

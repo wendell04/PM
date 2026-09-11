@@ -735,10 +735,12 @@ function getAvailableStatuses(o) {
     return pick({
       pending:             ['Cancelled'],
       Pending:             ['Cancelled'],
-      pending_review:      paidCustom ? [] : ['awaiting_payment'],
-      design_approved:     paidCustom ? [] : ['awaiting_payment'],
-      awaiting_payment:    [],
-      awaiting_production: [],
+      // Cancel stays on offer until production starts. A paid, approved order had no moves at
+      // all, so it could be cancelled only while it still read "pending".
+      pending_review:      paidCustom ? ['Cancelled'] : ['awaiting_payment', 'Cancelled'],
+      design_approved:     paidCustom ? ['Cancelled'] : ['awaiting_payment', 'Cancelled'],
+      awaiting_payment:    ['Cancelled'],
+      awaiting_production: ['Cancelled'],
       processing:          ['Cancelled'],
       Processing:          ['Cancelled'],
       in_production:       ['for_qc'],
@@ -1738,7 +1740,9 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                                 : `Paid online via ${how.toUpperCase()}${when ? ' - ' + when : ''}`;
                             if (!(paid > 0) || short <= 0.009) return (
                               <span style={{ fontSize:'11px', fontWeight:700, color:'#166534', lineHeight:1.5 }}>
-                                Delivery fee received - nothing for the rider to collect
+                                {how && how !== 'manual'
+                                  ? 'Paid online - you pay the courier; the rider collects nothing from the customer'
+                                  : 'Delivery fee received - nothing for the rider to collect'}
                                 {source && (
                                   <span style={{ display:'block', fontWeight:500, color:'var(--gray)' }}>
                                     {source}{paid > 0 ? ` · ₱${fmt(paid)}` : ''}
