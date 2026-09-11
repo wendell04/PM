@@ -483,20 +483,46 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
                 <div className="cw-home-tagline">How can we help?</div>
               </div>
               <div className="cw-home-body">
+                {/* A guest goes to the contact form, not to a login wall.
+                    Not to a guest chat either: chat here is attached to an order, and a stranger
+                    asking about "my order" is exactly the case where someone fishes for another
+                    customer's address and tracking. The contact form takes a name, an email and a
+                    message from anybody, and is already behind Turnstile and a throttle. */}
                 <button
                   type="button"
                   className="cw-send-msg-row"
                   onClick={() => {
-                    if (!user) { onRequestLogin?.(); setOpen(false); return; }
+                    if (!user) { window.location.href = '/#contact'; setOpen(false); return; }
                     setView('messages');
                   }}
                 >
                   <div>
                     <div className="cw-send-msg-title">Send us a message</div>
-                    <div className="cw-send-msg-sub">We will be back as soon as possible</div>
+                    <div className="cw-send-msg-sub">
+                      {user
+                        ? 'We will be back as soon as possible'
+                        : 'No account needed - we will reply to your email'}
+                    </div>
                   </div>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="9 18 15 12 9 6" /></svg>
                 </button>
+
+                {/* The other half of the answer: chatting about a specific order needs an account,
+                    and saying so is better than a login modal appearing with no explanation. */}
+                {!user && (
+                  <button
+                    type="button"
+                    className="cw-send-msg-row"
+                    onClick={() => { onRequestLogin?.(); setOpen(false); }}
+                    style={{ marginTop: '8px' }}
+                  >
+                    <div>
+                      <div className="cw-send-msg-title">Chat about an order</div>
+                      <div className="cw-send-msg-sub">Sign in - we keep order chats to the account that placed them</div>
+                    </div>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="9 18 15 12 9 6" /></svg>
+                  </button>
+                )}
 
                 <div className="cw-faq-section">
                   <div className="cw-faq-label">Search for help</div>
