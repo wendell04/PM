@@ -143,9 +143,6 @@ export default function PaymentMethods({
                     onChange={e => setCard('cvc', e.target.value.replace(/\D/g, ''))}
                     placeholder="CVC" style={input} />
                 </div>
-                <input value={card.name || ''} maxLength={80}
-                  onChange={e => setCard('name', e.target.value)}
-                  placeholder="Name on card" style={input} />
               </div>
             )}
           </div>

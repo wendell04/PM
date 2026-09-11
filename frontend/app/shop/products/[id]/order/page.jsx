@@ -115,7 +115,7 @@ function CustomOrderInner() {
   const { id } = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { token } = useAuth();
+  const { token, user: authUser } = useAuth();
   const { addToCart } = useCart();
 
   const [product, setProduct] = useState(null);
@@ -722,7 +722,6 @@ function CustomOrderInner() {
       if (num.length < 16) { setSubmitError('Enter a valid 16-digit card number.'); return; }
       if (!cardExpiry || cardExpiry.length < 4) { setSubmitError('Enter a valid expiry date (MM/YY).'); return; }
       if (cardCvc.length < 3) { setSubmitError('Enter a valid security code.'); return; }
-      if (!cardName.trim()) { setSubmitError('Enter the name on your card.'); return; }
     }
 
     setSubmitError(null);
@@ -864,7 +863,7 @@ function CustomOrderInner() {
           const pmRes = await fetch('https://api.paymongo.com/v1/payment_methods', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Authorization: `Basic ${btoa(publicKey+':')}` },
-            body: JSON.stringify({ data: { attributes: { type: 'card', details: { card_number: cardNumber.replace(/\s/g,''), exp_month: parseInt(expMonth), exp_year: parseInt('20'+expYear), cvc: cardCvc }, billing: { name: cardName.trim(), email: '', phone: '' } } } }),
+            body: JSON.stringify({ data: { attributes: { type: 'card', details: { card_number: cardNumber.replace(/\s/g,''), exp_month: parseInt(expMonth), exp_year: parseInt('20'+expYear), cvc: cardCvc }, billing: { name: cardName.trim() || [authUser?.firstName, authUser?.lastName].filter(Boolean).join(' ') || authUser?.name || '', email: authUser?.email || '', phone: '' } } } }),
           });
           const pmData = await pmRes.json();
           if (!pmRes.ok) {
@@ -1522,10 +1521,6 @@ function CustomOrderInner() {
                       <label style={{ display: 'block', fontSize: '0.72rem', color: 'var(--gray)', fontWeight: 600, marginBottom: '0.35rem' }}>Security code</label>
                       <input type="text" inputMode="numeric" placeholder="CVC" maxLength={4} value={cardCvc} onChange={e => setCardCvc(e.target.value.replace(/\D/g,'').slice(0,4))} style={{ width: '100%', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '0.72rem 0.875rem', color: 'var(--white)', fontSize: '0.95rem', outline: 'none', fontFamily: 'monospace', boxSizing: 'border-box' }} onFocus={e => { e.target.style.borderColor='#9C7BE8'; }} onBlur={e => { e.target.style.borderColor='rgba(255,255,255,0.1)'; }} />
                     </div>
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.72rem', color: 'var(--gray)', fontWeight: 600, marginBottom: '0.35rem' }}>Name on card</label>
-                    <input type="text" placeholder="Full name as on card" value={cardName} onChange={e => setCardName(e.target.value)} style={{ width: '100%', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '0.72rem 0.875rem', color: 'var(--white)', fontSize: '0.95rem', outline: 'none', boxSizing: 'border-box' }} onFocus={e => { e.target.style.borderColor='#9C7BE8'; }} onBlur={e => { e.target.style.borderColor='rgba(255,255,255,0.1)'; }} />
                   </div>
                 </div>
               )}

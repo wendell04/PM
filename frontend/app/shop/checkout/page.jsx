@@ -566,7 +566,6 @@ export default function CheckoutPage() {
     const [m, y] = cardExpiry.split('/');
     if (!m || !y || parseInt(m) < 1 || parseInt(m) > 12 || y.length < 2) return 'Enter a valid expiry date (MM/YY).';
     if (cardCvc.length < 3) return 'Enter a valid security code (3-4 digits).';
-    if (!cardName.trim()) return 'Enter the name on your card.';
     return null;
   }
   async function tokenizeCard() {
@@ -1968,24 +1967,6 @@ export default function CheckoutPage() {
               </div>
             </div>
 
-            {/* Cardholder name */}
-            <div style={{ marginBottom: '0.875rem' }}>
-              <label style={{ display: 'block', fontSize: '0.72rem', color: 'var(--gray)', fontWeight: 600, marginBottom: '0.35rem', letterSpacing: '0.03em' }}>
-                Name on card
-              </label>
-              <input
-                type="text" placeholder="Full name as on card"
-                value={cardName}
-                onChange={e => setCardName(e.target.value)}
-                style={{
-                  width: '100%', background: 'var(--dark)', border: '1px solid var(--border)',
-                  borderRadius: '8px', padding: '0.72rem 0.875rem',
-                  color: 'var(--white)', fontSize: '0.95rem', outline: 'none', boxSizing: 'border-box',
-                }}
-                onFocus={e => { e.target.style.borderColor = '#9C7BE8'; }}
-                onBlur={e => { e.target.style.borderColor = 'var(--border)'; }}
-              />
-            </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="rgba(156,123,232,0.7)" strokeWidth="2">

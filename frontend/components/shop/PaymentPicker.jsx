@@ -46,7 +46,6 @@ export default function PaymentPicker({ methods = ['gcash', 'paymaya', 'card'], 
       if (card.number.replace(/\s/g, '').length < 16) { setLocalErr('Enter a valid 16-digit card number.'); return; }
       if (card.expiry.length < 5) { setLocalErr('Enter a valid expiry (MM/YY).'); return; }
       if (card.cvc.length < 3) { setLocalErr('Enter a valid security code.'); return; }
-      if (!card.name.trim()) { setLocalErr('Enter the name on the card.'); return; }
     }
     setLocalErr(null);
     onPay(selected, selected === 'card' ? card : null);
@@ -99,8 +98,6 @@ export default function PaymentPicker({ methods = ['gcash', 'paymaya', 'card'], 
                   <input inputMode="numeric" placeholder="CVC" value={card.cvc}
                     onChange={(e) => setCard((c) => ({ ...c, cvc: e.target.value.replace(/\D/g, '').slice(0, 4) }))} style={{ ...inputStyle, flex: 1 }} />
                 </div>
-                <input placeholder="Name on card" value={card.name}
-                  onChange={(e) => setCard((c) => ({ ...c, name: e.target.value }))} style={inputStyle} />
               </div>
             )}
           </div>
