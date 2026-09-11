@@ -538,6 +538,7 @@ export default function OrdersHistoryPage() {
 
   const [payNowLoading, setPayNowLoading] = useState(false);
   const [payNowError, setPayNowError]     = useState(null);
+  const [payNowSuccess, setPayNowSuccess] = useState(null);
   const [payMethod, setPayMethod]         = useState(null);
   const [payFullToggle, setPayFullToggle] = useState(false);
   // Defaults on. Two payments for one order is the thing this exists to avoid, so the customer
@@ -729,7 +730,7 @@ export default function OrdersHistoryPage() {
   }, [payNowVerifyId, token]);
 
   const resetModalState = () => {
-    setPayNowError(null); setPayMethod(null); setPayFullToggle(false);
+    setPayNowError(null); setPayNowSuccess(null); setPayMethod(null); setPayFullToggle(false);
     setPayNowEWalletPhone(''); setPayNowShowEWalletPhone(false);
     setPayNowCardNumber(''); setPayNowCardExpiry(''); setPayNowCardCvc(''); setPayNowCardName('');
     setReuploadForIdx(null); setReuploadFile(null); setReuploadNotes(''); setReuploadError(null); setReuploadSuccess(false);
@@ -831,7 +832,7 @@ export default function OrdersHistoryPage() {
   // delivery fee, which is not part of the order total at all; otherwise it pays the DP/balance.
   const handlePayNow = async (method, cardData, opts = {}) => {
     if (!selectedOrder || !token || !method) return;
-    setPayNowLoading(true); setPayNowError(null);
+    setPayNowLoading(true); setPayNowError(null); setPayNowSuccess(null);
     try {
       let paymentMethodId = null;
       if (method === 'card') {
@@ -869,7 +870,16 @@ export default function OrdersHistoryPage() {
       const data = await res.json();
       if (!res.ok) { setPayNowError(data.message || 'Failed to create payment link.'); return; }
       if (data.data?.status === 'succeeded') {
-        loadOrders();
+        // A card that clears without 3-D Secure never leaves this page, so the open order has to be
+        // refreshed here. Left stale it kept its Pay button, and a second click charged the next
+        // payment on top of the first.
+        setPayNowSuccess('Payment received. Your receipt is on its way to your email.');
+        try {
+          const fresh = await fetchMyShopOrder(token, orderId);
+          const detail = fresh?.data ?? fresh;
+          if (detail) setSelectedOrder(detail);
+        } catch {}
+        loadOrders(true);
         return;
       }
       if (data.data?.checkoutUrl) {
@@ -1341,6 +1351,12 @@ export default function OrdersHistoryPage() {
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
               </button>
             </div>
+
+            {payNowSuccess && (
+              <div role="status" style={{ margin: '0 22px 10px', padding: '10px 14px', borderRadius: '10px', background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.25)', color: '#16a34a', fontSize: '0.8rem', fontWeight: 600, flexShrink: 0 }}>
+                {payNowSuccess}
+              </div>
+            )}
 
             {/* Modal body */}
             <div className="oh-modal-outer" style={{ flex: 1, overflow: 'hidden', display: 'flex', minHeight: 0 }}>
