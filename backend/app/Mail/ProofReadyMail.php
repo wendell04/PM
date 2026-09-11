@@ -31,11 +31,20 @@ class ProofReadyMail extends Mailable implements ShouldQueue
      * request-design order has only paid its design fee); zero, approving starts production.
      */
     public float  $balanceAfter;
+    /** Where the thumbnail leads - the order itself, where a video proof actually plays. */
+    public string $orderUrl;
+    /** A clip cannot play inside an email, so the mail says to open it instead. */
+    public bool   $hasVideo;
 
-    public function __construct(string $firstName, string $orderRef, array $proofs = [], float $balanceAfter = 0.0)
+    public function __construct(string $firstName, string $orderRef, array $proofs = [], float $balanceAfter = 0.0, string $orderUrl = '')
     {
         $this->firstName    = $firstName !== '' ? $firstName : 'there';
         $this->orderRef     = $orderRef;
+        $this->orderUrl     = $orderUrl;
+        $this->hasVideo     = (bool) array_filter(
+            array_slice($proofs, 0, 3),
+            fn ($u) => (bool) preg_match('/\.(mp4|webm|mov|m4v|ogg)(\?|$)/i', (string) $u)
+        );
         // No email client plays video, and an <img> on an .mp4 is a broken box. Cloudinary
         // returns a still frame for the same asset when asked for .jpg - the same swap the chat
         // widget makes for its thumbnails.

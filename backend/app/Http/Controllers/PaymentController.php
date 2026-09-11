@@ -2248,7 +2248,11 @@ class PaymentController extends Controller
 
             if (!$order) return $this->notFoundResponse('Order');
 
-            if ($order->paymentStatus === 'paid') {
+            // A delivery fee is the one thing still payable on an order whose goods are paid - the
+            // standalone Pay Delivery Fee block only appears on such an order. Returning here let
+            // that money be taken with nothing, anywhere, recording it: the webhook cannot match
+            // these intents either. So a pending courier fee is let through.
+            if ($order->paymentStatus === 'paid' && ($order->pendingPaymentType ?? null) !== 'courier_fee') {
                 return $this->successResponse('Already paid.', ['paymentStatus' => 'paid']);
             }
 
@@ -2314,10 +2318,15 @@ class PaymentController extends Controller
                 // `isDesignFeeOnly` describes how the order STARTED and is never cleared, so it may
                 // only be trusted while the design fee is still unpaid. Once it has been collected,
                 // any further payment on this order is for the goods.
+                $courierWasPaid = (bool) ($order->courierFeePaid ?? false);
                 if ($this->settleCourierFee($order, $paidAmount, $paymentMethod, (string) $sessionId)) {
+                    if (!$courierWasPaid) {
+                        $this->mailPaymentReceipt($order, 0.0, $paymentMethod, $paidAmount, 1);
+                    }
                     return $this->successResponse('Delivery fee received.', ['courierFeePaid' => true]);
                 }
 
+                $grossPaidAmount = $paidAmount;
                 $paidAmount = $this->splitCourierPortion($order, $paidAmount, $paymentMethod, (string) $sessionId);
 
                 if (!empty($order->pendingPaymentType) || ($order->designFeePaid ?? false)) {
@@ -2377,6 +2386,8 @@ class PaymentController extends Controller
                 $order->paymentHistory    = $history;
                 $order->updatedAt = now();
                 $order->save();
+
+                $this->mailPaymentReceipt($order, $paidAmount, $paymentMethod, round($grossPaidAmount - $paidAmount, 2), count($history) - 1);
 
                 try {
                     $admin = User::where('role', 'admin')->first();
@@ -2451,10 +2462,15 @@ class PaymentController extends Controller
 
             // The flag describes how the order STARTED and is never cleared, so it may only be
             // trusted while the design fee is still unpaid.
+            $courierWasPaid = (bool) ($order->courierFeePaid ?? false);
             if ($this->settleCourierFee($order, $paidAmount, $paymentMethod, (string) $intentId)) {
+                if (!$courierWasPaid) {
+                    $this->mailPaymentReceipt($order, 0.0, $paymentMethod, $paidAmount, 1);
+                }
                 return $this->successResponse('Delivery fee received.', ['courierFeePaid' => true]);
             }
 
+            $grossPaidAmount = $paidAmount;
             $paidAmount = $this->splitCourierPortion($order, $paidAmount, $paymentMethod, (string) $intentId);
 
             if (!empty($order->pendingPaymentType) || ($order->designFeePaid ?? false)) {
@@ -2511,6 +2527,8 @@ class PaymentController extends Controller
             $order->paymentHistory    = $history;
             $order->updatedAt = now();
             $order->save();
+
+            $this->mailPaymentReceipt($order, $paidAmount, $paymentMethod, round($grossPaidAmount - $paidAmount, 2), count($history) - 1);
 
             try {
                 $admin = User::where('role', 'admin')->first();
@@ -2642,6 +2660,49 @@ class PaymentController extends Controller
      * would inflate the sale, break the receipt, and on a fully-paid order push paymentHistory
      * past totalAmount.
      */
+    /**
+     * Tell the customer a payment landed, with the receipt as it now stands.
+     *
+     * The first payment on an order is announced by the order confirmation, which already carries
+     * the receipt; everything after it - a balance, a deposit's remainder, a delivery fee - used to
+     * arrive in complete silence. Sent only from verifyIntent, after the row is written and behind
+     * its duplicate guards, so it goes out once. Never blocks the payment that was already recorded.
+     */
+    private function mailPaymentReceipt($order, float $goodsAmount, ?string $method, float $deliveryAmount, int $priorPayments): void
+    {
+        $deliveryOnly = $goodsAmount <= 0.009 && $deliveryAmount > 0.009;
+        if (!$deliveryOnly && $priorPayments < 1) {
+            return;
+        }
+        if ($goodsAmount + $deliveryAmount <= 0.009) {
+            return;
+        }
+        try {
+            $to = $order->userSnapshot['email'] ?? null;
+            if (!$to) {
+                return;
+            }
+            $whole     = trim((string) ($order->userSnapshot['name'] ?? ''));
+            $first     = $whole !== '' ? explode(' ', $whole)[0] : 'there';
+            $paidTotal = (float) collect($order->paymentHistory ?? [])->sum(fn ($p) => (float) ($p['amount'] ?? 0));
+            $balance   = max(0.0, round((float) ($order->totalAmount ?? 0) - $paidTotal, 2));
+
+            \Illuminate\Support\Facades\Mail::to($to)->send(new \App\Mail\PaymentReceivedMail(
+                $first,
+                strtoupper(substr((string) $order->_id, -8)),
+                round($goodsAmount + $deliveryAmount, 2),
+                (string) ($method ?? 'online'),
+                round($paidTotal, 2),
+                $balance,
+                null,
+                (string) $order->_id,
+                round($deliveryAmount, 2)
+            ));
+        } catch (\Throwable $e) {
+            Log::warning('mailPaymentReceipt failed', ['order' => (string) $order->_id, 'error' => $e->getMessage()]);
+        }
+    }
+
     private function settleCourierFee($order, float $paidAmount, ?string $paymentMethod, string $reference): bool
     {
         if (($order->pendingPaymentType ?? null) !== 'courier_fee') {

@@ -37,6 +37,14 @@
                     &#8369;{{ number_format($amount, 2) }}
                   </td>
                 </tr>
+                @if ($deliveryIncluded > 0)
+                  <tr>
+                    <td style="padding:12px 16px;font-size:13px;color: #6b6b6b;border-top:1px solid rgba(0,0,0,0.06);">Includes delivery fee</td>
+                    <td style="padding:12px 16px;font-size:13px;color: #0f0f0f;text-align:right;border-top:1px solid rgba(0,0,0,0.06);">
+                      &#8369;{{ number_format($deliveryIncluded, 2) }}
+                    </td>
+                  </tr>
+                @endif
                 <tr>
                   <td style="padding:12px 16px;font-size:13px;color: #6b6b6b;border-top:1px solid rgba(0,0,0,0.06);">Method</td>
                   <td style="padding:12px 16px;font-size:13px;color: #0f0f0f;text-align:right;border-top:1px solid rgba(0,0,0,0.06);">
@@ -52,7 +60,7 @@
                   </tr>
                 @endif
                 <tr>
-                  <td style="padding:12px 16px;font-size:13px;color: #6b6b6b;border-top:1px solid rgba(0,0,0,0.06);">Paid so far</td>
+                  <td style="padding:12px 16px;font-size:13px;color: #6b6b6b;border-top:1px solid rgba(0,0,0,0.06);">Paid on your order so far</td>
                   <td style="padding:12px 16px;font-size:13px;color: #0f0f0f;text-align:right;border-top:1px solid rgba(0,0,0,0.06);">
                     &#8369;{{ number_format($paidTotal, 2) }}
                   </td>
@@ -72,7 +80,20 @@
                 @else
                   This order is fully paid. Nothing further is owed.
                 @endif
+                @if ($deliveryIncluded > 0)
+                  The delivery fee is settled too, so there is nothing to hand the rider.
+                @endif
               </p>
+
+              @if ($orderId !== '')
+                <p style="margin:0 0 18px;font-size:13px;color: #444444;line-height:1.65;">
+                  Your updated receipt is attached as
+                  <strong style="color:#111111;">{{ \App\Support\ReceiptPdf::filename($orderId) }}</strong>.
+                </p>
+              @endif
+
+              {{-- This paragraph had no opening tag. --}}
+              <p style="margin:0;font-size:13px;color: #6b6b6b;line-height:1.6;">
                 Questions? Reply in your order chat, or email us at
                 <a href="mailto:personalizemeprints@gmail.com"
                   style="color: #a67c1a;text-decoration:none;">

@@ -5,6 +5,7 @@ namespace App\Mail;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Mail\Mailable;
+use Illuminate\Mail\Mailables\Attachment;
 use Illuminate\Mail\Mailables\Content;
 use Illuminate\Mail\Mailables\Envelope;
 use Illuminate\Queue\SerializesModels;
@@ -29,6 +30,10 @@ class PaymentReceivedMail extends Mailable implements ShouldQueue
     public float  $paidTotal;
     public float  $balance;
     public ?string $reference;
+    /** The full order id, so the updated receipt PDF can be attached. */
+    public string $orderId;
+    /** Part of this charge that was the courier's delivery fee, not the order. */
+    public float  $deliveryIncluded;
 
     public function __construct(
         string $firstName,
@@ -37,7 +42,9 @@ class PaymentReceivedMail extends Mailable implements ShouldQueue
         string $method,
         float $paidTotal,
         float $balance,
-        ?string $reference = null
+        ?string $reference = null,
+        string $orderId = '',
+        float $deliveryIncluded = 0.0
     ) {
         $this->firstName = $firstName !== '' ? $firstName : 'there';
         $this->orderRef  = $orderRef;
@@ -46,11 +53,33 @@ class PaymentReceivedMail extends Mailable implements ShouldQueue
         $this->paidTotal = $paidTotal;
         $this->balance   = $balance;
         $this->reference = $reference;
+        $this->orderId   = $orderId;
+        $this->deliveryIncluded = max(0.0, round($deliveryIncluded, 2));
+    }
+
+    /**
+     * The receipt as it stands after this payment - so the last one they get says Fully Paid,
+     * which is the document they keep.
+     */
+    public function attachments(): array
+    {
+        if ($this->orderId === '') {
+            return [];
+        }
+        $pdf = \App\Support\ReceiptPdf::forOrder($this->orderId);
+        if (!$pdf) {
+            return [];
+        }
+        return [
+            Attachment::fromData(fn () => $pdf, \App\Support\ReceiptPdf::filename($this->orderId))
+                ->withMime('application/pdf'),
+        ];
     }
 
     public function envelope(): Envelope
     {
-        return new Envelope(subject: 'We received your payment - Personalize Me Prints');
+        // The reference keeps each payment its own thread instead of collapsing into the last one.
+        return new Envelope(subject: 'We received your payment - ORD-' . $this->orderRef . ' - Personalize Me Prints');
     }
 
     public function content(): Content

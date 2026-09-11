@@ -34,14 +34,21 @@
                   <tr>
                     @foreach ($proofs as $p)
                       <td style="padding-right:8px;">
+                        @if ($orderUrl)<a href="{{ $orderUrl }}" style="text-decoration:none;">@endif
                         <img src="{{ $p }}" alt="Proof" width="150"
                           style="display:block;width:150px;border-radius:8px;border:1px solid rgba(0,0,0,0.08);">
+                        @if ($orderUrl)</a>@endif
                       </td>
                     @endforeach
                   </tr>
                 </table>
                 <p style="margin:0 0 18px;font-size:12px;color: #6b6b6b;line-height:1.6;">
                   These previews are watermarked. The printed piece is not.
+                  @if ($hasVideo && $orderUrl)
+                    This proof is a video - tap the preview to play it in your order.
+                  @elseif ($orderUrl)
+                    Tap the preview to open your order.
+                  @endif
                 </p>
               @endif
 

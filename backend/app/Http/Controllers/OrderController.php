@@ -2253,6 +2253,11 @@ class OrderController extends Controller
                             : 'Cancelled by the shop',
                         trim(($user->firstName ?? '') . ' ' . ($user->lastName ?? '')) ?: null
                     );
+                    $this->refundCourierFeeOnCancel(
+                        $order,
+                        (string) ($order->getOriginal('orderStatus') ?? ''),
+                        trim(($user->firstName ?? '') . ' ' . ($user->lastName ?? '')) ?: null
+                    );
                     $order->save();
 
                     try {
@@ -2901,6 +2906,28 @@ class OrderController extends Controller
      * entitled to keep, and neither said so anywhere. This does not MOVE money - no refund
      * API exists - it makes the obligation visible so somebody can send it.
      */
+    /**
+     * A delivery fee the shop already collected, on an order that will now never be delivered.
+     *
+     * It is the courier's money, not the shop's, and it is not part of paidSoFar - so neither
+     * cancellation path counted it, and it would simply have been kept. Only while the order had
+     * not gone out: once it was with the rider, the courier has been paid for the trip.
+     */
+    private function refundCourierFeeOnCancel($order, ?string $previousStatus, ?string $by): void
+    {
+        if (!($order->courierFeePaid ?? false)) {
+            return;
+        }
+        $fee = (float) ($order->courierFeePaidAmount ?? $order->courierFee ?? 0);
+        if ($fee <= 0.009) {
+            return;
+        }
+        if (in_array((string) $previousStatus, ['for_delivery', 'shipped', 'ready_for_pickup', 'out_for_delivery', 'delivered', 'completed'], true)) {
+            return;
+        }
+        $this->recordRefundOwed($order, $fee, 'Delivery fee returned - the order was cancelled before it went out', $by);
+    }
+
     private function recordRefundOwed($order, float $amount, string $reason, ?string $by = null): void
     {
         if ($amount <= 0.009) return;
@@ -3133,7 +3160,9 @@ class OrderController extends Controller
                         (string) $validated['method'],
                         (float) $totalPaid,
                         (float) max(0, $balance),
-                        $validated['note'] ?? null
+                        $validated['note'] ?? null,
+                        // A payment recorded by hand gets the updated receipt too.
+                        (string) $order->_id
                     ));
                 }
             } catch (\Throwable $mailErr) {
@@ -3814,6 +3843,8 @@ class OrderController extends Controller
                     : 'Order cancelled by the customer before production',
                 'customer cancellation'
             );
+            // The customer can only cancel before production, so nothing has gone out.
+            $this->refundCourierFeeOnCancel($order, null, 'customer cancellation');
             if (($order->refundOwed ?? 0) > 0) {
                 $order->save();
             }
@@ -4275,8 +4306,11 @@ class OrderController extends Controller
             return $url;
         }
         $isVideo = (bool) preg_match('/\.(mp4|webm|mov|m4v|ogg)(\?|$)/i', $url);
+        // Video used to get the resize only, so every clip went out with no mark on it - in chat,
+        // in My Orders and as the still frame in the proof email. Cloudinary lays the same text
+        // over video (checked: 200, video/mp4, and the .jpg frame carries it too).
         $tx = $isVideo
-            ? 'w_720,c_limit/q_auto:eco'
+            ? 'w_720,c_limit/q_auto:eco/l_text:Arial_52_bold:PROOF%20ONLY,co_rgb:9a9a9a,o_42,a_-30/fl_layer_apply,g_center'
             : 'w_900,c_limit/q_auto:eco/l_text:Arial_52_bold:PROOF%20ONLY,co_rgb:9a9a9a,o_42,a_-30/fl_layer_apply,g_center';
 
         return str_replace('/upload/', "/upload/{$tx}/", $url);
@@ -4628,7 +4662,11 @@ class OrderController extends Controller
                         strtoupper(substr((string) $order->_id, -8)),
                         array_map(fn ($u) => $this->watermarkedProof($u), array_slice($adminDesignUrls, 0, 3)),
                         // So the mail can say what approving leads to: a payment, or production.
-                        max(0.0, round((float) ($order->totalAmount ?? 0) - $this->paidSoFar($order), 2))
+                        max(0.0, round((float) ($order->totalAmount ?? 0) - $this->paidSoFar($order), 2)),
+                        // The thumbnail opens the order, where a video proof actually plays.
+                        rtrim((string) config('app.frontend_url', ''), '/') !== ''
+                            ? rtrim((string) config('app.frontend_url'), '/') . '/shop/orders-history?order=' . (string) $order->_id
+                            : ''
                     ));
                 }
             } catch (\Throwable $mailErr) {
