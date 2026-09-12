@@ -54,18 +54,17 @@
               {{-- New Status --}}
               @php
                 $key = \App\Mail\OrderStatusMail::key($newStatus);
+                $gold   = ['bg' => '#fdf6e3', 'border' => 'rgba(212,168,67,0.35)', 'color' => '#a67c1a'];
+                $green  = ['bg' => '#f1f8f2', 'border' => 'rgba(21,128,61,0.25)',  'color' => '#15803d'];
+                $red    = ['bg' => '#fdeceb', 'border' => 'rgba(185,28,28,0.25)',  'color' => '#b91c1c'];
+                // One tone for every stage - the same box the delivery fee uses. Only the end
+                // states differ, because good news and bad news should not look alike.
                 $statusColors = [
-                  'pending'            => ['bg' => 'rgba(212,168,67,0.12)', 'border' => 'rgba(212,168,67,0.3)', 'color' => '#a67c1a'],
-                  'processing'         => ['bg' => 'rgba(212,168,67,0.12)', 'border' => 'rgba(212,168,67,0.3)', 'color' => '#a67c1a'],
-                  'in_production'      => ['bg' => 'rgba(59,130,246,0.12)', 'border' => 'rgba(59,130,246,0.3)', 'color' => '#1d4ed8'],
-                  'for_qc'             => ['bg' => 'rgba(59,130,246,0.12)', 'border' => 'rgba(59,130,246,0.3)', 'color' => '#1d4ed8'],
-                  'ready_for_delivery' => ['bg' => 'rgba(139,92,246,0.12)', 'border' => 'rgba(139,92,246,0.3)', 'color' => '#6d28d9'],
-                  'for_delivery'       => ['bg' => 'rgba(139,92,246,0.12)', 'border' => 'rgba(139,92,246,0.3)', 'color' => '#6d28d9'],
-                  'delivered'          => ['bg' => 'rgba(34,197,94,0.12)',  'border' => 'rgba(34,197,94,0.3)',  'color' => '#15803d'],
-                  'returned'           => ['bg' => 'rgba(239,68,68,0.12)',  'border' => 'rgba(239,68,68,0.3)',  'color' => '#b91c1c'],
-                  'cancelled'          => ['bg' => 'rgba(239,68,68,0.12)',  'border' => 'rgba(239,68,68,0.3)',  'color' => '#b91c1c'],
+                  'delivered' => $green,
+                  'returned'  => $red,
+                  'cancelled' => $red,
                 ];
-                $sc = $statusColors[$key] ?? ['bg' => 'rgba(212,168,67,0.12)', 'border' => 'rgba(212,168,67,0.3)', 'color' => '#a67c1a'];
+                $sc = $statusColors[$key] ?? $gold;
                 $statusMessage = $headline;
               @endphp
 
