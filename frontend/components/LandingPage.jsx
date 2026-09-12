@@ -130,6 +130,33 @@ const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=
   // Customer reviews
   const [landingReviews, setLandingReviews] = useState(initialReviews);
   const [reviewsIdx, setReviewsIdx] = useState(0);
+  // How many review cards are actually on screen. The CSS shows 3, then 2, then 1 as the screen
+  // narrows, but the track was always stepped by a third - so on a phone every move left a card
+  // cut down the middle. The step, the arrows and the dots all read this one number.
+  const [reviewsPerView, setReviewsPerView] = useState(3);
+  const [reviewsPaused, setReviewsPaused]   = useState(false);
+  const reviewsMaxIdx = Math.max(0, landingReviews.length - reviewsPerView);
+
+  useEffect(() => {
+    const calc = () => setReviewsPerView(window.innerWidth <= 600 ? 1 : window.innerWidth <= 900 ? 2 : 3);
+    calc();
+    window.addEventListener('resize', calc);
+    return () => window.removeEventListener('resize', calc);
+  }, []);
+
+  // Rotating the page does not change how many reviews there are, but it changes how many fit -
+  // and an index left past the end shows an empty track.
+  useEffect(() => { setReviewsIdx(i => Math.min(i, reviewsMaxIdx)); }, [reviewsMaxIdx]);
+
+  // Nobody taps an arrow to read a testimonial. It moves on its own, stops while someone is on a
+  // card, and never runs for a visitor who asked for less motion.
+  useEffect(() => {
+    if (reviewsPaused || reviewsMaxIdx <= 0) return undefined;
+    if (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches) return undefined;
+    const t = setInterval(() => setReviewsIdx(i => (i >= reviewsMaxIdx ? 0 : i + 1)), 5000);
+    return () => clearInterval(t);
+  }, [reviewsPaused, reviewsMaxIdx]);
+
   // Real landing stats (orders / customers / avg rating)
   const [landingStats, setLandingStats] = useState(null);
   // FAQ accordion
@@ -2162,10 +2189,15 @@ const handleForgotResetPassword = async () => {
           <div className="container">
             <div className="section-header center">
               <span className="section-tag">Customer Reviews</span>
-              <h2 className="section-title">What Our <span className="gold-text">Customers</span> Say</h2>
+              <h2 className="section-title">What Our <br className="lp-br-sm" /><span className="gold-text">Customers</span> Say</h2>
               <p className="section-subtitle">Real feedback from real customers who ordered with us.</p>
             </div>
-            <div className="reviews-carousel-wrap">
+            <div
+              className="reviews-carousel-wrap"
+              onMouseEnter={() => setReviewsPaused(true)}
+              onMouseLeave={() => setReviewsPaused(false)}
+              onTouchStart={() => setReviewsPaused(true)}
+            >
               <button
                 className="reviews-arrow reviews-arrow-left"
                 onClick={() => setReviewsIdx(i => Math.max(0, i - 1))}
@@ -2175,7 +2207,7 @@ const handleForgotResetPassword = async () => {
               <div className="reviews-track-outer">
                 <div
                   className="reviews-track"
-                  style={{ transform: `translateX(-${reviewsIdx * (100 / 3)}%)` }}
+                  style={{ transform: `translateX(-${reviewsIdx * (100 / reviewsPerView)}%)` }}
                 >
                   {landingReviews.map((rv, i) => (
                     <div className="review-card" key={i}>
@@ -2207,13 +2239,13 @@ const handleForgotResetPassword = async () => {
               </div>
               <button
                 className="reviews-arrow reviews-arrow-right"
-                onClick={() => setReviewsIdx(i => Math.min(landingReviews.length - 1, i + 1))}
-                disabled={reviewsIdx >= landingReviews.length - 3}
+                onClick={() => setReviewsIdx(i => Math.min(reviewsMaxIdx, i + 1))}
+                disabled={reviewsIdx >= reviewsMaxIdx}
                 aria-label="Next reviews"
               >&#8250;</button>
             </div>
             <div className="reviews-dots">
-              {Array.from({ length: Math.max(0, landingReviews.length - 2) }).map((_, i) => (
+              {Array.from({ length: reviewsMaxIdx + 1 }).map((_, i) => (
                 <button
                   key={i}
                   className={`reviews-dot${reviewsIdx === i ? ' active' : ''}`}

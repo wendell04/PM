@@ -3597,6 +3597,12 @@
     .footer-bottom { flex-direction: column; text-align: center; }
     .features-layout { gap: 2rem; }
     .feature-card-stack { flex-direction: column; }
+    /* The tablet rule gives each card `flex: 1 1 200px`. Once the stack is a column that 200px is
+       a MINIMUM HEIGHT, which is why three figures filled a phone screen. */
+    .fcard { flex: 0 0 auto; }
+    .fcard-inner { padding: 0.85rem 1rem; }
+    .fcard-value { font-size: 1.4rem; margin-bottom: 0.5rem; }
+    .fcard-label { font-size: 0.68rem; margin-bottom: 0.2rem; }
     .auth-modal-header { padding: 1.25rem; }
     .auth-modal-body { padding: 1.25rem; }
     .contact-form-wrap { padding: 1.25rem; }
@@ -4686,7 +4692,9 @@ html.light .lp-pinnacle-prod-img { border-color: #e5e5e3; }
   gap: 18px;
   margin-top: 8px;
 }
-@media (max-width: 640px) {
+/* Featured follows Collections: one card with a peek on tablet and phone, not a third carousel
+   behaviour on the same screen. */
+@media (max-width: 1024px) {
   .lp-featured-grid {
     display: flex;
     flex-direction: row;
@@ -4701,12 +4709,24 @@ html.light .lp-pinnacle-prod-img { border-color: #e5e5e3; }
   }
   .lp-featured-grid::-webkit-scrollbar { display: none; }
   .lp-featured-grid > a {
-    /* Just over half, so a second card is always half-visible - that peek is what tells someone
-       there is more to swipe. A full-width card looks like the whole section. */
-    flex: 0 0 60%;
-    min-width: 60%;
+    /* Same widths as the Collections strip above it: enough of the next card shows to say there
+       is more to swipe, without a full-width card looking like the whole section. */
+    flex: 0 0 40%;
+    min-width: 40%;
     scroll-snap-align: start;
   }
+}
+@media (max-width: 640px) {
+  .lp-featured-grid > a {
+    flex: 0 0 82%;
+    min-width: 82%;
+  }
+}
+
+/* The heading breaks where the owner wants it: "What Our / Customers Say". */
+.lp-br-sm { display: none; }
+@media (max-width: 600px) {
+  .lp-br-sm { display: inline; }
 }
 
 /* Replaces the numbered step list in the account-verification modal. One line of type where
