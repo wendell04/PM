@@ -9,6 +9,7 @@ use App\Models\BillOfMaterial;
 use App\Models\Inventory;
 use App\Support\OrderStatus;
 use App\Models\StockHistory;
+use App\Support\OrderNotifier;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -430,6 +431,14 @@ class JobOrderController extends Controller
 
             $this->syncOrderProductionStage($validated['orderId']);
 
+            // Creating the job orders is what puts a custom order into production, and nobody
+            // touches the status dropdown to do it - so this is the only place the customer can
+            // be told that work has started.
+            $moved = Order::find($validated['orderId']);
+            if ($moved) {
+                OrderNotifier::statusChanged($moved);
+            }
+
             return $this->successResponse(count($created) . ' job order(s) created successfully.', $created, 201);
         } catch (\Illuminate\Validation\ValidationException $e) {
             return $this->validationErrorResponse($e);
@@ -466,12 +475,20 @@ class JobOrderController extends Controller
 
         $order->joStatus    = 'Completed';
         $order->orderStatus = OrderStatus::READY_FOR_DELIVERY;
+        // The move was never recorded, so an order could sit at Ready for Delivery above a history
+        // that stopped at For QC - and the customer's tracker had nothing to read.
+        $history              = $order->statusHistory ?? [];
+        $history[]            = ['status' => OrderStatus::READY_FOR_DELIVERY, 'at' => now()->toISOString(), 'by' => 'qc'];
+        $order->statusHistory = $history;
         // When the goods started waiting. Personalised stock cannot be resold, so the shop needs to
         // know how long it has been sitting - that is the whole basis of the holding period.
         if (empty($order->readyAt)) $order->readyAt = now();
         $order->updatedAt   = now();
         $order->save();
+        // Both, and in this order: the balance reminder only fires when money is owed, while a
+        // fully paid order still has to hear that its goods are packed - which it never did.
         $this->notifyBalanceDue($order);
+        OrderNotifier::statusChanged($order);
     }
 
     /** Balance-due-before-delivery reminder once an order is fully produced (non-COD, unpaid balance). */

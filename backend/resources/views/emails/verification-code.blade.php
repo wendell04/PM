@@ -5,7 +5,11 @@
     <meta name="color-scheme" content="light">
     <meta name="supported-color-schemes" content="light">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    </head>
+      <style>
+    /* One look everywhere. Clients that honour this stop recoloring the email in dark mode. */
+    :root { color-scheme: light only; supported-color-schemes: light only; }
+  </style>
+</head>
     <body style="font-family: Arial, sans-serif; background: #f0efec; margin: 0; padding: 0;">
         <div class="wrapper" style="max-width: 480px; margin: 40px auto; background: #ffffff; border-radius: 16px; overflow: hidden;">
             <div class="header" style="background: #0f0f0f; padding: 32px 40px; text-align: left;">

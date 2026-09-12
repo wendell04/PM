@@ -189,4 +189,142 @@ final class OrderNotifier
             Log::error('OrderNotifier@customer: ' . $e->getMessage(), ['order_id' => (string) $order->_id]);
         }
     }
+
+    /** The stages worth telling a customer about. Anything else moves quietly. */
+    private const ANNOUNCED = [
+        'processing', 'in_production', 'for_qc', 'ready_for_delivery',
+        'for_delivery', 'delivered', 'returned', 'cancelled',
+    ];
+
+    private static function statusKey(?string $status): string
+    {
+        return strtolower(str_replace([' ', '-'], '_', trim((string) $status)));
+    }
+
+    /**
+     * A link the customer can actually open.
+     *
+     * A parcel courier gives a number; Lalamove and Grab give a share link and no number at all.
+     * Both are accepted. A link is only built for a courier whose URL is known - a guessed one is
+     * worse than none, because it looks like tracking and opens on an error page.
+     */
+    public static function trackingLink(?string $courier, ?string $number, ?string $url = null): string
+    {
+        $url = trim((string) $url);
+        if ($url !== '' && preg_match('~^https?://~i', $url)) {
+            return $url;
+        }
+        $number  = trim((string) $number);
+        $courier = strtolower(trim((string) $courier));
+        if ($number === '' || $courier === '') {
+            return '';
+        }
+        if (str_contains($courier, 'j&t') || str_contains($courier, 'jt express')) {
+            return 'https://www.jtexpress.ph/trajectoryQuery?waybillNo=' . rawurlencode($number);
+        }
+        if (str_contains($courier, 'lbc')) {
+            return 'https://www.lbcexpress.com/track/';
+        }
+        return '';
+    }
+
+    /**
+     * Say where the order has got to - in the bell and by email, on every path.
+     *
+     * Idempotent through `lastStatusNotified` on the order: the JO sync, a manual update and a
+     * payment confirm can all land on the same move, and the customer should hear it once. The
+     * dedupe is a field rather than a query because `where('data.orderId', ...)` matches nothing
+     * against this driver - which is how a check once reported zero notifications for an order
+     * that plainly had them.
+     */
+    public static function statusChanged(Order $order, ?string $previous = null): void
+    {
+        try {
+            $key = self::statusKey($order->orderStatus);
+            if (!in_array($key, self::ANNOUNCED, true)) return;
+            if ($previous !== null && self::statusKey($previous) === $key) return;
+            if (self::statusKey($order->lastStatusNotified ?? '') === $key) return;
+
+            $ref   = strtoupper(substr((string) $order->_id, -8));
+            $fee   = (float) ($order->courierFee ?? 0);
+            $paid  = (bool) ($order->courierFeePaid ?? false);
+            $rider = (bool) ($order->courierFeeOnDelivery ?? true);
+
+            // The delivery fee is the one thing still owed on an order that is otherwise settled,
+            // and the last moment to say so is before it leaves.
+            $feeNote = '';
+            if ($fee > 0.009 && !$paid && in_array($key, ['ready_for_delivery', 'for_delivery'], true)) {
+                $amount  = 'P' . number_format($fee, 2);
+                $feeNote = $rider
+                    ? 'The ' . $amount . ' delivery fee is still unpaid. Pay it in My Orders before we send the order out, or have ' . $amount . ' ready in cash for the rider.'
+                    : 'The ' . $amount . ' delivery fee is still unpaid. This one goes by parcel courier, which cannot take cash on arrival, so please settle it in My Orders.';
+            }
+
+            $courier  = (string) ($order->courierName ?? '');
+            $tracking = (string) ($order->trackingNumber ?? '');
+            $link     = self::trackingLink($courier, $tracking, $order->trackingUrl ?? '');
+
+            $titles = [
+                'processing'         => 'Order Accepted',
+                'in_production'      => 'Your Order Is Being Made',
+                'for_qc'             => 'Your Order Is In Quality Check',
+                'ready_for_delivery' => 'Your Order Is Ready',
+                'for_delivery'       => 'Your Order Is On Its Way',
+                'delivered'          => 'Your Order Was Delivered',
+                'returned'           => 'Your Order Was Marked Returned',
+                'cancelled'          => 'Your Order Was Cancelled',
+            ];
+            $lines = [
+                'processing'         => 'We have accepted order #' . $ref . ' and started work on it.',
+                'in_production'      => 'Order #' . $ref . ' is now being made.',
+                'for_qc'             => 'Order #' . $ref . ' is finished and being checked before it goes out.',
+                'ready_for_delivery' => 'Order #' . $ref . ' passed quality check and is packed, waiting for the courier.',
+                'for_delivery'       => 'Order #' . $ref . ' is on its way to you.',
+                'delivered'          => 'Order #' . $ref . ' has been delivered. Thank you for your order.',
+                'returned'           => 'Order #' . $ref . ' has been marked returned. Message us if that is not right.',
+                'cancelled'          => 'Order #' . $ref . ' has been cancelled.',
+            ];
+            $headline = $lines[$key] ?? ('Order #' . $ref . ' has been updated.');
+            if ($key === 'for_delivery' && $courier !== '') {
+                $headline .= ' It is with ' . $courier . '.';
+            }
+
+            try {
+                Notification::create([
+                    'user_id'    => (string) $order->userId,
+                    'type'       => 'order_status',
+                    'title'      => $titles[$key] ?? 'Order Updated',
+                    'message'    => trim($headline . ($feeNote !== '' ? ' ' . $feeNote : '')),
+                    'is_read'    => false,
+                    'data'       => ['orderId' => (string) $order->_id, 'status' => $key],
+                    'created_at' => now(),
+                ]);
+            } catch (\Exception $e) {
+                Log::warning('OrderNotifier@statusChanged bell: ' . $e->getMessage());
+            }
+
+            $email = $order->userSnapshot['email'] ?? optional(User::find($order->userId))->email;
+            if ($email) {
+                $name = trim((string) ($order->userSnapshot['name'] ?? ''));
+                $base = rtrim((string) config('app.frontend_url', ''), '/');
+                Mail::to($email)->send(new \App\Mail\OrderStatusMail(
+                    firstName:      $name !== '' ? explode(' ', $name)[0] : 'Customer',
+                    orderId:        (string) $order->_id,
+                    newStatus:      (string) $order->orderStatus,
+                    totalAmount:    (float) ($order->totalAmount ?? 0),
+                    headline:       $headline,
+                    feeNote:        $feeNote,
+                    courierName:    $courier,
+                    trackingNumber: $tracking,
+                    trackingUrl:    $link,
+                    orderUrl:       $base !== '' ? $base . '/shop/orders-history' : ''
+                ));
+            }
+
+            $order->lastStatusNotified = $key;
+            $order->save();
+        } catch (\Throwable $e) {
+            Log::error('OrderNotifier@statusChanged: ' . $e->getMessage(), ['order_id' => (string) $order->_id]);
+        }
+    }
 }

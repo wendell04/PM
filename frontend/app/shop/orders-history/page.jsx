@@ -113,6 +113,22 @@ function owesDesignFee(order) {
   return hasRequest && Number(order?.designFee) > 0 && !order?.designFeePaid;
 }
 
+// A link the customer can open. The shop pastes one for Lalamove and Grab; for a parcel it is
+// built from the number. Only couriers whose URL is known get a built link - a guessed one looks
+// like tracking and opens on an error page.
+function trackingLink(order) {
+  const pasted = String(order?.trackingUrl ?? '').trim();
+  if (/^https?:\/\//i.test(pasted)) return pasted;
+  const no      = String(order?.trackingNumber ?? '').trim();
+  const courier = String(order?.courierName ?? '').toLowerCase();
+  if (!no || !courier) return '';
+  if (courier.includes('j&t') || courier.includes('jt express')) {
+    return `https://www.jtexpress.ph/trajectoryQuery?waybillNo=${encodeURIComponent(no)}`;
+  }
+  if (courier.includes('lbc')) return 'https://www.lbcexpress.com/track/';
+  return '';
+}
+
 const CUSTOM_STATUS_LABEL = {
   pending_review:      'Under Review',
   awaiting_payment:    'Awaiting Payment',
@@ -1747,7 +1763,7 @@ export default function OrdersHistoryPage() {
                     )}
 
                     {/* Shipment */}
-                    {(selectedOrder.courierName || selectedOrder.trackingNumber) && (
+                    {(selectedOrder.courierName || selectedOrder.trackingNumber || selectedOrder.trackingUrl) && (
                       <div>
                         <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '10px' }}>Shipment</div>
                         <div style={{ background: 'var(--dark)', borderRadius: '8px', border: '1px solid var(--border)', overflow: 'hidden' }}>
@@ -1766,6 +1782,14 @@ export default function OrdersHistoryPage() {
                                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                                 </button>
                               </div>
+                            </div>
+                          )}
+                          {trackingLink(selectedOrder) && (
+                            <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '9px 14px', borderTop: '1px solid var(--border)' }}>
+                              <a href={trackingLink(selectedOrder)} target="_blank" rel="noopener noreferrer"
+                                style={{ fontSize: '0.78rem', color: '#d4a843', fontWeight: 700, textDecoration: 'none' }}>
+                                Track your delivery
+                              </a>
                             </div>
                           )}
                         </div>

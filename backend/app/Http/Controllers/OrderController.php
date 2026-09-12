@@ -1143,6 +1143,7 @@ class OrderController extends Controller
             'discountAmount',
             'courierName',
             'trackingNumber',
+            'trackingUrl',
             'createdAt',
             'updatedAt',
             'shippingAddress',
@@ -1333,6 +1334,9 @@ class OrderController extends Controller
             if (isset($validated['orderStatus']) && OrderStatus::normalize($validated['orderStatus']) === OrderStatus::FOR_DELIVERY) {
                 $order->courierName    = $request->input('courierName') ?: null;
                 $order->trackingNumber = $request->input('trackingNumber') ?: null;
+                // Lalamove and Grab give a share link and no number; a parcel gives a number and
+                // no link. Both are kept, and whichever exists is what the customer is shown.
+                $order->trackingUrl    = $request->input('trackingUrl') ?: null;
             }
 
             // Read before the save, not after. update() resyncs the model's originals, so anything
@@ -1603,28 +1607,10 @@ class OrderController extends Controller
                 $this->completeOrder($order);
             }
 
-            // Notify customer if status changed
+            // One announcer for every path: the bell as well as the email, and it carries the
+            // unpaid delivery fee and the courier - the two things a customer needs at the end.
             if (isset($validated['orderStatus']) && $oldStatus !== $order->orderStatus) {
-                try {
-                    $customerEmail = $order->userSnapshot['email']
-                        ?? optional(User::find($order->userId))->email
-                        ?? null;
-                    $customerName  = $order->userSnapshot['name'] ?? '';
-                    $firstName     = explode(' ', trim($customerName))[0] ?? 'Customer';
-                    if ($customerEmail) {
-                        Mail::to($customerEmail)->send(new OrderStatusMail(
-                            firstName:   $firstName,
-                            orderId:     (string) $order->_id,
-                            newStatus:   $order->orderStatus,
-                            totalAmount: (float) ($order->totalAmount ?? 0)
-                        ));
-                    }
-                } catch (\Exception $e) {
-                    Log::error('OrderController @adminUpdate: Failed to send status email', [
-                        'order_id' => (string) $order->_id,
-                        'error'    => $e->getMessage(),
-                    ]);
-                }
+                OrderNotifier::statusChanged($order, $oldStatus);
             }
 
             return $this->successResponse('Order updated successfully.', $order);
@@ -2158,9 +2144,11 @@ class OrderController extends Controller
                 $validated2 = $request->validate([
                     'courierName'    => 'required|string|max:100',
                     'trackingNumber' => 'nullable|string|max:200',
+                    'trackingUrl'    => 'nullable|string|max:500',
                 ]);
                 $order->courierName    = $validated2['courierName'];
                 $order->trackingNumber = $validated2['trackingNumber'] ?? null;
+                $order->trackingUrl    = $validated2['trackingUrl'] ?? null;
             }
 
             $order->orderStatus    = $newRaw;
@@ -2312,28 +2300,9 @@ class OrderController extends Controller
                 ]);
             }
 
-            // Notify customer on status change
+            // Same announcer as adminUpdate - one place decides what a stage sounds like.
             if ($oldStatus !== $order->orderStatus) {
-                try {
-                    $customerEmail = $order->userSnapshot['email']
-                        ?? optional(User::find($order->userId))->email
-                        ?? null;
-                    $customerName  = $order->userSnapshot['name'] ?? '';
-                    $firstName     = explode(' ', trim($customerName))[0] ?? 'Customer';
-                    if ($customerEmail) {
-                        Mail::to($customerEmail)->send(new OrderStatusMail(
-                            firstName:   $firstName,
-                            orderId:     (string) $order->_id,
-                            newStatus:   $order->orderStatus,
-                            totalAmount: (float) ($order->totalAmount ?? 0)
-                        ));
-                    }
-                } catch (\Exception $e) {
-                    Log::error('OrderController @updateStatus: Failed to send status email', [
-                        'order_id' => (string) $order->_id,
-                        'error'    => $e->getMessage(),
-                    ]);
-                }
+                OrderNotifier::statusChanged($order, $oldStatus);
             }
 
             return response()->json([

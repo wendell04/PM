@@ -6,6 +6,10 @@
     <meta name="supported-color-schemes" content="light">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Order Request Received</title>
+  <style>
+    /* One look everywhere. Clients that honour this stop recoloring the email in dark mode. */
+    :root { color-scheme: light only; supported-color-schemes: light only; }
+  </style>
 </head>
 <body style="margin:0;padding:0;background-color: #ffffff;font-family:Arial,sans-serif;">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color: #ffffff;">

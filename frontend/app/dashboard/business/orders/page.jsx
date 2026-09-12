@@ -28,6 +28,11 @@ const EXPIRY_DAYS = 7;
 
 // Preset reasons for rejecting a customer's uploaded file (bounce back for re-upload). "Other"
 // reveals a free-text box. The chosen reason is saved on the order and shown to the customer.
+// What the shop actually books. "Own rider" is here because a delivery someone drives over
+// themselves still has to say so on the customer's order.
+const COURIERS = ['J&T Express', 'Flash Express', 'LBC', 'Ninja Van', 'Lalamove', 'Grab', 'Own rider', 'Other'];
+const isForDelivery = (s) => String(s ?? '').toLowerCase().replace(/[\s-]+/g, '_') === 'for_delivery';
+
 const REJECT_REASONS = [
   'Wrong file format or file type',
   'Low resolution or blurry',
@@ -922,6 +927,9 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
 
   const [lo,          setLo]          = useState(o);
   const [selStatus,   setSelStatus]   = useState(o.orderStatus);
+  const [courier,     setCourier]     = useState(o.courierName || '');
+  const [trackingNo,  setTrackingNo]  = useState(o.trackingNumber || '');
+  const [trackingUrl, setTrackingUrl] = useState(o.trackingUrl || '');
   const [confirmSt,   setConfirmSt]   = useState(false);
   const [isUpdating,  setIsUpdating]  = useState(false);
   const [updateErr,   setUpdateErr]   = useState('');
@@ -1246,6 +1254,13 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
     setIsUpdating(true); setUpdateErr('');
     try {
       const payload = selStatus === 'Paid' ? { paymentStatus:'paid' } : { orderStatus: selStatus };
+      // Who is carrying it, and how the customer can follow it. Blank is allowed - an own rider
+      // has no tracking of any kind - but the customer's order shows whatever is here.
+      if (isForDelivery(selStatus)) {
+        payload.courierName    = courier.trim();
+        payload.trackingNumber = trackingNo.trim();
+        payload.trackingUrl    = trackingUrl.trim();
+      }
       // A return needs two facts nothing else records: why the goods came back, and whether they are
       // sellable. Without the second, ready-made stock the shop physically has is written off.
       if (String(selStatus).toLowerCase() === 'returned') {
@@ -1272,7 +1287,10 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
       if (!res.ok) { const d = await res.json().catch(()=>({})); throw new Error(d.message || d.error || 'Update failed'); }
       const updated = selStatus === 'Paid'
         ? { ...lo, paymentStatus:'paid' }
-        : { ...lo, orderStatus: selStatus };
+        : { ...lo, orderStatus: selStatus,
+            ...(isForDelivery(selStatus)
+              ? { courierName: courier.trim(), trackingNumber: trackingNo.trim(), trackingUrl: trackingUrl.trim() }
+              : {}) };
       setLo(updated);
       setConfirmSt(false);
       if (onStatusUpdated) onStatusUpdated(lo.id, updated);
@@ -2355,6 +2373,26 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                   ...available.map(s => ({ value: s, label: getStatusBadge(s).label })),
                 ]}
               />
+              {isForDelivery(selStatus) && (
+                <div style={{ padding:'10px', borderRadius:'7px', border:'1px solid var(--border)', display:'flex', flexDirection:'column', gap:'7px' }}>
+                  <span style={{ fontSize:'11px', fontWeight:700, color:'var(--gray)', textTransform:'uppercase', letterSpacing:'.5px' }}>Who is carrying it?</span>
+                  <CustomSelect
+                    value={courier}
+                    onChange={setCourier}
+                    options={[{ value:'', label:'Select courier' }, ...COURIERS.map(c => ({ value:c, label:c }))]}
+                  />
+                  <input value={trackingNo} onChange={e => setTrackingNo(e.target.value)} maxLength={200}
+                    placeholder="Tracking number (J&T, LBC, parcel)"
+                    style={{ padding:'8px 10px', borderRadius:'7px', border:'1px solid var(--border)', background:'var(--dark)', color:'var(--white)', fontSize:'12px' }} />
+                  <input value={trackingUrl} onChange={e => setTrackingUrl(e.target.value)} maxLength={500}
+                    placeholder="Tracking link (Lalamove / Grab share link)"
+                    style={{ padding:'8px 10px', borderRadius:'7px', border:'1px solid var(--border)', background:'var(--dark)', color:'var(--white)', fontSize:'12px' }} />
+                  <span style={{ fontSize:'10.5px', color:'var(--gray)', lineHeight:1.5 }}>
+                    Whatever you fill in is what the customer sees on their order and in the email. A J&amp;T number
+                    becomes a tracking link on its own; for Lalamove or Grab, paste their share link.
+                  </span>
+                </div>
+              )}
               {String(selStatus).toLowerCase() === 'returned' && (
                 <div style={{ padding:'10px', borderRadius:'7px', border:'1px solid var(--border)', display:'flex', flexDirection:'column', gap:'7px' }}>
                   <span style={{ fontSize:'11px', fontWeight:700, color:'var(--gray)', textTransform:'uppercase', letterSpacing:'.5px' }}>Why did it come back?</span>
@@ -2866,7 +2904,14 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                 && isCodMethod(lo.paymentMethod)
                 && remainingDue(lo) > 0
                   ? ` This is a Cash on Delivery order, so it will also be marked PAID and ₱${fmt(remainingDue(lo))} recorded as collected by the rider.`
-                  : '')}
+                  : '')
+            /* Sending it out closes the customer's online payment for the delivery fee. Who
+               collects it from here is a money question, and it is answered before, not after. */
+            + (isForDelivery(selStatus) && Number(lo.courierFee ?? 0) > 0 && !lo.courierFeePaid
+                ? ((lo.courierFeeOnDelivery ?? true)
+                    ? ` The ₱${fmt(lo.courierFee)} delivery fee is still unpaid. Once this is sent out the customer can no longer pay it online - the rider collects ₱${fmt(lo.courierFee)} in cash. Tick "Mark fee received" once you have it.`
+                    : ` The ₱${fmt(lo.courierFee)} delivery fee is still unpaid, and a parcel courier cannot collect cash on arrival. Get it settled before you ship.`)
+                : '')}
       />
 
       <ConfirmModal
