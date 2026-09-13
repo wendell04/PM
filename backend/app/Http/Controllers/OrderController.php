@@ -1607,6 +1607,13 @@ class OrderController extends Controller
                 $this->completeOrder($order);
             }
 
+            // Delivered means collected. This lived only in updateStatus, which the Orders screen
+            // does not call - so a COD order marked Delivered here wrote its Sale rows and still
+            // read Unpaid, and the owner had to record the cash by hand every time.
+            if (OrderStatus::normalize($order->orderStatus) === OrderStatus::DELIVERED) {
+                $this->settleOnDelivered($order, $request->user());
+            }
+
             // One announcer for every path: the bell as well as the email, and it carries the
             // unpaid delivery fee and the courier - the two things a customer needs at the end.
             if (isset($validated['orderStatus']) && $oldStatus !== $order->orderStatus) {
@@ -1667,6 +1674,57 @@ class OrderController extends Controller
     /**
      * Processes completion of an order: creates sales and deducts stock.
      */
+    /**
+     * What delivery settles.
+     *
+     * Called on every save of a delivered order, not only on the transition into Delivered: an
+     * order marked delivered before these rules existed can never cross that edge again, so keying
+     * on what is TRUE NOW also repairs the ones already stuck.
+     *
+     * Two separate pots of money:
+     *   - COD goods. The rider handed the cash over; a delivered COD order is a paid one. Leaving
+     *     it unpaid put the sale in Reports while the order still showed a balance - two records of
+     *     one transaction disagreeing, reconciled by hand every time.
+     *   - The delivery fee, only when the RIDER collects it. The customer paid the rider on
+     *     arrival, so nothing is outstanding. A parcel order is left alone: a parcel courier takes
+     *     no cash at the door, so an unpaid fee there is genuinely unpaid and must stay visible.
+     */
+    private function settleOnDelivered(Order $order, $user = null): void
+    {
+        $by = trim((string) (($user->firstName ?? '') . ' ' . ($user->lastName ?? ''))) ?: 'system';
+
+        if (PaymentMethod::isCod($order->paymentMethod)) {
+            $total = (float) ($order->totalAmount ?? $order->totalPrice ?? 0);
+            $due   = round($total - $this->paidSoFar($order), 2);
+            if ($due > 0.009) {
+                $history   = $order->paymentHistory ?? [];
+                $history[] = [
+                    'amount'     => $due,
+                    'method'     => 'cod',
+                    'reference'  => 'Collected on delivery',
+                    'paidAt'     => now()->toISOString(),
+                    'recordedBy' => $by,
+                ];
+                $order->paymentHistory = $history;
+                $order->downPayment    = $total;
+                $order->balance        = 0;
+                $order->paymentStatus  = 'paid';
+                $order->save();
+            }
+        }
+
+        $fee = (float) ($order->courierFee ?? 0);
+        if ($fee > 0.009
+            && !($order->courierFeePaid ?? false)
+            && ($order->courierFeeOnDelivery ?? true)) {
+            $order->courierFeePaid       = true;
+            $order->courierFeePaidAmount = $fee;
+            $order->courierFeePaidAt     = now();
+            $order->courierFeePaidMethod = 'rider_cash';
+            $order->save();
+        }
+    }
+
     private function completeOrder(Order $order): void
     {
         try {
@@ -2181,32 +2239,7 @@ class OrderController extends Controller
             // true now (delivered, COD, still owing) rather than on catching a moment, it also
             // repairs the ones already stuck.
             if ($newStatus === OrderStatus::DELIVERED) {
-                // COD delivered IS COD collected - that is what the words mean, and if the rider did
-                // not collect then the order should not be marked delivered. Until now nothing said
-                // so: completeOrder wrote the Sale rows, so the money appeared in Reports, while the
-                // order itself still read "Unpaid" with its full balance outstanding. Two records of
-                // the same transaction disagreeing, and the owner had to remember to reconcile it by
-                // hand every time. The courier fee is deliberately NOT included - that is the
-                // rider's money, never the shop's.
-                if (PaymentMethod::isCod($order->paymentMethod)) {
-                    $total = (float) ($order->totalAmount ?? $order->totalPrice ?? 0);
-                    $due   = round($total - $this->paidSoFar($order), 2);
-                    if ($due > 0.009) {
-                        $history   = $order->paymentHistory ?? [];
-                        $history[] = [
-                            'amount'    => $due,
-                            'method'    => 'cod',
-                            'reference' => 'Collected on delivery',
-                            'paidAt'    => now()->toISOString(),
-                            'recordedBy'=> trim(($user->firstName ?? '') . ' ' . ($user->lastName ?? '')) ?: 'system',
-                        ];
-                        $order->paymentHistory = $history;
-                        $order->downPayment    = $total;
-                        $order->balance        = 0;
-                        $order->paymentStatus  = 'paid';
-                        $order->save();
-                    }
-                }
+                $this->settleOnDelivered($order, $user);
             }
 
             // Handle cancellation: cancel linked JobOrder and restore inventory
