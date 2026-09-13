@@ -421,7 +421,9 @@ const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=
     const t = setInterval(() => {
       setHeroSlide(s => (s + 1) % tCount);
       setHeroImgIdx(i => (i + 1) % iCount);
-    }, 4000);
+      // Four seconds is barely a read on a phone, where the tagline wraps to three lines. Seven
+      // leaves the crossfade room to finish and the words room to land.
+    }, 7000);
     return () => clearInterval(t);
   }, [heroPaused, heroBanners]);
 
