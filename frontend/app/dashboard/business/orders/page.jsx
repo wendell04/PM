@@ -2771,12 +2771,31 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
             <span style={{ color:'var(--white)' }}>Total</span>
             <span style={{ color:'var(--gold)' }}>₱{fmt(lo.totalAmount ?? lo.totalPrice)}</span>
           </div>
-          {Number(lo.courierFee) > 0 && (
-            <div style={{ display:'flex', justifyContent:'space-between', fontSize:'11px', padding:'3px 0', color:'var(--gray)' }}>
-              <span>Delivery fee (customer → rider)</span>
-              <span style={{ fontWeight:600 }}>₱{fmt(lo.courierFee)}</span>
-            </div>
-          )}
+          {Number(lo.courierFee) > 0 && (() => {
+            // The panel on the left already said the fee was settled while this line said nothing,
+            // so the same order read "received" and "outstanding" at once. It says which, and who
+            // is holding the money: paid online means the shop owes the courier, cash at the door
+            // means the rider already has it.
+            const feePaid = !!lo.courierFeePaid;
+            const how     = String(lo.courierFeePaidMethod || '').toLowerCase();
+            const note    = !feePaid
+              ? ((lo.courierFeeOnDelivery ?? true) ? 'rider collects on arrival' : 'to be paid before we ship')
+              : how === 'manual' || how === 'rider_cash'
+                ? 'received - the rider was paid'
+                : 'paid online - you pay the courier';
+            return (
+              <div style={{ display:'flex', justifyContent:'space-between', gap:'10px', fontSize:'11px', padding:'3px 0', color:'var(--gray)' }}>
+                <span>
+                  Delivery fee{' '}
+                  <span style={{ color: feePaid ? '#16a34a' : 'var(--gray)', fontWeight: feePaid ? 700 : 400 }}>
+                    {feePaid ? '(paid)' : '(unpaid)'}
+                  </span>
+                  <span style={{ display:'block', fontSize:'10px' }}>{note}</span>
+                </span>
+                <span style={{ fontWeight:600, whiteSpace:'nowrap', color: feePaid ? '#16a34a' : 'var(--gray)' }}>₱{fmt(lo.courierFee)}</span>
+              </div>
+            );
+          })()}
           {/* balance is only written once a payment lands, so an unpaid order reported
               ₱0.00 owing on a ₱1,057.88 order. Derive it when it has never been set. */}
           {(() => {
