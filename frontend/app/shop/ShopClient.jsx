@@ -53,7 +53,11 @@ function getDisplayPrice(product) {
 
 // ─── Quick View Modal ─────────────────────────────────────────────────────────
 function QuickViewModal({ product, flashSale, onClose, onToast }) {
-  const qvDrag = useSheetDrag(onClose);
+  // Down closes the preview; up asks for the whole product page, which is what a preview is for.
+  const qvDrag = useSheetDrag(onClose, 90, () => {
+    const slug = product?.slug || String(product?.name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+    if (slug) window.location.href = `/shop/products/${slug}`;
+  });
   const moq = product.minOrderQty || 1;
   const [selOpts, setSelOpts] = useState({});
   const [selVars, setSelVars] = useState(() => {
@@ -370,6 +374,23 @@ function QuickViewModal({ product, flashSale, onClose, onToast }) {
                 </span>
               )}
             </div>
+
+            {/* The product page says this and the quick view did not, so the same item answered
+                "can I just buy it plain?" two different ways depending on where it was opened. */}
+            {product.isCustom && !(PLAIN_OR_CUSTOM_ENABLED && (product.allowPlainPurchase ?? false)) && (
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', marginTop: '8px',
+                background: 'rgba(212,168,67,0.07)', border: '1px solid rgba(212,168,67,0.22)',
+                borderRadius: '8px', padding: '9px 11px' }}>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#D4A843"
+                  strokeWidth="2" style={{ flexShrink: 0, marginTop: '1px' }}>
+                  <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
+                </svg>
+                <span style={{ fontSize: '0.78rem', color: 'var(--gray)', lineHeight: 1.5 }}>
+                  <strong style={{ color: 'var(--white)' }}>Customizable only.</strong>{' '}
+                  This item is printed with design. We do not sell it plain.
+                </span>
+              </div>
+            )}
 
             {/* Name */}
             <h2 className="shop-qv-title">{product.name || product.subCategoryName || 'Product'}</h2>
