@@ -80,54 +80,70 @@ export default function PolicyModal({ docKey, onClose }) {
     >
       {/* Styles travel with the component: it is opened from the landing page and from the shop,
           which load different stylesheets. */}
+      {/* The same dressing as the sign-up Terms modal - same panel, same type scale, same gold
+          section titles - so a customer reading a policy sees the document they already know.
+          Carried with the component because it opens from the landing page and from the shop,
+          which load different stylesheets. */}
       <style>{`
         .policy-overlay {
           position: fixed; inset: 0; z-index: 4000;
-          background: rgba(0,0,0,0.72);
+          background: rgba(0,0,0,0.8);
+          backdrop-filter: blur(8px);
           display: flex; align-items: center; justify-content: center;
-          padding: 16px;
+          padding: 1rem;
         }
         .policy-panel {
-          background: #ffffff; color: #1a1a1a;
-          width: 100%; max-width: 720px; max-height: 86vh;
-          border-radius: 16px; overflow: hidden;
+          background: var(--dark2, #1a1a1a);
+          border: 1px solid rgba(212,168,67,0.2);
+          border-radius: 20px;
+          width: 100%; max-width: 600px; max-height: 80vh;
+          overflow: hidden;
           display: flex; flex-direction: column;
-          box-shadow: 0 24px 70px rgba(0,0,0,0.4);
           font-family: Arial, Arimo, Helvetica, sans-serif;
         }
         .policy-head {
           display: flex; align-items: center; justify-content: space-between;
-          gap: 12px; padding: 16px 20px; border-bottom: 1px solid #ececec;
+          padding: 1.5rem 1.75rem;
+          border-bottom: 1px solid var(--border, rgba(255,255,255,0.1));
+          background: rgba(212,168,67,0.05);
         }
-        .policy-head h2 { margin: 0; font-size: 1.15rem; font-weight: 800; }
+        .policy-head h2 {
+          margin: 0; font-size: 1.2rem; font-weight: 800;
+          color: var(--white, #f5f5f5);
+        }
         .policy-head button {
-          background: none; border: none; cursor: pointer; color: #6b6b6b;
+          background: none; border: none; cursor: pointer;
+          color: var(--gray, #9a9a9a);
           width: 32px; height: 32px; border-radius: 8px;
           display: flex; align-items: center; justify-content: center;
         }
-        .policy-head button:hover { background: #f2f2f2; color: #111; }
+        .policy-head button:hover { color: var(--gold, #d4a843); }
         .policy-body {
-          padding: 18px 20px; overflow-y: auto; -webkit-overflow-scrolling: touch;
-          font-size: 0.9rem; line-height: 1.7; color: #333;
+          padding: 1.5rem 1.75rem;
+          overflow-y: auto;
+          -webkit-overflow-scrolling: touch;
+          scrollbar-width: thin;
+          scrollbar-color: var(--gold-dark, #a67c1a) transparent;
         }
-        .policy-body h3 {
-          margin: 18px 0 6px; font-size: 0.95rem; font-weight: 800; color: #111;
-        }
-        .policy-body section:first-child h3 { margin-top: 0; }
-        .policy-body p { margin: 0; }
-        .policy-updated { margin-top: 22px !important; font-size: 0.78rem; color: #777; }
+        .policy-body p { margin: 0 0 1rem; line-height: 1.7; color: var(--white, #f5f5f5); }
+        .policy-body p.policy-title { margin-bottom: 0.35rem; }
+        .policy-body p strong { color: var(--gold, #d4a843); }
+        .policy-updated { font-size: 0.8rem; color: var(--gray, #9a9a9a) !important; }
         .policy-foot {
-          padding: 12px 20px calc(12px + env(safe-area-inset-bottom));
-          border-top: 1px solid #ececec; display: flex; justify-content: flex-end;
+          display: flex; justify-content: flex-end;
+          padding: 1.25rem 1.75rem calc(1.5rem + env(safe-area-inset-bottom));
+          border-top: 1px solid var(--border, rgba(255,255,255,0.1));
         }
         .policy-foot button {
-          background: #d4a843; color: #111; border: none;
-          border-radius: 10px; padding: 10px 22px;
-          font-size: 0.88rem; font-weight: 800; cursor: pointer;
+          background: var(--gold, #d4a843); color: #111; border: none;
+          border-radius: 10px; padding: 0.7rem 1.5rem;
+          font-size: 0.9rem; font-weight: 800; cursor: pointer;
+          font-family: Arial, Arimo, Helvetica, sans-serif;
         }
         @media (max-width: 640px) {
           .policy-overlay { padding: 0; align-items: stretch; }
-          .policy-panel { max-width: 100%; max-height: 100%; height: 100%; border-radius: 0; }
+          .policy-panel { max-width: 100%; max-height: 100%; height: 100%; border-radius: 0; border: none; }
+          .policy-head, .policy-body, .policy-foot { padding-left: 1.15rem; padding-right: 1.15rem; }
         }
       `}</style>
 
@@ -142,11 +158,11 @@ export default function PolicyModal({ docKey, onClose }) {
         </div>
 
         <div className="policy-body">
-          {doc.sections.map((s, i) => (
-            <section key={i}>
-              {s.title && <h3>{s.title}</h3>}
-              <p>{s.body}</p>
-            </section>
+          {doc.sections.map((sec, i) => (
+            <div key={i}>
+              {sec.title && <p className="policy-title"><strong>{i + 1}. {sec.title}</strong></p>}
+              <p>{sec.body}</p>
+            </div>
           ))}
           <p className="policy-updated">Last reviewed {new Date().getFullYear()}. Message us if anything here is unclear.</p>
         </div>
