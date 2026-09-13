@@ -1048,10 +1048,31 @@
   /* Close row at top of L1 */
   .mm-close-row {
     display: flex;
-    justify-content: flex-end;
-    padding: 56px 20px 8px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    /* Was 56px of padding above a lone X - a strip of blank white taller than any menu item. The
+       space is the header now, and it clears a notch. */
+    padding: calc(14px + env(safe-area-inset-top)) 18px 12px;
+    border-bottom: 1px solid rgba(0,0,0,0.07);
     flex-shrink: 0;
   }
+  .mm-brand {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    min-width: 0;
+  }
+  .mm-brand img { border-radius: 50%; display: block; flex-shrink: 0; }
+  .mm-brand-name {
+    font-family: Arial, Arimo, Helvetica, sans-serif;
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    line-height: 1.25;
+    color: #111;
+  }
+  .mm-brand-name span { color: #a67c1a; }
   .mm-close-btn {
     width: 36px; height: 36px;
     border-radius: 50%;

@@ -1738,7 +1738,14 @@ const handleForgotResetPassword = async () => {
 
         {/* ── Level 1: main items ── */}
         <div className={`mm-panel mm-l1${mobileNavPanel ? ' mm-hidden' : ''}`}>
+          {/* The drawer opened with 56px of nothing above a lone X. A drawer's top is its header:
+              whose shop this is on the left, the way out on the right. */}
           <div className="mm-close-row">
+            <span className="mm-brand">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/logos/email-logo-v3.png" alt="" width="30" height="30" />
+              <span className="mm-brand-name">PERSONALIZE <span>ME</span> PRINTS</span>
+            </span>
             <button className="mm-close-btn" onClick={closeMobile} aria-label="Close">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
