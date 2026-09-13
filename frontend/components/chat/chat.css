@@ -1779,3 +1779,10 @@ html.light .chat-box-switch { background: rgba(0, 0, 0, 0.04); }
   background: rgba(239,68,68,0.85);
   transform: translateX(-50%) scale(1.18);
 }
+/* Clear of the bottom bar - the two landed on top of each other, so the drop target sat half
+   behind the tabs. */
+@media (max-width: 900px) {
+  .cw-fab-hide { bottom: calc(96px + env(safe-area-inset-bottom)); }
+}
+/* Tucked, it has to stay findable: a sliver at 45% is enough to see and wide enough to tap. */
+.cw-launcher--tucked { opacity: 0.55; }
