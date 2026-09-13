@@ -21,6 +21,7 @@
 // row, banners, returns, movements and 10,000 sales on every visit.
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
@@ -62,6 +63,7 @@ export default function StaffHome() {
   const [sales, setSales]     = useState([]);
   const [unread, setUnread]   = useState(0);
   const [ssa, setSsa]         = useState(undefined);   // undefined = not asked, null = unavailable
+  const [weeklyRows, setWeeklyRows] = useState([]);
   const [months, setMonths]   = useState(6);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState('');
@@ -262,6 +264,9 @@ export default function StaffHome() {
       weeks.set(key, (weeks.get(key) ?? 0) + Number(sale.totalPrice ?? 0));
     }
     const rows = [...weeks.entries()].sort().map(([date, value]) => ({ date, value: Math.round(value) }));
+    // The same weekly series the forecast is asked for is the history the chart draws, so the
+    // line and the projection can never be built from two different readings of the sales.
+    setWeeklyRows(rows);
 
     // The service refuses below ten periods and says so clearly; asking anyway just to read its
     // reason back would be a wasted round trip on every load.
@@ -310,6 +315,19 @@ export default function StaffHome() {
     }, 0);
     return { collectedToday, liveOrders, profit };
   }, [payments, orders, sales]);
+
+  // History and projection in ONE series, joined at the last real week so the dashed line starts
+  // where the solid one ends instead of floating beside it.
+  const chartSeries = useMemo(() => {
+    const rows = weeklyRows.map(r => ({ date: r.date, actual: r.value, forecast: null }));
+    const dates = ssa?.forecast?.dates ?? [];
+    const values = ssa?.forecast?.values ?? [];
+    if (rows.length && dates.length) {
+      rows[rows.length - 1] = { ...rows[rows.length - 1], forecast: rows[rows.length - 1].actual };
+      dates.forEach((d, i) => rows.push({ date: d, actual: null, forecast: Math.round(Number(values[i] ?? 0)) }));
+    }
+    return rows;
+  }, [weeklyRows, ssa]);
 
   const tiles = MODULES.filter(m => allows(m.key));
   const peakMonth = Math.max(1, ...byMonth.map(b => b.total));
@@ -470,6 +488,43 @@ export default function StaffHome() {
                   </div>
                 )}
               </div>
+
+              {/* The weekly line, the width of the card it lives in. The bars above are money per
+                  month; this is the week-by-week shape the forecast is drawn from, with the next
+                  three weeks dashed - one card, one story, rather than a second page to open. */}
+              {weeklyRows.length > 1 && (
+                <div style={{ borderTop: '1px solid var(--border)', padding: '12px 16px 16px' }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>Weekly sales, and what SSA projects</div>
+                  <div style={{ height: 220 }}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={chartSeries} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+                        <XAxis dataKey="date" tick={{ fill: 'var(--gray)', fontSize: 10 }} tickLine={false} axisLine={false}
+                          tickFormatter={d => new Date(d).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })}
+                          interval="preserveStartEnd" minTickGap={24} />
+                        <YAxis tick={{ fill: 'var(--gray)', fontSize: 10 }} tickLine={false} axisLine={false} width={52}
+                          tickFormatter={v => '₱' + (Number(v) >= 1000 ? (Number(v) / 1000).toFixed(1) + 'k' : v)} />
+                        <Tooltip
+                          content={({ active, payload, label }) => {
+                            if (!active || !payload?.length) return null;
+                            return (
+                              <div style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: 6, padding: '6px 10px', fontSize: 12 }}>
+                                <div style={{ color: 'var(--gray)', marginBottom: 2 }}>
+                                  week of {new Date(label).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })}
+                                </div>
+                                {payload.filter(p => p.value != null).map(p => (
+                                  <div key={p.dataKey} style={{ color: p.stroke, fontWeight: 700 }}>{p.name}: {peso(p.value)}</div>
+                                ))}
+                              </div>
+                            );
+                          }} />
+                        <Line name="Sold" type="monotone" dataKey="actual" stroke="var(--gold)" strokeWidth={2} dot={false} connectNulls />
+                        <Line name="Projected" type="monotone" dataKey="forecast" stroke="#7aa7ff" strokeWidth={2} strokeDasharray="5 4" dot={false} connectNulls />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
