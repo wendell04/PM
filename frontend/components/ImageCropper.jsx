@@ -19,7 +19,20 @@ import { useTheme } from '@/contexts/ThemeContext';
  *   onConfirm  (file: File) => void | Promise
  */
 export default function ImageCropper({ src, aspect = 1, round = false, title = 'Crop image', outputSize = 1000, onCancel, onConfirm }) {
-  const MAXW = 300, MAXH = 300, MIN = 40, HS = 14;
+  const MIN = 40, HS = 14;
+
+  // A 1920x600 banner judged inside a 300px window is a banner judged blind - which is exactly how
+  // it felt to crop one. The working area takes what the viewport can spare instead, and refits
+  // when the window changes.
+  const [vp, setVp] = useState({ w: 1200, h: 800 });
+  useEffect(() => {
+    const measure = () => setVp({ w: window.innerWidth, h: window.innerHeight });
+    measure();
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  }, []);
+  const MAXW = Math.max(260, Math.min(920, vp.w - 280));
+  const MAXH = Math.max(200, Math.min(560, vp.h - 300));
 
   // Explicit palette - the app's theme vars don't all flip together (some are
   // fixed-dark), which left dark text on a dark panel in light mode.
@@ -92,7 +105,7 @@ export default function ImageCropper({ src, aspect = 1, round = false, title = '
       setWork(url);
     };
     wi.src = url;
-  }, [orig, rotation, aspect, outputSize]);
+  }, [orig, rotation, aspect, outputSize, MAXW, MAXH]);
 
   useEffect(() => { buildWork(); }, [buildWork]);
 
@@ -159,7 +172,8 @@ export default function ImageCropper({ src, aspect = 1, round = false, title = '
     } catch { setBusy(false); }
   };
 
-  const pvW = 84, pvH = round ? 84 : Math.round(84 / aspect);
+  // The preview is the thing being decided on, so it is no longer a thumbnail beside the canvas.
+  const pvW = round ? 120 : 190, pvH = round ? 120 : Math.round(190 / aspect);
   const pvScale = box ? pvW / box.w : 1;
 
   const corners = ['nw', 'ne', 'sw', 'se'];
@@ -178,7 +192,7 @@ export default function ImageCropper({ src, aspect = 1, round = false, title = '
 
   return createPortal(
     <div style={{ position: 'fixed', inset: 0, zIndex: 3000, background: 'rgba(0,0,0,0.72)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
-      <div style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: '14px', padding: '1.25rem', maxWidth: 'min(460px, 94vw)', boxShadow: '0 20px 60px rgba(0,0,0,0.35)' }}>
+      <div style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: '14px', padding: '1.25rem', maxWidth: 'min(1180px, 96vw)', boxShadow: '0 20px 60px rgba(0,0,0,0.35)' }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '0.75rem', marginBottom: '0.15rem' }}>
           <div style={{ fontSize: '0.95rem', fontWeight: 700, color: C.text }}>{title}</div>
           <button type="button" onClick={onCancel} disabled={busy} aria-label="Close"
