@@ -1598,15 +1598,9 @@ export default function ShopClient({
             </div>
           </div>
 
-          {/* Clear all */}
-          {activeFilterCount > 0 && (
-            <button
-              className="shop-filter-clear-btn"
-              onClick={() => { setAvailability('all'); setSelectedSlugs(new Set()); setPriceMin(0); setPriceMax(Infinity); setProductType(''); }}
-            >
-              Clear all filters
-            </button>
-          )}
+          {/* No Clear at the foot of the rail: the rail's own header already has Clear, and the
+              chip row above the grid has Clear all. Three ways to do one thing, two of them
+              within a scroll of each other. */}
         </aside>
 
         {/* Mobile sidebar backdrop */}
