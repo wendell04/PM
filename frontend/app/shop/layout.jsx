@@ -383,6 +383,49 @@ export default function ShopLayout({ children }) {
   const searchRef = useRef(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchFocused, setSearchFocused] = useState(false);
+  // Suggestions come from our own catalogue, fetched once and filtered in memory. A request per
+  // keystroke would trail the typing and could not answer better - the answer IS this list.
+  const [searchIndex, setSearchIndex] = useState(null);
+  const [searchOpen, setSearchOpen]   = useState(false);
+  const [searchHi, setSearchHi]       = useState(-1);
+
+  const loadSearchIndex = async () => {
+    if (searchIndex !== null) return;
+    setSearchIndex([]);
+    try {
+      const res  = await fetch(`${API_URL}/api/products?slim=true`);
+      const data = await res.json();
+      const rows = Array.isArray(data) ? data : (data.data ?? data.products ?? []);
+      setSearchIndex(rows.map(p => ({
+        name:      p.name || p.subCategoryName || '',
+        category:  p.category || '',
+        slug:      p.slug || String(p.name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, ''),
+        thumbnail: p.thumbnail || (Array.isArray(p.images) ? p.images[0] : null),
+      })).filter(p => p.name && p.slug));
+    } catch {
+      // No suggestions is a quiet loss - Enter still searches the grid.
+    }
+  };
+
+  // Name first, then category, so typing "mug" offers the mugs before anything merely tagged one.
+  const searchSuggestions = (() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (q.length < 2 || !searchIndex?.length) return [];
+    const starts = [], contains = [];
+    for (const p of searchIndex) {
+      const n = p.name.toLowerCase();
+      if (n.startsWith(q)) starts.push(p);
+      else if (n.includes(q) || p.category.toLowerCase().includes(q)) contains.push(p);
+    }
+    return [...starts, ...contains].slice(0, 6);
+  })();
+
+  const openSuggestion = (p) => {
+    setSearchOpen(false);
+    setSearchHi(-1);
+    searchRef.current?.blur();
+    router.push(`/shop/products/${p.slug}`);
+  };
   const [policyDoc, setPolicyDoc] = useState(null);   // which policy the footer opened
   const [menuOpen, setMenuOpen] = useState(false);
   const [cartOpen, setCartOpen] = useState(false);
@@ -1307,21 +1350,65 @@ export default function ShopLayout({ children }) {
                   className="shop-navbar-search-input"
                   placeholder="Search products, then press Enter"
                   value={searchQuery}
-                  onChange={handleSearchChange}
-                  onFocus={() => setSearchFocused(true)}
-                  onBlur={() => setSearchFocused(false)}
+                  onChange={e => { handleSearchChange(e); setSearchOpen(true); setSearchHi(-1); }}
+                  onFocus={() => { setSearchFocused(true); setSearchOpen(true); loadSearchIndex(); }}
+                  onBlur={() => { setSearchFocused(false); setTimeout(() => setSearchOpen(false), 120); }}
                   onKeyDown={e => {
-                    // The box is in the navbar on every page, but only the shop grid listens for the
-                    // pmp_search event - so on a product page, the cart or the checkout, typing here
-                    // did nothing at all. Enter now carries the query to the place that can answer it.
+                    // Only the shop grid listens for the pmp_search event, so on a product page or
+                    // the cart, typing here answered nothing. The arrows walk the suggestions and
+                    // Enter either opens the highlighted one or carries the query to the grid.
+                    if (e.key === 'Escape') { setSearchOpen(false); setSearchHi(-1); return; }
+                    if (e.key === 'ArrowDown' && searchSuggestions.length) {
+                      e.preventDefault();
+                      setSearchOpen(true);
+                      setSearchHi(i => (i + 1) % searchSuggestions.length);
+                      return;
+                    }
+                    if (e.key === 'ArrowUp' && searchSuggestions.length) {
+                      e.preventDefault();
+                      setSearchHi(i => (i <= 0 ? searchSuggestions.length - 1 : i - 1));
+                      return;
+                    }
                     if (e.key !== 'Enter') return;
+                    if (searchHi >= 0 && searchSuggestions[searchHi]) {
+                      e.preventDefault();
+                      openSuggestion(searchSuggestions[searchHi]);
+                      return;
+                    }
                     const q = searchQuery.trim();
                     if (!q) return;
                     e.preventDefault();
                     searchRef.current?.blur();
+                    setSearchOpen(false);
                     router.push('/shop?q=' + encodeURIComponent(q));
                   }}
                 />
+                {searchOpen && searchSuggestions.length > 0 && (
+                  <div className="shop-search-suggest" role="listbox">
+                    {searchSuggestions.map((p, i) => (
+                      <button
+                        key={p.slug + i}
+                        type="button"
+                        role="option"
+                        aria-selected={i === searchHi}
+                        className={`shop-search-suggest-row${i === searchHi ? ' active' : ''}`}
+                        onMouseEnter={() => setSearchHi(i)}
+                        onMouseDown={e => e.preventDefault()}
+                        onClick={() => openSuggestion(p)}
+                      >
+                        <span className="shop-search-suggest-thumb">
+                          {p.thumbnail
+                            ? <img src={p.thumbnail} alt="" loading="lazy" />
+                            : <NoImage size={14} />}
+                        </span>
+                        <span className="shop-search-suggest-text">
+                          <span className="shop-search-suggest-name">{p.name}</span>
+                          {p.category && <span className="shop-search-suggest-cat">{p.category}</span>}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
                 {searchQuery && (
                   <button
                     type="button"
