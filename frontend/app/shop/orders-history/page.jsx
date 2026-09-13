@@ -1057,6 +1057,18 @@ export default function OrdersHistoryPage() {
 
   // ── Render ──────────────────────────────────────────
   return (
+    <>
+      {/* On a 375px screen the status badge refused to shrink, leaving the left side about 150px -
+          so ORD-090DCDB0 broke across two lines and "Upload Design" split into two words on two
+          rows. The header stacks instead: reference and labels take the full width, badges sit
+          under them, and neither the reference nor the label is allowed to break mid-phrase. */}
+      <style>{`
+        @media (max-width: 640px) {
+          .oh-card-head { flex-direction: column; align-items: stretch !important; gap: 6px !important; padding: 12px 14px 10px !important; }
+          .oh-card-badges { justify-content: flex-start !important; }
+          .oh-card-ref, .oh-card-type { white-space: nowrap; }
+        }
+      `}</style>
     <div style={{ minHeight: '100vh' }}>
 
       <div style={{ maxWidth: '1040px', margin: '0 auto', padding: '28px 16px 48px' }}>
@@ -1177,10 +1189,10 @@ export default function OrdersHistoryPage() {
                     </div>
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ padding: '14px 16px 10px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px' }}>
+                    <div className="oh-card-head" style={{ padding: '14px 16px 10px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px' }}>
                       <div style={{ minWidth: 0 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                          <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--white)', fontFamily: 'monospace', letterSpacing: '0.5px' }}>
+                        <div className="oh-card-meta" style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                          <span className="oh-card-ref" style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--white)', fontFamily: 'monospace', letterSpacing: '0.5px' }}>
                             {orderNo(oid)}
                           </span>
                           {order.isCustomOrder && (
@@ -1189,14 +1201,14 @@ export default function OrdersHistoryPage() {
                             </span>
                           )}
                           {order.isCustomOrder && order.designType && (
-                            <span style={{ fontSize: '0.72rem', color: 'var(--gray)' }}>
+                            <span className="oh-card-type" style={{ fontSize: '0.72rem', color: 'var(--gray)' }}>
                               {customTypeLabel(order)}
                             </span>
                           )}
                         </div>
                         <div style={{ fontSize: '0.73rem', color: 'var(--gray)', marginTop: '3px' }}>{formatDate(order.createdAt)}</div>
                       </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                      <div className="oh-card-badges" style={{ display: 'flex', alignItems: 'center', gap: '5px', flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                         <PaymentStatusBadge status={order.paymentStatus} />
                         <StatusBadge status={order.orderStatus} />
                       </div>
@@ -2518,5 +2530,6 @@ export default function OrdersHistoryPage() {
         </div>
       )}
     </div>
+    </>
   );
 }
