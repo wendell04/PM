@@ -5547,3 +5547,12 @@ html.light .shop-search-suggest-name { color: #111; }
 .shop-cart-popup, .shop-notif-panel, .mobile-sheet, .mobile-sheet-body {
   overscroll-behavior: contain;
 }
+
+/* Profile on a phone: the page had 2rem of padding, the tab card another 2rem inside it, and each
+   field card its own on top of that - about 100px of margin before a 375px screen has shown
+   anything. Boxes inside boxes is right on a desktop and wrong here, so the outer two give way and
+   the innermost keeps its shape. */
+@media (max-width: 640px) {
+  .profile-layout { padding: 12px !important; gap: 12px !important; }
+  .profile-tab-card { padding: 14px !important; border-radius: 12px !important; }
+}

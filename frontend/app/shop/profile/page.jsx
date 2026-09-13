@@ -1710,6 +1710,7 @@ export default function CustomerProfilePage() {
         {/* RIGHT: Tab Content */}
         <section style={{ flex: 1, minWidth: 0 }}>
           <div
+            className="profile-tab-card"
             style={{
               background: "var(--dark2)",
               border: "1px solid var(--border)",
