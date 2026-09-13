@@ -291,6 +291,26 @@ export default function StaffHome() {
     return () => { cancelled = true; };
   }, [isOwnerView, loading, sales]);
 
+  // The three figures the old Dashboard card carried, from data this page already has - no extra
+  // calls. Today's money is the same ledger as the chart above it (payments, not sale value), so
+  // the two cannot disagree.
+  const salesMetrics = useMemo(() => {
+    const today = new Date();
+    const sameDay = (d) => d.getFullYear() === today.getFullYear()
+      && d.getMonth() === today.getMonth() && d.getDate() === today.getDate();
+    const collectedToday = payments.filter(p => sameDay(p.at)).reduce((a, p) => a + p.amount, 0);
+    const liveOrders = orders.filter(o =>
+      !['cancelled', 'returned'].includes(String(o.orderStatus ?? o.status ?? '').toLowerCase())).length;
+    // Profit is only knowable on a completed sale, and only where the costs were recorded.
+    const profit = (sales ?? []).reduce((a, s2) => {
+      const own = Number(s2.profit ?? 0);
+      if (own) return a + own;
+      const lines = Array.isArray(s2.lines) ? s2.lines : [];
+      return a + lines.reduce((b, l) => b + Number(l.profit ?? 0), 0);
+    }, 0);
+    return { collectedToday, liveOrders, profit };
+  }, [payments, orders, sales]);
+
   const tiles = MODULES.filter(m => allows(m.key));
   const peakMonth = Math.max(1, ...byMonth.map(b => b.total));
 
@@ -449,6 +469,29 @@ export default function StaffHome() {
                     </div>
                   </div>
                 )}
+              </div>
+            </div>
+          )}
+
+          {/* ── Sales metrics - the figures the old Dashboard card carried, under the chart they
+                 belong with. The old Dashboard stays where it is; this is not a replacement. ── */}
+          {isOwnerView && !loading && (
+            <div style={{ ...S.card, marginBottom: 16 }}>
+              <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', fontSize: 13, fontWeight: 700 }}>
+                Sales metrics
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 1, background: 'var(--border)' }}>
+                {[
+                  { label: 'Collected today', value: peso(salesMetrics.collectedToday), note: 'Money that arrived today' },
+                  { label: 'Live orders', value: String(salesMetrics.liveOrders), note: 'Not cancelled or returned' },
+                  { label: 'Profit, completed sales', value: peso(salesMetrics.profit), note: 'Only where cost was recorded' },
+                ].map(m => (
+                  <div key={m.label} style={{ background: 'var(--dark2)', padding: '14px 16px' }}>
+                    <div style={{ fontSize: 11, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: 0.6, fontWeight: 700 }}>{m.label}</div>
+                    <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--gold)', marginTop: 4 }}>{m.value}</div>
+                    <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 2 }}>{m.note}</div>
+                  </div>
+                ))}
               </div>
             </div>
           )}
