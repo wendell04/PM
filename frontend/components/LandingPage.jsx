@@ -8,6 +8,7 @@ import NoImage from '@/components/NoImage';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import { getStorefrontBanners } from '@/lib/bannerUtils';
 import { useAuth } from '@/contexts/AuthContext';
+import PolicyModal from '@/components/PolicyModal';
 import Turnstile from '@/components/Turnstile';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useCart } from '@/context/CartContext';
@@ -181,6 +182,7 @@ const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=
 
   // Real landing stats (orders / customers / avg rating)
   const [landingStats, setLandingStats] = useState(null);
+  const [policyDoc, setPolicyDoc] = useState(null);   // which policy the footer opened
   // FAQ accordion
   const [openFaq, setOpenFaq] = useState(null);
   // CMS-editable pricing (falls back to hardcoded publicPricing)
@@ -2621,12 +2623,17 @@ const handleForgotResetPassword = async () => {
               <><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>Dark</>
             )}
           </button>
+          {/* These were href="#" - links that look like policies and go nowhere. They open the
+              real documents now, in a modal, the way the rest of the shop reads them. */}
           <div className="lp-footer-legal">
-            <a href="#">Privacy Policy</a>
-            <a href="#">Terms of Service</a>
+            <button type="button" onClick={() => setPolicyDoc('policy_privacy')}>Privacy Policy</button>
+            <button type="button" onClick={() => setPolicyDoc('policy_terms')}>Terms and Conditions</button>
+            <button type="button" onClick={() => setPolicyDoc('policy_returns')}>Return Policy</button>
           </div>
         </div>
       </footer>
+
+      <PolicyModal docKey={policyDoc} onClose={() => setPolicyDoc(null)} />
 
       {/* ── AUTH MODAL ── */}
       {modal && (

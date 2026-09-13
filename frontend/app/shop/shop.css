@@ -5432,3 +5432,19 @@ html.light .shop-quick-view-btn:hover { background: #D4A843; color: #111; }
   /* The same destinations no longer need to crowd the top bar - that is what freed the search box. */
   .shop-navbar-orders, .shop-navbar-cart:not(.shop-navbar-orders) { display: none !important; }
 }
+
+/* Policy links in the footer are buttons (they open a modal), so they have to be dressed as the
+   links beside them rather than as buttons. */
+.shop-footer-policy-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0 0 0.5rem;
+  font: inherit;
+  color: inherit;
+  opacity: 0.75;
+  cursor: pointer;
+  text-align: left;
+  display: block;
+}
+.shop-footer-policy-btn:hover { opacity: 1; color: #d4a843; }

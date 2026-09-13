@@ -1,5 +1,6 @@
 'use client';
 import NoImage from '@/components/NoImage';
+import PolicyModal from '@/components/PolicyModal';
 // TwoFactorModal imported for inline 2FA - no page redirect needed
 import TwoFactorModal from '@/components/auth/TwoFactorModal';
 // Shared with the landing page so the sign-up form (fields, CAPTCHA, password rules, T&C) is identical.
@@ -382,6 +383,7 @@ export default function ShopLayout({ children }) {
   const searchRef = useRef(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchFocused, setSearchFocused] = useState(false);
+  const [policyDoc, setPolicyDoc] = useState(null);   // which policy the footer opened
   const [menuOpen, setMenuOpen] = useState(false);
   const [cartOpen, setCartOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -1564,6 +1566,18 @@ export default function ShopLayout({ children }) {
             </details>
             <details className="shop-footer-col">
               <summary>
+                <h4>Legal</h4>
+                <svg className="shop-footer-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+              </summary>
+              {/* Buttons, not links: the documents open where the customer is, like the rest of
+                  the shop's reading. */}
+              <button type="button" className="shop-footer-policy-btn" onClick={() => setPolicyDoc('policy_privacy')}>Privacy Policy</button>
+              <button type="button" className="shop-footer-policy-btn" onClick={() => setPolicyDoc('policy_terms')}>Terms and Conditions</button>
+              <button type="button" className="shop-footer-policy-btn" onClick={() => setPolicyDoc('policy_returns')}>Return Policy</button>
+            </details>
+
+            <details className="shop-footer-col">
+              <summary>
                 <h4>Account</h4>
                 <svg className="shop-footer-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
               </summary>
@@ -2021,6 +2035,8 @@ export default function ShopLayout({ children }) {
           <span>You</span>
         </Link>
       </nav>
+
+      <PolicyModal docKey={policyDoc} onClose={() => setPolicyDoc(null)} />
 
       {/* Floating chat widget */}
       <CustomerChatModal

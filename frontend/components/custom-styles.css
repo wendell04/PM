@@ -4766,3 +4766,16 @@ html.light .lp-pinnacle-prod-img { border-color: #e5e5e3; }
   .hero-slide { transform: none !important; transition: opacity 0.2s linear !important; }
   .hero-slider-img { transition: opacity 0.2s linear !important; }
 }
+
+/* Same on the landing footer: they were anchors, they are buttons now, and they must not look
+   like it. */
+.lp-footer-legal button {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  opacity: 0.75;
+}
+.lp-footer-legal button:hover { opacity: 1; color: var(--gold); }
