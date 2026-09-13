@@ -501,9 +501,10 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
     return () => window.removeEventListener('resize', onResize);
   }, [fabPos]);
 
-  // Within this of an edge, releasing docks it. Wide enough to hit with a thumb, narrow enough
-  // that a bubble parked mid-screen does not dock by accident.
-  const FAB_DOCK_EDGE = 48;
+  // Near enough counts. Shoving the bubble hard against the glass is not a thing a thumb does
+  // accurately, so anything released within this of an edge falls into the dock; a bubble left
+  // out in the middle of the screen still stays exactly where it was put.
+  const FAB_DOCK_EDGE = 90;
 
   const onFabPointerDown = (e) => {
     if (open || !touchLayout) return;       // desktop: the bubble stays where it is
