@@ -4,6 +4,7 @@ import NoImage from '@/components/NoImage';
 import { PLAIN_OR_CUSTOM_ENABLED } from '@/lib/featureFlags';
 
 import useLockBodyScroll from '@/lib/useLockBodyScroll';
+import useSheetDrag from '@/lib/useSheetDrag';
 import { useState, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Image from 'next/image';
@@ -52,6 +53,7 @@ function getDisplayPrice(product) {
 
 // ─── Quick View Modal ─────────────────────────────────────────────────────────
 function QuickViewModal({ product, flashSale, onClose, onToast }) {
+  const qvDrag = useSheetDrag(onClose);
   const moq = product.minOrderQty || 1;
   const [selOpts, setSelOpts] = useState({});
   const [selVars, setSelVars] = useState(() => {
@@ -318,7 +320,8 @@ function QuickViewModal({ product, flashSale, onClose, onToast }) {
 
   return (
     <div className="shop-qv-backdrop" onClick={onClose}>
-      <div className="shop-qv-modal" onClick={e => e.stopPropagation()}>
+      {/* The handle at its top said this could be dragged; it could not. Now it can. */}
+      <div className="shop-qv-modal" ref={qvDrag.ref} {...qvDrag.handlers} onClick={e => e.stopPropagation()}>
         <button className="shop-qv-close" onClick={onClose}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
@@ -958,29 +961,8 @@ export default function ShopClient({
     setTimeout(() => { setMobileSheet(null); setSheetClosing(false); }, 240);
   };
 
-  // Drag it down to dismiss. The handle at the top says the sheet can be dragged and it could not
-  // be - the cart and notification sheets have done this since they were built.
-  const sheetRef = useRef(null);
-  const sheetDragY = useRef(0);
-  const onSheetDragStart = (e) => { sheetDragY.current = e.touches[0].clientY; };
-  const onSheetDragMove = (e) => {
-    if (!sheetRef.current) return;
-    const dy = e.touches[0].clientY - sheetDragY.current;
-    if (dy <= 0) return;                       // upward is not a dismissal
-    sheetRef.current.style.transition = 'none';
-    sheetRef.current.style.transform = `translateY(${dy}px)`;
-  };
-  const onSheetDragEnd = (e) => {
-    if (!sheetRef.current) return;
-    const dy = e.changedTouches[0].clientY - sheetDragY.current;
-    sheetRef.current.style.transition = 'transform 0.24s cubic-bezier(0.32,0.72,0,1)';
-    if (dy > 90) {
-      sheetRef.current.style.transform = 'translateY(110%)';
-      setTimeout(() => { setMobileSheet(null); if (sheetRef.current) sheetRef.current.style.transform = ''; }, 220);
-      return;
-    }
-    sheetRef.current.style.transform = 'translateY(0)';
-  };
+  // One implementation for every sheet, so they all answer a thumb the same way.
+  const filterDrag = useSheetDrag(() => setMobileSheet(null));
   // Locks the grid behind the sheet (and the chat launcher steps aside while it is open).
   useLockBodyScroll(!!mobileSheet);
   const [sortOpen, setSortOpen]         = useState(false);
@@ -2055,10 +2037,8 @@ export default function ShopClient({
           <div className={`mobile-sheet-backdrop${sheetClosing ? ' closing' : ''}`} onClick={closeSheet} />
           <div
             className={`mobile-sheet${sheetClosing ? ' closing' : ''}`}
-            ref={sheetRef}
-            onTouchStart={onSheetDragStart}
-            onTouchMove={onSheetDragMove}
-            onTouchEnd={onSheetDragEnd}
+            ref={filterDrag.ref}
+            {...filterDrag.handlers}
           >
             <div className="mobile-sheet-handle" />
             <div className="mobile-sheet-header">
