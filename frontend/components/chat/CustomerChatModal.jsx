@@ -458,7 +458,7 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
   // a sticky footer. It moves now, snaps to the nearer edge, and remembers where it was left.
   const FAB_STORE = 'pmp_chat_fab';
   const [fabPos, setFabPos]       = useState(null);   // { x, y } in viewport px
-  const [fabDock, setFabDock]     = useState(null);   // 'left' | 'right' when pushed into an edge
+  // No docking: the owner tried it and preferred the bubble simply staying where it is put.
   const [fabDrag, setFabDrag]     = useState(null);   // { x, y } while a drag is in flight
   // Dragging belongs to touch screens. On a desktop the pointer is precise, nothing is in the
   // bubble's way, and a button that can half-vanish is only a way to lose it.
@@ -477,13 +477,12 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
       const saved = JSON.parse(localStorage.getItem(FAB_STORE) || 'null');
       if (saved && Number.isFinite(saved.x) && Number.isFinite(saved.y)) {
         setFabPos({ x: saved.x, y: saved.y });
-        setFabDock(saved.dock === 'left' || saved.dock === 'right' ? saved.dock : null);
       }
     } catch { /* a stored position is a convenience, never a requirement */ }
   }, []);
 
-  const fabSave = (pos, dock) => {
-    try { localStorage.setItem(FAB_STORE, JSON.stringify({ ...pos, dock })); } catch {}
+  const fabSave = (pos) => {
+    try { localStorage.setItem(FAB_STORE, JSON.stringify(pos)); } catch {}
   };
 
   // Where it may come to rest: on screen, clear of the top bar, and above the bottom bar on a
@@ -500,11 +499,6 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
   }, [fabPos]);
-
-  // Near enough counts. Shoving the bubble hard against the glass is not a thing a thumb does
-  // accurately, so anything released within this of an edge falls into the dock; a bubble left
-  // out in the middle of the screen still stays exactly where it was put.
-  const FAB_DOCK_EDGE = 90;
 
   const onFabPointerDown = (e) => {
     if (open || !touchLayout) return;       // desktop: the bubble stays where it is
@@ -535,22 +529,11 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
     try { e.currentTarget.releasePointerCapture(e.pointerId); } catch {}
     if (!d.moved) { setFabDrag(null); return; }   // a tap - the click handler takes it
 
-    // It stays where it was put. The edges are the only special case: pushed into one, it docks
-    // with half of itself off the screen.
-    const rest = fabClamp(e.clientX - d.dx, e.clientY - d.dy, d.w, d.h);
-    const dock = rest.x <= FAB_DOCK_EDGE
-      ? 'left'
-      : rest.x >= window.innerWidth - d.w - FAB_DOCK_EDGE
-        ? 'right'
-        : null;
-    const pos = dock
-      ? { x: dock === 'left' ? 0 : window.innerWidth - d.w, y: rest.y }
-      : rest;
-
+    // It stays exactly where it was put - no edge does anything special to it.
+    const pos = fabClamp(e.clientX - d.dx, e.clientY - d.dy, d.w, d.h);
     setFabPos(pos);
-    setFabDock(dock);
     setFabDrag(null);
-    fabSave(pos, dock);
+    fabSave(pos);
   };
 
   // A desktop ignores whatever a phone stored: the bubble sits where the stylesheet puts it.
@@ -567,7 +550,7 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
       {/* Floating launcher */}
       <button
         type="button"
-        className={`cw-launcher ${open ? 'cw-launcher--open' : ''}${fabDrag ? ' cw-launcher--dragging' : ''}${touchLayout && fabDock && !fabDrag && !open ? ` cw-launcher--tucked cw-launcher--tucked-${fabDock}` : ''}`}
+        className={`cw-launcher ${open ? 'cw-launcher--open' : ''}${fabDrag ? ' cw-launcher--dragging' : ''}`}
         style={fabStyle}
         onPointerDown={onFabPointerDown}
         onPointerMove={onFabPointerMove}
@@ -576,14 +559,6 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
         onClick={() => {
           // A drag is not a tap. Without this every drag would end by opening the chat.
           if (fabRef.current.moved) { fabRef.current.moved = false; return; }
-          // A docked bubble slides fully back in before it opens - otherwise the panel appears
-          // beside a button that is still half off the screen.
-          if (fabDock && fabPos) {
-            const back = { x: fabDock === 'left' ? 12 : window.innerWidth - 64, y: fabPos.y };
-            setFabPos(back);
-            setFabDock(null);
-            fabSave(back, null);
-          }
           const next = !open;
           setOpen(next);
           if (next && conversations.length > 0 && view === 'home') setView('messages');

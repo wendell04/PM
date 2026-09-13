@@ -1757,16 +1757,6 @@ html.light .chat-box-switch { background: rgba(0, 0, 0, 0.04); }
   transform: scale(1.06);
   box-shadow: 0 10px 28px rgba(0,0,0,0.45);
 }
-/* Docked: half of it slides off the edge and what remains is a tab of colour - no icon, no badge.
-   An icon sliced down the middle reads as a rendering fault; a plain shape reads as parked. */
-.cw-launcher--tucked svg,
-.cw-launcher--tucked .cw-launcher-badge { display: none; }
-
-/* Docked: half of it slides off the edge and the sliver of colour stays. Not dimmed - a faded
-   button reads as disabled, and this one is very much alive. */
-.cw-launcher--tucked-right { transform: translateX(50%); }
-.cw-launcher--tucked-left  { transform: translateX(-50%); }
-.cw-launcher--tucked:active { transform: none; }
 
 /* Dragging is for touch screens; a desktop pointer needs no handle to grab and nothing is in the
    bubble's way there. */
