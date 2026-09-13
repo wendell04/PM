@@ -743,6 +743,12 @@ function getAvailableStatuses(o) {
       // Cancel stays on offer until production starts. A paid, approved order had no moves at
       // all, so it could be cancelled only while it still read "pending".
       pending_review:      paidCustom ? ['Cancelled'] : ['awaiting_payment', 'Cancelled'],
+      // The design stages had no entry at all, so an order abandoned after its design fee - proof
+      // sent, never answered - showed "No available transitions" and could not be closed. Nothing
+      // has been produced at these stages, so Cancel is the only move that makes sense.
+      pending_design:      ['Cancelled'],
+      proof_sent:          ['Cancelled'],
+      revision_requested:  ['Cancelled'],
       design_approved:     paidCustom ? ['Cancelled'] : ['awaiting_payment', 'Cancelled'],
       awaiting_payment:    ['Cancelled'],
       awaiting_production: ['Cancelled'],

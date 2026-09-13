@@ -1659,7 +1659,7 @@ export default function ShopLayout({ children }) {
               {/* Buttons, not links: the documents open where the customer is, like the rest of
                   the shop's reading. */}
               <button type="button" className="shop-footer-policy-btn" onClick={() => setPolicyDoc('policy_privacy')}>Privacy Policy</button>
-              <button type="button" className="shop-footer-policy-btn" onClick={() => setPolicyDoc('policy_terms')}>Terms and Conditions</button>
+              <button type="button" className="shop-footer-policy-btn" onClick={() => setPolicyDoc('policy_terms')}>T&amp;C</button>
             </details>
 
             <details className="shop-footer-col">

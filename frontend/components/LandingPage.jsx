@@ -2627,7 +2627,7 @@ const handleForgotResetPassword = async () => {
               real documents now, in a modal, the way the rest of the shop reads them. */}
           <div className="lp-footer-legal">
             <button type="button" onClick={() => setPolicyDoc('policy_privacy')}>Privacy Policy</button>
-            <button type="button" onClick={() => setPolicyDoc('policy_terms')}>Terms and Conditions</button>
+            <button type="button" onClick={() => setPolicyDoc('policy_terms')}>T&amp;C</button>
           </div>
         </div>
       </footer>

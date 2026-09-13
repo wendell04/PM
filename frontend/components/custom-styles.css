@@ -4769,15 +4769,15 @@ html.light .lp-pinnacle-prod-img { border-color: #e5e5e3; }
 
 /* Same on the landing footer: they were anchors, they are buttons now, and they must not look
    like it. */
+/* Exactly the copyright line beside them - same size, same weight of colour. They are the same
+   kind of small print, and two sizes of small print reads as a mistake. */
 .lp-footer-legal button {
   background: none;
   border: none;
   padding: 0;
-  font: inherit;
-  /* `inherit` picked up the footer's own near-black, so the links were dark text on a dark band -
-     present but unreadable. They take the footer's link colour instead. */
-  color: rgba(245, 245, 245, 0.7);
+  font-family: Arial, Arimo, Helvetica, sans-serif;
+  font-size: 0.78rem;
+  color: rgba(255, 255, 255, 0.3);
   cursor: pointer;
 }
 .lp-footer-legal button:hover { color: var(--gold); }
-html.light .lp-footer-legal button { color: rgba(245, 245, 245, 0.7); }
