@@ -1959,6 +1959,69 @@ export default function ShopLayout({ children }) {
         </div>
       )}
 
+      {/* Bottom bar - phones and small tablets only.
+          Six things were competing for 375px of top bar, which is why the search box was squeezed
+          to 160px. The destinations belong where the thumb is; the top keeps the logo, the search
+          and the bell. Home leaves the shop for the landing page, which is what the owner asked
+          for and what the same bar does on Shopee and Temu. */}
+      <nav className="shop-bottom-nav" aria-label="Shop">
+        <Link href="/" className={`sbn-item${pathname === '/' ? ' active' : ''}`}>
+          <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M3 9.5L12 3l9 6.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>
+          </svg>
+          <span>Home</span>
+        </Link>
+
+        <Link
+          href={user ? '/shop/orders-history' : '/shop'}
+          className={`sbn-item${pathname.startsWith('/shop/orders-history') ? ' active' : ''}`}
+          onClick={e => {
+            // Signed out there is nothing to show, and bouncing someone to an empty page is worse
+            // than asking them to sign in.
+            if (user) return;
+            e.preventDefault();
+            setAuthModalType('login');
+            setAuthModalSubtitle('Sign in to see your orders.');
+            setAuthModalOpen(true);
+          }}
+        >
+          <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+            <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
+            <line x1="12" y1="22.08" x2="12" y2="12"/>
+          </svg>
+          <span>My Orders</span>
+        </Link>
+
+        <Link href="/shop/cart" className={`sbn-item${pathname.startsWith('/shop/cart') ? ' active' : ''}`}>
+          <span className="sbn-icon-wrap">
+            <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/>
+              <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
+            </svg>
+            {globalCartCount > 0 && <span className="sbn-badge">{globalCartCount > 99 ? '99+' : globalCartCount}</span>}
+          </span>
+          <span>Cart</span>
+        </Link>
+
+        <Link
+          href={user ? '/shop/profile' : '/shop'}
+          className={`sbn-item${pathname.startsWith('/shop/profile') ? ' active' : ''}`}
+          onClick={e => {
+            if (user) return;
+            e.preventDefault();
+            setAuthModalType('login');
+            setAuthModalSubtitle('Sign in to your account.');
+            setAuthModalOpen(true);
+          }}
+        >
+          <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+          </svg>
+          <span>You</span>
+        </Link>
+      </nav>
+
       {/* Floating chat widget */}
       <CustomerChatModal
         user={user}

@@ -453,13 +453,113 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
     return new Date(ts).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', hour12: true });
   };
 
+  // ── Draggable launcher (Messenger-style chat head) ───────────────────────────────────────
+  // Nailed to the bottom-right, it covered whatever the page put there - Close, "Show results",
+  // a sticky footer. It moves now, snaps to the nearer edge, and remembers where it was left.
+  const FAB_STORE = 'pmp_chat_fab';
+  const [fabPos, setFabPos]       = useState(null);   // { side: 'left' | 'right', top: px }
+  const [fabTucked, setFabTucked] = useState(false);
+  const [fabDrag, setFabDrag]     = useState(null);   // { x, y } while a drag is in flight
+  const [fabOverHide, setFabOverHide] = useState(false);
+  const fabRef = useRef({ active: false, moved: false, dx: 0, dy: 0, w: 52, h: 52, sx: 0, sy: 0 });
+
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(FAB_STORE) || 'null');
+      if (saved && (saved.side === 'left' || saved.side === 'right')) {
+        setFabPos({ side: saved.side, top: Number(saved.top) || 0 });
+        setFabTucked(!!saved.tucked);
+      }
+    } catch { /* a stored position is a convenience, never a requirement */ }
+  }, []);
+
+  const fabSave = (pos, tucked) => {
+    try { localStorage.setItem(FAB_STORE, JSON.stringify({ ...pos, tucked })); } catch {}
+  };
+
+  const fabHideTargetAt = () => ({
+    x: (typeof window !== 'undefined' ? window.innerWidth : 0) / 2,
+    y: (typeof window !== 'undefined' ? window.innerHeight : 0) - 84,
+  });
+
+  const onFabPointerDown = (e) => {
+    if (open) return;                       // while the panel is open this button is just Close
+    const r = e.currentTarget.getBoundingClientRect();
+    fabRef.current = {
+      active: true, moved: false,
+      dx: e.clientX - r.left, dy: e.clientY - r.top,
+      w: r.width, h: r.height, sx: e.clientX, sy: e.clientY,
+    };
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch {}
+  };
+
+  const onFabPointerMove = (e) => {
+    const d = fabRef.current;
+    if (!d.active) return;
+    if (!d.moved && Math.hypot(e.clientX - d.sx, e.clientY - d.sy) > 6) d.moved = true;
+    if (!d.moved) return;
+    e.preventDefault();
+    const x = e.clientX - d.dx;
+    const y = e.clientY - d.dy;
+    setFabDrag({ x, y });
+    const t = fabHideTargetAt();
+    setFabOverHide(Math.hypot(e.clientX - t.x, e.clientY - t.y) < 70);
+  };
+
+  const onFabPointerUp = (e) => {
+    const d = fabRef.current;
+    if (!d.active) return;
+    d.active = false;
+    try { e.currentTarget.releasePointerCapture(e.pointerId); } catch {}
+    if (!d.moved) { setFabDrag(null); return; }   // a tap - the click handler takes it
+
+    const t = fabHideTargetAt();
+    const tuck = Math.hypot(e.clientX - t.x, e.clientY - t.y) < 70;
+    const side = (e.clientX < window.innerWidth / 2) ? 'left' : 'right';
+    // Kept clear of the top bar and of the bottom bar on a phone.
+    const lowest = window.innerHeight - d.h - (window.innerWidth <= 900 ? 78 : 16);
+    const top    = Math.max(64, Math.min(e.clientY - d.dy, lowest));
+    const pos    = { side, top };
+
+    setFabPos(pos);
+    setFabTucked(tuck);
+    setFabDrag(null);
+    setFabOverHide(false);
+    fabSave(pos, tuck);
+  };
+
+  const fabStyle = fabDrag
+    ? { left: fabDrag.x, top: fabDrag.y, right: 'auto', bottom: 'auto' }
+    : fabPos
+      ? (fabPos.side === 'left'
+          ? { left: 12, right: 'auto', top: fabPos.top, bottom: 'auto' }
+          : { right: 12, left: 'auto', top: fabPos.top, bottom: 'auto' })
+      : undefined;
+
   return (
     <>
+      {/* Drop here to tuck it away. Only while a drag is in flight, like the chat head it copies. */}
+      {fabDrag && (
+        <div className={`cw-fab-hide${fabOverHide ? ' over' : ''}`} aria-hidden="true">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+            <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </div>
+      )}
+
       {/* Floating launcher */}
       <button
         type="button"
-        className={`cw-launcher ${open ? 'cw-launcher--open' : ''}`}
+        className={`cw-launcher ${open ? 'cw-launcher--open' : ''}${fabDrag ? ' cw-launcher--dragging' : ''}${fabTucked && !fabDrag && !open ? ` cw-launcher--tucked cw-launcher--tucked-${fabPos?.side || 'right'}` : ''}`}
+        style={fabStyle}
+        onPointerDown={onFabPointerDown}
+        onPointerMove={onFabPointerMove}
+        onPointerUp={onFabPointerUp}
+        onPointerCancel={onFabPointerUp}
         onClick={() => {
+          // A drag is not a tap. Without this every drag would end by opening the chat.
+          if (fabRef.current.moved) { fabRef.current.moved = false; return; }
+          if (fabTucked) { setFabTucked(false); fabSave(fabPos || { side: 'right', top: 0 }, false); }
           const next = !open;
           setOpen(next);
           if (next && conversations.length > 0 && view === 'home') setView('messages');

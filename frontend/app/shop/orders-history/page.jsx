@@ -11,6 +11,7 @@ import { StatusBadge, humanizeStatus, formatDate, formatPeso } from '@/lib/shopU
 import { remainingDue } from '@/lib/orderBalance';
 import { getEcho } from '@/lib/echo';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
+import useLockBodyScroll from '@/lib/useLockBodyScroll';
 import { useCart } from '@/app/shop/layout';
 import { normalizeStatus } from '@/lib/orderStatus';
 import NoImage from '@/components/NoImage';
@@ -656,14 +657,11 @@ export default function OrdersHistoryPage() {
     return () => clearInterval(pollRef.current);
   }, [token, modalOpen, loadOrders]);
 
-  // Lock background scroll while any modal/overlay is open (fixes mobile bg-scroll)
-  useEffect(() => {
-    const anyOpen = modalOpen || !!cancelTarget || payNowFailedModal;
-    if (!anyOpen) return;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = prev; };
-  }, [modalOpen, cancelTarget, payNowFailedModal]);
+  // Lock background scroll while any modal/overlay is open. This was a hand-rolled copy of the
+  // shared hook and, being a copy, it never picked up what the hook learned: marking the body so
+  // anything fixed to the viewport steps aside. That is why the chat launcher still sat on top of
+  // this modal's own buttons on a phone.
+  useLockBodyScroll(modalOpen || !!cancelTarget || payNowFailedModal);
 
   useEffect(() => {
     if (!token || orders.length === 0) return;

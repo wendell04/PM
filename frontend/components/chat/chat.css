@@ -786,6 +786,11 @@
    Close outright. It comes back the moment the modal does. */
 body.pmp-modal-open .cw-launcher { display: none !important; }
 
+/* Above the bottom bar, not on top of it. */
+@media (max-width: 900px) {
+  .cw-launcher { bottom: calc(74px + env(safe-area-inset-bottom)); right: 16px; }
+}
+
 /* Floating launcher button */
 .cw-launcher {
   position: fixed;
@@ -1739,3 +1744,38 @@ html.light .cw-new-conv-btn:hover {
 }
 .chat-box-tab.active .chat-box-count { background: rgba(0, 0, 0, 0.22); color: #111; }
 html.light .chat-box-switch { background: rgba(0, 0, 0, 0.04); }
+
+/* ── Draggable chat head ─────────────────────────────────────────────────────
+   Dragging must not scroll the page under the finger, and a dragged bubble must not animate its
+   way to where the finger already is. */
+.cw-launcher { touch-action: none; }
+.cw-launcher--dragging {
+  transition: none !important;
+  cursor: grabbing;
+  transform: scale(1.06);
+  box-shadow: 0 10px 28px rgba(0,0,0,0.45);
+}
+/* Tucked: half off the edge and dimmed, exactly as far as a thumb still finds it. */
+.cw-launcher--tucked { opacity: 0.45; }
+.cw-launcher--tucked-right { transform: translateX(45%); }
+.cw-launcher--tucked-left  { transform: translateX(-45%); }
+.cw-launcher--tucked:hover, .cw-launcher--tucked:active { opacity: 1; transform: none; }
+
+.cw-fab-hide {
+  position: fixed;
+  left: 50%;
+  bottom: 56px;
+  transform: translateX(-50%);
+  width: 56px; height: 56px;
+  border-radius: 50%;
+  background: rgba(0,0,0,0.55);
+  color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  z-index: 1399;
+  pointer-events: none;
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+.cw-fab-hide.over {
+  background: rgba(239,68,68,0.85);
+  transform: translateX(-50%) scale(1.18);
+}
