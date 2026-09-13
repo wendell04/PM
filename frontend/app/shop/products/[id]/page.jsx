@@ -3,7 +3,7 @@ import { cloudinaryThumb } from '@/lib/cloudinaryImage';
 import { PLAIN_OR_CUSTOM_ENABLED } from '@/lib/featureFlags';
 import { optionGroupsOf, defaultOptionSelection, selectedOptionList, optionsUnitAdd, optionsOrderAdd, withOptionSuffix, unansweredOptionGroups, optionKey, groupKey } from '@/lib/shopUtils';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCart } from '@/context/CartContext';
@@ -33,6 +33,7 @@ export default function ProductDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [activeImage, setActiveImage] = useState(0);
+  const swipeRef = useRef(null);   // where a drag on the gallery started
   const [selectedVariants, setSelectedVariants] = useState({});
   const [selectedOptions, setSelectedOptions] = useState({});
   const [quantity, setQuantity] = useState(1);
@@ -764,9 +765,27 @@ export default function ProductDetailPage() {
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="9 18 15 12 9 6"/></svg>
                   </button>
                 )}
-                {/* Click to open lightbox */}
-                <div onClick={() => { if (displayImages.length > 0) { setLightboxIndex(activeImage); setLightboxOpen(true); } }}
-                  style={{ position: 'absolute', inset: 0, cursor: 'zoom-in', zIndex: 1 }} />
+                {/* Swipe to change the picture, tap to open it. The arrows were the only way
+                    through the gallery, which is not how anyone holds a phone. A drag past 40px
+                    that is more sideways than up-and-down turns the page; anything smaller is a
+                    tap. touch-action keeps vertical scrolling with the page. */}
+                <div
+                  onPointerDown={e => { swipeRef.current = { x: e.clientX, y: e.clientY }; }}
+                  onPointerUp={e => {
+                    const start = swipeRef.current;
+                    swipeRef.current = null;
+                    if (!start || displayImages.length === 0) return;
+                    const dx = e.clientX - start.x;
+                    const dy = e.clientY - start.y;
+                    if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy)) {
+                      setActiveImage(i => Math.max(0, Math.min(displayImages.length - 1, i + (dx < 0 ? 1 : -1))));
+                      return;
+                    }
+                    setLightboxIndex(activeImage);
+                    setLightboxOpen(true);
+                  }}
+                  onPointerCancel={() => { swipeRef.current = null; }}
+                  style={{ position: 'absolute', inset: 0, cursor: 'zoom-in', zIndex: 1, touchAction: 'pan-y' }} />
                 {flashSale && (
                   <div style={{ position: 'absolute', top: '0.75rem', left: '0.75rem', zIndex: 3, background: flashSale.discountType === 'percentage' ? '#ef4444' : 'var(--gold)', color: flashSale.discountType === 'percentage' ? '#fff' : '#000', fontWeight: 800, fontSize: '0.8rem', padding: '0.3rem 0.75rem', borderRadius: '999px' }}>
                     {flashSale.discountType === 'percentage' ? `${flashSale.discountValue}% OFF` : `₱${flashSale.discountValue} OFF`}

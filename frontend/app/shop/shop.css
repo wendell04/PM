@@ -5522,3 +5522,10 @@ html.light .shop-search-suggest-name { color: #111; }
   .mobile-sheet, .mobile-sheet.closing,
   .mobile-sheet-backdrop, .mobile-sheet-backdrop.closing { animation: none !important; }
 }
+
+/* The avatar is a circle at every width. An <img> is inline by default, so it sat on a text
+   baseline inside the button and left a sliver of the button's own background showing - which is
+   the gap that made it look shrunken on a phone. The button also keeps its size when the navbar
+   gets tight. */
+.shop-navbar-user-btn { min-width: 40px; min-height: 40px; }
+.shop-navbar-user-btn img { display: block; width: 100%; height: 100%; object-fit: cover; }
