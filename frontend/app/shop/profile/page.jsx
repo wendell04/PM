@@ -218,7 +218,7 @@ function TwoFactorSection({ token, twoFactorEnabled, setTwoFactorEnabled }) {
   };
 
   return (
-    <div style={{ border: "1px solid var(--border)", borderRadius: "12px", overflow: "hidden" }}>
+    <div className="pf-group" style={{ border: "1px solid var(--border)", borderRadius: "12px", overflow: "hidden" }}>
       <div style={{ padding: "0.875rem 1.25rem", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: "0.5rem" }}>
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gray-light)" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
         <span style={{ fontSize: "0.8125rem", fontWeight: 600, color: "var(--white)" }}>Two-Factor Authentication</span>
@@ -1346,6 +1346,11 @@ export default function CustomerProfilePage() {
                 width={80}
                 height={80}
                 style={{
+                  // Stated in CSS as well as in the props: with only width/height attributes a
+                  // narrow column could shrink it, which is what happened on a phone.
+                  width: "80px",
+                  height: "80px",
+                  minWidth: "80px",
                   borderRadius: "50%",
                   objectFit: "cover",
                   display: "block",
@@ -2227,7 +2232,7 @@ export default function CustomerProfilePage() {
                 {!isEditingProfile ? (
                   <>
                     {/* Name section */}
-                    <div style={{ border: "1px solid var(--border)", borderRadius: "12px", overflow: "hidden" }}>
+                    <div className="pf-group" style={{ border: "1px solid var(--border)", borderRadius: "12px", overflow: "hidden" }}>
                       <div style={{ padding: "0.75rem 1.25rem", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: "0.5rem" }}>
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gray-light)" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
                         <span style={{ fontSize: "0.8125rem", fontWeight: 600, color: "var(--white)" }}>Identity</span>
@@ -2246,7 +2251,7 @@ export default function CustomerProfilePage() {
                     </div>
 
                     {/* Contact section */}
-                    <div style={{ border: "1px solid var(--border)", borderRadius: "12px", overflow: "hidden" }}>
+                    <div className="pf-group" style={{ border: "1px solid var(--border)", borderRadius: "12px", overflow: "hidden" }}>
                       <div style={{ padding: "0.75rem 1.25rem", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: "0.5rem" }}>
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gray-light)" strokeWidth="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
                         <span style={{ fontSize: "0.8125rem", fontWeight: 600, color: "var(--white)" }}>Contact</span>
@@ -2275,7 +2280,7 @@ export default function CustomerProfilePage() {
                   </>
                 ) : (
                   /* Edit form */
-                  <div style={{ border: "1px solid var(--border)", borderRadius: "12px", overflow: "hidden" }}>
+                  <div className="pf-group" style={{ border: "1px solid var(--border)", borderRadius: "12px", overflow: "hidden" }}>
                     <div style={{ padding: "0.75rem 1.25rem", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: "0.5rem", background: "rgba(212,168,67,0.04)" }}>
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                       <span style={{ fontSize: "0.68rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--gray)" }}>Editing Profile</span>
@@ -2327,7 +2332,7 @@ export default function CustomerProfilePage() {
                 </div>
 
                 {/* Password card */}
-                <div style={{ border: "1px solid var(--border)", borderRadius: "12px", overflow: "hidden" }}>
+                <div className="pf-group" style={{ border: "1px solid var(--border)", borderRadius: "12px", overflow: "hidden" }}>
                   <div style={{ padding: "0.75rem 1.25rem", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: "0.5rem" }}>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gray-light)" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
                     <span style={{ fontSize: "0.8125rem", fontWeight: 600, color: "var(--white)" }}>Change Password</span>

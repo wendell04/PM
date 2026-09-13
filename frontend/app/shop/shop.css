@@ -5556,3 +5556,17 @@ html.light .shop-search-suggest-name { color: #111; }
   .profile-layout { padding: 12px !important; gap: 12px !important; }
   .profile-tab-card { padding: 14px !important; border-radius: 12px !important; }
 }
+
+/* Profile groups on a phone: a card inside a card inside a card is a desktop idea. Here the
+   groups lose their own frame and become plain rows separated by a hairline - the pattern every
+   phone's own settings screen uses - so the fields get the full width instead of three sets of
+   padding. */
+@media (max-width: 640px) {
+  .pf-group {
+    border: none !important;
+    border-radius: 0 !important;
+    overflow: visible !important;
+  }
+  .pf-group + .pf-group { border-top: 1px solid var(--border) !important; }
+  .pf-group > div { padding-left: 0 !important; padding-right: 0 !important; }
+}
