@@ -37,17 +37,9 @@ const DRAFTS = {
       { title: 'Delivery', body: 'The courier’s fee is separate from your order total and is shown separately. Where the rider collects it, have the amount ready in cash on arrival. Delivery dates are estimates; we tell you as soon as anything changes.' },
       { title: 'Your artwork', body: 'You confirm that you own the rights to whatever you send us, or have permission to use it. We decline work that infringes someone else’s rights.' },
       { title: 'Cancelling', body: 'You may cancel before production starts. Once your design is approved and production has begun, a custom order cannot be cancelled, because personalised goods cannot be resold.' },
-    ],
-  },
-  policy_returns: {
-    title: 'Return and Refund Policy',
-    sections: [
-      { title: 'What we replace or refund', body: 'If an item arrives damaged, or differs from the proof you approved, tell us within 3 days of delivery with photos. We remake it, or refund it, whichever you prefer.' },
-      { title: 'What we cannot take back', body: 'Personalised items that came out as approved cannot be returned - a name, a date or a photo on a mug makes it unsellable to anyone else. This is why we send a proof first.' },
-      { title: 'Ready-made items', body: 'Unused ready-made stock may be returned within 7 days of delivery in its original condition. Return postage is yours unless the item was faulty.' },
-      { title: 'How a refund is paid', body: 'Refunds go back the way you paid. Online payments return through PayMongo, which can take a few banking days. Cash payments are refunded by GCash or Maya to the number you give us.' },
-      { title: 'The delivery fee', body: 'A delivery fee already paid to the courier is not ours to return, except where we cancelled the order before it was booked.' },
-      { title: 'Talk to us first', body: 'Message us in chat or at personalizemeprints.admin@gmail.com. Most problems are fixed by a remake, and quickly.' },
+      { title: 'Returns and refunds - what we replace', body: 'If an item arrives damaged, or differs from the proof you approved, tell us within 3 days of delivery with photos. We remake it, or refund it, whichever you prefer.' },
+      { title: 'Returns and refunds - what we cannot take back', body: 'Personalised items that came out as approved cannot be returned: a name, a date or a photo on a mug makes it unsellable to anyone else. This is why we send a proof first. Unused ready-made stock may be returned within 7 days in its original condition; return postage is yours unless the item was faulty.' },
+      { title: 'Returns and refunds - how a refund is paid', body: 'Refunds go back the way you paid. Online payments return through PayMongo, which can take a few banking days; cash payments are refunded by GCash or Maya to the number you give us. A delivery fee already paid to the courier is not ours to return, except where we cancelled the order before it was booked.' },
     ],
   },
 };

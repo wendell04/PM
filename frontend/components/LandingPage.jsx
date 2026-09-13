@@ -2628,7 +2628,6 @@ const handleForgotResetPassword = async () => {
           <div className="lp-footer-legal">
             <button type="button" onClick={() => setPolicyDoc('policy_privacy')}>Privacy Policy</button>
             <button type="button" onClick={() => setPolicyDoc('policy_terms')}>Terms and Conditions</button>
-            <button type="button" onClick={() => setPolicyDoc('policy_returns')}>Return Policy</button>
           </div>
         </div>
       </footer>

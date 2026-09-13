@@ -5441,12 +5441,12 @@ html.light .shop-quick-view-btn:hover { background: #D4A843; color: #111; }
   padding: 0;
   margin: 0 0 0.5rem;
   font: inherit;
-  color: inherit;
-  opacity: 0.75;
+  color: rgba(245, 245, 245, 0.72);
   cursor: pointer;
   text-align: left;
   display: block;
 }
+html.light .shop-footer-policy-btn { color: rgba(17, 17, 17, 0.7); }
 .shop-footer-policy-btn:hover { opacity: 1; color: #d4a843; }
 
 /* Search suggestions - the catalogue answering as you type. */

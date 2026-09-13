@@ -1660,7 +1660,6 @@ export default function ShopLayout({ children }) {
                   the shop's reading. */}
               <button type="button" className="shop-footer-policy-btn" onClick={() => setPolicyDoc('policy_privacy')}>Privacy Policy</button>
               <button type="button" className="shop-footer-policy-btn" onClick={() => setPolicyDoc('policy_terms')}>Terms and Conditions</button>
-              <button type="button" className="shop-footer-policy-btn" onClick={() => setPolicyDoc('policy_returns')}>Return Policy</button>
             </details>
 
             <details className="shop-footer-col">
