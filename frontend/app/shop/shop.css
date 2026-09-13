@@ -5495,3 +5495,26 @@ html.light .shop-search-suggest-row { border-bottom-color: rgba(0,0,0,0.06); }
 }
 html.light .shop-search-suggest-name { color: #111; }
 .shop-search-suggest-cat { font-size: 0.72rem; color: #9a9a9a; }
+
+/* The sheet leaves the way it came. Without this it simply disappeared, which on a phone reads as
+   the page losing its place rather than a panel closing. */
+@keyframes mobileSheetSlideDown {
+  from { transform: translateY(0); }
+  to   { transform: translateY(100%); }
+}
+@keyframes mobileSheetFadeOut {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+@media (max-width: 900px) {
+  .mobile-sheet.closing {
+    animation: mobileSheetSlideDown 0.24s cubic-bezier(0.32, 0.72, 0, 1) forwards;
+  }
+  .mobile-sheet-backdrop.closing {
+    animation: mobileSheetFadeOut 0.24s ease forwards;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mobile-sheet, .mobile-sheet.closing,
+  .mobile-sheet-backdrop, .mobile-sheet-backdrop.closing { animation: none !important; }
+}

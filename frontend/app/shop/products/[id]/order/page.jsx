@@ -1048,6 +1048,19 @@ function CustomOrderInner() {
         .co-modes { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-bottom: 1.25rem; }
         @media (max-width: 560px) { .co-modes { grid-template-columns: 1fr; } }
         @media (max-width: 768px) { .custom-order-grid { grid-template-columns: 1fr; } .custom-order-sidebar { position: static !important; } }
+        /* A phone has a third of the width this page was drawn for, so the chrome gives way first:
+           headings, padding and gaps step down. Controls do NOT shrink - a button under about 44px
+           is a button a thumb misses, and this page is nothing but controls. */
+        @media (max-width: 640px) {
+          .custom-order-grid { gap: 14px !important; }
+          .custom-order-grid h1 { font-size: 1.35rem !important; line-height: 1.25 !important; }
+          .custom-order-grid h2 { font-size: 1.05rem !important; }
+          .custom-order-grid h3, .custom-order-grid h4 { font-size: 0.92rem !important; }
+          .custom-order-grid > div > div { padding: 0.9rem !important; }
+          .custom-order-sidebar > div { padding: 0.95rem !important; }
+          .custom-order-sidebar { margin-bottom: 0 !important; }
+          .co-modes { gap: 8px !important; }
+        }
       `}</style>
 
       <div style={{ maxWidth: 1100, margin: '0 auto' }}>

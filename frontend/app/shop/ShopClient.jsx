@@ -950,6 +950,13 @@ export default function ShopClient({
   const [priceMax, setPriceMax]         = useState(Infinity);
   const [sidebarOpen, setSidebarOpen]   = useState(false);
   const [mobileSheet, setMobileSheet]   = useState(null);
+  // The sheet slid up and then vanished on close. It leaves the way it arrived: the class runs the
+  // slide-down, and the sheet is unmounted when that finishes.
+  const [sheetClosing, setSheetClosing] = useState(false);
+  const closeSheet = () => {
+    setSheetClosing(true);
+    setTimeout(() => { setMobileSheet(null); setSheetClosing(false); }, 240);
+  };
   // Locks the grid behind the sheet (and the chat launcher steps aside while it is open).
   useLockBodyScroll(!!mobileSheet);
   const [sortOpen, setSortOpen]         = useState(false);
@@ -2021,8 +2028,8 @@ export default function ShopClient({
         <>
           {/* Locking the page stops the grid scrolling under the sheet, and the lock is what
               tells the chat launcher to get out from over "Show results". */}
-          <div className="mobile-sheet-backdrop" onClick={() => setMobileSheet(null)} />
-          <div className="mobile-sheet">
+          <div className={`mobile-sheet-backdrop${sheetClosing ? ' closing' : ''}`} onClick={closeSheet} />
+          <div className={`mobile-sheet${sheetClosing ? ' closing' : ''}`}>
             <div className="mobile-sheet-handle" />
             <div className="mobile-sheet-header">
               <span className="mobile-sheet-title">
@@ -2032,7 +2039,7 @@ export default function ShopClient({
                 {mobileSheet === 'collections' && 'Collections'}
                 {mobileSheet === 'price' && 'Price Range'}
               </span>
-              <button className="mobile-sheet-close" onClick={() => setMobileSheet(null)} aria-label="Close">
+              <button className="mobile-sheet-close" onClick={closeSheet} aria-label="Close">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
                 </svg>
@@ -2191,7 +2198,7 @@ export default function ShopClient({
                   Clear all
                 </button>
               )}
-              <button className="mobile-sheet-apply" onClick={() => setMobileSheet(null)}>
+              <button className="mobile-sheet-apply" onClick={closeSheet}>
                 {activeFilterCount > 0 ? `Show results (${filtered.length})` : 'Apply'}
               </button>
             </div>
