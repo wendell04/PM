@@ -3877,28 +3877,21 @@ details.shop-footer-col > .shop-footer-pay-grid { display: flex; }
 .shop-sidebar {
   width: 255px;
   flex-shrink: 0;
-  position: sticky;
-  top: 24px;
-  max-height: calc(100vh - 48px);
-  overflow-y: auto;
+  /* Shown whole, on the owner's call. It used to stick to the viewport with its own scrollbar,
+     which meant the price slider sat below a fold that nothing announced. The rail is as tall as
+     its filters now and the page scrolls; the trade is that it no longer follows you down the
+     grid. */
+  position: static;
+  max-height: none;
+  overflow: visible;
   border-radius: 14px;
   background: #1c1c1c;
   border: 1px solid rgba(255,255,255,0.1);
   box-shadow: 0 4px 20px rgba(0,0,0,0.35);
 }
-/* The rail scrolls when it is taller than the screen - hiding the bar outright left the price
-   slider looking chopped off with nothing to say there was more below. */
-.shop-sidebar { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.28) transparent; padding-bottom: 8px; -webkit-overflow-scrolling: touch; }
-.shop-sidebar::-webkit-scrollbar { width: 8px; }
-.shop-sidebar::-webkit-scrollbar-track { background: transparent; }
-.shop-sidebar::-webkit-scrollbar-thumb {
-  background: rgba(255,255,255,0.28);
-  border-radius: 8px;
-  border: 2px solid transparent;
-  background-clip: content-box;
-}
-html.light .shop-sidebar { scrollbar-color: rgba(0,0,0,0.25) transparent; }
-html.light .shop-sidebar::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.25); background-clip: content-box; }
+/* No inner scrollbar to style any more - the rail shows every filter and the page does the
+   scrolling. Kept: a little room under the last control. */
+.shop-sidebar { padding-bottom: 8px; }
 
 /* Sidebar header - "Filters" title + clear button */
 .shop-sidebar-head {
@@ -3907,8 +3900,9 @@ html.light .shop-sidebar::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.25)
   justify-content: space-between;
   padding: 0.9rem 1.25rem;
   border-bottom: 1px solid rgba(255,255,255,0.08);
-  position: sticky;
-  top: 0;
+  /* It stuck to the rail's own scroll, which the rail no longer has. Left sticky it would peel
+     off and follow the PAGE instead, floating over the filters. */
+  position: static;
   z-index: 2;
   background: #242424;
   border-radius: 14px 14px 0 0;
