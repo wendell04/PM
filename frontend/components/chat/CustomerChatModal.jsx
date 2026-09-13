@@ -460,8 +460,17 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
   const [fabPos, setFabPos]       = useState(null);   // { side: 'left' | 'right', top: px }
   const [fabTucked, setFabTucked] = useState(false);
   const [fabDrag, setFabDrag]     = useState(null);   // { x, y } while a drag is in flight
-  const [fabOverHide, setFabOverHide] = useState(false);
+  // Dragging belongs to touch screens. On a desktop the pointer is precise, nothing is in the
+  // bubble's way, and a button that can half-vanish is only a way to lose it.
+  const [touchLayout, setTouchLayout] = useState(false);
   const fabRef = useRef({ active: false, moved: false, dx: 0, dy: 0, w: 52, h: 52, sx: 0, sy: 0 });
+
+  useEffect(() => {
+    const calc = () => setTouchLayout(window.innerWidth <= 1024);
+    calc();
+    window.addEventListener('resize', calc);
+    return () => window.removeEventListener('resize', calc);
+  }, []);
 
   useEffect(() => {
     try {
@@ -477,13 +486,12 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
     try { localStorage.setItem(FAB_STORE, JSON.stringify({ ...pos, tucked })); } catch {}
   };
 
-  const fabHideTargetAt = () => ({
-    x: (typeof window !== 'undefined' ? window.innerWidth : 0) / 2,
-    y: (typeof window !== 'undefined' ? window.innerHeight : 0) - 84,
-  });
+  // Within this of an edge, releasing docks it. Wide enough to hit with a thumb, narrow enough
+  // that a bubble parked mid-screen does not dock by accident.
+  const FAB_DOCK_EDGE = 48;
 
   const onFabPointerDown = (e) => {
-    if (open) return;                       // while the panel is open this button is just Close
+    if (open || !touchLayout) return;       // desktop: the bubble stays where it is
     const r = e.currentTarget.getBoundingClientRect();
     fabRef.current = {
       active: true, moved: false,
@@ -502,8 +510,6 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
     const x = e.clientX - d.dx;
     const y = e.clientY - d.dy;
     setFabDrag({ x, y });
-    const t = fabHideTargetAt();
-    setFabOverHide(Math.hypot(e.clientX - t.x, e.clientY - t.y) < 70);
   };
 
   const onFabPointerUp = (e) => {
@@ -513,8 +519,8 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
     try { e.currentTarget.releasePointerCapture(e.pointerId); } catch {}
     if (!d.moved) { setFabDrag(null); return; }   // a tap - the click handler takes it
 
-    const t = fabHideTargetAt();
-    const tuck = Math.hypot(e.clientX - t.x, e.clientY - t.y) < 70;
+    // The edge IS the hiding place: let go near one and it docks, half off the screen.
+    const dock = e.clientX <= FAB_DOCK_EDGE || e.clientX >= window.innerWidth - FAB_DOCK_EDGE;
     const side = (e.clientX < window.innerWidth / 2) ? 'left' : 'right';
     // Kept clear of the top bar and of the bottom bar on a phone.
     const lowest = window.innerHeight - d.h - (window.innerWidth <= 900 ? 78 : 16);
@@ -522,35 +528,28 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
     const pos    = { side, top };
 
     setFabPos(pos);
-    setFabTucked(tuck);
+    setFabTucked(dock);
     setFabDrag(null);
-    setFabOverHide(false);
-    fabSave(pos, tuck);
+    fabSave(pos, dock);
   };
 
-  const fabStyle = fabDrag
-    ? { left: fabDrag.x, top: fabDrag.y, right: 'auto', bottom: 'auto' }
-    : fabPos
-      ? (fabPos.side === 'left'
-          ? { left: 12, right: 'auto', top: fabPos.top, bottom: 'auto' }
-          : { right: 12, left: 'auto', top: fabPos.top, bottom: 'auto' })
-      : undefined;
+  // A desktop ignores whatever a phone stored: the bubble sits where the stylesheet puts it.
+  const fabStyle = !touchLayout
+    ? undefined
+    : fabDrag
+      ? { left: fabDrag.x, top: fabDrag.y, right: 'auto', bottom: 'auto' }
+      : fabPos
+        ? (fabPos.side === 'left'
+            ? { left: 12, right: 'auto', top: fabPos.top, bottom: 'auto' }
+            : { right: 12, left: 'auto', top: fabPos.top, bottom: 'auto' })
+        : undefined;
 
   return (
     <>
-      {/* Drop here to tuck it away. Only while a drag is in flight, like the chat head it copies. */}
-      {fabDrag && (
-        <div className={`cw-fab-hide${fabOverHide ? ' over' : ''}`} aria-hidden="true">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-            <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-          </svg>
-        </div>
-      )}
-
       {/* Floating launcher */}
       <button
         type="button"
-        className={`cw-launcher ${open ? 'cw-launcher--open' : ''}${fabDrag ? ' cw-launcher--dragging' : ''}${fabTucked && !fabDrag && !open ? ` cw-launcher--tucked cw-launcher--tucked-${fabPos?.side || 'right'}` : ''}`}
+        className={`cw-launcher ${open ? 'cw-launcher--open' : ''}${fabDrag ? ' cw-launcher--dragging' : ''}${touchLayout && fabTucked && !fabDrag && !open ? ` cw-launcher--tucked cw-launcher--tucked-${fabPos?.side || 'right'}` : ''}`}
         style={fabStyle}
         onPointerDown={onFabPointerDown}
         onPointerMove={onFabPointerMove}

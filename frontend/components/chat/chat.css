@@ -1755,34 +1755,14 @@ html.light .chat-box-switch { background: rgba(0, 0, 0, 0.04); }
   transform: scale(1.06);
   box-shadow: 0 10px 28px rgba(0,0,0,0.45);
 }
-/* Tucked: half off the edge and dimmed, exactly as far as a thumb still finds it. */
-.cw-launcher--tucked { opacity: 0.45; }
-.cw-launcher--tucked-right { transform: translateX(45%); }
-.cw-launcher--tucked-left  { transform: translateX(-45%); }
-.cw-launcher--tucked:hover, .cw-launcher--tucked:active { opacity: 1; transform: none; }
+/* Docked: half of it slides off the edge and the sliver of colour stays. Not dimmed - a faded
+   button reads as disabled, and this one is very much alive. */
+.cw-launcher--tucked-right { transform: translateX(50%); }
+.cw-launcher--tucked-left  { transform: translateX(-50%); }
+.cw-launcher--tucked:active { transform: none; }
 
-.cw-fab-hide {
-  position: fixed;
-  left: 50%;
-  bottom: 56px;
-  transform: translateX(-50%);
-  width: 56px; height: 56px;
-  border-radius: 50%;
-  background: rgba(0,0,0,0.55);
-  color: #fff;
-  display: flex; align-items: center; justify-content: center;
-  z-index: 1399;
-  pointer-events: none;
-  transition: transform 0.15s ease, background 0.15s ease;
+/* Dragging is for touch screens; a desktop pointer needs no handle to grab and nothing is in the
+   bubble's way there. */
+@media (min-width: 1025px) {
+  .cw-launcher { touch-action: auto; }
 }
-.cw-fab-hide.over {
-  background: rgba(239,68,68,0.85);
-  transform: translateX(-50%) scale(1.18);
-}
-/* Clear of the bottom bar - the two landed on top of each other, so the drop target sat half
-   behind the tabs. */
-@media (max-width: 900px) {
-  .cw-fab-hide { bottom: calc(96px + env(safe-area-inset-bottom)); }
-}
-/* Tucked, it has to stay findable: a sliver at 45% is enough to see and wide enough to tap. */
-.cw-launcher--tucked { opacity: 0.55; }
