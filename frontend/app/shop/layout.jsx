@@ -1,6 +1,7 @@
 'use client';
 import NoImage from '@/components/NoImage';
 import PolicyModal from '@/components/PolicyModal';
+import useLockBodyScroll from '@/lib/useLockBodyScroll';
 // TwoFactorModal imported for inline 2FA - no page redirect needed
 import TwoFactorModal from '@/components/auth/TwoFactorModal';
 // Shared with the landing page so the sign-up form (fields, CAPTCHA, password rules, T&C) is identical.
@@ -1024,6 +1025,11 @@ export default function ShopLayout({ children }) {
     window.addEventListener('unhandledrejection', handler);
     return () => window.removeEventListener('unhandledrejection', handler);
   }, []);
+
+  // Dragging a sheet down dragged the page with it: blocking touchmove outside the panel is not
+  // the same as locking the page, because the drag itself happens INSIDE the panel. The lock does
+  // the rest (and marks the body, so the chat head and the tab bar step aside too).
+  useLockBodyScroll(cartOpen || notifOpen);
 
   // Scroll lock when cart or notif sheet is open (phones only)
   useEffect(() => {

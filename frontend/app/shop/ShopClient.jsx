@@ -957,6 +957,30 @@ export default function ShopClient({
     setSheetClosing(true);
     setTimeout(() => { setMobileSheet(null); setSheetClosing(false); }, 240);
   };
+
+  // Drag it down to dismiss. The handle at the top says the sheet can be dragged and it could not
+  // be - the cart and notification sheets have done this since they were built.
+  const sheetRef = useRef(null);
+  const sheetDragY = useRef(0);
+  const onSheetDragStart = (e) => { sheetDragY.current = e.touches[0].clientY; };
+  const onSheetDragMove = (e) => {
+    if (!sheetRef.current) return;
+    const dy = e.touches[0].clientY - sheetDragY.current;
+    if (dy <= 0) return;                       // upward is not a dismissal
+    sheetRef.current.style.transition = 'none';
+    sheetRef.current.style.transform = `translateY(${dy}px)`;
+  };
+  const onSheetDragEnd = (e) => {
+    if (!sheetRef.current) return;
+    const dy = e.changedTouches[0].clientY - sheetDragY.current;
+    sheetRef.current.style.transition = 'transform 0.24s cubic-bezier(0.32,0.72,0,1)';
+    if (dy > 90) {
+      sheetRef.current.style.transform = 'translateY(110%)';
+      setTimeout(() => { setMobileSheet(null); if (sheetRef.current) sheetRef.current.style.transform = ''; }, 220);
+      return;
+    }
+    sheetRef.current.style.transform = 'translateY(0)';
+  };
   // Locks the grid behind the sheet (and the chat launcher steps aside while it is open).
   useLockBodyScroll(!!mobileSheet);
   const [sortOpen, setSortOpen]         = useState(false);
@@ -2029,7 +2053,13 @@ export default function ShopClient({
           {/* Locking the page stops the grid scrolling under the sheet, and the lock is what
               tells the chat launcher to get out from over "Show results". */}
           <div className={`mobile-sheet-backdrop${sheetClosing ? ' closing' : ''}`} onClick={closeSheet} />
-          <div className={`mobile-sheet${sheetClosing ? ' closing' : ''}`}>
+          <div
+            className={`mobile-sheet${sheetClosing ? ' closing' : ''}`}
+            ref={sheetRef}
+            onTouchStart={onSheetDragStart}
+            onTouchMove={onSheetDragMove}
+            onTouchEnd={onSheetDragEnd}
+          >
             <div className="mobile-sheet-handle" />
             <div className="mobile-sheet-header">
               <span className="mobile-sheet-title">

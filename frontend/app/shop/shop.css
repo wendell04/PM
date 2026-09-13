@@ -5542,3 +5542,8 @@ html.light .shop-search-suggest-name { color: #111; }
   .pf-split > * { min-width: 0; }
   .pf-split button { width: 100%; }
 }
+
+/* A flick inside a sheet must not hand the rest of the movement to the page behind it. */
+.shop-cart-popup, .shop-notif-panel, .mobile-sheet, .mobile-sheet-body {
+  overscroll-behavior: contain;
+}
