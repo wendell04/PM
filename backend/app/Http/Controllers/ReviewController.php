@@ -221,8 +221,11 @@ class ReviewController extends Controller
     public function storefrontStats(Request $request)
     {
         try {
-            $orders    = Order::count();
-            $customers = Order::pluck('userId')->filter()->unique()->count();
+            // Cancelled orders are not orders the shop delivered, and counting them inflates the
+            // one number on the landing page a visitor is most likely to check against reality.
+            $live      = Order::whereNotIn('orderStatus', ['cancelled', 'Cancelled'])->get(['userId']);
+            $orders    = $live->count();
+            $customers = $live->pluck('userId')->filter()->unique()->count();
             $avgRating = Review::where('is_visible', true)->avg('rating');
             $reviews   = Review::where('is_visible', true)->count();
 

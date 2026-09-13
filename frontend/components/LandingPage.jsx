@@ -2198,11 +2198,20 @@ const handleForgotResetPassword = async () => {
                   <div className="fcard-label">Satisfaction Rate</div>
                   <div className="fcard-value red-text">{landingStats?.avgRating ? `${Math.round(landingStats.avgRating / 5 * 100)}%` : '-'}</div>
                   <div className="fcard-bar"><div className="fcard-bar-fill" style={{width: landingStats?.avgRating ? `${Math.round(landingStats.avgRating / 5 * 100)}%` : '0%',background:'linear-gradient(90deg,var(--red-dark),var(--red))'}}/></div>
+                  {/* The count belongs to the rating it is the basis of. It used to sit under the
+                      customer count, where it read as a claim about customers. */}
+                  <div style={{fontSize:'.75rem',color:'var(--gray)',marginTop:'.5rem'}}>
+                    {landingStats?.reviewsCount
+                      ? `from ${landingStats.reviewsCount} verified review${landingStats.reviewsCount === 1 ? '' : 's'}`
+                      : 'awaiting the first review'}
+                  </div>
                 </div></div>
                 <div className="fcard"><div className="fcard-inner">
-                  <div className="fcard-label">Happy Customers</div>
+                  {/* "Happy" is a claim about how people feel, and nothing here measures that -
+                      this is the number of people who ordered. Say that instead. */}
+                  <div className="fcard-label">Customers Served</div>
                   <div className="fcard-value gold-text">{landingStats ? landingStats.customers.toLocaleString() : '-'}</div>
-                  <div style={{fontSize:'.75rem',color:'var(--gray)',marginTop:'.5rem'}}>{landingStats?.reviewsCount ? `${landingStats.reviewsCount} verified review${landingStats.reviewsCount === 1 ? '' : 's'}` : 'and counting'}</div>
+                  <div style={{fontSize:'.75rem',color:'var(--gray)',marginTop:'.5rem'}}>and counting</div>
                 </div></div>
               </div>
             </div>
