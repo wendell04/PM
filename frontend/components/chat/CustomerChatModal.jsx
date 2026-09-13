@@ -457,8 +457,8 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
   // Nailed to the bottom-right, it covered whatever the page put there - Close, "Show results",
   // a sticky footer. It moves now, snaps to the nearer edge, and remembers where it was left.
   const FAB_STORE = 'pmp_chat_fab';
-  const [fabPos, setFabPos]       = useState(null);   // { side: 'left' | 'right', top: px }
-  const [fabTucked, setFabTucked] = useState(false);
+  const [fabPos, setFabPos]       = useState(null);   // { x, y } in viewport px
+  const [fabDock, setFabDock]     = useState(null);   // 'left' | 'right' when pushed into an edge
   const [fabDrag, setFabDrag]     = useState(null);   // { x, y } while a drag is in flight
   // Dragging belongs to touch screens. On a desktop the pointer is precise, nothing is in the
   // bubble's way, and a button that can half-vanish is only a way to lose it.
@@ -475,16 +475,31 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
   useEffect(() => {
     try {
       const saved = JSON.parse(localStorage.getItem(FAB_STORE) || 'null');
-      if (saved && (saved.side === 'left' || saved.side === 'right')) {
-        setFabPos({ side: saved.side, top: Number(saved.top) || 0 });
-        setFabTucked(!!saved.tucked);
+      if (saved && Number.isFinite(saved.x) && Number.isFinite(saved.y)) {
+        setFabPos({ x: saved.x, y: saved.y });
+        setFabDock(saved.dock === 'left' || saved.dock === 'right' ? saved.dock : null);
       }
     } catch { /* a stored position is a convenience, never a requirement */ }
   }, []);
 
-  const fabSave = (pos, tucked) => {
-    try { localStorage.setItem(FAB_STORE, JSON.stringify({ ...pos, tucked })); } catch {}
+  const fabSave = (pos, dock) => {
+    try { localStorage.setItem(FAB_STORE, JSON.stringify({ ...pos, dock })); } catch {}
   };
+
+  // Where it may come to rest: on screen, clear of the top bar, and above the bottom bar on a
+  // phone. A bubble parked under the tabs is a bubble nobody can reach.
+  const fabClamp = (x, y, w, h) => ({
+    x: Math.max(0, Math.min(x, window.innerWidth - w)),
+    y: Math.max(64, Math.min(y, window.innerHeight - h - (window.innerWidth <= 900 ? 74 : 16))),
+  });
+
+  // A stored position from a bigger window can land off-screen after a rotate or a resize.
+  useEffect(() => {
+    if (!fabPos) return undefined;
+    const onResize = () => setFabPos(p => (p ? fabClamp(p.x, p.y, 52, 52) : p));
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, [fabPos]);
 
   // Within this of an edge, releasing docks it. Wide enough to hit with a thumb, narrow enough
   // that a bubble parked mid-screen does not dock by accident.
@@ -519,16 +534,20 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
     try { e.currentTarget.releasePointerCapture(e.pointerId); } catch {}
     if (!d.moved) { setFabDrag(null); return; }   // a tap - the click handler takes it
 
-    // The edge IS the hiding place: let go near one and it docks, half off the screen.
-    const dock = e.clientX <= FAB_DOCK_EDGE || e.clientX >= window.innerWidth - FAB_DOCK_EDGE;
-    const side = (e.clientX < window.innerWidth / 2) ? 'left' : 'right';
-    // Kept clear of the top bar and of the bottom bar on a phone.
-    const lowest = window.innerHeight - d.h - (window.innerWidth <= 900 ? 78 : 16);
-    const top    = Math.max(64, Math.min(e.clientY - d.dy, lowest));
-    const pos    = { side, top };
+    // It stays where it was put. The edges are the only special case: pushed into one, it docks
+    // with half of itself off the screen.
+    const rest = fabClamp(e.clientX - d.dx, e.clientY - d.dy, d.w, d.h);
+    const dock = rest.x <= FAB_DOCK_EDGE
+      ? 'left'
+      : rest.x >= window.innerWidth - d.w - FAB_DOCK_EDGE
+        ? 'right'
+        : null;
+    const pos = dock
+      ? { x: dock === 'left' ? 0 : window.innerWidth - d.w, y: rest.y }
+      : rest;
 
     setFabPos(pos);
-    setFabTucked(dock);
+    setFabDock(dock);
     setFabDrag(null);
     fabSave(pos, dock);
   };
@@ -539,9 +558,7 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
     : fabDrag
       ? { left: fabDrag.x, top: fabDrag.y, right: 'auto', bottom: 'auto' }
       : fabPos
-        ? (fabPos.side === 'left'
-            ? { left: 12, right: 'auto', top: fabPos.top, bottom: 'auto' }
-            : { right: 12, left: 'auto', top: fabPos.top, bottom: 'auto' })
+        ? { left: fabPos.x, top: fabPos.y, right: 'auto', bottom: 'auto' }
         : undefined;
 
   return (
@@ -549,7 +566,7 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
       {/* Floating launcher */}
       <button
         type="button"
-        className={`cw-launcher ${open ? 'cw-launcher--open' : ''}${fabDrag ? ' cw-launcher--dragging' : ''}${touchLayout && fabTucked && !fabDrag && !open ? ` cw-launcher--tucked cw-launcher--tucked-${fabPos?.side || 'right'}` : ''}`}
+        className={`cw-launcher ${open ? 'cw-launcher--open' : ''}${fabDrag ? ' cw-launcher--dragging' : ''}${touchLayout && fabDock && !fabDrag && !open ? ` cw-launcher--tucked cw-launcher--tucked-${fabDock}` : ''}`}
         style={fabStyle}
         onPointerDown={onFabPointerDown}
         onPointerMove={onFabPointerMove}
@@ -558,7 +575,14 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
         onClick={() => {
           // A drag is not a tap. Without this every drag would end by opening the chat.
           if (fabRef.current.moved) { fabRef.current.moved = false; return; }
-          if (fabTucked) { setFabTucked(false); fabSave(fabPos || { side: 'right', top: 0 }, false); }
+          // A docked bubble slides fully back in before it opens - otherwise the panel appears
+          // beside a button that is still half off the screen.
+          if (fabDock && fabPos) {
+            const back = { x: fabDock === 'left' ? 12 : window.innerWidth - 64, y: fabPos.y };
+            setFabPos(back);
+            setFabDock(null);
+            fabSave(back, null);
+          }
           const next = !open;
           setOpen(next);
           if (next && conversations.length > 0 && view === 'home') setView('messages');
