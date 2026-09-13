@@ -5435,19 +5435,23 @@ html.light .shop-quick-view-btn:hover { background: #D4A843; color: #111; }
 
 /* Policy links in the footer are buttons (they open a modal), so they have to be dressed as the
    links beside them rather than as buttons. */
+/* Identical to the links beside them, in BOTH themes. The shop footer stays dark in light mode,
+   so the light-theme rule I gave these buttons painted near-black text on a near-black band: the
+   Legal column opened onto nothing. They are links in every way but the tag. */
 .shop-footer-policy-btn {
   background: none;
   border: none;
   padding: 0;
   margin: 0 0 0.5rem;
-  font: inherit;
-  color: rgba(245, 245, 245, 0.72);
+  font-family: inherit;
+  font-size: 0.85rem;
+  color: rgba(255,255,255,0.65);
   cursor: pointer;
   text-align: left;
   display: block;
+  transition: color 0.2s;
 }
-html.light .shop-footer-policy-btn { color: rgba(17, 17, 17, 0.7); }
-.shop-footer-policy-btn:hover { opacity: 1; color: #d4a843; }
+.shop-footer-policy-btn:hover { color: var(--gold); }
 
 /* Search suggestions - the catalogue answering as you type. */
 .shop-search-suggest {
