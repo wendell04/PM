@@ -3886,7 +3886,19 @@ details.shop-footer-col > .shop-footer-pay-grid { display: flex; }
   border: 1px solid rgba(255,255,255,0.1);
   box-shadow: 0 4px 20px rgba(0,0,0,0.35);
 }
-.shop-sidebar::-webkit-scrollbar { display: none; }
+/* The rail scrolls when it is taller than the screen - hiding the bar outright left the price
+   slider looking chopped off with nothing to say there was more below. */
+.shop-sidebar { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.28) transparent; padding-bottom: 8px; -webkit-overflow-scrolling: touch; }
+.shop-sidebar::-webkit-scrollbar { width: 8px; }
+.shop-sidebar::-webkit-scrollbar-track { background: transparent; }
+.shop-sidebar::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.28);
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+html.light .shop-sidebar { scrollbar-color: rgba(0,0,0,0.25) transparent; }
+html.light .shop-sidebar::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.25); background-clip: content-box; }
 
 /* Sidebar header - "Filters" title + clear button */
 .shop-sidebar-head {
@@ -5349,4 +5361,16 @@ html.light .shop-quick-view-btn:hover { background: #D4A843; color: #111; }
     font-family: Arial, Arimo, Helvetica, sans-serif;
   }
   .mobile-sheet-apply:active { filter: brightness(0.9); }
+}
+
+/* Momentum scrolling inside the sheet, and the navbar's My Orders icon on small screens only -
+   a desktop already has it in the avatar menu. */
+.mobile-sheet-body { -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+.shop-navbar-orders { display: none; }
+@media (max-width: 900px) {
+  .shop-navbar-orders { display: inline-flex; align-items: center; justify-content: center; }
+}
+/* In-page jumps glide instead of teleporting, unless the visitor asked for less motion. */
+@media (prefers-reduced-motion: no-preference) {
+  html { scroll-behavior: smooth; }
 }

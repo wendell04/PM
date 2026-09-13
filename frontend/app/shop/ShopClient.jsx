@@ -3,6 +3,7 @@ import { optionGroupsOf, selectedOptionList, optionsUnitAdd, optionsOrderAdd, wi
 import NoImage from '@/components/NoImage';
 import { PLAIN_OR_CUSTOM_ENABLED } from '@/lib/featureFlags';
 
+import useLockBodyScroll from '@/lib/useLockBodyScroll';
 import { useState, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Image from 'next/image';
@@ -949,6 +950,8 @@ export default function ShopClient({
   const [priceMax, setPriceMax]         = useState(Infinity);
   const [sidebarOpen, setSidebarOpen]   = useState(false);
   const [mobileSheet, setMobileSheet]   = useState(null);
+  // Locks the grid behind the sheet (and the chat launcher steps aside while it is open).
+  useLockBodyScroll(!!mobileSheet);
   const [sortOpen, setSortOpen]         = useState(false);
   const [showMoreCols, setShowMoreCols] = useState(false);
   const [banners, setBanners]         = useState(initialBanners);
@@ -2022,6 +2025,8 @@ export default function ShopClient({
       {/* ── Mobile filter bottom sheet ── */}
       {mobileSheet && (
         <>
+          {/* Locking the page stops the grid scrolling under the sheet, and the lock is what
+              tells the chat launcher to get out from over "Show results". */}
           <div className="mobile-sheet-backdrop" onClick={() => setMobileSheet(null)} />
           <div className="mobile-sheet">
             <div className="mobile-sheet-handle" />
