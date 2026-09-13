@@ -4284,6 +4284,24 @@
   .reviews-arrow { display: none; }
 }
 
+/* One card at a time: no track to move, so nothing depends on the screen's width or the gap. */
+.reviews-track-single {
+  display: block;
+  transform: none !important;
+}
+.reviews-track-single .review-card {
+  flex: 0 0 100%;
+  width: 100%;
+  animation: reviewSwapIn 0.35s ease;
+}
+@keyframes reviewSwapIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .reviews-track-single .review-card { animation: none; }
+}
+
 /* ── Announcement Bar ── */
 .lp-announcement-bar {
   background: #1a1a1a;

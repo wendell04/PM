@@ -1279,8 +1279,19 @@ export default function ShopLayout({ children }) {
             {/* Center - Search bar - B-01 (only on product browsing pages) */}
             {showSearch && (
               <div className={`shop-navbar-search${searchFocused ? ' focused' : ''}`}>
+                {/* Enter always worked, but nothing on screen said so - on a product page the box
+                    read as broken. The magnifier runs the same search. */}
                 <svg
                   className="shop-navbar-search-icon"
+                  role="button"
+                  tabIndex={0}
+                  aria-label="Search products"
+                  style={{ cursor: 'pointer' }}
+                  onClick={() => {
+                    const q = searchQuery.trim();
+                    if (!q) { searchRef.current?.focus(); return; }
+                    router.push('/shop?q=' + encodeURIComponent(q));
+                  }}
                   width="16" height="16" viewBox="0 0 24 24"
                   fill="none" stroke="currentColor"
                   strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
@@ -1292,7 +1303,7 @@ export default function ShopLayout({ children }) {
                   ref={searchRef}
                   type="text"
                   className="shop-navbar-search-input"
-                  placeholder="Search products..."
+                  placeholder="Search products, then press Enter"
                   value={searchQuery}
                   onChange={handleSearchChange}
                   onFocus={() => setSearchFocused(true)}

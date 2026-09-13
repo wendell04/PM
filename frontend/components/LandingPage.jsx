@@ -37,6 +37,17 @@ const HERO_SLIDER_IMAGES = [
   { src: '/products/Caps.jpg',           label: 'Caps',                 pos: 'center 60%'    },
 ];
 
+// A banner button from the CMS can ask for a modal instead of a link: put "register" or
+// "login" in its link field (with or without the #). Anything else stays an ordinary href.
+// Without this every CMS button was an href, so a seeded "Register Free" led to "#".
+function cmsCta(label, link) {
+  if (!label) return null;
+  const raw = String(link || '').trim().replace(/^#/, '').toLowerCase();
+  if (['register', 'signup', 'sign-up'].includes(raw)) return { label, action: 'register' };
+  if (['login', 'signin', 'sign-in'].includes(raw))    return { label, action: 'login' };
+  return { label, href: link || '#' };
+}
+
 const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=[]}) => {
   const router = useRouter();
   const { currentUser: user, token, logout } = useAuth();
@@ -1304,8 +1315,8 @@ const handleForgotResetPassword = async () => {
           tag:        b.tag || null,
           titleParts: parts.length > 0 ? parts : [{ text: '', plain: true }],
           subtitle:   b.subtext || '',
-          cta:        b.ctaLabel  ? { label: b.ctaLabel,  href: b.ctaLink  || '#' } : null,
-          cta2:       b.cta2Label ? { label: b.cta2Label, href: b.cta2Link || '#' } : null,
+          cta:        cmsCta(b.ctaLabel,  b.ctaLink),
+          cta2:       cmsCta(b.cta2Label, b.cta2Link),
         };
       })
     : heroSlides;
@@ -1877,7 +1888,8 @@ const handleForgotResetPassword = async () => {
                         </svg>
                       </button>
                     ))}
-                    {slide.cta2 && (slide.cta2.href ? (
+                    {/* Asking someone who is already signed in to register is noise. */}
+                    {slide.cta2 && !(user && slide.cta2.action) && (slide.cta2.href ? (
                       <a href={slide.cta2.href} className="btn-secondary">
                         {slide.cta2.label}
                       </a>
@@ -2205,12 +2217,21 @@ const handleForgotResetPassword = async () => {
                 aria-label="Previous reviews"
               >&#8249;</button>
               <div className="reviews-track-outer">
+                {/* One card on a phone is SWAPPED, not slid: a slide has to agree with the card
+                    width and the 20px gap on every screen size there is, and a gap's worth of drift
+                    is what left the second card cut in half. Three across still slides, where the
+                    arithmetic is stable. */}
                 <div
-                  className="reviews-track"
-                  style={{ transform: `translateX(-${reviewsIdx * (100 / reviewsPerView)}%)` }}
+                  className={reviewsPerView === 1 ? 'reviews-track reviews-track-single' : 'reviews-track'}
+                  style={reviewsPerView === 1
+                    ? undefined
+                    : { transform: `translateX(calc(-${reviewsIdx} * (100% + 20px) / ${reviewsPerView}))` }}
                 >
-                  {landingReviews.map((rv, i) => (
-                    <div className="review-card" key={i}>
+                  {(reviewsPerView === 1
+                    ? landingReviews.slice(reviewsIdx, reviewsIdx + 1)
+                    : landingReviews
+                  ).map((rv, i) => (
+                    <div className="review-card" key={reviewsPerView === 1 ? `single-${reviewsIdx}` : i}>
                       <div className="review-stars">
                         {[1,2,3,4,5].map(s => (
                           <span key={s} style={{ color: s <= rv.rating ? 'var(--gold)' : 'rgba(255,255,255,0.2)', fontSize: '1rem' }}>★</span>
