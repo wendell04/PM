@@ -9,6 +9,7 @@ import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import { getStorefrontBanners } from '@/lib/bannerUtils';
 import { useAuth } from '@/contexts/AuthContext';
 import PolicyModal from '@/components/PolicyModal';
+import { DEFAULT_REGISTRATION_TERMS } from '@/lib/registrationTerms';
 import Turnstile from '@/components/Turnstile';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useCart } from '@/context/CartContext';
@@ -183,6 +184,7 @@ const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=
   // Real landing stats (orders / customers / avg rating)
   const [landingStats, setLandingStats] = useState(null);
   const [policyDoc, setPolicyDoc] = useState(null);   // which policy the footer opened
+  const [registrationTerms, setRegistrationTerms] = useState(DEFAULT_REGISTRATION_TERMS);
   // FAQ accordion
   const [openFaq, setOpenFaq] = useState(null);
   // CMS-editable pricing (falls back to hardcoded publicPricing)
@@ -519,6 +521,9 @@ const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=
       .then(d => {
         if (cancelled) return;
         const st = d?.data ?? d ?? {};
+        if (Array.isArray(st.registrationTerms) && st.registrationTerms.length) {
+          setRegistrationTerms(st.registrationTerms);
+        }
         setContactCfg({
           enabled: st.contactFormEnabled !== false,
           success: st.contactSuccessMessage || null,
@@ -2779,24 +2784,15 @@ const handleForgotResetPassword = async () => {
               </p>
             )}
             <div className="tnc-content" ref={termsScrollRef} onScroll={handleTermsScroll}>
-              <p><strong>1. Acceptance of Terms</strong></p>
-              <p>By creating an account with Personalize Me Prints, you agree to comply with and be bound by these Terms and Conditions. If you do not agree with any part of these terms, please do not use our services.</p>
-              <p><strong>2. Account Registration</strong></p>
-              <p>You must provide accurate and complete information when registering for an account. You are responsible for maintaining the confidentiality of your account credentials and for all activities that occur under your account.</p>
-              <p><strong>3. Product Quality</strong></p>
-              <p>We strive to provide high-quality custom printing services. All products are subject to quality inspection before shipment. We are not responsible for damages caused by improper use or handling of printed products.</p>
-              <p><strong>4. Intellectual Property</strong></p>
-              <p>You warrant that any designs or content you upload for printing do not infringe upon any third-party rights. You grant us a non-exclusive license to use your designs solely for the purpose of fulfilling your order.</p>
-              <p><strong>5. Payment and Pricing</strong></p>
-              <p>All prices are subject to change without notice. Payment is required before production begins. We reserve the right to refuse any order for any reason.</p>
-              <p><strong>6. Shipping and Delivery</strong></p>
-              <p>Delivery times are estimates and not guaranteed. We are not responsible for delays caused by shipping carriers or customs processing.</p>
-              <p><strong>7. Returns and Refunds</strong></p>
-              <p>Due to the custom nature of our products, all sales are final. We will only accept returns or provide refunds for products that are damaged or significantly different from the approved proof.</p>
-              <p><strong>8. Limitation of Liability</strong></p>
-              <p>Personalize Me Prints shall not be liable for any indirect, incidental, or consequential damages arising from the use of our products or services.</p>
-              <p><strong>9. Changes to Terms</strong></p>
-              <p>We reserve the right to modify these terms at any time. Changes will be effective immediately upon posting on our website. Your continued use of our services after any changes constitutes acceptance of the new terms.</p>
+              {/* The clauses come from Settings - the same list the sign-up form and the footer
+                  read. They used to be typed here as well, so the shop had two wordings of the
+                  document people sign, and only one of them could be edited. */}
+              {registrationTerms.map((t, i) => (
+                <div key={i}>
+                  <p><strong>{i + 1}. {t.title}</strong></p>
+                  <p>{t.body}</p>
+                </div>
+              ))}
             </div>
             {hasReadTerms && (
               <div style={{padding:'1rem 1.5rem',borderTop:'1px solid var(--border)',display:'flex',alignItems:'center',gap:'0.75rem'}}>

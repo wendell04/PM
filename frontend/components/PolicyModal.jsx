@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import useLockBodyScroll from '@/lib/useLockBodyScroll';
+import { DEFAULT_REGISTRATION_TERMS } from '@/lib/registrationTerms';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
@@ -27,21 +28,6 @@ const DRAFTS = {
       { title: 'Contact', body: 'Questions about your information: personalizemeprints.admin@gmail.com.' },
     ],
   },
-  policy_terms: {
-    title: 'Terms and Conditions',
-    sections: [
-      { title: 'Ordering', body: 'Placing an order means you accept these terms. Prices shown are in Philippine peso. We may change prices, but never on an order already confirmed.' },
-      { title: 'Payment', body: 'Custom orders require a deposit before production begins; the rest is due before your order is released for delivery. Ready-made items are paid in full at checkout. A design fee, where one applies, is charged before the designer starts and is not refundable once the work has begun.' },
-      { title: 'Proof and approval', body: 'For custom work we send a proof and wait for your approval before printing. What you approve is what we print, so please check spelling, sizes and colours carefully.' },
-      { title: 'Colour and material', body: 'Screens and printed ink differ. Slight variation in colour, and small differences between production batches of blanks, are normal and are not defects.' },
-      { title: 'Delivery', body: 'The courier’s fee is separate from your order total and is shown separately. Where the rider collects it, have the amount ready in cash on arrival. Delivery dates are estimates; we tell you as soon as anything changes.' },
-      { title: 'Your artwork', body: 'You confirm that you own the rights to whatever you send us, or have permission to use it. We decline work that infringes someone else’s rights.' },
-      { title: 'Cancelling', body: 'You may cancel before production starts. Once your design is approved and production has begun, a custom order cannot be cancelled, because personalised goods cannot be resold.' },
-      { title: 'Returns and refunds - what we replace', body: 'If an item arrives damaged, or differs from the proof you approved, tell us within 3 days of delivery with photos. We remake it, or refund it, whichever you prefer.' },
-      { title: 'Returns and refunds - what we cannot take back', body: 'Personalised items that came out as approved cannot be returned: a name, a date or a photo on a mug makes it unsellable to anyone else. This is why we send a proof first. Unused ready-made stock may be returned within 7 days in its original condition; return postage is yours unless the item was faulty.' },
-      { title: 'Returns and refunds - how a refund is paid', body: 'Refunds go back the way you paid. Online payments return through PayMongo, which can take a few banking days; cash payments are refunded by GCash or Maya to the number you give us. A delivery fee already paid to the courier is not ours to return, except where we cancelled the order before it was booked.' },
-    ],
-  },
 };
 
 export default function PolicyModal({ docKey, onClose }) {
@@ -53,6 +39,24 @@ export default function PolicyModal({ docKey, onClose }) {
 
   useEffect(() => {
     if (!docKey) return;
+
+    // The Terms are not a document of this component's own: they are the clauses the shop already
+    // has people accept at sign-up, editable in Settings. Reading them from there is what stops a
+    // second wording existing - the footer must not be able to disagree with what was signed.
+    if (docKey === 'policy_terms') {
+      setDoc({ title: 'Terms and Conditions', sections: DEFAULT_REGISTRATION_TERMS });
+      fetch(`${API_URL}/api/public/settings`)
+        .then(r => r.json())
+        .then(d => {
+          const saved = d?.data?.registrationTerms;
+          if (Array.isArray(saved) && saved.length) {
+            setDoc({ title: 'Terms and Conditions', sections: saved });
+          }
+        })
+        .catch(() => {});
+      return;
+    }
+
     const fallback = DRAFTS[docKey];
     setDoc(fallback);
     // A shop-written version replaces the draft; a failed fetch quietly leaves the draft, because
