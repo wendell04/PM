@@ -1282,6 +1282,14 @@ export default function OrdersHistoryPage() {
               max-height:100% !important; height:100% !important;
               border-radius:0 !important; border:none !important;
             }
+            /* The scrolling area, said plainly: iOS needs the momentum hint, and touch-action
+               keeps a vertical drag as a scroll instead of a gesture the browser swallows. */
+            .oh-modal-outer {
+              flex:1 1 auto; min-height:0;
+              overflow-y:auto !important;
+              -webkit-overflow-scrolling:touch;
+              touch-action:pan-y;
+            }
             .oh-modal-header { padding:12px 14px !important; }
             .oh-modal-header > div:first-child > div:first-child { font-size:0.6rem !important; }
             .oh-modal-columns { padding:10px !important; gap:10px !important; }

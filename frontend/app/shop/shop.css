@@ -5388,9 +5388,16 @@ html.light .shop-quick-view-btn:hover { background: #D4A843; color: #111; }
     z-index: 1300;
     background: #141414;
     border-top: 1px solid rgba(255,255,255,0.08);
+    /* Lifted off the page. Without a shadow the bar was the same flat tone as the content behind
+       it and read as part of the list rather than as a layer above it. */
+    box-shadow: 0 -8px 24px rgba(0,0,0,0.28);
     padding-bottom: env(safe-area-inset-bottom);
   }
-  html.light .shop-bottom-nav { background: #ffffff; border-top-color: rgba(0,0,0,0.08); }
+  html.light .shop-bottom-nav {
+    background: #ffffff;
+    border-top-color: rgba(0,0,0,0.08);
+    box-shadow: 0 -6px 20px rgba(0,0,0,0.12);
+  }
 
   .sbn-item {
     display: flex;
@@ -5411,6 +5418,10 @@ html.light .shop-quick-view-btn:hover { background: #D4A843; color: #111; }
   html.light .sbn-item { color: rgba(0,0,0,0.5); }
   .sbn-item.active { color: #d4a843; }
   .sbn-item:active { opacity: 0.7; }
+
+  /* A modal covers the page; the bar must not float over its buttons - the same rule the chat
+     head follows, driven by the same body class. This is what hid the order modal's own footer. */
+  body.pmp-modal-open .shop-bottom-nav { display: none !important; }
 
   .sbn-icon-wrap { position: relative; display: inline-flex; }
   .sbn-badge {
