@@ -17,6 +17,28 @@ import AddressBook from "../../../components/profile/AddressBook";
 import ImageCropper from "../../../components/ImageCropper";
 import { useAuth } from "../../../contexts/AuthContext";
 import "../shop.css";
+
+// A session is shown to the person who owns it, and "Mozilla/5.0 (Linux; Android 10; K)
+// AppleWebKit/537.36..." tells them nothing they can act on - it also wraps into a wall of text on
+// a phone. They recognise a browser and a device; that is enough to spot one that is not theirs.
+function deviceLabel(ua) {
+  const s = String(ua || '');
+  if (!s || !/[)/]/.test(s)) return s || 'Web session';   // already a friendly name - leave it
+  const browser = /Edg\//i.test(s) ? 'Edge'
+    : /OPR\/|Opera/i.test(s) ? 'Opera'
+    : /Chrome\//i.test(s) ? 'Chrome'
+    : /Firefox\//i.test(s) ? 'Firefox'
+    : /Safari\//i.test(s) ? 'Safari'
+    : 'Browser';
+  const device = /iPhone/i.test(s) ? 'iPhone'
+    : /iPad/i.test(s) ? 'iPad'
+    : /Android/i.test(s) ? 'Android'
+    : /Windows/i.test(s) ? 'Windows'
+    : /Mac OS X|Macintosh/i.test(s) ? 'Mac'
+    : /Linux/i.test(s) ? 'Linux'
+    : 'this device';
+  return `${browser} on ${device}`;
+}
 import { CustomSelect } from '@/app/dashboard/business/inventory-v2/shared';
 
 const ReadOnlyPinMap = dynamic(
@@ -2942,6 +2964,7 @@ export default function CustomerProfilePage() {
                           {sessions.map((session) => (
                             <div
                               key={session.id}
+                              className="pf-split"
                               style={{
                                 display: "flex",
                                 alignItems: "center",
@@ -3023,10 +3046,9 @@ export default function CustomerProfilePage() {
                                         fontSize: "0.875rem",
                                         fontWeight: 600,
                                         color: "var(--white)",
-                                        textTransform: "capitalize",
                                       }}
                                     >
-                                      {session.name || "Web Session"}
+                                      {deviceLabel(session.name)}
                                     </span>
                                     {session.is_current && (
                                       <span
@@ -3112,7 +3134,7 @@ export default function CustomerProfilePage() {
             {/* Delete Account - Danger Zone */}
             {activeTab === "security" && (
               <div style={{ maxWidth: '500px', marginTop: '2rem' }}>
-                <div style={{
+                <div className="pf-split" style={{
                   border: '1px solid rgba(239,68,68,0.3)',
                   borderRadius: '10px',
                   padding: '1rem 1.25rem',

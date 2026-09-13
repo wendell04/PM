@@ -5529,3 +5529,16 @@ html.light .shop-search-suggest-name { color: #111; }
    gets tight. */
 .shop-navbar-user-btn { min-width: 40px; min-height: 40px; }
 .shop-navbar-user-btn img { display: block; width: 100%; height: 100%; object-fit: cover; }
+
+/* Profile rows that put text beside a button. On a phone the button keeps its width and the text
+   is squeezed into whatever is left - about a hundred pixels, which is where "Delete Account" and
+   the session list turned into one word per line. They stack instead. */
+@media (max-width: 640px) {
+  .pf-split {
+    flex-direction: column;
+    align-items: stretch !important;
+    gap: 0.75rem !important;
+  }
+  .pf-split > * { min-width: 0; }
+  .pf-split button { width: 100%; }
+}
