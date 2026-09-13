@@ -4271,9 +4271,9 @@
   transform: scale(1.3);
 }
 
-@media (max-width: 900px) {
+@media (max-width: 1024px) {
   .review-card {
-    flex: 0 0 calc(50% - 10px);
+    flex: 0 0 100%;
   }
 }
 
@@ -4284,14 +4284,14 @@
   .reviews-arrow { display: none; }
 }
 
-/* One card at a time: no track to move, so nothing depends on the screen's width or the gap. */
-.reviews-track-single {
-  display: block;
+/* A page at a time: no track to move, so nothing depends on the screen's width or the gap.
+   The cards on the page share the row evenly, however many there are. */
+.reviews-track-swap {
   transform: none !important;
 }
-.reviews-track-single .review-card {
-  flex: 0 0 100%;
-  width: 100%;
+.reviews-track-swap .review-card {
+  flex: 1 1 0;
+  min-width: 0;
   animation: reviewSwapIn 0.35s ease;
 }
 @keyframes reviewSwapIn {
@@ -4299,7 +4299,7 @@
   to   { opacity: 1; transform: none; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .reviews-track-single .review-card { animation: none; }
+  .reviews-track-swap .review-card { animation: none; }
 }
 
 /* ── Announcement Bar ── */

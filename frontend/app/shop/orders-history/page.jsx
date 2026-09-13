@@ -1274,11 +1274,36 @@ export default function OrdersHistoryPage() {
             .oh-modal-left-col { overflow-y:visible !important; }
             .oh-modal-right { width:100%; flex-shrink:0; overflow-y:visible; height:auto; }
           }
+          /* A phone gets a full-screen sheet. The desktop shape - a 16px inset card with 24px of
+             padding inside - left every column about a third of the width it needs, and the styles
+             it fights are inline, which is what the !important here is for. */
+          @media(max-width:640px){
+            .oh-modal-overlay { padding:0 !important; align-items:stretch !important; }
+            .oh-modal-panel {
+              max-width:100% !important; width:100% !important;
+              max-height:100% !important; height:100% !important;
+              border-radius:0 !important; border:none !important;
+            }
+            .oh-modal-header { padding:12px 14px !important; }
+            .oh-modal-header > div:first-child > div:first-child { font-size:0.6rem !important; }
+            .oh-modal-columns { padding:10px !important; gap:10px !important; }
+            .oh-modal-left-col, .oh-modal-right { border-radius:12px !important; }
+            /* The footer is where Close lives, so it stays reachable without scrolling to the end,
+               and clears the iPhone home bar. */
+            .oh-modal-footer {
+              position:sticky; bottom:0; z-index:2;
+              padding:10px 12px calc(10px + env(safe-area-inset-bottom)) !important;
+              background:var(--dark) !important;
+              border-top:1px solid var(--border);
+            }
+            .oh-modal-footer button { font-size:0.8rem !important; padding:9px 14px !important; }
+            .oh-receipt-panel { max-width:100% !important; border-radius:0 !important; height:100% !important; max-height:100% !important; }
+          }
         `}</style>
         {/* No backdrop close. This modal carries proofs, a payment choice and a receipt, and a
             misclick used to throw all of it away with nothing to bring it back. The X in the header
             and the Close button are the ways out. */}
-        <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
+        <div className="oh-modal-overlay" style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
           <ImageLightbox url={lightboxUrl} onClose={() => setLightboxUrl(null)} />
 
           {/* The receipt, where the order is. One layer above the details overlay, so closing it
@@ -1341,7 +1366,7 @@ export default function OrdersHistoryPage() {
           <div className="oh-modal-panel" onClick={e => e.stopPropagation()} style={{ background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '16px', width: '100%', maxWidth: '880px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 24px 70px rgba(0,0,0,0.35)', fontFamily: 'Inter, system-ui, sans-serif' }}>
 
             {/* Modal header */}
-            <div style={{ padding: '16px 22px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', background: 'transparent', flexShrink: 0 }}>
+            <div className="oh-modal-header" style={{ padding: '16px 22px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', background: 'transparent', flexShrink: 0 }}>
               <div>
                 <div style={{ fontSize: '0.65rem', color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.8px', fontWeight: 600, marginBottom: '4px' }}>Order Details</div>
                 {selectedOrder && (
@@ -2350,7 +2375,7 @@ export default function OrdersHistoryPage() {
             </div>
 
             {/* Modal footer */}
-            <div style={{ padding: '14px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap', background: 'transparent', flexShrink: 0 }}>
+            <div className="oh-modal-footer" style={{ padding: '14px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap', background: 'transparent', flexShrink: 0 }}>
               <div>
                 {reorderMsg && <span style={{ fontSize: '0.8rem', color: reorderMsg.includes('Failed') ? '#ef4444' : '#22c55e', fontWeight: 600 }}>{reorderMsg}</span>}
               </div>

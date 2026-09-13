@@ -45,6 +45,13 @@ function cmsCta(label, link) {
   const raw = String(link || '').trim().replace(/^#/, '').toLowerCase();
   if (['register', 'signup', 'sign-up'].includes(raw)) return { label, action: 'register' };
   if (['login', 'signin', 'sign-in'].includes(raw))    return { label, action: 'login' };
+  // A banner seeded with no link at all is the common case, and testers pressed "Register Free"
+  // and got nothing. If the words say what the button is for, honour them.
+  if (raw === '' || raw === '#') {
+    const words = String(label).toLowerCase();
+    if (/regist|sign\s?up|create account/.test(words)) return { label, action: 'register' };
+    if (/log\s?in|sign\s?in/.test(words))             return { label, action: 'login' };
+  }
   return { label, href: link || '#' };
 }
 
@@ -146,10 +153,14 @@ const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=
   // cut down the middle. The step, the arrows and the dots all read this one number.
   const [reviewsPerView, setReviewsPerView] = useState(3);
   const [reviewsPaused, setReviewsPaused]   = useState(false);
-  const reviewsMaxIdx = Math.max(0, landingReviews.length - reviewsPerView);
+  // Pages, not cards: the carousel moves a whole screenful at a time, so a card is never left
+  // half on screen. reviewsIdx is the page.
+  const reviewsPages  = Math.max(1, Math.ceil(landingReviews.length / reviewsPerView));
+  const reviewsMaxIdx = reviewsPages - 1;
 
   useEffect(() => {
-    const calc = () => setReviewsPerView(window.innerWidth <= 600 ? 1 : window.innerWidth <= 900 ? 2 : 3);
+    // A review card needs about 300px to read: one on a phone, two on a tablet, three on a desktop.
+    const calc = () => setReviewsPerView(window.innerWidth <= 700 ? 1 : window.innerWidth <= 1023 ? 2 : 3);
     calc();
     window.addEventListener('resize', calc);
     return () => window.removeEventListener('resize', calc);
@@ -2217,21 +2228,14 @@ const handleForgotResetPassword = async () => {
                 aria-label="Previous reviews"
               >&#8249;</button>
               <div className="reviews-track-outer">
-                {/* One card on a phone is SWAPPED, not slid: a slide has to agree with the card
-                    width and the 20px gap on every screen size there is, and a gap's worth of drift
-                    is what left the second card cut in half. Three across still slides, where the
-                    arithmetic is stable. */}
-                <div
-                  className={reviewsPerView === 1 ? 'reviews-track reviews-track-single' : 'reviews-track'}
-                  style={reviewsPerView === 1
-                    ? undefined
-                    : { transform: `translateX(calc(-${reviewsIdx} * (100% + 20px) / ${reviewsPerView}))` }}
-                >
-                  {(reviewsPerView === 1
-                    ? landingReviews.slice(reviewsIdx, reviewsIdx + 1)
-                    : landingReviews
-                  ).map((rv, i) => (
-                    <div className="review-card" key={reviewsPerView === 1 ? `single-${reviewsIdx}` : i}>
+                {/* The page is SWAPPED, not slid. A slide has to agree with the card width and the
+                    20px gap at every screen size, and a gap's worth of drift is what left the second
+                    card cut in half. Nothing here is measured, so nothing can drift. */}
+                <div className="reviews-track reviews-track-swap">
+                  {landingReviews
+                    .slice(reviewsIdx * reviewsPerView, reviewsIdx * reviewsPerView + reviewsPerView)
+                    .map((rv, i) => (
+                    <div className="review-card" key={`p${reviewsIdx}-${i}`}>
                       <div className="review-stars">
                         {[1,2,3,4,5].map(s => (
                           <span key={s} style={{ color: s <= rv.rating ? 'var(--gold)' : 'rgba(255,255,255,0.2)', fontSize: '1rem' }}>★</span>

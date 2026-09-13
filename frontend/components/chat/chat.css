@@ -782,6 +782,10 @@
    Chat Widget (floating bubble + slide-up panel)
    ══════════════════════════════════════════════════════════════ */
 
+/* While a modal is open the launcher would float over its buttons - on a phone it covered
+   Close outright. It comes back the moment the modal does. */
+body.pmp-modal-open .cw-launcher { display: none !important; }
+
 /* Floating launcher button */
 .cw-launcher {
   position: fixed;
