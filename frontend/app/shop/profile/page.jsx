@@ -329,7 +329,7 @@ function TwoFactorSection({ token, twoFactorEnabled, setTwoFactorEnabled }) {
           </p>
 
           {/* Email OTP - always available */}
-          <div style={{
+          <div className="pf-method" style={{
             display: "flex", alignItems: "center", gap: "0.875rem",
             padding: "0.875rem 1rem", borderRadius: "10px",
             border: "1.5px solid rgba(96,165,250,0.35)",
@@ -355,7 +355,7 @@ function TwoFactorSection({ token, twoFactorEnabled, setTwoFactorEnabled }) {
           </div>
 
           {/* Authenticator App - setup or active */}
-          <div style={{
+          <div className="pf-method" style={{
             display: "flex", alignItems: "center", gap: "0.875rem",
             padding: "0.875rem 1rem", borderRadius: "10px",
             border: `1.5px solid ${totpConfirmed ? "rgba(74,222,128,0.45)" : "rgba(255,255,255,0.09)"}`,

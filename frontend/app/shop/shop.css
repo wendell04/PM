@@ -5570,3 +5570,12 @@ html.light .shop-search-suggest-name { color: #111; }
   .pf-group + .pf-group { border-top: 1px solid var(--border) !important; }
   .pf-group > div { padding-left: 0 !important; padding-right: 0 !important; }
 }
+
+/* The two verification-method rows put an icon, the description and a chip or button on one line,
+   with nothing allowed to wrap - so "A 6-digit code sent to your email at each login" became one
+   word per line beside a chip that kept its width. The description takes the line; the chip or
+   button drops beneath it when there is no room. */
+@media (max-width: 640px) {
+  .pf-method { flex-wrap: wrap; }
+  .pf-method > div:nth-child(2) { flex: 1 1 180px; min-width: 0; }
+}
