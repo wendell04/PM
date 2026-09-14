@@ -767,7 +767,9 @@ export default function BannerManagementPage() {
         .banner-upload-hint { font-size: 0.625rem; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 0.25rem; }
 
         .banner-preview-container { --white: #f5f5f5; --black: #0f0f0f; --gray-light: #aaa; --border: rgba(255,255,255,0.08); background: var(--dark); border: 1px solid rgba(255,255,255,0.08); border-radius: 16px; overflow: hidden; position: relative; }
-        .banner-preview-badge { position: absolute; top: 1rem; left: 1rem; z-index: 10; background: rgba(0, 0, 0, 0.8); padding: 0.375rem 0.75rem; border-radius: 20px; display: flex; align-items: center; gap: 0.5rem; font-size: 0.625rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--white); }
+        /* The badge sat inside the picture at top-left, which is exactly where a headline starts - so it
+           covered the first words of every banner. It has its own strip above the canvas now. */
+        .banner-preview-badge { position: static; display: inline-flex; align-items: center; gap: 0.5rem; margin: 0.65rem 0.9rem; background: rgba(255, 255, 255, 0.06); padding: 0.3rem 0.7rem; border-radius: 20px; font-size: 0.625rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--white); }
         .banner-preview-indicator { width: 0.5rem; height: 0.5rem; border-radius: 50%; background: #ef4444; animation: pulse 2s infinite; }
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
         .banner-preview-canvas { position: relative; width: 100%; aspect-ratio: 16/5; overflow: hidden; }
@@ -776,13 +778,18 @@ export default function BannerManagementPage() {
         .banner-preview-slide.inactive { opacity: 0; z-index: 0; }
         .banner-preview-image { width: 100%; height: 100%; object-fit: cover; object-position: center center; }
         .banner-preview-overlay { position: absolute; inset: 0; background: linear-gradient(to right, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.5) 50%, transparent 100%); }
-        .banner-preview-content { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center; padding: 3rem 4rem; padding-left: 6rem; gap: 1rem; }
+        .banner-preview-content { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center; padding: 1.5rem 2.5rem; gap: 0.75rem; }
         .banner-preview-headline { font-family: 'DM Sans', sans-serif; font-size: 2.5rem; font-weight: 800; color: var(--white); max-width: 32rem; line-height: 1.1; text-align: left; }
         .banner-preview-subtext { font-size: 1rem; color: var(--gray-light); max-width: 28rem; line-height: 1.6; text-align: left; }
         .banner-preview-cta { padding-top: 1rem; }
         .banner-preview-cta-btn { background: linear-gradient(135deg, var(--gold-light), var(--gold-dark)); color: var(--black); font-weight: 700; padding: 0.75rem 2rem; border-radius: 8px; border: none; font-size: 0.875rem; cursor: pointer; }
         .banner-carousel-dots { position: absolute; bottom: 1rem; left: 50%; transform: translateX(-50%); z-index: 20; display: flex; gap: 0.5rem; }
         .banner-carousel-dot { width: 8px; height: 8px; border-radius: 50%; background: rgba(255, 255, 255, 0.3); border: none; cursor: pointer; transition: all 0.2s; }
+        .banner-carousel-count { position: absolute; bottom: 0.75rem; right: 0.9rem; z-index: 20; display: flex; align-items: center; gap: 0.4rem; }
+        .banner-carousel-count button { width: 26px; height: 26px; border-radius: 50%; border: none; background: rgba(0,0,0,0.55); color: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 0.9rem; }
+        .banner-carousel-count span { background: rgba(0,0,0,0.55); color: #fff; font-size: 0.7rem; font-weight: 700; padding: 0.25rem 0.6rem; border-radius: 999px; }
+        .banner-preview-empty { position: absolute; inset: 0; background: linear-gradient(135deg, #1b1b1b 0%, #2a2a2a 100%); }
+        .banner-preview-empty-note { position: absolute; right: 0.9rem; top: 0.75rem; z-index: 5; display: flex; align-items: center; gap: 0.35rem; font-size: 0.65rem; color: rgba(255,255,255,0.45); }
         .banner-carousel-dot.active { background: var(--gold); width: 24px; border-radius: 4px; }
         .banner-carousel-dot:hover { background: rgba(212, 168, 67, 0.6); }
 
@@ -1075,7 +1082,15 @@ export default function BannerManagementPage() {
                   <div key={banner.id} className={`banner-preview-slide ${index === currentSlide ? 'active' : 'inactive'}`}>
                     {displayBanner.image
                       ? <Image src={displayBanner.image} alt={displayBanner.name} className="banner-preview-image" fill style={{ objectFit: "cover" }} unoptimized />
-                      : <div style={{ width: '100%', height: '100%', background: 'var(--dark3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><NoImage size={40} color="var(--gray)" /></div>
+                      : (
+                        /* A banner without its picture yet. The icon used to sit dead centre, behind
+                           the headline, reading as a broken image inside the copy. The frame stays
+                           plain and says what is missing in a corner. */
+                        <>
+                          <div className="banner-preview-empty" />
+                          <div className="banner-preview-empty-note"><NoImage size={14} color="rgba(255,255,255,0.45)" /> No image yet</div>
+                        </>
+                      )
                     }
                     <div className="banner-preview-overlay"></div>
                     {(displayBanner.headline || displayBanner.subtext || displayBanner.ctaLabel) && (
@@ -1093,7 +1108,14 @@ export default function BannerManagementPage() {
                 );
               })}
               {/* Carousel Dots */}
-              {banners.length > 1 && (
+              {banners.length > 8 && (
+                <div className="banner-carousel-count">
+                  <button type="button" onClick={() => goToSlide((currentSlide - 1 + banners.length) % banners.length)} aria-label="Previous banner">&#8249;</button>
+                  <span>{currentSlide + 1} / {banners.length}</span>
+                  <button type="button" onClick={() => goToSlide((currentSlide + 1) % banners.length)} aria-label="Next banner">&#8250;</button>
+                </div>
+              )}
+              {banners.length > 1 && banners.length <= 8 && (
                 <div className="banner-carousel-dots">
                   {banners.map((_, index) => (
                     <button key={index} className={`banner-carousel-dot ${index === currentSlide ? 'active' : ''}`} onClick={() => goToSlide(index)} title={`Go to slide ${index + 1}`} />
