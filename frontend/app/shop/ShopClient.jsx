@@ -324,8 +324,11 @@ function QuickViewModal({ product, flashSale, onClose, onToast }) {
 
   return (
     <div className="shop-qv-backdrop" onClick={onClose}>
-      {/* The handle at its top said this could be dragged; it could not. Now it can. */}
-      <div className="shop-qv-modal" ref={qvDrag.ref} {...qvDrag.handlers} onClick={e => e.stopPropagation()}>
+      <div className="shop-qv-modal" ref={qvDrag.ref} onClick={e => e.stopPropagation()}>
+        {/* Only the strip at the top drags the sheet. Listening on the whole sheet turned an
+            ordinary scroll through the details into a drag - scroll up from the top of the list
+            and the sheet read it as "pull up" and opened the product page. A handle is a handle. */}
+        <div className="shop-qv-drag-zone" {...qvDrag.handlers} aria-hidden="true" />
         <button className="shop-qv-close" onClick={onClose}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
@@ -2059,10 +2062,10 @@ export default function ShopClient({
           <div
             className={`mobile-sheet${sheetClosing ? ' closing' : ''}`}
             ref={filterDrag.ref}
-            {...filterDrag.handlers}
           >
-            <div className="mobile-sheet-handle" />
-            <div className="mobile-sheet-header">
+            {/* The handle and the title bar drag the sheet; the options below only scroll. */}
+            <div className="mobile-sheet-handle" {...filterDrag.handlers} />
+            <div className="mobile-sheet-header" {...filterDrag.handlers}>
               <span className="mobile-sheet-title">
                 {mobileSheet === 'all' && 'Filters & Sort'}
                 {mobileSheet === 'availability' && 'Availability'}

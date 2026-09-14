@@ -5528,8 +5528,26 @@ html.light .shop-search-suggest-name { color: #111; }
    baseline inside the button and left a sliver of the button's own background showing - which is
    the gap that made it look shrunken on a phone. The button also keeps its size when the navbar
    gets tight. */
-.shop-navbar-user-btn { min-width: 40px; min-height: 40px; }
-.shop-navbar-user-btn img { display: block; width: 100%; height: 100%; object-fit: cover; }
+/* The avatar fills its circle, and nothing is allowed to change that. Sizing it in the flow left
+   it at the mercy of whatever padding or line box reached the button on a phone; pinned to all four
+   edges it cannot come out smaller than the ring around it. */
+.shop-navbar-user-btn { position: relative; min-width: 40px; min-height: 40px; padding: 0 !important; }
+.shop-navbar-user-btn img {
+  position: absolute; inset: 0;
+  width: 100% !important; height: 100% !important;
+  object-fit: cover; border-radius: 50%; display: block;
+}
+
+/* The quick view's grab strip: the width of the sheet, tall enough for a thumb, above the content
+   but below the close button so the X still works. */
+.shop-qv-drag-zone {
+  position: absolute; top: 0; left: 0; right: 0;
+  height: 36px; z-index: 4;
+  touch-action: none;
+}
+/* The close button sits inside that strip, and the strip is above the content - so the X has to be
+   above the strip, or the grab zone swallows the tap that closes the sheet. */
+.shop-qv-close { z-index: 5 !important; }
 
 /* Profile rows that put text beside a button. On a phone the button keeps its width and the text
    is squeezed into whatever is left - about a hundred pixels, which is where "Delete Account" and
@@ -5580,3 +5598,16 @@ html.light .shop-search-suggest-name { color: #111; }
   .pf-method { flex-wrap: wrap; }
   .pf-method > div:nth-child(2) { flex: 1 1 180px; min-width: 0; }
 }
+
+/* The address form on a phone: it was a framed card inside the Saved Addresses card inside the
+   profile card, and the inputs, sized to 100% without box-sizing, pushed past the right edge. The
+   form loses its frame and every field fits the width it is given. */
+@media (max-width: 640px) {
+  .ab-form {
+    padding: 0 !important;
+    background: transparent !important;
+    border: none !important;
+    border-radius: 0 !important;
+  }
+}
+.ab-form input, .ab-form select, .ab-form textarea { box-sizing: border-box; max-width: 100%; }

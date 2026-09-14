@@ -764,7 +764,7 @@ export default function AddressBook({ onSaved, initialEditAddress }) {
 
       {/* Add / Edit Form */}
       {showForm && (
-        <form onSubmit={handleSubmit} onKeyDown={e => { if (e.key === 'Enter') e.preventDefault(); }} style={{ padding: '1.25rem', background: 'var(--dark)', borderRadius: '12px', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+        <form className="ab-form" onSubmit={handleSubmit} onKeyDown={e => { if (e.key === 'Enter') e.preventDefault(); }} style={{ padding: '1.25rem', background: 'var(--dark)', borderRadius: '12px', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
 
           {/* ── Address search / autocomplete ── */}
           <div style={{ position: 'relative' }}>
