@@ -411,6 +411,9 @@ export default function CartPage() {
           designNotes:     i.designNotes ?? null,
           designRequested: designRequested,
           designMode:      choice?.mode ?? i.designMode ?? null,
+          // The flash sale the price was taken from. Checkout sends it on and the server applies
+          // the sale again; dropped here, the cart showed the sale price and the order charged full.
+          flashSaleId:     i.flashSaleId ?? null,
           designFee:       designRequested ? designFee : null,
           // Carry the T&C acceptance (accepted per mode on the product page) to checkout for proof.
           termsVersion:    i.termsVersion ?? null,

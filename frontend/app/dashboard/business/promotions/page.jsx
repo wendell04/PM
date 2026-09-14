@@ -119,12 +119,16 @@ function formatDate(iso) {
     hour: '2-digit', minute: '2-digit',
   });
 }
+// One word per sale, in the order that matters: a sale whose dates have passed is Ended whether or
+// not it was switched off, which is what the Ended counter above the table already counts.
 function getFlashStatus(sale) {
-  if (!sale.isActive) return { label: 'Inactive', color: 'var(--red)',   bg: 'rgba(239,68,68,0.12)' };
   const now = new Date();
-  if (new Date(sale.startDate) > now) return { label: 'Upcoming', color: 'var(--blue)',  bg: 'rgba(96,165,250,0.12)' };
-  if (new Date(sale.endDate) >= now)  return { label: 'Live',     color: 'var(--green)', bg: 'rgba(74,222,128,0.12)' };
-  return { label: 'Expired', color: 'var(--gray)', bg: 'rgba(107,114,128,0.12)' };
+  if (sale.productMissing) return { label: 'Product deleted', color: 'var(--red)', bg: 'rgba(239,68,68,0.12)' };
+  if (new Date(sale.endDate) < now) return { label: 'Ended', color: 'var(--gray)', bg: 'rgba(107,114,128,0.12)' };
+  if (!sale.isActive) return { label: 'Paused', color: 'var(--red)', bg: 'rgba(239,68,68,0.12)' };
+  if (sale.stockLimit != null && (sale.stockUsed ?? 0) >= sale.stockLimit) return { label: 'Sold out', color: 'var(--gray)', bg: 'rgba(107,114,128,0.12)' };
+  if (new Date(sale.startDate) > now) return { label: 'Upcoming', color: 'var(--blue)', bg: 'rgba(96,165,250,0.12)' };
+  return { label: 'Live', color: 'var(--green)', bg: 'rgba(74,222,128,0.12)' };
 }
 
 // Category accent colours
@@ -731,8 +735,9 @@ function FlashSalesTab({ token }) {
   }
 
   const now = new Date();
-  const liveCount     = sales.filter(s => s.isActive && new Date(s.startDate) <= now && new Date(s.endDate) >= now).length;
-  const upcomingCount = sales.filter(s => s.isActive && new Date(s.startDate) > now).length;
+  const liveCount     = sales.filter(s => getFlashStatus(s).label === 'Live').length;
+  const upcomingCount = sales.filter(s => getFlashStatus(s).label === 'Upcoming').length;
+  const endedCount    = sales.filter(s => getFlashStatus(s).label === 'Ended').length;
 
   if (loading) return <SkelLoader />;
 
@@ -740,7 +745,7 @@ function FlashSalesTab({ token }) {
     <>
       {/* Stats + action */}
       <div style={{ display: 'flex', gap: '0.625rem', flexWrap: 'wrap', marginBottom: '0.875rem', alignItems: 'center' }}>
-        {[{ label: 'Total', value: sales.length, color: 'var(--white)' }, { label: 'Live Now', value: liveCount, color: 'var(--green)' }, { label: 'Upcoming', value: upcomingCount, color: 'var(--blue)' }, { label: 'Ended', value: Math.max(0, sales.length - liveCount - upcomingCount), color: 'var(--gray)' }].map(c => (
+        {[{ label: 'Total', value: sales.length, color: 'var(--white)' }, { label: 'Live Now', value: liveCount, color: 'var(--green)' }, { label: 'Upcoming', value: upcomingCount, color: 'var(--blue)' }, { label: 'Ended', value: endedCount, color: 'var(--gray)' }].map(c => (
           <div key={c.label} style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '7px', padding: '0.4rem 0.875rem', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
             <span style={{ fontSize: '1rem', fontWeight: 700, color: c.color }}>{c.value}</span>
             <span style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>{c.label}</span>

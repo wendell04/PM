@@ -25,6 +25,7 @@ use App\Models\Conversation;
 use App\Models\Message;
 use App\Models\Voucher;
 use App\Models\FlashSale;
+use App\Support\PromotionRelease;
 use App\Models\BillOfMaterial;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -373,58 +374,6 @@ class OrderController extends Controller
                 }
             }
 
-            // ── Voucher discount - atomic claim ───────────────────────────
-            $discountAmount = 0.0;
-            $appliedVoucher = null;
-
-            if (!empty($validated['voucherCode'])) {
-                $voucherCode = strtoupper(trim($validated['voucherCode']));
-                $userId      = (string) $user->_id;
-                $now         = now();
-
-                $voucher = Voucher::where('code', $voucherCode)->first();
-
-                $preValid = $voucher
-                    && $voucher->isActive
-                    && (!$voucher->expiresAt || $voucher->expiresAt >= $now)
-                    && ($voucher->maxUses === null || $voucher->usedCount < $voucher->maxUses)
-                    && !in_array($userId, $voucher->usedBy ?? [], true)
-                    && ($voucher->minOrderAmount === null || $totalAmount >= $voucher->minOrderAmount);
-
-                if ($preValid) {
-                    $discountAmount = $voucher->discountType === 'percentage'
-                        ? round($totalAmount * $voucher->discountValue / 100, 2)
-                        : min((float) $voucher->discountValue, $totalAmount);
-
-                    $filter = [
-                        'code'     => $voucherCode,
-                        'isActive' => true,
-                        'usedBy'   => ['$nin' => [$userId]],
-                    ];
-                    if ($voucher->maxUses !== null) {
-                        $filter['$expr'] = ['$lt' => ['$usedCount', '$maxUses']];
-                    }
-
-                    $claimed = DB::connection('mongodb')
-                        ->getCollection('vouchers')
-                        ->findOneAndUpdate(
-                            $filter,
-                            [
-                                '$inc'      => ['usedCount' => 1],
-                                '$addToSet' => ['usedBy' => $userId],
-                            ],
-                            ['returnDocument' => \MongoDB\Operation\FindOneAndUpdate::RETURN_DOCUMENT_AFTER]
-                        );
-
-                    if ($claimed) {
-                        $totalAmount    = max(0, $totalAmount - $discountAmount);
-                        $appliedVoucher = $voucher;
-                    } else {
-                        $discountAmount = 0.0;
-                    }
-                }
-            }
-
             // ── Pre-validate BOM products against can-produce ────────────
             foreach ($orderItems as $item) {
                 $bomProd  = Product::find($item['productId'] ?? null);
@@ -550,6 +499,62 @@ class OrderController extends Controller
                     'productName' => $prod->name ?? '',
                 ];
             }
+
+            // The voucher is claimed here, after every check that can still turn the order away. It
+            // used to be claimed before the stock and material checks, so an order refused for stock
+            // had already spent the customer's voucher - with no order to show for it.
+            // ── Voucher discount - atomic claim ───────────────────────────
+            $discountAmount = 0.0;
+            $appliedVoucher = null;
+
+            if (!empty($validated['voucherCode'])) {
+                $voucherCode = strtoupper(trim($validated['voucherCode']));
+                $userId      = (string) $user->_id;
+                $now         = now();
+
+                $voucher = Voucher::where('code', $voucherCode)->first();
+
+                $preValid = $voucher
+                    && $voucher->isActive
+                    && (!$voucher->expiresAt || $voucher->expiresAt >= $now)
+                    && ($voucher->maxUses === null || $voucher->usedCount < $voucher->maxUses)
+                    && !in_array($userId, $voucher->usedBy ?? [], true)
+                    && ($voucher->minOrderAmount === null || $totalAmount >= $voucher->minOrderAmount);
+
+                if ($preValid) {
+                    $discountAmount = $voucher->discountType === 'percentage'
+                        ? round($totalAmount * $voucher->discountValue / 100, 2)
+                        : min((float) $voucher->discountValue, $totalAmount);
+
+                    $filter = [
+                        'code'     => $voucherCode,
+                        'isActive' => true,
+                        'usedBy'   => ['$nin' => [$userId]],
+                    ];
+                    if ($voucher->maxUses !== null) {
+                        $filter['$expr'] = ['$lt' => ['$usedCount', '$maxUses']];
+                    }
+
+                    $claimed = DB::connection('mongodb')
+                        ->getCollection('vouchers')
+                        ->findOneAndUpdate(
+                            $filter,
+                            [
+                                '$inc'      => ['usedCount' => 1],
+                                '$addToSet' => ['usedBy' => $userId],
+                            ],
+                            ['returnDocument' => \MongoDB\Operation\FindOneAndUpdate::RETURN_DOCUMENT_AFTER]
+                        );
+
+                    if ($claimed) {
+                        $totalAmount    = max(0, $totalAmount - $discountAmount);
+                        $appliedVoucher = $voucher;
+                    } else {
+                        $discountAmount = 0.0;
+                    }
+                }
+            }
+
 
             // Order-level design context, derived from the lines so a cart order behaves the
             // same as a single one. designFilePath mirrors the first uploaded artwork; the
@@ -1783,25 +1788,8 @@ class OrderController extends Controller
                 ]);
 
                 // 3. Increment Flash Sale stockUsed (if item was part of a flash sale)
-                if (!empty($item['flashSaleId'])) {
-                    try {
-                        $flashSale = FlashSale::find($item['flashSaleId']);
-                        if ($flashSale && $flashSale->isActive) {
-                            $flashSale->stockUsed = ($flashSale->stockUsed ?? 0) + $item['qty'];
-                            if ($flashSale->stockLimit !== null &&
-                                $flashSale->stockUsed >= $flashSale->stockLimit) {
-                                $flashSale->isActive = false;
-                            }
-                            $flashSale->save();
-                        }
-                    } catch (\Exception $flashErr) {
-                        Log::warning('completeOrder: failed to update flash sale stockUsed', [
-                            'orderId'     => (string) $order->_id,
-                            'flashSaleId' => $item['flashSaleId'],
-                            'error'       => $flashErr->getMessage(),
-                        ]);
-                    }
-                }
+                // The flash sale's sold count is raised once, when the order is placed. Raising it again
+                // here counted every unit twice, so a sale capped at 100 stopped at 50 real units.
 
                 // BOM materials are deducted at order creation (store/initiatePayment), not here.
             }
@@ -2570,6 +2558,9 @@ class OrderController extends Controller
      */
     private function restoreStockOnCancel(Order $order, array $jobStages = [], array $keepBack = []): void
     {
+        // Every cancel path comes through here, so this is where the promotions go back too.
+        PromotionRelease::forCancelledOrder($order);
+
         try {
             foreach ($order->items as $item) {
                 $product = Product::find($item['productId'] ?? null);

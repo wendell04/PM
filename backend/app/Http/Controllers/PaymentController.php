@@ -876,40 +876,6 @@ class PaymentController extends Controller
                 }
             }
 
-            // ── Voucher ───────────────────────────────────────────────
-            $discountAmount = 0.0;
-            $appliedVoucher = null;
-
-            if (!empty($validated['voucherCode'])) {
-                $voucherCode = strtoupper(trim($validated['voucherCode']));
-                $userId      = (string) $user->_id;
-                $voucher     = Voucher::where('code', $voucherCode)->first();
-
-                $preValid = $voucher && $voucher->isActive
-                    && (!$voucher->expiresAt || $voucher->expiresAt >= now())
-                    && ($voucher->maxUses === null || $voucher->usedCount < $voucher->maxUses)
-                    && !in_array($userId, $voucher->usedBy ?? [], true)
-                    && ($voucher->minOrderAmount === null || $totalAmount >= $voucher->minOrderAmount);
-
-                if ($preValid) {
-                    $discountAmount = $voucher->discountType === 'percentage'
-                        ? round($totalAmount * $voucher->discountValue / 100, 2)
-                        : min((float) $voucher->discountValue, $totalAmount);
-
-                    $filter = ['code' => $voucherCode, 'isActive' => true, 'usedBy' => ['$nin' => [$userId]]];
-                    if ($voucher->maxUses !== null) $filter['$expr'] = ['$lt' => ['$usedCount', '$maxUses']];
-
-                    $claimed = DB::connection('mongodb')->getCollection('vouchers')->findOneAndUpdate(
-                        $filter,
-                        ['$inc' => ['usedCount' => 1], '$addToSet' => ['usedBy' => $userId]],
-                        ['returnDocument' => \MongoDB\Operation\FindOneAndUpdate::RETURN_DOCUMENT_AFTER]
-                    );
-
-                    if ($claimed) { $totalAmount = max(0, $totalAmount - $discountAmount); $appliedVoucher = $voucher; }
-                    else { $discountAmount = 0.0; }
-                }
-            }
-
             // ── Pre-validate BOM products ──────────────────────────────
             foreach ($orderItems as $item) {
                 $bomProd   = \App\Models\Product::find($item['productId'] ?? null);
@@ -980,6 +946,44 @@ class PaymentController extends Controller
                     'newStockQty' => (int) ($updated->stockQty ?? 0), 'unitCost' => (float) ($inv->averageCost ?? 0),
                 ];
             }
+
+            // The voucher is claimed here, after every check that can still turn the order away. It
+            // used to be claimed before the stock and material checks, so an order refused for stock
+            // had already spent the customer's voucher - with no order to show for it.
+            // ── Voucher ───────────────────────────────────────────────
+            $discountAmount = 0.0;
+            $appliedVoucher = null;
+
+            if (!empty($validated['voucherCode'])) {
+                $voucherCode = strtoupper(trim($validated['voucherCode']));
+                $userId      = (string) $user->_id;
+                $voucher     = Voucher::where('code', $voucherCode)->first();
+
+                $preValid = $voucher && $voucher->isActive
+                    && (!$voucher->expiresAt || $voucher->expiresAt >= now())
+                    && ($voucher->maxUses === null || $voucher->usedCount < $voucher->maxUses)
+                    && !in_array($userId, $voucher->usedBy ?? [], true)
+                    && ($voucher->minOrderAmount === null || $totalAmount >= $voucher->minOrderAmount);
+
+                if ($preValid) {
+                    $discountAmount = $voucher->discountType === 'percentage'
+                        ? round($totalAmount * $voucher->discountValue / 100, 2)
+                        : min((float) $voucher->discountValue, $totalAmount);
+
+                    $filter = ['code' => $voucherCode, 'isActive' => true, 'usedBy' => ['$nin' => [$userId]]];
+                    if ($voucher->maxUses !== null) $filter['$expr'] = ['$lt' => ['$usedCount', '$maxUses']];
+
+                    $claimed = DB::connection('mongodb')->getCollection('vouchers')->findOneAndUpdate(
+                        $filter,
+                        ['$inc' => ['usedCount' => 1], '$addToSet' => ['usedBy' => $userId]],
+                        ['returnDocument' => \MongoDB\Operation\FindOneAndUpdate::RETURN_DOCUMENT_AFTER]
+                    );
+
+                    if ($claimed) { $totalAmount = max(0, $totalAmount - $discountAmount); $appliedVoucher = $voucher; }
+                    else { $discountAmount = 0.0; }
+                }
+            }
+
 
             // ── Proof gate ────────────────────────────────────────────
             // A cart order derives these from its own lines. Read only from the request,

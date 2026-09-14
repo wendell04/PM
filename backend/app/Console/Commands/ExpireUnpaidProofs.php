@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\Order;
+use App\Support\PromotionRelease;
 use App\Models\User;
 use App\Models\Notification;
 use App\Models\RawMaterial;
@@ -98,6 +99,8 @@ class ExpireUnpaidProofs extends Command
                 $order->cancelReason   = 'The deposit was not paid before the approved proof expired.';
                 $order->updatedAt      = now();
                 $order->save();
+                // This path cancels without restoreStockOnCancel, so it releases promotions itself.
+                PromotionRelease::forCancelledOrder($order);
 
                 try {
                     Notification::create([
