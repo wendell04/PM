@@ -72,7 +72,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
 
 const DEFAULT_WHYUS = [
   { title: 'Affordable Pricing', desc: 'Premium prints at prices that make sense. No hidden fees, no overpricing.' },
-  { title: 'Fast Turnaround', desc: 'Most orders ready within 24-48 hours. Rush orders? We can make it work.' },
+  { title: 'Fast Turnaround', desc: 'Standard orders arrive in 4-5 days, rush in 2-3. Ready-made items ship the next day.' },
   { title: 'Design Assistance', desc: 'No designer? No problem. Request a design and our team will create it for you.' },
   { title: 'Approval Before Print', desc: 'You see and approve the final design before we print - 100% satisfaction guaranteed.' },
 ];
@@ -282,6 +282,35 @@ export default function HomepageCmsPage() {
     get('contact').then(d => setContact(d && typeof d === 'object' && !Array.isArray(d) ? { ...DEFAULT_CONTACT, ...d } : DEFAULT_CONTACT));
     get('payment_methods').then(d => setPayment(d?.enabled && typeof d.enabled === 'object' ? { ...DEFAULT_PAY_ENABLED, ...d.enabled } : DEFAULT_PAY_ENABLED));
   }, []);
+  // The Let's Talk form's own switches. They are stored with the shop's settings (the server
+  // checks them before accepting a message), so they load from and save to there - but they are
+  // edited here, next to the section they control.
+  const [contactForm, setContactForm] = useState(null);
+  useEffect(() => {
+    fetch(`${API_URL}/api/public/settings`)
+      .then(r => r.json())
+      .then(d => setContactForm({
+        contactFormEnabled:    d?.data?.contactFormEnabled !== false,
+        contactSuccessMessage: d?.data?.contactSuccessMessage || '',
+        contactClosedMessage:  d?.data?.contactClosedMessage  || '',
+      }))
+      .catch(() => setContactForm({ contactFormEnabled: true, contactSuccessMessage: '', contactClosedMessage: '' }));
+  }, []);
+  const saveContact = async () => {
+    setBusy(true);
+    try {
+      const headers = { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` };
+      const r = await fetch(`${API_URL}/api/admin/content/contact`, { method: 'PUT', headers, body: JSON.stringify({ data: contact }) });
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).message || 'Save failed');
+      if (contactForm) {
+        const s = await fetch(`${API_URL}/api/admin/settings/shipping`, { method: 'PUT', headers, body: JSON.stringify(contactForm) });
+        if (!s.ok) throw new Error((await s.json().catch(() => ({}))).message || 'The contact details saved, but the contact form settings did not.');
+      }
+      setModal({ type: 'success', title: 'Saved', message: "Let's Talk updated - live on the homepage." }); setTimeout(() => setModal(null), 1400);
+    } catch (err) { setModal({ type: 'error', title: 'Save Failed', message: err.message }); }
+    finally { setBusy(false); }
+  };
+
   const saveContent = async (key, data, msg) => {
     setBusy(true);
     try {
@@ -527,7 +556,7 @@ export default function HomepageCmsPage() {
 
         {/* ── CONTACT ── */}
         <div style={{ ...card, marginBottom: '1.5rem' }}>
-          <h2 style={cardTitle}>Contact Info</h2>
+          <h2 style={cardTitle}>Let&apos;s Talk <span style={{ fontSize: '0.72rem', fontWeight: 400, color: 'var(--gray)' }}>contact details and the contact form on the homepage</span></h2>
           {contact === null ? <div style={{ color: 'var(--gray)', fontSize: '0.85rem' }}>Loading…</div> : (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }} className="hp-2col">
               <div><label style={lbl}>Social handle</label><input style={inp} value={contact.handle || ''} onChange={e => setContact(p => ({ ...p, handle: e.target.value }))} /></div>
@@ -550,7 +579,48 @@ export default function HomepageCmsPage() {
                 </div>
               </div>
               <div style={{ gridColumn: '1 / -1', fontSize: '.74rem', color: 'var(--gray)', marginTop: '-.3rem' }}>Leave any social blank to hide that icon on the homepage &amp; footer.</div>
-              <div style={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'flex-end' }}><button onClick={() => saveContent('contact', contact, 'Contact updated - live on the homepage.')} disabled={busy} style={pubBtn(false)}>{busy ? 'Saving…' : 'Save'}</button></div>
+
+              {/* The contact form itself. A write endpoint anyone can reach, so it can be closed - and
+                  the server refuses messages too, since hiding the form would leave the URL open. */}
+              {contactForm && (
+                <div style={{ gridColumn: '1 / -1', borderTop: '1px solid var(--border)', paddingTop: '1rem', display: 'flex', flexDirection: 'column', gap: '0.9rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--white)' }}>Contact form</div>
+                      <div style={{ fontSize: '0.74rem', color: 'var(--gray)', marginTop: '0.15rem' }}>Accept messages through the form beside the contact details.</div>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={contactForm.contactFormEnabled}
+                      aria-label="Accept messages through the contact form"
+                      onClick={() => setContactForm(f => ({ ...f, contactFormEnabled: !f.contactFormEnabled }))}
+                      style={{ position: 'relative', width: 44, height: 24, borderRadius: 12, border: 'none', cursor: 'pointer', background: contactForm.contactFormEnabled ? 'var(--gold)' : 'var(--border)', transition: 'background 0.2s', padding: 0, flexShrink: 0 }}
+                    >
+                      <span style={{ position: 'absolute', top: 3, left: contactForm.contactFormEnabled ? 23 : 3, width: 18, height: 18, borderRadius: '50%', background: 'var(--dark)', transition: 'left 0.2s' }} />
+                    </button>
+                  </div>
+                  <div>
+                    <label style={lbl}>After someone sends a message</label>
+                    <input style={inp} maxLength={300}
+                      value={contactForm.contactSuccessMessage}
+                      onChange={e => setContactForm(f => ({ ...f, contactSuccessMessage: e.target.value }))}
+                      placeholder="Thanks for reaching out. We'll get back to you as soon as we can." />
+                    <div style={{ fontSize: '.72rem', color: 'var(--gray)', marginTop: '.3rem' }}>Avoid naming a deadline you cannot keep on a Sunday. Leave blank for the default.</div>
+                  </div>
+                  {!contactForm.contactFormEnabled && (
+                    <div>
+                      <label style={lbl}>Shown while the form is closed</label>
+                      <input style={inp} maxLength={300}
+                        value={contactForm.contactClosedMessage}
+                        onChange={e => setContactForm(f => ({ ...f, contactClosedMessage: e.target.value }))}
+                        placeholder="Our contact form is closed right now. Reach us on Facebook, Instagram or TikTok." />
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div style={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'flex-end' }}><button onClick={saveContact} disabled={busy} style={pubBtn(false)}>{busy ? 'Saving…' : 'Save'}</button></div>
             </div>
           )}
         </div>

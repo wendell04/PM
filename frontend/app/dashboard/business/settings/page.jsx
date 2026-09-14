@@ -177,15 +177,6 @@ export default function SettingsPage() {
   const [passwordError, setPasswordError]       = useState('');
   const [passwordSuccess, setPasswordSuccess]   = useState('');
 
-  const [businessForm, setBusinessForm] = useState({
-    // Contact form controls. Defaults keep it open with the current wording, so nothing changes
-    // until the owner decides otherwise.
-    contactFormEnabled: true, contactSuccessMessage: '', contactClosedMessage: '',
-    businessName: '',
-    businessAddress: '',
-    operatingHours: '',
-    contactEmail: '',
-  });
 
   const [notifPrefs, setNotifPrefs] = useState({
     newOrders: true,
@@ -312,9 +303,6 @@ export default function SettingsPage() {
   const [totpRemoveOpen, setTotpRemoveOpen] = useState(false);
   const [totpRemovePassword, setTotpRemovePassword] = useState('');
   const [totpRemoveLoading, setTotpRemoveLoading] = useState(false);
-  const [isSavingBusiness, setIsSavingBusiness] = useState(false);
-  const [businessError, setBusinessError] = useState('');
-  const [businessSuccess, setBusinessSuccess] = useState('');
 
   // ── Populate form from currentUser ────────────────────────
   useEffect(() => {
@@ -326,13 +314,6 @@ export default function SettingsPage() {
         phoneNumber: currentUser.phoneNumber || '',
         address:     currentUser.address     || '',
       });
-      setBusinessForm(f => ({
-        ...f,
-        businessName: currentUser.businessName || '',
-        businessAddress: currentUser.address || '',
-        operatingHours: '',
-        contactEmail: currentUser.email || '',
-      }));
       setTwoFactorEnabled(!!currentUser.two_factor_enabled);
       setTotpConfirmed(!!currentUser.totp_confirmed);
       setIsLoading(false);
@@ -376,12 +357,6 @@ export default function SettingsPage() {
             rushFee:              d.data.rushFee               != null ? String(d.data.rushFee)              : '150',
             googleMapsEnabled:    d.data.googleMapsEnabled === true,
           });
-          setBusinessForm(f => ({
-            ...f,
-            contactFormEnabled:    d.data.contactFormEnabled !== false,
-            contactSuccessMessage: d.data.contactSuccessMessage || '',
-            contactClosedMessage:  d.data.contactClosedMessage  || '',
-          }));
           // Pre-fill the editor with the built-in defaults when nothing is saved, so the owner SEES
           // and can edit the exact clauses shown to customers (instead of them living only in code).
           // A saved set wins, but any NEW built-in clause the owner has never seen is appended
@@ -918,15 +893,16 @@ export default function SettingsPage() {
   };
 
   const [mapsSaving, setMapsSaving] = useState(false);
+  const [mapsError, setMapsError]   = useState('');
   const handleToggleMaps = async () => {
     const next = !shippingForm.googleMapsEnabled;
     setShippingForm(f => ({ ...f, googleMapsEnabled: next }));
-    setLocationError(''); setMapsSaving(true);
+    setMapsError(''); setMapsSaving(true);
     try {
       await saveShippingFields({ googleMapsEnabled: next });
     } catch (err) {
       setShippingForm(f => ({ ...f, googleMapsEnabled: !next }));
-      setLocationError(err.message || 'Could not change the map setting.');
+      setMapsError(err.message || 'Could not change the map setting.');
     } finally {
       setMapsSaving(false);
     }
@@ -1030,28 +1006,6 @@ export default function SettingsPage() {
       setPromiseError(err.message || 'An unexpected error occurred.');
     } finally {
       setIsSavingPromise(false);
-    }
-  };
-
-  const handleSaveBusinessSettings = async () => {
-    setBusinessError('');
-    setBusinessSuccess('');
-    setIsSavingBusiness(true);
-    try {
-      // The contact form settings are stored on the owner through the shipping endpoint. The general
-      // settings endpoint this used to call requires store name, email and phone, which this form
-      // does not send, so every save was refused.
-      await saveShippingFields({
-        contactFormEnabled:    !!businessForm.contactFormEnabled,
-        contactSuccessMessage: businessForm.contactSuccessMessage || '',
-        contactClosedMessage:  businessForm.contactClosedMessage  || '',
-      });
-      setBusinessSuccess('Contact form settings saved.');
-      setTimeout(() => setBusinessSuccess(''), 3000);
-    } catch (err) {
-      setBusinessError(err.message || 'An unexpected error occurred.');
-    } finally {
-      setIsSavingBusiness(false);
     }
   };
 
@@ -1609,84 +1563,40 @@ export default function SettingsPage() {
 
           {activeTab === 'business' && (
   <div style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden' }}>
-    <div style={{ padding: '0.875rem 1.25rem', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--gray-light)" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-      <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--white)' }}>Business Details</span>
-      <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>- Public information shown to your customers.</span>
+    <div style={{ padding: '0.875rem 1.25rem', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '0.625rem', flexWrap: 'wrap' }}>
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--gray-light)" strokeWidth="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+      <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--white)' }}>Maps and address search</span>
+      <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>- Applies to the customer address form and the Shipping Location map.</span>
     </div>
-    <div style={{ padding: '1.5rem' }}>
-
-    {businessSuccess && (
-      <div style={{ marginBottom: '1rem', padding: '0.75rem 1rem', background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: '8px', color: 'var(--green)', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem' }}>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-        {businessSuccess}
-      </div>
-    )}
-    {businessError && (
-      <div style={{ marginBottom: '1rem', padding: '0.75rem 1rem', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: 'var(--red)', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem' }}>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-        {businessError}
-      </div>
-    )}
-
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-      <div className="profile-form-field">
-        <label>Business name</label>
-        <input type="text" value={businessForm.businessName} onChange={e => setBusinessForm(f => ({ ...f, businessName: e.target.value }))} placeholder="PersonalizeMe Prints" maxLength={100} />
-        {/* The public contact form. It is a write endpoint anyone can reach, so there has to be a
-            way to close it - and the server refuses too, since hiding the form would leave the
-            URL open to whoever already knows it. */}
-        <div style={{ marginTop: '1.4rem', paddingTop: '1.2rem', borderTop: '1px solid var(--border)' }}>
-          <div style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--white)', marginBottom: '0.15rem' }}>Contact form</div>
-          <div style={{ fontSize: '0.74rem', color: 'var(--gray)', marginBottom: '0.8rem' }}>
-            The &ldquo;Let&apos;s Talk&rdquo; form on the landing page.
+    {/* Only the switch lives here. Business hours, email and socials are edited in Homepage ->
+        Let's Talk, which is where customers see them; the shop address is in Shipping. */}
+    <div style={{ padding: '1.25rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '0.9rem' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1.25rem' }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--white)' }}>Use Google Maps</div>
+          <div style={{ fontSize: '0.78rem', color: 'var(--gray)', marginTop: '0.25rem', lineHeight: 1.55, maxWidth: '62ch' }}>
+            Off: customers and the Shipping Location card use the address fields only. On: Google address search
+            and a map pin appear on both. Google charges past its free allowance - set a daily quota in Google
+            Cloud before turning this on. Saves as soon as you switch it.
           </div>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.8rem', fontWeight: 600, color: 'var(--white)', cursor: 'pointer', marginBottom: '0.9rem' }}>
-            <input type="checkbox" checked={!!businessForm.contactFormEnabled}
-              onChange={e => setBusinessForm(f => ({ ...f, contactFormEnabled: e.target.checked }))}
-              style={{ width: 16, height: 16, accentColor: 'var(--gold)' }} />
-            Accept messages through the contact form
-          </label>
-          <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--gray-light)', marginBottom: '0.3rem' }}>
-            After someone sends a message
-          </label>
-          <input type="text" value={businessForm.contactSuccessMessage ?? ''} maxLength={300}
-            onChange={e => setBusinessForm(f => ({ ...f, contactSuccessMessage: e.target.value }))}
-            placeholder="Thanks for reaching out. We'll get back to you as soon as we can." />
-          <div style={{ fontSize: '0.7rem', color: 'var(--gray)', margin: '0.25rem 0 0.9rem' }}>
-            Avoid naming a deadline you cannot keep on a Sunday. Leave blank for the default.
-          </div>
-          {!businessForm.contactFormEnabled && (
-            <>
-              <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--gray-light)', marginBottom: '0.3rem' }}>
-                Shown while the form is closed
-              </label>
-              <input type="text" value={businessForm.contactClosedMessage ?? ''} maxLength={300}
-                onChange={e => setBusinessForm(f => ({ ...f, contactClosedMessage: e.target.value }))}
-                placeholder="Our contact form is closed right now. Reach us on Facebook, Instagram or TikTok." />
-            </>
-          )}
         </div>
-      </div>
-      <div className="profile-form-field">
-        <label>Operating hours</label>
-        <input type="text" value={businessForm.operatingHours} onChange={e => setBusinessForm(f => ({ ...f, operatingHours: e.target.value }))} placeholder="Mon-Sat 9:00-18:00" maxLength={100} />
-      </div>
-      <div className="profile-form-field">
-        <label>Business address</label>
-        <input type="text" value={businessForm.businessAddress} onChange={e => setBusinessForm(f => ({ ...f, businessAddress: e.target.value }))} placeholder="Street, city" maxLength={200} />
-      </div>
-      <div className="profile-form-field">
-        <label>Customer contact email</label>
-        <input type="email" value={businessForm.contactEmail} onChange={e => setBusinessForm(f => ({ ...f, contactEmail: e.target.value }))} placeholder="support@example.com" maxLength={100} />
-      </div>
-
-      <div style={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'flex-end', paddingTop: '0.25rem' }}>
-        <button type="button" onClick={handleSaveBusinessSettings} disabled={isSavingBusiness} style={{ padding: '0.625rem 1.5rem', background: isSavingBusiness ? 'var(--dark3)' : 'var(--gold)', border: 'none', borderRadius: '8px', color: isSavingBusiness ? 'var(--gray)' : 'var(--black)', fontSize: '0.875rem', fontWeight: 600, cursor: isSavingBusiness ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          {isSavingBusiness ? <><span className="spinner" />Saving...</> : <><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>Save Changes</>}
+        <button
+          type="button"
+          role="switch"
+          aria-checked={!!shippingForm.googleMapsEnabled}
+          aria-label="Use Google Maps"
+          onClick={handleToggleMaps}
+          disabled={mapsSaving}
+          style={{ position: 'relative', width: '44px', height: '24px', borderRadius: '12px', border: 'none', cursor: mapsSaving ? 'wait' : 'pointer', background: shippingForm.googleMapsEnabled ? 'var(--gold)' : 'var(--border)', transition: 'background 0.2s', padding: 0, flexShrink: 0, opacity: mapsSaving ? 0.7 : 1 }}
+        >
+          <span style={{ position: 'absolute', top: '3px', left: shippingForm.googleMapsEnabled ? '23px' : '3px', width: '18px', height: '18px', borderRadius: '50%', background: 'var(--dark)', transition: 'left 0.2s' }} />
         </button>
       </div>
-    </div>
+      {mapsError && (
+        <div style={{ padding: '0.7rem 1rem', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: '8px', color: '#f87171', fontSize: '0.85rem' }}>
+          {mapsError}
+        </div>
+      )}
     </div>
   </div>
 )}
@@ -1702,30 +1612,6 @@ export default function SettingsPage() {
                   <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>- Pin where orders ship from. Shipping fee and courier pickup are based on this point.</span>
                 </div>
                 <div style={{ padding: '1.5rem' }}>
-                {/* Google Maps lives with the map it controls. It saves on its own when switched, so the
-                    map below appears at once and stays. Off by default: past its free allowance Google
-                    bills the card on file with no cap of its own, and the fields are accurate without it. */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '0.75rem 1rem', background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '10px', marginBottom: '1.25rem' }}>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--white)' }}>Use Google Maps</div>
-                    <div style={{ fontSize: '0.72rem', color: 'var(--gray)', marginTop: '0.2rem', lineHeight: 1.5 }}>
-                      Adds address search and a map pin here and on the customer address form. Google charges past its
-                      free allowance - set a daily quota in Google Cloud before turning this on.
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={!!shippingForm.googleMapsEnabled}
-                    aria-label="Use Google Maps"
-                    onClick={handleToggleMaps}
-                    disabled={mapsSaving}
-                    style={{ position: 'relative', width: '44px', height: '24px', borderRadius: '12px', border: 'none', cursor: mapsSaving ? 'wait' : 'pointer', background: shippingForm.googleMapsEnabled ? 'var(--gold)' : 'var(--border)', transition: 'background 0.2s', padding: 0, flexShrink: 0, opacity: mapsSaving ? 0.7 : 1 }}
-                  >
-                    <span style={{ position: 'absolute', top: '3px', left: shippingForm.googleMapsEnabled ? '23px' : '3px', width: '18px', height: '18px', borderRadius: '50%', background: 'var(--dark)', transition: 'left 0.2s' }} />
-                  </button>
-                </div>
-
                 {/* Everything about the map - the map, the pinned line, the accuracy warning and the
                     search box - exists only while Google Maps is on. Off, this card is the address
                     fields, which are accurate on their own. */}
