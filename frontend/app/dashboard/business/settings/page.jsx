@@ -9,6 +9,7 @@ import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import { DEFAULT_CUSTOM_ORDER_TERMS } from '@/lib/customOrderTerms';
 import { DEFAULT_REGISTRATION_TERMS } from '@/lib/registrationTerms';
 import { CustomSelect } from './../inventory-v2/shared';
+import { fetchRegions, fetchProvinces, fetchCities, fetchBarangays, isNCR } from '@/lib/psgc';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import ImageCropper from '@/components/ImageCropper';
 
@@ -19,7 +20,7 @@ const GOOGLE_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || '';
 const EMPTY_STORE_PARTS = { house_number: '', street: '', barangay: '', city: '', province: '', zip: '' };
 const combineStoreAddress = (p = {}) => [
   [p.house_number, p.street].filter(Boolean).join(' '),
-  p.barangay, p.city, p.province, p.zip,
+  p.barangay, p.city, p.province || p.region, p.zip,
 ].filter(Boolean).join(', ');
 const googleComponentsToParts = (components = []) => {
   const get = (t) => components.find(c => (c.types || []).includes(t));
@@ -129,6 +130,12 @@ const DISTANCE_SHIPPING_ENABLED = false;
 
 export default function SettingsPage() {
   const { token, currentUser, setCurrentUser } = useAuth();
+
+  // PSGC lists for the shop's own address - the same cascade the customer's address form uses.
+  const [psgcRegions, setPsgcRegions]     = useState([]);
+  const [psgcProvinces, setPsgcProvinces] = useState([]);
+  const [psgcCities, setPsgcCities]       = useState([]);
+  const [psgcBarangays, setPsgcBarangays] = useState([]);
   const { theme, toggleTheme } = useTheme();
 
   const deviceTokens = useMemo(
@@ -205,6 +212,56 @@ export default function SettingsPage() {
     productionLeadDays: '3', shippingDaysMin: '1', shippingDaysMax: '2',
     rushEnabled: true, rushLeadDays: '1', rushFee: '150',
   });
+  const setStorePart = (patch) => setShippingForm(f => {
+    const sp = { ...(f.storeAddressParts || {}), ...patch };
+    return { ...f, storeAddressParts: sp, storeAddress: combineStoreAddress(sp) };
+  });
+  const storeRegion   = shippingForm.storeAddressParts?.region_code || '';
+  const storeProvince = shippingForm.storeAddressParts?.province_code || '';
+  const storeCity     = shippingForm.storeAddressParts?.city_code || '';
+  useEffect(() => { fetchRegions().then(setPsgcRegions).catch(() => {}); }, []);
+  useEffect(() => {
+    if (!storeRegion) { setPsgcProvinces([]); setPsgcCities([]); return; }
+    if (isNCR(storeRegion)) { setPsgcProvinces([]); fetchCities(storeRegion, null).then(setPsgcCities).catch(() => {}); return; }
+    fetchProvinces(storeRegion).then(setPsgcProvinces).catch(() => {});
+  }, [storeRegion]);
+  useEffect(() => {
+    if (!storeRegion || isNCR(storeRegion)) return;
+    if (!storeProvince) { setPsgcCities([]); return; }
+    fetchCities(storeRegion, storeProvince).then(setPsgcCities).catch(() => {});
+  }, [storeRegion, storeProvince]);
+  useEffect(() => {
+    if (!storeCity) { setPsgcBarangays([]); return; }
+    fetchBarangays(storeCity).then(setPsgcBarangays).catch(() => {});
+  }, [storeCity]);
+  // An address saved before these lists has names but no codes. Match the names once, level by
+  // level, so the lists open on the saved address instead of asking for it again.
+  useEffect(() => {
+    const p = shippingForm.storeAddressParts || {};
+    const norm = v => String(v || '').toLowerCase().replace(/^city of /, '').replace(/ city$/, '').replace(/\s+/g, ' ').trim();
+    if (!p.region_code && psgcRegions.length && (p.region || p.province)) {
+      const ncr = /metro manila|ncr|national capital/i.test(`${p.region || ''} ${p.province || ''}`);
+      const hit = ncr ? psgcRegions.find(r => isNCR(r.code)) : psgcRegions.find(r => norm(r.name) === norm(p.region));
+      if (hit) setStorePart(isNCR(hit.code)
+        ? { region: hit.name, region_code: hit.code, province: 'Metro Manila', province_code: hit.code }
+        : { region: hit.name, region_code: hit.code });
+      return;
+    }
+    if (p.region_code && !p.province_code && p.province && psgcProvinces.length) {
+      const hit = psgcProvinces.find(x => norm(x.name) === norm(p.province));
+      if (hit) setStorePart({ province: hit.name, province_code: hit.code });
+      return;
+    }
+    if (p.province_code && !p.city_code && p.city && psgcCities.length) {
+      const hit = psgcCities.find(x => norm(x.name) === norm(p.city));
+      if (hit) setStorePart({ city: hit.name, city_code: hit.code });
+      return;
+    }
+    if (p.city_code && !p.barangay_code && p.barangay && psgcBarangays.length) {
+      const hit = psgcBarangays.find(x => norm(x.name) === norm(p.barangay));
+      if (hit) setStorePart({ barangay: hit.name, barangay_code: hit.code });
+    }
+  }, [shippingForm.storeAddressParts, psgcRegions, psgcProvinces, psgcCities, psgcBarangays]); // eslint-disable-line react-hooks/exhaustive-deps
   const [termsRows, setTermsRows]                       = useState([]);
   const [settingsTermsVersion, setSettingsTermsVersion] = useState(1);
   const [savingTerms, setSavingTerms]                   = useState(false);
@@ -1577,12 +1634,19 @@ export default function SettingsPage() {
             on a map. Google charges past its free allowance - set a daily quota in Google Cloud before
             turning this on.
           </div>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.8rem', fontWeight: 600, color: 'var(--white)', cursor: 'pointer', marginBottom: '0.9rem' }}>
-            <input type="checkbox" checked={!!businessForm.googleMapsEnabled}
-              onChange={e => setBusinessForm(f => ({ ...f, googleMapsEnabled: e.target.checked }))}
-              style={{ width: 16, height: 16, accentColor: 'var(--gold)' }} />
-            Use Google Maps for address search and map pins
-          </label>
+          {/* A switch, like every other on/off setting on this page. */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '0.75rem 1rem', background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '10px', marginBottom: '0.9rem' }}>
+            <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--white)' }}>Use Google Maps for address search and map pins</span>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={!!businessForm.googleMapsEnabled}
+              onClick={() => setBusinessForm(f => ({ ...f, googleMapsEnabled: !f.googleMapsEnabled }))}
+              style={{ position: 'relative', width: '44px', height: '24px', borderRadius: '12px', border: 'none', cursor: 'pointer', background: businessForm.googleMapsEnabled ? 'var(--gold)' : 'var(--border)', transition: 'background 0.2s', padding: 0, flexShrink: 0 }}
+            >
+              <span style={{ position: 'absolute', top: '3px', left: businessForm.googleMapsEnabled ? '23px' : '3px', width: '18px', height: '18px', borderRadius: '50%', background: 'var(--dark)', transition: 'left 0.2s' }} />
+            </button>
+          </div>
         </div>
 
         {/* The public contact form. It is a write endpoint anyone can reach, so there has to be a
@@ -1658,17 +1722,15 @@ export default function SettingsPage() {
                   Pin your store on the map. Shipping fee is calculated from this point to the customer's address.
                 </p>
 
-                {businessForm.googleMapsEnabled ? (
-                  <StoreLocationMap
-                    lat={shippingForm.storeLat}
-                    lng={shippingForm.storeLng}
-                    onLocationSelect={handleMapLocationSelect}
-                  />
-                ) : (
-                  <div style={{ padding: '0.875rem 1rem', border: '1px dashed var(--border)', borderRadius: '10px', fontSize: '0.8rem', color: 'var(--gray)', lineHeight: 1.5 }}>
-                    The map is off. Turn on &ldquo;Use Google Maps&rdquo; under Maps and address search to pin the shop&apos;s location.
-                  </div>
-                )}
+                {/* Everything about the map - the map, the pinned line, the accuracy warning and the
+                    search box - exists only while Google Maps is on. Off, this card is the address
+                    fields, which are accurate on their own. */}
+                {businessForm.googleMapsEnabled && (<>
+                <StoreLocationMap
+                  lat={shippingForm.storeLat}
+                  lng={shippingForm.storeLng}
+                  onLocationSelect={handleMapLocationSelect}
+                />
 
                 {shippingForm.storeLat && shippingForm.storeLng && (
                   <div style={{
@@ -1741,18 +1803,75 @@ export default function SettingsPage() {
                   </div>
                 </div>
 
+                </>)}
+
                 {/* Store Address - structured by-fields (auto-fills from search/pin, editable) */}
                 <div style={{ marginTop: '0.75rem' }}>
                   <label style={{ fontSize: '0.8rem', color: 'var(--gray)', marginBottom: '0.5rem', display: 'block' }}>
-                    Store Address <span style={{ fontSize: '0.75rem', color: 'var(--gray)', fontWeight: 400 }}>(displayed to customers - auto-fills from the search/pin, editable)</span>
+                    Store Address <span style={{ fontSize: '0.75rem', color: 'var(--gray)', fontWeight: 400 }}>{businessForm.googleMapsEnabled ? '(shown to customers - fills in from the search or pin, editable)' : '(shown to customers)'}</span>
                   </label>
+                  {/* The same Philippine Standard Geographic Code lists customers choose from, so the
+                      shop's address is as exact as theirs without needing a map. */}
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                    <div className="profile-form-field">
+                      <label>Region</label>
+                      <CustomSelect
+                        value={shippingForm.storeAddressParts?.region_code || ''}
+                        onChange={code => setStorePart({
+                          region_code: code, region: psgcRegions.find(r => r.code === code)?.name || '',
+                          // Same as the customer form: Metro Manila has no province, so it stands in for one.
+                          province_code: isNCR(code) ? code : '', province: isNCR(code) ? 'Metro Manila' : '',
+                          city_code: '', city: '', barangay_code: '', barangay: '',
+                        })}
+                        options={psgcRegions.map(r => ({ value: r.code, label: r.name }))}
+                        placeholder="Select region"
+                        searchable
+                      />
+                    </div>
+                    <div className="profile-form-field">
+                      <label>Province</label>
+                      <CustomSelect
+                        value={isNCR(shippingForm.storeAddressParts?.region_code) ? '' : (shippingForm.storeAddressParts?.province_code || '')}
+                        onChange={code => setStorePart({
+                          province_code: code, province: psgcProvinces.find(p => p.code === code)?.name || '',
+                          city_code: '', city: '', barangay_code: '', barangay: '',
+                        })}
+                        options={psgcProvinces.map(p => ({ value: p.code, label: p.name }))}
+                        placeholder={isNCR(shippingForm.storeAddressParts?.region_code) ? 'Metro Manila (NCR)' : 'Select province'}
+                        disabled={!shippingForm.storeAddressParts?.region_code || isNCR(shippingForm.storeAddressParts?.region_code)}
+                        searchable
+                      />
+                    </div>
+                    <div className="profile-form-field">
+                      <label>City / Municipality</label>
+                      <CustomSelect
+                        value={shippingForm.storeAddressParts?.city_code || ''}
+                        onChange={code => setStorePart({
+                          city_code: code, city: psgcCities.find(c => c.code === code)?.name || '',
+                          barangay_code: '', barangay: '',
+                        })}
+                        options={psgcCities.map(c => ({ value: c.code, label: c.name }))}
+                        placeholder={shippingForm.storeAddressParts?.city || 'Select city'}
+                        disabled={!shippingForm.storeAddressParts?.province_code}
+                        searchable
+                      />
+                    </div>
+                    <div className="profile-form-field">
+                      <label>Barangay</label>
+                      <CustomSelect
+                        value={shippingForm.storeAddressParts?.barangay_code || ''}
+                        onChange={code => setStorePart({
+                          barangay_code: code, barangay: psgcBarangays.find(b => b.code === code)?.name || '',
+                        })}
+                        options={psgcBarangays.map(b => ({ value: b.code, label: b.name }))}
+                        placeholder={shippingForm.storeAddressParts?.barangay || 'Select barangay'}
+                        disabled={!shippingForm.storeAddressParts?.city_code}
+                        searchable
+                      />
+                    </div>
                     {[
                       ['house_number', 'House/Unit/Bldg No.', 'e.g. 168'],
                       ['street', 'Street', 'e.g. General Luis St.'],
-                      ['barangay', 'Barangay', 'e.g. Nagkaisang Nayon'],
-                      ['city', 'City / Municipality', 'e.g. Quezon City'],
-                      ['province', 'Province / Region', 'e.g. Metro Manila'],
                       ['zip', 'ZIP Code', 'e.g. 1117'],
                     ].map(([key, lbl, ph]) => (
                       <div className="profile-form-field" key={key}>
@@ -1760,10 +1879,7 @@ export default function SettingsPage() {
                         <input
                           type="text"
                           value={shippingForm.storeAddressParts?.[key] || ''}
-                          onChange={e => setShippingForm(f => {
-                            const sp = { ...(f.storeAddressParts || {}), [key]: key === 'zip' ? e.target.value.replace(/\D/g, '').slice(0, 4) : e.target.value };
-                            return { ...f, storeAddressParts: sp, storeAddress: combineStoreAddress(sp) };
-                          })}
+                          onChange={e => setStorePart({ [key]: key === 'zip' ? e.target.value.replace(/\D/g, '').slice(0, 4) : e.target.value })}
                           placeholder={ph}
                           maxLength={key === 'zip' ? 4 : 100}
                         />
