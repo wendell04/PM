@@ -2333,7 +2333,8 @@
       align-items: center;
     }
     details.lp-footer-col[open] > summary { flex: 0 0 100%; }
-    details.lp-footer-col[open] > a {
+    details.lp-footer-col[open] > a,
+    details.lp-footer-col[open] > button {
       display: inline-block;
       margin: 0 1.5rem 1rem 0;
     }
@@ -4802,3 +4803,24 @@ html.light .lp-pinnacle-prod-img { border-color: #e5e5e3; }
   cursor: pointer;
 }
 .lp-footer-legal button:hover { color: var(--gold); }
+
+/* Landing footer Legal: an accordion on phones, the bottom-bar links on anything wider - the same
+   split as the shop footer, so a policy is always in exactly one place. */
+.lp-footer-policy-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0 0 0.5rem;
+  font-family: inherit;
+  font-size: 0.85rem;
+  color: rgba(255,255,255,0.65);
+  cursor: pointer;
+  text-align: left;
+}
+.lp-footer-policy-btn:hover { color: var(--gold); }
+@media (min-width: 769px) {
+  details.lp-footer-col.lp-footer-legal-col { display: none !important; }
+}
+@media (max-width: 768px) {
+  .lp-footer-bottom .lp-footer-legal { display: none; }
+}

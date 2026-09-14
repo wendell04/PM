@@ -2629,6 +2629,16 @@ const handleForgotResetPassword = async () => {
               )}
             </div>
           </details>
+          {/* Phones only, like the shop footer: the policies get their own Legal section among the
+              other accordions. On a wider screen they sit in the bottom bar instead. */}
+          <details className="lp-footer-col lp-footer-legal-col">
+            <summary>
+              <h4>Legal</h4>
+              <svg className="lp-footer-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+            </summary>
+            <button type="button" className="lp-footer-policy-btn" onClick={() => setPolicyDoc('policy_privacy')}>Privacy Policy</button>
+            <button type="button" className="lp-footer-policy-btn" onClick={() => setPolicyDoc('policy_terms')}>T&amp;C</button>
+          </details>
         </div>
         <div className="lp-footer-bottom">
           <span className="lp-footer-copy">© {new Date().getFullYear()} Personalize Me Prints. All rights reserved.</span>
