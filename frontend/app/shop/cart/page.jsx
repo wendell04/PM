@@ -352,7 +352,7 @@ export default function CartPage() {
       return !choice?.url;
     });
     if (customWithNoDesign.length > 0) {
-      setError(`Please attach a design or request design service for: ${customWithNoDesign.map(i => i.product.name).join(', ')}`);
+      setError(`Choose how the design is provided first - tap Customise on: ${customWithNoDesign.map(i => i.product.name).join(', ')}`);
       return;
     }
 
@@ -706,36 +706,23 @@ export default function CartPage() {
                             </span>
                           )}
 
-                          {!hasDesign && (
-                            <>
-                              <label style={{
-                                display: 'inline-flex', alignItems: 'center', gap: 5, cursor: 'pointer',
-                                padding: '5px 11px', borderRadius: 999, fontSize: '.74rem', fontWeight: 700,
-                                background: isUpload ? 'var(--white)' : 'var(--dark)',
-                                color: isUpload ? 'var(--dark)' : 'var(--white)',
-                                border: `1px solid ${isUpload ? 'var(--white)' : 'var(--border)'}`,
-                              }}>
-                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                                  <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" />
-                                </svg>
-                                {isUpload ? 'Replace file' : 'Upload file'}
-                                <input type="file" accept=".jpg,.jpeg,.png,.webp,.pdf,.ai,.psd,.svg" style={{ display: 'none' }} onChange={e => handleDesignFileSelect(item.lineId, e.target.files?.[0])} />
-                              </label>
-                              {item.designFee > 0 && (
-                                <button
-                                  type="button"
-                                  onClick={() => handleRequestDesign(item.lineId, mode)}
-                                  style={{
-                                    padding: '5px 11px', borderRadius: 999, fontSize: '.74rem', fontWeight: 700, cursor: 'pointer',
-                                    background: isReq ? 'var(--white)' : 'var(--dark)',
-                                    color: isReq ? 'var(--dark)' : 'var(--white)',
-                                    border: `1px solid ${isReq ? 'var(--white)' : 'var(--border)'}`,
-                                  }}
-                                >
-                                  Request design
-                                </button>
-                              )}
-                            </>
+                          {/* How the design is provided was chosen on the product page, together with that
+                              choice's own terms. Switching it here would carry the other choice's
+                              agreement into the order, so the cart only shows it. To change it, the
+                              item is customised again - and its terms accepted again. */}
+                          {!hasDesign && item.designMode === 'request' && (
+                            <span style={{ display: 'block', width: '100%', order: 100, marginTop: 4, fontSize: '.7rem', color: 'var(--gray)', lineHeight: 1.5 }}>
+                              Want to upload your own file instead? Remove this item and customise it again.
+                            </span>
+                          )}
+                          {!hasDesign && !item.designMode && (
+                            <Link
+                              href={`/shop/products/${item.product._id}/order`}
+                              style={{ padding: '5px 11px', borderRadius: 999, fontSize: '.74rem', fontWeight: 700, textDecoration: 'none',
+                                background: 'var(--dark)', color: 'var(--white)', border: '1px solid var(--border)' }}
+                            >
+                              Customise
+                            </Link>
                           )}
                         </div>
                       )}

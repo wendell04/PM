@@ -3798,6 +3798,9 @@ details.shop-footer-col > .shop-footer-pay-grid { display: flex; }
   .shop-footer-inner {
     grid-template-columns: 1fr;
     gap: 0;
+    /* The desktop columns need room above the divider; a list of accordion rows does not - the
+       last row's own padding is the space. */
+    padding-bottom: 0;
   }
   .shop-footer-brand {
     grid-column: 1 / -1;

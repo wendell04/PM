@@ -2306,6 +2306,7 @@
     .lp-footer-inner {
       grid-template-columns: 1fr;
       gap: 0;
+      padding-bottom: 0;
     }
     .lp-footer-brand {
       grid-column: 1 / -1;
