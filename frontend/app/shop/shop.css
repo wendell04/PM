@@ -769,8 +769,9 @@
         }
 
         @media (max-width: 768px) {
-          .shop-navbar-shop-btn span { display: none; }
-          .shop-navbar-shop-btn { padding: 6px 9px; }
+          /* The label stays. A lone bag icon in the top bar read as a logo or a cart, not as the
+             way back to the shop - and the bottom bar freed the room it was hidden to save. */
+          .shop-navbar-shop-btn { padding: 6px 11px; font-size: 0.8rem; }
 
           .shop-navbar-container {
             padding: 0 1rem;
