@@ -3834,7 +3834,8 @@ details.shop-footer-col > .shop-footer-pay-grid { display: flex; }
     align-items: center;
   }
   details.shop-footer-col[open] > summary { flex: 0 0 100%; }
-  details.shop-footer-col[open] > a {
+  details.shop-footer-col[open] > a,
+  details.shop-footer-col[open] > button {
     display: inline-block;
     margin: 0 1.5rem 1rem 0;
   }
@@ -5611,3 +5612,23 @@ html.light .shop-search-suggest-name { color: #111; }
   }
 }
 .ab-form input, .ab-form select, .ab-form textarea { box-sizing: border-box; max-width: 100%; }
+
+/* The Legal column was empty on every phone, and not because of its colour. The accordion hides
+   everything inside a column and then shows only <a> links when it opens - and the policies are
+   buttons, because they open a modal. They are shown with the links now (see the [open] rule). */
+
+/* Desktop: no Legal column - the policies sit in the bottom bar beside the copyright, exactly as
+   on the landing page. The accordion column is the phone's version. */
+.shop-footer-legal-inline { display: inline-flex; gap: 1.5rem; margin-left: auto; margin-right: 1rem; }
+.shop-footer-legal-inline button {
+  background: none; border: none; padding: 0; cursor: pointer;
+  font-family: Arial, Arimo, Helvetica, sans-serif; font-size: 0.78rem;
+  color: rgba(255,255,255,0.3);
+}
+.shop-footer-legal-inline button:hover { color: var(--gold); }
+@media (min-width: 769px) {
+  details.shop-footer-col.shop-footer-legal { display: none !important; }
+}
+@media (max-width: 768px) {
+  .shop-footer-legal-inline { display: none; }
+}

@@ -1657,7 +1657,7 @@ export default function ShopLayout({ children }) {
                 )}
               </div>
             </details>
-            <details className="shop-footer-col">
+            <details className="shop-footer-col shop-footer-legal">
               <summary>
                 <h4>Legal</h4>
                 <svg className="shop-footer-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
@@ -1681,6 +1681,12 @@ export default function ShopLayout({ children }) {
           </div>
           <div className="shop-footer-bottom">
             <span className="shop-footer-copy">© {new Date().getFullYear()} Personalize Me Prints. All rights reserved.</span>
+            {/* Desktop: the policies live in this bar, as on the landing page. A phone gets the
+                Legal accordion above instead, where they are easier to reach with a thumb. */}
+            <span className="shop-footer-legal-inline">
+              <button type="button" onClick={() => setPolicyDoc('policy_privacy')}>Privacy Policy</button>
+              <button type="button" onClick={() => setPolicyDoc('policy_terms')}>T&amp;C</button>
+            </span>
             <button
               type="button"
               onClick={toggleTheme}
