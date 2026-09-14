@@ -180,7 +180,7 @@ export default function SettingsPage() {
   const [businessForm, setBusinessForm] = useState({
     // Contact form controls. Defaults keep it open with the current wording, so nothing changes
     // until the owner decides otherwise.
-    contactFormEnabled: true, contactSuccessMessage: '', contactClosedMessage: '', googleMapsEnabled: false,
+    contactFormEnabled: true, contactSuccessMessage: '', contactClosedMessage: '',
     businessName: '',
     businessAddress: '',
     operatingHours: '',
@@ -206,6 +206,7 @@ export default function SettingsPage() {
   // ── Shipping ──────────────────────────────────────────────
   const [shippingForm, setShippingForm] = useState({
     storeAddress: '', storeAddressParts: { ...EMPTY_STORE_PARTS }, storeLat: null, storeLng: null,
+    googleMapsEnabled: false,
     shippingMode: 'courier_booked',
     shippingBaseRate: '49', shippingPerKmRate: '6', shippingPerKmRateFar: '5', shippingTierKm: '5',
     flatRateInsideMetro: '150', flatRateOutsideMetro: '250',
@@ -325,12 +326,13 @@ export default function SettingsPage() {
         phoneNumber: currentUser.phoneNumber || '',
         address:     currentUser.address     || '',
       });
-      setBusinessForm({
+      setBusinessForm(f => ({
+        ...f,
         businessName: currentUser.businessName || '',
         businessAddress: currentUser.address || '',
         operatingHours: '',
         contactEmail: currentUser.email || '',
-      });
+      }));
       setTwoFactorEnabled(!!currentUser.two_factor_enabled);
       setTotpConfirmed(!!currentUser.totp_confirmed);
       setIsLoading(false);
@@ -372,11 +374,11 @@ export default function SettingsPage() {
             rushEnabled:          d.data.rushEnabled           != null ? !!d.data.rushEnabled                : true,
             rushLeadDays:         d.data.rushLeadDays          != null ? String(d.data.rushLeadDays)         : '1',
             rushFee:              d.data.rushFee               != null ? String(d.data.rushFee)              : '150',
+            googleMapsEnabled:    d.data.googleMapsEnabled === true,
           });
           setBusinessForm(f => ({
             ...f,
             contactFormEnabled:    d.data.contactFormEnabled !== false,
-            googleMapsEnabled:     d.data.googleMapsEnabled === true,
             contactSuccessMessage: d.data.contactSuccessMessage || '',
             contactClosedMessage:  d.data.contactClosedMessage  || '',
           }));
@@ -915,6 +917,21 @@ export default function SettingsPage() {
     if (!res.ok) throw new Error(d.message || 'Failed to save.');
   };
 
+  const [mapsSaving, setMapsSaving] = useState(false);
+  const handleToggleMaps = async () => {
+    const next = !shippingForm.googleMapsEnabled;
+    setShippingForm(f => ({ ...f, googleMapsEnabled: next }));
+    setLocationError(''); setMapsSaving(true);
+    try {
+      await saveShippingFields({ googleMapsEnabled: next });
+    } catch (err) {
+      setShippingForm(f => ({ ...f, googleMapsEnabled: !next }));
+      setLocationError(err.message || 'Could not change the map setting.');
+    } finally {
+      setMapsSaving(false);
+    }
+  };
+
   const handleSaveLocation = async () => {
     setLocationError(''); setLocationSuccess(''); setIsSavingLocation(true);
     try {
@@ -1021,23 +1038,15 @@ export default function SettingsPage() {
     setBusinessSuccess('');
     setIsSavingBusiness(true);
     try {
-      const res = await fetchWithTimeout(`${API_URL}/api/admin/settings`, {
-        method: 'PUT',
-        headers: { Authorization: `Bearer ${token}`, Accept: 'application/json', 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          businessName: businessForm.businessName,
-          businessAddress: businessForm.businessAddress,
-          operatingHours: businessForm.operatingHours,
-          contactEmail: businessForm.contactEmail,
-          contactFormEnabled:    !!businessForm.contactFormEnabled,
-          googleMapsEnabled:     !!businessForm.googleMapsEnabled,
-          contactSuccessMessage: businessForm.contactSuccessMessage || '',
-          contactClosedMessage:  businessForm.contactClosedMessage  || '',
-        }),
-      }, 10000);
-      const d = await res.json();
-      if (!res.ok) throw new Error(d.message || 'Failed to save business settings.');
-      setBusinessSuccess('Business settings saved.');
+      // The contact form settings are stored on the owner through the shipping endpoint. The general
+      // settings endpoint this used to call requires store name, email and phone, which this form
+      // does not send, so every save was refused.
+      await saveShippingFields({
+        contactFormEnabled:    !!businessForm.contactFormEnabled,
+        contactSuccessMessage: businessForm.contactSuccessMessage || '',
+        contactClosedMessage:  businessForm.contactClosedMessage  || '',
+      });
+      setBusinessSuccess('Contact form settings saved.');
       setTimeout(() => setBusinessSuccess(''), 3000);
     } catch (err) {
       setBusinessError(err.message || 'An unexpected error occurred.');
@@ -1624,31 +1633,6 @@ export default function SettingsPage() {
       <div className="profile-form-field">
         <label>Business name</label>
         <input type="text" value={businessForm.businessName} onChange={e => setBusinessForm(f => ({ ...f, businessName: e.target.value }))} placeholder="PersonalizeMe Prints" maxLength={100} />
-        {/* Google Maps. Off by default: past its free allowance Google bills the card on file and
-            sets no cap of its own, while the region/province/city/barangay fields are accurate
-            without any map. Turn it on only after setting a daily quota in Google Cloud. */}
-        <div style={{ marginTop: '1.4rem', paddingTop: '1.2rem', borderTop: '1px solid var(--border)' }}>
-          <div style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--white)', marginBottom: '0.15rem' }}>Maps and address search</div>
-          <div style={{ fontSize: '0.74rem', color: 'var(--gray)', marginBottom: '0.8rem', lineHeight: 1.5 }}>
-            Off: customers type their address into the fields. On: they can search with Google and drop a pin
-            on a map. Google charges past its free allowance - set a daily quota in Google Cloud before
-            turning this on.
-          </div>
-          {/* A switch, like every other on/off setting on this page. */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '0.75rem 1rem', background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '10px', marginBottom: '0.9rem' }}>
-            <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--white)' }}>Use Google Maps for address search and map pins</span>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={!!businessForm.googleMapsEnabled}
-              onClick={() => setBusinessForm(f => ({ ...f, googleMapsEnabled: !f.googleMapsEnabled }))}
-              style={{ position: 'relative', width: '44px', height: '24px', borderRadius: '12px', border: 'none', cursor: 'pointer', background: businessForm.googleMapsEnabled ? 'var(--gold)' : 'var(--border)', transition: 'background 0.2s', padding: 0, flexShrink: 0 }}
-            >
-              <span style={{ position: 'absolute', top: '3px', left: businessForm.googleMapsEnabled ? '23px' : '3px', width: '18px', height: '18px', borderRadius: '50%', background: 'var(--dark)', transition: 'left 0.2s' }} />
-            </button>
-          </div>
-        </div>
-
         {/* The public contact form. It is a write endpoint anyone can reach, so there has to be a
             way to close it - and the server refuses too, since hiding the form would leave the
             URL open to whoever already knows it. */}
@@ -1718,14 +1702,34 @@ export default function SettingsPage() {
                   <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>- Pin where orders ship from. Shipping fee and courier pickup are based on this point.</span>
                 </div>
                 <div style={{ padding: '1.5rem' }}>
-                <p style={{ margin: '0 0 1.25rem', fontSize: '0.8125rem', color: 'var(--gray)', display: 'none' }}>
-                  Pin your store on the map. Shipping fee is calculated from this point to the customer's address.
-                </p>
+                {/* Google Maps lives with the map it controls. It saves on its own when switched, so the
+                    map below appears at once and stays. Off by default: past its free allowance Google
+                    bills the card on file with no cap of its own, and the fields are accurate without it. */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '0.75rem 1rem', background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '10px', marginBottom: '1.25rem' }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--white)' }}>Use Google Maps</div>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--gray)', marginTop: '0.2rem', lineHeight: 1.5 }}>
+                      Adds address search and a map pin here and on the customer address form. Google charges past its
+                      free allowance - set a daily quota in Google Cloud before turning this on.
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={!!shippingForm.googleMapsEnabled}
+                    aria-label="Use Google Maps"
+                    onClick={handleToggleMaps}
+                    disabled={mapsSaving}
+                    style={{ position: 'relative', width: '44px', height: '24px', borderRadius: '12px', border: 'none', cursor: mapsSaving ? 'wait' : 'pointer', background: shippingForm.googleMapsEnabled ? 'var(--gold)' : 'var(--border)', transition: 'background 0.2s', padding: 0, flexShrink: 0, opacity: mapsSaving ? 0.7 : 1 }}
+                  >
+                    <span style={{ position: 'absolute', top: '3px', left: shippingForm.googleMapsEnabled ? '23px' : '3px', width: '18px', height: '18px', borderRadius: '50%', background: 'var(--dark)', transition: 'left 0.2s' }} />
+                  </button>
+                </div>
 
                 {/* Everything about the map - the map, the pinned line, the accuracy warning and the
                     search box - exists only while Google Maps is on. Off, this card is the address
                     fields, which are accurate on their own. */}
-                {businessForm.googleMapsEnabled && (<>
+                {shippingForm.googleMapsEnabled && (<>
                 <StoreLocationMap
                   lat={shippingForm.storeLat}
                   lng={shippingForm.storeLng}
@@ -1808,7 +1812,7 @@ export default function SettingsPage() {
                 {/* Store Address - structured by-fields (auto-fills from search/pin, editable) */}
                 <div style={{ marginTop: '0.75rem' }}>
                   <label style={{ fontSize: '0.8rem', color: 'var(--gray)', marginBottom: '0.5rem', display: 'block' }}>
-                    Store Address <span style={{ fontSize: '0.75rem', color: 'var(--gray)', fontWeight: 400 }}>{businessForm.googleMapsEnabled ? '(shown to customers - fills in from the search or pin, editable)' : '(shown to customers)'}</span>
+                    Store Address <span style={{ fontSize: '0.75rem', color: 'var(--gray)', fontWeight: 400 }}>{shippingForm.googleMapsEnabled ? '(shown to customers - fills in from the search or pin, editable)' : '(shown to customers)'}</span>
                   </label>
                   {/* The same Philippine Standard Geographic Code lists customers choose from, so the
                       shop's address is as exact as theirs without needing a map. */}
