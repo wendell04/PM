@@ -21,7 +21,7 @@
 // row, banners, returns, movements and 10,000 sales on every visit.
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
+import SsaMiniChart from '@/components/dashboard/SsaMiniChart';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
@@ -64,6 +64,10 @@ export default function StaffHome() {
   const [unread, setUnread]   = useState(0);
   const [ssa, setSsa]         = useState(undefined);   // undefined = not asked, null = unavailable
   const [weeklyRows, setWeeklyRows] = useState([]);
+  // What the shared chart reads: SSA's answer for revenue and for quantity, and 30 days of revenue
+  // for the fallback sparkline. Built exactly as the Dashboard builds them, from the same Sales.
+  const [ssaRev, setSsaRev] = useState(null);
+  const [ssaQty, setSsaQty] = useState(null);
   const [months, setMonths]   = useState(6);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState('');
@@ -316,18 +320,50 @@ export default function StaffHome() {
     return { collectedToday, liveOrders, profit };
   }, [payments, orders, sales]);
 
-  // History and projection in ONE series, joined at the last real week so the dashed line starts
-  // where the solid one ends instead of floating beside it.
-  const chartSeries = useMemo(() => {
-    const rows = weeklyRows.map(r => ({ date: r.date, actual: r.value, forecast: null }));
-    const dates = ssa?.forecast?.dates ?? [];
-    const values = ssa?.forecast?.values ?? [];
-    if (rows.length && dates.length) {
-      rows[rows.length - 1] = { ...rows[rows.length - 1], forecast: rows[rows.length - 1].actual };
-      dates.forEach((d, i) => rows.push({ date: d, actual: null, forecast: Math.round(Number(values[i] ?? 0)) }));
+  useEffect(() => {
+    if (loading || !Array.isArray(sales) || !sales.length) return undefined;
+    const revMap = {}, qtyMap = {};
+    for (const sale of sales) {
+      const d = sale.saleDate ? new Date(sale.saleDate).toISOString().split('T')[0] : null;
+      if (!d) continue;
+      revMap[d] = (revMap[d] ?? 0) + Number(sale.totalPrice ?? 0);
+      qtyMap[d] = (qtyMap[d] ?? 0) + Number(sale.quantity ?? 0);
     }
-    return rows;
-  }, [weeklyRows, ssa]);
+    const toRows = (map) => Object.entries(map).sort(([a], [b]) => a.localeCompare(b)).map(([date, value]) => ({ date, value }));
+    const callSsa = async (rows) => {
+      if (rows.length < 4) return null;
+      try {
+        const res = await fetch(`${SSA_API_URL}/api/forecast`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ rows, forecast_periods: 4, forecast_type: 'weekly', data_type: 'sales' }),
+        });
+        return res.ok ? await res.json() : null;
+      } catch { return null; }
+    };
+    let cancelled = false;
+    Promise.all([callSsa(toRows(revMap)), callSsa(toRows(qtyMap))]).then(([r, q]) => {
+      if (!cancelled) { setSsaRev(r); setSsaQty(q); }
+    });
+    return () => { cancelled = true; };
+  }, [loading, sales]);
+
+  // The fallback sparkline's 30 days, the Dashboard's way: delivered orders by the day they were placed.
+  const dailyRevenue = useMemo(() => {
+    const map = {};
+    for (const o of orders) {
+      if (String(o.orderStatus ?? o.status ?? '').toLowerCase() !== 'delivered' || !o.createdAt) continue;
+      const d = new Date(o.createdAt);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      map[key] = (map[key] ?? 0) + Number(o.totalAmount ?? 0);
+    }
+    const today = new Date();
+    return Array.from({ length: 30 }, (_, i) => {
+      const d = new Date(today); d.setDate(d.getDate() - (29 - i));
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      return { date: key, value: map[key] ?? 0 };
+    });
+  }, [orders]);
 
   const tiles = MODULES.filter(m => allows(m.key));
   const peakMonth = Math.max(1, ...byMonth.map(b => b.total));
@@ -489,42 +525,12 @@ export default function StaffHome() {
                 )}
               </div>
 
-              {/* The weekly line, the width of the card it lives in. The bars above are money per
-                  month; this is the week-by-week shape the forecast is drawn from, with the next
-                  three weeks dashed - one card, one story, rather than a second page to open. */}
-              {weeklyRows.length > 1 && (
-                <div style={{ borderTop: '1px solid var(--border)', padding: '12px 16px 16px' }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>Weekly sales, and what SSA projects</div>
-                  <div style={{ height: 220 }}>
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={chartSeries} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-                        <XAxis dataKey="date" tick={{ fill: 'var(--gray)', fontSize: 10 }} tickLine={false} axisLine={false}
-                          tickFormatter={d => new Date(d).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })}
-                          interval="preserveStartEnd" minTickGap={24} />
-                        <YAxis tick={{ fill: 'var(--gray)', fontSize: 10 }} tickLine={false} axisLine={false} width={52}
-                          tickFormatter={v => '₱' + (Number(v) >= 1000 ? (Number(v) / 1000).toFixed(1) + 'k' : v)} />
-                        <Tooltip
-                          content={({ active, payload, label }) => {
-                            if (!active || !payload?.length) return null;
-                            return (
-                              <div style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: 6, padding: '6px 10px', fontSize: 12 }}>
-                                <div style={{ color: 'var(--gray)', marginBottom: 2 }}>
-                                  week of {new Date(label).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })}
-                                </div>
-                                {payload.filter(p => p.value != null).map(p => (
-                                  <div key={p.dataKey} style={{ color: p.stroke, fontWeight: 700 }}>{p.name}: {peso(p.value)}</div>
-                                ))}
-                              </div>
-                            );
-                          }} />
-                        <Line name="Sold" type="monotone" dataKey="actual" stroke="var(--gold)" strokeWidth={2} dot={false} connectNulls />
-                        <Line name="Projected" type="monotone" dataKey="forecast" stroke="#7aa7ff" strokeWidth={2} strokeDasharray="5 4" dot={false} connectNulls />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </div>
-                </div>
-              )}
+              {/* The Dashboard's own chart - Revenue, Quantity, Inventory - not a lookalike. The first
+                  version here was a chart of my own, and the owner asked why it did not match; it is
+                  the same component on both pages now, so it cannot. */}
+              <div style={{ borderTop: '1px solid var(--border)', padding: '12px 16px 16px' }}>
+                <SsaMiniChart ssaRevResult={ssaRev} ssaQtyResult={ssaQty} dailyRevenue={dailyRevenue} />
+              </div>
             </div>
           )}
 
