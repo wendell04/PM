@@ -53,6 +53,9 @@ class SettingsController extends Controller
                 // The contact form can be switched off from Settings - a public write endpoint
                 // that cannot be closed is a liability if it is ever abused. Default open.
                 'contactFormEnabled'   => (bool)  ($owner->contactFormEnabled   ?? true),
+                // Off unless the owner turns it on: Google bills past its free allowance and has no
+                // spending cap of its own, and the address fields are accurate without it.
+                'googleMapsEnabled'    => (bool)  ($owner->googleMapsEnabled    ?? false),
                 'contactSuccessMessage'=> $owner->contactSuccessMessage ?: null,
                 'contactClosedMessage' => $owner->contactClosedMessage  ?: null,
                 'rushLeadDays'         => (int)   ($owner->rushLeadDays         ?? 1),
@@ -116,6 +119,9 @@ class SettingsController extends Controller
                 // The contact form can be switched off from Settings - a public write endpoint
                 // that cannot be closed is a liability if it is ever abused. Default open.
                 'contactFormEnabled'   => (bool)  ($owner->contactFormEnabled   ?? true),
+                // Off unless the owner turns it on: Google bills past its free allowance and has no
+                // spending cap of its own, and the address fields are accurate without it.
+                'googleMapsEnabled'    => (bool)  ($owner->googleMapsEnabled    ?? false),
                 'contactSuccessMessage'=> $owner->contactSuccessMessage ?: null,
                 'contactClosedMessage' => $owner->contactClosedMessage  ?: null,
                 'rushLeadDays'         => (int)   ($owner->rushLeadDays         ?? 1),
@@ -168,6 +174,7 @@ class SettingsController extends Controller
                 'shippingDaysMax'      => 'nullable|integer|min:0|max:120',
                 'rushEnabled'          => 'nullable|boolean',
                 'contactFormEnabled'   => 'nullable|boolean',
+                'googleMapsEnabled'    => 'nullable|boolean',
                 'contactSuccessMessage'=> 'nullable|string|max:300',
                 'contactClosedMessage' => 'nullable|string|max:300',
                 'rushLeadDays'         => 'nullable|integer|min:0|max:120',
@@ -198,6 +205,7 @@ class SettingsController extends Controller
             if ($request->has('shippingDaysMax'))      $owner->shippingDaysMax      = (int) $request->shippingDaysMax;
             if ($request->has('rushEnabled'))          $owner->rushEnabled          = (bool) $request->rushEnabled;
             if ($request->has('contactFormEnabled'))   $owner->contactFormEnabled   = (bool) $request->contactFormEnabled;
+            if ($request->has('googleMapsEnabled'))    $owner->googleMapsEnabled    = (bool) $request->googleMapsEnabled;
             if ($request->has('contactSuccessMessage'))$owner->contactSuccessMessage= trim((string) $request->contactSuccessMessage) ?: null;
             if ($request->has('contactClosedMessage')) $owner->contactClosedMessage = trim((string) $request->contactClosedMessage) ?: null;
             if ($request->has('rushLeadDays'))         $owner->rushLeadDays         = (int) $request->rushLeadDays;
@@ -233,6 +241,9 @@ class SettingsController extends Controller
                 // The contact form can be switched off from Settings - a public write endpoint
                 // that cannot be closed is a liability if it is ever abused. Default open.
                 'contactFormEnabled'   => (bool)  ($owner->contactFormEnabled   ?? true),
+                // Off unless the owner turns it on: Google bills past its free allowance and has no
+                // spending cap of its own, and the address fields are accurate without it.
+                'googleMapsEnabled'    => (bool)  ($owner->googleMapsEnabled    ?? false),
                 'contactSuccessMessage'=> $owner->contactSuccessMessage ?: null,
                 'contactClosedMessage' => $owner->contactClosedMessage  ?: null,
                 'rushLeadDays'         => (int)   ($owner->rushLeadDays         ?? 1),

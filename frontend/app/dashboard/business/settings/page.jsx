@@ -173,7 +173,7 @@ export default function SettingsPage() {
   const [businessForm, setBusinessForm] = useState({
     // Contact form controls. Defaults keep it open with the current wording, so nothing changes
     // until the owner decides otherwise.
-    contactFormEnabled: true, contactSuccessMessage: '', contactClosedMessage: '',
+    contactFormEnabled: true, contactSuccessMessage: '', contactClosedMessage: '', googleMapsEnabled: false,
     businessName: '',
     businessAddress: '',
     operatingHours: '',
@@ -319,6 +319,7 @@ export default function SettingsPage() {
           setBusinessForm(f => ({
             ...f,
             contactFormEnabled:    d.data.contactFormEnabled !== false,
+            googleMapsEnabled:     d.data.googleMapsEnabled === true,
             contactSuccessMessage: d.data.contactSuccessMessage || '',
             contactClosedMessage:  d.data.contactClosedMessage  || '',
           }));
@@ -972,6 +973,7 @@ export default function SettingsPage() {
           operatingHours: businessForm.operatingHours,
           contactEmail: businessForm.contactEmail,
           contactFormEnabled:    !!businessForm.contactFormEnabled,
+          googleMapsEnabled:     !!businessForm.googleMapsEnabled,
           contactSuccessMessage: businessForm.contactSuccessMessage || '',
           contactClosedMessage:  businessForm.contactClosedMessage  || '',
         }),
@@ -1565,6 +1567,24 @@ export default function SettingsPage() {
       <div className="profile-form-field">
         <label>Business name</label>
         <input type="text" value={businessForm.businessName} onChange={e => setBusinessForm(f => ({ ...f, businessName: e.target.value }))} placeholder="PersonalizeMe Prints" maxLength={100} />
+        {/* Google Maps. Off by default: past its free allowance Google bills the card on file and
+            sets no cap of its own, while the region/province/city/barangay fields are accurate
+            without any map. Turn it on only after setting a daily quota in Google Cloud. */}
+        <div style={{ marginTop: '1.4rem', paddingTop: '1.2rem', borderTop: '1px solid var(--border)' }}>
+          <div style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--white)', marginBottom: '0.15rem' }}>Maps and address search</div>
+          <div style={{ fontSize: '0.74rem', color: 'var(--gray)', marginBottom: '0.8rem', lineHeight: 1.5 }}>
+            Off: customers type their address into the fields. On: they can search with Google and drop a pin
+            on a map. Google charges past its free allowance - set a daily quota in Google Cloud before
+            turning this on.
+          </div>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.8rem', fontWeight: 600, color: 'var(--white)', cursor: 'pointer', marginBottom: '0.9rem' }}>
+            <input type="checkbox" checked={!!businessForm.googleMapsEnabled}
+              onChange={e => setBusinessForm(f => ({ ...f, googleMapsEnabled: e.target.checked }))}
+              style={{ width: 16, height: 16, accentColor: 'var(--gold)' }} />
+            Use Google Maps for address search and map pins
+          </label>
+        </div>
+
         {/* The public contact form. It is a write endpoint anyone can reach, so there has to be a
             way to close it - and the server refuses too, since hiding the form would leave the
             URL open to whoever already knows it. */}
@@ -1638,11 +1658,17 @@ export default function SettingsPage() {
                   Pin your store on the map. Shipping fee is calculated from this point to the customer's address.
                 </p>
 
-                <StoreLocationMap
-                  lat={shippingForm.storeLat}
-                  lng={shippingForm.storeLng}
-                  onLocationSelect={handleMapLocationSelect}
-                />
+                {businessForm.googleMapsEnabled ? (
+                  <StoreLocationMap
+                    lat={shippingForm.storeLat}
+                    lng={shippingForm.storeLng}
+                    onLocationSelect={handleMapLocationSelect}
+                  />
+                ) : (
+                  <div style={{ padding: '0.875rem 1rem', border: '1px dashed var(--border)', borderRadius: '10px', fontSize: '0.8rem', color: 'var(--gray)', lineHeight: 1.5 }}>
+                    The map is off. Turn on &ldquo;Use Google Maps&rdquo; under Maps and address search to pin the shop&apos;s location.
+                  </div>
+                )}
 
                 {shippingForm.storeLat && shippingForm.storeLng && (
                   <div style={{

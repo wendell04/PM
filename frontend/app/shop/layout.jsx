@@ -1683,10 +1683,7 @@ export default function ShopLayout({ children }) {
             <span className="shop-footer-copy">© {new Date().getFullYear()} Personalize Me Prints. All rights reserved.</span>
             {/* Desktop: the policies live in this bar, as on the landing page. A phone gets the
                 Legal accordion above instead, where they are easier to reach with a thumb. */}
-            <span className="shop-footer-legal-inline">
-              <button type="button" onClick={() => setPolicyDoc('policy_privacy')}>Privacy Policy</button>
-              <button type="button" onClick={() => setPolicyDoc('policy_terms')}>T&amp;C</button>
-            </span>
+
             <button
               type="button"
               onClick={toggleTheme}
@@ -1694,11 +1691,17 @@ export default function ShopLayout({ children }) {
               style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '8px', cursor: 'pointer', color: 'rgba(245,245,245,0.6)', padding: '6px 12px', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem' }}
             >
               {theme === 'dark' ? (
-                <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>Light Mode</>
+                <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>Light</>
               ) : (
-                <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>Dark Mode</>
+                <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>Dark</>
               )}
             </button>
+            {/* Same bar as the landing page: copyright, the theme toggle in the middle, policies on
+                the right. On a phone the Legal accordion above carries them instead. */}
+            <span className="shop-footer-legal-inline">
+              <button type="button" onClick={() => setPolicyDoc('policy_privacy')}>Privacy Policy</button>
+              <button type="button" onClick={() => setPolicyDoc('policy_terms')}>T&amp;C</button>
+            </span>
           </div>
         </footer>
 

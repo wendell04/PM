@@ -144,6 +144,17 @@ export default function AddressBook({ onSaved, initialEditAddress }) {
   const [formErrors, setFormErrors]     = useState({});
   const [deletingId, setDeletingId]     = useState(null);
   const [mapExpanded, setMapExpanded]     = useState(true);
+  // Whether the shop has Google Maps switched on. Off until the setting says otherwise, so a slow or
+  // failed settings request can never put a map - and a mandatory pin - in front of a customer.
+  const [mapsEnabled, setMapsEnabled]     = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`${API_URL}/api/public/settings`)
+      .then(r => r.json())
+      .then(d => { if (!cancelled) setMapsEnabled(d?.data?.googleMapsEnabled === true); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
   const autoOpenedRef                     = useRef(false);
   const [isGeocoding, setIsGeocoding]     = useState(false);
   const [userLoc, setUserLoc]             = useState(null); // device GPS, for the Grab-style distance
@@ -439,8 +450,10 @@ export default function AddressBook({ onSaved, initialEditAddress }) {
     searchTimerRef.current = setTimeout(async () => {
       try {
         // Provider chain: Google (best landmarks) → TomTom → OSM. Each falls back when it has no key/no match.
-        let results = GOOGLE_KEY ? await runGoogle(val) : (TOMTOM_KEY ? await runTomTom(val) : []);
-        if (results.length === 0) results = await runNominatim(val);
+        // Google only. When it has nothing - no key, or the daily quota is spent - the customer keeps
+        // typing into the fields. OSM search is not the fallback: in the Philippines it misses most
+        // addresses and misplaces the rest, and a wrong pin is worse than no pin for a rider.
+        const results = GOOGLE_KEY ? await runGoogle(val) : [];
         setSuggestions(results);
         setShowSuggestions(results.length > 0);
       } catch { setSuggestions([]); }
@@ -583,7 +596,9 @@ export default function AddressBook({ onSaved, initialEditAddress }) {
     // Validate the normalized form, so 09171234567 and +639171234567 are the same number - which
     // they are. The canonical value is written back below so what gets saved is always +63.
     if (!isValidPhone(formData.phone)) errors.phone = 'Enter a complete mobile number for the country shown.';
-    if (!formData.lat || !formData.lng)
+    // The pin is only asked for while there is a map to pin on. Without this, switching the map
+    // off would have made every address impossible to save.
+    if (mapsEnabled && (!formData.lat || !formData.lng))
       errors.pin = 'Please pin your location on the map before saving.';
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
@@ -766,6 +781,9 @@ export default function AddressBook({ onSaved, initialEditAddress }) {
       {showForm && (
         <form className="ab-form" onSubmit={handleSubmit} onKeyDown={e => { if (e.key === 'Enter') e.preventDefault(); }} style={{ padding: '1.25rem', background: 'var(--dark)', borderRadius: '12px', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
 
+          {/* Search and the pin exist only while the shop has Google Maps on. Off, the form is
+              the fields alone - which are accurate on their own. */}
+          {mapsEnabled && (<>
           {/* ── Address search / autocomplete ── */}
           <div style={{ position: 'relative' }}>
             <label style={labelStyle}>Search your address <span style={{ color: 'var(--gray)', fontSize: '0.7rem' }}>(drops the pin & fills the fields below)</span></label>
@@ -885,6 +903,7 @@ export default function AddressBook({ onSaved, initialEditAddress }) {
               </div>
             )}
           </div>
+          </>)}
 
           <style>{`
             .addr-2col      { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }

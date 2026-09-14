@@ -5619,7 +5619,8 @@ html.light .shop-search-suggest-name { color: #111; }
 
 /* Desktop: no Legal column - the policies sit in the bottom bar beside the copyright, exactly as
    on the landing page. The accordion column is the phone's version. */
-.shop-footer-legal-inline { display: inline-flex; gap: 1.5rem; margin-left: auto; margin-right: 1rem; }
+.shop-footer-legal-inline { display: inline-flex; gap: 1.5rem; }
+@media (min-width: 769px) { .shop-footer-bottom { justify-content: space-between; align-items: center; } }
 .shop-footer-legal-inline button {
   background: none; border: none; padding: 0; cursor: pointer;
   font-family: Arial, Arimo, Helvetica, sans-serif; font-size: 0.78rem;
