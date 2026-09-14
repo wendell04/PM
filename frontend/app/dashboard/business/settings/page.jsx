@@ -17,6 +17,23 @@ import ImageCropper from '@/components/ImageCropper';
 const GOOGLE_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || '';
 
 // Structured store-address parts (himay-himay, like the customer address) + helpers to combine/parse them.
+// The on/off switch used across Settings.
+function SettingSwitch({ on, onClick, label, disabled = false }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={!!on}
+      aria-label={label}
+      onClick={onClick}
+      disabled={disabled}
+      style={{ position: 'relative', width: '44px', height: '24px', borderRadius: '12px', border: 'none', cursor: disabled ? 'wait' : 'pointer', background: on ? 'var(--gold)' : 'var(--border)', transition: 'background 0.2s', padding: 0, flexShrink: 0, opacity: disabled ? 0.7 : 1 }}
+    >
+      <span style={{ position: 'absolute', top: '3px', left: on ? '23px' : '3px', width: '18px', height: '18px', borderRadius: '50%', background: 'var(--dark)', transition: 'left 0.2s' }} />
+    </button>
+  );
+}
+
 const EMPTY_STORE_PARTS = { house_number: '', street: '', barangay: '', city: '', province: '', zip: '' };
 const combineStoreAddress = (p = {}) => [
   [p.house_number, p.street].filter(Boolean).join(' '),
@@ -892,6 +909,59 @@ export default function SettingsPage() {
     if (!res.ok) throw new Error(d.message || 'Failed to save.');
   };
 
+  // ── Chat automatic replies (site content 'chat_auto_replies'; the server posts them) ──
+  const [chatReplies, setChatReplies] = useState(null);
+  const [chatSaving, setChatSaving]   = useState(false);
+  const [chatNotice, setChatNotice]   = useState({ type: '', text: '' });
+  useEffect(() => {
+    if (activeTab !== 'chat' || chatReplies) return;
+    fetch(`${API_URL}/api/storefront/content/chat_auto_replies`)
+      .then(r => r.json())
+      .then(d => {
+        const c = d?.data || {};
+        setChatReplies({
+          quickReplies: Array.isArray(c.quickReplies) ? c.quickReplies : [],
+          instantReply: { enabled: !!c.instantReply?.enabled, message: c.instantReply?.message || '' },
+          awayMessage:  { enabled: !!c.awayMessage?.enabled,  message: c.awayMessage?.message  || '' },
+        });
+      })
+      .catch(() => setChatReplies({ quickReplies: [], instantReply: { enabled: false, message: '' }, awayMessage: { enabled: false, message: '' } }));
+  }, [activeTab, chatReplies]);
+  const setQuickReply = (i, key, value) => setChatReplies(c => ({
+    ...c, quickReplies: c.quickReplies.map((q, idx) => idx === i ? { ...q, [key]: value } : q),
+  }));
+  const handleSaveChatReplies = async () => {
+    setChatNotice({ type: '', text: '' });
+    const clean = {
+      quickReplies: chatReplies.quickReplies
+        .map(q => ({ question: (q.question || '').trim(), answer: (q.answer || '').trim() }))
+        .filter(q => q.question),
+      instantReply: { enabled: !!chatReplies.instantReply.enabled, message: chatReplies.instantReply.message.trim() },
+      awayMessage:  { enabled: !!chatReplies.awayMessage.enabled,  message: chatReplies.awayMessage.message.trim() },
+    };
+    if ((clean.instantReply.enabled && !clean.instantReply.message) || (clean.awayMessage.enabled && !clean.awayMessage.message)) {
+      setChatNotice({ type: 'error', text: 'Write the message before switching it on.' });
+      return;
+    }
+    setChatSaving(true);
+    try {
+      const res = await fetchWithTimeout(`${API_URL}/api/admin/content/chat_auto_replies`, {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ data: clean }),
+      }, 15000);
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.message || 'Could not save the automatic replies.');
+      setChatReplies(clean);
+      setChatNotice({ type: 'success', text: 'Automatic replies saved - customers get them from their next message.' });
+      setTimeout(() => setChatNotice({ type: '', text: '' }), 3500);
+    } catch (err) {
+      setChatNotice({ type: 'error', text: err.message || 'Could not save the automatic replies.' });
+    } finally {
+      setChatSaving(false);
+    }
+  };
+
   const [mapsSaving, setMapsSaving] = useState(false);
   const [mapsError, setMapsError]   = useState('');
   const handleToggleMaps = async () => {
@@ -1067,8 +1137,9 @@ export default function SettingsPage() {
             {[
               { id: 'profile', label: 'Profile' },
               { id: 'security', label: 'Security' },
-              { id: 'business', label: 'Business' },
               { id: 'shipping', label: 'Shipping' },
+              { id: 'chat', label: 'Chat' },
+              { id: 'integrations', label: 'Integrations' },
               // Its own tab, not a sidebar entry: the sidebar is the daily work rail (orders, POS,
               // production) and putting rarely-touched configuration in it dilutes the things people
               // actually reach for. Settings is where configuration lives.
@@ -1561,15 +1632,100 @@ export default function SettingsPage() {
   </div>
 )}
 
-          {activeTab === 'business' && (
+          {activeTab === 'chat' && (
+  <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+    {chatReplies === null ? (
+      <div style={{ padding: '2rem', color: 'var(--gray)', fontSize: '0.85rem' }}>Loading...</div>
+    ) : (
+    <>
+    {/* Quick questions */}
+    <div style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden' }}>
+      <div style={{ padding: '0.875rem 1.25rem', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '0.625rem', flexWrap: 'wrap' }}>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--gray-light)" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--white)' }}>Quick questions</span>
+        <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>- Shown in the chat window. Tapping one sends it; if it has an answer, the answer appears right away.</span>
+      </div>
+      <div style={{ padding: '1.25rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+        {chatReplies.quickReplies.length === 0 && (
+          <div style={{ fontSize: '0.8rem', color: 'var(--gray)' }}>No quick questions. Customers still see the Send us a message button.</div>
+        )}
+        {chatReplies.quickReplies.map((q, i) => (
+          <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', paddingBottom: '1rem', borderBottom: '1px solid var(--border)' }}>
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+              <input type="text" value={q.question} maxLength={120} placeholder="Question the customer taps"
+                onChange={e => setQuickReply(i, 'question', e.target.value)} style={{ flex: 1, minWidth: 0 }} />
+              <button type="button" onClick={() => setChatReplies(c => ({ ...c, quickReplies: c.quickReplies.filter((_, idx) => idx !== i) }))}
+                aria-label="Remove question"
+                style={{ flexShrink: 0, padding: '0.5rem 0.75rem', background: 'transparent', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--gray)', fontSize: '0.78rem', cursor: 'pointer' }}>
+                Remove
+              </button>
+            </div>
+            <textarea value={q.answer} maxLength={1000} rows={3}
+              placeholder="Automatic answer (optional). Leave blank and the question simply reaches your inbox."
+              onChange={e => setQuickReply(i, 'answer', e.target.value)}
+              style={{ width: '100%', boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit' }} />
+          </div>
+        ))}
+        {chatReplies.quickReplies.length < 8 && (
+          <button type="button" onClick={() => setChatReplies(c => ({ ...c, quickReplies: [...c.quickReplies, { question: '', answer: '' }] }))}
+            style={{ alignSelf: 'flex-start', padding: '0.5rem 1rem', background: 'transparent', border: '1px dashed var(--border)', borderRadius: '8px', color: 'var(--gray-light)', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer' }}>
+            + Add a question
+          </button>
+        )}
+      </div>
+    </div>
+
+    {/* Instant reply and away message */}
+    {[
+      ['instantReply', 'Instant reply', 'Sent when a customer writes and nobody from the shop has written in that conversation for 12 hours. A greeting, not an echo on every line.'],
+      ['awayMessage', 'Away message', 'Sent when nobody from the shop has the Messages page open. At most once every 6 hours per conversation.'],
+    ].map(([key, title, help]) => (
+      <div key={key} style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden' }}>
+        <div style={{ padding: '1.1rem 1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1.25rem' }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--white)' }}>{title}</div>
+            <div style={{ fontSize: '0.78rem', color: 'var(--gray)', marginTop: '0.25rem', lineHeight: 1.55, maxWidth: '62ch' }}>{help}</div>
+          </div>
+          <SettingSwitch on={chatReplies[key].enabled} label={title}
+            onClick={() => setChatReplies(c => ({ ...c, [key]: { ...c[key], enabled: !c[key].enabled } }))} />
+        </div>
+        <div style={{ padding: '0 1.5rem 1.25rem' }}>
+          <textarea value={chatReplies[key].message} maxLength={1000} rows={3}
+            placeholder={key === 'awayMessage' ? 'Thanks for your message! We are away right now and will reply as soon as we are back.' : 'Hi! Thanks for reaching out. We will get back to you shortly.'}
+            onChange={e => { const v = e.target.value; setChatReplies(c => ({ ...c, [key]: { ...c[key], message: v } })); }}
+            style={{ width: '100%', boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit' }} />
+        </div>
+      </div>
+    ))}
+
+    {chatNotice.text && (
+      <div style={{ padding: '0.7rem 1rem', borderRadius: '8px', fontSize: '0.85rem',
+        background: chatNotice.type === 'error' ? 'rgba(239,68,68,0.08)' : 'rgba(34,197,94,0.08)',
+        border: `1px solid ${chatNotice.type === 'error' ? 'rgba(239,68,68,0.25)' : 'rgba(34,197,94,0.25)'}`,
+        color: chatNotice.type === 'error' ? '#f87171' : '#4ade80' }}>
+        {chatNotice.text}
+      </div>
+    )}
+    <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+      <button type="button" onClick={handleSaveChatReplies} disabled={chatSaving}
+        style={{ padding: '0.625rem 1.5rem', background: chatSaving ? 'var(--dark3)' : 'var(--gold)', border: 'none', borderRadius: '8px', color: chatSaving ? 'var(--gray)' : 'var(--black)', fontSize: '0.875rem', fontWeight: 600, cursor: chatSaving ? 'not-allowed' : 'pointer' }}>
+        {chatSaving ? 'Saving...' : 'Save automatic replies'}
+      </button>
+    </div>
+    </>
+    )}
+  </div>
+)}
+
+          {activeTab === 'integrations' && (
   <div style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden' }}>
     <div style={{ padding: '0.875rem 1.25rem', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '0.625rem', flexWrap: 'wrap' }}>
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--gray-light)" strokeWidth="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
       <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--white)' }}>Maps and address search</span>
       <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>- Applies to the customer address form and the Shipping Location map.</span>
     </div>
-    {/* Only the switch lives here. Business hours, email and socials are edited in Homepage ->
-        Let's Talk, which is where customers see them; the shop address is in Shipping. */}
+    {/* Outside services the shop can switch on. Business hours, email and socials are edited in
+        Homepage -> Let's Talk, where customers see them; the shop address is in Shipping. */}
     <div style={{ padding: '1.25rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '0.9rem' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1.25rem' }}>
         <div style={{ minWidth: 0 }}>

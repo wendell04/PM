@@ -429,6 +429,8 @@ const ChatWindow = ({ activeConversation, messages, user, isLoading, isAdmin, on
               </span>
             </span>
           )}
+          {/* Staff see what was said on the shop's behalf, and that nobody typed it. */}
+          {msg.metadata?.automated && <span style={{ fontSize: '10px', opacity: 0.75 }}>&middot; Automatic reply</span>}
         </div>
       </div>
     );

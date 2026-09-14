@@ -392,6 +392,19 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
     return () => clearInterval(t);
   }, []);
 
+  // The owner's quick questions (Settings -> Chat). Until they load - or if none are saved - the
+  // built-in list stands in, so the home view never opens empty.
+  const [quickQuestions, setQuickQuestions] = useState(null);
+  useEffect(() => {
+    fetch(`${API_URL}/api/storefront/content/chat_auto_replies`)
+      .then(r => r.json())
+      .then(d => {
+        const list = Array.isArray(d?.data?.quickReplies) ? d.data.quickReplies.map(q => q?.question).filter(Boolean) : null;
+        if (list) setQuickQuestions(list);
+      })
+      .catch(() => {});
+  }, []);
+
   const handleFaqClick = (question) => {
     if (!token) { onRequestLogin?.(); return; }
     pendingFaqRef.current = question;
@@ -643,12 +656,12 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
                 {/* Hidden while signed out. These are not help articles - each one calls
                     handleFaqClick, which puts the question into a chat thread, and a guest has no
                     thread, so every row was a login modal under a heading promising answers. */}
-                {user && (
+                {user && (quickQuestions ?? FAQS.map(f => f.q)).length > 0 && (
                 <div className="cw-faq-section">
-                  <div className="cw-faq-label">Search for help</div>
-                  {FAQS.map((f, i) => (
-                    <button key={i} type="button" className="cw-faq-item" onClick={() => handleFaqClick(f.q)}>
-                      <span>{f.q}</span>
+                  <div className="cw-faq-label">Common questions</div>
+                  {(quickQuestions ?? FAQS.map(f => f.q)).map((q, i) => (
+                    <button key={i} type="button" className="cw-faq-item" onClick={() => handleFaqClick(q)}>
+                      <span>{q}</span>
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" style={{ flexShrink: 0 }}><polyline points="9 18 15 12 9 6" /></svg>
                     </button>
                   ))}
@@ -1024,7 +1037,10 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
                             ) : msg.pending ? (
                               <span>Sending…</span>
                             ) : (
-                              formatTime(msg.created_at)
+                              <>
+                                {formatTime(msg.created_at)}
+                                {msg.metadata?.automated && <span> &middot; Automatic reply</span>}
+                              </>
                             )}
                           </div>
                         </div>

@@ -7,6 +7,7 @@ use App\Models\Conversation;
 use App\Models\Message;
 use App\Models\User;
 use App\Models\Order;
+use App\Models\SiteContent;
 use Illuminate\Http\Request;
 use App\Models\Notification;
 use Illuminate\Support\Facades\DB;
@@ -448,6 +449,12 @@ class ChatController extends Controller
                 Log::warning('Chat broadcast failed (message still saved): ' . $e->getMessage());
             }
 
+            // The owner's automatic replies (Settings -> Chat). Only ever in answer to a customer, and
+            // never able to fail the send: the customer's own message is already saved.
+            if (($user->role ?? 'customer') === 'customer') {
+                $this->sendAutoReplies($conversation, $message, $user);
+            }
+
             // Something is waiting for this person. Without this, a message only ever reached
             // someone already looking at the site with the widget open - so a question that
             // blocks an order could sit unanswered for days with nobody told it had been asked.
@@ -640,5 +647,105 @@ class ChatController extends Controller
             // The shop must answer by email: this person has no account to read a reply in.
             'reply_to'  => $email,
         ];
+    }
+
+    /**
+     * Automatic replies, set up by the owner in Settings -> Chat. The Facebook Page model, no AI:
+     *
+     *  - A saved answer, when the customer's message is one of the owner's quick questions word for
+     *    word (tapping a question in the widget sends exactly that text).
+     *  - An away message, when nobody from the shop is at the inbox - no staff heartbeat in the last
+     *    three minutes, which the Messages page sends while it is open. At most once every six hours
+     *    per conversation, so a customer typing five lines is not told five times.
+     *  - An instant reply, when the shop has not written in this conversation for twelve hours - a
+     *    greeting for someone arriving, not an echo on every line. Skipped when an answer or an away
+     *    message has just gone out, since either already tells the customer they were heard.
+     *
+     * Each is posted as the shop, marked metadata.automated, so both sides can label it and staff
+     * see exactly what was said on their behalf. The conversation's last_message stays the
+     * customer's words: the inbox preview should show what they asked, not the robot's reply.
+     */
+    private function sendAutoReplies(Conversation $conversation, Message $incoming, $customer): void
+    {
+        try {
+            $cfg = optional(SiteContent::where('key', 'chat_auto_replies')->first())->data;
+            if (!is_array($cfg)) return;
+
+            $customerId = (string) ($customer->_id ?? '');
+            $shopId = collect($conversation->participants ?? [])
+                ->map(fn ($p) => (string) $p)
+                ->first(fn ($p) => $p !== $customerId);
+            if (!$shopId) return;
+            $shop = User::find($shopId);
+            if (!$shop || ($shop->role ?? 'customer') === 'customer') return;
+
+            $convId = (string) $conversation->_id;
+            $norm = fn ($v) => mb_strtolower(preg_replace('/\s+/u', ' ', trim((string) $v)));
+            $text = fn ($v) => trim((string) $v);
+
+            $answered = false;
+            $said = $norm($incoming->body ?? '');
+            if (($incoming->type ?? 'text') === 'text' && $said !== '') {
+                foreach ((array) ($cfg['quickReplies'] ?? []) as $qr) {
+                    $question = $norm($qr['question'] ?? '');
+                    $answer   = $text($qr['answer'] ?? '');
+                    if ($question !== '' && $answer !== '' && $question === $said) {
+                        $this->postAutoReply($conversation, $shop, $answer, 'answer');
+                        $answered = true;
+                        break;
+                    }
+                }
+            }
+
+            $away = (array) ($cfg['awayMessage'] ?? []);
+            if (!empty($away['enabled']) && $text($away['message'] ?? '') !== '') {
+                $staffAtInbox = User::whereNotNull('role')
+                    ->where('role', '!=', 'customer')
+                    ->where('last_seen_at', '>=', now()->subMinutes(3))
+                    ->exists();
+                $awaySentRecently = Message::where('conversation_id', $convId)
+                    ->where('metadata.automated', 'away')
+                    ->where('created_at', '>=', now()->subHours(6))
+                    ->exists();
+                if (!$staffAtInbox && !$awaySentRecently) {
+                    $this->postAutoReply($conversation, $shop, $text($away['message']), 'away');
+                    return;
+                }
+            }
+
+            $instant = (array) ($cfg['instantReply'] ?? []);
+            if (!$answered && !empty($instant['enabled']) && $text($instant['message'] ?? '') !== '') {
+                $shopWroteRecently = Message::where('conversation_id', $convId)
+                    ->where('sender_id', $shop->_id)
+                    ->where('created_at', '>=', now()->subHours(12))
+                    ->exists();
+                if (!$shopWroteRecently) {
+                    $this->postAutoReply($conversation, $shop, $text($instant['message']), 'instant');
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Chat auto reply failed (customer message still sent): ' . $e->getMessage());
+        }
+    }
+
+    private function postAutoReply(Conversation $conversation, User $shop, string $body, string $kind): void
+    {
+        $auto = Message::create([
+            'conversation_id' => (string) $conversation->_id,
+            'sender_id'       => $shop->_id,
+            'sender_name'     => trim(($shop->firstName ?? '') . ' ' . ($shop->lastName ?? '')),
+            'body'            => mb_substr($body, 0, 2000),
+            'type'            => 'text',
+            'metadata'        => ['automated' => $kind],
+            'is_read'         => false,
+        ]);
+        $conversation->update(['last_message_at' => now()]);
+
+        // To everyone, the customer included - toOthers() would leave out the very person it answers.
+        try {
+            broadcast(new MessageSent($auto));
+        } catch (\Throwable $e) {
+            Log::warning('Chat auto reply broadcast failed (reply still saved): ' . $e->getMessage());
+        }
     }
 }
