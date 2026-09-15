@@ -2389,16 +2389,29 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    position: relative;
     animation: slideUp .25s ease;
   }
 
-  /* These two lines used to sit on .auth-modal itself, which is exactly what put the stepper
-     arrows back on the sign-up form: from Chrome 121 the standard properties switch the browser
-     to the native scrollbar and make it ignore every ::-webkit rule, arrows included. Scoped
-     here, Chrome falls through to the app-wide slim thumb in globals.css. */
-  @supports not selector(::-webkit-scrollbar) {
-    .auth-modal { scrollbar-width: thin; scrollbar-color: var(--gold-dark) transparent; }
+  /* No native scrollbar in modal scroll areas: it takes width on one side only and pushed the
+     form off centre. lib/scrollThumb.js draws this thumb while scrolling and fades it out. */
+  .auth-modal-body,
+  .tnc-content { scrollbar-width: none; }
+  .auth-modal-body::-webkit-scrollbar,
+  .tnc-content::-webkit-scrollbar { display: none; }
+  .pmp-scroll-thumb {
+    position: absolute;
+    top: 0;
+    right: 3px;
+    width: 4px;
+    border-radius: 4px;
+    background: var(--gold);
+    opacity: 0;
+    transition: opacity .35s ease;
+    pointer-events: none;
+    z-index: 5;
   }
+  .pmp-scroll-thumb.is-visible { opacity: .7; transition-duration: .1s; }
 
   @keyframes slideUp {
     from { transform: translateY(30px); opacity: 0; }
@@ -2454,16 +2467,12 @@
 
   .auth-modal-body {
     /* min-height:0 is the part that is easy to miss: without it a flex child refuses to shrink
-       below its content and never scrolls at all. The margin keeps the scrollbar inside the
-       rounded corner. The gutter is reserved on BOTH sides: a scrollbar only on the right pushed
-       the fields left and the card looked lopsided wherever the scrollbar takes up width. */
+       below its content and never scrolls at all. */
     flex: 1 1 auto;
     min-height: 0;
     overflow-y: auto;
     overflow-x: hidden;
-    margin-inline: 6px;
-    scrollbar-gutter: stable both-edges;
-    padding: 1.5rem 1.25rem 1.75rem;
+    padding: 1.5rem 1.75rem 1.75rem;
     display: flex;
     flex-direction: column;
     gap: 1rem;
@@ -2476,7 +2485,7 @@
   @media (max-height: 820px) {
     .auth-modal-header { padding: 1rem 1.5rem .85rem; }
     .auth-modal-logo   { width: 38px; height: 38px; }
-    .auth-modal-body   { padding: 1rem 1.1rem 1.15rem; gap: .65rem; }
+    .auth-modal-body   { padding: 1rem 1.5rem 1.15rem; gap: .65rem; }
     .auth-modal-body form { gap: .35rem; }
   }
 
@@ -2568,6 +2577,7 @@
     grid-template-columns: 1fr 90px 1fr;
     align-items: end;
   }
+  .auth-label-short { display: none; }
 
   .auth-row {
     display: flex;
@@ -2678,6 +2688,7 @@
     max-width: 600px;
     max-height: 80vh;
     overflow: hidden;
+    position: relative;
     animation: slideUp .25s ease;
     display: flex;
     flex-direction: column;
@@ -2724,9 +2735,6 @@
     padding: 1.5rem 1.75rem;
     overflow-y: auto;
     max-height: 400px;
-    scrollbar-gutter: stable both-edges;
-    scrollbar-width: thin;
-    scrollbar-color: var(--gold-dark) transparent;
   }
 
   .tnc-content p { margin-bottom: 1rem; line-height: 1.7; color: var(--white); }
@@ -3454,11 +3462,7 @@
     /* ── Other layout ── */
     .steps-grid { grid-template-columns: 1fr 1fr; }
     .cta-banner { padding: 2.5rem 1.5rem; }
-    .auth-fields-grid,
-    .auth-fields-grid--3col,
-    .auth-fields-grid:has(> .auth-field:nth-child(3):last-child) {
-      grid-template-columns: 1fr;
-    }
+    .auth-fields-grid { grid-template-columns: 1fr; }
     .contact-fields-row { grid-template-columns: 1fr; }
   }
 
@@ -3634,8 +3638,24 @@
     .fcard-inner { padding: 0.85rem 1rem; }
     .fcard-value { font-size: 1.4rem; margin-bottom: 0.5rem; }
     .fcard-label { font-size: 0.68rem; margin-bottom: 0.2rem; }
-    .auth-modal-header { padding: 1.25rem; }
-    .auth-modal-body { padding: 1.25rem; }
+    /* Every pixel of side padding comes out of the fields. At 360px (most Samsungs) the old
+       16 + 20 + scrollbar per side left 256px, so the 300px Turnstile scrolled sideways. */
+    .auth-overlay { padding: .75rem; }
+    .auth-modal-header { padding: 1rem; }
+    .auth-modal-body { padding: 1rem; }
+    /* 16px is the floor: anything smaller and iPhone Safari zooms the page when a field is tapped.
+       The height comes out of the padding instead. */
+    .auth-field input,
+    .auth-field textarea { font-size: 16px; line-height: 1.25; padding-block: .6rem; }
+    .auth-field label { font-size: .74rem; }
+    /* First, M.I. and Last on one line, like the desktop form. */
+    .auth-fields-grid--3col,
+    .auth-fields-grid:has(> .auth-field:nth-child(3):last-child) {
+      grid-template-columns: 1fr 3.6rem 1fr;
+      gap: .5rem;
+    }
+    .auth-label-long { display: none; }
+    .auth-label-short { display: inline; }
     .contact-form-wrap { padding: 1.25rem; }
     .pub-pricing-grid { grid-template-columns: 1fr; }
     .footer-top { flex-direction: column; align-items: flex-start; gap: 1.5rem; }

@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import installScrollThumbs from '@/lib/scrollThumb';
 
 /**
  * Locks the page (body) scroll while `active` is true so the background does not scroll behind an
@@ -12,6 +13,7 @@ let openModals = 0;
 export default function useLockBodyScroll(active) {
   useEffect(() => {
     if (!active || typeof document === 'undefined') return;
+    installScrollThumbs();
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     // Marks the page as covered, so anything fixed to the viewport (the chat launcher) can move

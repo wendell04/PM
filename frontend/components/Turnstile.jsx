@@ -34,10 +34,13 @@ const Turnstile = forwardRef(function Turnstile({ onVerify, theme = 'light', siz
       if (cancelled || !containerRef.current || !window.turnstile) return;
       if (widgetIdRef.current !== null) return; // guard against StrictMode double-mount
       try {
+        // The flexible widget cannot go below 300px; on a narrower column it scrolled sideways.
+        const fits = containerRef.current.parentElement.clientWidth >= 300;
+        containerRef.current.style.width = size === 'flexible' && fits ? '100%' : 'auto';
         widgetIdRef.current = window.turnstile.render(containerRef.current, {
           sitekey: SITE_KEY,
           theme: theme === 'dark' ? 'dark' : 'light',
-          size,
+          size: size === 'flexible' && !fits ? 'compact' : size,
           callback: (token) => onVerify?.(token),
           'expired-callback': () => onVerify?.(''),
           'error-callback': () => onVerify?.(''),
@@ -75,18 +78,10 @@ const Turnstile = forwardRef(function Turnstile({ onVerify, theme = 'light', siz
     // Re-render when the theme changes so the widget matches light/dark.
   }, [onVerify, theme]);
 
-  // Centered + never overflows narrow (mobile) screens.
+  // Full width of the form, so the flexible widget lines up with the fields around it.
   return (
-    <div
-      style={{
-        display: 'flex',
-        justifyContent: 'center',
-        width: '100%',
-        maxWidth: '100%',
-        overflowX: 'auto',
-      }}
-    >
-      <div ref={containerRef} style={{ margin: '10px 0' }} />
+    <div style={{ display: 'flex', justifyContent: 'center', width: '100%', maxWidth: '100%' }}>
+      <div ref={containerRef} style={{ margin: '10px 0', width: '100%' }} />
     </div>
   );
 });

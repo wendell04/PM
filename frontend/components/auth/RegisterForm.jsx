@@ -238,7 +238,7 @@ export default function RegisterForm({ onSuccess, onSwitchToLogin, theme = 'ligh
               {errors.firstName && <span className="error-message">{errors.firstName}</span>}
             </div>
             <div className="auth-field">
-              <label>Middle Initial</label>
+              <label><span className="auth-label-long">Middle Initial</span><span className="auth-label-short">M.I.</span></label>
               <input type="text" placeholder="D." value={formData.middleInitial} maxLength="2"
                 onChange={e => handleChange('middleInitial', e.target.value.toUpperCase())}
                 className={errors.middleInitial ? 'error' : ''} />
