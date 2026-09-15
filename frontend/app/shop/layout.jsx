@@ -1030,6 +1030,9 @@ export default function ShopLayout({ children }) {
   // the same as locking the page, because the drag itself happens INSIDE the panel. The lock does
   // the rest (and marks the body, so the chat head and the tab bar step aside too).
   useLockBodyScroll(cartOpen || notifOpen);
+  // The sign-in, sign-up, forgot-password, 2FA, logout and notification modals never took the lock,
+  // so on a phone the tab bar and the chat head sat on top of their buttons.
+  useLockBodyScroll(authModalOpen || forgotPasswordOpen || (twoFaOpen && !!twoFaToken) || logoutConfirmOpen || !!selectedNotif);
 
   // Scroll lock when cart or notif sheet is open (phones only)
   useEffect(() => {

@@ -786,11 +786,6 @@
    Close outright. It comes back the moment the modal does. */
 body.pmp-modal-open .cw-launcher { display: none !important; }
 
-/* Above the bottom bar, not on top of it. */
-@media (max-width: 900px) {
-  .cw-launcher { bottom: calc(74px + env(safe-area-inset-bottom)); right: 16px; }
-}
-
 /* Floating launcher button */
 .cw-launcher {
   position: fixed;
@@ -811,6 +806,13 @@ body.pmp-modal-open .cw-launcher { display: none !important; }
   padding: 0;
   color: #000;
   transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+/* Above the bottom bar, not on top of it. This must come AFTER the base rule: placed before it,
+   the base bottom/right won and the bubble sat on the "You" tab. Only the shop has the bar. */
+@media (max-width: 900px) {
+  .cw-launcher { bottom: calc(16px + env(safe-area-inset-bottom)); right: 16px; }
+  body:has(.shop-bottom-nav) .cw-launcher { bottom: calc(74px + env(safe-area-inset-bottom)); }
 }
 
 .cw-launcher:hover {
