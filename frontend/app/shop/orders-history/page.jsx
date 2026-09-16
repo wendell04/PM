@@ -2210,7 +2210,10 @@ export default function OrdersHistoryPage() {
                       && !['delivered','Delivered','cancelled','Cancelled','returned','Returned'].includes(selectedOrder.orderStatus)
                       && (selectedOrder.orderStatus === 'awaiting_payment'
                         || selectedOrder.paymentStatus === 'partial'
-                        || (selectedOrder.orderStatus === 'Pending' && selectedOrder.paymentMethod !== 'cod'))
+                        // Compared through normalizeStatus: the cart checkout stores canonical 'pending',
+                        // and an exact match on 'Pending' hid Pay Now from every online order whose
+                        // payment failed - the list filed it under To Pay with no way to pay.
+                        || (normalizeStatus(selectedOrder.orderStatus) === 'pending' && selectedOrder.paymentMethod !== 'cod'))
                       && (
                       <div style={{ padding: '0 18px 18px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                         <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '2px' }}>
