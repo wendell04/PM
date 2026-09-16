@@ -4848,3 +4848,104 @@ html.light .lp-pinnacle-prod-img { border-color: #e5e5e3; }
 @media (max-width: 768px) {
   .lp-footer-bottom .lp-footer-legal { display: none; }
 }
+
+/* Sections that used to carry `padding: 64px 0` inline. A class instead, so the phone layout can
+   trim it without an !important war with the style attribute. */
+.lp-sec { padding: 64px 0; }
+
+/* The note under a stat figure ("from 6 verified reviews"). Was an inline style on both. */
+.fcard-note { font-size: .75rem; color: var(--gray); margin-top: .5rem; }
+
+/* ══════════════════════════════════════════════════════════════
+   PHONE LAYOUT v2 (.lp-m2) - owner switch: Homepage editor > Phone layout
+   Every rule below is inside this class AND a phone media query, so turning the switch off
+   restores the previous page exactly. Desktop and tablet are untouched.
+
+   What it changes, and why:
+   - One 16px edge for every section, the same as the shop. The page had three (20, 44 and 64px).
+   - Headings always left, never centred. Mixed alignment is what made it read as unfinished.
+   - Swipe rails for the card sections, bleeding to the screen edge so the next card peeks.
+   - Tighter section spacing: the page was 9,887px, about 4,000px of it air.
+   ══════════════════════════════════════════════════════════════ */
+@media (max-width: 640px) {
+  .lp-m2 .container { padding: 0 16px; }
+
+  /* ── Rhythm ── */
+  .lp-m2 .lp-sec,
+  .lp-m2 .why-us,
+  .lp-m2 .pricing-bg,
+  .lp-m2 .contact-bg,
+  .lp-m2 .reviews-landing-section,
+  .lp-m2 .lp-pinnacle { padding-block: 40px; }
+
+  /* ── Headings ── */
+  .lp-m2 .section-header { margin-bottom: 1.1rem; }
+  .lp-m2 .section-header.center { text-align: left; }
+  .lp-m2 .section-header.center .section-subtitle { margin: 0; }
+  .lp-m2 .section-title { font-size: 1.65rem; margin-bottom: .35rem; }
+  .lp-m2 .section-subtitle { font-size: .85rem; line-height: 1.5; }
+  .lp-m2 .section-tag { font-size: .66rem; padding: .25rem .6rem; margin-bottom: .5rem; }
+
+  /* ── Swipe rails: start on the page edge, run off the screen ──
+     The cards used to stop at the container's padding, so the row read as a clipped grid
+     rather than something you swipe. */
+  .lp-m2 .lp-pinnacle-mobile-stack,
+  .lp-m2 .lp-featured-grid {
+    margin-inline: -16px;
+    padding-inline: 16px;
+    scroll-padding-left: 16px;
+  }
+  .lp-m2 .lp-pinnacle-mobile-stack-card,
+  .lp-m2 .lp-featured-grid > a { flex: 0 0 62%; min-width: 62%; }
+
+  /* Pricing was 8 stacked cards - 1,988px, two and a half phone screens on its own. */
+  .lp-m2 .pub-pricing-grid {
+    display: flex;
+    flex-direction: row;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    scroll-padding-left: 16px;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    gap: 12px;
+    margin-inline: -16px;
+    padding-inline: 16px;
+    margin-bottom: 1.25rem;
+  }
+  .lp-m2 .pub-pricing-grid::-webkit-scrollbar { display: none; }
+  .lp-m2 .pub-pricing-card {
+    flex: 0 0 76%;
+    min-width: 76%;
+    scroll-snap-align: start;
+  }
+
+  /* ── Stats: three stacked cards became three figures on one line ── */
+  .lp-m2 .feature-card-stack { flex-direction: row; gap: 8px; }
+  .lp-m2 .fcard { flex: 1 1 0; min-width: 0; }
+  .lp-m2 .fcard-inner { padding: .7rem .6rem; }
+  .lp-m2 .fcard-label { font-size: .6rem; margin-bottom: .15rem; }
+  .lp-m2 .fcard-value { font-size: 1.25rem; margin-bottom: .35rem; }
+  .lp-m2 .fcard-note { font-size: .58rem; margin-top: .3rem; line-height: 1.25; }
+  .lp-m2 .features-layout { gap: 1.5rem; }
+  .lp-m2 .feature-item { gap: .6rem; }
+
+  /* ── How It Works: the widest gutter on the page (64px) ── */
+  .lp-m2 .hiw-new-layout { padding-inline: 16px; gap: 1.25rem; }
+  .lp-m2 .hiw-new-steps { gap: .75rem; }
+  .lp-m2 .hiw-left h2 { font-size: 1.65rem; }
+
+  /* ── Collections header: the arrows are for a mouse, the rail is for a thumb ── */
+  .lp-m2 .lp-pinnacle-arrows { display: none; }
+  .lp-m2 .lp-pinnacle-hd { margin-bottom: 1rem; }
+
+  /* ── Hero: buttons share the row evenly instead of wrapping to a second line ── */
+  .lp-m2 .hero { min-height: 80svh; min-height: 80vh; }
+  .lp-m2 .hero-content { padding: 0 16px !important; }
+  .lp-m2 .hero-actions { display: flex; gap: 10px !important; }
+  .lp-m2 .hero-actions > * { flex: 1 1 0; justify-content: center; text-align: center; }
+  .lp-m2 .hero-title { font-size: 2.1rem !important; }
+
+  /* ── Contact: 1,457px of form on a phone ── */
+  .lp-m2 .contact-form-wrap { padding: 1.1rem; }
+  .lp-m2 .contact-layout { gap: 1.5rem; }
+}

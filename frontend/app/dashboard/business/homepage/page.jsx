@@ -102,6 +102,8 @@ export default function HomepageCmsPage() {
   const [modal, setModal]     = useState(null);
   const [dragOver, setDragOver] = useState(false);
 
+  // Owner switch for the phone layout. Off renders the homepage exactly as it was before it.
+  const [mobileV2, setMobileV2] = useState(false);
   const [tagId, setTagId]   = useState(null);
   const [editTag, setEditTag] = useState(null);
   const [imgId, setImgId]   = useState(null);
@@ -123,6 +125,13 @@ export default function HomepageCmsPage() {
     finally { setLoading(false); }
   };
   useEffect(() => { if (token) load(); }, [token]); // eslint-disable-line
+
+  useEffect(() => {
+    fetch(`${API_URL}/api/storefront/content/homepage_layout`)
+      .then(r => r.json())
+      .then(d => setMobileV2(d?.data?.mobileV2 === true))
+      .catch(() => {});
+  }, []);
 
   const selectTag = (id) => { const b = taglines.find(x => bid(x) === id); if (b) { setTagId(id); setEditTag({ ...b }); } };
   const selectImg = (id) => { const b = images.find(x => bid(x) === id); if (b) { setImgId(id); setEditImg({ ...b }); } };
@@ -348,6 +357,27 @@ export default function HomepageCmsPage() {
             <button onClick={seed} disabled={seeding} style={{ ...pubBtn(false), padding: '0.65rem 1.5rem' }}>{seeding ? 'Importing…' : 'Import current hero'}</button>
           </div>
         )}
+
+        {/* ── PHONE LAYOUT SWITCH ── */}
+        <div style={{ ...card, marginBottom: '1.5rem' }}>
+          <h2 style={cardTitle}>Phone Layout <span style={{ fontSize: '0.72rem', fontWeight: 400, color: 'var(--gray)' }}>phones only - desktop never changes</span></h2>
+          <p style={{ color: 'var(--gray-light)', fontSize: '0.85rem', margin: '0 0 1rem', lineHeight: 1.6 }}>
+            The newer phone layout gives every section the same edge, puts headings on the left, turns the
+            Collections, Featured and Pricing cards into rows you swipe, and cuts the empty space between
+            sections. Your text, images and prices are the same either way - this only changes the arrangement.
+            Turn it off any time to go back to the old layout.
+          </p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <button type="button" onClick={() => setMobileV2(v => !v)} role="switch" aria-checked={mobileV2}
+              style={{ width: 52, height: 30, borderRadius: 999, border: '1px solid var(--border)', cursor: 'pointer', padding: 3,
+                background: mobileV2 ? 'var(--gold)' : 'var(--dark2)', display: 'flex', justifyContent: mobileV2 ? 'flex-end' : 'flex-start' }}>
+              <span style={{ width: 22, height: 22, borderRadius: '50%', background: mobileV2 ? 'var(--black)' : 'var(--gray)', display: 'block' }} />
+            </button>
+            <span style={{ fontSize: '0.85rem', color: 'var(--white)', fontWeight: 600 }}>{mobileV2 ? 'New phone layout' : 'Old phone layout'}</span>
+            <button onClick={() => saveContent('homepage_layout', { mobileV2 }, `Phone layout set to ${mobileV2 ? 'new' : 'old'} - open the homepage on a phone to see it.`)}
+              disabled={busy} style={{ ...pubBtn(false), marginLeft: 'auto' }}>{busy ? 'Saving…' : 'Save'}</button>
+          </div>
+        </div>
 
         {/* ── TAGLINES ── */}
         <div style={{ ...card, marginBottom: '1.5rem' }}>

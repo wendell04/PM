@@ -1030,6 +1030,16 @@ export default function ShopLayout({ children }) {
   // the same as locking the page, because the drag itself happens INSIDE the panel. The lock does
   // the rest (and marks the body, so the chat head and the tab bar step aside too).
   useLockBodyScroll(cartOpen || notifOpen);
+
+  // The search box is ~160px on a phone, where the long placeholder was cut to "Search p".
+  const [narrowNav, setNarrowNav] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 640px)');
+    const apply = () => setNarrowNav(mq.matches);
+    apply();
+    mq.addEventListener('change', apply);
+    return () => mq.removeEventListener('change', apply);
+  }, []);
   // The sign-in, sign-up, forgot-password, 2FA, logout and notification modals never took the lock,
   // so on a phone the tab bar and the chat head sat on top of their buttons.
   useLockBodyScroll(authModalOpen || forgotPasswordOpen || (twoFaOpen && !!twoFaToken) || logoutConfirmOpen || !!selectedNotif);
@@ -1357,7 +1367,7 @@ export default function ShopLayout({ children }) {
                   ref={searchRef}
                   type="text"
                   className="shop-navbar-search-input"
-                  placeholder="Search products, then press Enter"
+                  placeholder={narrowNav ? 'Search products' : 'Search products, then press Enter'}
                   value={searchQuery}
                   onChange={e => { handleSearchChange(e); setSearchOpen(true); setSearchHi(-1); }}
                   onFocus={() => { setSearchFocused(true); setSearchOpen(true); loadSearchIndex(); }}

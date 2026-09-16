@@ -622,7 +622,9 @@ export default function ProductDetailPage() {
 
   return (
     <>
-    <div style={{ padding: '2rem 1rem',
+    {/* No side padding of its own: shop-main-content already provides it, and the two together
+        put this page's content 32px from the edge while the shop grid sat at 16px. */}
+    <div style={{ padding: '2rem 0',
       maxWidth: '1100px', margin: '0 auto' }}>
 
       {/* Back button. It used to always push('/shop'), which threw away wherever the reader actually

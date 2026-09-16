@@ -57,7 +57,9 @@ function cmsCta(label, link) {
   return { label, href: link || '#' };
 }
 
-const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=[]}) => {
+// mobileV2 is the owner's "New phone layout" switch (Homepage editor). Off renders exactly the
+// layout that shipped before it; every style it turns on lives under .lp-m2 and phone widths only.
+const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=[], mobileV2=false}) => {
   const router = useRouter();
   const { currentUser: user, token, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
@@ -1408,7 +1410,7 @@ const handleForgotResetPassword = async () => {
 
   // ─── JSX ──────────────────────────────────────────────────────────────────────
   return (
-    <>
+    <div className={mobileV2 ? 'lp-root lp-m2' : 'lp-root'}>
       {/* NAVBAR */}
       <nav className={`navbar ${scrolled ? 'scrolled' : ''}`}>
         <div className="container">
@@ -2058,7 +2060,7 @@ const handleForgotResetPassword = async () => {
         const priceOf = p => p.flatPrice ?? p.price ?? p.basePrice ?? null;
         const imgOf   = p => p.thumbnail || (Array.isArray(p.images) ? p.images[0] : null) || p.image || null;
         return (
-          <section style={{ padding: '64px 0' }}>
+          <section className="lp-sec">
             <div className="container">
               <div className="section-header center">
                 <h2 className="section-title">Featured <span className="gold-text">Products</span></h2>
@@ -2212,7 +2214,7 @@ const handleForgotResetPassword = async () => {
                   <div className="fcard-bar"><div className="fcard-bar-fill" style={{width: landingStats?.avgRating ? `${Math.round(landingStats.avgRating / 5 * 100)}%` : '0%',background:'linear-gradient(90deg,var(--red-dark),var(--red))'}}/></div>
                   {/* The count belongs to the rating it is the basis of. It used to sit under the
                       customer count, where it read as a claim about customers. */}
-                  <div style={{fontSize:'.75rem',color:'var(--gray)',marginTop:'.5rem'}}>
+                  <div className="fcard-note">
                     {landingStats?.reviewsCount
                       ? `from ${landingStats.reviewsCount} verified review${landingStats.reviewsCount === 1 ? '' : 's'}`
                       : 'awaiting the first review'}
@@ -2223,7 +2225,7 @@ const handleForgotResetPassword = async () => {
                       this is the number of people who ordered. Say that instead. */}
                   <div className="fcard-label">Customers Served</div>
                   <div className="fcard-value gold-text">{landingStats ? landingStats.customers.toLocaleString() : '-'}</div>
-                  <div style={{fontSize:'.75rem',color:'var(--gray)',marginTop:'.5rem'}}>and counting</div>
+                  <div className="fcard-note">and counting</div>
                 </div></div>
               </div>
             </div>
@@ -2310,7 +2312,7 @@ const handleForgotResetPassword = async () => {
 
       {/* OUR WORK GALLERY */}
       {cmsGallery.length > 0 && (
-        <section style={{ padding: '64px 0' }}>
+        <section className="lp-sec">
           <div className="container">
             <div className="section-header center">
               <span className="section-tag">Our Work</span>
@@ -2387,7 +2389,7 @@ const handleForgotResetPassword = async () => {
       </section>
 
       {/* FAQ */}
-      <section style={{ padding: '64px 0' }}>
+      <section className="lp-sec">
         <div className="container" style={{ maxWidth: '780px' }}>
           <div className="section-header center">
             <span className="section-tag">Got Questions?</span>
@@ -3184,7 +3186,7 @@ const handleForgotResetPassword = async () => {
         token={token}
         onRequestLogin={() => openModal('login')}
       />
-    </>
+    </div>
   );
 };
 
