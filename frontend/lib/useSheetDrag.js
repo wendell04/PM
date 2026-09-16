@@ -38,10 +38,13 @@ export default function useSheetDrag(onClose, distance = 90, onExpand = null) {
   const drag  = useRef(null);   // { y0, t0, lastY, lastT, velocity, shift }
   const frame = useRef(0);
 
+  // The sheet itself is often the thing that scrolls, so it is checked too - stopping one short of
+  // it let a notification list scrolled halfway down drag the whole sheet.
   const scrolledInside = (target) => {
     let el = target;
-    while (el && el !== ref.current) {
+    while (el) {
       if (el.scrollTop > 0) return true;
+      if (el === ref.current) break;
       el = el.parentElement;
     }
     return false;
@@ -77,7 +80,7 @@ export default function useSheetDrag(onClose, distance = 90, onExpand = null) {
     if (scrolledInside(e.target) || !ref.current) { drag.current = null; return; }
     const y = e.touches[0].clientY;
     const t = performance.now();
-    drag.current = { y0: y, lastY: y, lastT: t, velocity: 0, shift: 0 };
+    drag.current = { y0: y, lastY: y, lastT: t, velocity: 0, shift: 0, target: e.target };
     ref.current.style.transition = 'none';
     ref.current.style.willChange = 'transform';
   };
@@ -91,6 +94,16 @@ export default function useSheetDrag(onClose, distance = 90, onExpand = null) {
     if (t > d.lastT) d.velocity = (y - d.lastY) / (t - d.lastT);
     d.lastY = y; d.lastT = t;
 
+    // Reading, not dragging. A thumb that scrolls a list down and then back up in one movement
+    // passes through "finger moving down" while the list is still scrolled - that is the list's
+    // gesture, so the sheet stays put and the drag is measured again from here if the list
+    // reaches its top.
+    if (scrolledInside(d.target)) {
+      d.y0 = y; d.velocity = 0;
+      if (d.shift !== 0) { d.shift = 0; if (!frame.current) frame.current = requestAnimationFrame(paint); }
+      return;
+    }
+
     if (dy > 0) d.shift = dy;
     else if (onExpand) d.shift = -UP_TRAVEL * (1 - Math.exp(dy / (UP_TRAVEL * 1.4)));
     else d.shift = 0;
@@ -103,7 +116,7 @@ export default function useSheetDrag(onClose, distance = 90, onExpand = null) {
     if (!d || !ref.current) return;
     drag.current = null;
     if (frame.current) { cancelAnimationFrame(frame.current); frame.current = 0; }
-    const dy = e.changedTouches[0].clientY - d.y0;
+    const dy = scrolledInside(d.target) ? 0 : e.changedTouches[0].clientY - d.y0;
 
     if (dy > distance || (dy > 24 && d.velocity > FLICK_SPEED)) {
       settle('translate3d(0, 110%, 0)', (el) => { el.style.transform = ''; onClose(); });

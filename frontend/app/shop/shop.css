@@ -4771,8 +4771,12 @@ html.light .shop-active-clear:hover { color: #111; }
   }
   .shop-qv-modal {
     /* An 80px soft shadow is repainted as the sheet moves. A sheet against a dark backdrop needs
-       only a hint of an edge. */
-    box-shadow: 0 -4px 16px rgba(0,0,0,0.18);
+       only a hint of an edge.
+       The second shadow is a solid white skirt hanging below the sheet, off screen at rest. Pulling
+       the sheet up lifted its bottom edge off the screen and showed the dimmed page underneath,
+       so the sheet looked cut off; the skirt fills that space as it rises (the lift never reaches
+       150px). */
+    box-shadow: 0 -4px 16px rgba(0,0,0,0.18), 0 150px 0 0 #fff;
     border-radius: 20px 20px 0 0;
     max-width: 100%;
     width: 100%;

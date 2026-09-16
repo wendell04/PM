@@ -20,6 +20,8 @@ import RegisterForm from '@/components/auth/RegisterForm';
 import { PasswordGuide } from '@/components/auth/PasswordGuide';
 import '@/components/custom-styles.css';
 import useLockBodyScroll from '@/lib/useLockBodyScroll';
+import useSheetDrag from '@/lib/useSheetDrag';
+import { socialsFrom, socialNames } from '@/lib/socialLinks';
 // Full-resolution artwork was being handed to the browser for every tile on the page - 42 images,
 // about 22 MB, several of them 2 MB PNGs, all of it downloaded on a phone. Cloudinary serves a
 // display-sized copy of the same file instead.
@@ -79,9 +81,6 @@ const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [lpCartOpen, setLpCartOpen] = useState(false);
   const [lpNotifOpen, setLpNotifOpen] = useState(false);
-  const cartSheetRef = useRef(null);
-  const notifSheetRef = useRef(null);
-  const sheetDragStartY = useRef(0);
   const [lpNotifications, setLpNotifications] = useState([]);
   const [lpNotifLoading, setLpNotifLoading] = useState(false);
   const [lpUnreadCount, setLpUnreadCount] = useState(0);
@@ -1153,15 +1152,9 @@ const handleForgotResetPassword = async () => {
     <svg key="3" className="hiw-new-step-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>,
   ];
 
-  // Owner-editable socials/email (?? default => null keeps default, '' hides that icon).
-  const SOCIAL_DEFAULTS = { facebook: 'https://www.facebook.com/share/1Mks4kwnhZ/?mibextid=wwXIfr', instagram: 'https://www.instagram.com/personalizemeprints', tiktok: 'https://www.tiktok.com/@personalizemeprints', shopee: 'https://shopee.ph/personalizemeprints' };
-  const socials = {
-    facebook:  contactContent?.facebook  ?? SOCIAL_DEFAULTS.facebook,
-    instagram: contactContent?.instagram ?? SOCIAL_DEFAULTS.instagram,
-    tiktok:    contactContent?.tiktok    ?? SOCIAL_DEFAULTS.tiktok,
-    shopee:    contactContent?.shopeeUrl ?? SOCIAL_DEFAULTS.shopee,
-    email:     contactContent?.email     ?? '',
-  };
+  // Owner-editable socials/email (never saved => default, cleared '' => that icon is hidden).
+  // Shared with the shop footer, which used to keep its own hardcoded copy.
+  const socials = socialsFrom(contactContent);
 
   // Accepted payment methods - single source of truth (footer badges + checkout read this).
   // Shape: { enabled: { cod, gcash, paymaya, card } }. Missing key = enabled (default-on).
@@ -1396,25 +1389,10 @@ const handleForgotResetPassword = async () => {
   }, [lpCartOpen, lpNotifOpen]);
 
   // Drag-to-dismiss handlers
-  const onSheetDragStart = (e) => { sheetDragStartY.current = e.touches[0].clientY; };
-  const onSheetDragMove = (ref) => (e) => {
-    const dy = e.touches[0].clientY - sheetDragStartY.current;
-    if (dy <= 0 || !ref.current) return;
-    ref.current.style.transition = 'none';
-    ref.current.style.transform = `translateY(${dy}px)`;
-  };
-  const onSheetDragEnd = (ref, close) => (e) => {
-    const dy = e.changedTouches[0].clientY - sheetDragStartY.current;
-    if (!ref.current) return;
-    if (dy > 80) {
-      ref.current.style.transition = 'transform 0.28s cubic-bezier(0.4,0,0.2,1)';
-      ref.current.style.transform = 'translateY(110%)';
-      setTimeout(close, 260);
-    } else {
-      ref.current.style.transition = 'transform 0.28s cubic-bezier(0.4,0,0.2,1)';
-      ref.current.style.transform = 'translateY(0)';
-    }
-  };
+  // Same fix as the shop's sheets: drag only while the list inside is at its top, so scrolling
+  // back up through the notifications no longer pulls the sheet down with it.
+  const cartSheetDrag  = useSheetDrag(() => setLpCartOpen(false), 80);
+  const notifSheetDrag = useSheetDrag(() => setLpNotifOpen(false), 80);
 
   // ─── JSX ──────────────────────────────────────────────────────────────────────
   return (
@@ -1648,10 +1626,7 @@ const handleForgotResetPassword = async () => {
 
       {/* Cart sheet - at root level so position:fixed is viewport-relative, not navbar-relative */}
       {lpCartOpen && (
-        <div className="lp-nav-popup" ref={cartSheetRef}
-          onTouchStart={onSheetDragStart}
-          onTouchMove={onSheetDragMove(cartSheetRef)}
-          onTouchEnd={onSheetDragEnd(cartSheetRef, () => setLpCartOpen(false))}>
+        <div className="lp-nav-popup" ref={cartSheetDrag.ref} {...cartSheetDrag.handlers}>
           <div className="lp-nav-popup-header">
             Cart
             {cartCount > 0 && <span className="lp-nav-popup-count">{cartCount}</span>}
@@ -1701,10 +1676,7 @@ const handleForgotResetPassword = async () => {
 
       {/* Notifications sheet - at root level */}
       {lpNotifOpen && (
-        <div className="lp-nav-popup lp-nav-notif-popup" ref={notifSheetRef}
-          onTouchStart={onSheetDragStart}
-          onTouchMove={onSheetDragMove(notifSheetRef)}
-          onTouchEnd={onSheetDragEnd(notifSheetRef, () => setLpNotifOpen(false))}>
+        <div className="lp-nav-popup lp-nav-notif-popup" ref={notifSheetDrag.ref} {...notifSheetDrag.handlers}>
           <div className="lp-nav-popup-header">
             Notifications
             {lpUnreadCount > 0 && <span className="lp-nav-popup-count red">{lpUnreadCount}</span>}
@@ -2445,7 +2417,7 @@ const handleForgotResetPassword = async () => {
                     <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
                   </svg>
                 </div>
-                <div><h4>Message Us</h4><p>Facebook, Instagram, TikTok</p><p style={{fontSize:'.78rem',color:'var(--gray)',marginTop:'.2rem'}}>{contactContent?.handle || '@personalizemeprints'}</p>{socials.email && <p style={{fontSize:'.78rem',marginTop:'.3rem'}}><a href={`mailto:${socials.email}`} className="auth-link">{socials.email}</a></p>}</div>
+                <div><h4>Message Us</h4><p>{socialNames(socials) || 'Chat with us on this page'}</p><p style={{fontSize:'.78rem',color:'var(--gray)',marginTop:'.2rem'}}>{contactContent?.handle || '@personalizemeprints'}</p>{socials.email && <p style={{fontSize:'.78rem',marginTop:'.3rem'}}><a href={`mailto:${socials.email}`} className="auth-link">{socials.email}</a></p>}</div>
               </div>
               <div className="contact-info-card">
                 <div className="contact-info-icon" style={{color:'var(--gold)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
@@ -2460,6 +2432,9 @@ const handleForgotResetPassword = async () => {
                     {contactContent?.hoursNote || 'You can order any time. Orders placed on Sundays or holidays start production the next working day.'}
                   </p></div>
               </div>
+              {/* Clearing the Shopee link hid its footer icon but this card fell back to the old link
+                  (|| instead of ??), so the store could not be removed from the page. */}
+              {socials.shopee && (
               <div className="contact-info-card">
                 <div className="contact-info-icon" style={{color:'var(--gold)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -2467,8 +2442,9 @@ const handleForgotResetPassword = async () => {
                     <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
                   </svg>
                 </div>
-                <div><h4>Shop Online</h4><a href={contactContent?.shopeeUrl || 'https://shopee.ph/personalizemeprints'} target="_blank" rel="noopener noreferrer" className="auth-link">{contactContent?.shopeeText || 'Shopee: personalizemeprints'}</a></div>
+                <div><h4>Shop Online</h4><a href={socials.shopee} target="_blank" rel="noopener noreferrer" className="auth-link">{contactContent?.shopeeText || 'Shopee: personalizemeprints'}</a></div>
               </div>
+              )}
               <div className="contact-socials">
                 {socials.facebook && (
                 <a href={socials.facebook} className="contact-social-btn" target="_blank" rel="noopener noreferrer">

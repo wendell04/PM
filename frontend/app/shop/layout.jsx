@@ -2,6 +2,8 @@
 import NoImage from '@/components/NoImage';
 import PolicyModal from '@/components/PolicyModal';
 import useLockBodyScroll from '@/lib/useLockBodyScroll';
+import useSheetDrag from '@/lib/useSheetDrag';
+import { socialsFrom } from '@/lib/socialLinks';
 // TwoFactorModal imported for inline 2FA - no page redirect needed
 import TwoFactorModal from '@/components/auth/TwoFactorModal';
 // Shared with the landing page so the sign-up form (fields, CAPTCHA, password rules, T&C) is identical.
@@ -500,9 +502,6 @@ export default function ShopLayout({ children }) {
   const [notifLoading, setNotifLoading] = useState(false);
   const [selectedNotif, setSelectedNotif] = useState(null);
   const notifRef = useRef(null);
-  const shopCartSheetRef = useRef(null);
-  const shopNotifSheetRef = useRef(null);
-  const shopSheetDragStartY = useRef(0);
   const [logoutBanner, setLogoutBanner] = useState(false);
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
 
@@ -735,6 +734,16 @@ export default function ShopLayout({ children }) {
       .then(d => { if (d?.data?.enabled && typeof d.data.enabled === 'object') setPayEnabled(d.data.enabled); })
       .catch(() => {});
   }, []);
+
+  // The footer's social links, from the same Let's Talk settings the homepage uses.
+  const [footerContact, setFooterContact] = useState(null);
+  useEffect(() => {
+    fetch(`${API_URL}/api/storefront/content/contact`)
+      .then(r => r.json())
+      .then(d => { if (d?.data && typeof d.data === 'object') setFooterContact(d.data); })
+      .catch(() => {});
+  }, []);
+  const footerSocials = socialsFrom(footerContact);
 
   // Scroll effect
   useEffect(() => {
@@ -1054,25 +1063,11 @@ export default function ShopLayout({ children }) {
     return () => document.removeEventListener('touchmove', block);
   }, [cartOpen, notifOpen]);
 
-  const onShopSheetDragStart = (e) => { shopSheetDragStartY.current = e.touches[0].clientY; };
-  const onShopSheetDragMove = (ref) => (e) => {
-    const dy = e.touches[0].clientY - shopSheetDragStartY.current;
-    if (dy <= 0 || !ref.current) return;
-    ref.current.style.transition = 'none';
-    ref.current.style.transform = `translateY(${dy}px)`;
-  };
-  const onShopSheetDragEnd = (ref, close) => (e) => {
-    const dy = e.changedTouches[0].clientY - shopSheetDragStartY.current;
-    if (!ref.current) return;
-    if (dy > 80) {
-      ref.current.style.transition = 'transform 0.28s cubic-bezier(0.4,0,0.2,1)';
-      ref.current.style.transform = 'translateY(110%)';
-      setTimeout(close, 260);
-    } else {
-      ref.current.style.transition = 'transform 0.28s cubic-bezier(0.4,0,0.2,1)';
-      ref.current.style.transform = 'translateY(0)';
-    }
-  };
+  // The whole sheet listened for a downward drag with no idea whether its list was scrolled, so
+  // scrolling back up through the notifications dragged the sheet down with the thumb. The shared
+  // hook drags only while the list is at its top - the same rule every other sheet follows.
+  const cartSheetDrag  = useSheetDrag(() => setCartOpen(false), 80);
+  const notifSheetDrag = useSheetDrag(() => setNotifOpen(false), 80);
 
   const handleOpenNotifications = useCallback(async () => {
     const isOpening = !notifOpen;
@@ -1623,18 +1618,18 @@ export default function ShopLayout({ children }) {
               <p className="shop-footer-tagline">Your creative partner for custom print products. Quality printing for every occasion.</p>
               <div className="shop-footer-socials">
                 <img src="/logos/PersonalizeMe logo.png" alt="Logo" className="shop-footer-logo" />
-                <a href="https://www.facebook.com/share/1Mks4kwnhZ/?mibextid=wwXIfr" target="_blank" rel="noopener noreferrer" className="shop-footer-social-btn" aria-label="Facebook">
+                {footerSocials.facebook && (<a href={footerSocials.facebook} target="_blank" rel="noopener noreferrer" className="shop-footer-social-btn" aria-label="Facebook">
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M24 12.073C24 5.404 18.627 0 12 0S0 5.404 0 12.073C0 18.1 4.388 23.094 10.125 24v-8.437H7.078v-3.49h3.047V9.41c0-3.025 1.792-4.697 4.533-4.697 1.312 0 2.686.236 2.686.236v2.97h-1.513c-1.491 0-1.956.93-1.956 1.886v2.267h3.328l-.532 3.49h-2.796V24C19.612 23.094 24 18.1 24 12.073z"/></svg>
-                </a>
-                <a href="https://www.instagram.com/personalizemeprints" target="_blank" rel="noopener noreferrer" className="shop-footer-social-btn" aria-label="Instagram">
+                </a>)}
+                {footerSocials.instagram && (<a href={footerSocials.instagram} target="_blank" rel="noopener noreferrer" className="shop-footer-social-btn" aria-label="Instagram">
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 1 0 0 12.324 6.162 6.162 0 0 0 0-12.324zM12 16a4 4 0 1 1 0-8 4 4 0 0 1 0 8zm6.406-11.845a1.44 1.44 0 1 0 0 2.881 1.44 1.44 0 0 0 0-2.881z"/></svg>
-                </a>
-                <a href="https://www.tiktok.com/@personalizemeprints" target="_blank" rel="noopener noreferrer" className="shop-footer-social-btn" aria-label="TikTok">
+                </a>)}
+                {footerSocials.tiktok && (<a href={footerSocials.tiktok} target="_blank" rel="noopener noreferrer" className="shop-footer-social-btn" aria-label="TikTok">
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-2.88 2.5 2.89 2.89 0 0 1-2.89-2.89 2.89 2.89 0 0 1 2.89-2.89c.28 0 .54.04.79.1V9.01a6.33 6.33 0 0 0-.79-.05 6.34 6.34 0 0 0-6.34 6.34 6.34 6.34 0 0 0 6.34 6.34 6.34 6.34 0 0 0 6.33-6.34V8.69a8.18 8.18 0 0 0 4.78 1.52V6.75a4.85 4.85 0 0 1-1.01-.06z"/></svg>
-                </a>
-                <a href="https://shopee.ph/personalizemeprints" target="_blank" rel="noopener noreferrer" className="shop-footer-social-btn" aria-label="Shopee">
+                </a>)}
+                {footerSocials.shopee && (<a href={footerSocials.shopee} target="_blank" rel="noopener noreferrer" className="shop-footer-social-btn" aria-label="Shopee">
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4H6zm3 9a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5z"/></svg>
-                </a>
+                </a>)}
               </div>
             </div>
             <details className="shop-footer-col">
@@ -1974,10 +1969,7 @@ export default function ShopLayout({ children }) {
       )}
 
       {cartOpen && (
-        <div className="shop-cart-popup" ref={shopCartSheetRef}
-          onTouchStart={onShopSheetDragStart}
-          onTouchMove={onShopSheetDragMove(shopCartSheetRef)}
-          onTouchEnd={onShopSheetDragEnd(shopCartSheetRef, () => setCartOpen(false))}>
+        <div className="shop-cart-popup" ref={cartSheetDrag.ref} {...cartSheetDrag.handlers}>
           <div className="shop-cart-popup-header">
             Cart
             {globalCartCount > 0 && <span className="shop-cart-popup-count">{globalCartCount}</span>}
@@ -2031,10 +2023,7 @@ export default function ShopLayout({ children }) {
       )}
 
       {notifOpen && (
-        <div className="shop-notif-panel" ref={shopNotifSheetRef}
-          onTouchStart={onShopSheetDragStart}
-          onTouchMove={onShopSheetDragMove(shopNotifSheetRef)}
-          onTouchEnd={onShopSheetDragEnd(shopNotifSheetRef, () => setNotifOpen(false))}>
+        <div className="shop-notif-panel" ref={notifSheetDrag.ref} {...notifSheetDrag.handlers}>
           <div className="shop-notif-panel-header">
             <div className="shop-notif-panel-title">
               Notifications
