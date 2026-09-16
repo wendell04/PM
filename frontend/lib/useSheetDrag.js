@@ -16,13 +16,27 @@ import { useRef } from 'react';
  * product page - the sheet is a preview, and pulling it past the top is asking for the whole thing.
  * Without an onExpand, up does nothing, which is what reading a sheet needs.
  *
+ * Why it is written the way it is (it used to stutter on a mid-range Android):
+ * - One transform write per frame. Touch events arrive faster than the screen redraws; writing on
+ *   every one of them queued work the phone could not finish in time.
+ * - The sheet is promoted to its own layer only while it is moving (will-change), so moving it is
+ *   a compositor job, not a repaint of every image inside it.
+ * - Upward drag resists instead of stopping dead at a fixed limit. A hard stop under a moving
+ *   finger reads as the phone lagging.
+ * - A quick flick counts, not only a long drag - that is how people actually dismiss a sheet.
+ *
  * @param {() => void} onClose  called once the sheet has finished sliding away
  * @param {number}     distance how far to drag before it counts as a dismissal
  * @param {() => void} onExpand called when dragged up past the same distance, if given
  */
+const FLICK_SPEED = 0.55;   // px per ms
+const UP_TRAVEL   = 140;    // how far the sheet can lift, approached but never reached
+const EASE        = 'cubic-bezier(0.32,0.72,0,1)';
+
 export default function useSheetDrag(onClose, distance = 90, onExpand = null) {
   const ref   = useRef(null);
-  const start = useRef(null);
+  const drag  = useRef(null);   // { y0, t0, lastY, lastT, velocity, shift }
+  const frame = useRef(0);
 
   const scrolledInside = (target) => {
     let el = target;
@@ -33,40 +47,76 @@ export default function useSheetDrag(onClose, distance = 90, onExpand = null) {
     return false;
   };
 
+  const paint = () => {
+    frame.current = 0;
+    const d = drag.current;
+    if (d && ref.current) ref.current.style.transform = `translate3d(0, ${d.shift}px, 0)`;
+  };
+
+  const settle = (transform, then) => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.transition = `transform 0.26s ${EASE}`;
+    el.style.transform  = transform;
+    let finished = false;
+    const done = () => {
+      // Both the event and the fallback timer land here; closing the sheet twice would call
+      // onClose on something already gone.
+      if (finished) return;
+      finished = true;
+      el.removeEventListener('transitionend', done);
+      el.style.willChange = '';
+      if (then) then(el);
+    };
+    el.addEventListener('transitionend', done);
+    // transitionend does not fire when nothing moves (already at 0); don't leave the layer promoted.
+    setTimeout(done, 320);
+  };
+
   const onTouchStart = (e) => {
-    if (scrolledInside(e.target)) { start.current = null; return; }
-    start.current = e.touches[0].clientY;
+    if (scrolledInside(e.target) || !ref.current) { drag.current = null; return; }
+    const y = e.touches[0].clientY;
+    const t = performance.now();
+    drag.current = { y0: y, lastY: y, lastT: t, velocity: 0, shift: 0 };
+    ref.current.style.transition = 'none';
+    ref.current.style.willChange = 'transform';
   };
 
   const onTouchMove = (e) => {
-    if (start.current == null || !ref.current) return;
-    const dy = e.touches[0].clientY - start.current;
-    // Upward drags only follow the finger where up means something, and then only a little: the
-    // sheet lifts to show it heard you, it does not climb the screen.
-    if (dy <= 0 && !onExpand) return;
-    const shift = dy > 0 ? dy : Math.max(dy, -48);
-    ref.current.style.transition = 'none';
-    ref.current.style.transform  = `translateY(${shift}px)`;
+    const d = drag.current;
+    if (!d || !ref.current) return;
+    const y  = e.touches[0].clientY;
+    const t  = performance.now();
+    const dy = y - d.y0;
+    if (t > d.lastT) d.velocity = (y - d.lastY) / (t - d.lastT);
+    d.lastY = y; d.lastT = t;
+
+    if (dy > 0) d.shift = dy;
+    else if (onExpand) d.shift = -UP_TRAVEL * (1 - Math.exp(dy / (UP_TRAVEL * 1.4)));
+    else d.shift = 0;
+
+    if (!frame.current) frame.current = requestAnimationFrame(paint);
   };
 
   const onTouchEnd = (e) => {
-    if (start.current == null || !ref.current) return;
-    const dy = e.changedTouches[0].clientY - start.current;
-    start.current = null;
-    ref.current.style.transition = 'transform 0.24s cubic-bezier(0.32,0.72,0,1)';
-    if (dy > distance) {
-      ref.current.style.transform = 'translateY(110%)';
-      const el = ref.current;
-      setTimeout(() => { if (el) el.style.transform = ''; onClose(); }, 220);
+    const d = drag.current;
+    if (!d || !ref.current) return;
+    drag.current = null;
+    if (frame.current) { cancelAnimationFrame(frame.current); frame.current = 0; }
+    const dy = e.changedTouches[0].clientY - d.y0;
+
+    if (dy > distance || (dy > 24 && d.velocity > FLICK_SPEED)) {
+      settle('translate3d(0, 110%, 0)', (el) => { el.style.transform = ''; onClose(); });
       return;
     }
-    if (onExpand && dy < -distance) {
-      ref.current.style.transform = 'translateY(0)';
+    if (onExpand && (dy < -distance || (dy < -24 && d.velocity < -FLICK_SPEED))) {
+      // Keep it lifted while the page loads. Dropping it back to rest first and then leaving
+      // looked like the sheet changing its mind.
       onExpand();
       return;
     }
-    ref.current.style.transform = 'translateY(0)';
+    settle('translate3d(0, 0, 0)');
   };
 
-  return { ref, handlers: { onTouchStart, onTouchMove, onTouchEnd } };
+  return { ref, handlers: { onTouchStart, onTouchMove, onTouchEnd, onTouchCancel: onTouchEnd } };
 }

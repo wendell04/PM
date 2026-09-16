@@ -53,11 +53,15 @@ function getDisplayPrice(product) {
 
 // ─── Quick View Modal ─────────────────────────────────────────────────────────
 function QuickViewModal({ product, flashSale, onClose, onToast }) {
+  const router = useRouter();
+  const productSlug = product?.slug || String(product?.name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  const productHref = productSlug ? `/shop/products/${productSlug}` : null;
   // Down closes the preview; up asks for the whole product page, which is what a preview is for.
-  const qvDrag = useSheetDrag(onClose, 90, () => {
-    const slug = product?.slug || String(product?.name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-    if (slug) window.location.href = `/shop/products/${slug}`;
-  });
+  // A client-side push, not window.location: the full reload re-downloaded the whole shop and
+  // showed a blank page between the sheet and the product.
+  const qvDrag = useSheetDrag(onClose, 90, () => { if (productHref) router.push(productHref); });
+  // Fetched while the preview is open, so pulling up lands on a page that is already there.
+  useEffect(() => { if (productHref) router.prefetch(productHref); }, [productHref, router]);
   const moq = product.minOrderQty || 1;
   const [selOpts, setSelOpts] = useState({});
   const [selVars, setSelVars] = useState(() => {
@@ -80,7 +84,6 @@ function QuickViewModal({ product, flashSale, onClose, onToast }) {
   const [showReviews, setShowReviews] = useState(false);
   const [showPricing, setShowPricing] = useState(false);
   const { addToCart } = useCart();
-  const router = useRouter();
 
   const images = (() => {
     const seen = new Set(); const out = [];
