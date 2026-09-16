@@ -1255,22 +1255,40 @@ export default function CustomerProfilePage() {
           }
           .profile-aside-divider { margin:0.85rem 0 !important; }
 
-          /* Nav becomes a swipeable pill strip */
-          .profile-nav {
-            flex-direction:row !important;
-            overflow-x:auto;
-            gap:0.5rem !important;
-            padding-bottom:4px;
-            scrollbar-width:none;
-            -webkit-overflow-scrolling:touch;
+          /* Header: avatar beside the name instead of stacked above it. Stacked, the header filled
+             the first screen of EVERY tab, and the tab you opened started below the fold. */
+          .profile-aside {
+            display:grid !important;
+            grid-template-columns:64px minmax(0,1fr);
+            column-gap:0.9rem;
+            align-items:center;
           }
-          .profile-nav::-webkit-scrollbar { display:none; }
+          .profile-avatar { grid-row:1 / span 2; width:64px !important; height:64px !important; margin:0 !important; }
+          .profile-avatar img, .profile-avatar > div:first-child {
+            width:64px !important; height:64px !important; min-width:64px !important; font-size:1.5rem !important;
+          }
+          .profile-identity { grid-column:2; text-align:left !important; margin:0 !important; overflow-wrap:anywhere; }
+          .profile-identity > div:nth-child(2) { font-size:0.72rem !important; }
+          .profile-meta { grid-column:2; flex-direction:row !important; flex-wrap:wrap; align-items:center !important; gap:8px !important; margin-top:4px !important; }
+          .profile-aside-divider, .profile-nav { grid-column:1 / -1; }
+
+          /* All five tabs on screen at once. As a swipe strip only two and a half showed, the rest
+             were cut off with nothing saying they existed, and the tab you were on could be the
+             half-hidden one. */
+          .profile-nav {
+            display:grid !important;
+            grid-template-columns:repeat(5, minmax(0,1fr));
+            gap:4px !important;
+          }
           .profile-nav .profile-nav-item {
-            flex-shrink:0 !important;
-            white-space:nowrap;
-            background:rgba(255,255,255,0.05);
-            padding:0.5rem 0.9rem !important;
-            font-size:0.82rem !important;
+            flex-direction:column !important;
+            justify-content:center !important;
+            text-align:center !important;
+            gap:4px !important;
+            padding:0.55rem 0.15rem !important;
+            font-size:0.64rem !important;
+            line-height:1.15;
+            min-width:0;
           }
         }
       `}</style>
@@ -1330,6 +1348,7 @@ export default function CustomerProfilePage() {
         >
           {/* Avatar */}
           <div
+            className="profile-avatar"
             style={{
               position: "relative",
               width: "80px",
@@ -2200,8 +2219,8 @@ export default function CustomerProfilePage() {
             {activeTab === "personal" && (
               <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
                 {/* Tab header */}
-                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "1rem", paddingBottom: "1.25rem", borderBottom: "1px solid var(--border)" }}>
-                  <div>
+                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: "0.75rem 1rem", paddingBottom: "1.25rem", borderBottom: "1px solid var(--border)" }}>
+                  <div style={{ flex: "1 1 200px", minWidth: 0 }}>
                     <h2 style={{ margin: 0, fontSize: "1.1rem", fontWeight: 700, color: "var(--white)", letterSpacing: "-0.01em" }}>Personal Information</h2>
                     <p style={{ margin: "0.3rem 0 0", fontSize: "0.78rem", color: "var(--gray)" }}>Manage your name, contact details, and display information</p>
                   </div>
@@ -2258,9 +2277,9 @@ export default function CustomerProfilePage() {
                       </div>
                       <div style={{ display: "flex", flexDirection: "column" }}>
                         <div style={{ padding: "1rem 1.25rem", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "1rem" }}>
-                          <div>
+                          <div style={{ minWidth: 0 }}>
                             <div style={{ fontSize: "0.68rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--gray)", marginBottom: "0.35rem" }}>Email Address</div>
-                            <div style={{ fontSize: "0.925rem", fontWeight: 500, color: "var(--white)" }}>{profileForm.email || "-"}</div>
+                            <div style={{ fontSize: "0.925rem", fontWeight: 500, color: "var(--white)", overflowWrap: "anywhere" }}>{profileForm.email || "-"}</div>
                           </div>
                           <span style={{ flexShrink: 0, fontSize: "0.65rem", fontWeight: 600, padding: "2px 8px", borderRadius: "999px", background: "rgba(255,255,255,0.05)", color: "var(--gray)", border: "1px solid var(--border)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Locked</span>
                         </div>
@@ -2837,9 +2856,9 @@ export default function CustomerProfilePage() {
                     with two headings. */}
                 <div style={{ border: "1px solid var(--border)", borderRadius: "12px", overflow: "hidden", marginBottom: "1.25rem" }}>
                   <div style={{ padding: "0.75rem 1.25rem", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "0.75rem" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                    <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: "0.25rem 0.5rem" }}>
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gray-light)" strokeWidth="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-                      <span style={{ fontSize: "0.8125rem", fontWeight: 600, color: "var(--white)" }}>Active Sessions</span>
+                      <span style={{ fontSize: "0.8125rem", fontWeight: 600, color: "var(--white)", whiteSpace: "nowrap" }}>Active Sessions</span>
                       <span style={{ fontSize: "0.68rem", color: "var(--gray)" }}>- Devices currently logged in</span>
                     </div>
                     <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
