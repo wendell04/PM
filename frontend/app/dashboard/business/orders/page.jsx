@@ -3076,11 +3076,16 @@ export default function OrdersPage() {
     // "Custom" covered a line the customer drew themselves and a line we drew for them as one
     // thing, though they are different work at different cost and a cart holding both is a third
     // case again - the one most likely to be mishandled, and the one that was hardest to find.
+    // It reads a line the same way the Type badge does. The two disagreed on made-to-order lines
+    // with no artwork yet (a quoted service, before its proof): the badge said Custom and this
+    // filter said Ready Made, so the order vanished from every custom filter.
     const orderKind = (() => {
       const its = o.items || [];
-      const req   = its.some(i => i.designMode === 'request' || i.designRequested);
-      const upl   = its.some(i => i.designUrl || (i.designFiles?.length > 0));
-      const plain = its.some(i => !i.isCustom && !i.designRequested && !i.designUrl && !(i.designFiles?.length > 0));
+      const hasFile = i => !!(i.designUrl || i.designFiles?.length > 0);
+      const made    = i => !!(i.isCustom || i.isMadeToOrder || i.designRequested || i.designMode === 'request' || hasFile(i));
+      const req   = its.some(i => made(i) && !hasFile(i));
+      const upl   = its.some(hasFile);
+      const plain = its.some(i => !made(i));
       const kinds = (req ? 1 : 0) + (upl ? 1 : 0);
       if (kinds > 1 || (kinds === 1 && plain)) return 'mixed';
       if (req) return 'request';

@@ -1729,28 +1729,53 @@ class PaymentController extends Controller
             ];
         };
 
-        $items = array_map(fn ($line) => [
-            'productId'     => (string) ($line['productId'] ?? ''),
-            'productName'   => $line['productName'] ?? null,
-            ...$lineFlags($line),
-            'thumbnail'     => $line['thumbnail'] ?? null,
-            // Carry the quoted variant through - without it the order cannot tell which
-            // BOM was priced, and production would have to guess the colour.
-            'variantId'     => $line['variantId'] ?? null,
-            'variantName'   => $line['variantName'] ?? null,
-            'qty'           => max(1, (int) ($line['qty'] ?? 1)),
-            'unitPrice'     => round((float) ($line['unitPrice'] ?? 0), 2),
-            'lineTotal'     => round((float) ($line['lineTotal'] ?? 0), 2),
-            'flashSaleId'   => null,
-            'materials'     => array_values(array_map(fn ($m) => [
-                'inventoryId' => (string) ($m['inventoryId'] ?? ''),
-                'name'        => $m['name'] ?? null,
-                'qty'         => (float) ($m['qty'] ?? 0),
-            ], array_filter($line['materials'] ?? [], fn ($m) => !empty($m['inventoryId'])))),
-            'designUrl'     => $orderRequest->designUrl,
-            'designNotes'   => $orderRequest->designNotes,
-            'selectedVariants' => $orderRequest->selectedVariants ?? [],
-        ], $orderRequest->lineItems);
+        // The quote's design belongs to the lines that are MADE. It used to be copied onto every
+        // line, so a ready-made item on the same quote carried artwork and was counted as custom -
+        // a mixed quote showed as "Custom" and landed under "Custom (Upload)".
+        // A made line with no mockup attached is a design the shop still has to draw and the
+        // customer still has to approve - the same state as a Request Design line from the normal
+        // checkout, so it goes through the same proof step before production.
+        $hasQuoteDesign = !empty($orderRequest->designUrl);
+        $items = array_map(function ($line) use ($lineFlags, $orderRequest, $hasQuoteDesign) {
+            $flags    = $lineFlags($line);
+            $produced = $flags['isCustom'] || $flags['isMadeToOrder'];
+            return [
+                'productId'     => (string) ($line['productId'] ?? ''),
+                'productName'   => $line['productName'] ?? null,
+                ...$flags,
+                'thumbnail'     => $line['thumbnail'] ?? null,
+                // Carry the quoted variant through - without it the order cannot tell which
+                // BOM was priced, and production would have to guess the colour.
+                'variantId'     => $line['variantId'] ?? null,
+                'variantName'   => $line['variantName'] ?? null,
+                'qty'           => max(1, (int) ($line['qty'] ?? 1)),
+                'unitPrice'     => round((float) ($line['unitPrice'] ?? 0), 2),
+                'lineTotal'     => round((float) ($line['lineTotal'] ?? 0), 2),
+                'flashSaleId'   => null,
+                'materials'     => array_values(array_map(fn ($m) => [
+                    'inventoryId' => (string) ($m['inventoryId'] ?? ''),
+                    'name'        => $m['name'] ?? null,
+                    'qty'         => (float) ($m['qty'] ?? 0),
+                ], array_filter($line['materials'] ?? [], fn ($m) => !empty($m['inventoryId'])))),
+                'designUrl'       => $produced && $hasQuoteDesign ? $orderRequest->designUrl : null,
+                'designNotes'     => $produced ? $orderRequest->designNotes : null,
+                'designRequested' => $produced && !$hasQuoteDesign,
+                'designStatus'    => !$produced ? null
+                    : ($hasQuoteDesign ? ($orderRequest->designApproved ? 'approved' : 'pending_review') : 'pending_design'),
+                'selectedVariants' => $orderRequest->selectedVariants ?? [],
+            ];
+        }, $orderRequest->lineItems);
+
+        $anyProduced = collect($items)->contains(fn ($i) => !empty($i['isCustom']) || !empty($i['isMadeToOrder']));
+        $orderDesignStatus = $anyProduced && $hasQuoteDesign
+            ? ($orderRequest->designApproved ? 'approved' : 'pending_review')
+            : null;
+        // Production can only be awaited once the design is settled. Everything else starts where
+        // every other order does - a quote for shelf goods has nothing to produce, and a quote whose
+        // design is still to be drawn has a proof step first.
+        $initialStatus = ($anyProduced && $orderDesignStatus === 'approved')
+            ? 'awaiting_production'
+            : OrderStatus::PENDING;
 
         $order = Order::create([
             // The acceptance recorded when the quote was paid. Without carrying it here the proof
@@ -1771,7 +1796,7 @@ class PaymentController extends Controller
             'totalAmount'          => $finalPrice,
             // Informational - the delivery fee the admin set on the quote is already inside finalPrice.
             'shippingFee'          => round((float) ($orderRequest->shippingFee ?? 0), 2),
-            'orderStatus'          => 'awaiting_production',
+            'orderStatus'          => $initialStatus,
             'paymentStatus'        => $paidInFull ? 'paid' : 'partial',
             'downPayment'          => $paidAmount,
             'balance'              => $balance,
@@ -1785,16 +1810,16 @@ class PaymentController extends Controller
             'paymongoPaymentId'    => $paymentMeta['paymentId'] ?? null,
             'paymongoReferenceNumber' => $paymentMeta['ref'] ?? null,
             'deliveryAddress'      => $orderRequest->deliveryAddress,
-            'isCustomOrder'        => true,
+            // Hardcoded true, so a quote for shelf goods was treated as production work and could
+            // never get past the design gate on the Job Order.
+            'isCustomOrder'        => $anyProduced,
             'orderSource'          => 'inquiry',
-            'designType'           => $orderRequest->designType,
+            'designType'           => $anyProduced ? ($orderRequest->designType ?: ($hasQuoteDesign ? 'upload' : 'request')) : null,
             'designFilePath'       => $orderRequest->designUrl,
             'designNotes'          => $orderRequest->designNotes,
             // An owner-attached quote design is pre-approved (agreed in chat) → no proof gate.
             // A customer-uploaded design still needs the store to review it.
-            'designStatus'         => $orderRequest->designUrl
-                ? ($orderRequest->designApproved ? 'approved' : 'pending_review')
-                : null,
+            'designStatus'         => $orderDesignStatus,
             'materials'            => $orderRequest->materials,
             'materialsCost'        => $orderRequest->materialsCost,
             'orderRequestId'       => (string) $orderRequest->_id,
@@ -1805,7 +1830,7 @@ class PaymentController extends Controller
                     . ' via PayMongo' . (!empty($paymentMeta['ref']) ? " ({$paymentMeta['ref']})" : ''),
                 'paidAt' => now()->toDateTimeString(),
             ]],
-            'statusHistory'        => [['status' => 'awaiting_production', 'at' => now()->toISOString()]],
+            'statusHistory'        => [['status' => $initialStatus, 'at' => now()->toISOString()]],
             'createdAt'            => now(),
             'updatedAt'            => now(),
         ]);
