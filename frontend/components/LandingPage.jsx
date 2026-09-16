@@ -189,6 +189,9 @@ const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=
   const [registrationTerms, setRegistrationTerms] = useState(DEFAULT_REGISTRATION_TERMS);
   // FAQ accordion
   const [openFaq, setOpenFaq] = useState(null);
+  // Phones show the first four questions; the rest are one tap away. Desktop and the old phone
+  // layout always show all six - the cap and the button only exist under .lp-m2.
+  const [faqAll, setFaqAll] = useState(false);
   // CMS-editable pricing (falls back to hardcoded publicPricing)
   const [pricingContent, setPricingContent] = useState(null);
   // CMS-editable Why-Us features / How-It-Works steps / Contact info (fallbacks below)
@@ -2396,7 +2399,7 @@ const handleForgotResetPassword = async () => {
             <h2 className="section-title">Frequently Asked <span className="gold-text">Questions</span></h2>
             <p className="section-subtitle">Everything you need to know before you order.</p>
           </div>
-          <div style={{ marginTop: '8px', borderTop: '1px solid var(--border)' }}>
+          <div className={`lp-faq-list${faqAll ? ' lp-faq-all' : ''}`} style={{ marginTop: '8px', borderTop: '1px solid var(--border)' }}>
             {FAQS.map((item, i) => {
               const open = openFaq === i;
               return (
@@ -2416,6 +2419,9 @@ const handleForgotResetPassword = async () => {
               );
             })}
           </div>
+          <button type="button" className="lp-faq-more" onClick={() => setFaqAll(v => !v)}>
+            {faqAll ? 'Show fewer questions' : `Show all ${FAQS.length} questions`}
+          </button>
         </div>
       </section>
 

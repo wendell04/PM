@@ -4856,6 +4856,9 @@ html.light .lp-pinnacle-prod-img { border-color: #e5e5e3; }
 /* The note under a stat figure ("from 6 verified reviews"). Was an inline style on both. */
 .fcard-note { font-size: .75rem; color: var(--gray); margin-top: .5rem; }
 
+/* Only the phone layout caps the FAQ list, so only it shows the button. */
+.lp-faq-more { display: none; }
+
 /* ══════════════════════════════════════════════════════════════
    PHONE LAYOUT v2 (.lp-m2) - owner switch: Homepage editor > Phone layout
    Every rule below is inside this class AND a phone media query, so turning the switch off
@@ -4944,6 +4947,30 @@ html.light .lp-pinnacle-prod-img { border-color: #e5e5e3; }
   .lp-m2 .hero-actions { display: flex; gap: 10px !important; }
   .lp-m2 .hero-actions > * { flex: 1 1 0; justify-content: center; text-align: center; }
   .lp-m2 .hero-title { font-size: 2.1rem !important; }
+
+  /* ── Pricing: the prices come first, the login card after ──
+     The unlock card is the first column, so on a phone the first thing under "Our Price List"
+     was "Login to View" - a wall in front of the prices the heading just promised. */
+  .lp-m2 .pricing-new-layout { display: flex; flex-direction: column; gap: 1.25rem; margin-top: 1.25rem; }
+  .lp-m2 .pub-pricing-grid { order: -1; }
+  .lp-m2 .pricing-unlock-card { padding: 20px 18px; }
+
+  /* ── FAQ: four questions, the rest one tap away ── */
+  .lp-m2 .lp-faq-list:not(.lp-faq-all) > div:nth-child(n+5) { display: none; }
+  .lp-m2 .lp-faq-more {
+    display: block;
+    width: 100%;
+    margin-top: 14px;
+    padding: 12px 16px;
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    color: var(--gold);
+    font-family: inherit;
+    font-size: .85rem;
+    font-weight: 700;
+    cursor: pointer;
+  }
 
   /* ── Contact: 1,457px of form on a phone ── */
   .lp-m2 .contact-form-wrap { padding: 1.1rem; }
