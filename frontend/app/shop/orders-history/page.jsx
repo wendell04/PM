@@ -436,13 +436,19 @@ function CustomOrderTracker({ orderStatus, designType, designStatus, paymentStat
                     ? <span style={{ width: 8, height: 8, borderRadius: '50%', background: GOLD }} />
                     : step.icon}
               </div>
-              <div style={{ marginTop: '8px', textAlign: 'center', lineHeight: 1.3, fontSize: '0.66rem', fontWeight: isCurrent ? 700 : 500, color: isCurrent ? GOLD : isDone ? 'var(--white)' : 'var(--gray)', maxWidth: '64px' }}>
+              <div className="oh-step-label" style={{ marginTop: '8px', textAlign: 'center', lineHeight: 1.3, fontSize: '0.66rem', fontWeight: isCurrent ? 700 : 500, color: isCurrent ? GOLD : isDone ? 'var(--white)' : 'var(--gray)', maxWidth: '64px' }}>
                 {step.label}
               </div>
             </div>
           );
         })}
       </div>
+      {currentIdx >= 0 && (
+        <div className="oh-step-caption">
+          <span><strong>{steps[currentIdx].label}</strong> - step {currentIdx + 1} of {steps.length}</span>
+          {currentIdx < steps.length - 1 && !isDelivered && <span>Next: {steps[currentIdx + 1].label}</span>}
+        </div>
+      )}
       <ItemProgressNote jobs={productionJobs} />
       {orderStatus === 'awaiting_payment' && (
         <div style={{ marginTop: '14px', padding: '10px 14px', background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: '8px', fontSize: '0.8rem', color: '#f59e0b' }}>
@@ -1067,6 +1073,16 @@ export default function OrdersHistoryPage() {
           .oh-card-head { flex-direction: column; align-items: stretch !important; gap: 6px !important; padding: 12px 14px 10px !important; }
           .oh-card-badges { justify-content: flex-start !important; }
           .oh-card-ref, .oh-card-type { white-space: nowrap; }
+        }
+        /* The custom-order tracker has six or seven steps. On a 360px phone that is about 42px a
+           step, and "Production" alone is 55px - the labels ran into each other ("ApprovedProduction",
+           "DeliveryDelivered") and "QC Check" broke in two. The dots stay; the words move to one
+           line underneath that names where the order is and what comes next. */
+        .oh-step-caption { display: none; }
+        @media (max-width: 480px) {
+          .oh-step-label { display: none; }
+          .oh-step-caption { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-top: 12px; font-size: 0.76rem; color: var(--gray); }
+          .oh-step-caption strong { color: #d4a843; font-weight: 700; }
         }
       `}</style>
     <div style={{ minHeight: '100vh' }}>
