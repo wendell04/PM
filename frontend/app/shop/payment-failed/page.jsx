@@ -7,6 +7,10 @@ export default function PaymentFailedPage() {
   const searchParams = useSearchParams();
   const orderId      = searchParams.get('id');
   const cancelled    = searchParams.get('cancelled') === '1';
+  // A failed quote payment creates nothing - the quote only becomes an order once it is paid - so
+  // "your order has been saved, retry from your order history" sent the customer looking for an
+  // order that does not exist. The quote is still open; send them back to it.
+  const isQuote      = searchParams.get('type') === 'order_request';
 
   useEffect(() => {
     sessionStorage.removeItem('pending_payment_order_id');
@@ -65,9 +69,13 @@ export default function PaymentFailedPage() {
           marginBottom: '32px',
           lineHeight: 1.6,
         }}>
-          {cancelled
-            ? 'You cancelled the payment. Your order has been saved, you can retry from your order history.'
-            : 'Your payment was not completed. Your order has been saved, you can retry from your order history.'}
+          {isQuote
+            ? (cancelled
+                ? 'You cancelled the payment. Nothing was charged and your quote is still open - you can pay it again until it expires.'
+                : 'Your payment was not completed. Nothing was charged and your quote is still open - you can pay it again until it expires.')
+            : cancelled
+              ? 'You cancelled the payment. Your order has been saved, you can retry from your order history.'
+              : 'Your payment was not completed. Your order has been saved, you can retry from your order history.'}
         </p>
 
         {orderId && (
@@ -81,7 +89,7 @@ export default function PaymentFailedPage() {
             alignItems: 'center',
           }}>
             <span style={{ color: 'var(--gray)', fontSize: '0.85rem' }}>
-              Order Reference
+              {isQuote ? 'Quote Reference' : 'Order Reference'}
             </span>
             <span style={{
               color: 'var(--white)',
@@ -95,7 +103,7 @@ export default function PaymentFailedPage() {
 
         <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
           <Link
-            href="/shop/orders-history"
+            href={isQuote && orderId ? `/shop/checkout/quote/${orderId}` : '/shop/orders-history'}
             style={{
               display: 'inline-flex',
               alignItems: 'center',
@@ -108,7 +116,7 @@ export default function PaymentFailedPage() {
               textDecoration: 'none',
             }}
           >
-            View Orders
+            {isQuote ? 'Try again' : 'View Orders'}
           </Link>
           <Link
             href="/shop"
