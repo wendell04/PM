@@ -13,6 +13,7 @@ use App\Models\User;
 use App\Models\Sale;
 use App\Models\Inventory;
 use App\Support\MaterialClaim;
+use App\Support\Backorder;
 use App\Support\OrderNotifier;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -657,6 +658,8 @@ class OrderController extends Controller
             }
 
             // ── BOM material deduction at order creation ──────────────
+            // What a pre-ordered ready-made line could not get off the shelf. See App\Support\Backorder.
+            $owedHere = [];
             foreach ($orderItems as $item) {
                 $prod      = Product::find($item['productId'] ?? null);
                 $variantId = $item['variantId'] ?? null;
@@ -710,17 +713,31 @@ class OrderController extends Controller
                             // A ready-made line turns its hold into a real deduction, so the hold
                             // has to go first or the material is counted against the shelf twice.
                             MaterialClaim::release((string) $rawInv->_id, $deductQty);
+                            // A pre-order line can ask for more than the shelf has. Take what is free
+                            // and hold the rest as owed - the deduction used to stop at zero and the
+                            // missing units disappeared from every count.
+                            [$take, $owe] = Backorder::split((string) $rawInv->_id, $deductQty);
                             $rawInv->refresh();
-                            $this->deductInventoryFIFO(
-                                inventory:    $rawInv,
-                                qty:          $deductQty,
-                                reason:       'sale_reserved',
-                                unitPrice:    0.0,
-                                orderId:      (string) $order->_id,
-                                productId:    (string) $prod->_id,
-                                productName:  $prod->name ?? '',
-                                customerName: $order->userSnapshot['name'] ?? '',
-                            );
+                            if ($take > 0) {
+                                $this->deductInventoryFIFO(
+                                    inventory:    $rawInv,
+                                    qty:          $take,
+                                    reason:       'sale_reserved',
+                                    unitPrice:    0.0,
+                                    orderId:      (string) $order->_id,
+                                    productId:    (string) $prod->_id,
+                                    productName:  $prod->name ?? '',
+                                    customerName: $order->userSnapshot['name'] ?? '',
+                                );
+                            }
+                            if ($owe > 0) {
+                                Backorder::hold((string) $rawInv->_id, $owe, (string) $order->_id, [
+                                    'productId'    => (string) $prod->_id,
+                                    'productName'  => $prod->name ?? '',
+                                    'customerName' => $order->userSnapshot['name'] ?? '',
+                                ]);
+                                $owedHere[] = ['inventoryId' => (string) $rawInv->_id, 'qty' => $owe];
+                            }
                         }
                     }
                 } catch (\Exception $bomErr) {
@@ -730,6 +747,11 @@ class OrderController extends Controller
                         'error'     => $bomErr->getMessage(),
                     ]);
                 }
+            }
+
+            if ($owedHere) {
+                $order->backorders = Backorder::merge($order->backorders ?? [], $owedHere);
+                $order->save();
             }
 
             // The order now owns what is still held, and cancelling it is what gives that back.
@@ -1619,6 +1641,18 @@ class OrderController extends Controller
                 $this->settleOnDelivered($order, $request->user());
             }
 
+            // Leaving the shop: anything owed from the shelf is taken now. See App\Support\Backorder.
+            if (!empty($order->backorders)
+                && in_array(OrderStatus::normalize($order->orderStatus), [OrderStatus::FOR_DELIVERY, OrderStatus::DELIVERED], true)) {
+                Backorder::settle($order, fn ($inv, $qty) => $this->deductInventoryFIFO(
+                    inventory:    $inv,
+                    qty:          $qty,
+                    reason:       'sale_backorder',
+                    orderId:      (string) $order->_id,
+                    customerName: $order->userSnapshot['name'] ?? '',
+                ));
+            }
+
             // One announcer for every path: the bell as well as the email, and it carries the
             // unpaid delivery fee and the courier - the two things a customer needs at the end.
             if (isset($validated['orderStatus']) && $oldStatus !== $order->orderStatus) {
@@ -2321,6 +2355,18 @@ class OrderController extends Controller
                 ]);
             }
 
+            // Leaving the shop: anything owed from the shelf is taken now. See App\Support\Backorder.
+            if (!empty($order->backorders)
+                && in_array(OrderStatus::normalize($order->orderStatus), [OrderStatus::FOR_DELIVERY, OrderStatus::DELIVERED], true)) {
+                Backorder::settle($order, fn ($inv, $qty) => $this->deductInventoryFIFO(
+                    inventory:    $inv,
+                    qty:          $qty,
+                    reason:       'sale_backorder',
+                    orderId:      (string) $order->_id,
+                    customerName: $order->userSnapshot['name'] ?? '',
+                ));
+            }
+
             // Same announcer as adminUpdate - one place decides what a stage sounds like.
             if ($oldStatus !== $order->orderStatus) {
                 OrderNotifier::statusChanged($order, $oldStatus);
@@ -2556,6 +2602,16 @@ class OrderController extends Controller
      *        bench is the only one who knows the box was never opened while the mug was printed,
      *        so the stage decides the default and they decide the exception.
      */
+    /**
+     * For orders:expire-unpaid-proofs. An order that expires unpaid gives its stock back exactly the
+     * way a cancelled one does - the command used to release only a legacy materials shape that no
+     * current order carries, so a checkout abandoned after a failed payment held its stock forever.
+     */
+    public function releaseStockForExpiredOrder(Order $order): void
+    {
+        $this->restoreStockOnCancel($order, $this->jobStagesFor($order));
+    }
+
     private function restoreStockOnCancel(Order $order, array $jobStages = [], array $keepBack = []): void
     {
         // Every cancel path comes through here, so this is where the promotions go back too.
@@ -2618,8 +2674,39 @@ class OrderController extends Controller
             // BOM path below would release the wrong amount, or nothing at all when the quoted
             // service has no BOM, and the real hold would never come back. Release what was
             // actually taken, then skip the BOM path so nothing is released twice.
-            if (!empty($order->quoteReservations)) {
-                foreach ($order->quoteReservations as $held) {
+            // quoteDeductions marks the current format: holds (produced), takes (ready-made) and
+            // owed amounts are recorded apart, because each one comes back differently.
+            if (isset($order->quoteDeductions) || !empty($order->quoteReservations)) {
+                foreach ($order->quoteDeductions ?? [] as $taken) {
+                    try {
+                        $inv = Inventory::find($taken['inventoryId'] ?? null);
+                        $qty = (int) ($taken['qty'] ?? 0);
+                        if (!$inv || $inv->isOnDemand || $qty <= 0) continue;
+                        $updated = DB::connection('mongodb')->getCollection('inventories')->findOneAndUpdate(
+                            ['_id' => new \MongoDB\BSON\ObjectId((string) $inv->_id)],
+                            ['$inc' => ['stockQty' => $qty]],
+                            ['returnDocument' => \MongoDB\Operation\FindOneAndUpdate::RETURN_DOCUMENT_AFTER]
+                        );
+                        StockHistory::create([
+                            'inventoryId'  => (string) $inv->_id,
+                            'quantity'     => $qty,
+                            'remainingQty' => (int) ($updated->stockQty ?? 0),
+                            'unitCost'     => $this->unitCostOf($inv),
+                            'totalCost'    => 0,
+                            'reason'       => 'order_cancelled',
+                            'type'         => 'adjustment',
+                            'performedBy'  => 'system',
+                            'orderId'      => (string) $order->_id,
+                            'customerName' => $order->userSnapshot['name'] ?? '',
+                            'remarks'      => 'Quote order cancelled (ready-made returned to shelf): ' . (string) $order->_id,
+                            'createdAt'    => now(),
+                        ]);
+                    } catch (\Throwable $e) {
+                        Log::warning('restoreStockOnCancel: quote deduction restore failed', ['orderId' => (string) $order->_id, 'error' => $e->getMessage()]);
+                    }
+                }
+                Backorder::releaseForCancel($order);
+                foreach ($order->quoteReservations ?? [] as $held) {
                     try {
                         $inv = Inventory::find($held['inventoryId'] ?? null);
                         $qty = (int) ($held['qty'] ?? 0);
@@ -2649,6 +2736,11 @@ class OrderController extends Controller
                 }
                 return;
             }
+
+            // Owed units of a ready-made line were held, never taken off the shelf - they are
+            // released, and only the part that was actually taken goes back into stock.
+            $owedLeft = Backorder::owedMap($order);
+            Backorder::releaseForCancel($order);
 
             // Restore BOM raw materials deducted at order creation
             foreach ($order->items as $itemIdx => $item) {
@@ -2749,6 +2841,12 @@ class OrderController extends Controller
                                 'createdAt'    => now(),
                             ]);
                             continue;
+                        }
+                        $owedPart = min($qty, (int) ($owedLeft[(string) $rawInv->_id] ?? 0));
+                        if ($owedPart > 0) {
+                            $owedLeft[(string) $rawInv->_id] -= $owedPart;
+                            $qty -= $owedPart;
+                            if ($qty <= 0) continue;
                         }
                         $updated = DB::connection('mongodb')
                             ->getCollection('inventories')

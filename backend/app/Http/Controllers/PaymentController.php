@@ -22,6 +22,8 @@ use App\Models\User;
 use App\Models\SiteContent;
 use App\Services\PriceResolver;
 use App\Support\OrderStatus;
+use App\Support\QuoteStock;
+use App\Support\Backorder;
 
 class PaymentController extends Controller
 {
@@ -432,6 +434,7 @@ class PaymentController extends Controller
             }
 
             // BOM material deduction at order creation
+            $owedHere = [];
             foreach ($orderItems as $item) {
                 $bomProd = \App\Models\Product::find($item['productId'] ?? null);
                 if (!$bomProd) continue;
@@ -465,6 +468,14 @@ class PaymentController extends Controller
                                 // The hold goes back before the shelf is actually reduced, or the
                                 // material is counted against availability twice.
                                 MaterialClaim::release((string) $rawInv->_id, $deductQty);
+                                // A pre-order line can ask for more than the shelf has. This decrement used to run the
+                                // stock negative; now it takes what is free and the rest is held as owed (To Buy).
+                                [$take, $owe] = Backorder::split((string) $rawInv->_id, $deductQty);
+                                if ($owe > 0) {
+                                    Backorder::hold((string) $rawInv->_id, $owe, (string) $order->_id, ['productId' => $item['productId'] ?? null]);
+                                    $owedHere[] = ['inventoryId' => (string) $rawInv->_id, 'qty' => $owe];
+                                }
+                                $deductQty = $take;
                                 $updatedRaw = DB::connection('mongodb')->getCollection('inventories')
                                     ->findOneAndUpdate(
                                         ['_id' => new \MongoDB\BSON\ObjectId((string) $rawInv->_id)],
@@ -488,6 +499,10 @@ class PaymentController extends Controller
                         'error' => $bomErr->getMessage(),
                     ]);
                 }
+            }
+            if ($owedHere) {
+                $order->backorders = Backorder::merge($order->backorders ?? [], $owedHere);
+                $order->save();
             }
 
             $orderId     = (string) $order->_id;
@@ -1101,6 +1116,7 @@ class PaymentController extends Controller
             }
 
             // BOM material deduction at order creation
+            $owedHere = [];
             foreach ($orderItems as $item) {
                 $bomProd   = \App\Models\Product::find($item['productId'] ?? null);
                 $variantId = $item['variantId'] ?? null;
@@ -1141,6 +1157,14 @@ class PaymentController extends Controller
                         // The hold goes back before the shelf is actually reduced, or the
                         // material is counted against availability twice.
                         MaterialClaim::release((string) $rawInv->_id, $deductQty);
+                        // A pre-order line can ask for more than the shelf has. This decrement used to run the
+                        // stock negative; now it takes what is free and the rest is held as owed (To Buy).
+                        [$take, $owe] = Backorder::split((string) $rawInv->_id, $deductQty);
+                        if ($owe > 0) {
+                            Backorder::hold((string) $rawInv->_id, $owe, (string) $order->_id, ['productId' => $item['productId'] ?? null]);
+                            $owedHere[] = ['inventoryId' => (string) $rawInv->_id, 'qty' => $owe];
+                        }
+                        $deductQty = $take;
                         $updatedRaw = DB::connection('mongodb')->getCollection('inventories')
                             ->findOneAndUpdate(
                                 ['_id' => new \MongoDB\BSON\ObjectId((string) $rawInv->_id)],
@@ -1171,6 +1195,10 @@ class PaymentController extends Controller
                         'error' => $bomErr->getMessage(),
                     ]);
                 }
+            }
+            if ($owedHere) {
+                $order->backorders = Backorder::merge($order->backorders ?? [], $owedHere);
+                $order->save();
             }
 
             $frontendUrl    = config('app.frontend_url', 'http://localhost:3000');
@@ -1395,6 +1423,51 @@ class PaymentController extends Controller
 
             if ($orderRequest->finalPrice === null || $orderRequest->finalPrice <= 0) {
                 return $this->errorResponse('Final price has not been set yet.', 422);
+            }
+
+            // Stock at the moment of payment. A quote holds the price, not the shelf, so what it
+            // was counting on may have been sold since it was sent. Short and not allowed past the
+            // shelf means the money is not taken - refunding a customer for goods the shop never
+            // agreed to pre-order is the worst way this can end. The owner is told, and the quote
+            // waits in To Buy with the actions that unblock it.
+            if (in_array($validated['type'], ['downpayment', 'full'], true) && empty($orderRequest->convertedOrderId)) {
+                $shortages = QuoteStock::shortages($orderRequest);
+                if (!QuoteStock::mayPayPastShelf($orderRequest, $shortages)) {
+                    $orderRequest->stockBlock = ['at' => now()->toISOString(), 'shortages' => $shortages];
+                    $lastTold = $orderRequest->stockBlockNotifiedAt ? \Carbon\Carbon::parse($orderRequest->stockBlockNotifiedAt) : null;
+                    if (!$lastTold || $lastTold->lt(now()->subHours(12))) {
+                        $orderRequest->stockBlockNotifiedAt = now()->toISOString();
+                        try {
+                            $ref   = strtoupper(substr((string) $orderRequest->_id, -8));
+                            $names = implode(', ', array_map(fn ($x) => ($x['name'] ?? 'a material') . ' (short ' . $x['short'] . ')', $shortages));
+                            foreach (User::whereIn('role', ['admin', 'owner'])->get() as $staff) {
+                                Notification::create([
+                                    'user_id'    => (string) $staff->_id,
+                                    'type'       => 'quote_stock_short',
+                                    'title'      => 'Quote could not be paid - stock ran short',
+                                    'message'    => ($orderRequest->customerName ?: 'A customer') . " tried to pay quote #{$ref}, but {$names}. "
+                                        . 'Open To Buy to allow pre-order for this quote, mark it restocked, or send a new quote.',
+                                    'is_read'    => false,
+                                    'data'       => ['orderRequestId' => (string) $orderRequest->_id, 'link' => '/dashboard/business/to-buy'],
+                                    'created_at' => now(),
+                                ]);
+                            }
+                        } catch (\Throwable $e) {
+                            Log::warning('quote stock-block notification failed', ['error' => $e->getMessage()]);
+                        }
+                    }
+                    $orderRequest->save();
+                    return response()->json([
+                        'success' => false,
+                        'code'    => 'quote_stock_short',
+                        'message' => "Stock changed since your quote, so it can't be paid right now. "
+                            . "We've let the shop know - they'll message you here with a new date or quote.",
+                    ], 422);
+                }
+                if (!empty($orderRequest->stockBlock)) {
+                    $orderRequest->stockBlock = null;
+                    $orderRequest->save();
+                }
             }
 
             $finalPrice  = (float) $orderRequest->finalPrice;
@@ -1626,15 +1699,20 @@ class PaymentController extends Controller
     private function reserveQuoteMaterials(OrderRequest $orderRequest, Order $order): void
     {
         // A quote can hold both kinds of line at once - a printed hoodie beside a stocked mug -
-        // which makes the order mixed, and the two are settled differently. A produced line holds
-        // its material until QC passes and consumes it. A ready-made line has no production step
-        // and therefore no QC to consume anything, so holding it would hold it forever: it comes
-        // off the shelf now, the same way the cart checkout takes it.
+        // and the two are settled differently. A produced line holds its material until QC passes
+        // and consumes it. A ready-made line has no production step, so it comes off the shelf now,
+        // the same way the cart checkout takes it - and whatever the shelf cannot cover is OWED
+        // (held, listed in To Buy, taken when the order ships) instead of silently vanishing.
         //
-        // This only became reachable once quote lines stopped claiming to be custom regardless of
-        // the product. Before that every line got a job order, so every hold was eventually
-        // consumed by one.
-        $items = $order->items ?? [];
+        // What was held, taken and owed is written onto the order separately, because cancelling
+        // has to undo each one differently: release the holds, restock what was taken.
+        $items     = $order->items ?? [];
+        $orderId   = (string) $order->_id;
+        $customer  = $orderRequest->customerName ?? '';
+        $holds     = [];
+        $takes     = [];
+        $owed      = [];
+        $pastShelf = [];
 
         foreach ($orderRequest->lineItems ?? [] as $idx => $line) {
             $item     = $items[$idx] ?? [];
@@ -1645,35 +1723,55 @@ class PaymentController extends Controller
                     $inv = Inventory::find($mat['inventoryId'] ?? null);
                     $qty = (int) round((float) ($mat['qty'] ?? 0));
                     if (!$inv || $inv->isOnDemand || $qty <= 0) continue;
+                    $invId = (string) $inv->_id;
 
                     if (!$produced) {
-                        // This controller's FIFO helper takes only these four - the attribution
-                        // arguments belong to OrderController's copy of it. Passing them here
-                        // would be a fatal at runtime that no linter reports.
-                        $this->deductInventoryFIFO(
-                            inventory: $inv,
-                            qty:       $qty,
-                            reason:    'sale_reserved',
-                            orderId:   (string) $order->_id,
-                        );
+                        [$take, $owe] = Backorder::split($invId, $qty);
+                        if ($take > 0) {
+                            // This controller's FIFO helper takes only these four - the attribution
+                            // arguments belong to OrderController's copy of it.
+                            $this->deductInventoryFIFO(
+                                inventory: $inv,
+                                qty:       $take,
+                                reason:    'sale_reserved',
+                                orderId:   $orderId,
+                            );
+                            $takes[$invId] = ($takes[$invId] ?? 0) + $take;
+                        }
+                        if ($owe > 0) {
+                            Backorder::hold($invId, $owe, $orderId, [
+                                'productId'    => $line['productId'] ?? null,
+                                'productName'  => $line['productName'] ?? '',
+                                'customerName' => $customer,
+                            ]);
+                            $owed[]      = ['inventoryId' => $invId, 'qty' => $owe];
+                            $pastShelf[] = ($inv->name ?? 'a material') . " ({$owe} owed)";
+                        }
                         continue;
                     }
 
-                    $inv->reservedQty = (int) ($inv->reservedQty ?? 0) + $qty;
-                    $inv->save();
+                    // The money is already in, so a produced line is never refused here. It claims
+                    // against the free shelf first; if that fails (a pre-order, or a sale that got
+                    // there first) it is held past the shelf, and To Buy shows the difference.
+                    if (!MaterialClaim::claim($invId, $qty)) {
+                        MaterialClaim::hold($invId, $qty);
+                        $pastShelf[] = ($inv->name ?? 'a material') . " ({$qty} held past the shelf)";
+                    }
+                    $holds[$invId] = ($holds[$invId] ?? 0) + $qty;
 
+                    $inv->refresh();
                     StockHistory::create([
-                        'inventoryId'  => (string) $inv->_id,
+                        'inventoryId'  => $invId,
                         'quantity'     => $qty,
                         'remainingQty' => (int) ($inv->stockQty ?? 0),
                         'unitCost'     => $inv->averageCost ?? 0,
                         'totalCost'    => 0,
                         'reason'       => 'production_reserved',
                         'type'         => 'reservation',
-                        'orderId'      => (string) $order->_id,
+                        'orderId'      => $orderId,
                         'productId'    => $line['productId'] ?? null,
                         'productName'  => $line['productName'] ?? '',
-                        'customerName' => $orderRequest->customerName ?? '',
+                        'customerName' => $customer,
                         'performedBy'  => 'system',
                         'remarks'      => 'Reserved from quote: ' . (string) $orderRequest->_id,
                         'createdAt'    => now(),
@@ -1686,6 +1784,33 @@ class PaymentController extends Controller
                         'error'          => $e->getMessage(),
                     ]);
                 }
+            }
+        }
+
+        $pairs = fn (array $m) => array_map(fn ($id, $q) => ['inventoryId' => $id, 'qty' => $q], array_keys($m), array_values($m));
+        // id + qty only: the quote's material rows carry unitCost, and an order is customer-readable.
+        $order->quoteReservations = $pairs($holds);
+        $order->quoteDeductions   = $pairs($takes);
+        $order->backorders        = Backorder::merge($order->backorders ?? [], $owed);
+        $order->save();
+
+        if ($pastShelf) {
+            try {
+                $ref = strtoupper(substr($orderId, -8));
+                foreach (User::whereIn('role', ['admin', 'owner'])->get() as $staff) {
+                    Notification::create([
+                        'user_id'    => (string) $staff->_id,
+                        'type'       => 'order_past_shelf',
+                        'title'      => 'Paid quote needs stock bought',
+                        'message'    => "Order #{$ref} was paid with not enough on the shelf: " . implode(', ', $pastShelf)
+                            . '. To Buy lists exactly what to buy.',
+                        'is_read'    => false,
+                        'data'       => ['orderId' => $orderId, 'link' => '/dashboard/business/to-buy'],
+                        'created_at' => now(),
+                    ]);
+                }
+            } catch (\Throwable $e) {
+                Log::warning('past-shelf notification failed', ['error' => $e->getMessage()]);
             }
         }
     }
@@ -1841,26 +1966,6 @@ class PaymentController extends Controller
 
         $orderRequest->convertedOrderId = (string) $order->_id;
         $orderRequest->save();
-
-        // What the quote is about to hold, recorded ON THE ORDER so cancelling can release
-        // exactly this and not a BOM-derived guess. Deliberately id+qty only: the quote's
-        // material rows carry unitCost, and an order document is readable by the customer.
-        $held = [];
-        foreach ($orderRequest->lineItems ?? [] as $line) {
-            foreach ($line['materials'] ?? [] as $mat) {
-                $mid = (string) ($mat['inventoryId'] ?? '');
-                $mq  = (int) round((float) ($mat['qty'] ?? 0));
-                if ($mid === '' || $mq <= 0) continue;
-                $held[$mid] = ($held[$mid] ?? 0) + $mq;
-            }
-        }
-        if ($held) {
-            $order->quoteReservations = array_map(
-                fn ($id, $qty) => ['inventoryId' => $id, 'qty' => $qty],
-                array_keys($held), array_values($held)
-            );
-            $order->save();
-        }
 
         $this->reserveQuoteMaterials($orderRequest, $order);
 

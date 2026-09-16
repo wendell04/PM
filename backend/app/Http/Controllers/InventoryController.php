@@ -124,6 +124,18 @@ class InventoryController extends Controller
                         if (!in_array($ref, $sources[$invId] ?? [], true)) $sources[$invId][] = $ref;
                     }
                 }
+
+                // Ready-made lines are skipped above because they took their material at checkout -
+                // except the part the shelf could not cover. That part is owed, still to be bought,
+                // and it is exactly what this list exists to show. See App\Support\Backorder.
+                foreach ($order->backorders ?? [] as $owed) {
+                    $invId = (string) ($owed['inventoryId'] ?? '');
+                    $need  = (float) ($owed['qty'] ?? 0);
+                    if ($invId === '' || $need <= 0) continue;
+                    $demand[$invId] = ($demand[$invId] ?? 0) + $need;
+                    $ref = '#' . strtoupper(substr((string) $order->_id, -8));
+                    if (!in_array($ref, $sources[$invId] ?? [], true)) $sources[$invId][] = $ref;
+                }
             }
 
             $rows = [];
@@ -190,7 +202,35 @@ class InventoryController extends Controller
             }
             usort($productRows, fn ($a, $b) => $b['estimatedCost'] <=> $a['estimatedCost']);
 
+            // Quotes a customer tried to pay while the shelf could not cover them. Not committed
+            // work - nothing was paid - so they are kept out of the totals above. But a customer who
+            // tried to pay is the warmest sale there is, so they are listed with what is short now.
+            $waitingQuotes = [];
+            $blocked = \App\Models\OrderRequest::whereNotNull('stockBlock')
+                ->where(function ($q) { $q->whereNull('convertedOrderId')->orWhere('convertedOrderId', ''); })
+                ->get();
+            foreach ($blocked as $quote) {
+                if (empty($quote->stockBlock)) continue;
+                if (($quote->paymentStatus ?? 'unpaid') !== 'unpaid') continue;
+                if ($quote->expiresAt && now()->greaterThan($quote->expiresAt)) continue;
+
+                $shortNow = \App\Support\QuoteStock::shortages($quote);
+                $waitingQuotes[] = [
+                    'id'            => (string) $quote->_id,
+                    'ref'           => strtoupper(substr((string) $quote->_id, -8)),
+                    'customerId'    => (string) ($quote->customerId ?? ''),
+                    'customerName'  => $quote->customerName ?? '',
+                    'total'         => (float) ($quote->finalPrice ?? 0),
+                    'blockedAt'     => $quote->stockBlock['at'] ?? null,
+                    'expiresAt'     => $quote->expiresAt ? $quote->expiresAt->toISOString() : null,
+                    'allowPreorder' => (bool) ($quote->allowPreorder ?? false),
+                    'stillShort'    => count($shortNow) > 0,
+                    'shortages'     => $shortNow ?: ($quote->stockBlock['shortages'] ?? []),
+                ];
+            }
+
             return $this->successResponse('Purchase requirements fetched successfully.', [
+                'waitingQuotes' => $waitingQuotes,
                 'items'         => $rows,
                 'totalItems'    => count($rows),
                 'estimatedCost' => round(array_sum(array_column($rows, 'estimatedCost')), 2),

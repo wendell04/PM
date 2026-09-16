@@ -74,6 +74,11 @@ class OrderRequest extends Model
         'paymongoReference',
         'estimatedMaterialCost',
         'costBasis',
+        // Stock at payment time: the owner's per-quote pre-order permission, and the record of a
+        // payment refused because the shelf no longer covered the quote (shown in To Buy).
+        'allowPreorder',
+        'stockBlock',
+        'stockBlockNotifiedAt',
         'createdAt',
         'updatedAt',
     ];
@@ -87,6 +92,7 @@ class OrderRequest extends Model
         'materials'        => 'array',
         'materialsCost'    => 'float',
         'designApproved'   => 'boolean',
+        'allowPreorder'    => 'boolean',
         'deliveryAddress'  => 'array',
         'shippingFee'      => 'float',
         'designFee'        => 'float',

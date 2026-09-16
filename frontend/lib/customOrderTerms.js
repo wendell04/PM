@@ -30,6 +30,10 @@ export const DEFAULT_CUSTOM_ORDER_TERMS = [
   { title: 'How long this price holds', mode: 'quote', body: 'This quotation is valid until the date shown on it. After that we may need to re-quote, because material prices move.' },
   { title: 'What this price covers',    mode: 'quote', body: 'The price is for the exact quantity, size, material and finish written on the quotation. Changing any of them means a new quote - it is not a discount or a surcharge on this one.' },
   { title: 'Estimates on services',     mode: 'quote', body: 'Where the work is quoted per piece or per metre, the final amount follows the quantity actually produced. We tell you before anything is made if that will differ from the quotation.' },
+  // Nothing is set aside while a quote waits to be paid, so the shelf can change underneath it. The
+  // payment is refused rather than taken for goods that are no longer there - this is what makes
+  // that refusal something the customer agreed to, not a surprise.
+  { title: 'Price, not stock',          mode: 'quote', body: 'This quotation holds the price, not the stock. If an item runs out before you pay, we will tell you and offer a new date or a new quote.' },
 ];
 
 /**

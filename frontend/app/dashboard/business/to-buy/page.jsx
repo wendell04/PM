@@ -30,6 +30,12 @@ export default function ToBuyPage() {
   // this page said nothing about it. It is a different question - buy the thing, not what it is
   // made of - so it gets its own tab rather than being mixed into the supplier groups.
   const [productRows, setProductRows] = useState([]);
+  // Quotes a customer tried to pay while stock was short. Kept out of the totals - nothing was paid,
+  // so it is not committed work - but listed first, because a customer who tried to pay is the
+  // warmest sale on the page.
+  const [waitingQuotes, setWaitingQuotes] = useState([]);
+  const [quoteBusy, setQuoteBusy] = useState('');
+  const [quoteNote, setQuoteNote] = useState({});
   // In the URL like every other tab in this dashboard, so a link to "no material plan" lands
   // there, the back button steps between them, and a reload does not throw the choice away.
   const router       = useRouter();
@@ -63,6 +69,7 @@ export default function ToBuyPage() {
       setRows(Array.isArray(data?.items) ? data.items : []);
       setTotals({ totalItems: data?.totalItems ?? 0, estimatedCost: data?.estimatedCost ?? 0 });
       setProductRows(Array.isArray(data?.products) ? data.products : []);
+      setWaitingQuotes(Array.isArray(data?.waitingQuotes) ? data.waitingQuotes : []);
     } catch {
       setError('Could not load purchase requirements.');
     } finally {
@@ -94,6 +101,32 @@ export default function ToBuyPage() {
     return Object.values(by).sort((a, b) => b.cost - a.cost);
   }, [visible]);
 
+  const quoteAction = async (q, action) => {
+    setQuoteBusy(q.id + action);
+    setQuoteNote(n => ({ ...n, [q.id]: null }));
+    try {
+      const res = await fetch(`${API_URL}/api/admin/quotations/${q.id}/${action}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setQuoteNote(n => ({ ...n, [q.id]: { error: true, text: d?.message || 'That did not work. Try again.' } }));
+        return;
+      }
+      setQuoteNote(n => ({ ...n, [q.id]: { error: false, text: d?.message || 'Done.' } }));
+      await load();
+    } finally {
+      setQuoteBusy('');
+    }
+  };
+
+  const daysLeft = (iso) => {
+    if (!iso) return null;
+    const d = Math.ceil((new Date(iso).getTime() - Date.now()) / 86400000);
+    return d <= 0 ? 'expires today' : `expires in ${d} day${d === 1 ? '' : 's'}`;
+  };
+
   const copyList = (g) => {
     const text = [
       `Order request - ${g.supplier}`,
@@ -109,6 +142,71 @@ export default function ToBuyPage() {
         <SummaryCard label="Estimated cost" value={peso(totals.estimatedCost)} />
         <SummaryCard label="Suppliers to contact" value={groups.length} />
       </div>
+
+      {waitingQuotes.length > 0 && (
+        <div style={{ ...S.card, padding: 0, overflow: 'hidden', marginBottom: '18px', borderColor: 'rgba(224,168,82,0.45)' }}>
+          <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
+            <div style={{ fontSize: '14px', fontWeight: 700 }}>Waiting on stock ({waitingQuotes.length})</div>
+            <div style={{ fontSize: '11px', color: 'var(--gray)', marginTop: '2px' }}>
+              These customers tried to pay a quote, but stock ran short after it was sent. Not counted in the
+              totals above - nothing is paid yet. Allow pre-order for the quote, confirm the stock is back,
+              or send a new quote.
+            </div>
+          </div>
+          {waitingQuotes.map(q => {
+            const note = quoteNote[q.id];
+            return (
+              <div key={q.id} style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap', alignItems: 'baseline' }}>
+                  <div style={{ fontSize: '13px', fontWeight: 700 }}>
+                    Quote #{q.ref} <span style={{ color: 'var(--gray)', fontWeight: 500 }}>· {q.customerName || 'Customer'}</span>
+                  </div>
+                  <div style={{ fontSize: '12px', color: 'var(--gray)' }}>
+                    {peso(q.total)}{daysLeft(q.expiresAt) ? ` · ${daysLeft(q.expiresAt)}` : ''}
+                  </div>
+                </div>
+
+                {q.stillShort ? (
+                  <div style={{ marginTop: '6px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                    {(q.shortages || []).map(x => (
+                      <div key={x.inventoryId} style={{ fontSize: '12px', color: 'var(--gray)' }}>
+                        <span style={{ color: 'var(--white)', fontWeight: 600 }}>{x.name}</span>
+                        {` - needs ${num(x.needed)}, ${num(x.available)} free, `}
+                        <span style={{ color: '#e0a852', fontWeight: 700 }}>short {num(x.short)} {x.uom || ''}</span>
+                        {x.leadTimeDays > 0 && ` · about ${x.leadTimeDays}d to restock`}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div style={{ marginTop: '6px', fontSize: '12px', color: '#4ade80', fontWeight: 600 }}>
+                    Stock is back - tell the customer they can pay.
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '10px' }}>
+                  {q.stillShort && (
+                    <button type="button" disabled={!!quoteBusy} onClick={() => quoteAction(q, 'allow-preorder')}
+                      style={{ ...S.btnSm, background: 'var(--gold)', color: '#111', border: '1px solid var(--gold)', fontWeight: 700 }}
+                      title="Only this quote - the product stays as it is on the storefront">
+                      {quoteBusy === q.id + 'allow-preorder' ? 'Allowing…' : 'Allow pre-order for this quote'}
+                    </button>
+                  )}
+                  <button type="button" disabled={!!quoteBusy} onClick={() => quoteAction(q, 'restocked')} style={{ ...S.btnSm }}>
+                    {quoteBusy === q.id + 'restocked' ? 'Checking…' : 'Restocked - tell the customer'}
+                  </button>
+                  <a href="/dashboard/business/chat" style={{ ...S.btnSm, textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}
+                    title="Send a new quote from the customer's conversation">
+                    Send a new quote
+                  </a>
+                </div>
+                {note && (
+                  <div style={{ marginTop: '8px', fontSize: '12px', color: note.error ? '#e05252' : '#4ade80' }}>{note.text}</div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       <div style={{ display: 'flex', gap: '6px', marginBottom: '14px' }}>
         {[['materials', `By material (${totals.totalItems})`], ['products', `No material plan (${productRows.length})`]].map(([id, label]) => (

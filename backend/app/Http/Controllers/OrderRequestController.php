@@ -654,31 +654,154 @@ class OrderRequestController extends Controller
      * View & Pay CTA deep-links to /shop/checkout/quote/{id}) plus an in-app notification.
      * Chat-first channel for inquiries - replaces the confirmation email. Best-effort/non-fatal.
      */
+    /**
+     * The customer's 1-to-1 thread with the shop, found or created (string participants - matches
+     * ChatController). Shared by the quote card and the stock messages that follow it.
+     *
+     * @return array{0:?Conversation,1:?User}
+     */
+    private function quoteConversation(OrderRequest $req): array
+    {
+        $customerId = (string) $req->customerId;
+        $admin      = User::whereIn('role', ['admin', 'owner'])->first();
+        if (!$admin || $customerId === '') {
+            return [null, null];
+        }
+        $adminId = (string) $admin->_id;
+
+        $participants = [$customerId, $adminId];
+        sort($participants);
+        $conversation = Conversation::where('participants', $customerId)->get()
+            ->first(function ($c) use ($customerId, $adminId) {
+                $parts = array_map('strval', is_array($c->participants) ? $c->participants : []);
+                return in_array($customerId, $parts, true) && in_array($adminId, $parts, true);
+            });
+        if (!$conversation) {
+            $conversation = Conversation::create([
+                'participants'    => $participants,
+                'last_message_at' => now(),
+                'is_active'       => true,
+            ]);
+        }
+        return [$conversation, $admin];
+    }
+
+    /** A plain message from the shop in the customer's thread, plus the bell. */
+    private function postQuoteText(OrderRequest $req, string $body): void
+    {
+        try {
+            [$conversation, $admin] = $this->quoteConversation($req);
+            if (!$conversation) return;
+
+            $message = Message::create([
+                'conversation_id' => (string) $conversation->_id,
+                'sender_id'       => (string) $admin->_id,
+                'sender_name'     => trim(($admin->firstName ?? '') . ' ' . ($admin->lastName ?? '')) ?: 'Store',
+                'body'            => $body,
+                'type'            => 'text',
+                'is_read'         => false,
+            ]);
+            $conversation->update(['last_message' => $body, 'last_message_at' => now()]);
+            try {
+                broadcast(new MessageSent($message))->toOthers();
+            } catch (\Throwable $e) {
+                Log::warning('Quote stock message broadcast failed (message still saved): ' . $e->getMessage());
+            }
+            Notification::create([
+                'user_id'    => (string) $req->customerId,
+                'type'       => 'quote_ready',
+                'title'      => 'Your quote can be paid',
+                'message'    => $body,
+                'is_read'    => false,
+                'data'       => ['orderRequestId' => (string) $req->_id, 'link' => '/shop/checkout/quote/' . (string) $req->_id],
+                'created_at' => now(),
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('postQuoteText failed', ['orderRequestId' => (string) $req->_id, 'error' => $e->getMessage()]);
+        }
+    }
+
+    /** Guard shared by the two stock actions: an unpaid, unexpired quote the admin can act on. */
+    private function actionableQuote(Request $request, string $id)
+    {
+        $user = $request->user();
+        if (!$user || !in_array($user->role ?? null, ['admin', 'owner'])) {
+            return [null, $this->unauthorizedResponse()];
+        }
+        $req = OrderRequest::find($id);
+        if (!$req) {
+            return [null, $this->errorResponse('Quote not found.', 404)];
+        }
+        if (!empty($req->convertedOrderId) || ($req->paymentStatus ?? 'unpaid') !== 'unpaid') {
+            return [null, $this->errorResponse('This quote has already been paid.', 422)];
+        }
+        if ($req->expiresAt && now()->greaterThan($req->expiresAt)) {
+            return [null, $this->errorResponse('This quote has expired - send a new one instead.', 422)];
+        }
+        return [$req, null];
+    }
+
+    /**
+     * POST /api/admin/quotations/{id}/allow-preorder
+     *
+     * Let THIS quote be paid past the shelf. Turning pre-order on for the product would open it on
+     * the storefront for everyone; a quote is a negotiated deal, so the owner decides it alone.
+     */
+    public function allowPreorder(Request $request, string $id)
+    {
+        [$req, $error] = $this->actionableQuote($request, $id);
+        if ($error) return $error;
+
+        $days = 0;
+        foreach (\App\Support\QuoteStock::shortages($req) as $short) {
+            $days = max($days, (int) ($short['leadTimeDays'] ?? 0));
+        }
+
+        $req->allowPreorder = true;
+        $req->stockBlock    = null;
+        $req->save();
+
+        $this->postQuoteText($req, 'Good news - you can pay for your quote now. Part of it will be made after we restock'
+            . ($days > 0 ? ", which adds about {$days} day" . ($days === 1 ? '' : 's') : '')
+            . '. Tap View & Pay on your quote.');
+
+        return $this->successResponse('Pre-order allowed for this quote. The customer has been told they can pay.');
+    }
+
+    /**
+     * POST /api/admin/quotations/{id}/restocked
+     *
+     * The owner says the stock is in. Checked, not trusted - a quote marked restocked while still
+     * short would send the customer straight back into the same refusal.
+     */
+    public function markRestocked(Request $request, string $id)
+    {
+        [$req, $error] = $this->actionableQuote($request, $id);
+        if ($error) return $error;
+
+        $shortages = \App\Support\QuoteStock::shortages($req);
+        if (!\App\Support\QuoteStock::mayPayPastShelf($req, $shortages)) {
+            $list = implode(', ', array_map(fn ($x) => ($x['name'] ?? 'a material') . ' needs ' . $x['short'] . ' more', $shortages));
+            return $this->errorResponse("Still short: {$list}. Stock it in first, or allow pre-order for this quote.", 422);
+        }
+
+        $req->stockBlock = null;
+        $req->save();
+
+        $this->postQuoteText($req, 'The items for your quote are back in stock - you can pay for it now. Tap View & Pay on your quote.');
+
+        return $this->successResponse('Marked restocked. The customer has been told they can pay.');
+    }
+
     private function notifyQuoteInChat(OrderRequest $req, array $extraMeta = []): void
     {
         try {
             $customerId = (string) $req->customerId;
-            $admin      = User::whereIn('role', ['admin', 'owner'])->first();
-            if (!$admin || $customerId === '') {
+            [$conversation, $admin] = $this->quoteConversation($req);
+            if (!$conversation) {
                 return;
             }
             $adminId = (string) $admin->_id;
-
-            // Find or create the 1-to-1 conversation (string participants - matches ChatController).
-            $participants = [$customerId, $adminId];
-            sort($participants);
-            $conversation = Conversation::where('participants', $customerId)->get()
-                ->first(function ($c) use ($customerId, $adminId) {
-                    $parts = array_map('strval', is_array($c->participants) ? $c->participants : []);
-                    return in_array($customerId, $parts, true) && in_array($adminId, $parts, true);
-                });
-            if (!$conversation) {
-                $conversation = Conversation::create([
-                    'participants'    => $participants,
-                    'last_message_at' => now(),
-                    'is_active'       => true,
-                ]);
-            }
 
             $finalPrice = round((float) ($req->finalPrice ?? 0), 2);
             $lineItems  = $req->lineItems;
