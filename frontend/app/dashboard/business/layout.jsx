@@ -15,6 +15,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "../../../contexts/AuthContext";
 import { useTheme } from "../../../contexts/ThemeContext";
+import useLockBodyScroll from "@/lib/useLockBodyScroll";
 import "./admin-dashboard.css";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
@@ -43,6 +44,7 @@ export default function BusinessDashboardLayout({ children }) {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
+  useLockBodyScroll(logoutConfirmOpen);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [saveSuccess, setSaveSuccess] = useState("");
@@ -145,6 +147,7 @@ export default function BusinessDashboardLayout({ children }) {
   }, [activeTab]);
 
   const handleLogout = () => {
+    setUserMenuOpen(false);
     setLogoutConfirmOpen(true);
   };
 
@@ -896,6 +899,8 @@ export default function BusinessDashboardLayout({ children }) {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
+            // Without this the card was the full width of a phone, edge to edge.
+            padding: '1rem',
           }}
         >
           <div
@@ -904,9 +909,9 @@ export default function BusinessDashboardLayout({ children }) {
               background: 'var(--dark2)',
               border: '1px solid var(--border)',
               borderRadius: '16px',
-              padding: '2rem',
+              padding: '1.5rem',
               width: '100%',
-              maxWidth: '400px',
+              maxWidth: '340px',
               display: 'flex',
               flexDirection: 'column',
               gap: '1.5rem',
@@ -921,11 +926,12 @@ export default function BusinessDashboardLayout({ children }) {
                 Are you sure you want to log out of your account?
               </p>
             </div>
-            <div style={{ borderTop: '1px solid var(--border)', paddingTop: '1.25rem', display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+            <div style={{ borderTop: '1px solid var(--border)', paddingTop: '1.25rem', display: 'flex', gap: '0.75rem' }}>
               <button
                 onClick={() => setLogoutConfirmOpen(false)}
                 style={{
-                  padding: '0.5rem 1.25rem',
+                  flex: 1,
+                  padding: '0.7rem 1rem',
                   borderRadius: '8px',
                   border: '1px solid var(--border)',
                   background: 'transparent',
@@ -940,7 +946,8 @@ export default function BusinessDashboardLayout({ children }) {
               <button
                 onClick={confirmLogout}
                 style={{
-                  padding: '0.5rem 1.25rem',
+                  flex: 1,
+                  padding: '0.7rem 1rem',
                   borderRadius: '8px',
                   border: 'none',
                   background: '#ef4444',
