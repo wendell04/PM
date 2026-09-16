@@ -56,6 +56,9 @@ class ExpireUnpaidProofs extends Command
             ->where('createdAt', '<', $cutoff)
             ->get()
             ->filter(fn ($o) => empty($o->paymentHistory))
+            // Cash on delivery is unpaid by definition until the rider collects. Left in, any COD
+            // order still at Pending after the cut-off was cancelled overnight as "never paid".
+            ->reject(fn ($o) => in_array(strtolower((string) ($o->paymentMethod ?? '')), array_map('strtolower', \App\Support\PaymentMethod::codAliases()), true))
             ->reject(fn ($o) => $due->contains(fn ($d) => (string) $d->_id === (string) $o->_id));
 
         if ($stale->isNotEmpty()) {
@@ -89,6 +92,11 @@ class ExpireUnpaidProofs extends Command
                         $released++;
                     }
                 }
+
+                // What checkout actually claimed - BOM holds, ready-made deductions, owed quantities,
+                // quote holds. The loop above only understands a legacy shape, so on its own it
+                // released nothing for an order placed today.
+                app(\App\Http\Controllers\OrderController::class)->releaseStockForExpiredOrder($order);
 
                 $history   = $order->statusHistory ?? [];
                 $history[] = ['status' => 'cancelled', 'at' => now()->toISOString(), 'note' => 'Deposit not paid before the hold expired.'];
