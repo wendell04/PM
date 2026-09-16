@@ -4807,10 +4807,26 @@ html.light .lp-pinnacle-prod-img { border-color: #e5e5e3; }
   color: var(--gray);
 }
 
+/* The hero photo drifts slowly closer while it is the one on screen, then the next takes over.
+   Slow enough that nobody watches it happen - it just stops the hero looking like a still frame.
+   The CMS zoom is the starting point, so an image the owner zoomed to 1.6 drifts from 1.6, not 1. */
+@keyframes heroDrift {
+  from { transform: scale(var(--hero-scale, 1)); }
+  to   { transform: scale(calc(var(--hero-scale, 1) * 1.07)); }
+}
+@keyframes heroDriftMobile {
+  from { transform: scale(var(--hero-scale-m, 1)); }
+  to   { transform: scale(calc(var(--hero-scale-m, 1) * 1.07)); }
+}
+.hero-slider-img.active { animation: heroDrift 14s ease-out both; }
+@media (max-width: 1024px) {
+  .hero-cms-img.active { animation-name: heroDriftMobile; }
+}
+
 /* Someone who asked for less motion gets the change without the movement. */
 @media (prefers-reduced-motion: reduce) {
   .hero-slide { transform: none !important; transition: opacity 0.2s linear !important; }
-  .hero-slider-img { transition: opacity 0.2s linear !important; }
+  .hero-slider-img { transition: opacity 0.2s linear !important; animation: none !important; }
 }
 
 /* Same on the landing footer: they were anchors, they are buttons now, and they must not look

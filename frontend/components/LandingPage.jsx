@@ -20,6 +20,11 @@ import RegisterForm from '@/components/auth/RegisterForm';
 import { PasswordGuide } from '@/components/auth/PasswordGuide';
 import '@/components/custom-styles.css';
 import useLockBodyScroll from '@/lib/useLockBodyScroll';
+// Full-resolution artwork was being handed to the browser for every tile on the page - 42 images,
+// about 22 MB, several of them 2 MB PNGs, all of it downloaded on a phone. Cloudinary serves a
+// display-sized copy of the same file instead.
+import { cloudinaryThumb } from '@/lib/cloudinaryImage';
+import { priceFrom } from '@/lib/priceFrom';
 import OtpInput from '@/components/auth/OtpInput';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
@@ -1471,7 +1476,7 @@ const handleForgotResetPassword = async () => {
                   <div style={{position:'relative'}}>
                     <button className={`lp-nav-avatar-btn${user?.avatar ? ' has-avatar' : ''}`} onClick={() => { setUserMenuOpen(o => !o); setLpCartOpen(false); setLpNotifOpen(false); }} title="Account">
                       {user?.avatar ? (
-                        <img src={user.avatar} alt="avatar" style={{width:'100%',height:'100%',objectFit:'cover'}} />
+                        <img src={cloudinaryThumb(user.avatar, 80)} alt="avatar" style={{width:'100%',height:'100%',objectFit:'cover'}} />
                       ) : (
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                           <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
@@ -1666,7 +1671,7 @@ const handleForgotResetPassword = async () => {
                 {cartItems.map((item, i) => (
                   <div key={item.lineId || i} className="lp-nav-popup-item">
                     {item.image ? (
-                      <img src={item.image} alt={item.productName} className="lp-nav-popup-item-img" />
+                      <img src={cloudinaryThumb(item.image, 120)} alt={item.productName} loading="lazy" className="lp-nav-popup-item-img" />
                     ) : (
                       <div className="lp-nav-popup-item-img-ph" />
                     )}
@@ -1946,7 +1951,7 @@ const handleForgotResetPassword = async () => {
             {imageList.map((im, i) => (
               <img
                 key={`${im.image}-${i}`}
-                src={im.image}
+                src={cloudinaryThumb(im.image, 1400)}
                 alt=""
                 className={`hero-slider-img hero-cms-img${heroImgIdx % Math.max(1, imageList.length) === i ? ' active' : ''}`}
                 style={{
@@ -2037,7 +2042,7 @@ const handleForgotResetPassword = async () => {
                 >
                   <div className="lp-mob-card-img">
                     {col.image ? (
-                      <img src={col.image} alt={col.title} style={{ objectPosition: col.landing_image_position || 'center center' }} />
+                      <img src={cloudinaryThumb(col.image, 600)} alt={col.title} loading="lazy" style={{ objectPosition: col.landing_image_position || 'center center' }} />
                     ) : (
                       <div className="lp-mob-card-ph" />
                     )}
@@ -2060,7 +2065,7 @@ const handleForgotResetPassword = async () => {
       {navProducts.length > 0 && (() => {
         const featured = featuredRandom;
         const slugOf  = p => p.slug || (p.name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-        const priceOf = p => p.flatPrice ?? p.price ?? p.basePrice ?? null;
+        const priceOf = p => priceFrom(p);
         const imgOf   = p => p.thumbnail || (Array.isArray(p.images) ? p.images[0] : null) || p.image || null;
         return (
           <section className="lp-sec">
@@ -2087,13 +2092,13 @@ const handleForgotResetPassword = async () => {
                           different problems, which is what the shared component exists to stop. */}
                       <div style={{ aspectRatio: '1 / 1', background: 'var(--dark)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
                         {img
-                          ? <img src={img} alt={p.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                          ? <img src={cloudinaryThumb(img, 600)} alt={p.name} loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                           : <NoImage size={36} />}
                       </div>
                       <div style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: '4px', flex: 1 }}>
                         <div style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--white)', lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</div>
                         {p.category && <div style={{ fontSize: '0.72rem', color: 'var(--gray)' }}>{p.category}</div>}
-                        {price != null && <div style={{ marginTop: 'auto', paddingTop: '4px', fontSize: '1rem', fontWeight: 800, color: 'var(--gold)' }}>₱{Number(price).toLocaleString()}</div>}
+                        {price != null && <div style={{ marginTop: 'auto', paddingTop: '4px', fontSize: '1rem', fontWeight: 800, color: 'var(--gold)' }}><span style={{ fontSize: '0.68rem', fontWeight: 600, color: 'var(--gray)', marginRight: '4px' }}>From</span>₱{Number(price).toLocaleString()}</div>}
                       </div>
                     </a>
                   );
@@ -2278,7 +2283,7 @@ const handleForgotResetPassword = async () => {
                         <span className="review-avatar" aria-hidden="true">
                           {rv.avatar ? (
                             // eslint-disable-next-line @next/next/no-img-element
-                            <img src={rv.avatar} alt="" onError={e => { e.currentTarget.style.display = 'none'; }} />
+                            <img src={cloudinaryThumb(rv.avatar, 80)} alt="" loading="lazy" onError={e => { e.currentTarget.style.display = 'none'; }} />
                           ) : (rv.customerName || 'C').charAt(0).toUpperCase()}
                         </span>
                         <span className="review-name">{rv.customerName}</span>
@@ -2326,7 +2331,7 @@ const handleForgotResetPassword = async () => {
               {cmsGallery.map((g, i) => (
                 <div key={g._id || g.id || i} style={{ aspectRatio: '1 / 1', borderRadius: '12px', overflow: 'hidden', background: 'var(--dark2)', border: '1px solid var(--border)' }}>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={g.image} alt={g.name || 'Our work'} loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                  <img src={cloudinaryThumb(g.image, 500)} alt={g.name || 'Our work'} loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                 </div>
               ))}
             </div>
