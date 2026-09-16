@@ -169,11 +169,11 @@ const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=
 
   useEffect(() => {
     // A review card needs about 300px to read: one on a phone, two on a tablet, three on a desktop.
-    const calc = () => setReviewsPerView(window.innerWidth <= 700 ? 1 : window.innerWidth <= 1023 ? 2 : 3);
+    const calc = () => setReviewsPerView(window.innerWidth <= 700 ? (mobileV2 ? 2 : 1) : window.innerWidth <= 1023 ? 2 : 3);
     calc();
     window.addEventListener('resize', calc);
     return () => window.removeEventListener('resize', calc);
-  }, []);
+  }, [mobileV2]);
 
   // Rotating the page does not change how many reviews there are, but it changes how many fit -
   // and an index left past the end shows an empty track.
@@ -2068,7 +2068,7 @@ const handleForgotResetPassword = async () => {
         const priceOf = p => priceFrom(p);
         const imgOf   = p => p.thumbnail || (Array.isArray(p.images) ? p.images[0] : null) || p.image || null;
         return (
-          <section className="lp-sec">
+          <section className="lp-sec" id="featured">
             <div className="container">
               <div className="section-header center">
                 <h2 className="section-title">Featured <span className="gold-text">Products</span></h2>
@@ -2320,7 +2320,7 @@ const handleForgotResetPassword = async () => {
 
       {/* OUR WORK GALLERY */}
       {cmsGallery.length > 0 && (
-        <section className="lp-sec">
+        <section className="lp-sec" id="our-work">
           <div className="container">
             <div className="section-header center">
               <span className="section-tag">Our Work</span>
@@ -2397,7 +2397,7 @@ const handleForgotResetPassword = async () => {
       </section>
 
       {/* FAQ */}
-      <section className="lp-sec">
+      <section className="lp-sec" id="faq">
         <div className="container" style={{ maxWidth: '780px' }}>
           <div className="section-header center">
             <span className="section-tag">Got Questions?</span>
@@ -2561,7 +2561,7 @@ const handleForgotResetPassword = async () => {
       </section>
 
       {/* CTA */}
-      <section>
+      <section id="cta">
         <div className="container">
           <div className="cta-banner fade-up">
             <h2>Ready to <span className="red-text">Personalize</span> Something?</h2>

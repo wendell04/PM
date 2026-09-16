@@ -4992,3 +4992,40 @@ html.light .lp-pinnacle-prod-img { border-color: #e5e5e3; }
   .lp-m2 .contact-form-wrap { padding: 1.1rem; }
   .lp-m2 .contact-layout { gap: 1.5rem; }
 }
+
+/* ── Phone layout v2, second round: order, reviews, stats ─────────────────────
+   Kept in its own block so it is obvious what the switch turns on beyond spacing. */
+@media (max-width: 640px) {
+  /* Prices come before the how-it-works explainer: someone who just saw a product wants the
+     price next, not a four-step diagram. Only the order changes; nothing moves in the markup,
+     so the switch off restores the original sequence. */
+  .lp-m2 { display: flex; flex-direction: column; }
+  .lp-m2 > * { order: 5; }
+  .lp-m2 > .navbar, .lp-m2 > .mobile-menu { order: 0; }
+  .lp-m2 > .hero { order: 1; }
+  .lp-m2 > .lp-pinnacle { order: 2; }
+  .lp-m2 > #featured { order: 3; }
+  .lp-m2 > #pricing { order: 4; }
+  .lp-m2 > #our-work { order: 5; }
+  .lp-m2 > #how-it-works { order: 6; }
+  .lp-m2 > #why-us { order: 7; }
+  .lp-m2 > .reviews-landing-section { order: 8; }
+  .lp-m2 > #faq { order: 9; }
+  .lp-m2 > #contact { order: 10; }
+  .lp-m2 > #cta { order: 11; }
+  .lp-m2 > .lp-footer { order: 12; }
+
+  /* Two reviews a page instead of one (the count is set in JS). Stacked, because two cards side
+     by side on a phone are two unreadable cards. The arrows are for a mouse; the dots stay. */
+  .lp-m2 .reviews-track { flex-direction: column; gap: 12px; }
+  .lp-m2 .review-card { flex: 0 0 auto; }
+  .lp-m2 .reviews-arrow { display: none; }
+
+  /* Of the three figures, only the satisfaction rate helps a first-time buyer. An order count of
+     42 and 26 customers are honest numbers that argue against the sale on the page asking for it. */
+  .lp-m2 .feature-card-stack .fcard:nth-child(1),
+  .lp-m2 .feature-card-stack .fcard:nth-child(3) { display: none; }
+  .lp-m2 .feature-card-stack .fcard:nth-child(2) .fcard-label { font-size: .68rem; }
+  .lp-m2 .feature-card-stack .fcard:nth-child(2) .fcard-value { font-size: 1.6rem; }
+  .lp-m2 .feature-card-stack .fcard-note { font-size: .7rem; }
+}

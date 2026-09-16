@@ -549,6 +549,25 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
     fabSave(pos);
   };
 
+  // The bubble sits over whatever is at the bottom of the page. On a touch screen it steps aside
+  // while the reader is scrolling down and comes back the moment they stop or scroll up.
+  const [fabHidden, setFabHidden] = useState(false);
+  useEffect(() => {
+    if (!touchLayout) { setFabHidden(false); return undefined; }
+    let last = window.scrollY;
+    let idle;
+    const onScroll = () => {
+      const y = window.scrollY;
+      if (y > last + 8 && y > 240) setFabHidden(true);
+      else if (y < last - 8) setFabHidden(false);
+      last = y;
+      clearTimeout(idle);
+      idle = setTimeout(() => setFabHidden(false), 900);
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => { window.removeEventListener('scroll', onScroll); clearTimeout(idle); };
+  }, [touchLayout]);
+
   // A desktop ignores whatever a phone stored: the bubble sits where the stylesheet puts it.
   const fabStyle = !touchLayout
     ? undefined
@@ -563,7 +582,7 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
       {/* Floating launcher */}
       <button
         type="button"
-        className={`cw-launcher ${open ? 'cw-launcher--open' : ''}${fabDrag ? ' cw-launcher--dragging' : ''}`}
+        className={`cw-launcher ${open ? 'cw-launcher--open' : ''}${fabDrag ? ' cw-launcher--dragging' : ''}${fabHidden && !open && !fabDrag ? ' cw-launcher--tucked' : ''}`}
         style={fabStyle}
         onPointerDown={onFabPointerDown}
         onPointerMove={onFabPointerMove}

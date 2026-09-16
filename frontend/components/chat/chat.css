@@ -1765,3 +1765,15 @@ html.light .chat-box-switch { background: rgba(0, 0, 0, 0.04); }
 @media (min-width: 1025px) {
   .cw-launcher { touch-action: auto; }
 }
+
+/* Tucked away while the reader scrolls down, back when they stop or scroll up. Not display:none -
+   it slides, so it is clear where it went and that it is coming back. */
+.cw-launcher--tucked {
+  transform: translateY(110%) scale(0.9);
+  opacity: 0;
+  pointer-events: none;
+  transition: transform 0.22s ease, opacity 0.22s ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  .cw-launcher--tucked { transition: none; }
+}
