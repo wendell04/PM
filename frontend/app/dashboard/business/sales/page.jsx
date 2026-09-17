@@ -486,6 +486,18 @@ export default function SalesListPage() {
 
   const pagedSales = filteredSales.slice((sPage - 1) * sRpp, sPage * sRpp);
 
+  // Under Courier Booked (the default) the delivery fee is never part of an order's total - the rider
+  // collects it, or the customer pays it on top - so there is no shipping money in Sales to show. The
+  // card only means something when checkout itself charges shipping (Flat Rate / Distance).
+  const [shippingMode, setShippingMode] = useState(null);
+  useEffect(() => {
+    fetch(`${API_URL}/api/public/settings`)
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => setShippingMode((d?.data ?? d)?.shippingMode || 'courier_booked'))
+      .catch(() => setShippingMode('courier_booked'));
+  }, []);
+  const checkoutChargesShipping = shippingMode === 'flat' || shippingMode === 'distance';
+
   const m = useMemo(() => {
     const active    = scopedSales.filter(o => o.status !== 'cancelled');
     const paid      = active.filter(o => o.paymentStatus === 'paid' || o.balance === 0);
@@ -791,11 +803,12 @@ export default function SalesListPage() {
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '10px' }}>
           <SummaryCard label="Total Revenue"      value={formatPrice(m.revenue)}           sub="Excludes shipping" accent />
           <SummaryCard label="Outstanding"        value={formatPrice(m.outstanding)}       sub="Unpaid balances"   color={m.outstanding > 0 ? 'var(--gold)' : undefined} />
-          {/* "Owed to courier" claimed the shop owes exactly this. It does not: the customer was charged
-              an ESTIMATE at checkout, and what the courier actually bills on the day will differ. What is
-              true is that this money came in for delivery and is not income, which is why Total Revenue
-              excludes it. Under Courier Booked this is zero - the rider collects from the recipient. */}
-          <SummaryCard label="Shipping Collected" value={formatPrice(m.shippingCollected)} sub="Held for delivery, not income" color="var(--st-blue-fg)" />
+          {/* Shipping charged at checkout is money held for the courier, not income, which is why Total
+              Revenue excludes it. Shown only while checkout charges shipping: under Courier Booked it
+              could only ever repeat old orders from before the switch. */}
+          {checkoutChargesShipping && (
+            <SummaryCard label="Shipping Collected" value={formatPrice(m.shippingCollected)} sub="Held for delivery, not income" color="var(--st-blue-fg)" />
+          )}
           <SummaryCard label="Products Sold"      value={m.topProductsCount}               sub="Distinct products" color="var(--st-purple-fg)" />
         </div>
 
