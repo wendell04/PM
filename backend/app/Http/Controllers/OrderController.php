@@ -1585,6 +1585,10 @@ class OrderController extends Controller
                 $keepBack  = (array) $request->input('stockSettlement', []);
                 $this->cancelLinkedJobOrder($order);
                 $this->restoreStockOnCancel($order, $jobStages, $keepBack);
+                // The Orders screen sends the reason and the refund figure here, and this path
+                // dropped both: a shop cancellation recorded no reason, no "cancelled by" and no
+                // refund owed. Same bookkeeping as the status route now.
+                $this->recordShopCancellation($order, $request, $request->user(), (string) $oldStatus);
             }
 
             // Handle return: restore inventory
@@ -1673,7 +1677,10 @@ class OrderController extends Controller
 
             // One announcer for every path: the bell as well as the email, and it carries the
             // unpaid delivery fee and the courier - the two things a customer needs at the end.
-            if (isset($validated['orderStatus']) && $oldStatus !== $order->orderStatus) {
+            // notifyCustomer=false is only sent by orders:close-abandoned, which closes test orders in
+            // bulk; a "your order is on its way" to a survey participant would only confuse.
+            if (isset($validated['orderStatus']) && $oldStatus !== $order->orderStatus
+                && $request->boolean('notifyCustomer', true)) {
                 OrderNotifier::statusChanged($order, $oldStatus);
             }
 
@@ -2295,54 +2302,7 @@ class OrderController extends Controller
                 $this->cancelLinkedJobOrder($order);
                 if ($oldStatus !== OrderStatus::CANCELLED) {
                     $this->restoreStockOnCancel($order, $jobStages, $keepBack);
-
-                    // Why the SHOP cancelled. Returns record a reason and a customer's own
-                    // cancellation records a reason; this path recorded nothing, so the one
-                    // cancellation the customer did not ask for was the one nobody could explain.
-                    $reason = trim((string) $request->input('cancelReason', ''));
-                    $order->cancelledBy     = 'admin';
-                    $order->cancelledReason = $reason !== '' ? mb_substr($reason, 0, 500) : null;
-                    $order->cancelledAt     = now();
-
-                    // The money. `refundAmount` lets the shop keep a deposit when work had already
-                    // started - personalised goods cannot be resold, which is what a deposit is for
-                    // - but the DEFAULT is everything received, because a shop that cancels an
-                    // order nobody has made yet is not entitled to any of it.
-                    $paid = $this->paidSoFar($order);
-                    $refund = $request->has('refundAmount')
-                        ? max(0, min($paid, (float) $request->input('refundAmount')))
-                        : $paid;
-                    $this->recordRefundOwed(
-                        $order,
-                        $refund,
-                        $reason !== ''
-                            ? 'Cancelled by the shop - ' . mb_substr($reason, 0, 200)
-                            : 'Cancelled by the shop',
-                        trim(($user->firstName ?? '') . ' ' . ($user->lastName ?? '')) ?: null
-                    );
-                    $this->refundCourierFeeOnCancel(
-                        $order,
-                        (string) ($order->getOriginal('orderStatus') ?? ''),
-                        trim(($user->firstName ?? '') . ' ' . ($user->lastName ?? '')) ?: null
-                    );
-                    $order->save();
-
-                    try {
-                        Notification::create([
-                            'user_id'    => (string) $order->userId,
-                            'type'       => 'order_cancelled',
-                            'title'      => 'Order Cancelled',
-                            'message'    => 'Order #' . strtoupper(substr((string) $order->_id, -8))
-                                . ' was cancelled by the shop.'
-                                . ($reason !== '' ? ' Reason: ' . mb_substr($reason, 0, 200) : '')
-                                . ($refund > 0 ? ' A refund of P' . number_format($refund, 2) . ' is being arranged.' : ''),
-                            'is_read'    => false,
-                            'data'       => ['orderId' => (string) $order->_id],
-                            'created_at' => now(),
-                        ]);
-                    } catch (\Exception $e) {
-                        Log::warning('updateStatus: cancel notification failed', ['error' => $e->getMessage()]);
-                    }
+                    $this->recordShopCancellation($order, $request, $user, (string) ($order->getOriginal('orderStatus') ?? ''));
                 }
             }
 
@@ -3015,6 +2975,56 @@ class OrderController extends Controller
      * entitled to keep, and neither said so anywhere. This does not MOVE money - no refund
      * API exists - it makes the obligation visible so somebody can send it.
      */
+    /**
+     * The bookkeeping of a cancellation the SHOP made: who, why, when, and what money goes back.
+     *
+     * `refundAmount` lets the shop keep a deposit when work had already started - personalised goods
+     * cannot be resold, which is what a deposit is for - but the DEFAULT is everything received,
+     * because a shop that cancels an order nobody has made yet is not entitled to any of it.
+     * `notifyCustomer=false` is for closing abandoned test orders in bulk, where a "your order was
+     * cancelled" notice to a survey participant would only confuse.
+     */
+    private function recordShopCancellation(Order $order, Request $request, $user, string $previousStatus): void
+    {
+        $reason = trim((string) $request->input('cancelReason', ''));
+        $by     = trim(($user->firstName ?? '') . ' ' . ($user->lastName ?? '')) ?: null;
+
+        $order->cancelledBy     = 'admin';
+        $order->cancelledReason = $reason !== '' ? mb_substr($reason, 0, 500) : null;
+        $order->cancelledAt     = now();
+
+        $paid   = $this->paidSoFar($order);
+        $refund = $request->has('refundAmount')
+            ? max(0, min($paid, (float) $request->input('refundAmount')))
+            : $paid;
+        $this->recordRefundOwed(
+            $order,
+            $refund,
+            $reason !== '' ? 'Cancelled by the shop - ' . mb_substr($reason, 0, 200) : 'Cancelled by the shop',
+            $by
+        );
+        $this->refundCourierFeeOnCancel($order, $previousStatus, $by);
+        $order->save();
+
+        if (!$request->boolean('notifyCustomer', true)) return;
+        try {
+            Notification::create([
+                'user_id'    => (string) $order->userId,
+                'type'       => 'order_cancelled',
+                'title'      => 'Order Cancelled',
+                'message'    => 'Order #' . strtoupper(substr((string) $order->_id, -8))
+                    . ' was cancelled by the shop.'
+                    . ($reason !== '' ? ' Reason: ' . mb_substr($reason, 0, 200) : '')
+                    . ($refund > 0 ? ' A refund of P' . number_format($refund, 2) . ' is being arranged.' : ''),
+                'is_read'    => false,
+                'data'       => ['orderId' => (string) $order->_id],
+                'created_at' => now(),
+            ]);
+        } catch (\Exception $e) {
+            Log::warning('recordShopCancellation: notification failed', ['error' => $e->getMessage()]);
+        }
+    }
+
     /**
      * A delivery fee the shop already collected, on an order that will now never be delivered.
      *
