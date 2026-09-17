@@ -139,9 +139,15 @@ export default function UserManagementPage() {
 
   // Any click outside closes it. Without this a menu left open floats over whatever the reader
   // scrolls to next, and clicking a second card opens a second menu beside the first.
+  // Decided by where the press landed, not by stopPropagation: the App Router's React root is the
+  // document itself, so stopping a React event there never kept this listener from firing - Edit and
+  // Delete closed the menu on mousedown and their click never arrived.
   useEffect(() => {
     if (!openMenuId) return;
-    const close = () => setOpenMenuId(null);
+    const close = (e) => {
+      if (e.target instanceof Element && e.target.closest('[data-staff-menu]')) return;
+      setOpenMenuId(null);
+    };
     document.addEventListener('mousedown', close);
     return () => document.removeEventListener('mousedown', close);
   }, [openMenuId]);
@@ -576,7 +582,7 @@ export default function UserManagementPage() {
                       <LockIcon />
                     </span>
                   ) : (
-                    <div style={{ position: 'relative' }} onMouseDown={e => e.stopPropagation()}>
+                    <div style={{ position: 'relative' }} data-staff-menu>
                       <button
                         type="button"
                         aria-label="Actions"
