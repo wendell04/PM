@@ -126,6 +126,8 @@ export default function UserManagementPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState(null);
+  // Set when the email already belongs to a customer: the server asks before giving that account staff access.
+  const [promoteOffer, setPromoteOffer] = useState(null);
   const [showPassword, setShowPassword] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
@@ -266,6 +268,7 @@ export default function UserManagementPage() {
     setSelectedStaff(null);
     setForm(emptyForm());
     setFormError(null);
+    setPromoteOffer(null);
   };
 
   const setField = (field, value) => {
@@ -282,7 +285,8 @@ export default function UserManagementPage() {
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) {
         return 'Please enter a valid email address.';
       }
-      if (!form.password || form.password.length < 8) {
+      // A customer being given staff access keeps their own password, so none is asked for then.
+      if (!(promoteOffer && promoteOffer.email === form.email.trim()) && (!form.password || form.password.length < 8)) {
         return 'Password must be at least 8 characters.';
       }
     }
@@ -295,7 +299,7 @@ export default function UserManagementPage() {
     return null;
   };
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (promoteExisting = false) => {
     const isCreate = selectedStaff == null;
     const msg = validate(isCreate);
     if (msg) {
@@ -315,9 +319,10 @@ export default function UserManagementPage() {
           firstName: form.firstName.trim(),
           lastName: form.lastName.trim(),
           email: form.email.trim(),
-          password: form.password,
+          password: form.password || null,
           role: form.role,
           phoneNumber: form.phoneNumber.trim(),
+          promoteExisting: promoteExisting === true,
         };
         const res = await fetchWithTimeout(`${API_URL}/api/admin/staff`, {
           method: 'POST',
@@ -325,6 +330,10 @@ export default function UserManagementPage() {
           body: JSON.stringify(body),
         }, 15000);
         const data = await res.json();
+        if (res.status === 409 && data.code === 'customer_account') {
+          setPromoteOffer({ message: data.message, email: body.email });
+          return;
+        }
         if (!res.ok) {
           const m = data.message || (data.errors && Object.values(data.errors).flat().join(' ')) || 'Create failed.';
           throw new Error(m);
@@ -355,7 +364,8 @@ export default function UserManagementPage() {
       setSelectedStaff(null);
       setForm(emptyForm());
       await fetchStaff();
-      showToast(wasCreate ? 'Staff account created successfully.' : 'Staff account updated successfully.');
+      setPromoteOffer(null);
+      showToast(promoteExisting ? 'Customer account is now a staff account.' : wasCreate ? 'Staff account created successfully.' : 'Staff account updated successfully.');
     } catch (err) {
       setFormError(err.message || 'Something went wrong.');
     } finally {
@@ -766,6 +776,11 @@ export default function UserManagementPage() {
 
               </div>
 
+              {selectedStaff?.promotedFromCustomer ? (
+                <div style={{ fontSize: '0.8rem', color: 'var(--gray)', lineHeight: 1.5 }}>
+                  This person signs in with their own customer account, so their password is theirs to change.
+                </div>
+              ) : (
               <div>
                 <label htmlFor="staff-pass" style={labelStyle}>
                   Password{' '}
@@ -797,6 +812,7 @@ export default function UserManagementPage() {
                   </button>
                 </div>
               </div>
+              )}
 
               {/* Password strength - only show when typing */}
               {form.password && (() => {
@@ -826,6 +842,30 @@ export default function UserManagementPage() {
                 );
               })()}
 
+              {promoteOffer && promoteOffer.email === form.email.trim() && (
+                <div style={{ padding: '12px 14px', borderRadius: '8px', background: 'rgba(212,168,67,0.08)', border: '1px solid rgba(212,168,67,0.35)', fontSize: '0.85rem', lineHeight: 1.5 }}>
+                  <div style={{ color: 'var(--white)', marginBottom: '10px' }}>{promoteOffer.message}</div>
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    <button
+                      type="button"
+                      onClick={() => handleSubmit(true)}
+                      disabled={submitting}
+                      style={{ padding: '8px 14px', borderRadius: '8px', border: 'none', background: 'var(--gold)', color: 'var(--black)', fontWeight: 700, fontSize: '0.8rem', cursor: submitting ? 'not-allowed' : 'pointer' }}
+                    >
+                      Yes, make it a staff account
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPromoteOffer(null)}
+                      disabled={submitting}
+                      style={{ padding: '8px 14px', borderRadius: '8px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--white)', fontWeight: 600, fontSize: '0.8rem', cursor: 'pointer' }}
+                    >
+                      Use a different email
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {formError && (
                 <div style={{ padding: '12px 14px', borderRadius: '8px', background: 'rgba(239,68,68,0.10)', border: '1px solid rgba(239,68,68,0.25)', color: 'var(--red)', fontSize: '0.85rem' }}>
                   {formError}
@@ -845,7 +885,7 @@ export default function UserManagementPage() {
               </button>
               <button
                 type="button"
-                onClick={handleSubmit}
+                onClick={() => handleSubmit(false)}
                 disabled={submitting}
                 style={{ padding: '10px 20px', borderRadius: '8px', border: 'none', background: 'var(--gold)', color: 'var(--black)', fontWeight: 700, fontSize: '0.875rem', cursor: submitting ? 'not-allowed' : 'pointer', opacity: submitting ? 0.7 : 1 }}
               >
@@ -879,14 +919,28 @@ export default function UserManagementPage() {
               borderRadius: '16px',
             }}
           >
-            <h3 style={{ margin: '0 0 12px', color: 'var(--white)', fontSize: '1.1rem' }}>Delete Staff Account?</h3>
-            <p style={{ margin: '0 0 16px', color: 'var(--gray)', fontSize: '0.9rem', lineHeight: 1.5 }}>
-              This will permanently remove{' '}
-              <strong style={{ color: 'var(--white)' }}>
-                {`${deleteTarget.firstName || ''} ${deleteTarget.lastName || ''}`.trim() || 'this user'}
-              </strong>
-              {' '}from staff. This action cannot be undone.
-            </p>
+            {deleteTarget.promotedFromCustomer ? (
+              <>
+                <h3 style={{ margin: '0 0 12px', color: 'var(--white)', fontSize: '1.1rem' }}>Remove from Staff?</h3>
+                <p style={{ margin: '0 0 16px', color: 'var(--gray)', fontSize: '0.9rem', lineHeight: 1.5 }}>
+                  <strong style={{ color: 'var(--white)' }}>
+                    {`${deleteTarget.firstName || ''} ${deleteTarget.lastName || ''}`.trim() || 'This person'}
+                  </strong>
+                  {' '}loses dashboard access and is signed out. Their customer account and orders stay.
+                </p>
+              </>
+            ) : (
+              <>
+                <h3 style={{ margin: '0 0 12px', color: 'var(--white)', fontSize: '1.1rem' }}>Delete Staff Account?</h3>
+                <p style={{ margin: '0 0 16px', color: 'var(--gray)', fontSize: '0.9rem', lineHeight: 1.5 }}>
+                  This will permanently remove{' '}
+                  <strong style={{ color: 'var(--white)' }}>
+                    {`${deleteTarget.firstName || ''} ${deleteTarget.lastName || ''}`.trim() || 'this user'}
+                  </strong>
+                  {' '}from staff. This action cannot be undone.
+                </p>
+              </>
+            )}
             {deleteError && (
               <div
                 style={{

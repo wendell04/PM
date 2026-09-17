@@ -25,7 +25,7 @@ class StaffController extends Controller
             }
 
             $staff = User::where('role', '!=', 'customer')
-                ->get(['_id', 'firstName', 'lastName', 'email', 'role', 'is_verified', 'lastLogin', 'avatar']);
+                ->get(['_id', 'firstName', 'lastName', 'email', 'role', 'is_verified', 'lastLogin', 'avatar', 'promotedFromCustomer']);
 
             return $this->successResponse('Staff fetched successfully.', $staff);
         } catch (\Exception $e) {
@@ -48,23 +48,64 @@ class StaffController extends Controller
                 'firstName' => 'required|string|max:100',
                 'lastName'  => 'required|string|max:100',
                 'email'     => 'required|email',
-                'password'  => 'required|string|min:8',
+                'password'  => 'nullable|string|min:8',
                 'role'      => 'required|string|in:' . implode(',', $this->getStaffRoles()),
             ]);
-
-            // One account is one role. An address already used to shop cannot also be a staff login -
-            // say so plainly instead of "the email has already been taken".
-            $existing = User::emailIs($validated['email'])->first();
-            if ($existing) {
-                $msg = ($existing->role ?? 'customer') === 'customer'
-                    ? 'This email already belongs to a customer account. Staff need their own login - use a different email, e.g. name+staff@gmail.com (it still arrives in the same Gmail inbox).'
-                    : 'This email is already a staff account.';
-                return response()->json(['success' => false, 'message' => $msg, 'errors' => ['email' => [$msg]]], 422);
-            }
 
             // Escalation guard: cannot create an account at or above your own level.
             if (!\App\Support\Rbac::canAssignRole($request->user(), $validated['role'])) {
                 return $this->errorResponse('You cannot assign a role at or above your own level.', 403);
+            }
+
+            $existing = User::emailIs($validated['email'])->first();
+            if ($existing && ($existing->role ?? 'customer') !== 'customer') {
+                $msg = 'This email is already a staff account.';
+                return response()->json(['success' => false, 'message' => $msg, 'errors' => ['email' => [$msg]]], 422);
+            }
+
+            // Someone who already shops here can be given staff access on that same account - the way
+            // a shop manager in WooCommerce still orders as themselves. Asked first, because it opens
+            // the dashboard to an account the owner did not create: they keep their own password, name
+            // and orders, and removing them from staff later hands the account back as a customer.
+            if ($existing) {
+                if (!$request->boolean('promoteExisting')) {
+                    $name = trim(($existing->firstName ?? '') . ' ' . ($existing->lastName ?? '')) ?: $existing->email;
+                    return response()->json([
+                        'success' => false,
+                        'code'    => 'customer_account',
+                        'name'    => $name,
+                        'message' => "{$name} already shops with this email. Make that same account a staff account? "
+                            . 'They keep their own password and orders, can still shop, and get a Dashboard link. '
+                            . 'Removing them from staff later turns it back into a customer account.',
+                    ], 409);
+                }
+                if (!($existing->is_verified ?? false)) {
+                    return $this->errorResponse('That customer has not verified their email yet. Ask them to finish signing up first.', 422);
+                }
+
+                $existing->role                 = $validated['role'];
+                $existing->promotedFromCustomer = true;
+                $existing->staffSince           = now();
+                $existing->save();
+
+                $this->logActivity(
+                    $request, 'user.role_changed', 'user', (string) $existing->_id,
+                    "Gave customer {$existing->email} staff access as {$existing->role}",
+                    ['email' => $existing->email, 'from' => 'customer', 'to' => $existing->role]
+                );
+
+                return $this->successResponse('Customer account is now a staff account.', [
+                    '_id'       => (string) $existing->_id,
+                    'firstName' => $existing->firstName,
+                    'lastName'  => $existing->lastName,
+                    'email'     => $existing->email,
+                    'role'      => $existing->role,
+                ], 201);
+            }
+
+            if (empty($validated['password'])) {
+                $msg = 'Set a password of at least 8 characters for the new staff account.';
+                return response()->json(['success' => false, 'message' => $msg, 'errors' => ['password' => [$msg]]], 422);
             }
 
             $staff = User::create([
@@ -138,6 +179,10 @@ class StaffController extends Controller
             if (isset($validated['firstName'])) $staff->firstName = $validated['firstName'];
             if (isset($validated['lastName']))  $staff->lastName  = $validated['lastName'];
             if (isset($validated['role']))      $staff->role      = $validated['role'];
+            // A customer given staff access signs in with the password they chose for themselves.
+            if (isset($validated['password']) && ($staff->promotedFromCustomer ?? false)) {
+                return $this->errorResponse('This person uses their own customer account. They change their password themselves.', 422);
+            }
             if (isset($validated['password']))  $staff->password  = Hash::make($validated['password']);
 
             $staff->save();
@@ -192,6 +237,27 @@ class StaffController extends Controller
             // Prevent self-deletion
             if ((string) $staff->_id === (string) $request->user()->_id) {
                 return $this->errorResponse('Cannot delete your own account.', 403);
+            }
+
+            // A customer who was given staff access goes back to being a customer - deleting them would
+            // take their own account and order history with the job. The same for any staff login that
+            // has placed orders.
+            $hasOrders = \App\Models\Order::where('userId', (string) $staff->_id)->exists();
+            if (($staff->promotedFromCustomer ?? false) || $hasOrders) {
+                $oldRole                     = $staff->role;
+                $staff->role                 = 'customer';
+                $staff->promotedFromCustomer = null;
+                $staff->staffSince           = null;
+                $staff->save();
+                // Signed out everywhere, so no open tab keeps showing a dashboard they can no longer use.
+                $staff->tokens()->delete();
+
+                $this->logActivity(
+                    $request, 'user.role_changed', 'user', (string) $staff->_id,
+                    "Removed {$staff->email} from staff ({$oldRole}); kept as a customer",
+                    ['email' => $staff->email, 'from' => $oldRole, 'to' => 'customer']
+                );
+                return $this->successResponse('Removed from staff. Their customer account and orders are kept.');
             }
 
             $deletedEmail = $staff->email;
