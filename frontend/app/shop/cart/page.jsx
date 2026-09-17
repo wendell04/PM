@@ -243,8 +243,10 @@ export default function CartPage() {
   // trackInventory flag - which is how a mug with fifty blanks accepted ninety-nine.
   const [lineMax, setLineMax] = useState({});
 
-  const checkKey = selectedCartItems
-    .map(i => `${i.product?._id ?? ''}:${i.variantId ?? ''}:${i.qty}`)
+  // Every line is checked, ticked or not, so each + button has a real ceiling; the tick only
+  // decides which lines the shortage warning (and the checkout) is about.
+  const checkKey = enrichedCart
+    .map((i, idx) => `${i.product?._id ?? ''}:${i.variantId ?? ''}:${i.qty}:${selectedItems.has(idx) ? 1 : 0}`)
     .join('|');
 
   useEffect(() => {
@@ -256,10 +258,11 @@ export default function CartPage() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            items: selectedCartItems.map(i => ({
+            items: enrichedCart.map((i, idx) => ({
               productId: i.product?._id,
               variantId: i.variantId ?? null,
               qty: i.qty,
+              selected: selectedItems.has(idx),
             })),
           }),
         }, 12000);
@@ -269,7 +272,7 @@ export default function CartPage() {
         setShortages(body?.shortages ?? []);
         const maxes = {};
         (body?.lineMax ?? []).forEach((m, i) => {
-          const line = selectedCartItems[i];
+          const line = enrichedCart[i];
           if (line && m != null) maxes[line.lineId] = Number(m);
         });
         setLineMax(maxes);

@@ -2426,21 +2426,25 @@ class OrderController extends Controller
             }
 
             // Same shape MaterialClaim reads at checkout, so the two cannot answer differently.
-            $lines = [];
-            foreach (array_slice($items, 0, 50) as $item) {
-                $qty = (int) ($item['qty'] ?? 0);
-                if ($qty <= 0) continue;
-                $lines[] = [
+            // Every line is kept at its index (the client maps the answer back by position); a line
+            // the customer has not ticked is `selected: false` - it still gets a ceiling, but it is
+            // not part of the checkout the shortage warning is about.
+            $lines    = [];
+            $selected = [];
+            foreach (array_slice($items, 0, 50) as $idx => $item) {
+                $lines[$idx] = [
                     'productId' => $item['productId'] ?? null,
                     'variantId' => $item['variantId'] ?? null,
-                    'qty'       => $qty,
+                    'qty'       => max(0, (int) ($item['qty'] ?? 0)),
                 ];
+                $selected[$idx] = !array_key_exists('selected', $item) || (bool) $item['selected'];
             }
+            $checkoutLines = array_values(array_filter($lines, fn ($l, $i) => $selected[$i] && $l['qty'] > 0, ARRAY_FILTER_USE_BOTH));
 
             // Only the gated half. A pre-order line is allowed past the shelf at checkout, so
             // warning about it here would contradict the very gate this mirrors.
             $shortages = [];
-            foreach (MaterialClaim::demandSplit($lines)['gated'] as $invId => $needed) {
+            foreach (MaterialClaim::demandSplit($checkoutLines)['gated'] as $invId => $needed) {
                 $inv = Inventory::find($invId);
                 if (!$inv) continue;
 
@@ -2456,10 +2460,27 @@ class OrderController extends Controller
                 ];
             }
 
-            // Each line's own ceiling, ignoring the others - what the + button should stop at. The
-            // cart used to guess this from a snapshot taken when the line was added, and fell back
-            // to a flat 99 whenever the snapshot had no trackInventory flag, which is how a mug with
-            // fifty blanks accepted ninety-nine.
+            // Each line's ceiling - what the + button should stop at. The cart used to guess this
+            // from a snapshot taken when the line was added, and fell back to a flat 99 whenever the
+            // snapshot had no trackInventory flag, which is how a mug with fifty blanks accepted
+            // ninety-nine. And it was each line ALONE: two lines drawing on the same box each got the
+            // whole box, so 50 + 50 of a 50-blank mousepad passed the + button and only the checkout
+            // said no. What the other ticked lines already take is subtracted first.
+            $lineDemand   = [];   // idx => [inventoryId => units this line needs]
+            $sharedDemand = [];   // inventoryId => units every ticked line needs together
+            foreach ($lines as $idx => $line) {
+                $product = Product::find($line['productId'] ?? null);
+                $bom     = MaterialClaim::bomFor($product, $line['variantId'] ?? null);
+                foreach (($bom->components ?? []) as $component) {
+                    $invId = (string) ($component['inventoryId'] ?? '');
+                    $qpu   = (float) ($component['qty'] ?? 0);
+                    if ($invId === '' || $qpu <= 0) continue;
+                    $units = (int) ceil($line['qty'] * $qpu);
+                    $lineDemand[$idx][$invId] = $units;
+                    if ($selected[$idx]) $sharedDemand[$invId] = ($sharedDemand[$invId] ?? 0) + $units;
+                }
+            }
+
             $maxes = [];
             foreach ($lines as $idx => $line) {
                 $product = Product::find($line['productId'] ?? null);
@@ -2478,7 +2499,9 @@ class OrderController extends Controller
                     $qpu = (float) ($component['qty'] ?? 0);
                     if ($qpu <= 0) continue;
                     $free = max(0, (int) ($inv->stockQty ?? 0) - (int) ($inv->reservedQty ?? 0));
-                    $can  = (int) floor($free / $qpu);
+                    $invKey = (string) $inv->_id;
+                    $others = ($sharedDemand[$invKey] ?? 0) - ($selected[$idx] ? ($lineDemand[$idx][$invKey] ?? 0) : 0);
+                    $can  = (int) floor(max(0, $free - $others) / $qpu);
                     $max  = $max === null ? $can : min($max, $can);
                 }
                 // Null means nothing counted constrains it - not zero. Zero here would read as
