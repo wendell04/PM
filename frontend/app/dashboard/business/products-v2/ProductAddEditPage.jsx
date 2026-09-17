@@ -1044,7 +1044,7 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
                     <Field label="Bill of Materials (BOM)" required error={errors.bomId}>
                       <CustomSelect value={form.bomId} onChange={v => setF('bomId', v)}
                         options={boms.map(b => ({ value:b.id, label:b.productName }))}
-                        placeholder="Select BOM"
+                        placeholder="Select BOM" searchable
                         error={errors.bomId} />
                     </Field>
                     {form.bomId && (
@@ -1175,7 +1175,7 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
                                 <CustomSelect value={v.bomId}
                                   onChange={val => setVariant(i, 'bomId', val)}
                                   options={boms.map(b => ({ value:b.id, label:b.productName }))}
-                                  placeholder="Select BOM"
+                                  placeholder="Select BOM" searchable
                                   error={errors[`vbom_${i}`]} />
                               </Field>
                             </div>
