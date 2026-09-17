@@ -162,13 +162,20 @@ export default function SettingsPage() {
 
   // ── Tab ───────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState('profile');
+  // Shipping, Chat, Integrations and Terms configure the shop, and their APIs are Owner / Super Admin
+  // only. Staff keep the tabs about themselves: profile, password and 2FA, notifications, theme.
+  const ownsShop = ['superAdmin', 'admin', 'owner'].includes(currentUser?.role);
+  const SHOP_TABS = ['shipping', 'chat', 'integrations', 'terms'];
+
   // Other modules link straight to a tab (Messages -> ?tab=chat), so the owner never has to hunt for it.
   useEffect(() => {
     const wanted = new URLSearchParams(window.location.search).get('tab');
-    if (['profile', 'security', 'shipping', 'chat', 'integrations', 'terms', 'notifications', 'appearance'].includes(wanted)) {
+    if (['profile', 'security', 'shipping', 'chat', 'integrations', 'terms', 'notifications', 'appearance'].includes(wanted)
+        && (ownsShop || !SHOP_TABS.includes(wanted))) {
       setActiveTab(wanted);
     }
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ownsShop]);
 
   // ── Loading ───────────────────────────────────────────────
   const [isLoading, setIsLoading] = useState(true);
@@ -1153,7 +1160,7 @@ export default function SettingsPage() {
               { id: 'terms', label: 'Terms & Policies' },
               { id: 'notifications', label: 'Notifications' },
               { id: 'appearance', label: 'Appearance' },
-            ].map(({ id, label }) => (
+            ].filter(({ id }) => ownsShop || !SHOP_TABS.includes(id)).map(({ id, label }) => (
               <button
                 key={id}
                 type="button"
