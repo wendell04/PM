@@ -1291,12 +1291,17 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
         body: JSON.stringify(payload),
       }, 15000);
       if (!res.ok) { const d = await res.json().catch(()=>({})); throw new Error(d.message || d.error || 'Update failed'); }
-      const updated = selStatus === 'Paid'
+      const patched = selStatus === 'Paid'
         ? { ...lo, paymentStatus:'paid' }
         : { ...lo, orderStatus: selStatus,
             ...(isForDelivery(selStatus)
               ? { courierName: courier.trim(), trackingNumber: trackingNo.trim(), trackingUrl: trackingUrl.trim() }
               : {}) };
+      // A status change does more on the server than change the status: Delivered records the
+      // rider's cash for the delivery fee and COD money, Cancelled writes refunds. Patching only the
+      // status here left the fee reading "unpaid" on a delivered order until it was reopened.
+      const fresh = await refetchOrder();
+      const updated = fresh ? { ...patched, ...fresh, id: lo.id } : patched;
       setLo(updated);
       setConfirmSt(false);
       if (onStatusUpdated) onStatusUpdated(lo.id, updated);
