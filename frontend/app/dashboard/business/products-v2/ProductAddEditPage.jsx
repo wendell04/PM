@@ -570,6 +570,25 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
     }
   };
 
+  // What a URL box receives when someone copies from Google Images is often not a link at all:
+  // "Copy image" puts the picture itself on the clipboard (a text box pastes nothing), and "Copy
+  // image address" on a thumbnail gives a data: string thousands of characters long. Both are turned
+  // into a file and uploaded, exactly like the Upload button. An ordinary https link is left alone.
+  const pastedImageFile = (e) => {
+    const item = Array.from(e.clipboardData?.items || []).find(i => i.type?.startsWith('image/'));
+    if (item) return item.getAsFile();
+    const m = (e.clipboardData?.getData('text') || '').trim().match(/^data:(image\/[a-z0-9.+-]+);base64,([a-z0-9+/=\s]+)$/i);
+    if (!m) return null;
+    try {
+      const bin = atob(m[2].replace(/\s/g, ''));
+      const bytes = new Uint8Array(bin.length);
+      for (let k = 0; k < bin.length; k++) bytes[k] = bin.charCodeAt(k);
+      return new File([bytes], `pasted.${m[1].split('/')[1].replace('jpeg', 'jpg').replace('+xml', '')}`, { type: m[1] });
+    } catch {
+      return null;
+    }
+  };
+
   const commitMediaUrl = () => {
     const url = mediaUrlInput.trim();
     if (url) { addImages([url]); setMediaUrlInput(''); setMediaUrlMode(false); }
@@ -993,7 +1012,14 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
                 <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
                   <input value={mediaUrlInput} onChange={e => setMediaUrlInput(e.target.value)}
                     onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), commitMediaUrl())}
-                    placeholder="Paste image URL here..." autoFocus
+                    onPaste={e => {
+                      const f = pastedImageFile(e);
+                      if (!f) return;
+                      e.preventDefault();
+                      setMediaUrlMode(false); setMediaUrlInput('');
+                      handleFileUpload([f], 'product');
+                    }}
+                    placeholder="Paste an image, or its URL..." autoFocus
                     style={{ ...S.input, flex: 1 }} />
                   <button onClick={commitMediaUrl} style={S.btnSm}>Add</button>
                   <button onClick={() => { setMediaUrlMode(false); setMediaUrlInput(''); }} style={S.btnGhost}>Cancel</button>
@@ -1144,8 +1170,15 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
                               {urlOpen && (
                                 <div style={{ marginTop: '4px', display: 'flex', gap: '4px', width: '190px' }}>
                                   <input value={vImgInput} onChange={e => setVImgInput(e.target.value)} autoFocus
+                                    onPaste={e => {
+                                      const f = pastedImageFile(e);
+                                      if (!f) return;
+                                      e.preventDefault();
+                                      setVImgInput(''); setVImgUrlId(null);
+                                      handleFileUpload([f], v.id);
+                                    }}
                                     onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); if (vImgInput.trim()) { const u = vImgInput.trim(); setVariantImages(p => ({...p, [v.id]: u})); addImages([u]); setVImgInput(''); setVImgUrlId(null); } } }}
-                                    placeholder="Image URL" style={{ ...S.input, flex: 1, fontSize: '11px', padding: '4px 6px' }} />
+                                    placeholder="Paste image or URL" style={{ ...S.input, flex: 1, fontSize: '11px', padding: '4px 6px' }} />
                                   <button onClick={() => { if (vImgInput.trim()) { const u = vImgInput.trim(); setVariantImages(p => ({...p, [v.id]: u})); addImages([u]); setVImgInput(''); setVImgUrlId(null); } }}
                                     style={{ ...S.btnSm, padding: '4px 8px', fontSize: '11px' }}>Set</button>
                                 </div>
