@@ -1226,10 +1226,8 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
               <CardTitle>Options</CardTitle>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 <Note>
-                  A choice the customer makes that does not change the material - cut type, finish,
-                  corner style. It carries no BOM and does not divide the stock, because a different
-                  cut is the same sheet. Leave the price blank when the option costs nothing extra,
-                  and add a picture where the difference is easier to see than to describe.
+                  Choices that do not change the material. They use no BOM or stock. Leave the price
+                  blank if it costs nothing extra.
                 </Note>
 
                 {(form.optionGroups || []).map((g, gi) => (
