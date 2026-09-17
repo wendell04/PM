@@ -1905,12 +1905,14 @@ export default function CustomerProfilePage() {
                           )}
                         </div>
                       </div>
-                      {/* Account Completeness */}
-                      <div style={{ textAlign: "right", flexShrink: 0 }}>
+                      {/* Account Completeness. A right-aligned side column on desktop; on a phone it wraps
+                          under the name, where right alignment and an 80px bar read as a cut-off block
+                          (see .pf-setup in shop.css). */}
+                      <div className="pf-setup" style={{ textAlign: "right", flexShrink: 0 }}>
                         <div style={{ fontSize: "0.6rem", fontWeight: 700, color: "var(--gray)", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: "0.1rem" }}>Profile Setup</div>
                         <div style={{ fontSize: "0.62rem", color: "var(--gray)", opacity: 0.6, marginBottom: "0.35rem" }}>Photo · Phone · Address · 2FA</div>
                         <div style={{ fontSize: "1.25rem", fontWeight: 800, color: "var(--white)", letterSpacing: "-0.02em", marginBottom: "0.4rem" }}>{completePct}%</div>
-                        <div style={{ width: "80px", height: "4px", background: "rgba(255,255,255,0.08)", borderRadius: "2px", overflow: "hidden", marginLeft: "auto" }}>
+                        <div className="pf-setup-bar" style={{ width: "80px", height: "4px", background: "rgba(255,255,255,0.08)", borderRadius: "2px", overflow: "hidden", marginLeft: "auto" }}>
                           <div style={{ height: "100%", width: `${completePct}%`, background: completePct === 100 ? "#4ade80" : "var(--gold)", borderRadius: "2px", transition: "width 0.5s ease" }} />
                         </div>
                         {completePct < 100 && (
@@ -2191,8 +2193,8 @@ export default function CustomerProfilePage() {
                     </div>
                   )}
 
-                  {/* ── Quick Actions ── */}
-                  <div style={{ paddingTop: "0.5rem", borderTop: "1px solid var(--border)" }}>
+                  {/* ── Quick Actions ── (hidden on phones: the tab row at the top is the same set) */}
+                  <div className="pf-quick-actions" style={{ paddingTop: "0.5rem", borderTop: "1px solid var(--border)" }}>
                     <div style={{ fontSize: "0.62rem", fontWeight: 700, color: "var(--gray)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "0.75rem" }}>Quick Actions</div>
                     <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
                       <Link href="/shop" style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem", padding: "0.5rem 1rem", background: "var(--gold)", borderRadius: "8px", color: "#000", fontWeight: 700, fontSize: "0.78rem", textDecoration: "none" }}>

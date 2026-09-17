@@ -3203,6 +3203,17 @@
 /* Address form: stack the 2-column rows on phones (fields too narrow otherwise) */
 @media (max-width: 640px) {
   .addr-2col { grid-template-columns: 1fr !important; }
+  /* Profile Setup wraps under the name on a phone: full width, left-aligned, full-width bar,
+     with a rule above so it reads as its own row rather than a cut-off corner. */
+  .pf-setup {
+    width: 100%;
+    text-align: left !important;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--border);
+  }
+  .pf-setup-bar { width: 100% !important; margin-left: 0 !important; }
+  /* Quick Actions repeats the tab row at the top of the page. */
+  .pf-quick-actions { display: none !important; }
 }
 .profile-nav-item {
   transition: background-color 0.2s ease, color 0.2s ease;
