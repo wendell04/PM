@@ -109,7 +109,9 @@ const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=
   // Every modal on this page left the landing page scrolling behind it. Declared here rather
   // than beside `modal`, because the other two flags are defined further down and reading them
   // earlier is a temporal-dead-zone ReferenceError, not a warning.
-  useLockBodyScroll(!!modal || !!verificationModal || !!tAndCModalOpen);
+  // The cart and notification sheets too: without the lock, a drag on the sheet scrolled the page
+  // underneath it on phones.
+  useLockBodyScroll(!!modal || !!verificationModal || !!tAndCModalOpen || lpCartOpen || lpNotifOpen);
   const [registeredEmail, setRegisteredEmail]     = useState('');
   const [verificationCode, setVerificationCode]   = useState('');
   const [verifyError, setVerifyError]             = useState('');

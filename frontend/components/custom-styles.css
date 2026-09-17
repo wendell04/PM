@@ -3564,7 +3564,7 @@
       position: fixed;
       inset: 0;
       background: rgba(0,0,0,0.5);
-      z-index: 199;
+      z-index: 1490;
       backdrop-filter: blur(3px);
       -webkit-backdrop-filter: blur(3px);
       animation: lp-backdrop-in 0.22s ease;
@@ -3588,7 +3588,8 @@
       width: 100% !important;
       max-height: 75vh !important;
       border-radius: 24px 24px 0 0 !important;
-      z-index: 200 !important;
+      /* Above the chat launcher (1400), which used to sit on the sheet's header. */
+      z-index: 1500 !important;
       padding-bottom: max(16px, env(safe-area-inset-bottom)) !important;
       display: flex !important;
       flex-direction: column !important;
