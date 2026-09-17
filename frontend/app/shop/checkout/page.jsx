@@ -1392,7 +1392,7 @@ export default function CheckoutPage() {
                     <span style={{ fontSize: '0.74rem', color: 'var(--gray)' }}>Get by {getByRange(opt.lead)}</span>
                   </span>
                 </span>
-                <span style={{ fontSize: '0.85rem', fontWeight: 800, color: opt.fee > 0 ? 'var(--gold)' : 'var(--gray)' }}>{opt.fee > 0 ? `+₱${opt.fee.toLocaleString('en-PH')}` : 'Free'}</span>
+                <span style={{ fontSize: '0.85rem', fontWeight: 800, color: opt.fee > 0 ? 'var(--gold)' : 'var(--gray)' }}>{opt.fee > 0 ? `+₱${opt.fee.toLocaleString('en-PH')}` : 'No extra charge'}</span>
               </button>
             );
           })}
@@ -1451,8 +1451,9 @@ export default function CheckoutPage() {
             Expected delivery
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, padding: '11px 13px', borderRadius: '10px', border: '1px solid rgba(212,168,67,0.3)', background: 'rgba(212,168,67,0.06)' }}>
+            {/* No "Free" here: it meant "no rush fee", but next to a delivery date it read as free
+                delivery, and the delivery fee is arranged after the order. */}
             <span style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--gold)' }}>Get by {getByRange(0)}</span>
-            <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#16a34a' }}>Free</span>
           </div>
           <div style={{ fontSize: '0.75rem', color: 'var(--gray)', lineHeight: 1.55 }}>
             Ready-made items are already on the shelf, so they skip production and
