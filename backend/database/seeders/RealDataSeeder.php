@@ -169,10 +169,8 @@ class RealDataSeeder extends Seeder
         // Regular Sticker finishes
         $mSRG_G  = $mat(['name'=>'Regular Sticker Paper A4 (Glossy)',       'sku'=>'STK-REG-GLS',    'uom'=>'sheet', 'cat'=>'Stickers & Labels', 'qty'=>200, 'cost'=>4.00,  'min'=>50, 'sup'=>$sup2]);
         $mSRG_M  = $mat(['name'=>'Regular Sticker Paper A4 (Matte)',        'sku'=>'STK-REG-MAT',    'uom'=>'sheet', 'cat'=>'Stickers & Labels', 'qty'=>200, 'cost'=>4.00,  'min'=>50, 'sup'=>$sup2]);
-        // Kraft finishes
-        $mSKF_G  = $mat(['name'=>'Kraft Sticker Paper A4 (Glossy)',         'sku'=>'STK-KFT-GLS',    'uom'=>'sheet', 'cat'=>'Stickers & Labels', 'qty'=>200, 'cost'=>3.00,  'min'=>50, 'sup'=>$sup2]);
-        $mSKF_M  = $mat(['name'=>'Kraft Sticker Paper A4 (Matte)',          'sku'=>'STK-KFT-MAT',    'uom'=>'sheet', 'cat'=>'Stickers & Labels', 'qty'=>200, 'cost'=>3.00,  'min'=>50, 'sup'=>$sup2]);
-        $mSKF_T  = $mat(['name'=>'Kraft Sticker Paper A4 (Transparent)',    'sku'=>'STK-KFT-TRN',    'uom'=>'sheet', 'cat'=>'Stickers & Labels', 'qty'=>200, 'cost'=>3.50,  'min'=>50, 'sup'=>$sup2]);
+        // Kraft comes in one finish only - there is no glossy, matte or transparent kraft.
+        $mSKF    = $mat(['name'=>'Kraft Sticker Paper A4',                  'sku'=>'STK-KFT',        'uom'=>'sheet', 'cat'=>'Stickers & Labels', 'qty'=>200, 'cost'=>3.00,  'min'=>50, 'sup'=>$sup2]);
         // Consumables
         $mPap   = $mat(['name'=>'Sublimation Transfer Paper A3', 'sku'=>'CONS-SUB-PAP-A3', 'uom'=>'sheet', 'cat'=>'Consumables', 'qty'=>500, 'cost'=>6.00,   'min'=>100, 'sup'=>$sup2]);
         $mInk   = $mat(['name'=>'Sublimation Ink Set',           'sku'=>'CONS-SUB-INK',    'uom'=>'set',   'cat'=>'Consumables', 'qty'=>5,   'cost'=>900.00, 'min'=>1,   'sup'=>$sup2]);
@@ -246,10 +244,8 @@ class RealDataSeeder extends Seeder
         // Regular finish BOMs
         $bSRG_G  = $bom('BOM-STK-REG-GLS',     'Regular Sticker Paper - Glossy',               [$c($mSRG_G,1)]);
         $bSRG_M  = $bom('BOM-STK-REG-MAT',     'Regular Sticker Paper - Matte',                [$c($mSRG_M,1)]);
-        // Kraft finish BOMs
-        $bSKF_G  = $bom('BOM-STK-KFT-GLS',     'Kraft Sticker Paper - Glossy',                 [$c($mSKF_G,1)]);
-        $bSKF_M  = $bom('BOM-STK-KFT-MAT',     'Kraft Sticker Paper - Matte',                  [$c($mSKF_M,1)]);
-        $bSKF_T  = $bom('BOM-STK-KFT-TRN',     'Kraft Sticker Paper - Transparent',            [$c($mSKF_T,1)]);
+        // Kraft BOM
+        $bSKF    = $bom('BOM-STK-KFT',         'Custom Kraft Sticker Paper',                   [$c($mSKF,1)]);
         // Scrunchie color BOMs
         $bScrchY = $bom('BOM-ACC-SCRCH-YEL',   'Scrunchie - Yellow',                           [$c($mScrchY,1)]);
         $bScrchO = $bom('BOM-ACC-SCRCH-ORG',   'Scrunchie - Orange',                           [$c($mScrchO,1)]);
@@ -620,28 +616,15 @@ class RealDataSeeder extends Seeder
             ]),
         ]);
         $pSKF = $prod([
-            'name'                => 'Kraft Sticker Paper',
-            'description'         => 'Kraft sticker paper. Choose from Glossy, Matte, or Transparent. Price per A4 sheet.',
+            'name'                => 'Custom Kraft Sticker Paper',
+            'description'         => 'Custom-printed kraft sticker paper, A4. Price per A4 sheet.',
             'category'            => 'Stickers & Labels',
             'subCategoryName'     => 'Kraft Sticker Paper A4',
             'priceType'           => 'tiered',
-            'bomId'               => null,
+            'bomId'               => $bid($bSKF),
             'requiresDownpayment' => false,
             'downpaymentPercent'  => 0,
-            'variantGroups'       => [['id'=>'finish','name'=>'Finish','options'=>['Glossy','Matte','Transparent']]],
-            'combinations'        => [
-                ['id'=>'skf-g','name'=>'Glossy',     'bomId'=>(string)$bid($bSKF_G)],
-                ['id'=>'skf-m','name'=>'Matte',      'bomId'=>(string)$bid($bSKF_M)],
-                ['id'=>'skf-t','name'=>'Transparent','bomId'=>(string)$bid($bSKF_T)],
-            ],
-            'priceTiers'          => $tm([
-                [1,   30,  ['skf-g'=>35,'skf-m'=>35,'skf-t'=>37]],
-                [31,  50,  ['skf-g'=>33,'skf-m'=>33,'skf-t'=>35]],
-                [51,  100, ['skf-g'=>30,'skf-m'=>30,'skf-t'=>32]],
-                [101, 300, ['skf-g'=>28,'skf-m'=>28,'skf-t'=>30]],
-                [301, 500, ['skf-g'=>27,'skf-m'=>27,'skf-t'=>29]],
-                [501, null,['skf-g'=>25,'skf-m'=>25,'skf-t'=>27]],
-            ]),
+            'priceTiers'          => $t([[1,30,35],[31,50,33],[51,100,30],[101,300,28],[301,500,27],[501,null,25]]),
         ]);
 
         // Printing Services (inquiry, made-to-order, no BOM needed)
