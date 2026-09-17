@@ -533,6 +533,8 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
   // Paste anywhere on the page, not just inside the Media card. A plain div never receives
   // paste events - it cannot take focus - which is why Ctrl+V looked broken. Typing into a
   // real field still pastes normally; only image pastes outside inputs are intercepted.
+  // This is the ONLY page-level image paste: the Media card used to upload the same paste
+  // directly as well, so Cancel on the cropper still added the picture.
   useEffect(() => {
     const onPaste = (e) => {
       const tag = (e.target?.tagName || '').toLowerCase();
@@ -546,29 +548,6 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
     window.addEventListener('paste', onPaste);
     return () => window.removeEventListener('paste', onPaste);
   });
-
-  const handleMediaPaste = async (e) => {
-    const items = e.clipboardData?.items;
-    if (!items) return;
-    for (const item of items) {
-      if (item.type.startsWith('image/')) {
-        e.preventDefault();
-        const file = item.getAsFile();
-        if (file) {
-          setUploadingCount(c => c + 1);
-          try {
-            const result = await uploadImage(await compressImage(file), 'pmp-products', token);
-            addImages([result.url]);
-          } catch {
-            setErrors(p => ({ ...p, images: 'Image failed to upload. Please try again.' }));
-          } finally {
-            setUploadingCount(c => c - 1);
-          }
-        }
-        return;
-      }
-    }
-  };
 
   // What a URL box receives when someone copies from Google Images is often not a link at all:
   // "Copy image" puts the picture itself on the clipboard (a text box pastes nothing), and "Copy
@@ -897,7 +876,7 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
             </Card>
 
             {/* ── MEDIA ── */}
-            <Card onPaste={handleMediaPaste}>
+            <Card>
               <CardTitle>Media</CardTitle>
 
               {/* Image grid */}
