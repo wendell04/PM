@@ -654,7 +654,7 @@ class RealDataSeeder extends Seeder
                 'downpaymentPercent'  => 50,
                 'trackInventory'      => false,
                 'bomId'               => null,
-                'stockStatus'         => 'upon-order',
+                'stockStatus'         => 'in-stock',
                 'createdAt'           => $now,
                 'updatedAt'           => $now,
             ], $d));

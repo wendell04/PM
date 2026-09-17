@@ -1185,8 +1185,9 @@ export default function ProductDetailPage() {
             <div style={{ borderTop:
               '1px solid var(--border)' }} />
 
-            {/* Stock badge - hidden for Made to Order */}
-            {!product.isMadeToOrder && (() => {
+            {/* Stock badge. Shown for Made to Order too: the flag routes the order to production, it
+                does not stock the blank, and the customer deserves the same count everyone else gets. */}
+            {(() => {
               const LOW = 10;
               const comboId = resolveCombinationId(selectedVariants);
               // canProduce, not availableQty: pre-order changes whether an order is accepted
@@ -1202,15 +1203,6 @@ export default function ProductDetailPage() {
 
               const BADGE_GOLD = { color: '#b8922f', background: 'rgba(212,168,67,0.12)', border: '1px solid rgba(212,168,67,0.35)' };
 
-              if (product.stockStatus === 'upon-order') {
-                return (
-                  <div style={{ display: 'flex' }}>
-                    <span style={{ fontSize: '0.8rem', fontWeight: 700, ...BADGE_GOLD, borderRadius: '999px', padding: '0.25rem 0.75rem' }}>
-                      Upon Order
-                    </span>
-                  </div>
-                );
-              }
               // Sold out on the shelf but still orderable, because the shop said it can restock.
               // This is what pre-order actually changes: the badge and whether the order is
               // accepted - not the count above it.
@@ -1253,7 +1245,7 @@ export default function ProductDetailPage() {
               return (
                 <div style={{ display: 'flex' }}>
                   <span style={{ fontSize: '0.8rem', fontWeight: 700, ...BADGE_GOLD, borderRadius: '999px', padding: '0.25rem 0.75rem' }}>
-                    {displayQty != null && displayQty > 0 ? `${displayQty} units available` : 'In Stock'}
+                    {displayQty != null && displayQty > 0 ? `${displayQty} units available` : (product.isMadeToOrder ? 'Made to Order' : 'In Stock')}
                   </span>
                 </div>
               );

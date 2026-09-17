@@ -865,11 +865,10 @@ class ProductController extends Controller
                 }
             }
 
-            // Compute stockStatus for non-inventory products
+            // Compute stockStatus for non-inventory products. Made to Order no longer maps to
+            // "upon-order": the flag routes the order to production and says nothing about supply.
             if (empty($validated['inventoryId']) && !isset($validated['stockStatus'])) {
-                if ($validated['isMadeToOrder'] ?? false) {
-                    $validated['stockStatus'] = 'upon-order';
-                } elseif (array_key_exists('stock', $validated)) {
+                if (array_key_exists('stock', $validated)) {
                     if (($validated['stock'] ?? 0) === 0) {
                         $validated['stockStatus'] = 'out-of-stock';
                     } elseif (($validated['stock'] ?? 0) <= 10) {
@@ -1055,12 +1054,9 @@ class ProductController extends Controller
                 }
             }
 
-            // Recompute stockStatus when isMadeToOrder or stock changes
+            // Recompute stockStatus when stock changes (Made to Order no longer sets "upon-order")
             if (!isset($validated['stockStatus'])) {
-                $isMTO = $validated['isMadeToOrder'] ?? $product->isMadeToOrder ?? false;
-                if ($isMTO) {
-                    $validated['stockStatus'] = 'upon-order';
-                } elseif (array_key_exists('stock', $validated)) {
+                if (array_key_exists('stock', $validated)) {
                     $stock = $validated['stock'] ?? 0;
                     if ($stock === 0) {
                         $validated['stockStatus'] = 'out-of-stock';

@@ -214,9 +214,11 @@ function QuickViewModal({ product, flashSale, onClose, onToast }) {
     return product.stock != null ? Number(product.stock) : null;
   })();
 
+  // Made to Order is not a supply claim. It says the product is produced after the order (job
+  // order, materials held); the blank it is printed on can still run out, and pre-order decides
+  // what happens then. So the badge reads the real count for every product. "Upon Order" was the
+  // old name for the same flag and is gone from the product form.
   const displayStock = (() => {
-    if (product.isMadeToOrder) return null;
-    if (product.stockStatus === 'upon-order') return { label: 'Upon Order', type: 'gold' };
     // Sold out on the shelf but still orderable, because the shop said it can restock.
     if (product.allowPreorder && readyNow != null && readyNow <= 0) return { label: 'Pre-order', type: 'gold' };
     if (isOOS) return { label: 'Out of Stock', type: 'red' };
@@ -231,7 +233,8 @@ function QuickViewModal({ product, flashSale, onClose, onToast }) {
       const n = Number(product.availableQty);
       return { label: n <= 10 ? `Only ${n} left!` : `${n} units available`, type: 'gold' };
     }
-    return { label: 'In Stock', type: 'gold' };
+    // Nothing counted constrains it: every material is bought per order.
+    return { label: product.isMadeToOrder ? 'Made to Order' : 'In Stock', type: 'gold' };
   })();
 
   const buildCart = () => {
@@ -791,9 +794,8 @@ function ProductCard({ product, onAddToCart, onQuickView, flashSale }) {
             // Price-on-request items are quoted, not stocked. "IN STOCK" on one is a claim about a
             // shelf that does not exist, and it sits directly beside "Price on request".
             if (mode === 'inquiry') return null;
-            if (product.isMadeToOrder) return (
-              <div className="shop-stock-img-badge in-stock">In Stock</div>
-            );
+            // Made to Order used to short-circuit to "In Stock" here whatever the shelf held. The
+            // flag routes the order to production; it does not stock the blank.
             const totalStock = (() => {
               // canProduce, not availableQty: the latter is 9999 per variant once pre-order is
               // on, which summed to "29997 PCS" on the card for a mug the shop can make 50 of.
@@ -831,7 +833,7 @@ function ProductCard({ product, onAddToCart, onQuickView, flashSale }) {
               <div className="shop-stock-img-badge in-stock">{totalStock} pcs</div>
             );
             return (
-              <div className="shop-stock-img-badge in-stock">In Stock</div>
+              <div className="shop-stock-img-badge in-stock">{product.isMadeToOrder ? 'Made to Order' : 'In Stock'}</div>
             );
           })()}
 
@@ -1275,7 +1277,6 @@ export default function ShopClient({
   const activeFilterCount = (availability !== 'all' ? 1 : 0) + selectedSlugs.size + (priceFilterActive ? 1 : 0) + (productType ? 1 : 0);
 
   const inStockCount = products.filter(p => {
-    if (p.isMadeToOrder) return true;
     const vaq = p.variantAvailableQty;
     if (vaq && Object.keys(vaq).length > 0)
       return Object.values(vaq).reduce((s, v) => s + (Number(v) || 0), 0) > 0;
@@ -1288,7 +1289,6 @@ export default function ShopClient({
     .filter(p => {
       if (searchQuery && !p.name?.toLowerCase().includes(searchQuery.toLowerCase()) && !p.description?.toLowerCase().includes(searchQuery.toLowerCase())) return false;
       if (availability === 'in-stock') {
-        if (p.isMadeToOrder) return true;
         const vaq = p.variantAvailableQty;
         if (vaq && Object.keys(vaq).length > 0) {
           const t = Object.values(vaq).reduce((s, v) => s + (Number(v) || 0), 0);
@@ -1300,7 +1300,6 @@ export default function ShopClient({
         }
       }
       if (availability === 'out-of-stock') {
-        if (p.isMadeToOrder) return false;
         const vaq = p.variantAvailableQty;
         if (vaq && Object.keys(vaq).length > 0) {
           const t = Object.values(vaq).reduce((s, v) => s + (Number(v) || 0), 0);
@@ -1937,7 +1936,6 @@ export default function ShopClient({
               })();
               const stockLabel = (() => {
                 if (!quickAddProduct.trackInventory) return null;
-                if (quickAddProduct.isMadeToOrder || quickAddProduct.stockStatus === 'upon-order') return { text: 'Made to Order', color: 'var(--gold)' };
                 if (hasVariants && !quickVariant) return null;
                 if (quickVariant && quickAddProduct.variantBackorder?.[quickVariant.id]) return { text: 'Pre-order', color: 'var(--gold)' };
                 if (effectiveMaxQty < 9999) {
