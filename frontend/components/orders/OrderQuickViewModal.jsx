@@ -5,6 +5,7 @@ import Image from 'next/image';
 import { useAuth } from '@/contexts/AuthContext';
 import { getStatusBadge } from '@/lib/utils/orderHelpers';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
+import { normalizeStatus } from '@/lib/orderStatus';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
@@ -341,7 +342,7 @@ export default function OrderQuickViewModal({
               #{String(orderId).slice(-8).toUpperCase()}
             </span>
             {order && (() => {
-              const deliveredPaid = order.orderStatus === 'Delivered' && order.paymentStatus === 'paid';
+              const deliveredPaid = normalizeStatus(order.orderStatus) === 'delivered' && order.paymentStatus === 'paid';
               const badge = deliveredPaid
                 ? { label: 'Delivered', color: '#4ade80', bg: 'rgba(74,222,128,0.15)', border: 'rgba(74,222,128,0.4)' }
                 : getStatusBadge(order.orderStatus);
@@ -616,7 +617,7 @@ export default function OrderQuickViewModal({
                       </div>
                     ) : (
                       <span style={{ fontSize: '0.8rem', color: 'var(--gray)', fontStyle: 'italic' }}>
-                        {['Cancelled','Returned','Paid','Delivered','delivered'].includes(order.orderStatus)
+                        {(['cancelled','returned','delivered'].includes(normalizeStatus(order.orderStatus)) || order.orderStatus === 'Paid')
                           ? 'No further updates' : 'Managed via action buttons'}
                       </span>
                     )}

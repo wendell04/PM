@@ -694,7 +694,7 @@ function SectionLabel({ children }) {
 // ── Timeout helper ────────────────────────────────────────────────────────────
 
 function isExpired(order) {
-  if (order.orderStatus !== 'Pending') return false;
+  if (String(order.orderStatus).toLowerCase() !== 'pending') return false;
   if (order.paymentStatus === 'paid') return false;
   return (Date.now() - new Date(order.createdAt).getTime()) / 86400000 >= EXPIRY_DAYS;
 }
@@ -1118,8 +1118,8 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
     finally { setSavingFee(false); }
   };
 
-  const canDelete  = ['Cancelled','Delivered','Returned'].includes(lo.orderStatus);
-  const canExpire  = lo.orderStatus === 'Pending' && lo.paymentStatus !== 'paid' && isExpired(lo);
+  const canDelete  = ['cancelled','delivered','returned'].includes(normalizeStatus(lo.orderStatus));
+  const canExpire  = String(lo.orderStatus).toLowerCase() === 'pending' && lo.paymentStatus !== 'paid' && isExpired(lo);
 
   const handleExpire = async () => {
     setExpiring(true); setExpireErr('');
@@ -2585,14 +2585,14 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
               </div>
             ) : (
               <span style={{ fontSize:'11px', color:'var(--gray)', fontStyle:'italic' }}>
-                {['Cancelled','Returned','Delivered'].includes(lo.orderStatus) ? 'No further updates' : 'No available transitions'}
+                {['cancelled','returned','delivered'].includes(normalizeStatus(lo.orderStatus)) ? 'No further updates' : 'No available transitions'}
               </span>
             )
           )}
 
           {/* Delivery date - shown + editable so the admin can move the promise on a backlog.
               Saving notifies the customer. */}
-          {!['Cancelled','Returned','Delivered'].includes(lo.orderStatus) && (
+          {!['cancelled','returned','delivered'].includes(normalizeStatus(lo.orderStatus)) && (
             <>
               <div style={S.divider} />
               <SectionLabel>Delivery</SectionLabel>
@@ -2784,8 +2784,12 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
             // means the rider already has it.
             const feePaid = !!lo.courierFeePaid;
             const how     = String(lo.courierFeePaidMethod || '').toLowerCase();
+            const ended   = ['returned', 'cancelled'].includes(normalizeStatus(lo.orderStatus));
             const note    = !feePaid
-              ? ((lo.courierFeeOnDelivery ?? true) ? 'rider collects on arrival' : 'to be paid before we ship')
+              ? (ended
+                  // Refused at the door or cancelled: nobody paid the rider, whatever the fee setting says.
+                  ? 'not collected - the order did not go through'
+                  : (lo.courierFeeOnDelivery ?? true) ? 'rider collects on arrival' : 'to be paid before we ship')
               : how === 'manual' || how === 'rider_cash'
                 ? 'received - the rider was paid'
                 : 'paid online - you pay the courier';

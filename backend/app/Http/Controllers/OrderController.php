@@ -1571,7 +1571,10 @@ class OrderController extends Controller
             }
 
             // Handle cancellation: cancel linked JobOrder and restore inventory
-            if (isset($validated['orderStatus']) && $order->orderStatus === 'Cancelled' && $oldStatus !== 'Cancelled') {
+            // Compared through normalize: the dropdown sends "Cancelled" but the Cancel button sends
+            // "cancelled", and an exact match meant the button cancelled without returning stock.
+            if (isset($validated['orderStatus']) && OrderStatus::normalize($order->orderStatus) === OrderStatus::CANCELLED
+                && OrderStatus::normalize($oldStatus) !== OrderStatus::CANCELLED) {
                 $jobStages = $this->jobStagesFor($order);
                 $keepBack  = (array) $request->input('stockSettlement', []);
                 $this->cancelLinkedJobOrder($order);
@@ -1579,7 +1582,8 @@ class OrderController extends Controller
             }
 
             // Handle return: restore inventory
-            if (isset($validated['orderStatus']) && $order->orderStatus === 'Returned' && $oldStatus !== 'Returned') {
+            if (isset($validated['orderStatus']) && OrderStatus::normalize($order->orderStatus) === OrderStatus::RETURNED
+                && OrderStatus::normalize($oldStatus) !== OrderStatus::RETURNED) {
                 $this->restoreInventoryOnReturn($order);
             }
 
@@ -1637,7 +1641,8 @@ class OrderController extends Controller
             }
 
             // Handle completion: Create sales records and deduct inventory
-            if ($order->orderStatus === 'Delivered' && $oldStatus !== 'Delivered') {
+            if (OrderStatus::normalize($order->orderStatus) === OrderStatus::DELIVERED
+                && OrderStatus::normalize($oldStatus) !== OrderStatus::DELIVERED) {
                 $this->completeOrder($order);
             }
 
@@ -1695,10 +1700,10 @@ class OrderController extends Controller
                     ->when($request->filled('endDate'),   fn($q) => $q->where('createdAt', '<=', $request->endDate));
 
                 $totalOrders     = (clone $base)->count();
-                $pendingOrders   = (clone $base)->where('orderStatus', 'Pending')->count();
-                $completedOrders = (clone $base)->where('orderStatus', 'Delivered')->count();
-                $cancelledOrders = (clone $base)->where('orderStatus', 'Cancelled')->count();
-                $totalRevenue    = (clone $base)->where('orderStatus', 'Delivered')->sum('totalAmount');
+                $pendingOrders   = (clone $base)->whereIn('orderStatus', OrderStatus::spellings(OrderStatus::PENDING))->count();
+                $completedOrders = (clone $base)->whereIn('orderStatus', OrderStatus::spellings(OrderStatus::DELIVERED))->count();
+                $cancelledOrders = (clone $base)->whereIn('orderStatus', OrderStatus::spellings(OrderStatus::CANCELLED))->count();
+                $totalRevenue    = (clone $base)->whereIn('orderStatus', OrderStatus::spellings(OrderStatus::DELIVERED))->sum('totalAmount');
 
                 $cancellationRate = $totalOrders > 0
                     ? round(($cancelledOrders / $totalOrders) * 100, 2)
@@ -3169,7 +3174,7 @@ class OrderController extends Controller
                 return $this->notFoundResponse('Order');
             }
 
-            if (in_array($order->orderStatus, ['Cancelled', 'Returned'])) {
+            if (in_array(OrderStatus::normalize($order->orderStatus), [OrderStatus::CANCELLED, OrderStatus::RETURNED], true)) {
                 return response()->json([
                     'error' => "Cannot record payment for an order with status: {$order->orderStatus}.",
                 ], 422);
@@ -3178,7 +3183,7 @@ class OrderController extends Controller
             // Allow payment recording on Delivered orders only if:
             // - payment method is COD (courier collects after delivery), AND
             // - order is not already fully paid
-            if ($order->orderStatus === 'Delivered') {
+            if (OrderStatus::normalize($order->orderStatus) === OrderStatus::DELIVERED) {
                 $isCod       = PaymentMethod::isCod($order->paymentMethod);
                 $isFullyPaid = ($order->paymentStatus ?? '') === 'paid';
                 if (!$isCod || $isFullyPaid) {

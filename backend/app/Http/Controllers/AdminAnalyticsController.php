@@ -23,7 +23,7 @@ class AdminAnalyticsController extends Controller
 
             $data = Cache::remember('admin_dashboard_stats', 30, function () {
                 $totalOrders   = Order::count();
-                $pendingOrders = Order::where('orderStatus', 'Pending')->count();
+                $pendingOrders = Order::whereIn('orderStatus', \App\Support\OrderStatus::spellings(\App\Support\OrderStatus::PENDING))->count();
                 $totalRevenue  = (float) Sale::where('status', 'completed')->sum('totalPrice');
                 $totalProducts = Product::where('isPublished', true)->count();
 

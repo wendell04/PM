@@ -7,6 +7,7 @@ import {
   updateTwoFactorMethod,
 } from "@/lib/authApi";
 import { fetchWithTimeout } from "@/lib/fetchWithTimeout";
+import { normalizeStatus } from "@/lib/orderStatus";
 import dynamic from "next/dynamic";
 import Image from "next/image";
 import Link from "next/link";
@@ -1745,13 +1746,15 @@ export default function CustomerProfilePage() {
             {/* TAB 1: Overview - Customer Dashboard */}
             {activeTab === "overview" && (() => {
               const orders = Array.isArray(overviewOrders) ? overviewOrders : [];
-              const inProgressStatuses = ["Pending", "Confirmed", "Processing", "awaiting_production", "pending_design", "proof_sent", "revision_requested", "design_approved", "in_production", "In Production", "for_qc", "For QC", "ready_for_delivery", "for_delivery", "For Delivery", "For Pick-up"];
+              // Statuses are stored in mixed spellings ("Pending", "pending", "For Delivery"), so a
+              // fixed list missed some; anything not finished is in progress.
+              const isInProgress = (o) => !!o.orderStatus && !['delivered', 'cancelled', 'returned'].includes(normalizeStatus(o.orderStatus));
               const total = orders.length;
-              const inProgress = orders.filter(o => inProgressStatuses.includes(o.orderStatus)).length;
-              const delivered = orders.filter(o => o.orderStatus === "Delivered").length;
+              const inProgress = orders.filter(isInProgress).length;
+              const delivered = orders.filter(o => normalizeStatus(o.orderStatus) === 'delivered').length;
               const totalSpent = orders.filter(o => o.paymentStatus === "paid").reduce((s, o) => s + (parseFloat(o.totalAmount) || 0), 0);
               const needsDesignApproval = orders.filter(o => o.designStatus === "proof_sent" || o.designStatus === "pending_approval");
-              const paymentDue = orders.filter(o => inProgressStatuses.includes(o.orderStatus) && o.paymentStatus !== "paid" && parseFloat(o.balance || 0) > 0);
+              const paymentDue = orders.filter(o => isInProgress(o) && o.paymentStatus !== "paid" && parseFloat(o.balance || 0) > 0);
               const hasActions = needsDesignApproval.length > 0 || paymentDue.length > 0;
 
               const statusLabel = (status) => {
@@ -1831,7 +1834,7 @@ export default function CustomerProfilePage() {
               const completePct = Math.round((completenessItems.filter(c => c.done).length / completenessItems.length) * 100);
 
               // Active order tracker
-              const activeOrder = orders.find(o => inProgressStatuses.includes(o.orderStatus));
+              const activeOrder = orders.find(isInProgress);
               // Does anything on THIS order have to be made? A scrunchie is picked off a shelf, so
               // showing it "In Production" and "For QC" describes work that will never happen, and
               // leaves the customer watching for stages the order can never reach. Same predicate
@@ -1860,7 +1863,7 @@ export default function CustomerProfilePage() {
                 : -1;
 
               // Pending reviews (delivered + paid)
-              const pendingReviews = orders.filter(o => o.orderStatus === "Delivered" && o.paymentStatus === "paid");
+              const pendingReviews = orders.filter(o => normalizeStatus(o.orderStatus) === 'delivered' && o.paymentStatus === "paid");
 
               // Voucher usage - derived from order data, no extra fetch needed
               const voucherOrders = orders.filter(o => o.voucherCode && o.voucherCode.trim() !== "");

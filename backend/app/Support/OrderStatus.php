@@ -89,6 +89,20 @@ class OrderStatus
     }
 
     /**
+     * Every spelling a status is stored under, for database queries - MongoDB matches strings
+     * exactly, and orders carry both "Delivered" and "delivered". Case variants only: the legacy
+     * design states that normalize() folds into pending are deliberately not included.
+     */
+    public static function spellings(string $code): array
+    {
+        $words = str_replace('_', ' ', $code);
+        $out   = [$code, ucwords($words), ucfirst($words)];
+        if ($code === self::FOR_QC)    $out[] = 'For QC';
+        if ($code === self::CANCELLED) array_push($out, 'canceled', 'Canceled');
+        return array_values(array_unique($out));
+    }
+
+    /**
      * Map any legacy / mixed-case value to a canonical fulfillment code.
      * Legacy custom design states (stored in orderStatus before Phase 1) collapse to their
      * fulfillment equivalent - the design detail belongs in `designStatus`.

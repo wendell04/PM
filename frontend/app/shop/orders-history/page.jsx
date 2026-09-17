@@ -319,7 +319,7 @@ function CustomOrderTracker({ orderStatus, designType, designStatus, paymentStat
   const effectiveType = isMixed ? 'mixed' : designType;
 
   const steps = effectiveType === 'upload' ? UPLOAD_STEPS : REQUEST_STEPS;
-  const isTerminal = orderStatus === 'Cancelled' || orderStatus === 'Returned';
+  const isTerminal = ['cancelled', 'returned'].includes(normalizeStatus(orderStatus));
   const statusLabel = CUSTOM_STATUS_LABEL[orderStatus] || humanizeStatus(orderStatus);
 
   function getStepIdx(status) {
@@ -2076,12 +2076,17 @@ export default function OrdersHistoryPage() {
                         const cf = Number(selectedOrder.courierFee ?? 0);
                         const sf = Number(selectedOrder.shippingFee ?? 0);
                         if (cf <= 0 && sf > 0) return null;
+                        // A cancelled or returned order has no delivery fee to settle - asking for cash
+                        // for a rider who is not coming would only confuse.
+                        if (['returned', 'cancelled'].includes(normalizeStatus(selectedOrder.orderStatus)) && !selectedOrder.courierFeePaid) return null;
                         const riderCollects = selectedOrder.courierFeeOnDelivery ?? true;
                         const dispatched = ['for_delivery', 'shipped', 'ready_for_pickup', 'out_for_delivery'].includes(normalizeStatus(selectedOrder.orderStatus));
                         const note = cf <= 0
                           ? 'We will send the exact fee in chat'
                           : selectedOrder.courierFeePaid
-                            ? 'Received - nothing to pay the rider'
+                            ? (String(selectedOrder.courierFeePaidMethod || '') === 'rider_cash'
+                                ? 'Paid to the rider in cash'
+                                : 'Received - nothing to pay the rider')
                             : !riderCollects
                               ? 'Pay it below before we ship'
                               : dispatched
@@ -2432,7 +2437,7 @@ export default function OrdersHistoryPage() {
                     Cancel Order
                   </button>
                 )}
-                {!detailLoading && !detailError && !selectedOrder?.isCustomOrder && selectedOrder?.orderStatus === 'Delivered' && selectedOrder?.items?.length > 0 && (
+                {!detailLoading && !detailError && !selectedOrder?.isCustomOrder && normalizeStatus(selectedOrder?.orderStatus) === 'delivered' && selectedOrder?.items?.length > 0 && (
                   <button onClick={handleReorder} disabled={reorderLoading} style={{ padding: '9px 20px', borderRadius: '8px', border: 'none', background: '#d4a843', color: '#000', fontSize: '0.875rem', fontWeight: 700, cursor: reorderLoading ? 'not-allowed' : 'pointer', opacity: reorderLoading ? 0.7 : 1, display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.39"/></svg>
                     {reorderLoading ? 'Adding...' : 'Reorder'}
