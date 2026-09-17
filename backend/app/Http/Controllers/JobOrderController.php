@@ -549,6 +549,15 @@ class JobOrderController extends Controller
                 $validated['notes'] = htmlspecialchars(strip_tags(trim($validated['notes'])), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
             }
 
+            // A QC verdict is recorded by Quality Control (submitQC): that is where the accepted
+            // count is taken, the materials are consumed and the order is released. Setting the
+            // status here skipped all of it - the job read "QC Passed" with its materials still
+            // reserved for good, and no inspection on record.
+            $wanted = $validated['joStatus'] ?? null;
+            if (in_array($wanted, ['QC_Passed', 'QC_Failed'], true) && $wanted !== $jobOrder->joStatus) {
+                return response()->json(['message' => 'QC results are recorded in Quality Control, not by changing the status here.'], 422);
+            }
+
             // -- Material availability at job release ------------------------------------
             // Nothing checked this before: a job could be started with an empty shelf and the
             // shortage only surfaced at QC, by which time the promise had already been made.

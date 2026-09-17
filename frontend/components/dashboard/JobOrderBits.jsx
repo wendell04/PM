@@ -17,6 +17,9 @@ export const JO_BADGE = {
 };
 
 export const JO_STATUSES = ['Queued', 'In Progress', 'QC_Pending', 'QC_Passed', 'QC_Failed', 'Completed', 'Cancelled'];
+// What the edit form may set by hand. A QC verdict is given in Quality Control, where the accepted
+// count is taken and the materials consumed; picking it here used to skip all of that.
+export const JO_EDITABLE_STATUSES = ['Queued', 'In Progress', 'QC_Pending', 'Completed', 'Cancelled'];
 
 export function JobOrderStatusBadge({ status }) {
   const c = JO_BADGE[status] || { bg: 'var(--dark2)', color: 'var(--gray)', border: 'var(--border)', label: status };

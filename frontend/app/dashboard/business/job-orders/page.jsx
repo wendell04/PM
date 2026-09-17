@@ -19,7 +19,7 @@ import { fetchAllOrders } from '@/lib/ordersApi';
 import { normalizeStatus } from '@/lib/orderStatus';
 import { orderNo } from '@/lib/orderNumber';
 import { joRisk, RISK_STYLE } from '@/lib/deliveryRisk';
-import { JO_BADGE, JO_STATUSES, JobOrderStatusBadge as StatusBadge, RushBadge, DesignPreview, designUrl, joDocId, fmtJODate, TableSkeleton } from '@/components/dashboard/JobOrderBits';
+import { JO_BADGE, JO_STATUSES, JO_EDITABLE_STATUSES, JobOrderStatusBadge as StatusBadge, RushBadge, DesignPreview, designUrl, joDocId, fmtJODate, TableSkeleton } from '@/components/dashboard/JobOrderBits';
 import { S, ICONS, SearchBar, SummaryCard, PaginationBar, EmptyState, usePagination, CustomSelect, ConfirmModal } from '../inventory-v2/shared';
 import { isCodMethod } from '@/lib/paymentMethod';
 import { needsJobOrder } from '@/lib/jobOrderEligibility';
@@ -241,7 +241,7 @@ function JobOrderForm({ initial = EMPTY_FORM, isEdit = false, orders = [], order
           <div>
             <label style={S.label}>Status *</label>
             <CustomSelect value={form.joStatus || ''} onChange={v => set('joStatus', v)} disabled={isSubmitting} error={!!errors.joStatus} style={{ width: '100%' }}
-              options={JO_STATUSES.map(s => ({ value: s, label: JO_BADGE[s]?.label ?? s }))} />
+              options={[...new Set([...(form.joStatus ? [form.joStatus] : []), ...JO_EDITABLE_STATUSES])].map(s => ({ value: s, label: JO_BADGE[s]?.label ?? s }))} />
             {errors.joStatus && <span style={S.errText}>{errors.joStatus}</span>}
           </div>
           <div>
