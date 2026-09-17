@@ -37,8 +37,11 @@ const PASSWORD_CHECKS = (pwd) => [
   { label: 'Special character',      pass: /[!@#$%^&*(),.?":{}|<>]/.test(pwd) },
 ];
 
+// "admin" is the Super Admin (the system/developer account). It used to read "Administrator", the
+// same name as the department role, so two very different accounts looked alike.
 const PROTECTED_ROLE_LABELS = {
-  admin: 'Administrator',
+  superAdmin: 'Super Admin',
+  admin: 'Super Admin',
   owner: 'Owner',
   customer: 'Customer',
 };
@@ -61,7 +64,7 @@ const BADGE_PALETTE = [
 ];
 
 function getRoleBadgeStyle(role, availableRoles = []) {
-  if (role === 'admin' || role === 'owner') return { background: 'var(--gold)', color: 'var(--black)' };
+  if (role === 'superAdmin' || role === 'admin' || role === 'owner') return { background: 'var(--gold)', color: 'var(--black)' };
   const idx = availableRoles.findIndex((r) => r.value === role);
   return idx >= 0 ? BADGE_PALETTE[idx % BADGE_PALETTE.length] : { background: 'var(--gray)', color: 'var(--white)' };
 }
@@ -166,7 +169,11 @@ export default function UserManagementPage() {
 
   React.useEffect(() => () => { if (toastTimerRef.current) clearTimeout(toastTimerRef.current); }, []);
 
-  const isPrivilegedRole = (role) => role === 'admin' || role === 'owner';
+  const isPrivilegedRole = (role) => role === 'superAdmin' || role === 'admin' || role === 'owner';
+  const isSuperAdmin = ['superAdmin', 'admin'].includes(currentUser?.role);
+  // Only a Super Admin can make the store owner's account; it sits on top of the grid's roles.
+  const OWNER_OPTION = { value: 'owner', label: 'Owner (store owner - full business access)' };
+  const formRoles = (isCreate) => (isCreate && isSuperAdmin ? [...availableRoles, OWNER_OPTION] : availableRoles);
 
   useEffect(() => {
     if (!currentUser) return;
@@ -296,7 +303,7 @@ export default function UserManagementPage() {
         return 'Password must be at least 8 characters.';
       }
     }
-    if (!availableRoles.some((r) => r.value === form.role)) {
+    if (!formRoles(isCreate).some((r) => r.value === form.role)) {
       return 'Please select a valid role.';
     }
     if (!isCreate && form.password && form.password.length > 0 && form.password.length < 8) {
@@ -541,7 +548,9 @@ export default function UserManagementPage() {
             const role = member.role;
             const badge = getRoleBadgeStyle(role, availableRoles);
             const roleLabel = PROTECTED_ROLE_LABELS[role] ?? availableRoles.find((r) => r.value === role)?.label ?? role;
-            const locked = isPrivilegedRole(role);
+            // A Super Admin may still delete an Owner nobody has signed in to yet - the fix for a typo.
+            const unusedOwner = role === 'owner' && !member.lastLogin && isSuperAdmin;
+            const locked = isPrivilegedRole(role) && !unusedOwner;
 
             return (
               <div
@@ -606,6 +615,7 @@ export default function UserManagementPage() {
                           border: '1px solid var(--border)', borderRadius: '8px',
                           boxShadow: '0 8px 24px rgba(0,0,0,0.28)', overflow: 'hidden',
                         }}>
+                          {role !== 'owner' && (<>
                           <button
                             type="button"
                             onClick={() => { setOpenMenuId(null); openEdit(member); }}
@@ -625,6 +635,7 @@ export default function UserManagementPage() {
                             Edit
                           </button>
                           <div style={{ height: '1px', background: 'var(--border)' }} />
+                          </>)}
                           <button
                             type="button"
                             onClick={() => { setOpenMenuId(null); setDeleteTarget(member); setDeleteError(null); }}
@@ -775,9 +786,17 @@ export default function UserManagementPage() {
                   <CustomSelect
                     value={form.role}
                     onChange={(v) => setField('role', v)}
-                    options={availableRoles.map((r) => ({ value: r.value, label: r.label }))}
+                    options={formRoles(selectedStaff == null).map((r) => ({ value: r.value, label: r.label }))}
                     placeholder="Choose a role"
                   />
+                )}
+                {form.role === 'owner' && selectedStaff == null && (
+                  <div style={{ marginTop: '8px', padding: '10px 12px', borderRadius: '8px', background: 'rgba(212,168,67,0.08)', border: '1px solid rgba(212,168,67,0.35)', fontSize: '0.8rem', color: 'var(--white)', lineHeight: 1.55 }}>
+                    The Owner sees and runs the whole business: orders, sales, payments, staff, permissions and
+                    settings. Use the store's own email - an Owner login cannot shop. Give them the password, and
+                    ask them to change it and turn on two-step login in Settings &gt; Security. After they first
+                    sign in, this account can no longer be edited or deleted here.
+                  </div>
                 )}
 
               </div>

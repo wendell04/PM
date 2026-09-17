@@ -44,13 +44,22 @@ class StaffController extends Controller
                 return $this->unauthorizedResponse();
             }
 
+            // The store owner's account is made here too, by a Super Admin only - it is not a row in the
+            // permission grid, so it is offered on top of the grid's roles. canAssignRole below is what
+            // actually refuses anyone else.
+            $assignable = $this->getStaffRoles();
+            if (\App\Support\Rbac::isSuperAdmin($request->user())) {
+                $assignable[] = config('rbac.owner_role', 'owner');
+            }
+
             $validated = $request->validate([
                 'firstName' => 'required|string|max:100',
                 'lastName'  => 'required|string|max:100',
                 'email'     => 'required|email',
                 'password'  => 'nullable|string|min:8',
-                'role'      => 'required|string|in:' . implode(',', $this->getStaffRoles()),
+                'role'      => 'required|string|in:' . implode(',', $assignable),
             ]);
+            $makingOwner = $validated['role'] === config('rbac.owner_role', 'owner');
 
             // Escalation guard: cannot create an account at or above your own level.
             if (!\App\Support\Rbac::canAssignRole($request->user(), $validated['role'])) {
@@ -60,6 +69,14 @@ class StaffController extends Controller
             $existing = User::emailIs($validated['email'])->first();
             if ($existing && ($existing->role ?? 'customer') !== 'customer') {
                 $msg = 'This email is already a staff account.';
+                return response()->json(['success' => false, 'message' => $msg, 'errors' => ['email' => [$msg]]], 422);
+            }
+
+            // An Owner account cannot shop (the cart is switched off for it), so turning someone's
+            // customer account into the Owner would strand their cart and orders. The owner's business
+            // login is its own account.
+            if ($existing && $makingOwner) {
+                $msg = 'This email already shops here. The Owner login cannot shop, so use a separate email for it - for example the store\'s business email.';
                 return response()->json(['success' => false, 'message' => $msg, 'errors' => ['email' => [$msg]]], 422);
             }
 
@@ -119,8 +136,8 @@ class StaffController extends Controller
             ]);
 
             $this->logActivity(
-                $request, 'user.created', 'user', (string) $staff->_id,
-                "Created staff {$staff->email} with role {$staff->role}",
+                $request, $makingOwner ? 'user.owner_created' : 'user.created', 'user', (string) $staff->_id,
+                $makingOwner ? "Created the Owner account {$staff->email}" : "Created staff {$staff->email} with role {$staff->role}",
                 ['email' => $staff->email, 'role' => $staff->role]
             );
 
@@ -230,8 +247,15 @@ class StaffController extends Controller
             $staff = User::find($id);
             if (!$staff) return $this->notFoundResponse('Staff');
 
-            if (\App\Support\Rbac::isSuperAdmin($staff) || \App\Support\Rbac::isOwner($staff)) {
-                return $this->errorResponse('Cannot delete Super Admin or Owner accounts.', 403);
+            // An Owner is protected - except from a Super Admin before that Owner has ever signed in,
+            // so a mistyped email can be fixed. Once the owner is using it, it is theirs.
+            $unusedOwner = \App\Support\Rbac::isOwner($staff)
+                && empty($staff->lastLogin) && empty($staff->last_login_at)
+                && \App\Support\Rbac::isSuperAdmin($request->user());
+            if (\App\Support\Rbac::isSuperAdmin($staff) || (\App\Support\Rbac::isOwner($staff) && !$unusedOwner)) {
+                return $this->errorResponse(\App\Support\Rbac::isOwner($staff)
+                    ? 'The Owner account has been used, so it cannot be deleted here.'
+                    : 'Cannot delete Super Admin accounts.', 403);
             }
 
             // Prevent self-deletion
