@@ -391,7 +391,10 @@ function CustomOrderInner() {
     }
     return Math.max(product.availableQty ?? product.stock ?? 0, 0);
   })();
-  const qtyCeiling = Math.max(moq, Math.min(maxQty, MAX_QTY));
+  // "Ask for a quote above": past that many pieces the run is quoted, not sold at the last tier, and
+  // the checkout refuses it - so the field stops there and says where to go instead.
+  const quoteAbove = Number(product?.quoteAboveQty) > 0 ? Number(product.quoteAboveQty) : null;
+  const qtyCeiling = Math.max(moq, Math.min(maxQty, MAX_QTY, quoteAbove ?? Infinity));
   // Inquiry (quotation) products have no computable price - they go through the quote flow
   // (request now, owner sends a quote, customer pays it later), never a direct ₱0 checkout.
   const isInquiry = (product?.priceType ?? product?.pricingMode) === 'inquiry';
@@ -1192,6 +1195,11 @@ function CustomOrderInner() {
                     <span style={{ marginLeft: '0.5rem', color: 'var(--gray)', fontSize: '0.85rem' }}>{fmt(unitPrice)} / pc</span>
                   )}
                 </div>
+                {quoteAbove != null && quantity >= quoteAbove && quoteAbove <= maxQty && (
+                  <p style={{ margin: '0.5rem 0 0', fontSize: '0.75rem', color: 'var(--gray)', lineHeight: 1.5 }}>
+                    Need more than {quoteAbove} pcs? Larger runs are priced by quote - message us from the chat.
+                  </p>
+                )}
               </div>
             </section>
 

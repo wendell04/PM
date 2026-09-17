@@ -272,6 +272,14 @@ class RealDataSeeder extends Seeder
         };
 
         $prod = function (array $d) use ($now): Product {
+            // A tier list that ends "501 and above" would otherwise sell any run at the last price.
+            // Above QUOTE_ABOVE pieces the product page asks for a quote instead.
+            if (($d['priceType'] ?? null) === 'tiered' && !array_key_exists('quoteAboveQty', $d)) {
+                $last = collect($d['priceTiers'] ?? [])->sortBy('minQty')->last();
+                if ($last && ($last['maxQty'] ?? null) === null && (int) $last['minQty'] <= \App\Console\Commands\SetQuoteAbove::DEFAULT_QTY) {
+                    $d['quoteAboveQty'] = \App\Console\Commands\SetQuoteAbove::DEFAULT_QTY;
+                }
+            }
             return Product::create(array_merge([
                 'isActive'            => true,
                 'isPublished'         => true,

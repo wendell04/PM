@@ -200,6 +200,12 @@ class OrderController extends Controller
                     }
                 }
 
+                // Thrown as a validation error so the customer reads the reason, and the outer catch
+                // still releases any material already claimed.
+                if ($quoteMsg = PriceResolver::quoteRequiredMessage($product, $qty)) {
+                    throw \Illuminate\Validation\ValidationException::withMessages(['items' => [$quoteMsg]]);
+                }
+
                 $unitPrice = PriceResolver::resolve($product, $qty, $variantId, $appliedFlashSale);
 
                 if ($unitPrice === null) {
@@ -2497,10 +2503,13 @@ class OrderController extends Controller
             $maxes = [];
             foreach ($lines as $idx => $line) {
                 $product = Product::find($line['productId'] ?? null);
+                // Past "Ask for a quote above" the quantity is quoted, not sold - the cart stops there
+                // too, whatever the stock would allow.
+                $quoteCap = (int) ($product->quoteAboveQty ?? 0) > 0 ? (int) $product->quoteAboveQty : null;
                 $bom     = MaterialClaim::bomFor($product, $line['variantId'] ?? null);
-                if (!$bom || empty($bom->components)) { $maxes[$idx] = null; continue; }
+                if (!$bom || empty($bom->components)) { $maxes[$idx] = $quoteCap; continue; }
                 // Null = no ceiling. On a pre-order line there genuinely is none.
-                if ((bool) ($product->allowPreorder ?? false)) { $maxes[$idx] = null; continue; }
+                if ((bool) ($product->allowPreorder ?? false)) { $maxes[$idx] = $quoteCap; continue; }
 
                 $max = null;
                 foreach ($bom->components as $component) {
@@ -2514,6 +2523,7 @@ class OrderController extends Controller
                 }
                 // Null means nothing counted constrains it - not zero. Zero here would read as
                 // "sold out" on a product whose every material is cost-only.
+                if ($quoteCap !== null) $max = $max === null ? $quoteCap : min($max, $quoteCap);
                 $maxes[$idx] = $max;
             }
 

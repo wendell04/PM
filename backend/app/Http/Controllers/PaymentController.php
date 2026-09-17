@@ -151,6 +151,10 @@ class PaymentController extends Controller
                     }
                 }
 
+                if ($quoteMsg = PriceResolver::quoteRequiredMessage($product, $qty)) {
+                    return $this->errorResponse($quoteMsg, 422);
+                }
+
                 $unitPrice = PriceResolver::resolve($product, $qty, $variantId, $appliedFlashSale);
 
                 if ($unitPrice === null) {
@@ -767,6 +771,10 @@ class PaymentController extends Controller
                     if ($fs && ($fs->stockLimit === null || ($fs->stockUsed ?? 0) < $fs->stockLimit)) {
                         $appliedFlashSale = $fs;
                     }
+                }
+
+                if ($quoteMsg = PriceResolver::quoteRequiredMessage($product, $qty)) {
+                    return $this->errorResponse($quoteMsg, 422);
                 }
 
                 $unitPrice = PriceResolver::resolve($product, $qty, $variantId, $appliedFlashSale);
