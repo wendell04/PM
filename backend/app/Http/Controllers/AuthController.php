@@ -48,7 +48,7 @@ class AuthController extends Controller
             ]);
 
             // Manual uniqueness checks for MongoDB
-            $emailExists = User::where('email', $request->email)
+            $emailExists = User::emailIs($request->email)
                 ->where('is_verified', true)
                 ->exists();
 
@@ -80,7 +80,7 @@ class AuthController extends Controller
             // Disposable domain check above is sufficient protection.
 
             // Delete any unverified accounts with this email
-            User::where('email', $request->email)->where('is_verified', false)->delete();
+            User::emailIs($request->email)->where('is_verified', false)->delete();
 
             $plainCode = str_pad(random_int(0, 999999), 6, '0', STR_PAD_LEFT);
             $hashedCode = Hash::make($plainCode);
@@ -166,7 +166,7 @@ class AuthController extends Controller
             ]);
 
             $ip = $request->ip();
-            $user = User::where('email', $request->email)->first();
+            $user = User::emailIs($request->email)->first();
 
             if (!$user) {
                 // Constant-time: run a dummy hash so response timing doesn't reveal whether the email
@@ -356,7 +356,7 @@ class AuthController extends Controller
                 'code'  => 'required|string|size:6',
             ]);
 
-            $user = User::where('email', $request->email)->first();
+            $user = User::emailIs($request->email)->first();
 
             if (!$user) {
                 return $this->errorResponse('No account found with this email address.', 400);
@@ -435,7 +435,7 @@ class AuthController extends Controller
         try {
             $request->validate(['email' => 'required|email']);
 
-            $user = User::where('email', $request->email)->first();
+            $user = User::emailIs($request->email)->first();
 
             if (!$user) {
                 return $this->successResponse('If an account with that email exists, a new verification code has been sent.');
@@ -495,7 +495,7 @@ class AuthController extends Controller
             $request->validate(['email' => 'required|email']);
 
             // Only send reset link to verified users (users with existing accounts)
-            $user = User::where('email', $request->email)->where('is_verified', true)->first();
+            $user = User::emailIs($request->email)->where('is_verified', true)->first();
 
             // Always return same message for security (don't reveal if email exists or verification status)
             if (!$user) {
@@ -544,7 +544,7 @@ class AuthController extends Controller
                 'token' => 'required|string|min:20',
             ]);
 
-            $user = User::where('email', $request->email)->where('is_verified', true)->first();
+            $user = User::emailIs($request->email)->where('is_verified', true)->first();
             if (!$user || !$user->reset_token || !$user->reset_token_expires_at) {
                 return $this->errorResponse('Invalid or expired link.', 400);
             }
@@ -574,7 +574,7 @@ class AuthController extends Controller
                 'code' => 'required|string|size:6',
             ]);
 
-            $user = User::where('email', $request->email)->first();
+            $user = User::emailIs($request->email)->first();
 
             if (!$user) {
                 return $this->errorResponse('Invalid or expired code.', 400);
@@ -611,7 +611,7 @@ class AuthController extends Controller
                 'token' => 'required|string|min:20',
             ]);
 
-            $user = User::where('email', $request->email)->where('is_verified', true)->first();
+            $user = User::emailIs($request->email)->where('is_verified', true)->first();
 
             if (!$user) {
                 return $this->successResponse('A reset code has been sent.');
@@ -666,7 +666,7 @@ class AuthController extends Controller
                 'password' => ['required', 'confirmed', Password::min(8)->mixedCase()->numbers()->symbols()],
             ]);
 
-            $user = User::where('email', $request->email)->first();
+            $user = User::emailIs($request->email)->first();
 
             if (!$user) {
                 return $this->errorResponse('Invalid or expired reset code. Please request a new one.', 400);
@@ -895,7 +895,7 @@ class AuthController extends Controller
 
             // Any locked account (customer or staff) may request an unlock - a locked admin must not
             // be shut out. Primary self-service recovery is still password reset (which clears the lock).
-            $user = User::where('email', $request->email)->first();
+            $user = User::emailIs($request->email)->first();
 
             if (!$user) {
                 // Return success to avoid user enumeration

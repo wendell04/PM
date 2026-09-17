@@ -111,7 +111,7 @@ class ChatInspect extends Command
     {
         if (!$val) return null;
         if (str_contains($val, '@')) {
-            $u = User::where('email', $val)->first();
+            $u = User::emailIs($val)->first();
             return $u ? (string) $u->_id : $val;
         }
         return $val;

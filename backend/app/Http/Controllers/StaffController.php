@@ -47,10 +47,20 @@ class StaffController extends Controller
             $validated = $request->validate([
                 'firstName' => 'required|string|max:100',
                 'lastName'  => 'required|string|max:100',
-                'email'     => 'required|email|unique:users,email',
+                'email'     => 'required|email',
                 'password'  => 'required|string|min:8',
                 'role'      => 'required|string|in:' . implode(',', $this->getStaffRoles()),
             ]);
+
+            // One account is one role. An address already used to shop cannot also be a staff login -
+            // say so plainly instead of "the email has already been taken".
+            $existing = User::emailIs($validated['email'])->first();
+            if ($existing) {
+                $msg = ($existing->role ?? 'customer') === 'customer'
+                    ? 'This email already belongs to a customer account. Staff need their own login - use a different email, e.g. name+staff@gmail.com (it still arrives in the same Gmail inbox).'
+                    : 'This email is already a staff account.';
+                return response()->json(['success' => false, 'message' => $msg, 'errors' => ['email' => [$msg]]], 422);
+            }
 
             // Escalation guard: cannot create an account at or above your own level.
             if (!\App\Support\Rbac::canAssignRole($request->user(), $validated['role'])) {

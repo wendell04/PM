@@ -516,6 +516,7 @@ export default function BusinessDashboardLayout({ children }) {
     return false;
   };
   const can = (key) => {
+    if (Array.isArray(key)) return key.some(can);
     if (!currentUser) return false;
     if (currentUser.role === "owner") return true;
     // Super Admin: optimistic until perms load (avoids nav flash); then the
@@ -558,20 +559,21 @@ export default function BusinessDashboardLayout({ children }) {
     {
       name: "Job Orders",
       href: "/dashboard/business/job-orders",
-      permKey: "production",
+      // The role grid grants production work as "jobOrders"; the server accepts either key.
+      permKey: ["jobOrders", "production"],
       icon: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4",
     },
     { type: "divider", label: "Production" },
     {
       name: "Production",
       href: "/dashboard/business/production-preview",
-      permKey: "production",
+      permKey: ["jobOrders", "production"],
       icon: "M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z",
     },
     {
       name: "Quality Control",
       href: "/dashboard/business/qc-preview",
-      permKey: "qc",
+      permKey: ["jobOrders", "qc"],
       icon: "M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z",
     },
     { type: "divider", label: "Inventory" },
@@ -670,26 +672,28 @@ export default function BusinessDashboardLayout({ children }) {
     {
       name: "Staff",
       href: "/dashboard/business/users",
-      permKey: "userManagement",
+      // Staff, Customers, Permissions and the customer inbox are Owner / Super Admin only on the
+      // server, so a department role saw them here and got an error page or an empty inbox.
+      adminOnly: true,
       icon: "M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z",
     },
     {
       name: "Customers",
       href: "/dashboard/business/customers",
-      permKey: "userManagement",
+      adminOnly: true,
       icon: "M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75M9 7a4 4 0 100 8 4 4 0 000-8z",
     },
     {
       name: "Permissions",
       href: "/dashboard/business/role-permissions",
-      permKey: "userManagement",
+      adminOnly: true,
       icon: "M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z",
     },
     { type: "divider", label: "Admin" },
     {
       name: "Messages",
       href: "/dashboard/business/chat",
-      permKey: "dashboard",
+      adminOnly: true,
       icon: "M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z",
     },
     {
@@ -701,7 +705,8 @@ export default function BusinessDashboardLayout({ children }) {
     {
       name: "Settings",
       href: "/dashboard/business/settings",
-      permKey: "dashboard",
+      // The shop's settings API is owner/admin only, so staff would only ever get an error page.
+      adminOnly: true,
       icon: "M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z",
     },
   ];

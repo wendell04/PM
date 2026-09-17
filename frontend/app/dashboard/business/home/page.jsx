@@ -37,18 +37,18 @@ const peso = (v) => '₱' + Number(v || 0).toLocaleString('en-PH', { minimumFrac
 const MODULES = [
   { key: 'orders',      name: 'Orders',        href: '/dashboard/business/orders',        d: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2' },
   { key: 'orderRequests', name: 'Order Requests', href: '/dashboard/business/order-requests', d: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z' },
-  { key: 'jobOrders',   name: 'Job Orders',    href: '/dashboard/business/job-orders',    d: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z' },
-  { key: 'production',  name: 'Production',    href: '/dashboard/business/production',    d: 'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z' },
-  { key: 'qualityControl', name: 'Quality Control', href: '/dashboard/business/quality-control', d: 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z' },
+  { key: ['jobOrders', 'production'], name: 'Job Orders', href: '/dashboard/business/job-orders',    d: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z' },
+  { key: ['jobOrders', 'production'], name: 'Production', href: '/dashboard/business/production-preview',    d: 'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z' },
+  { key: ['jobOrders', 'qc'], name: 'Quality Control', href: '/dashboard/business/qc-preview', d: 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z' },
   { key: 'inventory',   name: 'Inventory',     href: '/dashboard/business/inventory-v2',  d: 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4' },
   { key: 'inventory',   name: 'To Buy',        href: '/dashboard/business/to-buy',        d: 'M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17' },
   { key: 'products',    name: 'Catalog',       href: '/dashboard/business/products-v2',   d: 'M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10' },
   { key: 'payments',    name: 'Payments',      href: '/dashboard/business/payments',      d: 'M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z' },
   { key: 'sales',       name: 'Sales',         href: '/dashboard/business/sales',         d: 'M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z' },
-  { key: 'chat',        name: 'Messages',      href: '/dashboard/business/chat',          d: 'M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.86 9.86 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z' },
-  { key: 'customers',   name: 'Customers',     href: '/dashboard/business/customers',     d: 'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z' },
+  { key: 'ownerOnly',   name: 'Messages',      href: '/dashboard/business/chat',          d: 'M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.86 9.86 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z' },
+  { key: 'ownerOnly',   name: 'Customers',     href: '/dashboard/business/customers',     d: 'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z' },
   { key: 'reports',     name: 'Reports',       href: '/dashboard/business/reports',       d: 'M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z' },
-  { key: 'settings',    name: 'Settings',      href: '/dashboard/business/settings',      d: 'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z' },
+  { key: 'ownerOnly',   name: 'Settings',      href: '/dashboard/business/settings',      d: 'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z' },
 ];
 
 const SUPER = ['superAdmin', 'admin', 'owner'];
@@ -121,11 +121,16 @@ export default function StaffHome() {
   useEffect(() => { load(); }, [load]);
 
   const isSuper = SUPER.includes(currentUser?.role);
+  // Same rule as the sidebar and the server: a module is open when its switch is on or any of its
+  // actions is ("jobOrders.view" opens Job Orders). A list means any one of those keys.
   const allows = useCallback((key) => {
+    if (Array.isArray(key)) return key.some(k => allows(k));
     if (isSuper) return true;
-    if (!perms) return false;
-    const g = perms?.[key] ?? perms?.permissions?.[key];
-    return g === true || (g && typeof g === 'object' && Object.values(g).some(Boolean));
+    if (!perms || key === 'ownerOnly') return false;
+    const grid = perms?.permissions ?? perms;
+    const g = grid?.[key];
+    if (g === true || (g && typeof g === 'object' && Object.values(g).some(Boolean))) return true;
+    return Object.keys(grid || {}).some(k => k.startsWith(key + '.') && grid[k] === true);
   }, [perms, isSuper]);
 
   // ── What is stuck. Derived from the orders already fetched, so no extra calls. ──
@@ -428,7 +433,7 @@ export default function StaffHome() {
             <SummaryCard label="Materials to buy" value={toBuy?.totalItems ?? '-'}
               color={toBuy?.totalItems > 0 ? 'var(--gold)' : 'var(--white)'}
               sub={toBuy ? `About ${peso(toBuy.estimatedCost)} to cover committed work` : 'Needs inventory access'} />
-            {allows('chat') && (
+            {allows('ownerOnly') && (
               <div onClick={() => router.push('/dashboard/business/chat')}
                 style={{ ...S.cardSm, flex: 1, minWidth: '140px', cursor: 'pointer',
                   borderTop: unread > 0 ? '3px solid var(--gold)' : undefined }}>

@@ -30,10 +30,16 @@ class ProfileController extends Controller
                 'address' => 'required|string|min:3',
             ]);
 
+            // The rule above compares capitals exactly; this catches "Name@gmail.com" vs "name@gmail.com".
+            $taken = User::emailIs($request->email)->where('_id', '!=', $user->_id)->exists();
+            if ($taken) {
+                return response()->json(['success' => false, 'message' => 'The email has already been taken.', 'errors' => ['email' => ['The email has already been taken.']]], 422);
+            }
+
             $san = fn(string $v) => htmlspecialchars(strip_tags(trim($v)), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 
             $changedFields = [];
-            if ($user->email !== $request->email) $changedFields[] = 'email';
+            if (strtolower((string) $user->email) !== strtolower(trim((string) $request->email))) $changedFields[] = 'email';
             if ($user->phoneNumber !== $request->phoneNumber) $changedFields[] = 'phoneNumber';
 
             $user->firstName   = $san($request->firstName);

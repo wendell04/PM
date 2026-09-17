@@ -162,6 +162,13 @@ export default function SettingsPage() {
 
   // ── Tab ───────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState('profile');
+  // Other modules link straight to a tab (Messages -> ?tab=chat), so the owner never has to hunt for it.
+  useEffect(() => {
+    const wanted = new URLSearchParams(window.location.search).get('tab');
+    if (['profile', 'security', 'shipping', 'chat', 'integrations', 'terms', 'notifications', 'appearance'].includes(wanted)) {
+      setActiveTab(wanted);
+    }
+  }, []);
 
   // ── Loading ───────────────────────────────────────────────
   const [isLoading, setIsLoading] = useState(true);

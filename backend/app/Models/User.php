@@ -106,6 +106,26 @@ class User extends Authenticatable
     ];
 
     /**
+     * An email address is one identity whatever its capitals. MongoDB compares strings exactly, so
+     * a staff account typed as "Dummersync@gmail.com" could never be signed into as
+     * "dummersync@gmail.com". Every address is stored lowercase from here on.
+     */
+    public function setEmailAttribute($value): void
+    {
+        $this->attributes['email'] = is_string($value) ? strtolower(trim($value)) : $value;
+    }
+
+    /**
+     * Find a user by email ignoring capitals and stray spaces. Use this for every lookup by email -
+     * accounts saved before emails were lowercased may still carry capitals.
+     */
+    public function scopeEmailIs($query, ?string $email)
+    {
+        $email = strtolower(trim((string) $email));
+        return $query->where('email', 'regex', new \MongoDB\BSON\Regex('^' . preg_quote($email, '/') . '$', 'i'));
+    }
+
+    /**
      * Session token lifetime by role + "remember me" (single source of truth for login,
      * refresh, and post-2FA token minting). Staff/admin sessions are short-lived when
      * "remember me" is off (sensitive accounts on shared devices); customers keep a long
