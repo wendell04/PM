@@ -2077,7 +2077,7 @@ export default function OrdersHistoryPage() {
                         const sf = Number(selectedOrder.shippingFee ?? 0);
                         if (cf <= 0 && sf > 0) return null;
                         const riderCollects = selectedOrder.courierFeeOnDelivery ?? true;
-                        const dispatched = ['for_delivery', 'shipped', 'ready_for_pickup', 'out_for_delivery'].includes(String(selectedOrder.orderStatus));
+                        const dispatched = ['for_delivery', 'shipped', 'ready_for_pickup', 'out_for_delivery'].includes(normalizeStatus(selectedOrder.orderStatus));
                         const note = cf <= 0
                           ? 'We will send the exact fee in chat'
                           : selectedOrder.courierFeePaid
@@ -2128,12 +2128,14 @@ export default function OrdersHistoryPage() {
                     )}
 
                     {/* Out for delivery with the fee still owed to a rider who collects: the online
-                        option has closed, so say plainly what happens instead. */}
+                        option has closed, so say plainly what happens instead. Every status test here
+                        goes through normalizeStatus - the admin stores 'For Delivery', and an exact
+                        'for_delivery' kept the online fee payment open after the parcel had left. */}
                     {Number(selectedOrder.courierFee) > 0
                       && !selectedOrder.courierFeePaid
                       && selectedOrder.paymentMethod !== 'cod'
                       && (selectedOrder.courierFeeOnDelivery ?? true)
-                      && ['for_delivery', 'shipped', 'ready_for_pickup', 'out_for_delivery'].includes(String(selectedOrder.orderStatus))
+                      && ['for_delivery', 'shipped', 'ready_for_pickup', 'out_for_delivery'].includes(normalizeStatus(selectedOrder.orderStatus))
                       && (
                       <div style={{ padding: '0 18px 18px' }}>
                         <div style={{ padding: '10px 12px', background: 'var(--dark)', borderRadius: '8px', border: '1px solid rgba(212,168,67,0.35)', fontSize: '0.78rem', color: 'var(--gray-light)', lineHeight: 1.55 }}>
@@ -2157,8 +2159,8 @@ export default function OrdersHistoryPage() {
                       && !selectedOrder.courierFeePaid
                       && selectedOrder.paymentStatus === 'paid'
                       && selectedOrder.paymentMethod !== 'cod'
-                      && !['cancelled', 'delivered', 'completed'].includes(String(selectedOrder.orderStatus))
-                      && !(['for_delivery', 'shipped', 'ready_for_pickup', 'out_for_delivery'].includes(String(selectedOrder.orderStatus))
+                      && !['cancelled', 'delivered', 'completed'].includes(normalizeStatus(selectedOrder.orderStatus))
+                      && !(['for_delivery', 'shipped', 'ready_for_pickup', 'out_for_delivery'].includes(normalizeStatus(selectedOrder.orderStatus))
                         && (selectedOrder.courierFeeOnDelivery ?? true))
                       && (
                       <div style={{ padding: '0 18px 18px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -2187,7 +2189,7 @@ export default function OrdersHistoryPage() {
                     {/* The order is finished and waiting on money. The bell notification is easy to
                         miss, and the Pay Now block below says what to press without saying why it
                         matters now, so the reason sits right above it. */}
-                    {['ready_for_delivery', 'for_delivery'].includes(String(selectedOrder.orderStatus))
+                    {['ready_for_delivery', 'for_delivery'].includes(normalizeStatus(selectedOrder.orderStatus))
                       && selectedOrder.paymentStatus !== 'paid'
                       && selectedOrder.paymentMethod !== 'cod'
                       && remainingDue(selectedOrder) > 0 && (

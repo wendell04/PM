@@ -55,14 +55,6 @@ const absorbPending = (fresh, prev) => {
 
 const listSig = (l) => l.map(m => (m.clientKey || m._id) + (m.pending ? ':p' : ':c')).join('|');
 
-const FAQS = [
-  { q: 'How do I place a custom order?' },
-  { q: 'How long does delivery take?' },
-  { q: 'What payment methods do you accept?' },
-  { q: 'Can I request a sample before ordering?' },
-  { q: 'What is your return and refund policy?' },
-];
-
 const TypingDots = () => (
   <div className="cw-typing-bubble">
     <span /><span /><span />
@@ -392,8 +384,9 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
     return () => clearInterval(t);
   }, []);
 
-  // The owner's quick questions (Settings -> Chat). Until they load - or if none are saved - the
-  // built-in list stands in, so the home view never opens empty.
+  // The owner's quick questions (Settings -> Chat). Nothing is shown until they load: a built-in list
+  // used to stand in, and its questions had no saved answers behind them - tapping one sent a
+  // question the automatic replies could never match.
   const [quickQuestions, setQuickQuestions] = useState(null);
   useEffect(() => {
     fetch(`${API_URL}/api/storefront/content/chat_auto_replies`)
@@ -675,10 +668,10 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
                 {/* Hidden while signed out. These are not help articles - each one calls
                     handleFaqClick, which puts the question into a chat thread, and a guest has no
                     thread, so every row was a login modal under a heading promising answers. */}
-                {user && (quickQuestions ?? FAQS.map(f => f.q)).length > 0 && (
+                {user && (quickQuestions ?? []).length > 0 && (
                 <div className="cw-faq-section">
                   <div className="cw-faq-label">Common questions</div>
-                  {(quickQuestions ?? FAQS.map(f => f.q)).map((q, i) => (
+                  {(quickQuestions ?? []).map((q, i) => (
                     <button key={i} type="button" className="cw-faq-item" onClick={() => handleFaqClick(q)}>
                       <span>{q}</span>
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" style={{ flexShrink: 0 }}><polyline points="9 18 15 12 9 6" /></svg>

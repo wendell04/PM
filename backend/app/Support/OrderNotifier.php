@@ -255,8 +255,13 @@ final class OrderNotifier
             $feeNote = '';
             if ($fee > 0.009 && !$paid && in_array($key, ['ready_for_delivery', 'for_delivery'], true)) {
                 $amount  = 'P' . number_format($fee, 2);
+                // Once it has left, "pay it before we send the order out" is a promise already broken,
+                // and My Orders closes the online option for a rider who collects - so the only thing
+                // left to say is the cash.
                 $feeNote = $rider
-                    ? 'The ' . $amount . ' delivery fee is still unpaid. Pay it in My Orders before we send the order out, or have ' . $amount . ' ready in cash for the rider.'
+                    ? ($key === 'for_delivery'
+                        ? 'The ' . $amount . ' delivery fee is still unpaid - please have ' . $amount . ' ready in cash for the rider.'
+                        : 'The ' . $amount . ' delivery fee is still unpaid. Pay it in My Orders before we send the order out, or have ' . $amount . ' ready in cash for the rider.')
                     : 'The ' . $amount . ' delivery fee is still unpaid. This one goes by parcel courier, which cannot take cash on arrival, so please settle it in My Orders.';
             }
 
