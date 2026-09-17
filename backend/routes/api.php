@@ -292,8 +292,6 @@ Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
     // RBAC: system settings - Owner / Super Admin only (no staff grid grants `systemSettings`)
     Route::post('/admin/settings/registration-terms', [SettingsController::class, 'registrationTermsUpdate'])
         ->middleware('permission:systemSettings');
-    Route::delete('/payment/cancel-pending/{orderId}', [PaymentController::class, 'cancelPending'])
-        ->middleware('permission:orders.edit,payments.edit');
     Route::post('/admin/orders/{id}/reject-design',  [OrderController::class, 'rejectDesign']);
     Route::post('/admin/orders/{id}/upload-design',   [OrderController::class, 'adminUploadDesign']);
     Route::post('/admin/orders/{id}/approve-upload',  [OrderController::class, 'approveUploadDesign']);
@@ -435,6 +433,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/payment/verify-intent',            [PaymentController::class, 'verifyIntent']);
     Route::post('/payment/order-request-link',       [PaymentController::class, 'createOrderRequestLink']);
     Route::post('/payment/create-order-pay-link',    [PaymentController::class, 'createOrderPayLink']);
+    // The CUSTOMER releases their own failed checkout on the way back from GCash; the controller
+    // only touches an order that belongs to the caller. It sat in the admin group behind an admin
+    // permission since 2026-08-26, so every customer got 403 and the hold lived on until the sweeper.
+    Route::delete('/payment/cancel-pending/{orderId}', [PaymentController::class, 'cancelPending']);
 });
 
 Route::middleware('auth:sanctum')->group(function () {
