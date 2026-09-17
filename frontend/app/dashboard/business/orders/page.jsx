@@ -2361,7 +2361,9 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                   </div>
                 )
               )}
-              {availableRaw.includes('cancelled') && (
+              {/* The transition maps spell it "Cancelled"; an exact lowercase match hid the button on
+                  every awaiting-payment order, whose own message says "cancel it below". */}
+              {availableRaw.map(normalizeStatus).includes('cancelled') && (
                 <button onClick={() => { setSelStatus('cancelled'); setConfirmSt(true); }}
                   style={{ ...S.btnSmGhost, justifyContent:'center', color:'var(--st-red-fg)' }}>
                   Cancel this order
