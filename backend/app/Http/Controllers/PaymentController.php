@@ -1303,14 +1303,18 @@ class PaymentController extends Controller
             $order->save();
 
             if ($intentStatus === 'succeeded') {
-                if ($isDesignFeeOnly) {
-                    $order->update([
-                        'designFeePaid'       => true,
-                        'designFeePaidAmount' => $chargeAmount,
-                    ]);
-                } else {
-                    $order->update(['paymentStatus' => 'paid']);
-                }
+                // A card that clears without 3-D Secure used to be "recorded" here by flipping the
+                // status to paid and stopping. verifyIntent and the webhook both skip an order that
+                // already reads paid, so nothing else ever ran: no paymentHistory row, no receipt,
+                // and a 50% deposit read as paid in full - the balance was never asked for and the
+                // order could ship. verifyIntent records it properly, exactly once, the same way a
+                // GCash return does (createOrderPayLink took this route already).
+                $confirm = Request::create('/api/payment/verify-intent', 'POST', [
+                    'orderId'  => $orderId,
+                    'intentId' => $intentId,
+                ]);
+                $confirm->setUserResolver(fn () => $user);
+                $this->verifyIntent($confirm);
                 return $this->successResponse('Payment completed.', [
                     'orderId' => $orderId, 'status' => 'succeeded', 'redirectUrl' => null,
                 ]);
