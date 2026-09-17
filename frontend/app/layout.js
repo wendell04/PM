@@ -8,7 +8,9 @@ import OfflineBanner from '../components/OfflineBanner';
 
 export const metadata = {
   title: 'Personalize Me Prints',
-  description: 'Custom printing for t-shirts, mugs, souvenirs, and more. Fast turnaround, bulk pricing, and personalized service.',
+  // What search engines show under the site name. Only what the shop does - no prices, days or
+  // hours, which live in the Homepage CMS and would go stale here.
+  description: 'Personalized mugs, totebags, stickers, mousepads, badges, keychains and t-shirt printing. Upload your design or request one, approve a proof, and we print it.',
   icons: {
     icon: '/logos/PersonalizeMe logo.png',
   },

@@ -1658,6 +1658,10 @@ export default function SettingsPage() {
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--gray-light)" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
         <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--white)' }}>Quick questions</span>
         <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>- Shown in the chat window. Tapping one sends it; if it has an answer, the answer appears right away.</span>
+        {/* The inbox these replies serve links here; this is the way back. */}
+        <a href="/dashboard/business/chat" style={{ marginLeft: 'auto', fontSize: '0.78rem', fontWeight: 600, color: 'var(--gold)', textDecoration: 'none', whiteSpace: 'nowrap' }}>
+          Open Messages
+        </a>
       </div>
       <div style={{ padding: '1.25rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
         {chatReplies.quickReplies.length === 0 && (
