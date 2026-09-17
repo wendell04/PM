@@ -24,6 +24,7 @@ use App\Services\PriceResolver;
 use App\Support\OrderStatus;
 use App\Support\QuoteStock;
 use App\Support\Backorder;
+use App\Support\CheckoutHold;
 
 class PaymentController extends Controller
 {
@@ -640,34 +641,19 @@ class PaymentController extends Controller
             $order = Order::where('_id', $orderId)->where('userId', (string) $user->_id)->first();
             if (!$order) return $this->notFoundResponse('Order');
 
-            // Only an order where NOTHING was ever received may be swept away like this. A design fee
-            // already paid, a deposit, any history at all - and this is a real order that needs a
-            // person to decide, not a cleanup call fired by a redirect.
-            $received = collect($order->paymentHistory ?? [])->sum(fn ($p) => (float) ($p['amount'] ?? 0));
-            $untouched = $received <= 0
-                && empty($order->designFeePaid)
-                && in_array($order->paymentStatus ?? 'unpaid', ['unpaid', '', null], true)
-                && in_array(OrderStatus::normalize($order->orderStatus), [OrderStatus::PENDING, 'awaiting_payment'], true);
-
-            if (!$untouched) {
-                return $this->errorResponse('This order has activity on it and cannot be cleared automatically.', 422);
-            }
-
             if (OrderStatus::normalize($order->orderStatus) === OrderStatus::CANCELLED) {
                 return $this->successResponse('Already cleared.', ['orderStatus' => $order->orderStatus]);
             }
 
-            $order->orderStatus     = OrderStatus::CANCELLED;
-            $order->cancelledBy     = 'system';
-            $order->cancelledReason = 'Payment was not completed.';
-            $order->cancelledAt     = now();
-            $order->updatedAt       = now();
-            $order->save();
+            // Only an order where NOTHING was received, and where PayMongo confirms no money is
+            // moving, may be swept away by a redirect. Anything else needs a person.
+            if (!CheckoutHold::releasable($order)) {
+                return $this->errorResponse('This payment may still be going through, so the order was kept.', 422);
+            }
 
-            // The whole point: give the material back.
-            app(OrderController::class)->releaseReservationsFor($order);
+            CheckoutHold::void($order, 'Payment was not completed.');
 
-            return $this->successResponse('Pending order cleared and stock released.', [
+            return $this->successResponse('Checkout released and stock returned.', [
                 'orderStatus' => $order->orderStatus,
             ]);
         } catch (\Exception $e) {
@@ -1089,14 +1075,17 @@ class PaymentController extends Controller
                 // marking a half-paid order as fully paid.
                 'pendingPaymentType'   => $takesDownpayment ? 'downpayment' : null,
                 'pendingPaymentAmount' => $takesDownpayment ? $firstPayment : null,
+                // Hidden until the payment lands - a failed payment must not become an order anyone
+                // sees. See App\Support\CheckoutHold.
+                'checkoutPending'      => true,
                 'statusHistory'        => [['status' => $this->resolveCustomOrderStatus($request), 'at' => now()->toISOString()]],
                 'createdAt'       => now(),
                 'updatedAt'       => now(),
             ]);
             
-            // Orders born here used to be created in silence: no confirmation to the
-            // customer who had just paid, and no word to the shop. See OrderNotifier.
-            OrderNotifier::placed($order);
+            // Not announced here any more: the customer has not paid yet, and announcing it sent the
+            // shop a "new order" and the customer an "order placed" for payments that then failed.
+            // CheckoutHold::confirm() announces it once the payment is recorded.
 
             foreach ($pendingFlashSaleIncrements as [$fs, $qty]) $fs->increment('stockUsed', $qty);
 
@@ -2260,6 +2249,7 @@ class PaymentController extends Controller
                 $order->paymentHistory          = $prior;
                 $order->updatedAt               = now();
                 $order->save();
+                CheckoutHold::confirm($order);
 
                 // Admin in-app notification
                 try {
@@ -2387,6 +2377,7 @@ class PaymentController extends Controller
             // that money be taken with nothing, anywhere, recording it: the webhook cannot match
             // these intents either. So a pending courier fee is let through.
             if ($order->paymentStatus === 'paid' && ($order->pendingPaymentType ?? null) !== 'courier_fee') {
+                CheckoutHold::confirm($order);
                 return $this->successResponse('Already paid.', ['paymentStatus' => 'paid']);
             }
 
@@ -2443,6 +2434,7 @@ class PaymentController extends Controller
                     ->contains(fn ($pmt) => $intentId && str_contains((string) ($pmt['note'] ?? ''), (string) $intentId));
 
                 if ($alreadyRecorded) {
+                    CheckoutHold::confirm($order);
                     return $this->successResponse('This payment is already recorded.', [
                         'paymentStatus' => $order->paymentStatus,
                         'designFeePaid' => (bool) ($order->designFeePaid ?? false),
@@ -2456,6 +2448,7 @@ class PaymentController extends Controller
                 if ($this->settleCourierFee($order, $paidAmount, $paymentMethod, (string) $sessionId)) {
                     if (!$courierWasPaid) {
                         $this->mailPaymentReceipt($order, 0.0, $paymentMethod, $paidAmount, 1);
+                        CheckoutHold::confirm($order);
                     }
                     return $this->successResponse('Delivery fee received.', ['courierFeePaid' => true]);
                 }
@@ -2522,6 +2515,7 @@ class PaymentController extends Controller
                 $order->save();
 
                 $this->mailPaymentReceipt($order, $paidAmount, $paymentMethod, round($grossPaidAmount - $paidAmount, 2), count($history) - 1);
+                CheckoutHold::confirm($order);
 
                 try {
                     $admin = User::where('role', 'admin')->first();
@@ -2588,6 +2582,7 @@ class PaymentController extends Controller
                 ->contains(fn ($pmt) => $intentId && str_contains((string) ($pmt['note'] ?? ''), (string) $intentId));
 
             if ($alreadyRecorded) {
+                CheckoutHold::confirm($order);
                 return $this->successResponse('This payment is already recorded.', [
                     'paymentStatus' => $order->paymentStatus,
                     'designFeePaid' => (bool) ($order->designFeePaid ?? false),
@@ -2600,6 +2595,7 @@ class PaymentController extends Controller
             if ($this->settleCourierFee($order, $paidAmount, $paymentMethod, (string) $intentId)) {
                 if (!$courierWasPaid) {
                     $this->mailPaymentReceipt($order, 0.0, $paymentMethod, $paidAmount, 1);
+                    CheckoutHold::confirm($order);
                 }
                 return $this->successResponse('Delivery fee received.', ['courierFeePaid' => true]);
             }
@@ -2663,6 +2659,7 @@ class PaymentController extends Controller
             $order->save();
 
             $this->mailPaymentReceipt($order, $paidAmount, $paymentMethod, round($grossPaidAmount - $paidAmount, 2), count($history) - 1);
+            CheckoutHold::confirm($order);
 
             try {
                 $admin = User::where('role', 'admin')->first();

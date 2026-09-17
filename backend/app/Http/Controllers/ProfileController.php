@@ -167,7 +167,11 @@ class ProfileController extends Controller
                 'delivered', 'cancelled', 'returned',
             ];
 
+            // A checkout still being paid or one whose payment failed is not an order - and one the
+            // customer cannot see must never be what stops them deleting their account.
             $activeCount = Order::where('userId', $userId)
+                ->where('checkoutPending', '!=', true)
+                ->where('voidedCheckout', '!=', true)
                 ->whereNotIn('orderStatus', $terminalStatuses)
                 ->count();
 
@@ -181,6 +185,8 @@ class ProfileController extends Controller
 
             // Block: outstanding payment balances
             $unpaidCount = Order::where('userId', $userId)
+                ->where('checkoutPending', '!=', true)
+                ->where('voidedCheckout', '!=', true)
                 ->where('paymentStatus', '!=', 'paid')
                 ->where('balance', '>', 0)
                 ->count();

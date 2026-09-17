@@ -31,6 +31,10 @@ Schedule::command('db:backup')->dailyAt('02:00')->name('db-backup')->withoutOver
 // than hourly: the window is measured in days, and a customer paying an hour late should still land.
 Schedule::command('orders:expire-unpaid-proofs')->dailyAt('03:00')->name('expire-unpaid-proofs')->withoutOverlapping();
 
+// An online checkout nobody finished paying - tab closed on the GCash page - holds stock for an order
+// that will never exist. Released after an hour; checked often so the hold never runs much past it.
+Schedule::command('orders:void-abandoned-checkouts')->everyFifteenMinutes()->name('void-abandoned-checkouts')->withoutOverlapping();
+
 // Chases finished orders whose balance was never paid. Reminds on a schedule and FLAGS the ones past
 // the holding period - it never cancels or writes anything off, because destroying personalised goods
 // and forfeiting a deposit is a decision a person makes.

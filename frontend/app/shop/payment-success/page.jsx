@@ -127,13 +127,33 @@ export default function PaymentSuccessPage() {
             setLoading(false);
             return;
           }
-          // Payment failed/expired - clear the orphan order then redirect to failed page
-          if (token && orderId) {
-            fetch(`${API_URL}/api/payment/cancel-pending/${orderId}`, {
-              method: 'DELETE',
-              headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
-            }).catch(() => {});
+          // A failed payment at CHECKOUT is not an order: release it (the server re-checks with
+          // PayMongo first) and take the customer back to the checkout they came from, where the
+          // "payment didn't go through" modal and their filled-in details are waiting.
+          const returnTo = sessionStorage.getItem('checkout_return_to');
+          if (returnTo) {
+            let released = false;
+            try {
+              const rel = await fetch(`${API_URL}/api/payment/cancel-pending/${orderId}`, {
+                method: 'DELETE',
+                headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+              });
+              released = rel.ok;
+            } catch { released = false; }
+            if (!released) {
+              // The server would not release it - PayMongo may still be moving the money.
+              setUnconfirmed(true);
+              setVerifying(false);
+              setLoading(false);
+              return;
+            }
+            sessionStorage.removeItem('checkout_return_to');
+            sessionStorage.removeItem('pending_payment_order_id');
+            router.replace(returnTo + (returnTo.includes('?') ? '&' : '?') + 'payment_cancelled=1');
+            return;
           }
+          // A failed payment on an EXISTING order (Pay Now in My Orders) leaves the order alone -
+          // it was a real order before this payment and still is.
           router.replace(`/shop/payment-failed?id=${orderId}`);
         } else {
           // Only the lines that were actually ordered. A cart can hold items the customer
@@ -142,6 +162,7 @@ export default function PaymentSuccessPage() {
           try { ordered = JSON.parse(sessionStorage.getItem('checkout_line_ids') || '[]'); } catch { ordered = []; }
           if (Array.isArray(ordered) && ordered.length) bulkRemove(ordered); else clearCart();
           sessionStorage.removeItem('checkout_line_ids');
+          sessionStorage.removeItem('checkout_return_to');
           setVerifying(false);
           setLoading(false);
         }

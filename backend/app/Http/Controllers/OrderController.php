@@ -804,8 +804,15 @@ class OrderController extends Controller
             $page   = max(1, (int) $request->query('page', 1));
             $offset = ($page - 1) * $limit;
 
-            $total  = Order::where('userId', (string) $user->_id)->count();
+            // A checkout still being paid, or one whose payment failed, is not an order yet - it does
+            // not belong in the customer's list. See App\Support\CheckoutHold.
+            $total  = Order::where('userId', (string) $user->_id)
+                           ->where('checkoutPending', '!=', true)
+                           ->where('voidedCheckout', '!=', true)
+                           ->count();
             $orders = Order::where('userId', (string) $user->_id)
+                           ->where('checkoutPending', '!=', true)
+                           ->where('voidedCheckout', '!=', true)
                            ->orderBy('createdAt', 'desc')
                            ->skip($offset)
                            ->limit($limit)
@@ -1680,7 +1687,10 @@ class OrderController extends Controller
 
             $cacheKey = 'admin_order_stats_' . md5($request->getQueryString() ?? '');
             $data = Cache::remember($cacheKey, 30, function () use ($request) {
+                // Checkouts still being paid, or whose payment failed, are not orders.
                 $base = Order::query()
+                    ->where('checkoutPending', '!=', true)
+                    ->where('voidedCheckout', '!=', true)
                     ->when($request->filled('startDate'), fn($q) => $q->where('createdAt', '>=', $request->startDate))
                     ->when($request->filled('endDate'),   fn($q) => $q->where('createdAt', '<=', $request->endDate));
 
@@ -2031,7 +2041,10 @@ class OrderController extends Controller
 
             $showArchived = $request->boolean('showArchived', false);
 
+            // Not orders yet: a checkout still being paid, or one whose payment failed.
             $query = Order::select($this->orderListFields())
+                ->where('checkoutPending', '!=', true)
+                ->where('voidedCheckout', '!=', true)
                 ->orderBy('createdAt', 'desc')
                 ->skip($skip)
                 ->limit($limit);
@@ -2602,16 +2615,6 @@ class OrderController extends Controller
      *        bench is the only one who knows the box was never opened while the mug was printed,
      *        so the stage decides the default and they decide the exception.
      */
-    /**
-     * For orders:expire-unpaid-proofs. An order that expires unpaid gives its stock back exactly the
-     * way a cancelled one does - the command used to release only a legacy materials shape that no
-     * current order carries, so a checkout abandoned after a failed payment held its stock forever.
-     */
-    public function releaseStockForExpiredOrder(Order $order): void
-    {
-        $this->restoreStockOnCancel($order, $this->jobStagesFor($order));
-    }
-
     private function restoreStockOnCancel(Order $order, array $jobStages = [], array $keepBack = []): void
     {
         // Every cancel path comes through here, so this is where the promotions go back too.

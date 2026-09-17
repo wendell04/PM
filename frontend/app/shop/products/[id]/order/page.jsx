@@ -191,7 +191,22 @@ function CustomOrderInner() {
     const params = new URLSearchParams(window.location.search);
     const isCancelled = params.get('payment_cancelled') === '1';
     const pendingOrderId = sessionStorage.getItem('pending_payment_order_id');
-    if (isCancelled) window.history.replaceState({}, '', window.location.pathname);
+    if (isCancelled) {
+      window.history.replaceState({}, '', window.location.pathname);
+      // Back from a failed payment: put the design and details back where the customer left them.
+      try {
+        const draft = JSON.parse(sessionStorage.getItem(`order_draft_${id}`) || 'null');
+        if (draft) {
+          if (draft.designMode) setDesignMode(draft.designMode);
+          if (draft.designNotes) setDesignNotes(draft.designNotes);
+          if (draft.selectedAddressId) setSelectedAddressId(draft.selectedAddressId);
+          if (Array.isArray(draft.designFiles) && draft.designFiles.length) {
+            setDesignFiles(draft.designFiles.map(f => ({ ...f, preview: f.url, uploading: false, file: null })));
+          }
+        }
+      } catch { /* nothing to restore */ }
+      sessionStorage.removeItem(`order_draft_${id}`);
+    }
     if (pendingOrderId) {
       sessionStorage.removeItem('pending_payment_order_id');
       if (isCancelled) { setFailedModal(true); return; }
@@ -893,6 +908,17 @@ function CustomOrderInner() {
           router.push(`/shop/payment-success?id=${orderId}&method=${paymentMethod}`);
         } else if (redirectUrl) {
           sessionStorage.setItem('pending_payment_order_id', orderId);
+          sessionStorage.setItem('checkout_return_to', window.location.pathname + window.location.search);
+          // Leaving for GCash reloads this page on the way back. If the payment fails, the customer
+          // must not have to upload their design and fill the form in again.
+          try {
+            sessionStorage.setItem(`order_draft_${id}`, JSON.stringify({
+              designMode,
+              designNotes,
+              selectedAddressId,
+              designFiles: designFiles.filter(f => f.url).map(f => ({ key: f.key, name: f.name, size: f.size, url: f.url })),
+            }));
+          } catch { /* a draft is a convenience */ }
           window.location.href = redirectUrl;
         } else {
           throw new Error('No redirect URL returned. Please try again.');
@@ -956,9 +982,9 @@ function CustomOrderInner() {
             <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
           </svg>
         </div>
-        <h2 style={{ color: 'var(--white)', fontWeight: 700, fontSize: '1.3rem', marginBottom: 8 }}>Payment Cancelled</h2>
+        <h2 style={{ color: 'var(--white)', fontWeight: 700, fontSize: '1.3rem', marginBottom: 8 }}>Payment didn't go through</h2>
         <p style={{ color: 'var(--gray)', fontSize: '0.9rem', marginBottom: 28, lineHeight: 1.6 }}>
-          Your payment was not completed. Your order has been saved - you can try again below.
+          Nothing was charged and no order was made. Your items and details are still here - try again, or choose a different payment method.
         </p>
         <button onClick={() => setFailedModal(false)}
           style={{ width: '100%', padding: '12px', background: 'var(--gold)', color: '#000', border: 'none', borderRadius: 9, fontWeight: 700, cursor: 'pointer', fontSize: '0.9rem' }}>

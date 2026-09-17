@@ -141,7 +141,10 @@ class AdminAnalyticsController extends Controller
                 ];
             })->sortByDesc('revenue')->values()->take(10)->all();
 
+            // Checkouts still being paid, or whose payment failed, are not orders.
             $ordersInRange = Order::query()
+                ->where('checkoutPending', '!=', true)
+                ->where('voidedCheckout', '!=', true)
                 ->whereBetween('createdAt', [$start, $end])
                 ->get();
 

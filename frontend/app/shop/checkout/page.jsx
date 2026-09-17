@@ -11,6 +11,7 @@ import '@/app/shop/shop.css';
 import { applyVoucher } from '@/lib/voucherApi';
 import { useTheme } from '@/contexts/ThemeContext';
 import { DEFAULT_CUSTOM_ORDER_TERMS } from '@/lib/customOrderTerms';
+import useLockBodyScroll from '@/lib/useLockBodyScroll';
 
 const AddressBook = dynamic(() => import('@/components/profile/AddressBook'), { ssr: false });
 
@@ -99,6 +100,7 @@ export default function CheckoutPage() {
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [successModal,       setSuccessModal]       = useState(null); // { orderId, order | null }
   const [failedModal,        setFailedModal]        = useState(false);
+  useLockBodyScroll(failedModal);
   const [pendingVerifyId,    setPendingVerifyId]    = useState(null);
   const [verifyingPayment,   setVerifyingPayment]   = useState(false);
   // Owner-controlled method availability (Homepage CMS → Payment Methods). Missing key = enabled.
@@ -792,6 +794,8 @@ export default function CheckoutPage() {
           router.push(`/shop/payment-success?id=${orderId}&method=${paymentMethod}`);
         } else if (redirectUrl) {
           sessionStorage.setItem('pending_payment_order_id', orderId);
+          // Where to bring the customer back to if the payment fails - here, with everything still filled in.
+          sessionStorage.setItem('checkout_return_to', window.location.pathname + window.location.search);
           window.location.href = redirectUrl;
         } else {
           throw new Error('No redirect URL returned. Please try again.');
@@ -951,9 +955,9 @@ export default function CheckoutPage() {
                 <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
               </svg>
             </div>
-            <h2 style={{ color: 'var(--white)', fontWeight: 700, fontSize: '1.3rem', marginBottom: 8 }}>Payment Cancelled</h2>
+            <h2 style={{ color: 'var(--white)', fontWeight: 700, fontSize: '1.3rem', marginBottom: 8 }}>Payment didn't go through</h2>
             <p style={{ color: 'var(--gray)', fontSize: '0.9rem', marginBottom: 28, lineHeight: 1.6 }}>
-              Your payment was not completed. Your cart items are still saved - you can try again anytime.
+              Nothing was charged and no order was made. Your items and details are still here - try again, or choose a different payment method.
             </p>
             <button
               onClick={() => setFailedModal(false)}
