@@ -103,6 +103,20 @@ return [
             'retry_after' => 60,
         ],
 
+        // The security lane with a net under it. Resend first (the verified noreply@ sender), Brevo
+        // when Resend refuses - its free tier is 100 a day, and a sign-up wave (a survey, a launch)
+        // burns that in an afternoon, after which nobody could receive a code. Brevo must have the
+        // domain authenticated, or it refuses the noreply@ sender and the fallback is no fallback.
+        // Switch to it with MAIL_SECURITY_MAILER=security_failover.
+        'security_failover' => [
+            'transport' => 'failover',
+            'mailers' => [
+                'resend',
+                'brevo',
+            ],
+            'retry_after' => 60,
+        ],
+
         'roundrobin' => [
             'transport' => 'roundrobin',
             'mailers' => [
