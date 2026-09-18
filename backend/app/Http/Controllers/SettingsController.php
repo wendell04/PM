@@ -82,6 +82,18 @@ class SettingsController extends Controller
      * refusal is logged (or not, depending on the host) and the next provider quietly carries the
      * mail, so "is Resend working?" could only be answered by reading two dashboards and guessing.
      */
+    /**
+     * Shop-level settings - shipping rates, terms, the store's own details - belong to the owner
+     * (and the super admin who administers the system). The settings screen already hid those
+     * tabs from staff; the endpoints behind them did not check, and each wrote onto the OWNER's
+     * record for whoever called. A screen that hides a tab is not a permission.
+     */
+    private function ownsShop(Request $request): bool
+    {
+        $u = $request->user();
+        return $u && (\App\Support\Rbac::isSuperAdmin($u) || \App\Support\Rbac::isOwner($u));
+    }
+
     public function mailTest(Request $request)
     {
         try {
@@ -264,7 +276,7 @@ class SettingsController extends Controller
     public function shippingUpdate(Request $request)
     {
         try {
-            if (!$request->user()) return $this->unauthorizedResponse();
+            if (!$this->ownsShop($request)) return $this->unauthorizedResponse();
 
             $owner = $this->getOwner();
             if (!$owner) return $this->serverErrorResponse(new \Exception('No owner'), 'Store owner not found.');
@@ -390,7 +402,7 @@ class SettingsController extends Controller
     public function registrationTermsUpdate(Request $request)
     {
         try {
-            if (!$request->user()) return $this->unauthorizedResponse();
+            if (!$this->ownsShop($request)) return $this->unauthorizedResponse();
             $owner = $this->getOwner();
             if (!$owner) return $this->serverErrorResponse(new \Exception('No owner'), 'Store owner not found.');
 
@@ -449,7 +461,7 @@ class SettingsController extends Controller
     public function termsUpdate(Request $request)
     {
         try {
-            if (!$request->user()) return $this->unauthorizedResponse();
+            if (!$this->ownsShop($request)) return $this->unauthorizedResponse();
             $owner = $this->getOwner();
             if (!$owner) return $this->serverErrorResponse(new \Exception('No owner'), 'Store owner not found.');
 
@@ -486,7 +498,7 @@ class SettingsController extends Controller
     {
         try {
             $user = $request->user();
-            if (!$user) return $this->unauthorizedResponse();
+            if (!$user || !$this->ownsShop($request)) return $this->unauthorizedResponse();
 
             $request->validate([
                 'storeName'         => 'required|string|min:2|max:100',
