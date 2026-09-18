@@ -150,8 +150,8 @@ export async function verifyEmail(data) {
       throw new Error(errorData.message || "Email verification failed");
     }
 
-    const data = await response.json();
-    return data;
+    const payload = await response.json();
+    return payload;
   } catch (error) {
     console.error("Error verifying email:", error);
     throw error;
@@ -184,8 +184,8 @@ export async function resendVerificationEmail(data) {
       );
     }
 
-    const data = await response.json();
-    return data;
+    const payload = await response.json();
+    return payload;
   } catch (error) {
     console.error("Error resending verification email:", error);
     throw error;
@@ -216,8 +216,8 @@ export async function forgotPassword(data) {
       throw new Error(errorData.message || "Failed to send reset link");
     }
 
-    const data = await response.json();
-    return data;
+    const payload = await response.json();
+    return payload;
   } catch (error) {
     console.error("Error sending reset link:", error);
     throw error;
@@ -248,8 +248,8 @@ export async function verifyResetToken(data) {
       throw new Error(errorData.message || "Invalid reset token");
     }
 
-    const data = await response.json();
-    return data;
+    const payload = await response.json();
+    return payload;
   } catch (error) {
     console.error("Error verifying reset token:", error);
     throw error;
@@ -280,8 +280,8 @@ export async function sendResetCode(data) {
       throw new Error(errorData.message || "Failed to send reset code");
     }
 
-    const data = await response.json();
-    return data;
+    const payload = await response.json();
+    return payload;
   } catch (error) {
     console.error("Error sending reset code:", error);
     throw error;
@@ -312,8 +312,8 @@ export async function verifyResetCode(data) {
       throw new Error(errorData.message || "Invalid reset code");
     }
 
-    const data = await response.json();
-    return data;
+    const payload = await response.json();
+    return payload;
   } catch (error) {
     console.error("Error verifying reset code:", error);
     throw error;
@@ -344,8 +344,8 @@ export async function resetPassword(data) {
       throw new Error(errorData.message || "Failed to reset password");
     }
 
-    const data = await response.json();
-    return data;
+    const payload = await response.json();
+    return payload;
   } catch (error) {
     console.error("Error resetting password:", error);
     throw error;
@@ -376,8 +376,8 @@ export async function contact(data) {
       throw new Error(errorData.message || "Failed to send message");
     }
 
-    const data = await response.json();
-    return data;
+    const payload = await response.json();
+    return payload;
   } catch (error) {
     console.error("Error sending contact message:", error);
     throw error;

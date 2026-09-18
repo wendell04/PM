@@ -17,7 +17,7 @@ import { useCart as useGlobalCart } from '../../context/CartContext';
 import { syncCart, mergeCart } from '@/lib/cartApi';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import SessionExpiryWarning from '@/components/SessionExpiryWarning';
-import { forgotPassword, sendResetCode, verifyResetCode, resetPassword, getCurrentUser } from '@/lib/authApi';
+import { forgotPassword, getCurrentUser } from '@/lib/authApi';
 import {
   fetchUnreadCount,
   fetchNotifications,
@@ -485,16 +485,11 @@ export default function ShopLayout({ children }) {
   // Forgot password state
   const [forgotStep, setForgotStep] = useState(1);
   const [forgotEmail, setForgotEmail] = useState('');
-  const [forgotCode, setForgotCode] = useState('');
-  const [forgotNewPassword, setForgotNewPassword] = useState('');
-  const [forgotConfirmPassword, setForgotConfirmPassword] = useState('');
   const [forgotError, setForgotError] = useState('');
   const [forgotSent, setForgotSent] = useState(false);
   const [isSendingReset, setIsSendingReset] = useState(false);
   const [forgotResendSuccess, setForgotResendSuccess] = useState(false);
   const [forgotResendCooldown, setForgotResendCooldown] = useState(0);
-  const [showForgotPassword, setShowForgotPassword] = useState(false);
-  const [showForgotConfirm, setShowForgotConfirm] = useState(false);
 
   // Notification state
   const [notifOpen, setNotifOpen] = useState(false);
@@ -910,60 +905,20 @@ export default function ShopLayout({ children }) {
     }
   };
 
-  // STEP 2 - Verify the 6-digit code
-  const handleForgotVerifyCode = async () => {
-    if (forgotCode.length !== 6) { setForgotError('Please enter the 6-digit code'); return; }
+  // "Send it again" is the same request as the first one - a fresh link, and the previous one
+  // stops working. One a minute is enough for a lost email and keeps the day's mail quota intact.
+  const handleForgotResend = async () => {
+    if (forgotResendCooldown > 0 || isSendingReset) return;
+    setForgotResendSuccess(false);
     setForgotError('');
     setIsSendingReset(true);
     try {
-      await verifyResetCode({ email: forgotEmail, code: forgotCode });
-      setForgotStep(3); // Move to password reset step
-    } catch (err) {
-      setForgotError(err.message || 'Invalid or expired code.');
-    } finally {
-      setIsSendingReset(false);
-    }
-  };
-
-  // Resend verification code
-  const handleForgotResend = async () => {
-    if (forgotResendCooldown > 0) return;
-    setForgotResendSuccess(false);
-    setForgotError('');
-    try {
-      await sendResetCode({ email: forgotEmail });
-      setForgotCode('');
+      await forgotPassword({ email: forgotEmail });
       setForgotResendSuccess(true);
       setForgotResendCooldown(60);
       setTimeout(() => setForgotResendSuccess(false), 5000);
     } catch (err) {
-      setForgotError(err.message || 'Failed to resend code.');
-    }
-  };
-
-  // STEP 3 - Submit new password
-  const handleForgotResetPassword = async () => {
-    if (!forgotNewPassword) { setForgotError('Password is required'); return; }
-    if (forgotNewPassword.length < 8) { setForgotError('Password must be at least 8 characters'); return; }
-    if (!/[A-Z]/.test(forgotNewPassword)) { setForgotError('Password must contain at least one uppercase letter'); return; }
-    if (!/[a-z]/.test(forgotNewPassword)) { setForgotError('Password must contain at least one lowercase letter'); return; }
-    if (!/\d/.test(forgotNewPassword)) { setForgotError('Password must contain at least one number'); return; }
-    if (!/[!@#$%^&*(),.?":{}|<>]/.test(forgotNewPassword)) { setForgotError('Password must contain at least one special character'); return; }
-    if (forgotNewPassword !== forgotConfirmPassword) { setForgotError('Passwords do not match'); return; }
-    setForgotError('');
-    setIsSendingReset(true);
-    try {
-      await resetPassword({ email: forgotEmail, code: forgotCode, password: forgotNewPassword, password_confirmation: forgotConfirmPassword });
-      // Success - close and show login
-      setForgotPasswordOpen(false);
-      setForgotStep(1);
-      setForgotCode('');
-      setForgotNewPassword('');
-      setForgotConfirmPassword('');
-      setAuthModalOpen(true);
-      setAuthModalType('login');
-    } catch (err) {
-      setForgotError(err.message || 'Failed to reset password.');
+      setForgotError(err.message || 'Could not send it again.');
     } finally {
       setIsSendingReset(false);
     }
@@ -974,9 +929,6 @@ export default function ShopLayout({ children }) {
     setForgotPasswordOpen(false);
     setForgotStep(1);
     setForgotEmail('');
-    setForgotCode('');
-    setForgotNewPassword('');
-    setForgotConfirmPassword('');
     setForgotError('');
     setForgotSent(false);
   };
@@ -1858,8 +1810,7 @@ export default function ShopLayout({ children }) {
                 <div>
                   <h2>Forgot Password</h2>
                   <p>
-                    {forgotStep === 1 ? "We'll send you a reset code" :
-                     forgotStep === 2 ? "Enter verification code" : "Set a new password"}
+                    {forgotStep === 1 ? "We'll email you a reset link" : 'Check your inbox'}
                   </p>
                 </div>
                 <button className="auth-close" onClick={closeForgotPassword}>
@@ -1871,7 +1822,7 @@ export default function ShopLayout({ children }) {
                 {forgotStep === 1 && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                     <p style={{ color: 'var(--gray)', fontSize: '0.9rem', lineHeight: 1.6, margin: 0 }}>
-                      Enter the email address associated with your account and we'll send you a reset code.
+                      Enter the email address associated with your account and we'll email you a reset link.
                     </p>
                     <div className="auth-field">
                       <label>Email Address</label>
@@ -1885,13 +1836,8 @@ export default function ShopLayout({ children }) {
                       />
                       {forgotError && <span className="error-message">{forgotError}</span>}
                     </div>
-                    {forgotSent && (
-                      <div style={{ padding: '0.75rem', borderRadius: '8px', background: 'rgba(74,222,128,0.12)', border: '1px solid rgba(74,222,128,0.3)', color: 'var(--green)', fontSize: '0.85rem' }}>
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{display:'inline',verticalAlign:'middle',marginRight:'6px'}}><polyline points="20 6 9 17 4 12"/></svg> A reset code has been sent to your email.
-                      </div>
-                    )}
                     <button className="btn-auth-submit" disabled={isSendingReset} onClick={handleForgotSubmit}>
-                      {isSendingReset ? 'Sending...' : 'Send Reset Code'}
+                      {isSendingReset ? 'Sending...' : 'Send Reset Link'}
                     </button>
                     <p className="auth-switch" style={{ margin: 0 }}>
                       Remember your password?{' '}
@@ -1900,7 +1846,9 @@ export default function ShopLayout({ children }) {
                   </div>
                 )}
 
-                {/* STEP 2 - Enter Verification Code */}
+                {/* SENT - the link carries on from the customer's inbox, so there is nothing
+                    more to do here. Same screen as the landing page, so a person who starts in
+                    one place and finishes in the other sees one flow. */}
                 {forgotStep === 2 && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                     <div style={{ textAlign: 'center', padding: '0.5rem 0' }}>
@@ -1911,105 +1859,21 @@ export default function ShopLayout({ children }) {
                         </svg>
                       </div>
                       <p style={{ color: 'var(--gray)', fontSize: '0.88rem', lineHeight: 1.6, margin: 0 }}>
-                        We sent a 6-digit code to <strong style={{ color: 'var(--white)' }}>{forgotEmail}</strong>. Check your inbox and spam folder.
+                        We sent a reset link to <strong style={{ color: 'var(--white)' }}>{forgotEmail}</strong>.
+                        Open it to continue. Check your spam folder if it is not there in a minute.
                       </p>
-                    </div>
-                    <div className="auth-field">
-                      <label>6-Digit Verification Code</label>
-                      <input
-                        type="text"
-                        placeholder="Enter 6-digit code"
-                        maxLength={6}
-                        value={forgotCode}
-                        onChange={e => { setForgotCode(e.target.value.replace(/\D/g,'')); setForgotError(''); }}
-                        className={forgotError ? 'error' : ''}
-                        style={{ letterSpacing: '0.25em', fontSize: '1.1rem', textAlign: 'center' }}
-                        onKeyDown={e => e.key === 'Enter' && handleForgotVerifyCode()}
-                      />
-                      {forgotError && <span className="error-message">{forgotError}</span>}
                       {forgotResendSuccess && (
-                        <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--green)', marginTop: '0.4rem' }}>
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{display:'inline',verticalAlign:'middle',marginRight:'4px'}}><polyline points="20 6 9 17 4 12"/></svg> A new code has been sent
-                        </span>
+                        <p style={{ fontSize: '0.8rem', color: 'var(--green)', margin: '0.6rem 0 0' }}>A new link is on its way.</p>
                       )}
+                      {forgotError && <p style={{ fontSize: '0.8rem', color: 'var(--red)', margin: '0.6rem 0 0' }}>{forgotError}</p>}
                     </div>
-                    <button className="btn-auth-submit" disabled={isSendingReset} onClick={handleForgotVerifyCode}>
-                      {isSendingReset ? 'Verifying...' : 'Verify Code'}
+                    <button className="btn-auth-submit" disabled={isSendingReset || forgotResendCooldown > 0} onClick={handleForgotResend}>
+                      {isSendingReset ? 'Sending...' : forgotResendCooldown > 0 ? `Send it again in ${forgotResendCooldown}s` : 'Send it again'}
                     </button>
                     <p className="auth-switch" style={{ margin: 0 }}>
-                      Didn't receive the code?{' '}
-                      <button
-                        type="button"
-                        className="auth-link"
-                        disabled={forgotResendCooldown > 0}
-                        style={forgotResendCooldown > 0 ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
-                        onClick={handleForgotResend}
-                      >
-                        {forgotResendCooldown > 0 ? `Resend in ${forgotResendCooldown}s` : 'Resend Code'}
-                      </button>
+                      Wrong email?{' '}
+                      <button type="button" onClick={() => { setForgotStep(1); setForgotError(''); setForgotSent(false); }}>Change it</button>
                     </p>
-                  </div>
-                )}
-
-                {/* STEP 3 - New Password */}
-                {forgotStep === 3 && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                    <p style={{ color: 'var(--gray)', fontSize: '0.9rem', lineHeight: 1.6, margin: 0 }}>
-                      Create a strong new password for your account.
-                    </p>
-                    <div className="auth-field">
-                      <label>New Password</label>
-                      <div className="auth-input-wrap">
-                        <input
-                          type={showForgotPassword ? 'text' : 'password'}
-                          placeholder="Enter new password"
-                          maxLength={64}
-                          value={forgotNewPassword}
-                          onChange={e => { setForgotNewPassword(e.target.value); setForgotError(''); }}
-                          className={forgotError ? 'error' : ''}
-                        />
-                        <button type="button" className="auth-eye" onClick={() => setShowForgotPassword(v => !v)}>
-                          {showForgotPassword ? (
-                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-                              <path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zm0 12.5a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm0-8a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"/>
-                            </svg>
-                          ) : (
-                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-                              <path d="M12 7c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.83l2.92 2.92c1.51-1.26 2.7-2.89 3.43-4.75C21.27 7.61 17 4.5 12 4.5c-1.23 0-2.41.2-3.51.57l2.17 2.17C11.13 7.09 11.56 7 12 7zM2 4.27l2.28 2.28.46.46A11.8 11.8 0 0 0 1 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22 21 20.73 3.27 3 2 4.27zM7.53 9.8l1.55 1.55c-.05.21-.08.43-.08.65a3 3 0 0 0 3 3c.22 0 .44-.03.65-.08l1.55 1.55c-.67.33-1.41.53-2.2.53a5 5 0 0 1-5-5c0-.79.2-1.53.53-2.2zm4.31-.78 3.15 3.15.02-.16c0-1.66-1.34-3-3-3l-.17.01z"/>
-                            </svg>
-                          )}
-                        </button>
-                      </div>
-                      {forgotError && <span className="error-message">{forgotError}</span>}
-                    </div>
-                    <div className="auth-field">
-                      <label>Confirm New Password</label>
-                      <div className="auth-input-wrap">
-                        <input
-                          type={showForgotConfirm ? 'text' : 'password'}
-                          placeholder="Repeat new password"
-                          maxLength={64}
-                          value={forgotConfirmPassword}
-                          onChange={e => { setForgotConfirmPassword(e.target.value); setForgotError(''); }}
-                          className={forgotError ? 'error' : ''}
-                        />
-                        <button type="button" className="auth-eye" onClick={() => setShowForgotConfirm(v => !v)}>
-                          {showForgotConfirm ? (
-                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-                              <path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zm0 12.5a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm0-8a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"/>
-                            </svg>
-                          ) : (
-                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-                              <path d="M12 7c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.83l2.92 2.92c1.51-1.26 2.7-2.89 3.43-4.75C21.27 7.61 17 4.5 12 4.5c-1.23 0-2.41.2-3.51.57l2.17 2.17C11.13 7.09 11.56 7 12 7zM2 4.27l2.28 2.28.46.46A11.8 11.8 0 0 0 1 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22 21 20.73 3.27 3 2 4.27zM7.53 9.8l1.55 1.55c-.05.21-.08.43-.08.65a3 3 0 0 0 3 3c.22 0 .44-.03.65-.08l1.55 1.55c-.67.33-1.41.53-2.2.53a5 5 0 0 1-5-5c0-.79.2-1.53.53-2.2zm4.31-.78 3.15 3.15.02-.16c0-1.66-1.34-3-3-3l-.17.01z"/>
-                            </svg>
-                          )}
-                        </button>
-                      </div>
-                      {forgotError && <span className="error-message">{forgotError}</span>}
-                    </div>
-                    <button className="btn-auth-submit" disabled={isSendingReset} onClick={handleForgotResetPassword}>
-                      {isSendingReset ? 'Resetting...' : 'Reset Password'}
-                    </button>
                   </div>
                 )}
               </div>
