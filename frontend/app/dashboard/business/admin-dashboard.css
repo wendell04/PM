@@ -4211,3 +4211,34 @@ html.light .skeleton-table-header {
 
 /* The admin notification body used to hide its scrollbar entirely, which left a list of 59
    with nothing to say more was below the fold. It now inherits the app-wide slider. */
+
+/* ─── The dashboard on a phone ──────────────────────────────────────────────
+   These controls were built for a mouse: 16-34px squares that a cursor hits
+   exactly and a thumb does not. The menu button was 26px - the one control a
+   phone user needs before any other. Sizes are raised only at phone width, so
+   the desktop layout is untouched, and through padding and min-height so the
+   icons keep their proportions. ~44px is the size a fingertip actually covers. */
+@media (max-width: 768px) {
+  .top-bar-hamburger,
+  .sidebar-close,
+  .sidebar-collapse-btn,
+  .top-bar-icon-btn {
+    min-width: 44px;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  /* The sidebar close sits in a header row; keep it from stretching that row. */
+  .sidebar-close { margin: -6px -6px -6px 0; }
+
+  /* Range and mode switches on the dashboard charts ("3m / 6m / 12m",
+     "Revenue / Quantity") were 26-29px tall, so choosing one took two attempts. */
+  .home-range-btn,
+  .home-chart-toggle button,
+  .chart-range-btn,
+  .chart-mode-btn {
+    min-height: 38px;
+    padding-inline: 12px;
+  }
+}

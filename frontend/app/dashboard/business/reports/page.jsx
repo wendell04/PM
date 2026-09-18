@@ -589,11 +589,42 @@ export default function ReportsPage() {
                 {salesLoading && <LoadingRows />}
                 {!salesLoading && salesData && (
                   <>
+                    {/* The figures in one sentence, before the cards and the chart. Four boxes of
+                        pesos and a three-line graph are a report only to someone who already knows
+                        what they are looking for; the shop owner needs to know whether the month was
+                        good, and the margin is the number that answers that - not the revenue. */}
+                    {(() => {
+                      const rev    = Number(salesData.totalRevenue) || 0;
+                      const cost   = Number(salesData.totalCost) || 0;
+                      const profit = Number(salesData.totalProfit) || 0;
+                      const orders = Number(salesData.totalSales) || 0;
+                      const margin = rev > 0 ? (profit / rev) * 100 : 0;
+                      const avg    = orders > 0 ? rev / orders : 0;
+                      return (
+                        <div style={{ background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: 10, padding: '14px 16px', marginBottom: '12px' }}>
+                          <p style={{ margin: 0, fontSize: '0.92rem', lineHeight: 1.7, color: 'var(--white)' }}>
+                            {orders === 0 ? (
+                              <>No sales were recorded in this period.</>
+                            ) : (
+                              <>
+                                You made <strong style={{ color: 'var(--gold)' }}>{fmtPeso(rev)}</strong> from{' '}
+                                <strong>{orders}</strong> {orders === 1 ? 'sale' : 'sales'}.{' '}
+                                Materials and costs took <strong>{fmtPeso(cost)}</strong>, so you kept{' '}
+                                <strong style={{ color: profit >= 0 ? 'var(--green)' : '#e05252' }}>{fmtPeso(profit)}</strong>
+                                {rev > 0 && <> - that is <strong>{margin.toFixed(0)}%</strong> of what came in</>}.
+                                {avg > 0 && <> The average sale was {fmtPeso(avg)}.</>}
+                              </>
+                            )}
+                          </p>
+                        </div>
+                      );
+                    })()}
+
                     <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '10px' }}>
-                      <StatCard label="Total Transactions" value={String(salesData.totalSales ?? 0)} />
-                      <StatCard label="Total Revenue"      value={fmtPeso(salesData.totalRevenue)} accent />
-                      <StatCard label="Total Cost"         value={fmtPeso(salesData.totalCost)} />
-                      <StatCard label="Net Profit"         value={fmtPeso(salesData.totalProfit)} />
+                      <StatCard label="Sales (count)"        value={String(salesData.totalSales ?? 0)} />
+                      <StatCard label="Money in"             value={fmtPeso(salesData.totalRevenue)} accent />
+                      <StatCard label="Cost of what you sold" value={fmtPeso(salesData.totalCost)} />
+                      <StatCard label="What you kept"        value={fmtPeso(salesData.totalProfit)} />
                     </div>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '1.25rem' }}>
                       <span
@@ -622,6 +653,13 @@ export default function ReportsPage() {
                       </span>
                     </div>
                     <SectionHeader title="Sales Trend" onExport={exportSales} exporting={salesExporting} />
+                    <p style={{ fontSize: '0.78rem', color: 'var(--gray)', lineHeight: 1.6, margin: '0 0 0.6rem' }}>
+                      Each point is one {salesGroupBy === 'daily' ? 'day' : salesGroupBy === 'weekly' ? 'week' : 'month'}.
+                      <span style={{ color: 'var(--gold)', fontWeight: 600 }}> Gold</span> is money in,
+                      <span style={{ color: 'var(--gray-light)', fontWeight: 600 }}> grey</span> is what it cost you, and
+                      <span style={{ color: 'var(--green)', fontWeight: 600 }}> green</span> is what you kept. The wider the
+                      gap between gold and green, the more of each sale is going out again.
+                    </p>
                     {salesGrouped && salesGrouped.length > 0 && (
                       <div style={{ width: '100%', height: 280, marginBottom: '1rem' }}>
                         <ResponsiveContainer width="100%" height="100%">

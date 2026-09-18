@@ -118,6 +118,7 @@ export default function SsaMiniChart({ ssaRevResult = null, ssaQtyResult = null,
               <button
                 key={key}
                 onClick={() => setMiniSource(key)}
+                className="home-range-btn"
                 style={{
                   padding: "0.2rem 0.55rem",
                   fontSize: "0.68rem",
