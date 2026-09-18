@@ -1338,6 +1338,16 @@ function CustomOrderInner() {
                     </div>
                   )}
 
+                  {/* What decides print quality is invisible in a thumbnail: resolution and size. The
+                      terms further down carry the same two facts, but by then the file is already
+                      chosen - so they are said here as well, as guidance rather than a disclaimer. */}
+                  <p style={{ fontSize: '0.73rem', color: 'var(--gray)', lineHeight: 1.6, marginTop: '0.6rem', marginBottom: 0 }}>
+                    <strong style={{ color: 'var(--white)' }}>For a sharp print:</strong> send it at 300 dpi or higher,
+                    already sized for this item, with text and logos unstretched. Screen colours (RGB) always shift a
+                    little in print (CMYK). We print your file as it is - we do not redraw or resize it unless you ask
+                    for a design request.
+                  </p>
+
                   {product.designFormats?.length > 0 && (
                     <p style={{ fontSize: '0.75rem', color: 'var(--gray)', marginTop: '0.6rem' }}>
                       Accepted: {product.designFormats.map(f => f.name || f).join(', ')}
