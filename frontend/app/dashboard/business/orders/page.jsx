@@ -2147,6 +2147,23 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                 </div>
               )}
 
+              {/* The record of what was sent. Without it the shop had nothing on its own screen
+                  after sending a mockup - the owner sent one, saw no change, and assumed it had
+                  not gone. The customer's copy is in My Orders under "Mockup from the shop". */}
+              {lo.mockups?.length > 0 && (() => {
+                const last = lo.mockups[lo.mockups.length - 1];
+                const when = last?.sentAt ? new Date(last.sentAt).toLocaleDateString('en-PH', { month:'short', day:'numeric' }) : '';
+                return (
+                  <div style={{ marginBottom:'10px', padding:'8px 10px', background:'rgba(212,168,67,0.06)', border:'1px solid rgba(212,168,67,0.2)', borderRadius:'8px' }}>
+                    <div style={{ fontSize:'11px', color:'var(--gray)', marginBottom:'6px' }}>
+                      <b style={{ color:'var(--gold)' }}>{lo.mockups.length > 1 ? `${lo.mockups.length} mockups sent` : 'Mockup sent'}</b>
+                      {when && ` - ${when}`}{last?.sentBy && ` by ${last.sentBy}`}. The customer sees these in My Orders; nothing for them to approve.
+                    </div>
+                    <ProofGallery urls={lo.mockups.map(m => designUrl(m.url)).filter(Boolean)} tiles compact />
+                  </div>
+                );
+              })()}
+
               {/* Undo an accidental approval - allowed only while no Job Order exists yet. */}
               {aiStatus === 'approved' && !hasAnyJobOrder && (
                 <div style={{ display:'flex', alignItems:'center', gap:'8px', marginBottom:'8px' }}>
