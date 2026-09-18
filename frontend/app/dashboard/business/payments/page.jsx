@@ -7,6 +7,7 @@ import { remainingDue, paidSoFar } from '@/lib/orderBalance';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import useLockBodyScroll from '@/lib/useLockBodyScroll';
 import { orderNo } from '@/lib/orderNumber';
+import { normalizeStatus } from '@/lib/orderStatus';
 import { S, ICONS, SearchBar, SummaryCard, PaginationBar, EmptyState, usePagination, CustomSelect } from '../inventory-v2/shared';
 
 // Accounts receivable. Sales answers "what did we sell"; this answers "what have we collected and
@@ -100,7 +101,12 @@ export default function PaymentsPage() {
       const res = await fetchWithTimeout(`${API_URL}/api/admin/orders`, { headers: HEADERS(token) }, 20000);
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || data.error || `Request failed (${res.status})`);
-      setOrders(Array.isArray(data.data) ? data.data : (Array.isArray(data) ? data : []));
+      const list = Array.isArray(data.data) ? data.data : (Array.isArray(data) ? data : []);
+      // A cancelled or returned order owes nothing, whatever its deposit arithmetic says - the
+      // list came back with every live order and this page showed a cancelled one as a red
+      // balance with a Record button. Delivered stays: an unpaid balance on a delivered order
+      // is exactly what this page exists to chase.
+      setOrders(list.filter(o => !['cancelled', 'returned'].includes(normalizeStatus(o.orderStatus))));
     } catch (err) {
       setError(err.message || 'Failed to load orders.');
     } finally { setLoading(false); }
@@ -179,7 +185,7 @@ export default function PaymentsPage() {
     <ErrorBoundary>
       <div style={S.page}>
 
-        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '16px' }}>
+        <div className="pmp-stat-row" style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '16px' }}>
           <SummaryCard label="Total Order Value" value={fmt(totalValue)} />
           <SummaryCard label="Collected" value={fmt(totalCollected)} color="var(--st-green-fg)" />
           <SummaryCard label="Outstanding" value={fmt(outstanding)} sub={`${owing.length} order${owing.length === 1 ? '' : 's'}`} color={outstanding > 0 ? 'var(--st-red-fg)' : undefined} />
@@ -207,7 +213,7 @@ export default function PaymentsPage() {
         </div>
 
         <div style={{ ...S.card, ...S.rowBetween, marginBottom: '10px', padding: '12px 16px' }}>
-          <div style={{ ...S.row, gap: '8px', flex: 1 }}>
+          <div className="pmp-filters" style={{ ...S.row, gap: '8px', flex: 1 }}>
             <SearchBar value={search} onChange={v => { setSearch(v); setPage(1); }} placeholder="Search order or customer…" style={{ width: '240px' }} />
             <CustomSelect value={statusFilter} onChange={v => { setStatusFilter(v); setPage(1); }} style={{ width: '170px' }}
               options={[
@@ -226,7 +232,7 @@ export default function PaymentsPage() {
         {error && <div style={{ ...S.note, background: 'var(--st-red-bg)', borderColor: 'rgba(239,68,68,0.35)', color: 'var(--st-red-fg)', marginBottom: '10px' }}>{error}</div>}
 
         <div style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <table className="pmp-rt" style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead><tr>
               <th style={S.th}>Order</th><th style={S.th}>Customer</th>
               <th style={{ ...S.th, textAlign: 'right' }}>Total</th>
@@ -246,25 +252,25 @@ export default function PaymentsPage() {
                   ))}
                 </>
               ) : slice.length === 0 ? (
-                <tr><td colSpan={8} style={{ padding: 0 }}><EmptyState message="Nothing outstanding" sub="Orders with an unpaid balance appear here." /></td></tr>
+                <tr><td colSpan={8} data-rt="full" style={{ padding: 0 }}><EmptyState message="Nothing outstanding" sub="Orders with an unpaid balance appear here." /></td></tr>
               ) : slice.map(o => {
                 const bal = balanceOf(o);
                 const bk = bucketOf(o);
                 const days = ageDays(o);
                 return (
                   <tr key={o._id || o.id} style={S.tr}>
-                    <td style={{ ...S.td, fontFamily: 'monospace', fontWeight: 600, fontSize: 12, color: 'var(--gold)' }}>{orderNo(o)}</td>
-                    <td style={S.td}>{customerOf(o)}</td>
-                    <td style={{ ...S.td, textAlign: 'right', fontFamily: 'monospace' }}>{fmt(o.totalAmount)}</td>
-                    <td style={{ ...S.td, textAlign: 'right', fontFamily: 'monospace', color: 'var(--st-green-fg)' }}>{fmt(paidSoFar(o))}</td>
-                    <td style={{ ...S.td, textAlign: 'right', fontFamily: 'monospace', fontWeight: 700, color: bal > 0 ? 'var(--st-red-fg)' : 'var(--gray)' }}>{fmt(bal)}</td>
-                    <td style={S.td}>
+                    <td data-rt="head" style={{ ...S.td, fontFamily: 'monospace', fontWeight: 600, fontSize: 12, color: 'var(--gold)' }}>{orderNo(o)}</td>
+                    <td data-label="Customer" style={S.td}>{customerOf(o)}</td>
+                    <td data-label="Total" style={{ ...S.td, textAlign: 'right', fontFamily: 'monospace' }}>{fmt(o.totalAmount)}</td>
+                    <td data-label="Paid" style={{ ...S.td, textAlign: 'right', fontFamily: 'monospace', color: 'var(--st-green-fg)' }}>{fmt(paidSoFar(o))}</td>
+                    <td data-label="Balance" style={{ ...S.td, textAlign: 'right', fontFamily: 'monospace', fontWeight: 700, color: bal > 0 ? 'var(--st-red-fg)' : 'var(--gray)' }}>{fmt(bal)}</td>
+                    <td data-label="Age" style={S.td}>
                       {bal > 0
                         ? <span style={{ ...S.badge, background: bk.tone.bg, color: bk.tone.fg, border: 'none', fontSize: 10, fontWeight: 700 }}>{days}d</span>
                         : <span style={{ color: 'var(--gray)' }}>-</span>}
                     </td>
-                    <td style={S.td}><StatusBadge status={o.paymentStatus || 'unpaid'} /></td>
-                    <td style={{ ...S.td, textAlign: 'right', whiteSpace: 'nowrap' }}>
+                    <td data-label="Status" style={S.td}><StatusBadge status={o.paymentStatus || 'unpaid'} /></td>
+                    <td data-rt="actions" style={{ ...S.td, textAlign: 'right', whiteSpace: 'nowrap' }}>
                       {(o.paymentHistory?.length > 0) && (
                         <button onClick={() => setHistoryOrder(o)} style={S.btnSmGhost}>History</button>
                       )}

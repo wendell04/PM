@@ -730,6 +730,7 @@ export default function BusinessDashboardLayout({ children }) {
       "/dashboard/business/dashboardoverview": "Dashboard",
       "/dashboard/business/home": "Home",
       "/dashboard/business/orders": "Orders",
+      "/dashboard/business/order-requests": "Order Requests",
       "/dashboard/business/job-orders": "Job Orders",
       "/dashboard/business/pos": "Point of Sale",
       "/dashboard/business/inventory-v2": "Inventory",

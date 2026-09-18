@@ -4241,6 +4241,21 @@ html.light .skeleton-table-header {
     min-height: 38px;
     padding-inline: 12px;
   }
+
+  /* The page name is the one thing in the top bar allowed to give way. On a 360px
+     screen "Order Requests" pushed the bell and the account button off the right
+     edge; now the name shrinks and clips, the buttons stay where a thumb expects. */
+  .admin-top-bar { padding: 0 0.75rem; }
+  .top-bar-left { min-width: 0; flex: 1 1 auto; }
+  .top-bar-title { min-width: 0; overflow: hidden; }
+  .top-bar-page-name { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .top-bar-right { flex-shrink: 0; }
+}
+/* Below 480px the account button drops the name and keeps the avatar - the name
+   cost 70px that the page title needed more. */
+@media (max-width: 480px) {
+  .top-bar-username { display: none; }
+  .top-bar-user { padding-inline: 6px; gap: 4px; }
 }
 
 /* ─── One table, two shapes ─────────────────────────────────────────────────
@@ -4268,6 +4283,7 @@ html.light .skeleton-table-header {
   table.pmp-rt { border-collapse: separate !important; border-spacing: 0 !important; }
   table.pmp-rt thead { display: none !important; }
   table.pmp-rt, table.pmp-rt tbody, table.pmp-rt tr, table.pmp-rt td { display: block !important; width: 100% !important; }
+  table.pmp-rt { min-width: 0 !important; }
 
   table.pmp-rt tr {
     position: relative;
@@ -4354,6 +4370,29 @@ html.light .skeleton-table-header {
   }
   table.pmp-rt td[data-rt="full"]::before,
   table.pmp-rt td[data-rt="panel"]::before { content: none; }
+
+  /* A row number or a checkbox column says nothing on a card. */
+  table.pmp-rt td[data-rt="hide"] { display: none !important; }
+
+  /* The row's buttons, side by side and thumb-sized, with no label. */
+  table.pmp-rt td[data-rt="actions"] {
+    display: flex !important;
+    gap: 8px;
+    padding: 8px 13px 10px !important;
+  }
+  table.pmp-rt td[data-rt="actions"]::before { content: none; }
+  table.pmp-rt td[data-rt="actions"] > * {
+    grid-column: auto;
+    flex: 1 1 0;
+    justify-content: center;
+    min-height: 40px;
+    margin-left: 0 !important;
+  }
+
+  /* A filter row of fixed-width controls (a 240px search, 150px selects) stacks
+     to full width. The widths are inline for the desktop; this overrides them. */
+  .pmp-filters { flex-direction: column; align-items: stretch !important; }
+  .pmp-filters > * { width: 100% !important; flex: 1 1 100% !important; }
 
   /* An expanded detail belongs to the row it opened from, not beside it. */
   table.pmp-rt tr:has(> td[data-rt="panel"]) {

@@ -437,7 +437,7 @@ export default function OrderRequestsPage() {
             </div>
           ) : (
             <div style={{ overflowX: 'auto', borderRadius: '10px', border: '1px solid var(--border)' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '900px' }}>
+              <table className="pmp-rt" style={{ width: '100%', borderCollapse: 'collapse', minWidth: '900px' }}>
                 <thead>
                   <tr style={{ background: 'var(--dark2)', borderBottom: '1px solid var(--border)' }}>
                     {['#', 'Customer', 'Product', 'Qty', 'Suggested', 'Final Price', 'Status', 'Date', 'Actions'].map(h => (
@@ -448,12 +448,12 @@ export default function OrderRequestsPage() {
                 <tbody>
                   {filteredRequests.map((req, idx) => (
                     <tr key={req.id} style={{ borderBottom: '1px solid var(--border)', background: 'var(--dark)' }}>
-                      <td style={{ padding: '0.75rem 1rem', fontSize: '0.85rem', color: 'var(--gray)' }}>{idx + 1}</td>
-                      <td style={{ padding: '0.75rem 1rem' }}>
+                      <td data-rt="hide" style={{ padding: '0.75rem 1rem', fontSize: '0.85rem', color: 'var(--gray)' }}>{idx + 1}</td>
+                      <td data-rt="head" style={{ padding: '0.75rem 1rem' }}>
                         <div style={{ fontSize: '0.875rem', color: 'var(--white)', fontWeight: 600 }}>{req.customerName || '-'}</div>
                         <div style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>{req.customerEmail || '-'}</div>
                       </td>
-                      <td style={{ padding: '0.75rem 1rem' }}>
+                      <td data-label="Product" style={{ padding: '0.75rem 1rem' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                           {req.productThumbnail ? (
                             /* eslint-disable-next-line @next/next/no-img-element */
@@ -471,12 +471,12 @@ export default function OrderRequestsPage() {
                           </div>
                         </div>
                       </td>
-                      <td style={{ padding: '0.75rem 1rem', fontSize: '0.85rem', color: 'var(--white)', fontWeight: 600 }}>{req.quantity}</td>
-                      <td style={{ padding: '0.75rem 1rem', fontSize: '0.85rem', color: 'var(--gray)' }}>{formatPeso(req.suggestedPrice)}</td>
-                      <td style={{ padding: '0.75rem 1rem', fontSize: '0.85rem', fontWeight: 600, color: req.finalPrice != null ? 'var(--gold)' : 'var(--gray)' }}>{formatPeso(req.finalPrice)}</td>
-                      <td style={{ padding: '0.75rem 1rem' }}><StatusBadge status={req.status} /></td>
-                      <td style={{ padding: '0.75rem 1rem', fontSize: '0.8rem', color: 'var(--gray)', whiteSpace: 'nowrap' }}>{formatDate(req.createdAt)}</td>
-                      <td style={{ padding: '0.75rem 1rem' }}>
+                      <td data-label="Qty" style={{ padding: '0.75rem 1rem', fontSize: '0.85rem', color: 'var(--white)', fontWeight: 600 }}>{req.quantity}</td>
+                      <td data-label="Suggested" style={{ padding: '0.75rem 1rem', fontSize: '0.85rem', color: 'var(--gray)' }}>{formatPeso(req.suggestedPrice)}</td>
+                      <td data-label="Final price" style={{ padding: '0.75rem 1rem', fontSize: '0.85rem', fontWeight: 600, color: req.finalPrice != null ? 'var(--gold)' : 'var(--gray)' }}>{formatPeso(req.finalPrice)}</td>
+                      <td data-label="Status" style={{ padding: '0.75rem 1rem' }}><StatusBadge status={req.status} /></td>
+                      <td data-label="Date" style={{ padding: '0.75rem 1rem', fontSize: '0.8rem', color: 'var(--gray)', whiteSpace: 'nowrap' }}>{formatDate(req.createdAt)}</td>
+                      <td data-rt="actions" style={{ padding: '0.75rem 1rem' }}>
                         <button
                           onClick={() => openReview(req)}
                           style={{ background: 'var(--gold)', color: 'var(--black)', border: 'none', borderRadius: '6px', padding: '0.375rem 0.75rem', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer' }}

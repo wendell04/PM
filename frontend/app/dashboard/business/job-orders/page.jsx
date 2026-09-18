@@ -597,7 +597,7 @@ export default function JobOrdersPage() {
           <button onClick={openCreate} style={S.btnPrimary}>{ICONS.plus} Create Job Order</button>
         </div>
 
-        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '16px' }}>
+        <div className="pmp-stat-row" style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '16px' }}>
           <SummaryCard label="Total" value={counts.total} accent />
           <SummaryCard label="Queued" value={counts.queued} />
           <SummaryCard label="In Progress" value={counts.inProgress} color="var(--gold)" />
@@ -606,7 +606,7 @@ export default function JobOrdersPage() {
         </div>
 
             <div style={{ ...S.card, ...S.rowBetween, marginBottom: '10px', padding: '12px 16px' }}>
-              <div style={{ ...S.row, gap: '8px', flex: 1 }}>
+              <div className="pmp-filters" style={{ ...S.row, gap: '8px', flex: 1 }}>
                 <SearchBar value={search} onChange={v => { setSearch(v); setPage(1); }} placeholder="Search JO, product, order…" style={{ width: '240px' }} />
                 <CustomSelect value={statusFilter} onChange={setStatusFilter} style={{ width: '150px' }}
                   options={[{ value: '', label: 'All Statuses' }, ...JO_STATUSES.map(s => ({ value: s, label: JO_BADGE[s]?.label ?? s }))]} />
@@ -619,7 +619,7 @@ export default function JobOrdersPage() {
             {error && <div style={{ ...S.note, background: 'var(--st-red-bg)', borderColor: 'rgba(239,68,68,0.35)', color: 'var(--st-red-fg)', marginBottom: '10px' }}>{error}</div>}
 
             <div style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <table className="pmp-rt" style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead><tr>
                   {/* Whoever works the JO is whoever opens Production or QC - naming a
                       staff member here just created a field nobody kept current. */}
@@ -631,14 +631,14 @@ export default function JobOrdersPage() {
                   {isLoading ? (
                     <TableSkeleton cols={7} rows={4} />
                   ) : slice.length === 0 ? (
-                    <tr><td colSpan={8} style={{ padding: 0 }}><EmptyState message="No job orders found" sub="Create one from a paid, design-approved order." /></td></tr>
+                    <tr><td colSpan={8} data-rt="full" style={{ padding: 0 }}><EmptyState message="No job orders found" sub="Create one from a paid, design-approved order." /></td></tr>
                   ) : slice.map(jo => (
                     <tr key={jo.id ?? jo._id} style={S.tr}>
-                      <td style={{ ...S.td, fontFamily: 'monospace', fontWeight: 600 }}>
+                      <td data-rt="head" style={{ ...S.td, fontFamily: 'monospace', fontWeight: 600 }}>
                         {jo.joId || (jo.id ?? jo._id)?.slice(-8).toUpperCase()}
                         <RushBadge isRush={jo.isRush} />
                       </td>
-                      <td style={S.td}>
+                      <td data-label="Product" style={S.td}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                           {/* The product, not the proof: a grouped request puts the same proof on every
                               job order, so this column drew the same picture for a mug and a totebag. */}
@@ -647,9 +647,9 @@ export default function JobOrdersPage() {
                         </div>
                         {jo.bomSnapshot?.length > 0 && <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 2 }}>Materials: {jo.bomSnapshot.map(m => `${m.name} ×${m.totalQty}${m.unit ? ' ' + m.unit : ''}`).join(', ')}</div>}
                       </td>
-                      <td style={S.td}>{jo.product?.quantity ?? '-'}</td>
-                      <td style={{ ...S.td, fontFamily: 'monospace' }}>{jo.orderId ? orderNo(jo.orderId) : '-'}</td>
-                      <td style={S.td}>
+                      <td data-label="Qty" style={S.td}>{jo.product?.quantity ?? '-'}</td>
+                      <td data-label="Order" style={{ ...S.td, fontFamily: 'monospace' }}>{jo.orderId ? orderNo(jo.orderId) : '-'}</td>
+                      <td data-label="Due" style={S.td}>
                         {fmtDate(jo.targetCompletion)}
                         {(() => {
                           const risk = joRisk(jo);
@@ -657,8 +657,8 @@ export default function JobOrdersPage() {
                           return <div style={{ marginTop: 3 }}><span style={{ ...S.badge, ...RISK_STYLE[risk.color], fontSize: 9, fontWeight: 700 }}>{risk.label}</span></div>;
                         })()}
                       </td>
-                      <td style={S.td}><StatusBadge status={jo.joStatus} /></td>
-                      <td style={{ ...S.td, textAlign: 'right' }}>
+                      <td data-label="Status" style={S.td}><StatusBadge status={jo.joStatus} /></td>
+                      <td data-rt="actions" style={{ ...S.td, textAlign: 'right' }}>
                         <button onClick={() => openEdit(jo)} style={S.btnSmGhost}>{ICONS.edit} Edit</button>
                         {canDelete(jo) && <button onClick={() => { setDeleteErr(''); setDeleting(jo); }} style={{ ...S.btnSmGhost, marginLeft: 6, color: 'var(--st-red-fg)' }} title="Delete (test/junk only)">Delete</button>}
                       </td>
