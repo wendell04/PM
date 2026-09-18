@@ -3016,14 +3016,21 @@ class OrderController extends Controller
         $order->cancelledReason = $reason !== '' ? mb_substr($reason, 0, 500) : null;
         $order->cancelledAt     = now();
 
-        $paid   = $this->paidSoFar($order);
+        // The design fee is not part of the default: the terms make it non-refundable once the
+        // designer has started, and a paid fee means they did. Only the goods side is returned
+        // unless the shop types a different figure.
+        $paid       = $this->paidSoFar($order);
+        $designKept = ($order->designFeePaid ?? false)
+            ? (float) ($order->designFeePaidAmount ?? $order->designFee ?? 0)
+            : 0.0;
         $refund = $request->has('refundAmount')
             ? max(0, min($paid, (float) $request->input('refundAmount')))
-            : $paid;
+            : max(0, $paid - $designKept);
         $this->recordRefundOwed(
             $order,
             $refund,
-            $reason !== '' ? 'Cancelled by the shop - ' . mb_substr($reason, 0, 200) : 'Cancelled by the shop',
+            ($reason !== '' ? 'Cancelled by the shop - ' . mb_substr($reason, 0, 200) : 'Cancelled by the shop')
+                . ($designKept > 0 && !$request->has('refundAmount') ? ' (design fee retained)' : ''),
             $by
         );
         $this->refundCourierFeeOnCancel($order, $previousStatus, $by);
@@ -3106,6 +3113,51 @@ class OrderController extends Controller
      * clear it was to forget about it. There is still no refund API - the shop sends it by hand -
      * so this is a receipt, not a transfer, and it says who logged it and how.
      */
+    /**
+     * POST /api/admin/orders/{id}/waive-refund
+     * The shop keeps what it is owed-back on paper but entitled to: a design fee for work already
+     * delivered, a deposit on personalised goods that cannot be resold. Nothing is sent; the row
+     * stops reading as a debt and the reason is kept.
+     */
+    public function waiveRefund(Request $request, $id)
+    {
+        try {
+            $user = $request->user();
+            if (!$this->hasPermission($request, 'payments.create')) {
+                return $this->unauthorizedResponse();
+            }
+            $order = Order::find($id);
+            if (!$order) return $this->notFoundResponse('Order');
+            if ((float) ($order->refundOwed ?? 0) <= 0) {
+                return $this->errorResponse('This order has no refund outstanding.', 422);
+            }
+            $validated = $request->validate(['reason' => 'required|string|max:300']);
+            $reason = htmlspecialchars(strip_tags(trim($validated['reason'])), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+
+            $refunds = $order->refunds ?? [];
+            foreach ($refunds as $i => $r) {
+                if (($r['status'] ?? 'owed') !== 'owed') continue;
+                $refunds[$i]['status']       = 'waived';
+                $refunds[$i]['waivedAt']     = now()->toISOString();
+                $refunds[$i]['waivedBy']     = trim(($user->firstName ?? '') . ' ' . ($user->lastName ?? '')) ?: null;
+                $refunds[$i]['waivedReason'] = $reason;
+            }
+            $order->refunds    = array_values($refunds);
+            $order->refundOwed = 0;
+            $order->updatedAt  = now();
+            $order->save();
+
+            $this->logActivity($request, 'order.refund_waived', 'order', (string) $order->_id,
+                'Refund waived on order #' . strtoupper(substr((string) $order->_id, -8)) . ': ' . $reason, ['reason' => $reason]);
+
+            return $this->successResponse('Refund waived.', ['refunds' => $order->refunds, 'refundOwed' => 0]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return $this->validationErrorResponse($e);
+        } catch (\Exception $e) {
+            return $this->serverErrorResponse($e, 'Failed to waive the refund.');
+        }
+    }
+
     public function markRefunded(Request $request, $id)
     {
         try {

@@ -367,6 +367,7 @@ Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
     // Money going the other way. Same permission as taking a payment, because settling a debt to
     // a customer is the same kind of act as recording one from them.
     Route::post('/admin/orders/{id}/mark-refunded', [OrderController::class, 'markRefunded']);
+    Route::post('/admin/orders/{id}/waive-refund',  [OrderController::class, 'waiveRefund']);
 
     // ── Walk-in / POS ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
     Route::post('/admin/orders/walk-in',       [WalkInOrderController::class, 'store']);

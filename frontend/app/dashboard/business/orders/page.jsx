@@ -1232,6 +1232,28 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
     return { back, off, offValue };
   })();
 
+  const handleWaiveRefund = async () => {
+    const reason = window.prompt('Why is this kept? (shown in the audit log)', lo.designFeePaid ? 'Design fee - non-refundable once the designer started' : '');
+    if (reason == null || !reason.trim()) return;
+    setPayingRefund(true); setRefundErr('');
+    try {
+      const res = await fetchWithTimeout(`${API_URL}/api/admin/orders/${lo.id}/waive-refund`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ reason: reason.trim() }),
+      }, 15000);
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.message || d.error || 'Could not record it.');
+      const updated = { ...lo, refundOwed: 0, refunds: d?.data?.refunds ?? lo.refunds };
+      setLo(updated);
+      if (onStatusUpdated) onStatusUpdated(lo.id, updated);
+    } catch (err) {
+      setRefundErr(err.message || 'Could not record it.');
+    } finally {
+      setPayingRefund(false);
+    }
+  };
+
   const handleMarkRefunded = async () => {
     setPayingRefund(true); setRefundErr('');
     try {
@@ -2532,16 +2554,26 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                         <div style={{ fontSize:'12px', fontWeight:700, color:'#b91c1c', marginBottom:'4px' }}>
                           This customer has paid &#8369;{fmt(paidSoFar(lo))}
                         </div>
-                        <div style={{ fontSize:'11.5px', color:'var(--gray)', lineHeight:1.5, marginBottom:'7px' }}>
-                          Leave blank to return all of it - which is right when nothing has been made.
-                          Enter less only if production had already started: personalised goods cannot
-                          be resold, and the deposit is what covers that.
-                        </div>
-                        <input value={refundAmt}
-                          onChange={e => setRefundAmt(e.target.value.replace(/[^0-9.]/g, ''))}
-                          inputMode="decimal" maxLength={9}
-                          placeholder={`Refund amount - blank means all ${fmt(paidSoFar(lo))}`}
-                          style={S.input} />
+                        {(() => {
+                          const kept = lo.designFeePaid ? Number(lo.designFeePaidAmount ?? lo.designFee ?? 0) : 0;
+                          const dflt = Math.max(0, paidSoFar(lo) - kept);
+                          return (
+                            <>
+                              <div style={{ fontSize:'11.5px', color:'var(--gray)', lineHeight:1.5, marginBottom:'7px' }}>
+                                {kept > 0
+                                  ? `The design fee of \u20B1${fmt(kept)} is kept - the terms make it non-refundable once the designer has started. Blank returns the rest (\u20B1${fmt(dflt)}).`
+                                  : 'Leave blank to return all of it - which is right when nothing has been made.'}
+                                {' '}Enter less only if production had already started: personalised goods cannot be
+                                resold, and the deposit is what covers that.
+                              </div>
+                              <input value={refundAmt}
+                                onChange={e => setRefundAmt(e.target.value.replace(/[^0-9.]/g, ''))}
+                                inputMode="decimal" maxLength={9}
+                                placeholder={`Refund amount - blank means \u20B1${fmt(dflt)}`}
+                                style={S.input} />
+                            </>
+                          );
+                        })()}
                       </div>
                     )}
                   </div>
@@ -2865,6 +2897,12 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                       <button type="button" onClick={handleMarkRefunded} disabled={payingRefund}
                         style={{ ...S.btnSm, opacity: payingRefund ? 0.6 : 1 }}>
                         {payingRefund ? 'Recording...' : `I have sent \u20B1${fmt(Number(lo.refundOwed))}`}
+                      </button>
+                      {/* For money the shop is entitled to keep - a design fee for delivered work, a deposit
+                          on goods that cannot be resold. Closes the debt with a reason, sends nothing. */}
+                      <button type="button" onClick={handleWaiveRefund} disabled={payingRefund}
+                        style={{ ...S.btnSmGhost, opacity: payingRefund ? 0.6 : 1 }}>
+                        Keep it - not refundable
                       </button>
                     </div>
                     {refundErr && <div style={{ fontSize: 11, color: '#b91c1c', marginTop: 5 }}>{refundErr}</div>}
