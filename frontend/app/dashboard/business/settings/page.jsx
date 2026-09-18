@@ -1148,8 +1148,9 @@ export default function SettingsPage() {
     <ErrorBoundary>
       <div className="page-content-wrapper">
 
-        <div style={{ display: 'flex', gap: '2rem', alignItems: 'flex-start' }}>
+        <div className="settings-shell" style={{ display: 'flex', gap: '2rem', alignItems: 'flex-start' }}>
           <nav
+            className="settings-tabs"
             aria-label="Settings sections"
             style={{
               width: 200,
@@ -1208,7 +1209,7 @@ export default function SettingsPage() {
           <div style={{ flex: 1, minWidth: 0 }}>
 
           {activeTab === 'profile' && (
-          <div style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: '1.5rem', alignItems: 'start' }}>
+          <div className="pmp-cols" style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: '1.5rem', alignItems: 'start' }}>
 
             {/* ── Left: Avatar sidebar card ──────────────────── */}
             <div style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden' }}>
@@ -1290,7 +1291,7 @@ export default function SettingsPage() {
                   <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--white)' }}>Identity</span>
                   <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>- Your name as it appears on your account.</span>
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
+                <div className="pmp-cols" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
                   {[{ label: 'First Name', value: profileForm.firstName }, { label: 'Last Name', value: profileForm.lastName }].map(({ label, value }, i) => (
                     <div key={label} style={{ padding: '1rem 1.25rem', borderRight: i === 0 ? '1px solid var(--border)' : 'none' }}>
                       <div style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.35rem' }}>{label}</div>
@@ -1314,7 +1315,7 @@ export default function SettingsPage() {
                   </div>
                   <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '2px 8px', borderRadius: '4px', border: '1px solid var(--border)', color: 'var(--gray)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>Locked</span>
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
+                <div className="pmp-cols" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
                   {[{ label: 'Phone Number', value: profileForm.phoneNumber }, { label: 'Address', value: profileForm.address }].map(({ label, value }, i) => (
                     <div key={label} style={{ padding: '1rem 1.25rem', borderRight: i === 0 ? '1px solid var(--border)' : 'none' }}>
                       <div style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.35rem' }}>{label}</div>
@@ -1971,7 +1972,7 @@ export default function SettingsPage() {
                   </label>
                   {/* The same Philippine Standard Geographic Code lists customers choose from, so the
                       shop's address is as exact as theirs without needing a map. */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                  <div className="pmp-cols" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
                     <div className="profile-form-field">
                       <label>Region</label>
                       <CustomSelect
@@ -2147,7 +2148,7 @@ export default function SettingsPage() {
                           lower per-km rate beyond it. Lalamove's own published Metro Manila motorcycle rate
                           is ₱49 base + ₱6/km for the first 5 km + ₱5/km after - the defaults here. A single
                           flat per-km rate the whole trip was a shape no real courier prices with. */}
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                      <div className="pmp-cols" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                         <div className="profile-form-field">
                           <label>Base Rate (₱) <span className="required">*</span></label>
                           <input

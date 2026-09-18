@@ -4533,3 +4533,26 @@ html.light .skeleton-table-header {
   }
   .phone-section-pill.is-active { background: var(--gold); border-color: var(--gold); color: #1a1a1a; }
 }
+
+/* ─── Settings on a phone ───────────────────────────────────────────────────
+   The section list is a 200px column beside the content on a desktop; on a
+   phone it becomes a row of pills above it and the content takes the width. */
+@media (max-width: 700px) {
+  .settings-shell { flex-direction: column; gap: 12px !important; }
+  .settings-tabs {
+    position: static !important;
+    width: 100% !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    gap: 6px !important;
+    padding-right: 0 !important;
+    border-right: none !important;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 8px;
+  }
+  .settings-tabs::-webkit-scrollbar { display: none; }
+  .settings-tabs > button { flex: 0 0 auto; white-space: nowrap; box-shadow: none !important; border-radius: 999px !important; min-height: 36px; }
+  .settings-shell > div { width: 100%; }
+}
