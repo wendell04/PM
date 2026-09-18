@@ -2142,7 +2142,7 @@ export default function SettingsPage() {
                   return (
                     // Two columns rather than one 480px-capped grid with empty space beside it: the
                     // live example earns the room a fixed-width field grid was leaving blank.
-                    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(220px, 320px)', gap: '1.5rem', alignItems: 'start' }}>
+                    <div className="pmp-cols" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(220px, 320px)', gap: '1.5rem', alignItems: 'start' }}>
                       {/* Shaped after how motorcycle courier apps (Lalamove, Grab) actually price a trip in
                           Metro Manila: a base fare, a steeper per-km rate for a short first stretch, then a
                           lower per-km rate beyond it. Lalamove's own published Metro Manila motorcycle rate
@@ -2274,7 +2274,7 @@ export default function SettingsPage() {
                     mug rather than a totebag - so this is charged ONCE per order however
                     many customised products share the same artwork. A product can still
                     override it for genuinely harder work. */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 320px) minmax(0, 1fr)', gap: '1rem 1.5rem', alignItems: 'start', marginBottom: '1.25rem' }}>
+                <div className="pmp-cols" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 320px) minmax(0, 1fr)', gap: '1rem 1.5rem', alignItems: 'start', marginBottom: '1.25rem' }}>
                   <div>
                   <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: 'var(--gray-light)', marginBottom: '0.35rem' }}>
                     Design fee (₱)
@@ -2317,7 +2317,7 @@ export default function SettingsPage() {
                   ))}
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 320px) minmax(0, 1fr)', gap: '1rem 1.5rem', alignItems: 'start', marginBottom: '1.25rem' }}>
+                <div className="pmp-cols" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 320px) minmax(0, 1fr)', gap: '1rem 1.5rem', alignItems: 'start', marginBottom: '1.25rem' }}>
                   <div>
                   <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: 'var(--gray-light)', marginBottom: '0.35rem' }}>
                     Days to pay the deposit
@@ -2339,7 +2339,7 @@ export default function SettingsPage() {
                     for at all. They hold stock just as hard as an approved order does, and nothing else
                     in the system ever lets go of it. Orders whose design fee HAS cleared are exempt -
                     the designer is working and the customer has already paid. */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 320px) minmax(0, 1fr)', gap: '1rem 1.5rem', alignItems: 'start', marginBottom: '1.25rem' }}>
+                <div className="pmp-cols" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 320px) minmax(0, 1fr)', gap: '1rem 1.5rem', alignItems: 'start', marginBottom: '1.25rem' }}>
                   <div>
                   <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: 'var(--gray-light)', marginBottom: '0.35rem' }}>
                     Days before an unpaid order lapses

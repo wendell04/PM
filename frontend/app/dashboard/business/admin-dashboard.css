@@ -4555,4 +4555,5 @@ html.light .skeleton-table-header {
   .settings-tabs::-webkit-scrollbar { display: none; }
   .settings-tabs > button { flex: 0 0 auto; white-space: nowrap; box-shadow: none !important; border-radius: 999px !important; min-height: 36px; }
   .settings-shell > div { width: 100%; }
+  .profile-form-grid { grid-template-columns: 1fr !important; }
 }
