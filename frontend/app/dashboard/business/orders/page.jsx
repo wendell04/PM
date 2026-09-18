@@ -18,6 +18,7 @@ import { getStatusBadge } from '@/lib/utils/orderHelpers';
 import ImageLightbox from '@/components/shop/ImageLightbox';
 import ProofGallery from '@/components/shop/ProofGallery';
 import useLockBodyScroll from '@/lib/useLockBodyScroll';
+import { useIsPhone, KpiStrip, PhoneFilterBar, PhoneList, PhoneRow, PhoneSheet } from '@/components/dashboard/phone';
 import { normalizeStatus, statusLabel, ORDER_STATUS_ORDER } from '@/lib/orderStatus';
 import { isCodMethod } from '@/lib/paymentMethod';
 
@@ -3058,6 +3059,9 @@ export default function OrdersPage() {
   const [customFrom,   setCustomFrom]   = useState('');
   const [customTo,     setCustomTo]     = useState('');
   const [expandedId,   setExpandedId]   = useState(null);
+  // Below 700px the list, the filters and the opened order are the phone pieces; see
+  // components/dashboard/phone.jsx. Same data, same state, another shape.
+  const isPhone = useIsPhone();
   const [loading,      setLoading]      = useState(true);
   const [loadError,    setLoadError]    = useState('');
   const [refreshing,   setRefreshing]   = useState(false);
@@ -3213,6 +3217,17 @@ export default function OrdersPage() {
     <ErrorBoundary>
       <div style={S.page}>
 
+        {isPhone ? (
+          <KpiStrip items={[
+            { key:'all',             label:'Orders',      value:counts.all },
+            { key:'pending',         label:'Pending',     value:counts.pending },
+            { key:'in_production',   label:'In production', value:counts.inProduction },
+            { key:'for_delivery',    label:'For delivery', value:counts.forDelivery },
+            { key:'delivered',       label:'Delivered',   value:counts.delivered },
+            { key:'cancelled',       label:'Cancelled',   value:counts.cancelled },
+            { key:'needs_attention', label:'Needs attention', value:counts.needsAttention, color: counts.needsAttention > 0 ? 'var(--st-red-fg)' : undefined },
+          ].map(k => ({ ...k, active: statusFilter === k.key, onClick: () => { setStatusFilter(k.key); setPage(1); } }))} />
+        ) : (<>
         {/* Summary cards - click to filter */}
         <div className="pmp-stat-row" style={{ display:'flex', gap:'10px', flexWrap:'wrap', marginBottom:'16px' }}>
           {[
@@ -3232,7 +3247,9 @@ export default function OrdersPage() {
             </div>
           ))}
         </div>
+        </>)}
 
+        {!isPhone && (<>
         {/* Status pill tabs */}
         <div style={{ display:'flex', gap:'4px', background:'var(--dark2)', borderRadius:'8px', padding:'3px', alignSelf:'flex-start', marginBottom:'14px', flexWrap:'wrap' }}>
           {STATUS_TABS.map(s => (
@@ -3247,6 +3264,41 @@ export default function OrdersPage() {
           ))}
         </div>
 
+        </>)}
+
+        {isPhone ? (
+          <PhoneFilterBar
+            search={search} onSearch={v => { setSearch(v); setPage(1); }} placeholder="Search order, customer, product"
+            filters={[
+              { key:'status', label:'Status', value:statusFilter, defaultValue:'all', onChange: v => { setStatusFilter(v); setPage(1); },
+                options: STATUS_TABS.map(st => ({ value: st, label: st === 'all' ? 'All' : statusLabel(st) })) },
+              { key:'type', label:'Type', value:typeFilter, defaultValue:'all', onChange: v => { setTypeFilter(v); setPage(1); },
+                options: [
+                  { value:'all', label:'All types' }, { value:'produced', label:'All custom' }, { value:'request', label:'Custom (request)' },
+                  { value:'upload', label:'Custom (upload)' }, { value:'mixed', label:'Mixed cart' }, { value:'ready', label:'Ready made' },
+                ] },
+              { key:'pay', label:'Payment', value:payFilter, defaultValue:'all', onChange: v => { setPayFilter(v); setPage(1); },
+                options: [{ value:'all', label:'All' }, { value:'paid', label:'Paid' }, { value:'partial', label:'Partial' }, { value:'unpaid', label:'Unpaid' }] },
+              { key:'time', label:'Time', value:dateFilter, defaultValue:'all-time', onChange: setDateFilter,
+                options: [{ value:'all-time', label:'All time' }, { value:'today', label:'Today' }, { value:'this-week', label:'This week' }, { value:'this-month', label:'This month' }, { value:'custom', label:'Custom range' }],
+                extra: dateFilter === 'custom' && (
+                  <div style={{ display:'flex', gap:8, marginTop:10 }}>
+                    <input type="date" value={customFrom} onChange={e => setCustomFrom(e.target.value)} style={{ ...S.input, minHeight:44 }} aria-label="From" />
+                    <input type="date" value={customTo}   onChange={e => setCustomTo(e.target.value)}   style={{ ...S.input, minHeight:44 }} aria-label="To" />
+                  </div>
+                ) },
+            ]}
+            actions={<>
+              <button onClick={() => setShowJOQueue(true)} style={{ ...S.btnSmGhost, minHeight:36 }}>{ICONS.pkg} JO Queue</button>
+              <button onClick={() => setShowArchived(v => !v)}
+                style={{ ...S.btnSmGhost, minHeight:36, ...(showArchived ? { background:'#fff7ed', color:'#c2410c', borderColor:'#fdba74' } : {}) }}>
+                {showArchived ? 'Hide archived' : 'Archived'}
+              </button>
+              <button onClick={() => fetchOrders()} aria-label="Refresh" style={{ ...S.btnSmGhost, minHeight:36, minWidth:36, justifyContent:'center' }}>{ICONS.reload}</button>
+            </>}
+            note={refreshing ? 'Refreshing' : `${total} order${total !== 1 ? 's' : ''}`}
+          />
+        ) : (<>
         {/* Toolbar */}
         <div style={{ ...S.card, ...S.rowBetween, marginBottom:'10px', padding:'12px 16px' }}>
           <div style={{ ...S.row, gap:'8px', flex:1 }}>
@@ -3313,8 +3365,66 @@ export default function OrdersPage() {
           </div>
         </div>
 
+        </>)}
+
         {loadError && <div style={{ ...S.note, background:'#fef2f2', border:'1px solid #fecaca', color:'#991b1b', marginBottom:'10px' }}>{loadError}</div>}
 
+        {isPhone ? (
+          <>
+            {loading ? (
+              <div style={{ ...S.card, padding:'28px 16px', textAlign:'center', color:'var(--gray)', fontSize:13 }}>Loading orders</div>
+            ) : total === 0 ? (
+              <div style={{ ...S.card, padding:0 }}><EmptyState message="No orders found" sub="Try another search or filter." /></div>
+            ) : (
+              <PhoneList>
+                {slice.map((o, i) => (
+                  <PhoneRow key={o.id} first={i === 0} muted={!!o.isArchived}
+                    onClick={() => setExpandedId(o.id)}
+                    title={orderNo(o)}
+                    chip={<StatusBadge status={o.orderStatus} />}
+                    meta={[o.customerName, o.productName].filter(Boolean).join(' - ')}
+                    sub={[
+                      `${o.quantity} pc${o.quantity === 1 ? '' : 's'}`,
+                      `₱${fmt(o.totalAmount ?? o.totalPrice)}`,
+                      o.paymentStatus ? String(o.paymentStatus).replace(/_/g, ' ') : null,
+                      o.createdAt ? new Date(o.createdAt).toLocaleDateString('en-PH', { month:'short', day:'numeric' }) : null,
+                      o.isArchived ? 'archived' : null,
+                      isExpired(o) ? 'expired' : null,
+                      deliveryRisk(o)?.label ?? null,
+                    ].filter(Boolean).join(' · ')}
+                  />
+                ))}
+              </PhoneList>
+            )}
+            {total > 0 && (
+              <div style={{ padding:'12px 0' }}>
+                <PaginationBar total={total} page={page} perPage={perPage} onPage={setPage} onPerPage={setPerPage} />
+              </div>
+            )}
+
+            {(() => {
+              const o = expandedId ? orders.find(x => x.id === expandedId) : null;
+              return (
+                <PhoneSheet open={!!o} onClose={() => setExpandedId(null)}
+                  title={o ? orderNo(o) : ''} subtitle={o ? [o.customerName, o.productName].filter(Boolean).join(' - ') : ''}
+                  chip={o ? <StatusBadge status={o.orderStatus} /> : null}>
+                  {o && (
+                    <OrderDetail
+                      o={o}
+                      token={token}
+                      onStatusUpdated={(id, updated) => {
+                        if (updated) setOrders(prev => prev.map(x => x.id === id ? { ...x, ...updated } : x));
+                        else fetchOrders(true);
+                      }}
+                      onPayment={() => setPayTarget(o)}
+                      onDelete={()  => setArchiveId(o.id)}
+                    />
+                  )}
+                </PhoneSheet>
+              );
+            })()}
+          </>
+        ) : (<>
         {/* Table */}
         <div style={{ ...S.card, padding:0, overflow:'hidden' }}>
           <div style={{ overflowX:'auto' }}>
@@ -3422,6 +3532,8 @@ export default function OrdersPage() {
             </div>
           )}
         </div>
+
+        </>)}
 
         {/* Modals */}
         {payTarget && (
