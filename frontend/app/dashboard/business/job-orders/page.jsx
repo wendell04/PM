@@ -19,8 +19,10 @@ import { fetchAllOrders } from '@/lib/ordersApi';
 import { normalizeStatus } from '@/lib/orderStatus';
 import { orderNo } from '@/lib/orderNumber';
 import { joRisk, RISK_STYLE } from '@/lib/deliveryRisk';
-import { JO_BADGE, JO_STATUSES, JobOrderStatusBadge as StatusBadge, RushBadge, DesignPreview, designUrl, joDocId, fmtJODate, TableSkeleton } from '@/components/dashboard/JobOrderBits';
-import { S, ICONS, SearchBar, SummaryCard, PaginationBar, EmptyState, usePagination, CustomSelect } from '../inventory-v2/shared';
+import { JO_BADGE, JO_STATUSES, JO_EDITABLE_STATUSES, JobOrderStatusBadge as StatusBadge, RushBadge, DesignPreview, designUrl, joDocId, fmtJODate, TableSkeleton } from '@/components/dashboard/JobOrderBits';
+import { S, ICONS, SearchBar, SummaryCard, PaginationBar, EmptyState, usePagination, CustomSelect, ConfirmModal } from '../inventory-v2/shared';
+import { isCodMethod } from '@/lib/paymentMethod';
+import { needsJobOrder } from '@/lib/jobOrderEligibility';
 
 // Backward-scheduling buffers: the JO must FINISH before the delivery promise, leaving room to QC,
 // pack, and ship. Target = (customer need-by || delivery promise) - shipping transit - QC/pack.
@@ -225,7 +227,7 @@ function JobOrderForm({ initial = EMPTY_FORM, isEdit = false, orders = [], order
   };
 
   // ── Order context header (gates at a glance) ──
-  const isCOD = (selectedOrder?.paymentMethod || '').toLowerCase() === 'cod';
+  const isCOD = isCodMethod(selectedOrder?.paymentMethod);
   const payTone = isCOD ? 'gold' : (selectedOrder?.paymentStatus === 'paid' ? 'green' : 'gold');
   const payLabel = isCOD ? 'COD'
     : selectedOrder?.paymentStatus === 'paid' ? 'FULLY PAID'
@@ -239,7 +241,7 @@ function JobOrderForm({ initial = EMPTY_FORM, isEdit = false, orders = [], order
           <div>
             <label style={S.label}>Status *</label>
             <CustomSelect value={form.joStatus || ''} onChange={v => set('joStatus', v)} disabled={isSubmitting} error={!!errors.joStatus} style={{ width: '100%' }}
-              options={JO_STATUSES.map(s => ({ value: s, label: JO_BADGE[s]?.label ?? s }))} />
+              options={[...new Set([...(form.joStatus ? [form.joStatus] : []), ...JO_EDITABLE_STATUSES])].map(s => ({ value: s, label: JO_BADGE[s]?.label ?? s }))} />
             {errors.joStatus && <span style={S.errText}>{errors.joStatus}</span>}
           </div>
           <div>
@@ -448,7 +450,9 @@ export default function JobOrdersPage() {
   const [jobOrders, setJobOrders] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [statusFilter, setStatusFilter] = useState('');
+  // Opens on the queue - the job orders waiting to be started - rather than every one ever made,
+  // where finished work buries what is new. All Statuses is still one click away.
+  const [statusFilter, setStatusFilter] = useState('Queued');
   const [rushFilter, setRushFilter] = useState('');
   const [search, setSearch] = useState('');
 
@@ -456,6 +460,9 @@ export default function JobOrdersPage() {
   const [selected, setSelected] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
+  // A job refused for want of material. Without this the page was a dead end: the message arrived
+  // but the decision - do I have it in hand or not - could only be taken on the Production floor.
+  const [joShortage, setJoShortage] = useState(null);
 
   const [orders, setOrders] = useState([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
@@ -466,7 +473,6 @@ export default function JobOrdersPage() {
     setIsLoading(true); setError(null);
     try {
       const f = {};
-      if (statusFilter) f.status = statusFilter;
       if (rushFilter !== '') f.isRush = rushFilter === 'true';
       const data = await fetchJobOrders(token, f);
       setJobOrders(Array.isArray(data) ? data : []);
@@ -474,7 +480,7 @@ export default function JobOrdersPage() {
       if (err.message === 'Unauthorized') { router.push('/'); return; }
       setError(err.message || 'Failed to load job orders.');
     } finally { setIsLoading(false); }
-  }, [token, statusFilter, rushFilter, router]);
+  }, [token, rushFilter, router]);
 
   useEffect(() => { loadJobOrders(); }, [loadJobOrders]);
 
@@ -531,11 +537,19 @@ export default function JobOrdersPage() {
     finally { setIsSubmitting(false); }
   };
 
-  const handleUpdate = async (payload) => {
+  const handleUpdate = async (payload, materialOverride = false) => {
     if (!selected) return;
     setIsSubmitting(true); setSubmitError('');
-    try { await updateJobOrder(token, joDocId(selected), payload); await loadJobOrders(); closeModal(); }
-    catch (err) { setSubmitError(err.message || 'Failed to update job order.'); }
+    try {
+      await updateJobOrder(token, joDocId(selected), { ...payload, ...(materialOverride ? { materialOverride: true } : {}) });
+      setJoShortage(null);
+      await loadJobOrders();
+      closeModal();
+    }
+    catch (err) {
+      if (err.shortages) setJoShortage({ payload, rows: err.shortages });
+      else setSubmitError(err.message || 'Failed to update job order.');
+    }
     finally { setIsSubmitting(false); }
   };
 
@@ -557,26 +571,7 @@ export default function JobOrdersPage() {
   // Only orders that can actually be produced: not already job-ordered, not finished/cancelled,
   // paid (DP/partial/paid or COD), and - for custom - past the design-approval stage.
   // (Custom orders carry their design state in orderStatus until Phase 1b separates it.)
-  const PRE_APPROVAL = ['pending_review', 'pending_design', 'proof_sent', 'revision_requested', 'rejected'];
-  const eligibleOrders = orders.filter(o => {
-    if (o.joId) return false;
-    const st = normalizeStatus(o.orderStatus);
-    if (['delivered', 'cancelled', 'returned'].includes(st)) return false;
-    const isCOD = (o.paymentMethod || '').toLowerCase() === 'cod';
-    const paid = isCOD || ['partial', 'paid'].includes(o.paymentStatus) || Number(o.downPayment) > 0;
-    if (!paid) return false;
-    const isCustom = o.isCustomOrder ?? o.isCustom;
-    const rawStatus = String(o.orderStatus || '').toLowerCase().replace(/[\s-]+/g, '_');
-    if (isCustom && PRE_APPROVAL.includes(rawStatus)) return false;
-    // designStatus is the real artwork gate (mirrors JobOrderController Gate 2). Only a custom
-    // order whose design is approved may be produced - keeps this list from showing orders that
-    // would then fail on Create Job Order.
-    if (isCustom && o.designStatus && o.designStatus !== 'approved') return false;
-    // Must need a production run: customizable or made-to-order. Ready-made stocked items (e.g. a
-    // plain Scrunchie) ship from stock - no Job Order. Material is still deducted at order time.
-    if (!(o.items || []).some(it => it.isCustom || it.isMadeToOrder)) return false;
-    return true;
-  });
+  const eligibleOrders = orders.filter(needsJobOrder);
 
   const counts = {
     total:      jobOrders.length,
@@ -587,6 +582,9 @@ export default function JobOrdersPage() {
   };
 
   const filtered = jobOrders.filter(jo => {
+    // Status is filtered here, not in the fetch. Filtering in the fetch made the tiles above count
+    // only the filtered rows, so a Queued default would have read "Completed 0" every time.
+    if (statusFilter && jo.joStatus !== statusFilter) return false;
     const q = search.toLowerCase();
     return !q || prodName(jo).toLowerCase().includes(q) || (jo.joId || '').toLowerCase().includes(q) || (jo.orderId || '').toLowerCase().includes(q);
   });
@@ -720,6 +718,29 @@ export default function JobOrdersPage() {
           </div>
         </div>
       )}
+
+      <ConfirmModal
+        open={!!joShortage}
+        onClose={() => setJoShortage(null)}
+        onConfirm={() => joShortage && handleUpdate(joShortage.payload, true)}
+        loading={isSubmitting}
+        confirmStyle="danger"
+        title="Not enough material on the shelf"
+        confirmLabel="Start anyway"
+        message={joShortage
+          ? [
+              `${selected?.joId ?? 'This job'}`,
+              '',
+              ...joShortage.rows.map(r =>
+                `${r.name}: needs ${r.needed}${r.uom ? ' ' + r.uom : ''}, ${r.onHand}${r.uom ? ' ' + r.uom : ''} on hand, short ${r.short}`),
+              '',
+              'Buy it first, or Stock In what you already have in hand. '
+              + 'Starting anyway is recorded against your name.',
+            ].join(`
+`)
+          : ''}
+      />
+
     </ErrorBoundary>
   );
 }

@@ -7,6 +7,20 @@ use App\Models\Product;
 
 class PriceResolver
 {
+    /**
+     * "Ask for a quote above" on the product. Past that many pieces the product page shows no price and
+     * offers a chat instead, so a checkout must not sell that quantity at the last tier either - the
+     * cart or a direct request could otherwise reach it. Returns the reason to refuse, or null.
+     * Storefront checkouts only: staff entering a walk-in order price the run themselves.
+     */
+    public static function quoteRequiredMessage(Product $product, int $qty): ?string
+    {
+        $limit = (int) ($product->quoteAboveQty ?? 0);
+        if ($limit <= 0 || $qty <= $limit) return null;
+        return "Orders of more than {$limit} pcs of {$product->name} are quoted, not sold at the listed price. "
+            . 'Lower the quantity, or message us for a quote.';
+    }
+
     public static function resolve(
         Product $product,
         int $qty,

@@ -6,6 +6,10 @@
     <meta name="supported-color-schemes" content="light">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Order Status Update</title>
+  <style>
+    /* One look everywhere. Clients that honour this stop recoloring the email in dark mode. */
+    :root { color-scheme: light only; supported-color-schemes: light only; }
+  </style>
 </head>
 <body style="margin:0;padding:0;background-color: #ffffff;font-family:Arial,sans-serif;">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color: #ffffff;">
@@ -17,15 +21,8 @@
 
           {{-- Header --}}
           <tr>
-            <td style="background:linear-gradient(135deg,#b8922f,#d4a843);padding:28px 40px;text-align:center;">
-              <img src="https://res.cloudinary.com/dtwzbqrdy/image/upload/v1787227737/pmp-email-logo.png" alt="Personalize Me Prints" width="56" height="56" style="display:block;margin:0 auto 10px;width:56px;height:56px;border:0;outline:none;text-decoration:none;">
-              <div style="font-size:20px;font-weight:800;color: #0f0f0f;letter-spacing:1.5px;">
-                PERSONALIZE ME PRINTS
-              </div>
-              <div style="margin-top:6px;font-size:11px;color:rgba(0,0,0,0.5);letter-spacing:2px;text-transform:uppercase;">
-                Custom Print Shop
-              </div>
-            </td>
+            <td style="background: #0f0f0f;padding:28px 40px;text-align:left;">
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding-right:12px;vertical-align:middle;"><img src="https://personalizemeprints.com/logos/email-logo-v3.png" alt="Personalize Me Prints" width="44" height="44" style="display:block;width:44px;height:44px;border:0;border-radius:50%;outline:none;text-decoration:none;"></td><td style="vertical-align:middle;"><div style="font-family:Arial,Helvetica,sans-serif;font-size:17px;font-weight:800;color:#ffffff;letter-spacing:1.6px;line-height:1.25;">PERSONALIZE <span style="color:#d4a843;">ME</span><br>PRINTS</div></td></tr></table></td>
           </tr>
 
           {{-- Body --}}
@@ -48,7 +45,7 @@
                       Order ID
                     </span><br>
                     <strong style="font-size:15px;color: #a67c1a;font-family:monospace;">
-                      #{{ strtoupper(substr($orderId, -10)) }}
+                      ORD-{{ strtoupper(substr($orderId, -8)) }}
                     </strong>
                   </td>
                 </tr>
@@ -56,24 +53,19 @@
 
               {{-- New Status --}}
               @php
+                $key = \App\Mail\OrderStatusMail::key($newStatus);
+                $gold   = ['bg' => '#fdf6e3', 'border' => 'rgba(212,168,67,0.35)', 'color' => '#a67c1a'];
+                $green  = ['bg' => '#f1f8f2', 'border' => 'rgba(21,128,61,0.25)',  'color' => '#15803d'];
+                $red    = ['bg' => '#fdeceb', 'border' => 'rgba(185,28,28,0.25)',  'color' => '#b91c1c'];
+                // One tone for every stage - the same box the delivery fee uses. Only the end
+                // states differ, because good news and bad news should not look alike.
                 $statusColors = [
-                  'Pending'       => ['bg' => 'rgba(212,168,67,0.12)',  'border' => 'rgba(212,168,67,0.3)',  'color' => '#d4a843'],
-                  'In Production' => ['bg' => 'rgba(59,130,246,0.12)',  'border' => 'rgba(59,130,246,0.3)',  'color' => '#60a5fa'],
-                  'For Delivery'  => ['bg' => 'rgba(139,92,246,0.12)', 'border' => 'rgba(139,92,246,0.3)',  'color' => '#a78bfa'],
-                  'Delivered'     => ['bg' => 'rgba(34,197,94,0.12)',   'border' => 'rgba(34,197,94,0.3)',   'color' => '#4ade80'],
-                  'Returned'      => ['bg' => 'rgba(239,68,68,0.12)',   'border' => 'rgba(239,68,68,0.3)',   'color' => '#f87171'],
-                  'Cancelled'     => ['bg' => 'rgba(239,68,68,0.12)',   'border' => 'rgba(239,68,68,0.3)',   'color' => '#f87171'],
+                  'delivered' => $green,
+                  'returned'  => $red,
+                  'cancelled' => $red,
                 ];
-                $sc = $statusColors[$newStatus] ?? ['bg' => 'rgba(212,168,67,0.12)', 'border' => 'rgba(212,168,67,0.3)', 'color' => '#d4a843'];
-                $messages = [
-                  'Pending'       => 'Your order is queued and awaiting confirmation.',
-                  'In Production' => 'Your order is now being produced by our team.',
-                  'For Delivery'  => 'Your order is on its way to you.',
-                  'Delivered'     => 'Your order has been delivered. Thank you for choosing Personalize Me Prints.',
-                  'Returned'      => 'Your order has been marked as returned. Please contact us for assistance.',
-                  'Cancelled'     => 'Your order has been cancelled. Please contact us if you have questions.',
-                ];
-                $statusMessage = $messages[$newStatus] ?? 'Your order has been updated.';
+                $sc = $statusColors[$key] ?? $gold;
+                $statusMessage = $headline;
               @endphp
 
               <table role="presentation" cellpadding="0" cellspacing="0"
@@ -85,7 +77,7 @@
                       Current Status
                     </span><br>
                     <strong style="font-size:16px;color:{{ $sc['color'] }};">
-                      {{ $newStatus }}
+                      {{ $statusLabel }}
                     </strong>
                     <p style="margin:6px 0 0;font-size:13px;color: #6b6b6b;line-height:1.6;">
                       {{ $statusMessage }}
@@ -110,11 +102,67 @@
                 </tr>
               </table>
 
+              @if ($feeNote)
+                <table role="presentation" cellpadding="0" cellspacing="0"
+                  style="background: #fdf6e3;border-radius:8px;border:1px solid rgba(212,168,67,0.35);
+                         margin-bottom:20px;width:100%;">
+                  <tr>
+                    <td style="padding:14px 16px;">
+                      <span style="font-size:11px;color: #6b6b6b;text-transform:uppercase;letter-spacing:1px;">
+                        Delivery fee
+                      </span>
+                      <p style="margin:6px 0 0;font-size:13px;color: #111111;line-height:1.6;">
+                        {{ $feeNote }}
+                      </p>
+                    </td>
+                  </tr>
+                </table>
+              @endif
+
+              @if ($courierName || $trackingNumber || $trackingUrl)
+                <table role="presentation" cellpadding="0" cellspacing="0"
+                  style="background: #f7f7f5;border-radius:8px;border:1px solid rgba(0,0,0,0.08);
+                         margin-bottom:20px;width:100%;">
+                  <tr>
+                    <td style="padding:12px 16px;">
+                      <span style="font-size:11px;color: #6b6b6b;text-transform:uppercase;letter-spacing:1px;">
+                        Delivery
+                      </span>
+                      @if ($courierName)
+                        <p style="margin:6px 0 0;font-size:14px;color: #111111;">
+                          Courier: <strong>{{ $courierName }}</strong>
+                        </p>
+                      @endif
+                      @if ($trackingNumber)
+                        <p style="margin:4px 0 0;font-size:14px;color: #111111;">
+                          Tracking #: <strong style="font-family:monospace;">{{ $trackingNumber }}</strong>
+                        </p>
+                      @endif
+                      @if ($trackingUrl)
+                        <p style="margin:8px 0 0;font-size:13px;">
+                          <a href="{{ $trackingUrl }}" style="color: #a67c1a;text-decoration:none;font-weight:700;">
+                            Track your delivery
+                          </a>
+                        </p>
+                      @endif
+                    </td>
+                  </tr>
+                </table>
+              @endif
+
+              @if ($orderUrl)
+                <p style="margin:0 0 16px;font-size:13px;">
+                  <a href="{{ $orderUrl }}" style="color: #a67c1a;text-decoration:none;font-weight:700;">
+                    Open this order in My Orders
+                  </a>
+                </p>
+              @endif
+
               <p style="margin:0;font-size:13px;color: #6b6b6b;line-height:1.6;">
                 Questions? Contact us at
-                <a href="mailto:personalizemeprints@gmail.com"
+                <a href="mailto:{{ $contactEmail }}"
                   style="color: #a67c1a;text-decoration:none;">
-                  personalizemeprints@gmail.com
+                  {{ $contactEmail }}
                 </a>.
               </p>
             </td>

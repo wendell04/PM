@@ -32,6 +32,12 @@ class JobOrder extends Model
         'materialsConsumed',
         'bomSnapshot',
         'bomVerified',
+        // Set only when a job was started with less material than it needs. Fillable because the
+        // update path writes them, and $fillable is what decides whether they reach the document.
+        'materialOverride',
+        'materialShortAt',
+        'materialOverrideAt',
+        'materialOverrideBy',
         'cancelledAt',
         'createdAt',
         'updatedAt',
@@ -47,6 +53,9 @@ class JobOrder extends Model
         'productionFiles'   => \App\Casts\FlexibleArray::class,
         'spoilage'          => \App\Casts\FlexibleArray::class,
         'materialsPulled'   => \App\Casts\FlexibleArray::class,
+        'materialShortAt'   => \App\Casts\FlexibleArray::class,
+        'materialOverride'  => 'boolean',
+        'materialOverrideAt'=> 'datetime',
         'qcResult'          => \App\Casts\FlexibleArray::class,
         'qcHistory'         => \App\Casts\FlexibleArray::class,
         'materialsConsumed' => \App\Casts\FlexibleArray::class,

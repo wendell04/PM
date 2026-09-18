@@ -5,7 +5,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 /**
  * Fetch all job orders with optional filters
  * @param {string} token
- * @param {Object} filters — { status, isRush, orderId }
+ * @param {Object} filters - { status, isRush, orderId }
  */
 export async function fetchJobOrders(token, filters = {}) {
   const params = new URLSearchParams();
@@ -65,9 +65,9 @@ export async function createJobOrder(token, payload) {
 }
 
 /**
- * Batch create — one job order per selected printable item of a mixed order.
+ * Batch create - one job order per selected printable item of a mixed order.
  * @param {string} token
- * @param {Object} payload — { orderId, items:[{itemIndex, product}], targetCompletion, isRush, notes }
+ * @param {Object} payload - { orderId, items:[{itemIndex, product}], targetCompletion, isRush, notes }
  * @returns {Array} the created job orders
  */
 export async function createJobOrdersBatch(token, payload) {
@@ -107,14 +107,18 @@ export async function updateJobOrder(token, id, payload) {
   if (res.status === 404) throw new Error('Job order not found');
   if (!res.ok) {
     const d = await res.json().catch(() => ({}));
-    throw new Error(d.message || 'Failed to update job order');
+    const err = new Error(d.message || 'Failed to update job order');
+    // A job refused for want of material is not a failure to report and forget - the caller has to
+    // be able to show what is short and offer to start anyway, so the list travels with the error.
+    if (d?.errors?.shortages) err.shortages = d.errors.shortages;
+    throw err;
   }
   const data = await res.json();
   return data.data ?? data;
 }
 
 /**
- * Delete a job order (guarded server-side to Queued/Cancelled — test/junk cleanup).
+ * Delete a job order (guarded server-side to Queued/Cancelled - test/junk cleanup).
  */
 export async function deleteJobOrder(token, id) {
   const res = await fetchWithTimeout(`${API_URL}/api/admin/job-orders/${id}`, {

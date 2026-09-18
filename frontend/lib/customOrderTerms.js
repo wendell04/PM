@@ -11,6 +11,15 @@ export const DEFAULT_CUSTOM_ORDER_TERMS = [
   { title: 'Design revisions', mode: 'request', body: 'Your design fee includes {freeRevisions} revision rounds. Each further round costs {extraRevisionFee} and is added to your order balance. We can take at most {maxRevisions} rounds online; beyond that, message us and we will work it out with you directly.' },
   { title: 'Colour differences', mode: 'both', body: 'Screen colours (RGB) differ from print (CMYK). Slight colour variation between your screen and the final print is normal and not a defect.' },
   { title: 'File quality',    mode: 'upload',  body: 'For uploaded designs, print quality depends on your file. Low-resolution or incorrectly sized files may print blurry or cropped; this is not the shop\'s fault.' },
+  // The clause above says whose fault a bad print is; this one says how to avoid needing it. The
+  // accepted list is the one the uploader actually enforces - promising a format the server refuses
+  // is worse than not offering it.
+  { title: 'What file to send', mode: 'upload', body: 'We accept JPG, PNG, WEBP, PDF, AI, PSD and SVG, up to 10 MB each. Send your artwork at 300 dpi or higher, already sized for the item you are ordering. We print the file as you send it - we do not redraw, resize or correct it unless you ask us for a design request.' },
+  // Turnaround and transit come from Settings > Shipping, so the promise in the terms and the date
+  // on the order can never disagree.
+  { title: 'How long production takes', mode: 'both', body: 'Small orders take about {productionLeadDays} working days to make, not counting delivery. Larger quantities take longer: the date shown on your order is the one we are working to, and we tell you if it moves.' },
+  { title: 'Getting it to you', mode: 'both', body: 'Once your order leaves us, Metro Manila addresses usually arrive within {shippingDaysMin}-{shippingDaysMax} days. Provincial and island addresses take longer and follow the courier\'s own schedule. We send you the tracking number as soon as the courier gives us one.' },
+  { title: 'While it is with the courier', mode: 'both', body: 'Fragile items are bubble-wrapped before we hand them over. After that the parcel is in the courier\'s hands: we are not liable for damage or loss in transit. Tell us straight away if something arrives broken or never arrives - we file the claim with the courier and follow it up for you.' },
   { title: 'Delivery promise', mode: 'both',   body: 'The delivery date shown is our best effort and is not 100% guaranteed. Delays may happen (production load, couriers, force majeure); we will notify you in advance. We are not liable for damages from delays, so please order in advance for events.' },
   // Four lines, in the order they happen. An earlier draft billed the customer for production cost
   // ABOVE the downpayment when they cancelled mid-run, which is wrong: the shop is the one who chose
@@ -24,6 +33,16 @@ export const DEFAULT_CUSTOM_ORDER_TERMS = [
   { title: 'If the mistake is ours', mode: 'both', body: 'None of the above applies when we get it wrong. If we misprint, damage an item, use the wrong artwork, or send the wrong product, we remake it free or refund it in full, whichever you prefer. This overrides everything above.' },
   { title: 'How refunds are paid', mode: 'both',  body: 'Approved refunds go back to the payment method you used, within {refundDays} working days of us confirming the amount.' },
   { title: 'Reprints',        mode: 'both',    body: 'Free reprints only for defects that are our fault (e.g. misprint on our end). Errors approved by you or caused by your file are not covered.' },
+
+  // Quotation-only. A listed price is the price; a quoted one is the answer to a specific question,
+  // and stops being true when the question changes or enough time passes.
+  { title: 'How long this price holds', mode: 'quote', body: 'This quotation is valid until the date shown on it. After that we may need to re-quote, because material prices move.' },
+  { title: 'What this price covers',    mode: 'quote', body: 'The price is for the exact quantity, size, material and finish written on the quotation. Changing any of them means a new quote - it is not a discount or a surcharge on this one.' },
+  { title: 'Estimates on services',     mode: 'quote', body: 'Where the work is quoted per piece or per metre, the final amount follows the quantity actually produced. We tell you before anything is made if that will differ from the quotation.' },
+  // Nothing is set aside while a quote waits to be paid, so the shelf can change underneath it. The
+  // payment is refused rather than taken for goods that are no longer there - this is what makes
+  // that refusal something the customer agreed to, not a surprise.
+  { title: 'Price, not stock',          mode: 'quote', body: 'This quotation holds the price, not the stock. If an item runs out before you pay, we will tell you and offer a new date or a new quote.' },
 ];
 
 /**
@@ -44,6 +63,9 @@ export function renderTermsBody(body, settings) {
     depositDueDays:   String(settings?.depositDueDays   ?? 7),
     unpaidReadyHoldDays: String(settings?.unpaidReadyHoldDays ?? 14),
     refundDays:       String(settings?.refundDays       ?? 7),
+    productionLeadDays: String(settings?.productionLeadDays ?? 3),
+    shippingDaysMin:    String(settings?.shippingDaysMin    ?? 1),
+    shippingDaysMax:    String(settings?.shippingDaysMax    ?? 2),
     // Only request orders ever pay a design fee, so the sentence grows a clause instead of the
     // policy growing a whole extra paragraph that half the customers must skip.
     designFeeNote:    settings?.designRequestFee

@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Support\OrderStatus;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
+use App\Support\PaymentMethod;
 
 /**
  * Chase finished orders whose balance was never paid.
@@ -40,7 +41,7 @@ class ChaseUnpaidReadyOrders extends Command
             ->get()
             ->filter(function ($o) {
                 if (!empty($o->writeOff)) return false;
-                if (strtolower((string) ($o->paymentMethod ?? '')) === 'cod') return false;
+                if (PaymentMethod::isCod($o->paymentMethod)) return false;
                 if (($o->paymentStatus ?? '') === 'paid') return false;
                 $paid = collect($o->paymentHistory ?? [])->sum(fn ($p) => (float) ($p['amount'] ?? 0));
                 return round(max(0, (float) ($o->totalAmount ?? 0) - $paid), 2) > 0;

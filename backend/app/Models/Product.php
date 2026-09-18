@@ -22,7 +22,13 @@ class Product extends Model
         // from one to the other.
         'allowPlainPurchase',
         'isMadeToOrder',
+        // Sell it with an empty shelf. On the PRODUCT, not the material: a material is shared
+        // across recipes, so a promise made there would leak into every product using it.
+        'allowPreorder',
         'minOrderQty',
+        // Mass assignment drops anything not listed here, silently - the trap that has already cost
+        // this codebase a legal record and a pre-order toggle.
+        'quoteAboveQty',
         'designFee',
         'designTemplates',
         'name',
@@ -34,6 +40,12 @@ class Product extends Model
         'images',
         'thumbnail',
         'variantGroups',
+        // Choices that change HOW an item is made, not WHAT it is made of: cut type, finish, corner
+        // style. Deliberately separate from variantGroups, which are keyed to a BOM and to stock -
+        // a different cut is the same sheet, so folding these together would split one stock figure
+        // into combinations that do not exist.
+        // Shape: [{ id, name, options: [{ id, label, priceAdd }] }]
+        'optionGroups',
         'combinations',
         'priceType',
         'price',
@@ -68,6 +80,7 @@ class Product extends Model
         'isCustom'            => 'boolean',
         'allowPlainPurchase'  => 'boolean',
         'isMadeToOrder'       => 'boolean',
+        'allowPreorder'       => 'boolean',
         'minOrderQty'         => 'integer',
         'designFee'           => 'float',
         'requiresDownpayment' => 'boolean',
@@ -123,7 +136,7 @@ class Product extends Model
      * Resolve this product's Bill of Materials for a given variant.
      *
      * A product can carry its BOM in three different shapes, and every caller that
-     * checks stock or deducts inventory must agree on which one wins — when they
+     * checks stock or deducts inventory must agree on which one wins - when they
      * disagreed before, variants were validated and then never deducted, so stock
      * silently drifted away from reality. This is the single source of truth.
      */

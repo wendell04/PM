@@ -782,6 +782,10 @@
    Chat Widget (floating bubble + slide-up panel)
    ══════════════════════════════════════════════════════════════ */
 
+/* While a modal is open the launcher would float over its buttons - on a phone it covered
+   Close outright. It comes back the moment the modal does. */
+body.pmp-modal-open .cw-launcher { display: none !important; }
+
 /* Floating launcher button */
 .cw-launcher {
   position: fixed;
@@ -802,6 +806,13 @@
   padding: 0;
   color: #000;
   transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+/* Above the bottom bar, not on top of it. This must come AFTER the base rule: placed before it,
+   the base bottom/right won and the bubble sat on the "You" tab. Only the shop has the bar. */
+@media (max-width: 900px) {
+  .cw-launcher { bottom: calc(16px + env(safe-area-inset-bottom)); right: 16px; }
+  body:has(.shop-bottom-nav) .cw-launcher { bottom: calc(74px + env(safe-area-inset-bottom)); }
 }
 
 .cw-launcher:hover {
@@ -1222,6 +1233,9 @@
   font-size: 0.875rem;
   line-height: 1.55;
   word-break: break-word;
+  /* A message written across several lines arrived as one run-on line: HTML collapses newlines,
+     and the contact form stores "Subject: X" with a blank line before the message. */
+  white-space: pre-wrap;
 }
 
 .cw-bubble.me {
@@ -1276,7 +1290,7 @@
 }
 
 /* ══════════════════════════════════════════════════════════════
-   Admin Chat — Redesign
+   Admin Chat - Redesign
    ══════════════════════════════════════════════════════════════ */
 
 /* Sidebar header override */
@@ -1388,7 +1402,7 @@
   animation: shimmer 1.5s ease-in-out infinite;
 }
 
-/* Chat item — two-row layout */
+/* Chat item - two-row layout */
 .chat-item-row {
   display: flex;
   align-items: center;
@@ -1428,10 +1442,17 @@
   flex-shrink: 0;
 }
 
+/* Wrapper exists purely to hold the dot outside the avatar's circular clip. */
+.chat-avatar-wrap {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
 .chat-online-dot {
   position: absolute;
-  bottom: 1px;
-  right: 1px;
+  bottom: 0;
+  right: 0;
   width: 10px;
   height: 10px;
   border-radius: 50%;
@@ -1546,6 +1567,12 @@ html.light .cw-launcher--open:hover {
 }
 html.light .cw-launcher-badge {
   border-color: #d4a843;
+}
+
+/* Signed out, the home view is two tiles - so the panel is as tall as they are rather than
+   holding a fixed 560px with a gap beneath. max-height still caps it on a short screen. */
+.cw-panel--compact {
+  height: auto;
 }
 
 html.light .cw-panel {
@@ -1671,3 +1698,82 @@ html.light .cw-new-conv-btn:hover {
 }
 
 .welcome-feature svg { color: rgba(212,168,67,0.45); }
+
+/* Two inboxes, one control. Two filled full-width buttons read as primary actions and competed
+   with the conversation list for weight; a segmented control says "pick a view" instead, and is
+   inset to the same 12px as the search field below it so the header reads as one block. */
+.chat-box-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3px;
+  margin: 2px 12px 10px;
+  padding: 3px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.chat-box-tab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 7px 10px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--gray);
+  font-size: 0.79rem;
+  font-weight: 600;
+  letter-spacing: .01em;
+  cursor: pointer;
+  transition: background .15s ease, color .15s ease;
+}
+.chat-box-tab:hover { color: var(--white); }
+.chat-box-tab.active {
+  background: var(--gold);
+  color: #111;
+  font-weight: 700;
+}
+.chat-box-count {
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  font-size: 0.66rem;
+  font-weight: 800;
+  line-height: 18px;
+  background: var(--red);
+  color: #fff;
+}
+.chat-box-tab.active .chat-box-count { background: rgba(0, 0, 0, 0.22); color: #111; }
+html.light .chat-box-switch { background: rgba(0, 0, 0, 0.04); }
+
+/* ── Draggable chat head ─────────────────────────────────────────────────────
+   Dragging must not scroll the page under the finger, and a dragged bubble must not animate its
+   way to where the finger already is. */
+.cw-launcher { touch-action: none; }
+/* Glides to where it was dropped and into a dock; dead still while a finger is on it. */
+.cw-launcher { transition: left 0.22s ease, top 0.22s ease, transform 0.22s ease; }
+.cw-launcher--dragging {
+  transition: none !important;
+  cursor: grabbing;
+  transform: scale(1.06);
+  box-shadow: 0 10px 28px rgba(0,0,0,0.45);
+}
+
+/* Dragging is for touch screens; a desktop pointer needs no handle to grab and nothing is in the
+   bubble's way there. */
+@media (min-width: 1025px) {
+  .cw-launcher { touch-action: auto; }
+}
+
+/* Tucked away while the reader scrolls down, back when they stop or scroll up. Not display:none -
+   it slides, so it is clear where it went and that it is coming back. */
+.cw-launcher--tucked {
+  transform: translateY(110%) scale(0.9);
+  opacity: 0;
+  pointer-events: none;
+  transition: transform 0.22s ease, opacity 0.22s ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  .cw-launcher--tucked { transition: none; }
+}

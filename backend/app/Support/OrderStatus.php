@@ -3,9 +3,9 @@
 namespace App\Support;
 
 /**
- * Canonical order FULFILLMENT status (Phase 1 — status machine unification).
+ * Canonical order FULFILLMENT status (Phase 1 - status machine unification).
  * Stored as lowercase codes; UI renders labels. Design proofing lives in `designStatus`,
- * payment in `paymentStatus` — NOT here. normalize() maps any legacy/mixed-case value to a
+ * payment in `paymentStatus` - NOT here. normalize() maps any legacy/mixed-case value to a
  * canonical code so old and new data coexist safely during rollout.
  */
 class OrderStatus
@@ -57,7 +57,12 @@ class OrderStatus
         // and for_qc may go straight to for_delivery (ready_for_delivery is an optional middle step).
         return [
             self::PENDING            => [self::PROCESSING, self::IN_PRODUCTION, self::CANCELLED],
-            self::PROCESSING         => [self::IN_PRODUCTION, self::CANCELLED],
+            // FOR_DELIVERY is reachable straight from PROCESSING because a ready-made order has
+            // nothing to produce - it is picked off a shelf and handed to a courier. Without this
+            // edge the admin's own dropdown offered a transition the backend then refused with a
+            // 422. Nothing is weakened for a produced order: that route is guarded separately, by
+            // the QC gate and by the Job Order requirement, not by this table.
+            self::PROCESSING         => [self::IN_PRODUCTION, self::FOR_DELIVERY, self::CANCELLED],
             self::IN_PRODUCTION      => [self::FOR_QC, self::CANCELLED],
             self::FOR_QC             => [self::READY_FOR_DELIVERY, self::FOR_DELIVERY, self::IN_PRODUCTION],
             self::READY_FOR_DELIVERY => [self::FOR_DELIVERY, self::CANCELLED],
@@ -84,9 +89,23 @@ class OrderStatus
     }
 
     /**
+     * Every spelling a status is stored under, for database queries - MongoDB matches strings
+     * exactly, and orders carry both "Delivered" and "delivered". Case variants only: the legacy
+     * design states that normalize() folds into pending are deliberately not included.
+     */
+    public static function spellings(string $code): array
+    {
+        $words = str_replace('_', ' ', $code);
+        $out   = [$code, ucwords($words), ucfirst($words)];
+        if ($code === self::FOR_QC)    $out[] = 'For QC';
+        if ($code === self::CANCELLED) array_push($out, 'canceled', 'Canceled');
+        return array_values(array_unique($out));
+    }
+
+    /**
      * Map any legacy / mixed-case value to a canonical fulfillment code.
      * Legacy custom design states (stored in orderStatus before Phase 1) collapse to their
-     * fulfillment equivalent — the design detail belongs in `designStatus`.
+     * fulfillment equivalent - the design detail belongs in `designStatus`.
      */
     public static function normalize(?string $v): ?string
     {

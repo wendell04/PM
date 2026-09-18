@@ -6,12 +6,12 @@ use App\Models\User;
 use App\Models\RolePermission;
 
 /**
- * Centralized authorization decisions — the single source of truth for RBAC.
+ * Centralized authorization decisions - the single source of truth for RBAC.
  *
  * Authority tiers:
- *   Super Admin (system / developer)  — config('rbac.super_admin_roles')
- *   Owner       (business)            — config('rbac.owner_role')
- *   Staff       (department)          — permissions from the role_permissions grid
+ *   Super Admin (system / developer)  - config('rbac.super_admin_roles')
+ *   Owner       (business)            - config('rbac.owner_role')
+ *   Staff       (department)          - permissions from the role_permissions grid
  *
  * Super Admin access is governed by the config('rbac.super_admin_full_access')
  * toggle: ON = unrestricted (development); OFF = scoped to system tasks only.
@@ -43,23 +43,23 @@ class Rbac
      *
      * $permKey is a module key today (e.g. 'orders'). It already accepts dotted
      * action keys ('orders.updateStatus') so callers won't change when the
-     * action-based phase lands — the module segment is used for scope matching.
+     * action-based phase lands - the module segment is used for scope matching.
      */
     public static function allows(?User $user, string $permKey): bool
     {
         if (!$user) return false;
 
-        // ── Super Admin — the only true bypass, gated by the access toggle ──
+        // ── Super Admin - the only true bypass, gated by the access toggle ──
         if (self::isSuperAdmin($user)) {
             return self::superAdminFullAccess() ? true : self::inSuperAdminScope($permKey);
         }
 
-        // ── Owner — unrestricted business authority (Owner-scoping is a later phase) ──
+        // ── Owner - unrestricted business authority (Owner-scoping is a later phase) ──
         if (self::isOwner($user)) {
             return true;
         }
 
-        // ── Staff — resolved from their role's permission grid ──
+        // ── Staff - resolved from their role's permission grid ──
         return self::roleGrants($user->role, $permKey);
     }
 

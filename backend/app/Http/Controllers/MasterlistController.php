@@ -103,7 +103,7 @@ class MasterlistController extends Controller
     }
 
     /**
-     * POST /api/admin/units — create or update unit of measure
+     * POST /api/admin/units - create or update unit of measure
      */
     public function saveUnit(Request $request)
     {

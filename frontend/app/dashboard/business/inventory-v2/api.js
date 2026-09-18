@@ -51,6 +51,9 @@ export function normInventory(item) {
     baseCost: Number(item.baseCost ?? item.lastUnitCost ?? 0),
     minStock: Number(item.minStockLevel ?? 0),
     leadTime: Number(item.leadTimeDays ?? 7),
+    // Read all over the app - reports, To Buy, the forecast, the quotation modal - and set by
+    // no screen at all, so nobody could ever switch it on.
+    isOnDemand: !!item.isOnDemand,
     stockQty: Number(item.stockQty ?? 0),
     // The API selects these, but the normalizer used to drop them - so `mat.reservedQty` was
     // undefined everywhere, freeStock() silently returned the GROSS stock, and every screen that

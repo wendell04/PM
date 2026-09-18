@@ -35,6 +35,35 @@ class ReviewController extends Controller
         ];
     }
 
+    /**
+     * Reviewer avatars for one page of reviews, keyed by user id.
+     *
+     * Resolved at read time rather than snapshotted onto the review: an avatar changes, and a copy
+     * taken when the review was written would show a photo the person has since replaced - or one
+     * they deleted their account to be rid of. A deleted account has no avatar, so it falls back to
+     * the initial on its own, with nothing extra to remember.
+     *
+     * One query for the whole page, not one per row.
+     */
+    private function avatarsFor($reviews): array
+    {
+        $ids = collect($reviews)
+            ->map(fn ($r) => (string) ($r->getAttributes()['userId'] ?? ''))
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+
+        if (empty($ids)) {
+            return [];
+        }
+
+        return User::whereIn('_id', $ids)->get()
+            ->mapWithKeys(fn ($u) => [(string) $u->_id => $u->avatar ?: null])
+            ->filter()
+            ->all();
+    }
+
     // ─── Customer: GET /api/orders/my/{orderId}/review ────────────────────────
 
     public function myOrderReview(Request $request, $orderId)
@@ -147,11 +176,13 @@ class ReviewController extends Controller
         try {
             $limit = min((int) ($request->query('limit', 10)), 50);
 
-            $reviews = Review::where('is_visible', true)
+            $rows    = Review::where('is_visible', true)
                 ->orderBy('created_at', 'desc')
                 ->take($limit)
-                ->get()
-                ->map(function ($r) {
+                ->get();
+            $avatars = $this->avatarsFor($rows);
+            $reviews = $rows
+                ->map(function ($r) use ($avatars) {
                     $raw = $r->getAttributes();
                     $createdAt = null;
                     if (isset($raw['created_at'])) {
@@ -165,6 +196,7 @@ class ReviewController extends Controller
                         'rating'       => (int) ($raw['rating'] ?? 0),
                         'comment'      => (string) ($raw['comment'] ?? ''),
                         'customerName' => (string) ($raw['customerName'] ?? ''),
+                        'avatar'       => $avatars[(string) ($raw['userId'] ?? '')] ?? null,
                         'created_at'   => $createdAt,
                     ];
                 })
@@ -189,8 +221,11 @@ class ReviewController extends Controller
     public function storefrontStats(Request $request)
     {
         try {
-            $orders    = Order::count();
-            $customers = Order::pluck('userId')->filter()->unique()->count();
+            // Cancelled orders are not orders the shop delivered, and counting them inflates the
+            // one number on the landing page a visitor is most likely to check against reality.
+            $live      = Order::whereNotIn('orderStatus', ['cancelled', 'Cancelled'])->get(['userId']);
+            $orders    = $live->count();
+            $customers = $live->pluck('userId')->filter()->unique()->count();
             $avgRating = Review::where('is_visible', true)->avg('rating');
             $reviews   = Review::where('is_visible', true)->count();
 
@@ -216,11 +251,13 @@ class ReviewController extends Controller
             $query = Review::where('productIds', $productId)->where('is_visible', true);
 
             $total   = $query->count();
-            $reviews = $query->orderBy('created_at', 'desc')
+            $rows    = $query->orderBy('created_at', 'desc')
                 ->skip(($page - 1) * $perPage)
                 ->take($perPage)
-                ->get()
-                ->map(function ($r) {
+                ->get();
+            $avatars = $this->avatarsFor($rows);
+            $reviews = $rows
+                ->map(function ($r) use ($avatars) {
                     $raw = $r->getAttributes();
                     $createdAt = null;
                     if (isset($raw['created_at'])) {
@@ -230,6 +267,7 @@ class ReviewController extends Controller
                         'rating'       => (int) ($raw['rating'] ?? 0),
                         'comment'      => (string) ($raw['comment'] ?? ''),
                         'customerName' => (string) ($raw['customerName'] ?? ''),
+                        'avatar'       => $avatars[(string) ($raw['userId'] ?? '')] ?? null,
                         'created_at'   => $createdAt,
                     ];
                 })
@@ -282,6 +320,21 @@ class ReviewController extends Controller
                 ->map(fn($r) => $this->serializeReview($r))
                 ->values()
                 ->all();
+
+            // Name the product each review is about. The per-product split was made precisely so a
+            // bad totebag would stop dragging down the mug's rating - but the admin screen was still
+            // handed a bare productId, so the one person who has to judge whether a review is fair
+            // could not tell WHICH product it was judging. Resolved in ONE query over the page's
+            // ids rather than a lookup per row.
+            $ids = collect($reviews)->pluck('productId')->filter()->unique()->values()->all();
+            if ($ids) {
+                $names = \App\Models\Product::whereIn('_id', $ids)->get()
+                    ->mapWithKeys(fn($p) => [(string) $p->_id => (string) ($p->name ?? '')]);
+                $reviews = array_map(function ($r) use ($names) {
+                    $r['productName'] = $r['productId'] ? ($names[$r['productId']] ?? null) : null;
+                    return $r;
+                }, $reviews);
+            }
 
             $allReviews = Review::query();
             $totalAll     = $allReviews->count();

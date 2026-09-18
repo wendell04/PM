@@ -6,6 +6,10 @@
     <meta name="supported-color-schemes" content="light">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Order Confirmed</title>
+  <style>
+    /* One look everywhere. Clients that honour this stop recoloring the email in dark mode. */
+    :root { color-scheme: light only; supported-color-schemes: light only; }
+  </style>
 </head>
 <body style="margin:0;padding:0;background-color: #ffffff;font-family:Arial,sans-serif;">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color: #ffffff;">
@@ -17,15 +21,8 @@
 
           {{-- Header --}}
           <tr>
-            <td style="background:linear-gradient(135deg,#b8922f,#d4a843);padding:28px 40px;text-align:center;">
-              <img src="https://res.cloudinary.com/dtwzbqrdy/image/upload/v1787227737/pmp-email-logo.png" alt="Personalize Me Prints" width="56" height="56" style="display:block;margin:0 auto 10px;width:56px;height:56px;border:0;outline:none;text-decoration:none;">
-              <div style="font-size:20px;font-weight:800;color: #0f0f0f;letter-spacing:1.5px;">
-                PERSONALIZE ME PRINTS
-              </div>
-              <div style="margin-top:6px;font-size:11px;color:rgba(0,0,0,0.5);letter-spacing:2px;text-transform:uppercase;">
-                Custom Print Shop
-              </div>
-            </td>
+            <td style="background: #0f0f0f;padding:28px 40px;text-align:left;">
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding-right:12px;vertical-align:middle;"><img src="https://personalizemeprints.com/logos/email-logo-v3.png" alt="Personalize Me Prints" width="44" height="44" style="display:block;width:44px;height:44px;border:0;border-radius:50%;outline:none;text-decoration:none;"></td><td style="vertical-align:middle;"><div style="font-family:Arial,Helvetica,sans-serif;font-size:17px;font-weight:800;color:#ffffff;letter-spacing:1.6px;line-height:1.25;">PERSONALIZE <span style="color:#d4a843;">ME</span><br>PRINTS</div></td></tr></table></td>
           </tr>
 
           {{-- Body --}}

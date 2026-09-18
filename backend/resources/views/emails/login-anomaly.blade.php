@@ -5,15 +5,16 @@
     <meta name="color-scheme" content="light">
     <meta name="supported-color-schemes" content="light">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    /* One look everywhere. Clients that honour this stop recoloring the email in dark mode. */
+    :root { color-scheme: light only; supported-color-schemes: light only; }
+  </style>
 </head>
 <body style="font-family: Arial, sans-serif; background: #f0efec; margin: 0; padding: 0;">
     <div style="max-width: 480px; margin: 40px auto; background: #ffffff; border-radius: 16px; overflow: hidden;">
 
-        <div style="background: linear-gradient(135deg, #b8922f, #d4a843); padding: 32px 40px; text-align: center;">
-            <img src="https://res.cloudinary.com/dtwzbqrdy/image/upload/v1787227737/pmp-email-logo.png" alt="Personalize Me Prints" width="56" height="56" style="display:block;margin:0 auto 10px;width:56px;height:56px;border:0;outline:none;text-decoration:none;">
-            <h1 style="color: #0f0f0f; font-size: 22px; margin: 0; font-weight: 800; letter-spacing: 1px;">
-                PERSONALIZE ME PRINTS
-            </h1>
+        <div style="background: #0f0f0f; padding: 32px 40px; text-align:left;">
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding-right:12px;vertical-align:middle;"><img src="https://personalizemeprints.com/logos/email-logo-v3.png" alt="Personalize Me Prints" width="44" height="44" style="display:block;width:44px;height:44px;border:0;border-radius:50%;outline:none;text-decoration:none;"></td><td style="vertical-align:middle;"><div style="font-family:Arial,Helvetica,sans-serif;font-size:17px;font-weight:800;color:#ffffff;letter-spacing:1.6px;line-height:1.25;">PERSONALIZE <span style="color:#d4a843;">ME</span><br>PRINTS</div></td></tr></table>
         </div>
 
         <div style="padding: 36px 40px;">
@@ -24,19 +25,19 @@
                 A new sign-in to your account was just detected. Here are the details:
             </p>
 
-            <div style="background: #f7f7f5; border: 1px solid #2e2e2e; border-radius: 10px; padding: 20px; margin-bottom: 24px;">
+            <div style="background: #f7f7f5; border: 1px solid #e4e4e0; border-radius: 10px; padding: 20px; margin-bottom: 24px;">
                 <table style="width: 100%; border-collapse: collapse;">
                     <tr>
                         <td style="color: #6b6b6b; font-size: 12px; padding: 6px 0; width: 36%;">Time</td>
-                        <td style="color: #f0f0f0; font-size: 13px; padding: 6px 0; font-weight: 600;">{{ $loginTime }}</td>
+                        <td style="color: #111111; font-size: 13px; padding: 6px 0; font-weight: 600;">{{ $loginTime }}</td>
                     </tr>
                     <tr>
                         <td style="color: #6b6b6b; font-size: 12px; padding: 6px 0;">IP Address</td>
-                        <td style="color: #f0f0f0; font-size: 13px; padding: 6px 0; font-weight: 600;">{{ $ipAddress }}</td>
+                        <td style="color: #111111; font-size: 13px; padding: 6px 0; font-weight: 600;">{{ $ipAddress }}</td>
                     </tr>
                     <tr>
                         <td style="color: #6b6b6b; font-size: 12px; padding: 6px 0; vertical-align: top;">Device</td>
-                        <td style="color: #f0f0f0; font-size: 13px; padding: 6px 0; font-weight: 600; word-break: break-word;">{{ $userAgent }}</td>
+                        <td style="color: #111111; font-size: 13px; padding: 6px 0; font-weight: 600; word-break: break-word;">{{ $userAgent }}</td>
                     </tr>
                 </table>
             </div>

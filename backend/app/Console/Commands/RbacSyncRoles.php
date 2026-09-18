@@ -76,7 +76,7 @@ class RbacSyncRoles extends Command
 
         if ($dry) {
             $this->newLine();
-            $this->warn('Dry run — nothing was written. Re-run without --dry-run to apply.');
+            $this->warn('Dry run - nothing was written. Re-run without --dry-run to apply.');
         } else {
             $this->newLine();
             $this->info('Done. Per-user permission caches cleared for affected roles.');

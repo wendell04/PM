@@ -54,7 +54,7 @@ abstract class Controller
 
     /**
      * Checks if the authenticated user has one of the given roles.
-     * Admin and owner always pass — they have full access.
+     * Admin and owner always pass - they have full access.
      *
      * @param \Illuminate\Http\Request $request
      * @param string ...$roles
@@ -72,7 +72,7 @@ abstract class Controller
 
     /**
      * Append a security/activity event to the append-only activity_logs collection.
-     * Records who did what to whom, when. Never throws — a failed audit write must
+     * Records who did what to whom, when. Never throws - a failed audit write must
      * not break the operation it is recording.
      */
     protected function logActivity(

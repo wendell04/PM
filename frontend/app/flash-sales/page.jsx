@@ -56,7 +56,7 @@ export default function FlashSalesStorefront() {
       {/* Page header */}
       <div style={{ marginBottom: '2rem' }}>
         <h1 style={{
-          fontFamily: "'Outfit', sans-serif",
+          fontFamily: "Arial, Arimo, Helvetica, sans-serif",
           fontSize: '2rem', fontWeight: 800,
           color: 'var(--white)', margin: 0,
           display: 'flex', alignItems: 'center', gap: '0.5rem',
@@ -65,7 +65,7 @@ export default function FlashSalesStorefront() {
         </h1>
         <p style={{ color: 'var(--gray)', fontSize: '0.95rem',
           marginTop: '0.5rem' }}>
-          Limited-time deals — grab them before they expire!
+          Limited-time deals - grab them before they expire!
         </p>
       </div>
 

@@ -7,6 +7,8 @@ use App\Models\OrderRequest;
 use App\Models\Voucher;
 use App\Models\Product;
 use App\Models\Inventory;
+use App\Support\MaterialClaim;
+use App\Support\OrderNotifier;
 use App\Models\StockHistory;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
@@ -20,6 +22,9 @@ use App\Models\User;
 use App\Models\SiteContent;
 use App\Services\PriceResolver;
 use App\Support\OrderStatus;
+use App\Support\QuoteStock;
+use App\Support\Backorder;
+use App\Support\CheckoutHold;
 
 class PaymentController extends Controller
 {
@@ -48,7 +53,7 @@ class PaymentController extends Controller
      *
      * Multi-variant products carry a PER-VARIANT BOM (bomGroupName + the variant's
      * BOM id); single products carry one bomId. Stock pre-validation already handled
-     * both, but the deduction pass checked `bomId` only — so per-variant products were
+     * both, but the deduction pass checked `bomId` only - so per-variant products were
      * validated and then never deducted, silently drifting inventory away from reality.
      * Both passes now resolve through here so they can't disagree again.
      */
@@ -146,6 +151,10 @@ class PaymentController extends Controller
                     }
                 }
 
+                if ($quoteMsg = PriceResolver::quoteRequiredMessage($product, $qty)) {
+                    return $this->errorResponse($quoteMsg, 422);
+                }
+
                 $unitPrice = PriceResolver::resolve($product, $qty, $variantId, $appliedFlashSale);
 
                 if ($unitPrice === null) {
@@ -197,7 +206,7 @@ class PaymentController extends Controller
                         'error'  => $fileErr->getMessage(),
                         'userId' => (string) $user->_id,
                     ]);
-                    // Non-fatal — order proceeds without file
+                    // Non-fatal - order proceeds without file
                 }
             }
 
@@ -205,7 +214,7 @@ class PaymentController extends Controller
             $shippingFee  = (float) ($validated['shippingFee'] ?? 0);
             $totalAmount += $shippingFee;
 
-            // ── Voucher discount — atomic claim ───────────────────────────
+            // ── Voucher discount - atomic claim ───────────────────────────
             $discountAmount = 0.0;
             $appliedVoucher = null;
 
@@ -292,16 +301,30 @@ class PaymentController extends Controller
                 } elseif ($bomProd->storeStockCap !== null && $itemQty > (int) $bomProd->storeStockCap) {
                     return $this->errorResponse("\"{$bomProd->name}\" has a storefront limit of {$bomProd->storeStockCap} unit(s).", 422);
                 }
-                $canProduce = PHP_INT_MAX;
-                foreach ($bom->components as $component) {
-                    $rawInv = Inventory::find($component['inventoryId'] ?? null);
-                    if (!$rawInv || $rawInv->isOnDemand) continue;
-                    $qpu = (float) ($component['qty'] ?? 0);
-                    if ($qpu <= 0) continue;
-                    $canProduce = min($canProduce, (int) floor(max(0, (int) ($rawInv->stockQty ?? 0) - (int) ($rawInv->reservedQty ?? 0)) / $qpu));
+                // Material availability moved out of this per-line loop: it read a reservedQty
+                // this request had not written yet, so every line in one cart cleared the same
+                // shelf. See MaterialClaim.
+            }
+
+            // -- Claim raw material for the whole cart, atomically -------
+            $materialClaims = [];
+            $materialDemand = MaterialClaim::demandSplit($orderItems);
+
+            foreach ($materialDemand['gated'] as $invId => $needed) {
+                if (MaterialClaim::claim((string) $invId, (int) $needed)) {
+                    $materialClaims[(string) $invId] = (int) $needed;
+                    continue;
                 }
-                if ($canProduce !== PHP_INT_MAX && $itemQty > $canProduce)
-                    return $this->errorResponse("\"{$bomProd->name}\" can only produce {$canProduce} unit(s) with current materials.", 422);
+                $message = MaterialClaim::shortfallMessage((string) $invId, (int) $needed);
+                MaterialClaim::releaseAll($materialClaims);
+                return $this->errorResponse($message, 422);
+            }
+
+            // A pre-order line is allowed past the shelf - that is what the toggle promises. The
+            // hold still happens, so the overshoot lands in To Buy as the amount to go and buy.
+            foreach ($materialDemand['preorder'] as $invId => $needed) {
+                MaterialClaim::hold((string) $invId, (int) $needed);
+                $materialClaims[(string) $invId] = ($materialClaims[(string) $invId] ?? 0) + (int) $needed;
             }
 
             // ── Atomic stock reservation BEFORE order creation ──────────
@@ -334,6 +357,7 @@ class PaymentController extends Controller
                                 ['$inc' => ['stockQty' => $r['qty']]]
                             );
                     }
+                    MaterialClaim::releaseAll($materialClaims);
                     $currentStock = (int) ($inv->stockQty ?? 0);
                     return $this->errorResponse(
                         "\"{$prod->name}\" only has {$currentStock} item(s) in stock.",
@@ -350,6 +374,10 @@ class PaymentController extends Controller
             }
 
             // ── Create order (paymentStatus: unpaid) ──────────────────
+            // From here the order owns what is held; cancelling it is what gives the material
+            // back, so the rollback list must not be able to take it away.
+            $materialClaims = [];
+
             $order = Order::create([
                 'userId'          => (string) $user->_id,
                 'userSnapshot'    => [
@@ -360,6 +388,10 @@ class PaymentController extends Controller
                 'items'           => $orderItems,
                 'totalAmount'     => $totalAmount,
                 'shippingFee'     => $shippingFee,
+                // How shipping was charged AT THE TIME. A zero fee means two different things -
+                // free delivery, or the recipient pays the rider - so without this an old order
+                // re-labels itself the day the owner switches mode. Mirrors OrderController@store.
+                'shippingMode'    => optional(User::where('role', 'owner')->first() ?? User::where('role', 'admin')->first())->shippingMode ?? 'courier_booked',
                 'discountAmount'  => $discountAmount > 0 ? $discountAmount : null,
                 'voucherCode'     => $appliedVoucher?->code ?? null,
                 'orderStatus'     => 'Pending',
@@ -376,6 +408,10 @@ class PaymentController extends Controller
                 'createdAt'       => now(),
                 'updatedAt'       => now(),
             ]);
+            
+            // Orders born here used to be created in silence: no confirmation to the
+            // customer who had just paid, and no word to the shop. See OrderNotifier.
+            OrderNotifier::placed($order);
 
             // Deduct flash sale stock only after order is persisted
             foreach ($pendingFlashSaleIncrements as [$flashSale, $qty]) {
@@ -403,6 +439,7 @@ class PaymentController extends Controller
             }
 
             // BOM material deduction at order creation
+            $owedHere = [];
             foreach ($orderItems as $item) {
                 $bomProd = \App\Models\Product::find($item['productId'] ?? null);
                 if (!$bomProd) continue;
@@ -413,7 +450,7 @@ class PaymentController extends Controller
                     if ($bom && !empty($bom->components)) {
                         // Made-to-order / custom items RESERVE materials now (consumed at QC pass via the
                         // Job Order). Stocked ready-made items DEDUCT now (no production step). This MUST
-                        // match OrderController@store — deducting stockQty here for a produced item would
+                        // match OrderController@store - deducting stockQty here for a produced item would
                         // double-deduct, because submitQC subtracts it again on QC pass.
                         $producedItem = (bool) ($bomProd->isMadeToOrder ?? false) || (bool) ($bomProd->isCustom ?? false);
                         foreach ($bom->components as $component) {
@@ -422,8 +459,9 @@ class PaymentController extends Controller
                             $deductQty = (int) round(($component['qty'] ?? 0) * ($item['qty'] ?? 1));
                             if ($deductQty <= 0) continue;
                             if ($producedItem) {
-                                $rawInv->reservedQty = (int) ($rawInv->reservedQty ?? 0) + $deductQty;
-                                $rawInv->save();
+                                // Held already by the cart-wide claim; a second increment here
+                                // would hold the material twice.
+                                $rawInv->refresh();
                                 StockHistory::create([
                                     'inventoryId' => (string) $rawInv->_id, 'quantity' => $deductQty,
                                     'remainingQty' => (int) ($rawInv->stockQty ?? 0), 'unitCost' => $rawInv->averageCost ?? 0,
@@ -432,6 +470,17 @@ class PaymentController extends Controller
                                     'createdAt' => now(),
                                 ]);
                             } else {
+                                // The hold goes back before the shelf is actually reduced, or the
+                                // material is counted against availability twice.
+                                MaterialClaim::release((string) $rawInv->_id, $deductQty);
+                                // A pre-order line can ask for more than the shelf has. This decrement used to run the
+                                // stock negative; now it takes what is free and the rest is held as owed (To Buy).
+                                [$take, $owe] = Backorder::split((string) $rawInv->_id, $deductQty);
+                                if ($owe > 0) {
+                                    Backorder::hold((string) $rawInv->_id, $owe, (string) $order->_id, ['productId' => $item['productId'] ?? null]);
+                                    $owedHere[] = ['inventoryId' => (string) $rawInv->_id, 'qty' => $owe];
+                                }
+                                $deductQty = $take;
                                 $updatedRaw = DB::connection('mongodb')->getCollection('inventories')
                                     ->findOneAndUpdate(
                                         ['_id' => new \MongoDB\BSON\ObjectId((string) $rawInv->_id)],
@@ -456,6 +505,10 @@ class PaymentController extends Controller
                     ]);
                 }
             }
+            if ($owedHere) {
+                $order->backorders = Backorder::merge($order->backorders ?? [], $owedHere);
+                $order->save();
+            }
 
             $orderId     = (string) $order->_id;
             $frontendUrl = config('app.frontend_url', 'http://localhost:3000');
@@ -476,7 +529,7 @@ class PaymentController extends Controller
                     $lineItem = [
                         'currency' => 'PHP',
                         'amount'   => (int) round(($item['unitPrice'] ?? 0) * 100),
-                        'name'     => ($item['productName'] ?? 'Product') . ($item['variantName'] ? ' — ' . $item['variantName'] : ''),
+                        'name'     => ($item['productName'] ?? 'Product') . ($item['variantName'] ? ' - ' . $item['variantName'] : ''),
                         'quantity' => (int) ($item['qty'] ?? 1),
                     ];
                     if (!empty($item['thumbnail'])) {
@@ -486,7 +539,7 @@ class PaymentController extends Controller
                 }, $orderItems);
             }
 
-            // Delivery fee — only shown when a real fee is set (manually booked courier).
+            // Delivery fee - only shown when a real fee is set (manually booked courier).
             // Omitted entirely when 0 so PayMongo does not display a ₱0 fee row.
             if ($shippingFee > 0) {
                 $pmLineItems[] = [
@@ -524,7 +577,7 @@ class PaymentController extends Controller
                 ]);
 
             if (!$response->successful()) {
-                // Order exists but link failed — log, order stays unpaid
+                // Order exists but link failed - log, order stays unpaid
                 Log::error('PayMongo createLink failed', [
                     'order_id' => $orderId,
                     'status'   => $response->status(),
@@ -592,34 +645,19 @@ class PaymentController extends Controller
             $order = Order::where('_id', $orderId)->where('userId', (string) $user->_id)->first();
             if (!$order) return $this->notFoundResponse('Order');
 
-            // Only an order where NOTHING was ever received may be swept away like this. A design fee
-            // already paid, a deposit, any history at all - and this is a real order that needs a
-            // person to decide, not a cleanup call fired by a redirect.
-            $received = collect($order->paymentHistory ?? [])->sum(fn ($p) => (float) ($p['amount'] ?? 0));
-            $untouched = $received <= 0
-                && empty($order->designFeePaid)
-                && in_array($order->paymentStatus ?? 'unpaid', ['unpaid', '', null], true)
-                && in_array(OrderStatus::normalize($order->orderStatus), [OrderStatus::PENDING, 'awaiting_payment'], true);
-
-            if (!$untouched) {
-                return $this->errorResponse('This order has activity on it and cannot be cleared automatically.', 422);
-            }
-
             if (OrderStatus::normalize($order->orderStatus) === OrderStatus::CANCELLED) {
                 return $this->successResponse('Already cleared.', ['orderStatus' => $order->orderStatus]);
             }
 
-            $order->orderStatus     = OrderStatus::CANCELLED;
-            $order->cancelledBy     = 'system';
-            $order->cancelledReason = 'Payment was not completed.';
-            $order->cancelledAt     = now();
-            $order->updatedAt       = now();
-            $order->save();
+            // Only an order where NOTHING was received, and where PayMongo confirms no money is
+            // moving, may be swept away by a redirect. Anything else needs a person.
+            if (!CheckoutHold::releasable($order)) {
+                return $this->errorResponse('This payment may still be going through, so the order was kept.', 422);
+            }
 
-            // The whole point: give the material back.
-            app(OrderController::class)->releaseReservationsFor($order);
+            CheckoutHold::void($order, 'Payment was not completed.');
 
-            return $this->successResponse('Pending order cleared and stock released.', [
+            return $this->successResponse('Checkout released and stock returned.', [
                 'orderStatus' => $order->orderStatus,
             ]);
         } catch (\Exception $e) {
@@ -630,7 +668,7 @@ class PaymentController extends Controller
     /**
      * POST /api/payment/initiate
      *
-     * Custom payment flow using Payment Intents — bypasses PayMongo hosted checkout.
+     * Custom payment flow using Payment Intents - bypasses PayMongo hosted checkout.
      * paymentType: gcash | paymaya | card
      * paymentMethodId: card PM ID created client-side with the public key (card only)
      */
@@ -700,6 +738,7 @@ class PaymentController extends Controller
             $totalAmount              = 0;
             $pendingFlashSaleIncrements = [];
             $firstProduct             = null;
+            $lineDpPcts               = [];
 
             foreach ($validated['items'] as $item) {
                 $product = Product::where('_id', $item['productId'])
@@ -711,6 +750,13 @@ class PaymentController extends Controller
                 }
 
                 if (!$firstProduct) $firstProduct = $product;
+
+                // Mirrors lineDpPct() in checkout, which is where the money is actually worked
+                // out. A line "requires" a deposit if the flag is set or a percent is configured,
+                // and a flag with no percent means half - the same default the storefront shows.
+                $linePct      = (int) ($product->downpaymentPercent ?? 0);
+                $lineRequires = (bool) ($product->requiresDownpayment ?? false) || $linePct > 0;
+                $lineDpPcts[] = $lineRequires ? ($linePct > 0 ? $linePct : 50) : 0;
 
                 $qty         = (int) $item['qty'];
                 $variantId   = $item['variantId'] ?? null;
@@ -725,6 +771,10 @@ class PaymentController extends Controller
                     if ($fs && ($fs->stockLimit === null || ($fs->stockUsed ?? 0) < $fs->stockLimit)) {
                         $appliedFlashSale = $fs;
                     }
+                }
+
+                if ($quoteMsg = PriceResolver::quoteRequiredMessage($product, $qty)) {
+                    return $this->errorResponse($quoteMsg, 422);
                 }
 
                 $unitPrice = PriceResolver::resolve($product, $qty, $variantId, $appliedFlashSale);
@@ -769,8 +819,16 @@ class PaymentController extends Controller
                 ];
             }
 
-            $requiresDownpayment = (bool) ($firstProduct?->requiresDownpayment ?? false);
-            $orderDownpaymentPct = $requiresDownpayment ? (int) ($firstProduct?->downpaymentPercent ?? 0) : 0;
+            // Taken from the first product, this made the recorded deposit rule depend on the
+            // order things were added to the cart. A percentage is only meaningful for the whole
+            // order when every line agrees on it; when they do not, there is no single number to
+            // quote and the balance is simply whatever is left.
+            $requiresDownpayment  = count(array_filter($lineDpPcts)) > 0;
+            $dpPctsAgree          = $requiresDownpayment
+                && count(array_unique($lineDpPcts)) === 1
+                && $lineDpPcts[0] > 0;
+            $orderDownpaymentPct  = $dpPctsAgree ? (int) $lineDpPcts[0] : 0;
+            $orderDownpaymentMixed = $requiresDownpayment && !$dpPctsAgree;
 
             // ONE design fee for the order - the same rule the cart and checkout display.
             // It was shown to the customer and then never charged: the storefront quoted
@@ -799,20 +857,108 @@ class PaymentController extends Controller
             // online path never recorded these before, so a cart/rush order lost its rush entirely.
             $owner       = User::where('role', 'owner')->first() ?? User::where('role', 'admin')->first();
             $rushOn      = (bool)  ($owner->rushEnabled ?? true);
-            $rushFeeAmt  = (float) ($owner->rushFee ?? 100);
+            // Must equal OrderController's fallback and SettingsController's - see the note there.
+            $rushFeeAmt  = (float) ($owner->rushFee ?? 150);
             $isRush      = $rushOn && filter_var($request->input('isRush', false), FILTER_VALIDATE_BOOLEAN);
             if ($isRush && $rushFeeAmt > 0) { $totalAmount += $rushFeeAmt; }
             $needByDate  = $request->input('needByDate') ?: null;
             $rushStatus  = $isRush ? 'requested' : null;
-            $prodLead    = (int) ($owner->productionLeadDays ?? 5);
-            $rushLead    = (int) ($owner->rushLeadDays ?? 2);
-            $shipMinD    = (int) ($owner->shippingDaysMin ?? 2);
-            $shipMaxD    = (int) ($owner->shippingDaysMax ?? 4);
+            $prodLead    = (int) ($owner->productionLeadDays ?? 3);
+            $rushLead    = (int) ($owner->rushLeadDays ?? 1);
+            $shipMinD    = (int) ($owner->shippingDaysMin ?? 1);
+            $shipMaxD    = (int) ($owner->shippingDaysMax ?? 2);
             $leadDays    = $isRush ? $rushLead : $prodLead;
             $addBiz      = function (int $days) { $d = now(); while ($days > 0) { $d = $d->addDay(); if (!$d->isSunday()) { $days--; } } return $d; };
             $estDelivMin = $addBiz($leadDays + $shipMinD)->toIso8601String();
             $estDelivMax = $addBiz($leadDays + $shipMaxD)->toIso8601String();
 
+            // Same guard as the cart-checkout path (OrderController): a needByDate earlier than what
+            // production and shipping can actually deliver is dropped rather than trusted. This is
+            // the Buy Now / direct-payment path, so it needed its own copy of the check.
+            if ($needByDate) {
+                try {
+                    if (\Carbon\Carbon::parse($needByDate)->lt(\Carbon\Carbon::parse($estDelivMin)->startOfDay())) {
+                        $needByDate = null;
+                    }
+                } catch (\Throwable) {
+                    $needByDate = null;
+                }
+            }
+
+            // ── Pre-validate BOM products ──────────────────────────────
+            foreach ($orderItems as $item) {
+                $bomProd   = \App\Models\Product::find($item['productId'] ?? null);
+                $itemQty   = (int) ($item['qty'] ?? 1);
+                $variantId = $item['variantId'] ?? null;
+                if (!$bomProd) continue;
+                $bom = $this->resolveBom($bomProd, $variantId);
+                if (!$bom || empty($bom->components)) continue;
+                if (!empty($bomProd->bomGroupName) && $variantId) {
+                    $variantCap = isset($bomProd->variantStock[$variantId]) && (int) $bomProd->variantStock[$variantId] > 0
+                        ? (int) $bomProd->variantStock[$variantId] : null;
+                    if ($variantCap !== null && $itemQty > $variantCap)
+                        return $this->errorResponse("\"{$bomProd->name}\" has a storefront cap of {$variantCap} unit(s) for that variant.", 422);
+                } elseif ($bomProd->storeStockCap !== null && $itemQty > (int) $bomProd->storeStockCap) {
+                    return $this->errorResponse("\"{$bomProd->name}\" has a storefront limit of {$bomProd->storeStockCap} unit(s).", 422);
+                }
+                // Material availability moved out of this per-line loop: it read a reservedQty
+                // this request had not written yet, so every line in one cart cleared the same
+                // shelf. See MaterialClaim.
+            }
+
+            // -- Claim raw material for the whole cart, atomically -------
+            $materialClaims = [];
+            $materialDemand = MaterialClaim::demandSplit($orderItems);
+
+            foreach ($materialDemand['gated'] as $invId => $needed) {
+                if (MaterialClaim::claim((string) $invId, (int) $needed)) {
+                    $materialClaims[(string) $invId] = (int) $needed;
+                    continue;
+                }
+                $message = MaterialClaim::shortfallMessage((string) $invId, (int) $needed);
+                MaterialClaim::releaseAll($materialClaims);
+                return $this->errorResponse($message, 422);
+            }
+
+            // A pre-order line is allowed past the shelf - that is what the toggle promises. The
+            // hold still happens, so the overshoot lands in To Buy as the amount to go and buy.
+            foreach ($materialDemand['preorder'] as $invId => $needed) {
+                MaterialClaim::hold((string) $invId, (int) $needed);
+                $materialClaims[(string) $invId] = ($materialClaims[(string) $invId] ?? 0) + (int) $needed;
+            }
+
+            $stockReservations = [];
+            foreach ($orderItems as $item) {
+                $prod = Product::find($item['productId'] ?? null);
+                if (!$prod || !$prod->inventoryId) continue;
+                $inv = Inventory::find($prod->inventoryId);
+                if (!$inv || $inv->isOnDemand) continue;
+
+                $qty     = (int) $item['qty'];
+                $updated = DB::connection('mongodb')->getCollection('inventories')->findOneAndUpdate(
+                    ['_id' => new \MongoDB\BSON\ObjectId((string) $inv->_id), 'stockQty' => ['$gte' => $qty]],
+                    ['$inc' => ['stockQty' => -$qty]],
+                    ['returnDocument' => \MongoDB\Operation\FindOneAndUpdate::RETURN_DOCUMENT_AFTER]
+                );
+
+                if ($updated === null) {
+                    foreach ($stockReservations as $r) {
+                        DB::connection('mongodb')->getCollection('inventories')
+                            ->updateOne(['_id' => new \MongoDB\BSON\ObjectId($r['invId'])], ['$inc' => ['stockQty' => $r['qty']]]);
+                    }
+                    MaterialClaim::releaseAll($materialClaims);
+                    return $this->errorResponse("\"{$prod->name}\" only has {$inv->stockQty} item(s) in stock.", 422);
+                }
+
+                $stockReservations[] = [
+                    'invId' => (string) $inv->_id, 'qty' => $qty,
+                    'newStockQty' => (int) ($updated->stockQty ?? 0), 'unitCost' => (float) ($inv->averageCost ?? 0),
+                ];
+            }
+
+            // The voucher is claimed here, after every check that can still turn the order away. It
+            // used to be claimed before the stock and material checks, so an order refused for stock
+            // had already spent the customer's voucher - with no order to show for it.
             // ── Voucher ───────────────────────────────────────────────
             $discountAmount = 0.0;
             $appliedVoucher = null;
@@ -847,61 +993,6 @@ class PaymentController extends Controller
                 }
             }
 
-            // ── Pre-validate BOM products ──────────────────────────────
-            foreach ($orderItems as $item) {
-                $bomProd   = \App\Models\Product::find($item['productId'] ?? null);
-                $itemQty   = (int) ($item['qty'] ?? 1);
-                $variantId = $item['variantId'] ?? null;
-                if (!$bomProd) continue;
-                $bom = $this->resolveBom($bomProd, $variantId);
-                if (!$bom || empty($bom->components)) continue;
-                if (!empty($bomProd->bomGroupName) && $variantId) {
-                    $variantCap = isset($bomProd->variantStock[$variantId]) && (int) $bomProd->variantStock[$variantId] > 0
-                        ? (int) $bomProd->variantStock[$variantId] : null;
-                    if ($variantCap !== null && $itemQty > $variantCap)
-                        return $this->errorResponse("\"{$bomProd->name}\" has a storefront cap of {$variantCap} unit(s) for that variant.", 422);
-                } elseif ($bomProd->storeStockCap !== null && $itemQty > (int) $bomProd->storeStockCap) {
-                    return $this->errorResponse("\"{$bomProd->name}\" has a storefront limit of {$bomProd->storeStockCap} unit(s).", 422);
-                }
-                $canProduce = PHP_INT_MAX;
-                foreach ($bom->components as $component) {
-                    $rawInv = Inventory::find($component['inventoryId'] ?? null);
-                    if (!$rawInv || $rawInv->isOnDemand) continue;
-                    $qpu = (float) ($component['qty'] ?? 0);
-                    if ($qpu <= 0) continue;
-                    $canProduce = min($canProduce, (int) floor(max(0, (int) ($rawInv->stockQty ?? 0) - (int) ($rawInv->reservedQty ?? 0)) / $qpu));
-                }
-                if ($canProduce !== PHP_INT_MAX && $itemQty > $canProduce)
-                    return $this->errorResponse("\"{$bomProd->name}\" can only produce {$canProduce} unit(s) with current materials.", 422);
-            }
-
-            $stockReservations = [];
-            foreach ($orderItems as $item) {
-                $prod = Product::find($item['productId'] ?? null);
-                if (!$prod || !$prod->inventoryId) continue;
-                $inv = Inventory::find($prod->inventoryId);
-                if (!$inv || $inv->isOnDemand) continue;
-
-                $qty     = (int) $item['qty'];
-                $updated = DB::connection('mongodb')->getCollection('inventories')->findOneAndUpdate(
-                    ['_id' => new \MongoDB\BSON\ObjectId((string) $inv->_id), 'stockQty' => ['$gte' => $qty]],
-                    ['$inc' => ['stockQty' => -$qty]],
-                    ['returnDocument' => \MongoDB\Operation\FindOneAndUpdate::RETURN_DOCUMENT_AFTER]
-                );
-
-                if ($updated === null) {
-                    foreach ($stockReservations as $r) {
-                        DB::connection('mongodb')->getCollection('inventories')
-                            ->updateOne(['_id' => new \MongoDB\BSON\ObjectId($r['invId'])], ['$inc' => ['stockQty' => $r['qty']]]);
-                    }
-                    return $this->errorResponse("\"{$prod->name}\" only has {$inv->stockQty} item(s) in stock.", 422);
-                }
-
-                $stockReservations[] = [
-                    'invId' => (string) $inv->_id, 'qty' => $qty,
-                    'newStockQty' => (int) ($updated->stockQty ?? 0), 'unitCost' => (float) ($inv->averageCost ?? 0),
-                ];
-            }
 
             // ── Proof gate ────────────────────────────────────────────
             // A cart order derives these from its own lines. Read only from the request,
@@ -940,12 +1031,20 @@ class PaymentController extends Controller
                 ?? ($anyUploaded ? 'upload' : ($anyRequested ? 'request' : null));
 
             // ── Create order ──────────────────────────────────────────
+            // From here the order owns what is held; cancelling it is what gives the material
+            // back, so the rollback list must not be able to take it away.
+            $materialClaims = [];
+
             $order = Order::create([
                 'userId'          => (string) $user->_id,
                 'userSnapshot'    => ['name' => trim("{$user->firstName} {$user->lastName}"), 'email' => $user->email, 'phone' => $user->phoneNumber ?? ''],
                 'items'           => $orderItems,
                 'totalAmount'     => $totalAmount,
                 'shippingFee'     => $shippingFee,
+                // How shipping was charged AT THE TIME. A zero fee means two different things -
+                // free delivery, or the recipient pays the rider - so without this an old order
+                // re-labels itself the day the owner switches mode. Mirrors OrderController@store.
+                'shippingMode'    => optional(User::where('role', 'owner')->first() ?? User::where('role', 'admin')->first())->shippingMode ?? 'courier_booked',
                 'discountAmount'  => $discountAmount > 0 ? $discountAmount : null,
                 'voucherCode'     => $appliedVoucher?->code ?? null,
                 'orderStatus'     => $this->resolveCustomOrderStatus($request),
@@ -963,6 +1062,9 @@ class PaymentController extends Controller
                 'isDesignFeeOnly'      => $isDesignFeeOnly,
                 'designFee'            => $orderDesignFee > 0 ? $orderDesignFee : null,
                 'requiresDownpayment'  => $requiresDownpayment,
+                // True when the lines disagree, so nothing downstream quotes a percentage that was
+                // never the whole cart's.
+                'downpaymentMixed'     => $orderDownpaymentMixed,
                 'downpaymentPercent'   => $orderDownpaymentPct > 0 ? $orderDownpaymentPct : null,
                 'isRush'               => $isRush,
                 'rushFee'              => $isRush ? $rushFeeAmt : null,
@@ -981,10 +1083,17 @@ class PaymentController extends Controller
                 // marking a half-paid order as fully paid.
                 'pendingPaymentType'   => $takesDownpayment ? 'downpayment' : null,
                 'pendingPaymentAmount' => $takesDownpayment ? $firstPayment : null,
+                // Hidden until the payment lands - a failed payment must not become an order anyone
+                // sees. See App\Support\CheckoutHold.
+                'checkoutPending'      => true,
                 'statusHistory'        => [['status' => $this->resolveCustomOrderStatus($request), 'at' => now()->toISOString()]],
                 'createdAt'       => now(),
                 'updatedAt'       => now(),
             ]);
+            
+            // Not announced here any more: the customer has not paid yet, and announcing it sent the
+            // shop a "new order" and the customer an "order placed" for payments that then failed.
+            // CheckoutHold::confirm() announces it once the payment is recorded.
 
             foreach ($pendingFlashSaleIncrements as [$fs, $qty]) $fs->increment('stockUsed', $qty);
 
@@ -1004,6 +1113,7 @@ class PaymentController extends Controller
             }
 
             // BOM material deduction at order creation
+            $owedHere = [];
             foreach ($orderItems as $item) {
                 $bomProd   = \App\Models\Product::find($item['productId'] ?? null);
                 $variantId = $item['variantId'] ?? null;
@@ -1020,8 +1130,9 @@ class PaymentController extends Controller
                         $deductQty = (int) round(($component['qty'] ?? 0) * ($item['qty'] ?? 1));
                         if ($deductQty <= 0) continue;
                         if ($producedItem) {
-                            $rawInv->reservedQty = (int) ($rawInv->reservedQty ?? 0) + $deductQty;
-                            $rawInv->save();
+                            // Held already by the cart-wide claim; a second increment here would
+                            // hold the material twice.
+                            $rawInv->refresh();
                             StockHistory::create([
                                 'inventoryId'  => (string) $rawInv->_id,
                                 'quantity'     => $deductQty,
@@ -1040,6 +1151,17 @@ class PaymentController extends Controller
                             ]);
                             continue;
                         }
+                        // The hold goes back before the shelf is actually reduced, or the
+                        // material is counted against availability twice.
+                        MaterialClaim::release((string) $rawInv->_id, $deductQty);
+                        // A pre-order line can ask for more than the shelf has. This decrement used to run the
+                        // stock negative; now it takes what is free and the rest is held as owed (To Buy).
+                        [$take, $owe] = Backorder::split((string) $rawInv->_id, $deductQty);
+                        if ($owe > 0) {
+                            Backorder::hold((string) $rawInv->_id, $owe, (string) $order->_id, ['productId' => $item['productId'] ?? null]);
+                            $owedHere[] = ['inventoryId' => (string) $rawInv->_id, 'qty' => $owe];
+                        }
+                        $deductQty = $take;
                         $updatedRaw = DB::connection('mongodb')->getCollection('inventories')
                             ->findOneAndUpdate(
                                 ['_id' => new \MongoDB\BSON\ObjectId((string) $rawInv->_id)],
@@ -1071,6 +1193,10 @@ class PaymentController extends Controller
                     ]);
                 }
             }
+            if ($owedHere) {
+                $order->backorders = Backorder::merge($order->backorders ?? [], $owedHere);
+                $order->save();
+            }
 
             $frontendUrl    = config('app.frontend_url', 'http://localhost:3000');
             // One fee for the order, not one per line - a cart holding a mug and a totebag
@@ -1078,7 +1204,7 @@ class PaymentController extends Controller
             $designFeeTotal = $isDesignFeeOnly ? $orderDesignFee : 0.0;
 
             if ($isDesignFeeOnly && $designFeeTotal <= 0) {
-                // designFee not set on product — fall back to full amount
+                // designFee not set on product - fall back to full amount
                 // This prevents charging ₱0 or wrong amount
                 Log::warning('initiatePayment: isDesignFeeOnly=true but designFeeTotal=0', [
                     'orderId' => $orderId,
@@ -1109,7 +1235,7 @@ class PaymentController extends Controller
                         'payment_method_options' => ['card' => ['request_three_d_secure' => 'any']],
                         'currency'               => 'PHP',
                         'capture_type'           => 'automatic',
-                        'description'            => 'Personalize Me Prints — Order #' . strtoupper(substr($orderId, -8)),
+                        'description'            => 'Personalize Me Prints - Order #' . strtoupper(substr($orderId, -8)),
                         'metadata'               => ['order_id' => $orderId],
                     ]]
                 ]);
@@ -1177,14 +1303,18 @@ class PaymentController extends Controller
             $order->save();
 
             if ($intentStatus === 'succeeded') {
-                if ($isDesignFeeOnly) {
-                    $order->update([
-                        'designFeePaid'       => true,
-                        'designFeePaidAmount' => $chargeAmount,
-                    ]);
-                } else {
-                    $order->update(['paymentStatus' => 'paid']);
-                }
+                // A card that clears without 3-D Secure used to be "recorded" here by flipping the
+                // status to paid and stopping. verifyIntent and the webhook both skip an order that
+                // already reads paid, so nothing else ever ran: no paymentHistory row, no receipt,
+                // and a 50% deposit read as paid in full - the balance was never asked for and the
+                // order could ship. verifyIntent records it properly, exactly once, the same way a
+                // GCash return does (createOrderPayLink took this route already).
+                $confirm = Request::create('/api/payment/verify-intent', 'POST', [
+                    'orderId'  => $orderId,
+                    'intentId' => $intentId,
+                ]);
+                $confirm->setUserResolver(fn () => $user);
+                $this->verifyIntent($confirm);
                 return $this->successResponse('Payment completed.', [
                     'orderId' => $orderId, 'status' => 'succeeded', 'redirectUrl' => null,
                 ]);
@@ -1223,6 +1353,22 @@ class PaymentController extends Controller
                 'orderRequestId'  => 'required|string|size:24',
                 'type'            => 'required|in:downpayment,balance,full',
                 'deliveryAddress' => 'nullable|array',
+                // Chosen on our own screen, the way the cart checkout does it, instead of handing
+                // the customer to PayMongo's hosted page to choose again. Absent, the hosted
+                // session below still runs, so an older client keeps working.
+                'paymentType'     => 'nullable|in:gcash,paymaya,card',
+                'paymentMethodId' => 'nullable|string|max:120',
+                'eWalletPhone'    => 'nullable|string|max:20',
+                // The clickwrap on the quote checkout. Paying a quotation is accepting an offer, and
+                // this is the record of what was accepted - every clause, verbatim, at the version
+                // in force at the time, so a later edit to the shop's terms cannot rewrite history.
+                'agreedToTerms'          => 'nullable|boolean',
+                'termsVersion'           => 'nullable|integer|min:0',
+                'termsAgreedAt'          => 'nullable|string|max:64',
+                'termsSnapshot'          => 'nullable|array|max:60',
+                'termsSnapshot.*.title'  => 'required_with:termsSnapshot|string|max:200',
+                'termsSnapshot.*.body'   => 'nullable|string|max:5000',
+                'termsSnapshot.*.mode'   => 'nullable|string|max:20',
             ]);
 
             $orderRequest = OrderRequest::find($validated['orderRequestId']);
@@ -1236,7 +1382,7 @@ class PaymentController extends Controller
                 return $this->errorResponse('Forbidden.', 403);
             }
 
-            // Quote expiry — an unpaid quote past its expiresAt can no longer be paid at the quoted price.
+            // Quote expiry - an unpaid quote past its expiresAt can no longer be paid at the quoted price.
             if ($orderRequest->expiresAt
                 && ($orderRequest->paymentStatus ?? 'unpaid') === 'unpaid'
                 && now()->greaterThan($orderRequest->expiresAt)) {
@@ -1256,6 +1402,18 @@ class PaymentController extends Controller
                 $orderRequest->save();
             }
 
+            // Recorded before the payment link is created, so the agreement exists whether or not the
+            // customer completes the payment - and cannot be claimed to have been collected after the
+            // money moved. Written once: a second payment on the same quote must not overwrite the
+            // version that was actually agreed to.
+            if (!empty($validated['agreedToTerms']) && !($orderRequest->agreedToTerms ?? false)) {
+                $orderRequest->agreedToTerms      = true;
+                $orderRequest->termsVersion       = (int) ($validated['termsVersion'] ?? 1);
+                $orderRequest->agreedAt           = $validated['termsAgreedAt'] ?? now()->toIso8601String();
+                $orderRequest->agreedTermsSnapshot = $validated['termsSnapshot'] ?? [];
+                $orderRequest->save();
+            }
+
             // Must be confirmed before payment
             if (!in_array($orderRequest->status, ['confirmed', 'processing', 'ready'])) {
                 return $this->errorResponse(
@@ -1266,6 +1424,51 @@ class PaymentController extends Controller
 
             if ($orderRequest->finalPrice === null || $orderRequest->finalPrice <= 0) {
                 return $this->errorResponse('Final price has not been set yet.', 422);
+            }
+
+            // Stock at the moment of payment. A quote holds the price, not the shelf, so what it
+            // was counting on may have been sold since it was sent. Short and not allowed past the
+            // shelf means the money is not taken - refunding a customer for goods the shop never
+            // agreed to pre-order is the worst way this can end. The owner is told, and the quote
+            // waits in To Buy with the actions that unblock it.
+            if (in_array($validated['type'], ['downpayment', 'full'], true) && empty($orderRequest->convertedOrderId)) {
+                $shortages = QuoteStock::shortages($orderRequest);
+                if (!QuoteStock::mayPayPastShelf($orderRequest, $shortages)) {
+                    $orderRequest->stockBlock = ['at' => now()->toISOString(), 'shortages' => $shortages];
+                    $lastTold = $orderRequest->stockBlockNotifiedAt ? \Carbon\Carbon::parse($orderRequest->stockBlockNotifiedAt) : null;
+                    if (!$lastTold || $lastTold->lt(now()->subHours(12))) {
+                        $orderRequest->stockBlockNotifiedAt = now()->toISOString();
+                        try {
+                            $ref   = strtoupper(substr((string) $orderRequest->_id, -8));
+                            $names = implode(', ', array_map(fn ($x) => ($x['name'] ?? 'a material') . ' (short ' . $x['short'] . ')', $shortages));
+                            foreach (User::whereIn('role', ['admin', 'owner'])->get() as $staff) {
+                                Notification::create([
+                                    'user_id'    => (string) $staff->_id,
+                                    'type'       => 'quote_stock_short',
+                                    'title'      => 'Quote could not be paid - stock ran short',
+                                    'message'    => ($orderRequest->customerName ?: 'A customer') . " tried to pay quote #{$ref}, but {$names}. "
+                                        . 'Open To Buy to allow pre-order for this quote, mark it restocked, or send a new quote.',
+                                    'is_read'    => false,
+                                    'data'       => ['orderRequestId' => (string) $orderRequest->_id, 'link' => '/dashboard/business/to-buy'],
+                                    'created_at' => now(),
+                                ]);
+                            }
+                        } catch (\Throwable $e) {
+                            Log::warning('quote stock-block notification failed', ['error' => $e->getMessage()]);
+                        }
+                    }
+                    $orderRequest->save();
+                    return response()->json([
+                        'success' => false,
+                        'code'    => 'quote_stock_short',
+                        'message' => "Stock changed since your quote, so it can't be paid right now. "
+                            . "We've let the shop know - they'll message you here with a new date or quote.",
+                    ], 422);
+                }
+                if (!empty($orderRequest->stockBlock)) {
+                    $orderRequest->stockBlock = null;
+                    $orderRequest->save();
+                }
             }
 
             $finalPrice  = (float) $orderRequest->finalPrice;
@@ -1314,7 +1517,103 @@ class PaymentController extends Controller
             $amountInCentavos = (int) round($amount * 100);
             $frontendUrl      = config('app.frontend_url', 'http://localhost:3000');
             $orderId          = $validated['orderRequestId'];
-            $description      = "PersonalizeMe Prints — Custom Order {$label} #{$orderId}";
+            // ── Payment Intent flow (GCash, Maya, Card) ──────────────────────────────
+            // Same shape the cart checkout uses: the method is picked on our screen and the
+            // customer goes straight to authorising it, rather than landing on a second picker.
+            $paymentType = $validated['paymentType'] ?? null;
+
+            if ($paymentType) {
+                $intentRes = Http::withBasicAuth($this->secretKey, '')
+                    ->post("{$this->baseUrl}/payment_intents", [
+                        'data' => ['attributes' => [
+                            'amount'                 => $amountInCentavos,
+                            'payment_method_allowed' => [$paymentType],
+                            'payment_method_options' => ['card' => ['request_three_d_secure' => 'any']],
+                            'currency'               => 'PHP',
+                            'capture_type'           => 'automatic',
+                            // The reference goes in the description AND the metadata. A quote's
+                            // Order does not exist until the money lands, so losing the
+                            // confirmation loses the whole order - not just its paid flag. The
+                            // webhook can match on either of these when reference_number, which
+                            // intents do not carry, comes back empty.
+                            'description'            => $referenceNumber,
+                            'metadata'               => [
+                                'order_request_id' => $orderId,
+                                'reference_number' => $referenceNumber,
+                            ],
+                        ]]
+                    ]);
+
+                if (!$intentRes->successful()) {
+                    Log::error('createOrderRequestLink: intent failed', [
+                        'orderRequestId' => $orderId, 'body' => $intentRes->body(),
+                    ]);
+                    return $this->errorResponse('Payment gateway error. Please try again.', 502);
+                }
+
+                $intentId        = $intentRes->json()['data']['id'];
+                $paymentMethodId = $validated['paymentMethodId'] ?? null;
+
+                if ($paymentType !== 'card') {
+                    $rawPhone = !empty($validated['eWalletPhone'])
+                        ? $validated['eWalletPhone']
+                        : ($user->phoneNumber ?? '');
+                    $phone = ltrim(preg_replace('/^\+?63/', '', preg_replace('/\s+/', '', $rawPhone)), '0');
+
+                    $pmRes = Http::withBasicAuth($this->secretKey, '')
+                        ->post("{$this->baseUrl}/payment_methods", [
+                            'data' => ['attributes' => [
+                                'type'    => $paymentType,
+                                'billing' => [
+                                    'name'  => trim("{$user->firstName} {$user->lastName}"),
+                                    'email' => $user->email,
+                                    'phone' => $phone,
+                                ],
+                            ]]
+                        ]);
+
+                    if (!$pmRes->successful()) {
+                        return $this->errorResponse('Failed to initialize payment method.', 502);
+                    }
+                    $paymentMethodId = $pmRes->json()['data']['id'];
+                }
+
+                if (!$paymentMethodId) {
+                    return $this->errorResponse('Card payment method ID is required.', 422);
+                }
+
+                $attachRes = Http::withBasicAuth($this->secretKey, '')
+                    ->post("{$this->baseUrl}/payment_intents/{$intentId}/attach", [
+                        'data' => ['attributes' => [
+                            'payment_method' => $paymentMethodId,
+                            'return_url'     => "{$frontendUrl}/shop/payment-success?id={$orderId}&type=order_request",
+                        ]]
+                    ]);
+
+                if (!$attachRes->successful()) {
+                    Log::error('createOrderRequestLink: attach failed', [
+                        'orderRequestId' => $orderId, 'body' => $attachRes->body(),
+                    ]);
+                    return $this->errorResponse('Failed to attach payment. Please try again.', 502);
+                }
+
+                $attachData   = $attachRes->json()['data'];
+                $intentStatus = $attachData['attributes']['status'];
+                $redirectUrl  = $attachData['attributes']['next_action']['redirect']['url'] ?? null;
+
+                $orderRequest->paymongoIntentId   = $intentId;
+                $orderRequest->paymongoReference  = $referenceNumber;
+                $orderRequest->save();
+
+                return $this->successResponse('Payment initiated.', [
+                    'intentId'    => $intentId,
+                    'status'      => $intentStatus,
+                    'redirectUrl' => $redirectUrl,
+                    'orderId'     => $orderId,
+                ]);
+            }
+
+            $description      = "PersonalizeMe Prints - Custom Order {$label} #{$orderId}";
 
             $response = Http::withBasicAuth($this->secretKey, '')
                 ->post("{$this->baseUrl}/checkout_sessions", [
@@ -1400,28 +1699,80 @@ class PaymentController extends Controller
      */
     private function reserveQuoteMaterials(OrderRequest $orderRequest, Order $order): void
     {
-        foreach ($orderRequest->lineItems ?? [] as $line) {
+        // A quote can hold both kinds of line at once - a printed hoodie beside a stocked mug -
+        // and the two are settled differently. A produced line holds its material until QC passes
+        // and consumes it. A ready-made line has no production step, so it comes off the shelf now,
+        // the same way the cart checkout takes it - and whatever the shelf cannot cover is OWED
+        // (held, listed in To Buy, taken when the order ships) instead of silently vanishing.
+        //
+        // What was held, taken and owed is written onto the order separately, because cancelling
+        // has to undo each one differently: release the holds, restock what was taken.
+        $items     = $order->items ?? [];
+        $orderId   = (string) $order->_id;
+        $customer  = $orderRequest->customerName ?? '';
+        $holds     = [];
+        $takes     = [];
+        $owed      = [];
+        $pastShelf = [];
+
+        foreach ($orderRequest->lineItems ?? [] as $idx => $line) {
+            $item     = $items[$idx] ?? [];
+            $produced = !empty($item['isCustom']) || !empty($item['isMadeToOrder']);
+
             foreach ($line['materials'] ?? [] as $mat) {
                 try {
                     $inv = Inventory::find($mat['inventoryId'] ?? null);
                     $qty = (int) round((float) ($mat['qty'] ?? 0));
                     if (!$inv || $inv->isOnDemand || $qty <= 0) continue;
+                    $invId = (string) $inv->_id;
 
-                    $inv->reservedQty = (int) ($inv->reservedQty ?? 0) + $qty;
-                    $inv->save();
+                    if (!$produced) {
+                        [$take, $owe] = Backorder::split($invId, $qty);
+                        if ($take > 0) {
+                            // This controller's FIFO helper takes only these four - the attribution
+                            // arguments belong to OrderController's copy of it.
+                            $this->deductInventoryFIFO(
+                                inventory: $inv,
+                                qty:       $take,
+                                reason:    'sale_reserved',
+                                orderId:   $orderId,
+                            );
+                            $takes[$invId] = ($takes[$invId] ?? 0) + $take;
+                        }
+                        if ($owe > 0) {
+                            Backorder::hold($invId, $owe, $orderId, [
+                                'productId'    => $line['productId'] ?? null,
+                                'productName'  => $line['productName'] ?? '',
+                                'customerName' => $customer,
+                            ]);
+                            $owed[]      = ['inventoryId' => $invId, 'qty' => $owe];
+                            $pastShelf[] = ($inv->name ?? 'a material') . " ({$owe} owed)";
+                        }
+                        continue;
+                    }
 
+                    // The money is already in, so a produced line is never refused here. It claims
+                    // against the free shelf first; if that fails (a pre-order, or a sale that got
+                    // there first) it is held past the shelf, and To Buy shows the difference.
+                    if (!MaterialClaim::claim($invId, $qty)) {
+                        MaterialClaim::hold($invId, $qty);
+                        $pastShelf[] = ($inv->name ?? 'a material') . " ({$qty} held past the shelf)";
+                    }
+                    $holds[$invId] = ($holds[$invId] ?? 0) + $qty;
+
+                    $inv->refresh();
                     StockHistory::create([
-                        'inventoryId'  => (string) $inv->_id,
+                        'inventoryId'  => $invId,
                         'quantity'     => $qty,
                         'remainingQty' => (int) ($inv->stockQty ?? 0),
                         'unitCost'     => $inv->averageCost ?? 0,
                         'totalCost'    => 0,
                         'reason'       => 'production_reserved',
                         'type'         => 'reservation',
-                        'orderId'      => (string) $order->_id,
+                        'orderId'      => $orderId,
                         'productId'    => $line['productId'] ?? null,
                         'productName'  => $line['productName'] ?? '',
-                        'customerName' => $orderRequest->customerName ?? '',
+                        'customerName' => $customer,
                         'performedBy'  => 'system',
                         'remarks'      => 'Reserved from quote: ' . (string) $orderRequest->_id,
                         'createdAt'    => now(),
@@ -1436,11 +1787,38 @@ class PaymentController extends Controller
                 }
             }
         }
+
+        $pairs = fn (array $m) => array_map(fn ($id, $q) => ['inventoryId' => $id, 'qty' => $q], array_keys($m), array_values($m));
+        // id + qty only: the quote's material rows carry unitCost, and an order is customer-readable.
+        $order->quoteReservations = $pairs($holds);
+        $order->quoteDeductions   = $pairs($takes);
+        $order->backorders        = Backorder::merge($order->backorders ?? [], $owed);
+        $order->save();
+
+        if ($pastShelf) {
+            try {
+                $ref = strtoupper(substr($orderId, -8));
+                foreach (User::whereIn('role', ['admin', 'owner'])->get() as $staff) {
+                    Notification::create([
+                        'user_id'    => (string) $staff->_id,
+                        'type'       => 'order_past_shelf',
+                        'title'      => 'Paid quote needs stock bought',
+                        'message'    => "Order #{$ref} was paid with not enough on the shelf: " . implode(', ', $pastShelf)
+                            . '. To Buy lists exactly what to buy.',
+                        'is_read'    => false,
+                        'data'       => ['orderId' => $orderId, 'link' => '/dashboard/business/to-buy'],
+                        'created_at' => now(),
+                    ]);
+                }
+            } catch (\Throwable $e) {
+                Log::warning('past-shelf notification failed', ['error' => $e->getMessage()]);
+            }
+        }
     }
 
     private function convertOrderRequestToOrder(OrderRequest $orderRequest, string $paymentType, array $paymentMeta = []): ?Order
     {
-        // Idempotency guard — never mint a second order for the same quote.
+        // Idempotency guard - never mint a second order for the same quote.
         if (!empty($orderRequest->convertedOrderId)) {
             return Order::find($orderRequest->convertedOrderId);
         }
@@ -1459,28 +1837,80 @@ class PaymentController extends Controller
 
         // Canonical order item shape (matches OrderController@store). A quote can hold several
         // products; lineItems normalises both the multi-item and the legacy single-product shape.
-        // Prices come straight from the quote lines — design/delivery fees stay OUT of unitPrice
+        // Prices come straight from the quote lines - design/delivery fees stay OUT of unitPrice
         // (they are separate components of finalPrice, not part of what a piece costs).
-        $items = array_map(fn ($line) => [
-            'productId'     => (string) ($line['productId'] ?? ''),
-            'productName'   => $line['productName'] ?? null,
-            'isCustom'      => true,
-            'isMadeToOrder' => true,
-            'thumbnail'     => $line['thumbnail'] ?? null,
-            // Carry the quoted variant through - without it the order cannot tell which
-            // BOM was priced, and production would have to guess the colour.
-            'variantId'     => $line['variantId'] ?? null,
-            'variantName'   => $line['variantName'] ?? null,
-            'qty'           => max(1, (int) ($line['qty'] ?? 1)),
-            'unitPrice'     => round((float) ($line['unitPrice'] ?? 0), 2),
-            'lineTotal'     => round((float) ($line['lineTotal'] ?? 0), 2),
-            'flashSaleId'   => null,
-            'designUrl'     => $orderRequest->designUrl,
-            'designNotes'   => $orderRequest->designNotes,
-            'selectedVariants' => $orderRequest->selectedVariants ?? [],
-        ], $orderRequest->lineItems);
+        // A quote can hold a ready-made item as easily as a bespoke one. Both flags used to be
+        // hardcoded true, so a quoted stock item got a job order and a production queue for work
+        // that does not exist, and its material was reserved rather than taken off the shelf.
+        // Read them off the product. A line with no product behind it is bespoke by definition -
+        // a service, a one-off - so it keeps made-to-order.
+        $lineFlags = function (array $line): array {
+            $product = !empty($line['productId']) ? Product::find($line['productId']) : null;
+            if (!$product) {
+                return ['isCustom' => true, 'isMadeToOrder' => true];
+            }
+            return [
+                'isCustom'      => (bool) ($product->isCustom ?? false),
+                'isMadeToOrder' => (bool) ($product->isMadeToOrder ?? false) || (bool) ($product->isCustom ?? false),
+            ];
+        };
+
+        // The quote's design belongs to the lines that are MADE. It used to be copied onto every
+        // line, so a ready-made item on the same quote carried artwork and was counted as custom -
+        // a mixed quote showed as "Custom" and landed under "Custom (Upload)".
+        // A made line with no mockup attached is a design the shop still has to draw and the
+        // customer still has to approve - the same state as a Request Design line from the normal
+        // checkout, so it goes through the same proof step before production.
+        $hasQuoteDesign = !empty($orderRequest->designUrl);
+        $items = array_map(function ($line) use ($lineFlags, $orderRequest, $hasQuoteDesign) {
+            $flags    = $lineFlags($line);
+            $produced = $flags['isCustom'] || $flags['isMadeToOrder'];
+            return [
+                'productId'     => (string) ($line['productId'] ?? ''),
+                'productName'   => $line['productName'] ?? null,
+                ...$flags,
+                'thumbnail'     => $line['thumbnail'] ?? null,
+                // Carry the quoted variant through - without it the order cannot tell which
+                // BOM was priced, and production would have to guess the colour.
+                'variantId'     => $line['variantId'] ?? null,
+                'variantName'   => $line['variantName'] ?? null,
+                'qty'           => max(1, (int) ($line['qty'] ?? 1)),
+                'unitPrice'     => round((float) ($line['unitPrice'] ?? 0), 2),
+                'lineTotal'     => round((float) ($line['lineTotal'] ?? 0), 2),
+                'flashSaleId'   => null,
+                'materials'     => array_values(array_map(fn ($m) => [
+                    'inventoryId' => (string) ($m['inventoryId'] ?? ''),
+                    'name'        => $m['name'] ?? null,
+                    'qty'         => (float) ($m['qty'] ?? 0),
+                ], array_filter($line['materials'] ?? [], fn ($m) => !empty($m['inventoryId'])))),
+                'designUrl'       => $produced && $hasQuoteDesign ? $orderRequest->designUrl : null,
+                'designNotes'     => $produced ? $orderRequest->designNotes : null,
+                'designRequested' => $produced && !$hasQuoteDesign,
+                'designStatus'    => !$produced ? null
+                    : ($hasQuoteDesign ? ($orderRequest->designApproved ? 'approved' : 'pending_review') : 'pending_design'),
+                'selectedVariants' => $orderRequest->selectedVariants ?? [],
+            ];
+        }, $orderRequest->lineItems);
+
+        $anyProduced = collect($items)->contains(fn ($i) => !empty($i['isCustom']) || !empty($i['isMadeToOrder']));
+        $orderDesignStatus = $anyProduced && $hasQuoteDesign
+            ? ($orderRequest->designApproved ? 'approved' : 'pending_review')
+            : null;
+        // Production can only be awaited once the design is settled. Everything else starts where
+        // every other order does - a quote for shelf goods has nothing to produce, and a quote whose
+        // design is still to be drawn has a proof step first.
+        $initialStatus = ($anyProduced && $orderDesignStatus === 'approved')
+            ? 'awaiting_production'
+            : OrderStatus::PENDING;
 
         $order = Order::create([
+            // The acceptance recorded when the quote was paid. Without carrying it here the proof
+            // would live on the OrderRequest and be missing from the Order - which is the record the
+            // admin opens, and the only one anybody looks at afterwards.
+            'agreedToTerms'       => (bool) ($orderRequest->agreedToTerms ?? false),
+            'termsVersion'        => (int) ($orderRequest->termsVersion ?? 1),
+            'agreedAt'            => $orderRequest->agreedAt ?? null,
+            'agreedTermsSnapshot' => $orderRequest->agreedTermsSnapshot ?? [],
             'userId'        => (string) $orderRequest->customerId,
             'userSnapshot'  => [
                 'name'  => $orderRequest->customerName
@@ -1490,29 +1920,32 @@ class PaymentController extends Controller
             ],
             'items'                => $items,
             'totalAmount'          => $finalPrice,
-            // Informational — the delivery fee the admin set on the quote is already inside finalPrice.
+            // Informational - the delivery fee the admin set on the quote is already inside finalPrice.
             'shippingFee'          => round((float) ($orderRequest->shippingFee ?? 0), 2),
-            'orderStatus'          => 'awaiting_production',
+            'orderStatus'          => $initialStatus,
             'paymentStatus'        => $paidInFull ? 'paid' : 'partial',
             'downPayment'          => $paidAmount,
             'balance'              => $balance,
-            'requiresDownpayment'  => true,
+            // Hardcoded true, with the percentage derived from what was paid - so a quote
+            // settled in full was recorded as requiring a 100% downpayment. It requires one only
+            // if something is still owed.
+            'requiresDownpayment'  => $balance > 0,
             'downpaymentPercent'   => $dpPct,
             'paymentMethod'        => $paymentMeta['method'] ?? null,
             'paymentDate'          => now(),
             'paymongoPaymentId'    => $paymentMeta['paymentId'] ?? null,
             'paymongoReferenceNumber' => $paymentMeta['ref'] ?? null,
             'deliveryAddress'      => $orderRequest->deliveryAddress,
-            'isCustomOrder'        => true,
+            // Hardcoded true, so a quote for shelf goods was treated as production work and could
+            // never get past the design gate on the Job Order.
+            'isCustomOrder'        => $anyProduced,
             'orderSource'          => 'inquiry',
-            'designType'           => $orderRequest->designType,
+            'designType'           => $anyProduced ? ($orderRequest->designType ?: ($hasQuoteDesign ? 'upload' : 'request')) : null,
             'designFilePath'       => $orderRequest->designUrl,
             'designNotes'          => $orderRequest->designNotes,
             // An owner-attached quote design is pre-approved (agreed in chat) → no proof gate.
             // A customer-uploaded design still needs the store to review it.
-            'designStatus'         => $orderRequest->designUrl
-                ? ($orderRequest->designApproved ? 'approved' : 'pending_review')
-                : null,
+            'designStatus'         => $orderDesignStatus,
             'materials'            => $orderRequest->materials,
             'materialsCost'        => $orderRequest->materialsCost,
             'orderRequestId'       => (string) $orderRequest->_id,
@@ -1523,10 +1956,14 @@ class PaymentController extends Controller
                     . ' via PayMongo' . (!empty($paymentMeta['ref']) ? " ({$paymentMeta['ref']})" : ''),
                 'paidAt' => now()->toDateTimeString(),
             ]],
-            'statusHistory'        => [['status' => 'awaiting_production', 'at' => now()->toISOString()]],
+            'statusHistory'        => [['status' => $initialStatus, 'at' => now()->toISOString()]],
             'createdAt'            => now(),
             'updatedAt'            => now(),
         ]);
+        
+        // Orders born here used to be created in silence: no confirmation to the
+        // customer who had just paid, and no word to the shop. See OrderNotifier.
+        OrderNotifier::placed($order);
 
         $orderRequest->convertedOrderId = (string) $order->_id;
         $orderRequest->save();
@@ -1567,7 +2004,7 @@ class PaymentController extends Controller
      *
      * PayMongo sends payment.paid event.
      * Extracts orderId from reference_number, marks order as paid.
-     * No auth middleware — verified by signature.
+     * No auth middleware - verified by signature.
      */
     public function webhook(Request $request)
     {
@@ -1617,6 +2054,17 @@ class PaymentController extends Controller
             $data    = $payload['data']['attributes']['data'] ?? [];
             $remarks = $data['attributes']['reference_number'] ?? '';
 
+            // A payment made through a Payment Intent carries no reference_number - only what the
+            // intent put in its description and metadata. Without these two fallbacks an intent
+            // payment on a QUOTE would leave the money taken and no Order created at all, because
+            // a quote's Order is built by this handler and does not exist beforehand.
+            if ($remarks === '') {
+                $remarks = (string) ($data['attributes']['description'] ?? '');
+            }
+            if ($remarks === '') {
+                $remarks = (string) ($data['attributes']['metadata']['reference_number'] ?? '');
+            }
+
             // Route: OR-{24hexId}-down or OR-{24hexId}-bal → OrderRequest
             // Route: raw 24-hex → Order
             $isOrderRequest = preg_match(
@@ -1650,7 +2098,7 @@ class PaymentController extends Controller
 
                 if ($paymentType === 'down' && $orderRequest->paymentStatus === 'unpaid') {
                     $orderRequest->paymentStatus = 'downpayment_paid';
-                    // Keep the downpayment the admin set on the quote — do NOT overwrite with 50%.
+                    // Keep the downpayment the admin set on the quote - do NOT overwrite with 50%.
                     if ($orderRequest->downPayment === null || (float) $orderRequest->downPayment <= 0) {
                         $orderRequest->downPayment = round((float) $orderRequest->finalPrice * 0.5, 2);
                     }
@@ -1753,10 +2201,16 @@ class PaymentController extends Controller
                 $paidAmount      = round((float) ($paymentAttrs['amount'] ?? $paymentAttrs['net_amount'] ?? ($orderTotal * 100)) / 100, 2);
                 $isDesignFeeOnly = (bool) ($order->isDesignFeeOnly ?? false);
 
+                if ($this->settleCourierFee($order, $paidAmount, $paymentMethod, (string) ($paymentId ?? ''))) {
+                    return $this->successResponse('Delivery fee received.', ['courierFeePaid' => true]);
+                }
+
+                $paidAmount = $this->splitCourierPortion($order, $paidAmount, $paymentMethod, (string) ($paymentId ?? ''));
+
                 if ($isDesignFeeOnly) {
                     $order->designFeePaid = true;
                     $order->designFeePaidAmount = $paidAmount;
-                    // paymentStatus stays 'unpaid' — design fee is separate from order payment
+                    // paymentStatus stays 'unpaid' - design fee is separate from order payment
                 } elseif (($order->pendingPaymentType ?? null) === 'design_fee') {
                     // Request-design fee (first payment). Goods stay unpaid until the downpayment.
                     $order->designFeePaid        = true;
@@ -1807,6 +2261,7 @@ class PaymentController extends Controller
                 $order->paymentHistory          = $prior;
                 $order->updatedAt               = now();
                 $order->save();
+                CheckoutHold::confirm($order);
 
                 // Admin in-app notification
                 try {
@@ -1875,9 +2330,39 @@ class PaymentController extends Controller
      * POST /api/payment/verify-intent
      *
      * Checks the stored Payment Intent status directly against PayMongo and marks
-     * the order as paid if the intent has succeeded. Used as a webhook fallback —
+     * the order as paid if the intent has succeeded. Used as a webhook fallback -
      * the payment-success page calls this once so local dev (no webhook) still works.
      */
+    /**
+     * Claim a gateway payment reference so it can only ever be processed once.
+     *
+     * The `paymentStatus === 'paid'` early-return is not a guard against two confirmations arriving
+     * at the same instant - the browser coming back from PayMongo and the webhook firing together
+     * both read "unpaid" before either has written. Two admin notifications for one payment is the
+     * visible half of that; the expensive half is silent, because paymentHistory is assigned whole
+     * ($order->paymentHistory = $history) rather than pushed, so the second save overwrites the
+     * first and a payment row simply disappears - and on a deposit-then-balance order the balance
+     * maths is computed off that history.
+     *
+     * A single-document update in MongoDB is atomic, so exactly one caller can match "this reference
+     * has not been claimed" and set it. The loser gets false and stops. A genuinely different
+     * reference (the later balance payment) still claims normally.
+     */
+    private function claimPaymentReference($order, ?string $ref): bool
+    {
+        if (!$ref) return true;                       // nothing to key on - leave behaviour as it was
+        if ((string) ($order->paymentRefProcessed ?? '') === $ref) return false;
+
+        $claimed = \App\Models\Order::where('_id', $order->_id)
+            ->where(function ($q) use ($ref) {
+                $q->whereNull('paymentRefProcessed')
+                  ->orWhere('paymentRefProcessed', '!=', $ref);
+            })
+            ->update(['paymentRefProcessed' => $ref]);
+
+        return (bool) $claimed;
+    }
+
     public function verifyIntent(Request $request)
     {
         try {
@@ -1899,7 +2384,12 @@ class PaymentController extends Controller
 
             if (!$order) return $this->notFoundResponse('Order');
 
-            if ($order->paymentStatus === 'paid') {
+            // A delivery fee is the one thing still payable on an order whose goods are paid - the
+            // standalone Pay Delivery Fee block only appears on such an order. Returning here let
+            // that money be taken with nothing, anywhere, recording it: the webhook cannot match
+            // these intents either. So a pending courier fee is let through.
+            if ($order->paymentStatus === 'paid' && ($order->pendingPaymentType ?? null) !== 'courier_fee') {
+                CheckoutHold::confirm($order);
                 return $this->successResponse('Already paid.', ['paymentStatus' => 'paid']);
             }
 
@@ -1956,6 +2446,7 @@ class PaymentController extends Controller
                     ->contains(fn ($pmt) => $intentId && str_contains((string) ($pmt['note'] ?? ''), (string) $intentId));
 
                 if ($alreadyRecorded) {
+                    CheckoutHold::confirm($order);
                     return $this->successResponse('This payment is already recorded.', [
                         'paymentStatus' => $order->paymentStatus,
                         'designFeePaid' => (bool) ($order->designFeePaid ?? false),
@@ -1965,6 +2456,18 @@ class PaymentController extends Controller
                 // `isDesignFeeOnly` describes how the order STARTED and is never cleared, so it may
                 // only be trusted while the design fee is still unpaid. Once it has been collected,
                 // any further payment on this order is for the goods.
+                $courierWasPaid = (bool) ($order->courierFeePaid ?? false);
+                if ($this->settleCourierFee($order, $paidAmount, $paymentMethod, (string) $sessionId)) {
+                    if (!$courierWasPaid) {
+                        $this->mailPaymentReceipt($order, 0.0, $paymentMethod, $paidAmount, 1);
+                        CheckoutHold::confirm($order);
+                    }
+                    return $this->successResponse('Delivery fee received.', ['courierFeePaid' => true]);
+                }
+
+                $grossPaidAmount = $paidAmount;
+                $paidAmount = $this->splitCourierPortion($order, $paidAmount, $paymentMethod, (string) $sessionId);
+
                 if (!empty($order->pendingPaymentType) || ($order->designFeePaid ?? false)) {
                     $isDesignFeeOnly = false;
                 }
@@ -2006,6 +2509,10 @@ class PaymentController extends Controller
                         $order->orderStatus = 'for_delivery';
                     }
                 }
+                if (!$this->claimPaymentReference($order, $sessionId)) {
+                    return $this->successResponse('Already processed.', ['paymentStatus' => $order->paymentStatus ?? 'paid']);
+                }
+
                 $history   = $order->paymentHistory ?? [];
                 $payFor = $isDesignFeeOnly ? 'design_fee'
                     : (($order->paymentStatus ?? '') === 'paid' && count($order->paymentHistory ?? []) > 0 ? 'balance'
@@ -2018,6 +2525,9 @@ class PaymentController extends Controller
                 $order->paymentHistory    = $history;
                 $order->updatedAt = now();
                 $order->save();
+
+                $this->mailPaymentReceipt($order, $paidAmount, $paymentMethod, round($grossPaidAmount - $paidAmount, 2), count($history) - 1);
+                CheckoutHold::confirm($order);
 
                 try {
                     $admin = User::where('role', 'admin')->first();
@@ -2084,6 +2594,7 @@ class PaymentController extends Controller
                 ->contains(fn ($pmt) => $intentId && str_contains((string) ($pmt['note'] ?? ''), (string) $intentId));
 
             if ($alreadyRecorded) {
+                CheckoutHold::confirm($order);
                 return $this->successResponse('This payment is already recorded.', [
                     'paymentStatus' => $order->paymentStatus,
                     'designFeePaid' => (bool) ($order->designFeePaid ?? false),
@@ -2092,13 +2603,25 @@ class PaymentController extends Controller
 
             // The flag describes how the order STARTED and is never cleared, so it may only be
             // trusted while the design fee is still unpaid.
+            $courierWasPaid = (bool) ($order->courierFeePaid ?? false);
+            if ($this->settleCourierFee($order, $paidAmount, $paymentMethod, (string) $intentId)) {
+                if (!$courierWasPaid) {
+                    $this->mailPaymentReceipt($order, 0.0, $paymentMethod, $paidAmount, 1);
+                    CheckoutHold::confirm($order);
+                }
+                return $this->successResponse('Delivery fee received.', ['courierFeePaid' => true]);
+            }
+
+            $grossPaidAmount = $paidAmount;
+            $paidAmount = $this->splitCourierPortion($order, $paidAmount, $paymentMethod, (string) $intentId);
+
             if (!empty($order->pendingPaymentType) || ($order->designFeePaid ?? false)) {
                 $isDesignFeeOnly = false;
             }
 
             if ($isDesignFeeOnly) {
                 $order->designFeePaid = true;
-                // paymentStatus stays 'unpaid' — design fee is separate from order payment
+                // paymentStatus stays 'unpaid' - design fee is separate from order payment
             } elseif (($order->pendingPaymentType ?? null) === 'design_fee') {
                 // Request-design fee (first payment). Goods stay unpaid until the downpayment.
                 $order->designFeePaid        = true;
@@ -2128,6 +2651,10 @@ class PaymentController extends Controller
                 }
             }
             $history   = $order->paymentHistory ?? [];
+            if (!$this->claimPaymentReference($order, $intentId)) {
+                return $this->successResponse('Already processed.', ['paymentStatus' => $order->paymentStatus ?? 'paid']);
+            }
+
             // What this payment was FOR. The note only ever carried the gateway reference, so the
             // receipt had to guess from position - and on a request-design order the FIRST payment is
             // the design fee, which is exactly the guess that goes wrong.
@@ -2142,6 +2669,9 @@ class PaymentController extends Controller
             $order->paymentHistory    = $history;
             $order->updatedAt = now();
             $order->save();
+
+            $this->mailPaymentReceipt($order, $paidAmount, $paymentMethod, round($grossPaidAmount - $paidAmount, 2), count($history) - 1);
+            CheckoutHold::confirm($order);
 
             try {
                 $admin = User::where('role', 'admin')->first();
@@ -2264,6 +2794,155 @@ class PaymentController extends Controller
         }
     }
 
+    /**
+     * A confirmed payment that was for the courier, not for the goods.
+     *
+     * Returns true when it handled the payment, so the three confirm paths can stop before the
+     * code that settles an order - none of which should run here. The fee is money owed to a
+     * third-party rider that the shop is only collecting; recording it as a payment on the order
+     * would inflate the sale, break the receipt, and on a fully-paid order push paymentHistory
+     * past totalAmount.
+     */
+    /**
+     * Tell the customer a payment landed, with the receipt as it now stands.
+     *
+     * The first payment on an order is announced by the order confirmation, which already carries
+     * the receipt; everything after it - a balance, a deposit's remainder, a delivery fee - used to
+     * arrive in complete silence. Sent only from verifyIntent, after the row is written and behind
+     * its duplicate guards, so it goes out once. Never blocks the payment that was already recorded.
+     */
+    private function mailPaymentReceipt($order, float $goodsAmount, ?string $method, float $deliveryAmount, int $priorPayments): void
+    {
+        $deliveryOnly = $goodsAmount <= 0.009 && $deliveryAmount > 0.009;
+        if (!$deliveryOnly && $priorPayments < 1) {
+            return;
+        }
+        if ($goodsAmount + $deliveryAmount <= 0.009) {
+            return;
+        }
+        try {
+            $to = $order->userSnapshot['email'] ?? null;
+            if (!$to) {
+                return;
+            }
+            $whole     = trim((string) ($order->userSnapshot['name'] ?? ''));
+            $first     = $whole !== '' ? explode(' ', $whole)[0] : 'there';
+            $paidTotal = (float) collect($order->paymentHistory ?? [])->sum(fn ($p) => (float) ($p['amount'] ?? 0));
+            $balance   = max(0.0, round((float) ($order->totalAmount ?? 0) - $paidTotal, 2));
+
+            $mail = new \App\Mail\PaymentReceivedMail(
+                $first,
+                strtoupper(substr((string) $order->_id, -8)),
+                round($goodsAmount + $deliveryAmount, 2),
+                (string) ($method ?? 'online'),
+                round($paidTotal, 2),
+                $balance,
+                null,
+                (string) $order->_id,
+                round($deliveryAmount, 2)
+            );
+            // After the response. Building the PDF cold takes ~10 s on its own; held inside the
+            // request it pushed the customer's Pay button past its timeout, and the browser sent
+            // the payment again. The payment is already recorded - only the email waits.
+            \Illuminate\Support\defer(function () use ($to, $mail, $order) {
+                try {
+                    \Illuminate\Support\Facades\Mail::to($to)->send($mail);
+                } catch (\Throwable $e) {
+                    Log::warning('mailPaymentReceipt failed', ['order' => (string) $order->_id, 'error' => $e->getMessage()]);
+                }
+            });
+        } catch (\Throwable $e) {
+            Log::warning('mailPaymentReceipt failed', ['order' => (string) $order->_id, 'error' => $e->getMessage()]);
+        }
+    }
+
+    private function settleCourierFee($order, float $paidAmount, ?string $paymentMethod, string $reference): bool
+    {
+        if (($order->pendingPaymentType ?? null) !== 'courier_fee') {
+            return false;
+        }
+
+        // A webhook and a verify can both land on the same payment. Second one through does
+        // nothing but say yes.
+        if (($order->courierFeePaid ?? false) && ($order->courierFeePaymentRef ?? null) === $reference) {
+            return true;
+        }
+
+        $order->courierFeePaid       = true;
+        $order->courierFeePaidAmount = $paidAmount;
+        $order->courierFeePaidAt     = now();
+        $order->courierFeePaymentRef = $reference;
+        $order->courierFeePaidMethod = $paymentMethod;
+        $order->pendingPaymentType   = null;
+        $order->pendingPaymentAmount = null;
+        $order->updatedAt            = now();
+        $order->save();
+
+        // The shop has to know before it hands the parcel over, or it pays the rider twice.
+        try {
+            $admin = User::where('role', 'admin')->first();
+            if ($admin) {
+                Notification::create([
+                    'user_id'    => (string) $admin->_id,
+                    'type'       => 'new_order',
+                    'title'      => 'Delivery Fee Paid',
+                    'message'    => ($order->userSnapshot['name'] ?? 'The customer') . ' paid the P'
+                                    . number_format($paidAmount, 2) . ' delivery fee for order #'
+                                    . strtoupper(substr((string) $order->_id, -8))
+                                    . '. The money is with you - pay the courier yourself, and tell the rider not to collect from the customer.',
+                    'is_read'    => false,
+                    'data'       => ['orderId' => (string) $order->_id, 'courierFee' => $paidAmount],
+                    'created_at' => now(),
+                ]);
+            }
+        } catch (\Exception $e) {
+            Log::warning('settleCourierFee: notification failed', ['error' => $e->getMessage()]);
+        }
+
+        Log::info('Courier fee paid online', [
+            'orderId'   => (string) $order->_id,
+            'amount'    => $paidAmount,
+            'method'    => $paymentMethod,
+            'reference' => $reference,
+        ]);
+
+        return true;
+    }
+
+    /**
+     * Take the courier's share out of a payment that carried both.
+     *
+     * Returns what is left for the order itself, so every caller downstream - the balance
+     * arithmetic, paymentHistory, the receipt - sees only the shop's own sale. Without this the
+     * courier's money would be recorded as a payment against the goods, pushing paymentHistory
+     * past totalAmount and printing a receipt that does not add up.
+     */
+    private function splitCourierPortion($order, float $paidAmount, ?string $paymentMethod, string $reference): float
+    {
+        $portion = round((float) ($order->pendingCourierPortion ?? 0), 2);
+
+        if ($portion <= 0) {
+            return $paidAmount;
+        }
+
+        // Never let a rounding slip or a short capture eat the goods payment.
+        $portion = min($portion, $paidAmount);
+
+        // settleCourierFee gates on pendingPaymentType and then clears it - but the code after
+        // this reads the same field to tell a downpayment from a balance. Borrow it and give it
+        // back, or a deposit paid together with the delivery fee is recorded as a full payment.
+        $resume = $order->pendingPaymentType ?? null;
+
+        $order->pendingCourierPortion = null;
+        $order->pendingPaymentType    = 'courier_fee';
+        $this->settleCourierFee($order, $portion, $paymentMethod, $reference);
+
+        $order->pendingPaymentType = $resume === 'courier_fee' ? null : $resume;
+        $order->save();
+
+        return round($paidAmount - $portion, 2);
+    }
+
     public function createOrderPayLink(Request $request)
     {
         try {
@@ -2277,7 +2956,14 @@ class PaymentController extends Controller
                 'eWalletPhone'    => 'nullable|string|max:20',
                 'payFull'         => 'nullable|boolean',
                 'designFeeOnly'   => 'nullable|boolean',
+                'courierFeeOnly'  => 'nullable|boolean',
+                'includeCourierFee' => 'nullable|boolean',
             ]);
+
+            // Read before the guards below, because a courier fee is payable on an order whose
+            // goods are already settled - which is the usual case, since the courier is booked
+            // after production is finished.
+            $payCourierFee = filter_var($request->input('courierFeeOnly', false), FILTER_VALIDATE_BOOLEAN);
 
             $order = Order::where('_id', $validated['orderId'])
                           ->where('userId', (string) $user->_id)
@@ -2285,15 +2971,26 @@ class PaymentController extends Controller
 
             if (!$order) return $this->notFoundResponse('Order');
 
-            if ($order->paymentStatus === 'paid') {
+            if (!$payCourierFee && $order->paymentStatus === 'paid') {
                 return $this->errorResponse('This order has already been fully paid.', 422);
             }
 
             $totalPaid = collect($order->paymentHistory ?? [])->sum('amount');
             $amountDue = round(max(0, (float) ($order->totalAmount ?? 0) - $totalPaid), 2);
 
-            if ($amountDue <= 0) {
+            if (!$payCourierFee && $amountDue <= 0) {
                 return $this->errorResponse('No outstanding balance on this order.', 422);
+            }
+
+            $courierFee = round((float) ($order->courierFee ?? 0), 2);
+
+            if ($payCourierFee) {
+                if ($courierFee <= 0) {
+                    return $this->errorResponse('There is no delivery fee on this order yet.', 422);
+                }
+                if ($order->courierFeePaid ?? false) {
+                    return $this->errorResponse('The delivery fee on this order is already settled.', 422);
+                }
             }
 
             $orderId        = (string) $order->_id;
@@ -2314,7 +3011,10 @@ class PaymentController extends Controller
             // ── Downpayment vs full-payment resolution ────────────────────
             if (!$payDesignFee && !$payFull && $order->paymentStatus === 'unpaid') {
                 $dpPercent = (int) ($order->downpaymentPercent ?? 0);
-                if ($dpPercent <= 0) {
+                // The fallback reads the first line's product, which is the same first-product bias
+                // that made the recorded rule wrong in the first place. On a cart whose lines
+                // disagree there is no percentage to offer - what is left is simply what is left.
+                if ($dpPercent <= 0 && !($order->downpaymentMixed ?? false)) {
                     $firstProdId = $order->items[0]['productId'] ?? null;
                     if ($firstProdId) {
                         $prod = Product::find($firstProdId);
@@ -2327,10 +3027,37 @@ class PaymentController extends Controller
                 }
             }
 
-            $chargeAmount   = $payDesignFee ? round((float) $order->designFee, 2) : ($isDP ? $dpAmount : $amountDue);
+            // The fee is usually known before the balance is settled, because the shop sets it
+            // as soon as it knows the address. Making the customer pay twice for one order is the
+            // friction the standalone payment was meant to remove, so it rides along instead.
+            $courierPortion = 0.0;
+            if (!$payCourierFee
+                && !$payDesignFee
+                && $courierFee > 0
+                && !($order->courierFeePaid ?? false)
+                && strtolower((string) ($order->paymentMethod ?? '')) !== 'cod'
+                && filter_var($request->input('includeCourierFee', false), FILTER_VALIDATE_BOOLEAN)) {
+                $courierPortion = $courierFee;
+            }
+
+            $chargeAmount   = $payCourierFee
+                ? $courierFee
+                : ($payDesignFee ? round((float) $order->designFee, 2) : ($isDP ? $dpAmount : $amountDue));
+            $chargeAmount   = round($chargeAmount + $courierPortion, 2);
             $amountCentavos = (int) round($chargeAmount * 100);
 
-            if ($payDesignFee) {
+            // Remembered on the order, not in the gateway metadata, because the confirm paths all
+            // read the order and a webhook may arrive with nothing else to go on.
+            $order->pendingCourierPortion = $courierPortion > 0 ? $courierPortion : null;
+            if ($courierPortion > 0) {
+                $order->save();
+            }
+
+            if ($payCourierFee) {
+                $order->pendingPaymentType   = 'courier_fee';
+                $order->pendingPaymentAmount = $courierFee;
+                $order->save();
+            } elseif ($payDesignFee) {
                 $order->pendingPaymentType   = 'design_fee';
                 $order->pendingPaymentAmount = $chargeAmount;
                 $order->save();
@@ -2351,8 +3078,13 @@ class PaymentController extends Controller
                             'payment_method_options' => ['card' => ['request_three_d_secure' => 'any']],
                             'currency'               => 'PHP',
                             'capture_type'           => 'automatic',
-                            'description'            => 'Order #' . strtoupper(substr($orderId, -8)),
-                            'metadata'               => ['order_id' => $orderId],
+                            'description'            => $payCourierFee
+                                ? 'Delivery for ORD-' . strtoupper(substr($orderId, -8))
+                                : 'Order #' . strtoupper(substr($orderId, -8)),
+                            'metadata'               => [
+                                'order_id'    => $orderId,
+                                'payment_for' => $payCourierFee ? 'courier_fee' : 'order',
+                            ],
                         ]]
                     ]);
 
@@ -2415,35 +3147,19 @@ class PaymentController extends Controller
                 $order->save();
 
                 if ($intentStatus === 'succeeded') {
-                    $updates = [
-                        'paymentMethod' => $paymentType,
-                        'paymentDate'   => now(),
-                    ];
-                    if ($payDesignFee) {
-                        // Request-design fee (first payment). Goods stay unpaid.
-                        $updates['designFeePaid']         = true;
-                        $updates['designFeePaidAmount']   = $chargeAmount;
-                        $updates['pendingPaymentType']    = null;
-                        $updates['pendingPaymentAmount']  = null;
-                    } elseif ($isDP) {
-                        $updates['paymentStatus']         = 'partial';
-                        $updates['downPayment']           = $dpAmount;
-                        $updates['balance']               = round($amountDue - $dpAmount, 2);
-                        $updates['pendingPaymentType']    = null;
-                        $updates['pendingPaymentAmount']  = null;
-                        if ($order->isCustomOrder && $order->orderStatus === 'awaiting_payment') {
-                            $updates['orderStatus'] = 'awaiting_production';
-                        }
-                    } else {
-                        $updates['paymentStatus'] = 'paid';
-                        if ($order->isCustomOrder && $order->orderStatus === 'awaiting_payment') {
-                            $updates['orderStatus'] = 'awaiting_production';
-                        }
-                        if ($order->orderStatus === 'ready_for_delivery') {
-                            $updates['orderStatus'] = 'for_delivery';
-                        }
-                    }
-                    $order->update($updates);
+                    // A card that clears without 3-D Secure never goes back through payment-success,
+                    // so this branch used to record the payment itself - by setting a status and
+                    // stopping there. No row went into paymentHistory, so the receipt showed nothing
+                    // paid; a delivery fee riding on the charge was never split out or marked paid;
+                    // a card-paid delivery fee on its own was not recorded at all; and no receipt
+                    // email went out. verifyIntent already does every one of those, exactly once, so
+                    // the card is confirmed through it - the same path GCash and Maya take.
+                    $confirm = Request::create('/api/payment/verify-intent', 'POST', [
+                        'orderId'  => $orderId,
+                        'intentId' => $intentId,
+                    ]);
+                    $confirm->setUserResolver(fn () => $user);
+                    $this->verifyIntent($confirm);
                     return $this->successResponse('Payment completed.', [
                         'orderId' => $orderId,
                         'status'  => 'succeeded',

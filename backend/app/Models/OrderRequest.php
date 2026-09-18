@@ -12,7 +12,7 @@ class OrderRequest extends Model
     /**
      * The quote as the CUSTOMER is allowed to see it.
      *
-     * What a job costs us is our negotiating position — it must never reach the
+     * What a job costs us is our negotiating position - it must never reach the
      * customer's copy, and "we don't render it" is not protection when the whole
      * document is one DevTools tab away. Strip it at the source instead.
      */
@@ -68,8 +68,17 @@ class OrderRequest extends Model
         'adminComment',
         'mockupUrl',
         'expiresAt',
+        // Set when a quote is paid through a Payment Intent rather than PayMongo's hosted page.
+        // Fillable because $fillable is what decides whether they reach the document at all.
+        'paymongoIntentId',
+        'paymongoReference',
         'estimatedMaterialCost',
         'costBasis',
+        // Stock at payment time: the owner's per-quote pre-order permission, and the record of a
+        // payment refused because the shelf no longer covered the quote (shown in To Buy).
+        'allowPreorder',
+        'stockBlock',
+        'stockBlockNotifiedAt',
         'createdAt',
         'updatedAt',
     ];
@@ -83,6 +92,7 @@ class OrderRequest extends Model
         'materials'        => 'array',
         'materialsCost'    => 'float',
         'designApproved'   => 'boolean',
+        'allowPreorder'    => 'boolean',
         'deliveryAddress'  => 'array',
         'shippingFee'      => 'float',
         'designFee'        => 'float',
@@ -108,7 +118,7 @@ class OrderRequest extends Model
      * Canonical line items for a quote.
      *
      * A quote may hold several products (admin builds it in the chat quotation modal), but
-     * customer-raised inquiries — and every quote written before multi-item support — only
+     * customer-raised inquiries - and every quote written before multi-item support - only
      * carry the singular product fields. Both are folded into one shape here so readers
      * never have to care which kind they got. Legacy rows have no stored unit price, so it
      * is derived by peeling the design/delivery fees back off finalPrice.

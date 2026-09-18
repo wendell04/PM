@@ -26,13 +26,13 @@ class CleanupDraftDuplicates extends Command
                 ->get();
 
             if ($matches->isNotEmpty()) {
-                $this->line("Pattern: \"{$pattern}\" — {$matches->count()} unpublished match(es):");
+                $this->line("Pattern: \"{$pattern}\" - {$matches->count()} unpublished match(es):");
                 foreach ($matches as $p) {
                     $this->line("  [{$p->_id}] {$p->name} | active=" . ($p->isActive ? 'true' : 'false') . " | archived=" . ($p->isArchived ? 'true' : 'false'));
                 }
                 $toDelete = $toDelete->merge($matches);
             } else {
-                $this->warn("Pattern: \"{$pattern}\" — no unpublished matches found.");
+                $this->warn("Pattern: \"{$pattern}\" - no unpublished matches found.");
             }
         }
 
@@ -44,7 +44,7 @@ class CleanupDraftDuplicates extends Command
         }
 
         if ($this->option('dry-run')) {
-            $this->warn("DRY RUN — {$toDelete->count()} product(s) would be deleted. Run without --dry-run to execute.");
+            $this->warn("DRY RUN - {$toDelete->count()} product(s) would be deleted. Run without --dry-run to execute.");
             return 0;
         }
 

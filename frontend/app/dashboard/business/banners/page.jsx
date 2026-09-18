@@ -1,4 +1,5 @@
 'use client';
+import NoImage from '@/components/NoImage';
 
 /**
  * BANNER MANAGEMENT PAGE
@@ -22,7 +23,7 @@ import ErrorBoundary from '@/components/ErrorBoundary';
 import HeroImagePositioner from '@/components/cms/HeroImagePositioner';
 import ImageCropper from '@/components/ImageCropper';
 
-// UX limit — keeps carousel manageable regardless of storage backend
+// UX limit - keeps carousel manageable regardless of storage backend
 // Safe to keep even after MongoDB migration (enforced at API level too)
 const MAX_BANNERS = 5;
 
@@ -357,6 +358,8 @@ export default function BannerManagementPage() {
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [cropSrc, setCropSrc] = useState(null);
+  // First paint only. Actions use isSubmitting: this one blanks the entire page
+  // for the skeleton, so flipping it mid-edit reads to the user as a reload.
   const [isLoading, setIsLoading] = useState(true);
   const [modal, setModal] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -392,7 +395,7 @@ export default function BannerManagementPage() {
 
   useEffect(() => {
     if (editedBanner && activeBannerId) {
-      const originalBanner = banners.find(b => b.id === activeBannerId);
+      const originalBanner = banners.find(b => (b._id || b.id) === activeBannerId);
       if (originalBanner) setHasUnsavedChanges(JSON.stringify(editedBanner) !== JSON.stringify(originalBanner));
     }
   }, [editedBanner, activeBannerId, banners]);
@@ -405,7 +408,7 @@ export default function BannerManagementPage() {
 
   useEffect(() => {
     if (activeBannerId && banners.length > 0) {
-      const index = banners.findIndex(b => b.id === activeBannerId);
+      const index = banners.findIndex(b => (b._id || b.id) === activeBannerId);
       if (index !== -1 && index !== currentSlide) setCurrentSlide(index);
     }
   }, [activeBannerId, banners, currentSlide]);
@@ -427,6 +430,7 @@ export default function BannerManagementPage() {
 
   // Create new banner via API
   const createNewBanner = async () => {
+    if (isSubmitting) return;
     if (filteredBanners.length >= MAX_BANNERS) {
       setModal({
         type: 'error',
@@ -435,7 +439,7 @@ export default function BannerManagementPage() {
       });
       return;
     }
-    setIsLoading(true);
+    setIsSubmitting(true);
     try {
       const newBanner = await apiCreateBanner({ ...createDefaultBanner(), showOn: activePage === 'landing' ? 'landing' : 'shop' }, token);
       const updatedBanners = [...banners, newBanner];
@@ -449,7 +453,7 @@ export default function BannerManagementPage() {
         message: err.message || 'Failed to create banner. Please try again.',
       });
     } finally {
-      setIsLoading(false);
+      setIsSubmitting(false);
     }
   };
 
@@ -461,7 +465,6 @@ export default function BannerManagementPage() {
       message: 'Are you sure you want to delete this banner? This action cannot be undone.',
       onConfirm: async () => {
         setIsSubmitting(true);
-        setIsLoading(true);
         try {
           await apiDeleteBanner(bannerId, token);
           const updatedBanners = banners.filter(b => (b._id || b.id) !== bannerId);
@@ -483,7 +486,6 @@ export default function BannerManagementPage() {
             message: err.message || 'Failed to delete banner. Please try again.',
           });
         } finally {
-          setIsLoading(false);
           setIsSubmitting(false);
         }
       },
@@ -501,7 +503,6 @@ export default function BannerManagementPage() {
     updatedBanners.forEach((b, idx) => { b.order = idx; });
 
     setIsSubmitting(true);
-    setIsLoading(true);
     try {
       // Update the moved banner's order via API
       const movedBanner = updatedBanners[newIndex];
@@ -515,7 +516,6 @@ export default function BannerManagementPage() {
         message: err.message || 'Failed to reorder banner. Please try again.',
       });
     } finally {
-      setIsLoading(false);
       setIsSubmitting(false);
     }
   };
@@ -534,8 +534,8 @@ export default function BannerManagementPage() {
 
   // Save edited banner via API
   const saveChanges = async () => {
-    if (!editedBanner || !activeBannerId) return;
-    setIsLoading(true);
+    if (!editedBanner || !activeBannerId || isSubmitting) return;
+    setIsSubmitting(true);
     try {
       const updatedBanner = await apiUpdateBanner(activeBannerId, editedBanner, token);
       const updatedBanners = banners.map(b => (b._id || b.id) === activeBannerId ? updatedBanner : b);
@@ -556,14 +556,14 @@ export default function BannerManagementPage() {
         message: err.message || 'Failed to save banner. Please try again.',
       });
     } finally {
-      setIsLoading(false);
+      setIsSubmitting(false);
     }
   };
 
   // Publish banner via API
   const publishBanner = async () => {
-    if (!editedBanner) return;
-    setIsLoading(true);
+    if (!editedBanner || isSubmitting) return;
+    setIsSubmitting(true);
     try {
       const updatedBanner = await apiPublishBanner(activeBannerId, token);
       const updatedBanners = banners.map(b => (b._id || b.id) === activeBannerId ? updatedBanner : b);
@@ -578,7 +578,7 @@ export default function BannerManagementPage() {
         message: err.message || 'Failed to publish banner. Please try again.',
       });
     } finally {
-      setIsLoading(false);
+      setIsSubmitting(false);
     }
   };
 
@@ -586,7 +586,6 @@ export default function BannerManagementPage() {
   const unpublishBanner = async () => {
     if (!editedBanner || isSubmitting) return;
     setIsSubmitting(true);
-    setIsLoading(true);
     try {
       const updatedBanner = await apiUnpublishBanner(activeBannerId, token);
       const updatedBanners = banners.map(b => (b._id || b.id) === activeBannerId ? updatedBanner : b);
@@ -678,16 +677,14 @@ export default function BannerManagementPage() {
 
   const goToSlide = (index) => { setCurrentSlide(index); setIsAutoPlaying(false); setTimeout(() => setIsAutoPlaying(true), 10000); };
 
-  const isLive = banners.find(b => b.id === activeBannerId)?.status === 'live';
+  const isLive = banners.find(b => (b._id || b.id) === activeBannerId)?.status === 'live';
   isLiveRef.current = isLive;
 
   if (isLoading) {
     return (
-      <div className="skeleton-page" style={{ padding: "2rem" }}>
-        <style>{`
-          @keyframes bnPageSkel { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
-        `}</style>
-        <div style={{ display: "flex", flexDirection: "column", gap: "8px", maxWidth: "1400px", margin: "0 auto" }}>
+      <div className="skeleton-page" style={{ padding: "24px" }}>
+        <style>{`@keyframes pmPulse { 0%,100% { opacity: 1 } 50% { opacity: .45 } }`}</style>
+        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
           {[...Array(5)].map((_, i) => (
             <div
               key={i}
@@ -695,7 +692,8 @@ export default function BannerManagementPage() {
                 height: "56px",
                 borderRadius: "8px",
                 background: "var(--dark2)",
-                animation: "bnPageSkel 1.5s ease-in-out infinite",
+                border: "1px solid var(--border)",
+                animation: "pmPulse 1.5s ease-in-out infinite",
               }}
             />
           ))}
@@ -718,15 +716,15 @@ export default function BannerManagementPage() {
     )}
     <div className="banner-management-container">
       <style jsx>{`
-        .banner-management-container { padding: 2rem; max-width: 1400px; margin: 0 auto; background: var(--black); min-height: 100vh; }
+        .banner-management-container { padding: 24px; background: var(--black); min-height: 100vh; }
 
         .banner-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; }
         .banner-actions { display: flex; gap: 0.75rem; }
         .banner-btn { padding: 0.625rem 1.5rem; border-radius: 8px; font-size: 0.875rem; font-weight: 600; cursor: pointer; transition: all 0.2s; border: none; font-family: 'DM Sans', sans-serif; }
         .banner-btn-secondary { background: transparent; border: 1px solid var(--border); color: var(--gray-light); }
         .banner-btn-secondary:hover { border-color: var(--gold); color: var(--white); }
-        .banner-btn-primary { background: linear-gradient(135deg, var(--gold-light), var(--gold-dark)); color: var(--black); font-weight: 700; }
-        .banner-btn-primary:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(212, 168, 67, 0.3); }
+        .banner-btn-primary { background: var(--gold); color: #1a1a1a; font-weight: 600; }
+        .banner-btn-primary:hover { filter: brightness(1.05); }
         .banner-btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
 
         .banner-grid { display: grid; grid-template-columns: 340px 1fr; gap: 1.5rem; }
@@ -769,7 +767,9 @@ export default function BannerManagementPage() {
         .banner-upload-hint { font-size: 0.625rem; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 0.25rem; }
 
         .banner-preview-container { --white: #f5f5f5; --black: #0f0f0f; --gray-light: #aaa; --border: rgba(255,255,255,0.08); background: var(--dark); border: 1px solid rgba(255,255,255,0.08); border-radius: 16px; overflow: hidden; position: relative; }
-        .banner-preview-badge { position: absolute; top: 1rem; left: 1rem; z-index: 10; background: rgba(0, 0, 0, 0.8); padding: 0.375rem 0.75rem; border-radius: 20px; display: flex; align-items: center; gap: 0.5rem; font-size: 0.625rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--white); }
+        /* The badge sat inside the picture at top-left, which is exactly where a headline starts - so it
+           covered the first words of every banner. It has its own strip above the canvas now. */
+        .banner-preview-badge { position: static; display: inline-flex; align-items: center; gap: 0.5rem; margin: 0.65rem 0.9rem; background: rgba(255, 255, 255, 0.06); padding: 0.3rem 0.7rem; border-radius: 20px; font-size: 0.625rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--white); }
         .banner-preview-indicator { width: 0.5rem; height: 0.5rem; border-radius: 50%; background: #ef4444; animation: pulse 2s infinite; }
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
         .banner-preview-canvas { position: relative; width: 100%; aspect-ratio: 16/5; overflow: hidden; }
@@ -778,13 +778,18 @@ export default function BannerManagementPage() {
         .banner-preview-slide.inactive { opacity: 0; z-index: 0; }
         .banner-preview-image { width: 100%; height: 100%; object-fit: cover; object-position: center center; }
         .banner-preview-overlay { position: absolute; inset: 0; background: linear-gradient(to right, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.5) 50%, transparent 100%); }
-        .banner-preview-content { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center; padding: 3rem 4rem; padding-left: 6rem; gap: 1rem; }
+        .banner-preview-content { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center; padding: 1.5rem 2.5rem; gap: 0.75rem; }
         .banner-preview-headline { font-family: 'DM Sans', sans-serif; font-size: 2.5rem; font-weight: 800; color: var(--white); max-width: 32rem; line-height: 1.1; text-align: left; }
         .banner-preview-subtext { font-size: 1rem; color: var(--gray-light); max-width: 28rem; line-height: 1.6; text-align: left; }
         .banner-preview-cta { padding-top: 1rem; }
         .banner-preview-cta-btn { background: linear-gradient(135deg, var(--gold-light), var(--gold-dark)); color: var(--black); font-weight: 700; padding: 0.75rem 2rem; border-radius: 8px; border: none; font-size: 0.875rem; cursor: pointer; }
         .banner-carousel-dots { position: absolute; bottom: 1rem; left: 50%; transform: translateX(-50%); z-index: 20; display: flex; gap: 0.5rem; }
         .banner-carousel-dot { width: 8px; height: 8px; border-radius: 50%; background: rgba(255, 255, 255, 0.3); border: none; cursor: pointer; transition: all 0.2s; }
+        .banner-carousel-count { position: absolute; bottom: 0.75rem; right: 0.9rem; z-index: 20; display: flex; align-items: center; gap: 0.4rem; }
+        .banner-carousel-count button { width: 26px; height: 26px; border-radius: 50%; border: none; background: rgba(0,0,0,0.55); color: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 0.9rem; }
+        .banner-carousel-count span { background: rgba(0,0,0,0.55); color: #fff; font-size: 0.7rem; font-weight: 700; padding: 0.25rem 0.6rem; border-radius: 999px; }
+        .banner-preview-empty { position: absolute; inset: 0; background: linear-gradient(135deg, #1b1b1b 0%, #2a2a2a 100%); }
+        .banner-preview-empty-note { position: absolute; right: 0.9rem; top: 0.75rem; z-index: 5; display: flex; align-items: center; gap: 0.35rem; font-size: 0.65rem; color: rgba(255,255,255,0.45); }
         .banner-carousel-dot.active { background: var(--gold); width: 24px; border-radius: 4px; }
         .banner-carousel-dot:hover { background: rgba(212, 168, 67, 0.6); }
 
@@ -895,7 +900,7 @@ export default function BannerManagementPage() {
         }
       `}</style>
 
-      {/* Shop banners only — the landing hero is managed in the Homepage module */}
+      {/* Shop banners only - the landing hero is managed in the Homepage module */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
         <span style={{ padding: '6px 14px', borderRadius: '7px', background: 'var(--dark2)', color: 'var(--white)', fontSize: '0.82rem', fontWeight: 700, fontFamily: "'DM Sans', sans-serif" }}>
           Shop Banners (/shop)
@@ -918,18 +923,18 @@ export default function BannerManagementPage() {
                 <button
                   className="banner-btn banner-btn-secondary"
                   onClick={saveChanges}
-                  disabled={isLoading}
+                  disabled={isSubmitting}
                 >
-                  {isLoading ? 'Saving...' : 'Save Changes'}
+                  {isSubmitting ? 'Saving...' : 'Save Changes'}
                 </button>
               ) : null}
               <button
                 className="banner-btn banner-btn-primary"
                 onClick={publishBanner}
-                disabled={!editedBanner?.image || isLoading}
+                disabled={!editedBanner?.image || isSubmitting}
                 title={!editedBanner?.image ? 'Upload a banner image first' : ''}
               >
-                {isLoading ? 'Publishing...' : 'Publish Live'}
+                {isSubmitting ? 'Publishing...' : 'Publish Live'}
               </button>
             </>
           )}
@@ -957,7 +962,7 @@ export default function BannerManagementPage() {
                     <button className="banner-order-btn" onClick={(e) => { e.stopPropagation(); moveBanner(banners.indexOf(banner), 1); }} disabled={index === filteredBanners.length - 1 || isSubmitting} title="Move down">▼</button>
                   </div>
                   <div className="banner-item-thumbnail">
-                    {banner.image ? <Image src={banner.image} alt={banner.name} width={48} height={48} style={{ objectFit: "cover" }} unoptimized /> : <span>No Image</span>}
+                    {banner.image ? <Image src={banner.image} alt={banner.name} width={48} height={48} style={{ objectFit: "cover" }} unoptimized /> : <NoImage size={22} />}
                   </div>
                   <div className="banner-item-info">
                     <div className="banner-item-header">
@@ -989,8 +994,8 @@ export default function BannerManagementPage() {
             <button
               className="banner-add-btn"
               onClick={createNewBanner}
-              disabled={filteredBanners.length >= MAX_BANNERS}
-              style={{ opacity: filteredBanners.length >= MAX_BANNERS ? 0.5 : 1, cursor: filteredBanners.length >= MAX_BANNERS ? 'not-allowed' : 'pointer' }}
+              disabled={filteredBanners.length >= MAX_BANNERS || isSubmitting}
+              style={{ opacity: (filteredBanners.length >= MAX_BANNERS || isSubmitting) ? 0.5 : 1, cursor: (filteredBanners.length >= MAX_BANNERS || isSubmitting) ? 'not-allowed' : 'pointer' }}
             >
               <span>+</span>
               {filteredBanners.length >= MAX_BANNERS ? `Max ${MAX_BANNERS} banners reached` : `Add ${activePage === 'landing' ? 'Landing' : 'Shop'} Banner`}
@@ -1015,6 +1020,21 @@ export default function BannerManagementPage() {
                 }}>
                   Unpublish to change
                 </span>
+              )}
+              {/* Reframing an image you already uploaded meant finding the original file and
+                  uploading it again, because the cropper only ever opened on a fresh pick. The
+                  saved image is a URL the cropper can load directly - Cloudinary serves it with
+                  CORS, and the cropper already sets crossOrigin - so there is nothing to fetch
+                  from the operator a second time. */}
+              {!isLive && editedBanner?.image && (
+                <button
+                  type="button"
+                  className="banner-btn banner-btn-secondary"
+                  style={{ fontSize: '0.72rem', padding: '0.3rem 0.7rem' }}
+                  onClick={() => setCropSrc(editedBanner.image)}
+                >
+                  Recrop
+                </button>
               )}
             </div>
             <input
@@ -1062,7 +1082,15 @@ export default function BannerManagementPage() {
                   <div key={banner.id} className={`banner-preview-slide ${index === currentSlide ? 'active' : 'inactive'}`}>
                     {displayBanner.image
                       ? <Image src={displayBanner.image} alt={displayBanner.name} className="banner-preview-image" fill style={{ objectFit: "cover" }} unoptimized />
-                      : <div style={{ width: '100%', height: '100%', background: 'var(--dark3)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--gray)' }}>No Image</div>
+                      : (
+                        /* A banner without its picture yet. The icon used to sit dead centre, behind
+                           the headline, reading as a broken image inside the copy. The frame stays
+                           plain and says what is missing in a corner. */
+                        <>
+                          <div className="banner-preview-empty" />
+                          <div className="banner-preview-empty-note"><NoImage size={14} color="rgba(255,255,255,0.45)" /> No image yet</div>
+                        </>
+                      )
                     }
                     <div className="banner-preview-overlay"></div>
                     {(displayBanner.headline || displayBanner.subtext || displayBanner.ctaLabel) && (
@@ -1080,7 +1108,14 @@ export default function BannerManagementPage() {
                 );
               })}
               {/* Carousel Dots */}
-              {banners.length > 1 && (
+              {banners.length > 8 && (
+                <div className="banner-carousel-count">
+                  <button type="button" onClick={() => goToSlide((currentSlide - 1 + banners.length) % banners.length)} aria-label="Previous banner">&#8249;</button>
+                  <span>{currentSlide + 1} / {banners.length}</span>
+                  <button type="button" onClick={() => goToSlide((currentSlide + 1) % banners.length)} aria-label="Next banner">&#8250;</button>
+                </div>
+              )}
+              {banners.length > 1 && banners.length <= 8 && (
                 <div className="banner-carousel-dots">
                   {banners.map((_, index) => (
                     <button key={index} className={`banner-carousel-dot ${index === currentSlide ? 'active' : ''}`} onClick={() => goToSlide(index)} title={`Go to slide ${index + 1}`} />
@@ -1195,7 +1230,7 @@ export default function BannerManagementPage() {
             <div className="banner-editor-card">
               <h3 className="banner-editor-card-title">Schedule</h3>
 
-              {/* Custom dark calendar — no browser default inputs */}
+              {/* Custom dark calendar - no browser default inputs */}
               <DateRangePicker
                 startValue={editedBanner?.scheduleStart || ''}
                 endValue={editedBanner?.scheduleEnd || ''}
@@ -1219,7 +1254,7 @@ export default function BannerManagementPage() {
           {hasUnsavedChanges && (
             <div className="banner-unsaved-indicator">
               <div className="banner-unsaved-dot"></div>
-              <span>Unsaved changes — click "Publish Live" to save</span>
+              <span>Unsaved changes - click "Publish Live" to save</span>
             </div>
           )}
         </div>

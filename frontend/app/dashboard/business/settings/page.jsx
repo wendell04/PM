@@ -9,17 +9,35 @@ import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import { DEFAULT_CUSTOM_ORDER_TERMS } from '@/lib/customOrderTerms';
 import { DEFAULT_REGISTRATION_TERMS } from '@/lib/registrationTerms';
 import { CustomSelect } from './../inventory-v2/shared';
+import { fetchRegions, fetchProvinces, fetchCities, fetchBarangays, isNCR } from '@/lib/psgc';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import ImageCropper from '@/components/ImageCropper';
 
-// Google Places (New) — best PH landmark coverage for the store-location search. Falls back to OSM when unset/failed.
+// Google Places (New) - best PH landmark coverage for the store-location search. Falls back to OSM when unset/failed.
 const GOOGLE_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || '';
 
 // Structured store-address parts (himay-himay, like the customer address) + helpers to combine/parse them.
+// The on/off switch used across Settings.
+function SettingSwitch({ on, onClick, label, disabled = false }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={!!on}
+      aria-label={label}
+      onClick={onClick}
+      disabled={disabled}
+      style={{ position: 'relative', width: '44px', height: '24px', borderRadius: '12px', border: 'none', cursor: disabled ? 'wait' : 'pointer', background: on ? 'var(--gold)' : 'var(--border)', transition: 'background 0.2s', padding: 0, flexShrink: 0, opacity: disabled ? 0.7 : 1 }}
+    >
+      <span style={{ position: 'absolute', top: '3px', left: on ? '23px' : '3px', width: '18px', height: '18px', borderRadius: '50%', background: 'var(--dark)', transition: 'left 0.2s' }} />
+    </button>
+  );
+}
+
 const EMPTY_STORE_PARTS = { house_number: '', street: '', barangay: '', city: '', province: '', zip: '' };
 const combineStoreAddress = (p = {}) => [
   [p.house_number, p.street].filter(Boolean).join(' '),
-  p.barangay, p.city, p.province, p.zip,
+  p.barangay, p.city, p.province || p.region, p.zip,
 ].filter(Boolean).join(', ');
 const googleComponentsToParts = (components = []) => {
   const get = (t) => components.find(c => (c.types || []).includes(t));
@@ -122,8 +140,19 @@ const getPasswordStrength = (pwd) => {
   return levels[score - 1] ?? levels[0];
 };
 
+// Distance-based shipping is built and working, and wrong for this shop: see the note beside the
+// mode picker. Flip to true the day they partner with a courier that prices by the kilometre.
+const DISTANCE_SHIPPING_ENABLED = false;
+
+
 export default function SettingsPage() {
   const { token, currentUser, setCurrentUser } = useAuth();
+
+  // PSGC lists for the shop's own address - the same cascade the customer's address form uses.
+  const [psgcRegions, setPsgcRegions]     = useState([]);
+  const [psgcProvinces, setPsgcProvinces] = useState([]);
+  const [psgcCities, setPsgcCities]       = useState([]);
+  const [psgcBarangays, setPsgcBarangays] = useState([]);
   const { theme, toggleTheme } = useTheme();
 
   const deviceTokens = useMemo(
@@ -133,6 +162,20 @@ export default function SettingsPage() {
 
   // ── Tab ───────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState('profile');
+  // Shipping, Chat, Integrations and Terms configure the shop, and their APIs are Owner / Super Admin
+  // only. Staff keep the tabs about themselves: profile, password and 2FA, notifications, theme.
+  const ownsShop = ['superAdmin', 'admin', 'owner'].includes(currentUser?.role);
+  const SHOP_TABS = ['shipping', 'chat', 'integrations', 'terms'];
+
+  // Other modules link straight to a tab (Messages -> ?tab=chat), so the owner never has to hunt for it.
+  useEffect(() => {
+    const wanted = new URLSearchParams(window.location.search).get('tab');
+    if (['profile', 'security', 'shipping', 'chat', 'integrations', 'terms', 'notifications', 'appearance'].includes(wanted)
+        && (ownsShop || !SHOP_TABS.includes(wanted))) {
+      setActiveTab(wanted);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ownsShop]);
 
   // ── Loading ───────────────────────────────────────────────
   const [isLoading, setIsLoading] = useState(true);
@@ -165,12 +208,6 @@ export default function SettingsPage() {
   const [passwordError, setPasswordError]       = useState('');
   const [passwordSuccess, setPasswordSuccess]   = useState('');
 
-  const [businessForm, setBusinessForm] = useState({
-    businessName: '',
-    businessAddress: '',
-    operatingHours: '',
-    contactEmail: '',
-  });
 
   const [notifPrefs, setNotifPrefs] = useState({
     newOrders: true,
@@ -191,12 +228,63 @@ export default function SettingsPage() {
   // ── Shipping ──────────────────────────────────────────────
   const [shippingForm, setShippingForm] = useState({
     storeAddress: '', storeAddressParts: { ...EMPTY_STORE_PARTS }, storeLat: null, storeLng: null,
+    googleMapsEnabled: false,
     shippingMode: 'courier_booked',
-    shippingBaseRate: '50', shippingPerKmRate: '15',
+    shippingBaseRate: '49', shippingPerKmRate: '6', shippingPerKmRateFar: '5', shippingTierKm: '5',
     flatRateInsideMetro: '150', flatRateOutsideMetro: '250',
-    productionLeadDays: '5', shippingDaysMin: '2', shippingDaysMax: '4',
-    rushEnabled: true, rushLeadDays: '2', rushFee: '150',
+    productionLeadDays: '3', shippingDaysMin: '1', shippingDaysMax: '2',
+    rushEnabled: true, rushLeadDays: '1', rushFee: '150',
   });
+  const setStorePart = (patch) => setShippingForm(f => {
+    const sp = { ...(f.storeAddressParts || {}), ...patch };
+    return { ...f, storeAddressParts: sp, storeAddress: combineStoreAddress(sp) };
+  });
+  const storeRegion   = shippingForm.storeAddressParts?.region_code || '';
+  const storeProvince = shippingForm.storeAddressParts?.province_code || '';
+  const storeCity     = shippingForm.storeAddressParts?.city_code || '';
+  useEffect(() => { fetchRegions().then(setPsgcRegions).catch(() => {}); }, []);
+  useEffect(() => {
+    if (!storeRegion) { setPsgcProvinces([]); setPsgcCities([]); return; }
+    if (isNCR(storeRegion)) { setPsgcProvinces([]); fetchCities(storeRegion, null).then(setPsgcCities).catch(() => {}); return; }
+    fetchProvinces(storeRegion).then(setPsgcProvinces).catch(() => {});
+  }, [storeRegion]);
+  useEffect(() => {
+    if (!storeRegion || isNCR(storeRegion)) return;
+    if (!storeProvince) { setPsgcCities([]); return; }
+    fetchCities(storeRegion, storeProvince).then(setPsgcCities).catch(() => {});
+  }, [storeRegion, storeProvince]);
+  useEffect(() => {
+    if (!storeCity) { setPsgcBarangays([]); return; }
+    fetchBarangays(storeCity).then(setPsgcBarangays).catch(() => {});
+  }, [storeCity]);
+  // An address saved before these lists has names but no codes. Match the names once, level by
+  // level, so the lists open on the saved address instead of asking for it again.
+  useEffect(() => {
+    const p = shippingForm.storeAddressParts || {};
+    const norm = v => String(v || '').toLowerCase().replace(/^city of /, '').replace(/ city$/, '').replace(/\s+/g, ' ').trim();
+    if (!p.region_code && psgcRegions.length && (p.region || p.province)) {
+      const ncr = /metro manila|ncr|national capital/i.test(`${p.region || ''} ${p.province || ''}`);
+      const hit = ncr ? psgcRegions.find(r => isNCR(r.code)) : psgcRegions.find(r => norm(r.name) === norm(p.region));
+      if (hit) setStorePart(isNCR(hit.code)
+        ? { region: hit.name, region_code: hit.code, province: 'Metro Manila', province_code: hit.code }
+        : { region: hit.name, region_code: hit.code });
+      return;
+    }
+    if (p.region_code && !p.province_code && p.province && psgcProvinces.length) {
+      const hit = psgcProvinces.find(x => norm(x.name) === norm(p.province));
+      if (hit) setStorePart({ province: hit.name, province_code: hit.code });
+      return;
+    }
+    if (p.province_code && !p.city_code && p.city && psgcCities.length) {
+      const hit = psgcCities.find(x => norm(x.name) === norm(p.city));
+      if (hit) setStorePart({ city: hit.name, city_code: hit.code });
+      return;
+    }
+    if (p.city_code && !p.barangay_code && p.barangay && psgcBarangays.length) {
+      const hit = psgcBarangays.find(x => norm(x.name) === norm(p.barangay));
+      if (hit) setStorePart({ barangay: hit.name, barangay_code: hit.code });
+    }
+  }, [shippingForm.storeAddressParts, psgcRegions, psgcProvinces, psgcCities, psgcBarangays]); // eslint-disable-line react-hooks/exhaustive-deps
   const [termsRows, setTermsRows]                       = useState([]);
   const [settingsTermsVersion, setSettingsTermsVersion] = useState(1);
   const [savingTerms, setSavingTerms]                   = useState(false);
@@ -207,9 +295,20 @@ export default function SettingsPage() {
   const [regTermsVersion, setRegTermsVersion]           = useState(1);
   const [savingRegTerms, setSavingRegTerms]             = useState(false);
   const [regTermsMsg, setRegTermsMsg]                   = useState('');
-  const [isSavingShipping, setIsSavingShipping]   = useState(false);
-  const [shippingError, setShippingError]         = useState('');
-  const [shippingSuccess, setShippingSuccess]     = useState('');
+  // Split into four because the card split below means four independent saves, not one big one -
+  // changing the pin should not require re-submitting the design fee and revision limits with it.
+  const [isSavingLocation, setIsSavingLocation]   = useState(false);
+  const [locationError, setLocationError]         = useState('');
+  const [locationSuccess, setLocationSuccess]     = useState('');
+  const [isSavingMethod, setIsSavingMethod]       = useState(false);
+  const [methodError, setMethodError]             = useState('');
+  const [methodSuccess, setMethodSuccess]         = useState('');
+  const [isSavingCustom, setIsSavingCustom]       = useState(false);
+  const [customError, setCustomError]             = useState('');
+  const [customSuccess, setCustomSuccess]         = useState('');
+  const [isSavingPromise, setIsSavingPromise]     = useState(false);
+  const [promiseError, setPromiseError]           = useState('');
+  const [promiseSuccess, setPromiseSuccess]       = useState('');
   const [addrSearch, setAddrSearch]               = useState('');
   const [addrSuggestions, setAddrSuggestions]     = useState([]);
   const [addrShowSug, setAddrShowSug]             = useState(false);
@@ -235,9 +334,6 @@ export default function SettingsPage() {
   const [totpRemoveOpen, setTotpRemoveOpen] = useState(false);
   const [totpRemovePassword, setTotpRemovePassword] = useState('');
   const [totpRemoveLoading, setTotpRemoveLoading] = useState(false);
-  const [isSavingBusiness, setIsSavingBusiness] = useState(false);
-  const [businessError, setBusinessError] = useState('');
-  const [businessSuccess, setBusinessSuccess] = useState('');
 
   // ── Populate form from currentUser ────────────────────────
   useEffect(() => {
@@ -249,12 +345,6 @@ export default function SettingsPage() {
         phoneNumber: currentUser.phoneNumber || '',
         address:     currentUser.address     || '',
       });
-      setBusinessForm({
-        businessName: currentUser.businessName || '',
-        businessAddress: currentUser.address || '',
-        operatingHours: '',
-        contactEmail: currentUser.email || '',
-      });
       setTwoFactorEnabled(!!currentUser.two_factor_enabled);
       setTotpConfirmed(!!currentUser.totp_confirmed);
       setIsLoading(false);
@@ -263,9 +353,10 @@ export default function SettingsPage() {
 
   // ── Load shipping settings ────────────────────────────────
   useEffect(() => {
-    // Both tabs read this payload: Shipping for the rates and fees, Terms for the clauses. Gating it
-    // on 'shipping' alone left the Terms tab with nothing to show.
-    if (!token || !['shipping', 'terms'].includes(activeTab)) return;
+    // Three tabs read this payload: Shipping for the rates and fees, Terms for the clauses, and
+    // Integrations for the mail lanes. Each one that was left out of this list rendered an empty
+    // section and looked like a broken deploy - which is exactly how the mail lanes were read.
+    if (!token || !['shipping', 'terms', 'integrations'].includes(activeTab)) return;
     fetchWithTimeout(`${API_URL}/api/admin/settings`, { headers: { Authorization: `Bearer ${token}` } }, 10000)
       .then(r => r.json())
       .then(d => {
@@ -276,8 +367,10 @@ export default function SettingsPage() {
             storeLat:             d.data.storeLat             ?? null,
             storeLng:             d.data.storeLng             ?? null,
             shippingMode:         d.data.shippingMode         || 'courier_booked',
-            shippingBaseRate:     d.data.shippingBaseRate     != null ? String(d.data.shippingBaseRate)     : '50',
-            shippingPerKmRate:    d.data.shippingPerKmRate    != null ? String(d.data.shippingPerKmRate)    : '15',
+            shippingBaseRate:     d.data.shippingBaseRate     != null ? String(d.data.shippingBaseRate)     : '49',
+            shippingPerKmRate:    d.data.shippingPerKmRate    != null ? String(d.data.shippingPerKmRate)    : '6',
+            shippingPerKmRateFar: d.data.shippingPerKmRateFar != null ? String(d.data.shippingPerKmRateFar) : '5',
+            shippingTierKm:       d.data.shippingTierKm       != null ? String(d.data.shippingTierKm)       : '5',
             designRequestFee:     d.data.designRequestFee     != null ? String(d.data.designRequestFee)     : '100',
             freeRevisions:        d.data.freeRevisions        != null ? String(d.data.freeRevisions)        : '3',
             extraRevisionFee:     d.data.extraRevisionFee     != null ? String(d.data.extraRevisionFee)     : '50',
@@ -288,13 +381,15 @@ export default function SettingsPage() {
             refundDays:           d.data.refundDays           != null ? String(d.data.refundDays)           : '7',
             flatRateInsideMetro:  d.data.flatRateInsideMetro  != null ? String(d.data.flatRateInsideMetro)  : '150',
             flatRateOutsideMetro: d.data.flatRateOutsideMetro != null ? String(d.data.flatRateOutsideMetro) : '250',
-            productionLeadDays:   d.data.productionLeadDays    != null ? String(d.data.productionLeadDays)   : '5',
-            shippingDaysMin:      d.data.shippingDaysMin       != null ? String(d.data.shippingDaysMin)      : '2',
-            shippingDaysMax:      d.data.shippingDaysMax       != null ? String(d.data.shippingDaysMax)      : '4',
+            productionLeadDays:   d.data.productionLeadDays    != null ? String(d.data.productionLeadDays)   : '3',
+            shippingDaysMin:      d.data.shippingDaysMin       != null ? String(d.data.shippingDaysMin)      : '1',
+            shippingDaysMax:      d.data.shippingDaysMax       != null ? String(d.data.shippingDaysMax)      : '2',
             rushEnabled:          d.data.rushEnabled           != null ? !!d.data.rushEnabled                : true,
-            rushLeadDays:         d.data.rushLeadDays          != null ? String(d.data.rushLeadDays)         : '2',
-            rushFee:              d.data.rushFee               != null ? String(d.data.rushFee)              : '100',
+            rushLeadDays:         d.data.rushLeadDays          != null ? String(d.data.rushLeadDays)         : '1',
+            rushFee:              d.data.rushFee               != null ? String(d.data.rushFee)              : '150',
+            googleMapsEnabled:    d.data.googleMapsEnabled === true,
           });
+          setMailLanes(d.data.mailLanes ?? null);
           // Pre-fill the editor with the built-in defaults when nothing is saved, so the owner SEES
           // and can edit the exact clauses shown to customers (instead of them living only in code).
           // A saved set wins, but any NEW built-in clause the owner has never seen is appended
@@ -819,89 +914,202 @@ export default function SettingsPage() {
     finally { setSavingRegTerms(false); }
   };
 
-  const handleSaveShipping = async () => {
-    setShippingError('');
-    setShippingSuccess('');
-    const noFee  = shippingForm.shippingMode === 'courier_booked';
+  // ── Save shipping settings - split per card (see the four state groups above) ──
+  const saveShippingFields = async (fields) => {
+    const res = await fetchWithTimeout(`${API_URL}/api/admin/settings/shipping`, {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify(fields),
+    }, 15000);
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.message || 'Failed to save.');
+  };
+
+  // ── Chat automatic replies (site content 'chat_auto_replies'; the server posts them) ──
+  const [chatReplies, setChatReplies] = useState(null);
+  const [chatSaving, setChatSaving]   = useState(false);
+  const [chatNotice, setChatNotice]   = useState({ type: '', text: '' });
+
+  // Email delivery: which lane each kind of mail leaves by, plus a test through one named provider.
+  const [mailLanes, setMailLanes] = useState(null);
+  const [mailTest, setMailTest] = useState({ busy: '', result: null });
+  const runMailTest = async (provider) => {
+    setMailTest({ busy: provider, result: null });
+    try {
+      const res = await fetchWithTimeout(`${API_URL}/api/admin/settings/mail-test`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ provider }),
+      }, 30000);
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.message || 'The test could not run.');
+      setMailTest({ busy: '', result: d.data || d });
+    } catch (err) {
+      setMailTest({ busy: '', result: { ok: false, provider, error: err.message || 'The test could not run.' } });
+    }
+  };
+  useEffect(() => {
+    if (activeTab !== 'chat' || chatReplies) return;
+    fetch(`${API_URL}/api/storefront/content/chat_auto_replies`)
+      .then(r => r.json())
+      .then(d => {
+        const c = d?.data || {};
+        setChatReplies({
+          quickReplies: Array.isArray(c.quickReplies) ? c.quickReplies : [],
+          instantReply: { enabled: !!c.instantReply?.enabled, message: c.instantReply?.message || '' },
+          awayMessage:  { enabled: !!c.awayMessage?.enabled,  message: c.awayMessage?.message  || '' },
+        });
+      })
+      .catch(() => setChatReplies({ quickReplies: [], instantReply: { enabled: false, message: '' }, awayMessage: { enabled: false, message: '' } }));
+  }, [activeTab, chatReplies]);
+  const setQuickReply = (i, key, value) => setChatReplies(c => ({
+    ...c, quickReplies: c.quickReplies.map((q, idx) => idx === i ? { ...q, [key]: value } : q),
+  }));
+  const handleSaveChatReplies = async () => {
+    setChatNotice({ type: '', text: '' });
+    const clean = {
+      quickReplies: chatReplies.quickReplies
+        .map(q => ({ question: (q.question || '').trim(), answer: (q.answer || '').trim() }))
+        .filter(q => q.question),
+      instantReply: { enabled: !!chatReplies.instantReply.enabled, message: chatReplies.instantReply.message.trim() },
+      awayMessage:  { enabled: !!chatReplies.awayMessage.enabled,  message: chatReplies.awayMessage.message.trim() },
+    };
+    if ((clean.instantReply.enabled && !clean.instantReply.message) || (clean.awayMessage.enabled && !clean.awayMessage.message)) {
+      setChatNotice({ type: 'error', text: 'Write the message before switching it on.' });
+      return;
+    }
+    setChatSaving(true);
+    try {
+      const res = await fetchWithTimeout(`${API_URL}/api/admin/content/chat_auto_replies`, {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ data: clean }),
+      }, 15000);
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.message || 'Could not save the automatic replies.');
+      setChatReplies(clean);
+      setChatNotice({ type: 'success', text: 'Automatic replies saved - customers get them from their next message.' });
+      setTimeout(() => setChatNotice({ type: '', text: '' }), 3500);
+    } catch (err) {
+      setChatNotice({ type: 'error', text: err.message || 'Could not save the automatic replies.' });
+    } finally {
+      setChatSaving(false);
+    }
+  };
+
+  const [mapsSaving, setMapsSaving] = useState(false);
+  const [mapsError, setMapsError]   = useState('');
+  const handleToggleMaps = async () => {
+    const next = !shippingForm.googleMapsEnabled;
+    setShippingForm(f => ({ ...f, googleMapsEnabled: next }));
+    setMapsError(''); setMapsSaving(true);
+    try {
+      await saveShippingFields({ googleMapsEnabled: next });
+    } catch (err) {
+      setShippingForm(f => ({ ...f, googleMapsEnabled: !next }));
+      setMapsError(err.message || 'Could not change the map setting.');
+    } finally {
+      setMapsSaving(false);
+    }
+  };
+
+  const handleSaveLocation = async () => {
+    setLocationError(''); setLocationSuccess(''); setIsSavingLocation(true);
+    try {
+      await saveShippingFields({
+        storeAddress:      shippingForm.storeAddress,
+        storeAddressParts: shippingForm.storeAddressParts,
+        storeLat:          shippingForm.storeLat,
+        storeLng:          shippingForm.storeLng,
+      });
+      setLocationSuccess('Shipping location saved.');
+      setTimeout(() => setLocationSuccess(''), 3000);
+    } catch (err) {
+      setLocationError(err.message || 'An unexpected error occurred.');
+    } finally {
+      setIsSavingLocation(false);
+    }
+  };
+
+  const handleSaveMethod = async () => {
+    setMethodError(''); setMethodSuccess('');
     const isFlat = shippingForm.shippingMode === 'flat';
+    const noFee  = shippingForm.shippingMode === 'courier_booked';
     const base    = parseFloat(shippingForm.shippingBaseRate);
     const perKm   = parseFloat(shippingForm.shippingPerKmRate);
+    const perKmFar= parseFloat(shippingForm.shippingPerKmRateFar);
+    const tierKm  = parseFloat(shippingForm.shippingTierKm);
     const inside  = parseFloat(shippingForm.flatRateInsideMetro);
     const outside = parseFloat(shippingForm.flatRateOutsideMetro);
     if (!noFee) {
       if (!isFlat) {
-        if (isNaN(base) || base < 0)   { setShippingError('Base rate must be a valid positive number.'); return; }
-        if (isNaN(perKm) || perKm < 0) { setShippingError('Per km rate must be a valid positive number.'); return; }
+        if (isNaN(base) || base < 0)         { setMethodError('Base rate must be a valid positive number.'); return; }
+        if (isNaN(perKm) || perKm < 0)       { setMethodError('First-tier per km rate must be a valid positive number.'); return; }
+        if (isNaN(perKmFar) || perKmFar < 0) { setMethodError('Second-tier per km rate must be a valid positive number.'); return; }
+        if (isNaN(tierKm) || tierKm <= 0)    { setMethodError('Tier threshold must be a valid positive number.'); return; }
       } else {
-        if (isNaN(inside)  || inside  < 0) { setShippingError('Inside Metro rate must be a valid positive number.'); return; }
-        if (isNaN(outside) || outside < 0) { setShippingError('Outside Metro rate must be a valid positive number.'); return; }
+        if (isNaN(inside)  || inside  < 0) { setMethodError('Inside Metro rate must be a valid positive number.'); return; }
+        if (isNaN(outside) || outside < 0) { setMethodError('Outside Metro rate must be a valid positive number.'); return; }
       }
     }
-    setIsSavingShipping(true);
+    setIsSavingMethod(true);
     try {
-      const res = await fetchWithTimeout(`${API_URL}/api/admin/settings/shipping`, {
-        method: 'PUT',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify({
-          storeAddress:         shippingForm.storeAddress,
-          storeAddressParts:    shippingForm.storeAddressParts,
-          storeLat:             shippingForm.storeLat,
-          storeLng:             shippingForm.storeLng,
-          shippingMode:         shippingForm.shippingMode,
-          designRequestFee:     parseFloat(shippingForm.designRequestFee) || 0,
-          freeRevisions:        Math.min(10, Math.max(0, parseInt(shippingForm.freeRevisions, 10) || 0)),
-          extraRevisionFee:     Math.min(99999, Math.max(0, parseFloat(shippingForm.extraRevisionFee) || 0)),
-          maxRevisions:         Math.min(20, Math.max(1, parseInt(shippingForm.maxRevisions, 10) || 1)),
-          depositDueDays:       Math.min(60, Math.max(1, parseInt(shippingForm.depositDueDays, 10) || 1)),
-          unpaidOrderDays:      Math.min(60, Math.max(1, parseInt(shippingForm.unpaidOrderDays, 10) || 1)),
-          unpaidReadyHoldDays:  Math.min(180, Math.max(1, parseInt(shippingForm.unpaidReadyHoldDays, 10) || 14)),
-          refundDays:           Math.min(60,  Math.max(1, parseInt(shippingForm.refundDays, 10) || 7)),
-          shippingBaseRate:     isFlat ? 50  : base,
-          shippingPerKmRate:    isFlat ? 15  : perKm,
-          flatRateInsideMetro:  inside,
-          flatRateOutsideMetro: outside,
-          productionLeadDays:   parseInt(shippingForm.productionLeadDays, 10) || 0,
-          shippingDaysMin:      parseInt(shippingForm.shippingDaysMin, 10) || 0,
-          shippingDaysMax:      parseInt(shippingForm.shippingDaysMax, 10) || 0,
-          rushEnabled:          !!shippingForm.rushEnabled,
-          rushLeadDays:         parseInt(shippingForm.rushLeadDays, 10) || 0,
-          rushFee:              parseFloat(shippingForm.rushFee) || 0,
-        }),
-      }, 15000);
-      const d = await res.json();
-      if (!res.ok) throw new Error(d.message || 'Failed to save shipping settings.');
-      setShippingSuccess('Shipping settings saved.');
-      setTimeout(() => setShippingSuccess(''), 3000);
+      await saveShippingFields({
+        shippingMode:         shippingForm.shippingMode,
+        shippingBaseRate:     isFlat ? 49 : base,
+        shippingPerKmRate:    isFlat ? 6  : perKm,
+        shippingPerKmRateFar: isFlat ? 5  : (perKmFar || 0),
+        shippingTierKm:       isFlat ? 5  : (tierKm || 5),
+        flatRateInsideMetro:  inside,
+        flatRateOutsideMetro: outside,
+      });
+      setMethodSuccess('Shipping method saved.');
+      setTimeout(() => setMethodSuccess(''), 3000);
     } catch (err) {
-      setShippingError(err.message || 'An unexpected error occurred.');
+      setMethodError(err.message || 'An unexpected error occurred.');
     } finally {
-      setIsSavingShipping(false);
+      setIsSavingMethod(false);
     }
   };
 
-  const handleSaveBusinessSettings = async () => {
-    setBusinessError('');
-    setBusinessSuccess('');
-    setIsSavingBusiness(true);
+  const handleSaveCustomOrders = async () => {
+    setCustomError(''); setCustomSuccess(''); setIsSavingCustom(true);
     try {
-      const res = await fetchWithTimeout(`${API_URL}/api/admin/settings`, {
-        method: 'PUT',
-        headers: { Authorization: `Bearer ${token}`, Accept: 'application/json', 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          businessName: businessForm.businessName,
-          businessAddress: businessForm.businessAddress,
-          operatingHours: businessForm.operatingHours,
-          contactEmail: businessForm.contactEmail,
-        }),
-      }, 10000);
-      const d = await res.json();
-      if (!res.ok) throw new Error(d.message || 'Failed to save business settings.');
-      setBusinessSuccess('Business settings saved.');
-      setTimeout(() => setBusinessSuccess(''), 3000);
+      await saveShippingFields({
+        designRequestFee:    parseFloat(shippingForm.designRequestFee) || 0,
+        freeRevisions:       Math.min(10, Math.max(0, parseInt(shippingForm.freeRevisions, 10) || 0)),
+        extraRevisionFee:    Math.min(99999, Math.max(0, parseFloat(shippingForm.extraRevisionFee) || 0)),
+        maxRevisions:        Math.min(20, Math.max(1, parseInt(shippingForm.maxRevisions, 10) || 1)),
+        depositDueDays:      Math.min(60, Math.max(1, parseInt(shippingForm.depositDueDays, 10) || 1)),
+        unpaidOrderDays:     Math.min(60, Math.max(1, parseInt(shippingForm.unpaidOrderDays, 10) || 1)),
+        unpaidReadyHoldDays: Math.min(180, Math.max(1, parseInt(shippingForm.unpaidReadyHoldDays, 10) || 14)),
+        refundDays:          Math.min(60,  Math.max(1, parseInt(shippingForm.refundDays, 10) || 7)),
+      });
+      setCustomSuccess('Custom order policy saved.');
+      setTimeout(() => setCustomSuccess(''), 3000);
     } catch (err) {
-      setBusinessError(err.message || 'An unexpected error occurred.');
+      setCustomError(err.message || 'An unexpected error occurred.');
     } finally {
-      setIsSavingBusiness(false);
+      setIsSavingCustom(false);
+    }
+  };
+
+  const handleSaveDeliveryPromise = async () => {
+    setPromiseError(''); setPromiseSuccess(''); setIsSavingPromise(true);
+    try {
+      await saveShippingFields({
+        productionLeadDays: parseInt(shippingForm.productionLeadDays, 10) || 0,
+        shippingDaysMin:    parseInt(shippingForm.shippingDaysMin, 10) || 0,
+        shippingDaysMax:    parseInt(shippingForm.shippingDaysMax, 10) || 0,
+        rushEnabled:        !!shippingForm.rushEnabled,
+        rushLeadDays:       parseInt(shippingForm.rushLeadDays, 10) || 0,
+        rushFee:            parseFloat(shippingForm.rushFee) || 0,
+      });
+      setPromiseSuccess('Delivery promise saved.');
+      setTimeout(() => setPromiseSuccess(''), 3000);
+    } catch (err) {
+      setPromiseError(err.message || 'An unexpected error occurred.');
+    } finally {
+      setIsSavingPromise(false);
     }
   };
 
@@ -947,7 +1155,11 @@ export default function SettingsPage() {
               width: 200,
               flexShrink: 0,
               position: 'sticky',
-              top: '1rem',
+              // .admin-top-bar is also sticky, at top:0 with z-index:100 and a 56px height. This nav
+              // was sticking at 16px - underneath the header rather than below it - so once scrolled
+              // it wasn't gone, it was hidden behind an opaque bar with a higher z-index.
+              top: 'calc(56px + 1rem)',
+              zIndex: 10,
               alignSelf: 'flex-start',
               display: 'flex',
               flexDirection: 'column',
@@ -959,15 +1171,16 @@ export default function SettingsPage() {
             {[
               { id: 'profile', label: 'Profile' },
               { id: 'security', label: 'Security' },
-              { id: 'business', label: 'Business' },
               { id: 'shipping', label: 'Shipping' },
+              { id: 'chat', label: 'Chat' },
+              { id: 'integrations', label: 'Integrations' },
               // Its own tab, not a sidebar entry: the sidebar is the daily work rail (orders, POS,
               // production) and putting rarely-touched configuration in it dilutes the things people
               // actually reach for. Settings is where configuration lives.
               { id: 'terms', label: 'Terms & Policies' },
               { id: 'notifications', label: 'Notifications' },
               { id: 'appearance', label: 'Appearance' },
-            ].map(({ id, label }) => (
+            ].filter(({ id }) => ownsShop || !SHOP_TABS.includes(id)).map(({ id, label }) => (
               <button
                 key={id}
                 type="button"
@@ -1075,13 +1288,13 @@ export default function SettingsPage() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', padding: '0.875rem 1.25rem', borderBottom: '1px solid var(--border)' }}>
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--gray-light)" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
                   <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--white)' }}>Identity</span>
-                  <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>— Your name as it appears on your account.</span>
+                  <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>- Your name as it appears on your account.</span>
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
                   {[{ label: 'First Name', value: profileForm.firstName }, { label: 'Last Name', value: profileForm.lastName }].map(({ label, value }, i) => (
                     <div key={label} style={{ padding: '1rem 1.25rem', borderRight: i === 0 ? '1px solid var(--border)' : 'none' }}>
                       <div style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.35rem' }}>{label}</div>
-                      <div style={{ fontSize: '0.925rem', color: 'var(--white)', fontWeight: 500 }}>{value || '—'}</div>
+                      <div style={{ fontSize: '0.925rem', color: 'var(--white)', fontWeight: 500 }}>{value || '-'}</div>
                     </div>
                   ))}
                 </div>
@@ -1092,12 +1305,12 @@ export default function SettingsPage() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', padding: '0.875rem 1.25rem', borderBottom: '1px solid var(--border)' }}>
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--gray-light)" strokeWidth="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
                   <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--white)' }}>Contact</span>
-                  <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>— Email, phone, and address on file.</span>
+                  <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>- Email, phone, and address on file.</span>
                 </div>
                 <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <div>
                     <div style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.35rem' }}>Email Address</div>
-                    <div style={{ fontSize: '0.925rem', color: 'var(--white)', fontWeight: 500 }}>{profileForm.email || '—'}</div>
+                    <div style={{ fontSize: '0.925rem', color: 'var(--white)', fontWeight: 500 }}>{profileForm.email || '-'}</div>
                   </div>
                   <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '2px 8px', borderRadius: '4px', border: '1px solid var(--border)', color: 'var(--gray)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>Locked</span>
                 </div>
@@ -1105,7 +1318,7 @@ export default function SettingsPage() {
                   {[{ label: 'Phone Number', value: profileForm.phoneNumber }, { label: 'Address', value: profileForm.address }].map(({ label, value }, i) => (
                     <div key={label} style={{ padding: '1rem 1.25rem', borderRight: i === 0 ? '1px solid var(--border)' : 'none' }}>
                       <div style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.35rem' }}>{label}</div>
-                      <div style={{ fontSize: '0.925rem', color: 'var(--white)', fontWeight: 500 }}>{value || '—'}</div>
+                      <div style={{ fontSize: '0.925rem', color: 'var(--white)', fontWeight: 500 }}>{value || '-'}</div>
                     </div>
                   ))}
                 </div>
@@ -1167,7 +1380,7 @@ export default function SettingsPage() {
       <div style={{ padding: '0.875rem 1.25rem', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--gray-light)" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
         <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--white)' }}>Change Password</span>
-        <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>— Change it regularly to keep your account safe.</span>
+        <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>- Change it regularly to keep your account safe.</span>
       </div>
       <div style={{ padding: '1.5rem' }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', maxWidth: '520px' }}>
@@ -1258,7 +1471,7 @@ export default function SettingsPage() {
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--gray-light)" strokeWidth="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
           <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--white)' }}>Active Sessions</span>
-          <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>— Devices currently logged into your account.</span>
+          <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>- Devices currently logged into your account.</span>
         </div>
         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
           {sessions.filter(s => !s.is_current).length > 0 && (
@@ -1355,7 +1568,7 @@ export default function SettingsPage() {
             Verification Methods
           </p>
 
-          {/* Email OTP — always available */}
+          {/* Email OTP - always available */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.875rem', padding: '0.875rem 1rem', borderRadius: '10px', border: '1.5px solid rgba(96,165,250,0.35)', background: 'rgba(96,165,250,0.05)' }}>
             <div style={{ width: '38px', height: '38px', borderRadius: '9px', flexShrink: 0, background: 'rgba(96,165,250,0.12)', border: '1px solid rgba(96,165,250,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" strokeWidth="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
@@ -1453,52 +1666,184 @@ export default function SettingsPage() {
   </div>
 )}
 
-          {activeTab === 'business' && (
-  <div style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden' }}>
-    <div style={{ padding: '0.875rem 1.25rem', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--gray-light)" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-      <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--white)' }}>Business Details</span>
-      <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>— Public information shown to your customers.</span>
+          {activeTab === 'chat' && (
+  <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+    {chatReplies === null ? (
+      <div style={{ padding: '2rem', color: 'var(--gray)', fontSize: '0.85rem' }}>Loading...</div>
+    ) : (
+    <>
+    {/* Quick questions */}
+    <div style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden' }}>
+      <div style={{ padding: '0.875rem 1.25rem', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '0.625rem', flexWrap: 'wrap' }}>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--gray-light)" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--white)' }}>Quick questions</span>
+        <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>- Shown in the chat window. Tapping one sends it; if it has an answer, the answer appears right away.</span>
+        {/* The inbox these replies serve links here; this is the way back. */}
+        <a href="/dashboard/business/chat" style={{ marginLeft: 'auto', fontSize: '0.78rem', fontWeight: 600, color: 'var(--gold)', textDecoration: 'none', whiteSpace: 'nowrap' }}>
+          Open Messages
+        </a>
+      </div>
+      <div style={{ padding: '1.25rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+        {chatReplies.quickReplies.length === 0 && (
+          <div style={{ fontSize: '0.8rem', color: 'var(--gray)' }}>No quick questions. Customers still see the Send us a message button.</div>
+        )}
+        {chatReplies.quickReplies.map((q, i) => (
+          <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', paddingBottom: '1rem', borderBottom: '1px solid var(--border)' }}>
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+              <input type="text" value={q.question} maxLength={120} placeholder="Question the customer taps"
+                onChange={e => setQuickReply(i, 'question', e.target.value)} style={{ flex: 1, minWidth: 0 }} />
+              <button type="button" onClick={() => setChatReplies(c => ({ ...c, quickReplies: c.quickReplies.filter((_, idx) => idx !== i) }))}
+                aria-label="Remove question"
+                style={{ flexShrink: 0, padding: '0.5rem 0.75rem', background: 'transparent', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--gray)', fontSize: '0.78rem', cursor: 'pointer' }}>
+                Remove
+              </button>
+            </div>
+            <textarea value={q.answer} maxLength={1000} rows={3}
+              placeholder="Automatic answer (optional). Leave blank and the question simply reaches your inbox."
+              onChange={e => setQuickReply(i, 'answer', e.target.value)}
+              style={{ width: '100%', boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit' }} />
+          </div>
+        ))}
+        {chatReplies.quickReplies.length < 8 && (
+          <button type="button" onClick={() => setChatReplies(c => ({ ...c, quickReplies: [...c.quickReplies, { question: '', answer: '' }] }))}
+            style={{ alignSelf: 'flex-start', padding: '0.5rem 1rem', background: 'transparent', border: '1px dashed var(--border)', borderRadius: '8px', color: 'var(--gray-light)', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer' }}>
+            + Add a question
+          </button>
+        )}
+      </div>
     </div>
-    <div style={{ padding: '1.5rem' }}>
 
-    {businessSuccess && (
-      <div style={{ marginBottom: '1rem', padding: '0.75rem 1rem', background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: '8px', color: 'var(--green)', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem' }}>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-        {businessSuccess}
+    {/* Instant reply and away message */}
+    {[
+      ['instantReply', 'Instant reply', 'Sent when a customer writes and nobody from the shop has written in that conversation for 12 hours. A greeting, not an echo on every line.'],
+      ['awayMessage', 'Away message', 'Sent when nobody from the shop has the Messages page open. At most once every 6 hours per conversation.'],
+    ].map(([key, title, help]) => (
+      <div key={key} style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden' }}>
+        <div style={{ padding: '1.1rem 1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1.25rem' }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--white)' }}>{title}</div>
+            <div style={{ fontSize: '0.78rem', color: 'var(--gray)', marginTop: '0.25rem', lineHeight: 1.55, maxWidth: '62ch' }}>{help}</div>
+          </div>
+          <SettingSwitch on={chatReplies[key].enabled} label={title}
+            onClick={() => setChatReplies(c => ({ ...c, [key]: { ...c[key], enabled: !c[key].enabled } }))} />
+        </div>
+        <div style={{ padding: '0 1.5rem 1.25rem' }}>
+          <textarea value={chatReplies[key].message} maxLength={1000} rows={3}
+            placeholder={key === 'awayMessage' ? 'Thanks for your message! We are away right now and will reply as soon as we are back.' : 'Hi! Thanks for reaching out. We will get back to you shortly.'}
+            onChange={e => { const v = e.target.value; setChatReplies(c => ({ ...c, [key]: { ...c[key], message: v } })); }}
+            style={{ width: '100%', boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit' }} />
+        </div>
+      </div>
+    ))}
+
+    {chatNotice.text && (
+      <div style={{ padding: '0.7rem 1rem', borderRadius: '8px', fontSize: '0.85rem',
+        background: chatNotice.type === 'error' ? 'rgba(239,68,68,0.08)' : 'rgba(34,197,94,0.08)',
+        border: `1px solid ${chatNotice.type === 'error' ? 'rgba(239,68,68,0.25)' : 'rgba(34,197,94,0.25)'}`,
+        color: chatNotice.type === 'error' ? '#f87171' : '#4ade80' }}>
+        {chatNotice.text}
       </div>
     )}
-    {businessError && (
-      <div style={{ marginBottom: '1rem', padding: '0.75rem 1rem', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: 'var(--red)', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem' }}>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-        {businessError}
-      </div>
+    <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+      <button type="button" onClick={handleSaveChatReplies} disabled={chatSaving}
+        style={{ padding: '0.625rem 1.5rem', background: chatSaving ? 'var(--dark3)' : 'var(--gold)', border: 'none', borderRadius: '8px', color: chatSaving ? 'var(--gray)' : 'var(--black)', fontSize: '0.875rem', fontWeight: 600, cursor: chatSaving ? 'not-allowed' : 'pointer' }}>
+        {chatSaving ? 'Saving...' : 'Save automatic replies'}
+      </button>
+    </div>
+    </>
     )}
+  </div>
+)}
 
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-      <div className="profile-form-field">
-        <label>Business name</label>
-        <input type="text" value={businessForm.businessName} onChange={e => setBusinessForm(f => ({ ...f, businessName: e.target.value }))} placeholder="PersonalizeMe Prints" maxLength={100} />
-      </div>
-      <div className="profile-form-field">
-        <label>Operating hours</label>
-        <input type="text" value={businessForm.operatingHours} onChange={e => setBusinessForm(f => ({ ...f, operatingHours: e.target.value }))} placeholder="Mon–Sat 9:00–18:00" maxLength={100} />
-      </div>
-      <div className="profile-form-field">
-        <label>Business address</label>
-        <input type="text" value={businessForm.businessAddress} onChange={e => setBusinessForm(f => ({ ...f, businessAddress: e.target.value }))} placeholder="Street, city" maxLength={200} />
-      </div>
-      <div className="profile-form-field">
-        <label>Customer contact email</label>
-        <input type="email" value={businessForm.contactEmail} onChange={e => setBusinessForm(f => ({ ...f, contactEmail: e.target.value }))} placeholder="support@example.com" maxLength={100} />
-      </div>
-
-      <div style={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'flex-end', paddingTop: '0.25rem' }}>
-        <button type="button" onClick={handleSaveBusinessSettings} disabled={isSavingBusiness} style={{ padding: '0.625rem 1.5rem', background: isSavingBusiness ? 'var(--dark3)' : 'var(--gold)', border: 'none', borderRadius: '8px', color: isSavingBusiness ? 'var(--gray)' : 'var(--black)', fontSize: '0.875rem', fontWeight: 600, cursor: isSavingBusiness ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          {isSavingBusiness ? <><span className="spinner" />Saving...</> : <><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>Save Changes</>}
+          {activeTab === 'integrations' && (
+  <div style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden' }}>
+    <div style={{ padding: '0.875rem 1.25rem', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '0.625rem', flexWrap: 'wrap' }}>
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--gray-light)" strokeWidth="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+      <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--white)' }}>Maps and address search</span>
+      <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>- Applies to the customer address form and the Shipping Location map.</span>
+    </div>
+    {/* Outside services the shop can switch on. Business hours, email and socials are edited in
+        Homepage -> Let's Talk, where customers see them; the shop address is in Shipping. */}
+    <div style={{ padding: '1.25rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '0.9rem' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1.25rem' }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--white)' }}>Use Google Maps</div>
+          <div style={{ fontSize: '0.78rem', color: 'var(--gray)', marginTop: '0.25rem', lineHeight: 1.55, maxWidth: '62ch' }}>
+            Off: customers and the Shipping Location card use the address fields only. On: Google address search
+            and a map pin appear on both. Google charges past its free allowance - set a daily quota in Google
+            Cloud before turning this on. Saves as soon as you switch it.
+          </div>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={!!shippingForm.googleMapsEnabled}
+          aria-label="Use Google Maps"
+          onClick={handleToggleMaps}
+          disabled={mapsSaving}
+          style={{ position: 'relative', width: '44px', height: '24px', borderRadius: '12px', border: 'none', cursor: mapsSaving ? 'wait' : 'pointer', background: shippingForm.googleMapsEnabled ? 'var(--gold)' : 'var(--border)', transition: 'background 0.2s', padding: 0, flexShrink: 0, opacity: mapsSaving ? 0.7 : 1 }}
+        >
+          <span style={{ position: 'absolute', top: '3px', left: shippingForm.googleMapsEnabled ? '23px' : '3px', width: '18px', height: '18px', borderRadius: '50%', background: 'var(--dark)', transition: 'left 0.2s' }} />
         </button>
       </div>
+      {mapsError && (
+        <div style={{ padding: '0.7rem 1rem', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: '8px', color: '#f87171', fontSize: '0.85rem' }}>
+          {mapsError}
+        </div>
+      )}
     </div>
+  </div>
+)}
+
+          {activeTab === 'integrations' && (
+  <div style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden', marginTop: '1.25rem' }}>
+    <div style={{ padding: '0.875rem 1.25rem', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '0.625rem', flexWrap: 'wrap' }}>
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--gray-light)" strokeWidth="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+      <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--white)' }}>Email delivery</span>
+      <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>- Which provider each kind of mail leaves by, and a test you can send through either one.</span>
+    </div>
+    <div style={{ padding: '1.25rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '0.9rem' }}>
+      {mailLanes && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
+          {[['Codes, resets and 2FA', mailLanes.security], ['Order updates and receipts', mailLanes.notifications]].map(([label, chain]) => (
+            <div key={label} style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'baseline', fontSize: '0.8rem' }}>
+              <span style={{ color: 'var(--gray)', minWidth: '11.5rem' }}>{label}</span>
+              <span style={{ color: 'var(--white)', fontWeight: 600 }}>
+                {(chain || []).length ? chain.map(p => (p === 'brevo' ? 'Brevo' : p === 'resend' ? 'Resend' : p)).join(', then ')
+                                      : 'not configured'}
+              </span>
+            </div>
+          ))}
+          {/* Both lanes starting on the same provider is the state that looks fine and is not: one
+              allowance carries everything, and the other provider's sits unused until it is gone. */}
+          {mailLanes.security?.[0] && mailLanes.security[0] === mailLanes.notifications?.[0] && (
+            <div style={{ fontSize: '0.76rem', color: '#f59e0b', lineHeight: 1.55 }}>
+              Both lanes start on the same provider, so its daily allowance is spent first and the other
+              one sits unused. Give the codes their own provider to keep a sign-up wave from using up the
+              sends that order updates need.
+            </div>
+          )}
+        </div>
+      )}
+      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+        {['brevo', 'resend'].map(p => (
+          <button key={p} type="button" onClick={() => runMailTest(p)} disabled={!!mailTest.busy}
+            style={{ padding: '8px 14px', borderRadius: '8px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--white)', fontWeight: 600, fontSize: '0.8rem', cursor: mailTest.busy ? 'not-allowed' : 'pointer', opacity: mailTest.busy && mailTest.busy !== p ? 0.5 : 1 }}>
+            {mailTest.busy === p ? 'Sending...' : `Send a test through ${p === 'brevo' ? 'Brevo' : 'Resend'}`}
+          </button>
+        ))}
+      </div>
+      {mailTest.result && (
+        <div style={{ padding: '10px 12px', borderRadius: '8px', fontSize: '0.8rem', lineHeight: 1.55,
+          background: mailTest.result.ok ? 'rgba(74,222,128,0.08)' : 'rgba(239,68,68,0.08)',
+          border: `1px solid ${mailTest.result.ok ? 'rgba(74,222,128,0.3)' : 'rgba(239,68,68,0.3)'}` }}>
+          <div style={{ fontWeight: 700, color: mailTest.result.ok ? 'var(--green)' : 'var(--red)' }}>
+            {mailTest.result.ok ? `Sent through ${mailTest.result.provider} in ${mailTest.result.ms} ms` : `${mailTest.result.provider} refused`}
+          </div>
+          {mailTest.result.from && <div style={{ color: 'var(--gray)' }}>From {mailTest.result.from} to {mailTest.result.to}</div>}
+          {!mailTest.result.ok && <div style={{ marginTop: 4, color: 'var(--white)', fontFamily: 'monospace', fontSize: '0.75rem', wordBreak: 'break-word' }}>{mailTest.result.error}</div>}
+        </div>
+      )}
     </div>
   </div>
 )}
@@ -1510,14 +1855,14 @@ export default function SettingsPage() {
               <div style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '12px', overflow: 'visible' }}>
                 <div style={{ padding: '0.875rem 1.25rem', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--gray-light)" strokeWidth="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-                  <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--white)' }}>Store Location</span>
-                  <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>— Pin your store on the map. Shipping fee is calculated from this point.</span>
+                  <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--white)' }}>Shipping Location</span>
+                  <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>- Pin where orders ship from. Shipping fee and courier pickup are based on this point.</span>
                 </div>
                 <div style={{ padding: '1.5rem' }}>
-                <p style={{ margin: '0 0 1.25rem', fontSize: '0.8125rem', color: 'var(--gray)', display: 'none' }}>
-                  Pin your store on the map. Shipping fee is calculated from this point to the customer's address.
-                </p>
-
+                {/* Everything about the map - the map, the pinned line, the accuracy warning and the
+                    search box - exists only while Google Maps is on. Off, this card is the address
+                    fields, which are accurate on their own. */}
+                {shippingForm.googleMapsEnabled && (<>
                 <StoreLocationMap
                   lat={shippingForm.storeLat}
                   lng={shippingForm.storeLng}
@@ -1595,18 +1940,75 @@ export default function SettingsPage() {
                   </div>
                 </div>
 
-                {/* Store Address — structured by-fields (auto-fills from search/pin, editable) */}
+                </>)}
+
+                {/* Store Address - structured by-fields (auto-fills from search/pin, editable) */}
                 <div style={{ marginTop: '0.75rem' }}>
                   <label style={{ fontSize: '0.8rem', color: 'var(--gray)', marginBottom: '0.5rem', display: 'block' }}>
-                    Store Address <span style={{ fontSize: '0.75rem', color: 'var(--gray)', fontWeight: 400 }}>(displayed to customers — auto-fills from the search/pin, editable)</span>
+                    Store Address <span style={{ fontSize: '0.75rem', color: 'var(--gray)', fontWeight: 400 }}>{shippingForm.googleMapsEnabled ? '(shown to customers - fills in from the search or pin, editable)' : '(shown to customers)'}</span>
                   </label>
+                  {/* The same Philippine Standard Geographic Code lists customers choose from, so the
+                      shop's address is as exact as theirs without needing a map. */}
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                    <div className="profile-form-field">
+                      <label>Region</label>
+                      <CustomSelect
+                        value={shippingForm.storeAddressParts?.region_code || ''}
+                        onChange={code => setStorePart({
+                          region_code: code, region: psgcRegions.find(r => r.code === code)?.name || '',
+                          // Same as the customer form: Metro Manila has no province, so it stands in for one.
+                          province_code: isNCR(code) ? code : '', province: isNCR(code) ? 'Metro Manila' : '',
+                          city_code: '', city: '', barangay_code: '', barangay: '',
+                        })}
+                        options={psgcRegions.map(r => ({ value: r.code, label: r.name }))}
+                        placeholder="Select region"
+                        searchable
+                      />
+                    </div>
+                    <div className="profile-form-field">
+                      <label>Province</label>
+                      <CustomSelect
+                        value={isNCR(shippingForm.storeAddressParts?.region_code) ? '' : (shippingForm.storeAddressParts?.province_code || '')}
+                        onChange={code => setStorePart({
+                          province_code: code, province: psgcProvinces.find(p => p.code === code)?.name || '',
+                          city_code: '', city: '', barangay_code: '', barangay: '',
+                        })}
+                        options={psgcProvinces.map(p => ({ value: p.code, label: p.name }))}
+                        placeholder={isNCR(shippingForm.storeAddressParts?.region_code) ? 'Metro Manila (NCR)' : 'Select province'}
+                        disabled={!shippingForm.storeAddressParts?.region_code || isNCR(shippingForm.storeAddressParts?.region_code)}
+                        searchable
+                      />
+                    </div>
+                    <div className="profile-form-field">
+                      <label>City / Municipality</label>
+                      <CustomSelect
+                        value={shippingForm.storeAddressParts?.city_code || ''}
+                        onChange={code => setStorePart({
+                          city_code: code, city: psgcCities.find(c => c.code === code)?.name || '',
+                          barangay_code: '', barangay: '',
+                        })}
+                        options={psgcCities.map(c => ({ value: c.code, label: c.name }))}
+                        placeholder={shippingForm.storeAddressParts?.city || 'Select city'}
+                        disabled={!shippingForm.storeAddressParts?.province_code}
+                        searchable
+                      />
+                    </div>
+                    <div className="profile-form-field">
+                      <label>Barangay</label>
+                      <CustomSelect
+                        value={shippingForm.storeAddressParts?.barangay_code || ''}
+                        onChange={code => setStorePart({
+                          barangay_code: code, barangay: psgcBarangays.find(b => b.code === code)?.name || '',
+                        })}
+                        options={psgcBarangays.map(b => ({ value: b.code, label: b.name }))}
+                        placeholder={shippingForm.storeAddressParts?.barangay || 'Select barangay'}
+                        disabled={!shippingForm.storeAddressParts?.city_code}
+                        searchable
+                      />
+                    </div>
                     {[
                       ['house_number', 'House/Unit/Bldg No.', 'e.g. 168'],
                       ['street', 'Street', 'e.g. General Luis St.'],
-                      ['barangay', 'Barangay', 'e.g. Nagkaisang Nayon'],
-                      ['city', 'City / Municipality', 'e.g. Quezon City'],
-                      ['province', 'Province / Region', 'e.g. Metro Manila'],
                       ['zip', 'ZIP Code', 'e.g. 1117'],
                     ].map(([key, lbl, ph]) => (
                       <div className="profile-form-field" key={key}>
@@ -1614,10 +2016,7 @@ export default function SettingsPage() {
                         <input
                           type="text"
                           value={shippingForm.storeAddressParts?.[key] || ''}
-                          onChange={e => setShippingForm(f => {
-                            const sp = { ...(f.storeAddressParts || {}), [key]: key === 'zip' ? e.target.value.replace(/\D/g, '').slice(0, 4) : e.target.value };
-                            return { ...f, storeAddressParts: sp, storeAddress: combineStoreAddress(sp) };
-                          })}
+                          onChange={e => setStorePart({ [key]: key === 'zip' ? e.target.value.replace(/\D/g, '').slice(0, 4) : e.target.value })}
                           placeholder={ph}
                           maxLength={key === 'zip' ? 4 : 100}
                         />
@@ -1625,8 +2024,25 @@ export default function SettingsPage() {
                     ))}
                   </div>
                   <p style={{ margin: '0.6rem 0 0', fontSize: '0.72rem', color: 'var(--gray)' }}>
-                    Full address (shown to customers): <span style={{ color: 'var(--gray-light)' }}>{shippingForm.storeAddress || '—'}</span>
+                    Full address (shown to customers): <span style={{ color: 'var(--gray-light)' }}>{shippingForm.storeAddress || '-'}</span>
                   </p>
+                </div>
+
+                {locationError && (
+                  <div style={{ padding: '0.7rem 1rem', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: '8px', color: '#f87171', fontSize: '0.85rem' }}>
+                    {locationError}
+                  </div>
+                )}
+                {locationSuccess && (
+                  <div style={{ padding: '0.7rem 1rem', background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.25)', borderRadius: '8px', color: '#4ade80', fontSize: '0.85rem' }}>
+                    {locationSuccess}
+                  </div>
+                )}
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1.25rem', paddingTop: '1.25rem', borderTop: '1px solid var(--border)' }}>
+                  <button type="button" onClick={handleSaveLocation} disabled={isSavingLocation}
+                    style={{ padding: '0.55rem 1.25rem', background: isSavingLocation ? 'var(--dark3)' : 'var(--gold)', border: 'none', borderRadius: '8px', color: isSavingLocation ? 'var(--gray)' : 'var(--black)', fontSize: '0.82rem', fontWeight: 600, cursor: isSavingLocation ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    {isSavingLocation ? <><span className="spinner" />Saving...</> : <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>Save Location</>}
+                  </button>
                 </div>
                 </div>
               </div>
@@ -1635,8 +2051,8 @@ export default function SettingsPage() {
               <div style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden' }}>
                 <div style={{ padding: '0.875rem 1.25rem', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--gray-light)" strokeWidth="2"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
-                  <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--white)' }}>Shipping Rate</span>
-                  <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>— Choose how shipping is calculated at checkout.</span>
+                  <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--white)' }}>Shipping Method</span>
+                  <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>- Choose how shipping is calculated at checkout.</span>
                 </div>
                 <div style={{ padding: '1.5rem' }}>
                 <p style={{ margin: '0 0 1.25rem', fontSize: '0.8125rem', color: 'var(--gray)', display: 'none' }}>
@@ -1646,8 +2062,17 @@ export default function SettingsPage() {
                 {/* Mode toggle */}
                 <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.25rem', flexWrap: 'wrap' }}>
                   {[
-                    { id: 'courier_booked', label: 'Courier Booked', sub: 'No system fee — you book on-demand' },
-                    { id: 'distance', label: 'Distance-based', sub: 'Base + ₱/km via OSRM route' },
+                    { id: 'courier_booked', label: 'Courier Booked', sub: 'No system fee - you book on-demand' },
+                    // Distance pricing is an on-demand rider's model: base plus a rate per km. The
+                    // shop's far deliveries go by parcel network, where distant is often cheaper
+                    // per km, not dearer - so the formula runs backwards on exactly the orders it
+                    // would matter most on. It also quotes through router.project-osrm.org, a free
+                    // demo endpoint with no SLA; a rate-limit mid-checkout leaves the customer with
+                    // no figure and no error. Hidden rather than deleted: it is right again the day
+                    // the shop partners with a courier that prices by distance.
+                    ...(DISTANCE_SHIPPING_ENABLED
+                      ? [{ id: 'distance', label: 'Distance-based', sub: 'Base + ₱/km via OSRM route' }]
+                      : []),
                     { id: 'flat',     label: 'Flat Rate',      sub: 'Fixed by Metro / Non-Metro' },
                   ].map(({ id, label, sub }) => {
                     const active = shippingForm.shippingMode === id;
@@ -1674,51 +2099,96 @@ export default function SettingsPage() {
                     to render after the terms editor, which put Base Rate and Per km Rate inside
                     the Custom Order Terms card. */}
                 {shippingForm.shippingMode === 'courier_booked' && (
-                  <div style={{ maxWidth: '560px', padding: '1rem 1.25rem', background: 'rgba(212,168,67,0.06)', border: '1px solid rgba(212,168,67,0.2)', borderRadius: '10px', fontSize: '0.82rem', color: 'var(--gray-light)', lineHeight: 1.6 }}>
+                  <div style={{ padding: '1rem 1.25rem', background: 'rgba(212,168,67,0.06)', border: '1px solid rgba(212,168,67,0.2)', borderRadius: '10px', fontSize: '0.82rem', color: 'var(--gray-light)', lineHeight: 1.6 }}>
                     <div style={{ fontWeight: 700, color: 'var(--gold)', marginBottom: '0.4rem' }}>No system-calculated shipping fee</div>
                     Checkout shows <em>“Shipping: arranged after order.”</em> Customers pay only the item total upfront.
-                    After an order comes in, you book your courier (Lalamove / Grab) using the customer’s pinned drop-off —
+                    After an order comes in, you book your courier (Lalamove / Grab) using the customer’s pinned drop-off -
                     the order page gives you one-tap <strong>Google Maps / Waze / copy-coordinates</strong> links. You can then
                     add the real courier fee to the order, and the customer’s total updates. Recommended when you have no
                     partnered logistics.
                   </div>
                 )}
 
-                {shippingForm.shippingMode === 'distance' && (
-                  <>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', maxWidth: '480px' }}>
-                      <div className="profile-form-field">
-                        <label>Base Rate (₱) <span className="required">*</span></label>
-                        <input
-                          type="text" inputMode="decimal"
-                          value={shippingForm.shippingBaseRate}
-                          onChange={e => { const v = e.target.value.replace(/[^\d.]/g, ''); setShippingForm(f => ({ ...f, shippingBaseRate: v })); }}
-                          placeholder="50"
-                        />
-                        <div style={{ fontSize: '0.72rem', color: 'var(--gray)', marginTop: '0.25rem' }}>Flat fee regardless of distance</div>
+                {DISTANCE_SHIPPING_ENABLED && shippingForm.shippingMode === 'distance' && (() => {
+                  const base = parseFloat(shippingForm.shippingBaseRate || 0);
+                  const near = parseFloat(shippingForm.shippingPerKmRate || 0);
+                  const far  = parseFloat(shippingForm.shippingPerKmRateFar || near);
+                  const tier = parseFloat(shippingForm.shippingTierKm || 5);
+                  const fee  = (km) => base + near * Math.min(km, tier) + far * Math.max(0, km - tier);
+                  const hasRates = shippingForm.shippingBaseRate && shippingForm.shippingPerKmRate;
+                  return (
+                    // Two columns rather than one 480px-capped grid with empty space beside it: the
+                    // live example earns the room a fixed-width field grid was leaving blank.
+                    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(220px, 320px)', gap: '1.5rem', alignItems: 'start' }}>
+                      {/* Shaped after how motorcycle courier apps (Lalamove, Grab) actually price a trip in
+                          Metro Manila: a base fare, a steeper per-km rate for a short first stretch, then a
+                          lower per-km rate beyond it. Lalamove's own published Metro Manila motorcycle rate
+                          is ₱49 base + ₱6/km for the first 5 km + ₱5/km after - the defaults here. A single
+                          flat per-km rate the whole trip was a shape no real courier prices with. */}
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                        <div className="profile-form-field">
+                          <label>Base Rate (₱) <span className="required">*</span></label>
+                          <input
+                            type="text" inputMode="decimal"
+                            value={shippingForm.shippingBaseRate}
+                            onChange={e => { const v = e.target.value.replace(/[^\d.]/g, ''); setShippingForm(f => ({ ...f, shippingBaseRate: v })); }}
+                            placeholder="49"
+                          />
+                          <div style={{ fontSize: '0.72rem', color: 'var(--gray)', marginTop: '0.25rem' }}>Flat fee regardless of distance</div>
+                        </div>
+                        <div className="profile-form-field">
+                          <label>First <span style={{ color: 'var(--white)' }}>{shippingForm.shippingTierKm || 5} km</span> - Per km Rate (₱) <span className="required">*</span></label>
+                          <input
+                            type="text" inputMode="decimal"
+                            value={shippingForm.shippingPerKmRate}
+                            onChange={e => { const v = e.target.value.replace(/[^\d.]/g, ''); setShippingForm(f => ({ ...f, shippingPerKmRate: v })); }}
+                            placeholder="6"
+                          />
+                          <div style={{ fontSize: '0.72rem', color: 'var(--gray)', marginTop: '0.25rem' }}>Added per km, up to the tier below</div>
+                        </div>
+                        <div className="profile-form-field">
+                          <label>Tier threshold (km) <span className="required">*</span></label>
+                          <input
+                            type="text" inputMode="decimal"
+                            value={shippingForm.shippingTierKm}
+                            onChange={e => { const v = e.target.value.replace(/[^\d.]/g, ''); setShippingForm(f => ({ ...f, shippingTierKm: v })); }}
+                            placeholder="5"
+                          />
+                          <div style={{ fontSize: '0.72rem', color: 'var(--gray)', marginTop: '0.25rem' }}>Where the rate steps down</div>
+                        </div>
+                        <div className="profile-form-field">
+                          <label>Beyond that - Per km Rate (₱) <span className="required">*</span></label>
+                          <input
+                            type="text" inputMode="decimal"
+                            value={shippingForm.shippingPerKmRateFar}
+                            onChange={e => { const v = e.target.value.replace(/[^\d.]/g, ''); setShippingForm(f => ({ ...f, shippingPerKmRateFar: v })); }}
+                            placeholder="5"
+                          />
+                          <div style={{ fontSize: '0.72rem', color: 'var(--gray)', marginTop: '0.25rem' }}>Usually a little lower than the first tier</div>
+                        </div>
                       </div>
-                      <div className="profile-form-field">
-                        <label>Per km Rate (₱) <span className="required">*</span></label>
-                        <input
-                          type="text" inputMode="decimal"
-                          value={shippingForm.shippingPerKmRate}
-                          onChange={e => { const v = e.target.value.replace(/[^\d.]/g, ''); setShippingForm(f => ({ ...f, shippingPerKmRate: v })); }}
-                          placeholder="15"
-                        />
-                        <div style={{ fontSize: '0.72rem', color: 'var(--gray)', marginTop: '0.25rem' }}>Added per kilometer of distance</div>
-                      </div>
+
+                      {hasRates ? (
+                        <div style={{ padding: '1rem', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border)', borderRadius: '10px' }}>
+                          <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--gray-light)', textTransform: 'uppercase', letterSpacing: '0.03em', marginBottom: '0.6rem' }}>What a customer would pay</div>
+                          {[5, 10, 15].map(km => (
+                            <div key={km} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', padding: '0.3rem 0', borderTop: km > 5 ? '1px solid var(--border)' : 'none' }}>
+                              <span style={{ color: 'var(--gray)' }}>{km} km</span>
+                              <strong style={{ color: 'var(--white)' }}>₱{fee(km).toFixed(2)}</strong>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div style={{ padding: '1rem', background: 'rgba(255,255,255,0.02)', border: '1px dashed var(--border)', borderRadius: '10px', fontSize: '0.78rem', color: 'var(--gray)' }}>
+                          Fill in the rates to see what a customer would pay at a few sample distances.
+                        </div>
+                      )}
                     </div>
-                    {shippingForm.shippingBaseRate && shippingForm.shippingPerKmRate && (
-                      <div style={{ marginTop: '1rem', padding: '0.75rem 1rem', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '0.8125rem', color: 'var(--gray-light)' }}>
-                        Example — 5 km:{' '}<strong style={{ color: 'var(--white)' }}>₱{(parseFloat(shippingForm.shippingBaseRate || 0) + parseFloat(shippingForm.shippingPerKmRate || 0) * 5).toFixed(2)}</strong>
-                        {' '}· 10 km:{' '}<strong style={{ color: 'var(--white)' }}>₱{(parseFloat(shippingForm.shippingBaseRate || 0) + parseFloat(shippingForm.shippingPerKmRate || 0) * 10).toFixed(2)}</strong>
-                      </div>
-                    )}
-                  </>
-                )}
+                  );
+                })()}
 
                 {shippingForm.shippingMode === 'flat' && (
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', maxWidth: '480px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
                     <div className="profile-form-field">
                       <label>Inside Metro Manila (₱) <span className="required">*</span></label>
                       <input
@@ -1742,6 +2212,24 @@ export default function SettingsPage() {
                   </div>
                 )}
 
+                {/* Under Courier Booked there are no rate fields, so these landed flush against
+                    the bordered explainer above and read as one box growing a second border. */}
+                {methodError && (
+                  <div style={{ marginTop: '0.9rem', padding: '0.7rem 1rem', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: '8px', color: '#f87171', fontSize: '0.85rem' }}>
+                    {methodError}
+                  </div>
+                )}
+                {methodSuccess && (
+                  <div style={{ marginTop: '0.9rem', padding: '0.7rem 1rem', background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.25)', borderRadius: '8px', color: '#4ade80', fontSize: '0.85rem' }}>
+                    {methodSuccess}
+                  </div>
+                )}
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1.25rem', paddingTop: '1.25rem', borderTop: '1px solid var(--border)' }}>
+                  <button type="button" onClick={handleSaveMethod} disabled={isSavingMethod}
+                    style={{ padding: '0.55rem 1.25rem', background: isSavingMethod ? 'var(--dark3)' : 'var(--gold)', border: 'none', borderRadius: '8px', color: isSavingMethod ? 'var(--gray)' : 'var(--black)', fontSize: '0.82rem', fontWeight: 600, cursor: isSavingMethod ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    {isSavingMethod ? <><span className="spinner" />Saving...</> : <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>Save Method</>}
+                  </button>
+                </div>
                 </div>
               </div>
 
@@ -1763,7 +2251,8 @@ export default function SettingsPage() {
                     mug rather than a totebag - so this is charged ONCE per order however
                     many customised products share the same artwork. A product can still
                     override it for genuinely harder work. */}
-                <div style={{ maxWidth: '480px', marginBottom: '1.25rem' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 320px) minmax(0, 1fr)', gap: '1rem 1.5rem', alignItems: 'start', marginBottom: '1.25rem' }}>
+                  <div>
                   <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: 'var(--gray-light)', marginBottom: '0.35rem' }}>
                     Design fee (₱)
                   </label>
@@ -1774,6 +2263,7 @@ export default function SettingsPage() {
                     placeholder="100.00"
                     style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--dark2)', color: 'var(--white)', fontSize: '0.9rem' }}
                   />
+                  </div>
                   <p style={{ fontSize: '0.72rem', color: 'var(--gray)', margin: '0.35rem 0 0', lineHeight: 1.5 }}>
                     Charged once per order when a customer asks you to create the artwork -
                     not per product. Three items sharing one design are still one fee.
@@ -1784,7 +2274,7 @@ export default function SettingsPage() {
                     not, because without a cap one paid order can be sent back forever. These figures
                     are quoted verbatim on the order page and inside the Custom Order Terms, so
                     changing them here changes what the customer is promised everywhere. */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '0.75rem', maxWidth: '480px', marginBottom: '1.25rem' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '1.25rem' }}>
                   {[
                     { key: 'freeRevisions',    label: 'Free revisions',     ph: '3',  max: 2, hint: 'Rounds included in the design fee.' },
                     { key: 'extraRevisionFee', label: 'Extra revision (₱)', ph: '50', max: 7, hint: 'Charged per round after the free ones, added to the order balance.' },
@@ -1804,7 +2294,8 @@ export default function SettingsPage() {
                   ))}
                 </div>
 
-                <div style={{ maxWidth: '480px', marginBottom: '1.25rem' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 320px) minmax(0, 1fr)', gap: '1rem 1.5rem', alignItems: 'start', marginBottom: '1.25rem' }}>
+                  <div>
                   <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: 'var(--gray-light)', marginBottom: '0.35rem' }}>
                     Days to pay the deposit
                   </label>
@@ -1815,6 +2306,7 @@ export default function SettingsPage() {
                     placeholder="7"
                     style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--dark2)', color: 'var(--white)', fontSize: '0.9rem', boxSizing: 'border-box' }}
                   />
+                  </div>
                   <p style={{ fontSize: '0.72rem', color: 'var(--gray)', margin: '0.35rem 0 0', lineHeight: 1.5 }}>
                     How long an approved proof is held once the customer approves it. After this the order lapses and the reserved stock goes back.
                   </p>
@@ -1824,7 +2316,8 @@ export default function SettingsPage() {
                     for at all. They hold stock just as hard as an approved order does, and nothing else
                     in the system ever lets go of it. Orders whose design fee HAS cleared are exempt -
                     the designer is working and the customer has already paid. */}
-                <div style={{ maxWidth: '480px', marginBottom: '1.25rem' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 320px) minmax(0, 1fr)', gap: '1rem 1.5rem', alignItems: 'start', marginBottom: '1.25rem' }}>
+                  <div>
                   <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: 'var(--gray-light)', marginBottom: '0.35rem' }}>
                     Days before an unpaid order lapses
                   </label>
@@ -1835,6 +2328,7 @@ export default function SettingsPage() {
                     placeholder="3"
                     style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--dark2)', color: 'var(--white)', fontSize: '0.9rem', boxSizing: 'border-box' }}
                   />
+                  </div>
                   <p style={{ fontSize: '0.72rem', color: 'var(--gray)', margin: '0.35rem 0 0', lineHeight: 1.5 }}>
                     An order with no payment at all is cancelled after this and its reserved stock returns. Orders that have paid the design fee are never touched.
                   </p>
@@ -1845,7 +2339,7 @@ export default function SettingsPage() {
                     Personalised stock cannot be resold, so this is a holding period ending in
                     disposal, not a refund window - and the T&C quotes both numbers, which is why they
                     are settings rather than words typed into the clauses. */}
-                <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', maxWidth: '560px', marginBottom: '1.25rem' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1rem 1.5rem', marginBottom: '1.25rem' }}>
                   <div style={{ flex: '1 1 200px' }}>
                     <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: 'var(--gray-light)', marginBottom: '0.4rem' }}>
                       Days to hold finished goods
@@ -1878,6 +2372,22 @@ export default function SettingsPage() {
                   </div>
                 </div>
 
+                {customError && (
+                  <div style={{ padding: '0.7rem 1rem', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: '8px', color: '#f87171', fontSize: '0.85rem' }}>
+                    {customError}
+                  </div>
+                )}
+                {customSuccess && (
+                  <div style={{ padding: '0.7rem 1rem', background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.25)', borderRadius: '8px', color: '#4ade80', fontSize: '0.85rem' }}>
+                    {customSuccess}
+                  </div>
+                )}
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1.25rem', paddingTop: '1.25rem', borderTop: '1px solid var(--border)' }}>
+                  <button type="button" onClick={handleSaveCustomOrders} disabled={isSavingCustom}
+                    style={{ padding: '0.55rem 1.25rem', background: isSavingCustom ? 'var(--dark3)' : 'var(--gold)', border: 'none', borderRadius: '8px', color: isSavingCustom ? 'var(--gray)' : 'var(--black)', fontSize: '0.82rem', fontWeight: 600, cursor: isSavingCustom ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    {isSavingCustom ? <><span className="spinner" />Saving...</> : <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>Save Custom Orders</>}
+                  </button>
+                </div>
                 </div>
               </div>
 
@@ -1892,7 +2402,7 @@ export default function SettingsPage() {
 
                 {/* Drives the "Get by [date]" shown to customers and the rush fee/priority.
                     Production days skip Sundays. */}
-                <div style={{ maxWidth: '560px', marginBottom: '1.25rem', padding: '1rem 1.25rem', background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '10px' }}>
+                <div style={{ marginBottom: '1.25rem', padding: '1.25rem 1.5rem', background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '10px' }}>
                   <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--white)', marginBottom: '0.15rem' }}>Delivery &amp; Turnaround</div>
                   <p style={{ fontSize: '0.72rem', color: 'var(--gray)', margin: '0 0 0.9rem', lineHeight: 1.5 }}>Sets the estimated delivery date shown to customers. Production days skip Sundays.</p>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.9rem' }}>
@@ -1930,6 +2440,22 @@ export default function SettingsPage() {
                   )}
                 </div>
 
+                {promiseError && (
+                  <div style={{ padding: '0.7rem 1rem', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: '8px', color: '#f87171', fontSize: '0.85rem' }}>
+                    {promiseError}
+                  </div>
+                )}
+                {promiseSuccess && (
+                  <div style={{ padding: '0.7rem 1rem', background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.25)', borderRadius: '8px', color: '#4ade80', fontSize: '0.85rem' }}>
+                    {promiseSuccess}
+                  </div>
+                )}
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1.25rem', paddingTop: '1.25rem', borderTop: '1px solid var(--border)' }}>
+                  <button type="button" onClick={handleSaveDeliveryPromise} disabled={isSavingPromise}
+                    style={{ padding: '0.55rem 1.25rem', background: isSavingPromise ? 'var(--dark3)' : 'var(--gold)', border: 'none', borderRadius: '8px', color: isSavingPromise ? 'var(--gray)' : 'var(--black)', fontSize: '0.82rem', fontWeight: 600, cursor: isSavingPromise ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    {isSavingPromise ? <><span className="spinner" />Saving...</> : <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>Save Delivery Promise</>}
+                  </button>
+                </div>
                 </div>
               </div>
 
@@ -1982,6 +2508,7 @@ export default function SettingsPage() {
                             <option value="both">Both flows</option>
                             <option value="upload">Uploaded design only</option>
                             <option value="request">Design request only</option>
+                            <option value="quote">Quotation only</option>
                           </select>
                           <button
                             type="button"
@@ -2113,7 +2640,7 @@ export default function SettingsPage() {
               <div style={{ padding: '0.875rem 1.25rem', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--gray-light)" strokeWidth="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
                 <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--white)' }}>Notifications</span>
-                <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>— Preferences are stored on this device.</span>
+                <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>- Preferences are stored on this device.</span>
               </div>
               <div style={{ padding: '1.5rem' }}>
               {[
@@ -2157,7 +2684,7 @@ export default function SettingsPage() {
     <div style={{ padding: '0.875rem 1.25rem', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--gray-light)" strokeWidth="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
       <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--white)' }}>Appearance</span>
-      <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>— Choose how the dashboard looks to you.</span>
+      <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>- Choose how the dashboard looks to you.</span>
     </div>
     <div style={{ padding: '1.5rem' }}>
 

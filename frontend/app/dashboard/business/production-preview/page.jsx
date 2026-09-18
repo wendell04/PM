@@ -55,6 +55,9 @@ export default function ProductionPage() {
   // awkward to walk back, and both used to happen on a single stray click in a dense table where the
   // row itself opens a detail panel.
   const [confirmAct, setConfirmAct] = useState(null);
+  // Set when the backend refuses a start for want of material. Carries the job, where it was going,
+  // and what is short, so the dialog can name every one of them.
+  const [shortage, setShortage] = useState(null);
   const advancing = useRef(false);
 
   const ADVANCE_COPY = {
@@ -70,15 +73,21 @@ export default function ProductionPage() {
     },
   };
 
-  const advance = async (j, joStatus) => {
+  const advance = async (j, joStatus, materialOverride = false) => {
     if (advancing.current) return;
     advancing.current = true;
     setBusyId(idOf(j)); setError('');
     try {
-      await updateJobOrder(token, idOf(j), { joStatus });
+      await updateJobOrder(token, idOf(j), { joStatus, ...(materialOverride ? { materialOverride: true } : {}) });
       setConfirmAct(null);
+      setShortage(null);
       await load();
-    } catch (e) { setError(e.message || 'Update failed'); }
+    } catch (e) {
+      // Short material is a decision, not an error. Show what is missing and let the person at the
+      // bench say whether they have it in hand - they are the only one who can know.
+      if (e.shortages) setShortage({ job: j, to: joStatus, rows: e.shortages });
+      else setError(e.message || 'Update failed');
+    }
     finally { advancing.current = false; setBusyId(null); }
   };
 
@@ -234,6 +243,28 @@ export default function ProductionPage() {
           : ''}
       />
 
+      <ConfirmModal
+        open={!!shortage}
+        onClose={() => setShortage(null)}
+        onConfirm={() => shortage && advance(shortage.job, shortage.to, true)}
+        loading={!!busyId}
+        confirmStyle="danger"
+        title="Not enough material on the shelf"
+        confirmLabel="Start anyway"
+        message={shortage
+          ? [
+              `${shortage.job.joId} - ${prodName(shortage.job)}`,
+              '',
+              ...shortage.rows.map(r =>
+                `${r.name}: needs ${r.needed}${r.uom ? ' ' + r.uom : ''}, ${r.onHand}${r.uom ? ' ' + r.uom : ''} on hand, short ${r.short}`),
+              '',
+              'Buy it first, or Stock In what you already have in hand. '
+              + 'Starting anyway is recorded against your name.',
+            ].join(`
+`)
+          : ''}
+      />
+
     </ErrorBoundary>
   );
 }
@@ -342,8 +373,11 @@ function JobDetail({ jo, onClose, onPreview, onChanged }) {
         <div style={{ marginBottom: 12 }}>
           <div style={{ ...S.label }}>Production artwork - print this</div>
           {prod.length === 0 ? (
-            <div style={{ ...S.note, background: 'var(--st-red-bg)', borderColor: 'rgba(239,68,68,0.35)', color: 'var(--st-red-fg)', marginTop: 6, fontSize: 12 }}>
-              No print-ready file on this job. The proof is a mockup - do not start until the real file is attached.
+            /* A separate print file is optional - plenty of jobs print the approved proof itself.
+               Alarming in red on the normal case taught the operator to ignore the colour, which
+               is the opposite of what a warning is for. */
+            <div style={{ ...S.note, marginTop: 6, fontSize: 12 }}>
+              No separate print file on this job - the approved proof above is what gets printed.
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 6 }}>

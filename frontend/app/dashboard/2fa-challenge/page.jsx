@@ -49,13 +49,13 @@ export default function TwoFactorChallengePage() {
       userRole={userRole}
       persistLogin={rememberMe}
       onSuccess={(redirectTo, sessionToken) => {
-        // OTP verified — write the real full-access token (minted by the server on verify)
+        // OTP verified - write the real full-access token (minted by the server on verify)
         // to final storage. The pending token never becomes a usable session.
         const finalToken = sessionToken || sessionStorage.getItem('pmp_pending_token');
         const pendingUserRaw = sessionStorage.getItem('pmp_pending_user');
 
         if (finalToken && pendingUserRaw) {
-          // Always store in localStorage — AuthContext, the admin route guard, and the
+          // Always store in localStorage - AuthContext, the admin route guard, and the
           // shop all read auth from localStorage only. A sessionStorage token is invisible
           // to them, so the user would appear logged out and get bounced to the landing.
           // "Remember me" duration is enforced server-side by the token's expiry.

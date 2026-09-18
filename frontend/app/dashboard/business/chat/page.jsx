@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import Link from 'next/link';
 import ChatModule from '@/components/chat/ChatModule';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -46,6 +47,21 @@ export default function AdminChatPage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 80px)', padding: '0 24px' }}>
+      {/* The common questions and away message customers see are set in Settings - linked from the
+          inbox they shape, so the owner does not have to go looking. Settings is owner/admin only. */}
+      {['superAdmin', 'admin', 'owner'].includes(user.role) && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '0 0 10px' }}>
+          <Link
+            href="/dashboard/business/settings?tab=chat"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.8rem', fontWeight: 600, color: 'var(--gold)', textDecoration: 'none', padding: '6px 10px', border: '1px solid var(--border)', borderRadius: 8 }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" /><path d="M8 9h8M8 13h5" />
+            </svg>
+            Automatic replies & common questions
+          </Link>
+        </div>
+      )}
       <div style={{ flex: 1, minHeight: 0, borderRadius: '14px', overflow: 'hidden', border: '1px solid var(--border)', boxShadow: '0 8px 32px rgba(0,0,0,0.3)' }}>
         <ChatModule user={user} token={token} />
       </div>

@@ -3,14 +3,18 @@
 namespace App\Http\Controllers;
 
 use App\Events\OrderStatusUpdated;
-use App\Mail\AdminNewOrderMail;
-use App\Mail\OrderConfirmationMail;
+use App\Mail\DeliveryFeeMail;
+use App\Mail\ProofReadyMail;
+use App\Mail\PaymentReceivedMail;
 use App\Mail\OrderStatusMail;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\User;
 use App\Models\Sale;
 use App\Models\Inventory;
+use App\Support\MaterialClaim;
+use App\Support\Backorder;
+use App\Support\OrderNotifier;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -22,6 +26,7 @@ use App\Models\Conversation;
 use App\Models\Message;
 use App\Models\Voucher;
 use App\Models\FlashSale;
+use App\Support\PromotionRelease;
 use App\Models\BillOfMaterial;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -29,6 +34,7 @@ use App\Models\StockHistory;
 use App\Models\AuditLog;
 use App\Services\PriceResolver;
 use App\Support\OrderStatus;
+use App\Support\PaymentMethod;
 
 class OrderController extends Controller
 {
@@ -84,15 +90,11 @@ class OrderController extends Controller
      * order. A line with none is picked off the shelf, whatever the product is also capable of.
      * `isMadeToOrder` still counts, because those are produced regardless of decoration.
      */
+    /** Delegates to App\Support\OrderLine so the purchase list and the cancel path cannot drift
+     *  from what order creation actually did. */
     private function lineIsProduced($product, array $item): bool
     {
-        if ((bool) ($product->isMadeToOrder ?? false)) return true;
-
-        return !empty($item['designUrl'])
-            || !empty($item['designFiles'])
-            || !empty($item['designRequested'])
-            || ($item['designMode'] ?? null) === 'request'
-            || !empty($item['isCustom']);
+        return \App\Support\OrderLine::isProduced($product, $item);
     }
 
     private function normalizeOrderForCustomer(Order $order): array
@@ -198,6 +200,12 @@ class OrderController extends Controller
                     }
                 }
 
+                // Thrown as a validation error so the customer reads the reason, and the outer catch
+                // still releases any material already claimed.
+                if ($quoteMsg = PriceResolver::quoteRequiredMessage($product, $qty)) {
+                    throw \Illuminate\Validation\ValidationException::withMessages(['items' => [$quoteMsg]]);
+                }
+
                 $unitPrice = PriceResolver::resolve($product, $qty, $variantId, $appliedFlashSale);
 
                 if ($unitPrice === null) {
@@ -280,12 +288,15 @@ class OrderController extends Controller
             // Delivery estimate + optional rush. Turnaround config lives on the store owner; the
             // estimate is snapshotted onto the order so the promised window never shifts later.
             $owner     = \App\Models\User::where('role', 'owner')->first() ?? \App\Models\User::where('role', 'admin')->first();
-            $prodLead  = (int)   ($owner->productionLeadDays ?? 5);
-            $shipMin   = (int)   ($owner->shippingDaysMin    ?? 2);
-            $shipMax   = (int)   ($owner->shippingDaysMax    ?? 4);
+            $prodLead  = (int)   ($owner->productionLeadDays ?? 3);
+            $shipMin   = (int)   ($owner->shippingDaysMin    ?? 1);
+            $shipMax   = (int)   ($owner->shippingDaysMax    ?? 2);
             $rushOn    = (bool)  ($owner->rushEnabled        ?? true);
-            $rushLead  = (int)   ($owner->rushLeadDays       ?? 2);
-            $rushFee   = (float) ($owner->rushFee            ?? 100);
+            $rushLead  = (int)   ($owner->rushLeadDays       ?? 1);
+            // 150 to match SettingsController, which is what the settings screen and the public
+            // settings endpoint both report. A different fallback here meant the order was billed a
+            // fee the customer was never shown.
+            $rushFee   = (float) ($owner->rushFee            ?? 150);
 
             // Does anything on this order actually have to be MADE? A cart of stocked goods needs
             // picking and shipping, nothing more - charging it the production lead time promised a
@@ -314,6 +325,21 @@ class OrderController extends Controller
             };
             $estimatedDeliveryMin = $addBusinessDays($leadDays + $shipMin)->toIso8601String();
             $estimatedDeliveryMax = $addBusinessDays($leadDays + $shipMax)->toIso8601String();
+
+            // The date picker enforces a minimum client-side, but a request built by hand skips it
+            // entirely - and this is the one field that becomes a promise the shop is held to. A
+            // needByDate earlier than what production and shipping can actually deliver is dropped
+            // rather than stored, the same way an out-of-range value from any other form field would
+            // be rejected rather than trusted.
+            if ($needByDate) {
+                try {
+                    if (\Carbon\Carbon::parse($needByDate)->lt(\Carbon\Carbon::parse($estimatedDeliveryMin)->startOfDay())) {
+                        $needByDate = null;
+                    }
+                } catch (\Throwable) {
+                    $needByDate = null;
+                }
+            }
 
             // Handle design file upload (non-fatal)
             $designFilePath = null;
@@ -345,8 +371,8 @@ class OrderController extends Controller
 
             $paymentMethod = $validated['paymentMethod'] ?? 'cod';
 
-            // ── COD guard — reject if any product disallows COD ──────────
-            if ($paymentMethod === 'cod') {
+            // ── COD guard - reject if any product disallows COD ──────────
+            if (PaymentMethod::isCod($paymentMethod)) {
                 foreach ($validated['items'] as $item) {
                     $prod = Product::find($item['productId'] ?? null);
                     if ($prod && $prod->allowCOD === false) {
@@ -355,7 +381,136 @@ class OrderController extends Controller
                 }
             }
 
-            // ── Voucher discount — atomic claim ───────────────────────────
+            // ── Pre-validate BOM products against can-produce ────────────
+            foreach ($orderItems as $item) {
+                $bomProd  = Product::find($item['productId'] ?? null);
+                $itemQty  = (int) ($item['qty'] ?? 1);
+                $variantId = $item['variantId'] ?? null;
+
+                if (!$bomProd) continue;
+
+                // Determine the BOM to validate against
+                $bom = null;
+                if (!empty($bomProd->bomGroupName) && $variantId) {
+                    $bom = BillOfMaterial::find($variantId);
+                } elseif (!empty($bomProd->bomId)) {
+                    $bom = BillOfMaterial::find($bomProd->bomId);
+                }
+                // per-combination bomId: each combo stores its own bomId
+                if (!$bom && $variantId && !empty($bomProd->combinations)) {
+                    foreach ($bomProd->combinations as $combo) {
+                        if ((string) ($combo['id'] ?? $combo['_id'] ?? '') === (string) $variantId && !empty($combo['bomId'])) {
+                            $bom = BillOfMaterial::find($combo['bomId']);
+                            break;
+                        }
+                    }
+                }
+
+                if (!$bom || empty($bom->components)) continue;
+
+                // Per-variant manual cap stored in variantStock
+                if (!empty($bomProd->bomGroupName) && $variantId) {
+                    $variantCap = isset($bomProd->variantStock[$variantId]) && (int) $bomProd->variantStock[$variantId] > 0
+                        ? (int) $bomProd->variantStock[$variantId]
+                        : null;
+                    if ($variantCap !== null && $itemQty > $variantCap) {
+                        return $this->errorResponse(
+                            "\"{$bomProd->name}\" has a storefront cap of {$variantCap} unit(s) for that variant.",
+                            422
+                        );
+                    }
+                } elseif ($bomProd->storeStockCap !== null && $itemQty > (int) $bomProd->storeStockCap) {
+                    return $this->errorResponse(
+                        "\"{$bomProd->name}\" has a storefront limit of {$bomProd->storeStockCap} unit(s).",
+                        422
+                    );
+                }
+
+                // Material availability is no longer decided here. It was, per line, against a
+                // reservedQty that this request had not written yet - so every line in a cart saw
+                // the shelf untouched and three lines of 50 mugs each cleared the same 50 boxes.
+                // The whole cart is totalled and claimed below instead.
+            }
+
+            // -- Claim raw material for the whole cart, atomically -------
+            // First cart in wins. The guard compares stock against reserved inside the update
+            // itself, so a losing racer writes nothing, and anything it had already taken is
+            // handed straight back.
+            $materialClaims = [];
+            $materialDemand = MaterialClaim::demandSplit($orderItems);
+
+            foreach ($materialDemand['gated'] as $invId => $needed) {
+                if (MaterialClaim::claim((string) $invId, (int) $needed)) {
+                    $materialClaims[(string) $invId] = (int) $needed;
+                    continue;
+                }
+                $message = MaterialClaim::shortfallMessage((string) $invId, (int) $needed);
+                MaterialClaim::releaseAll($materialClaims);
+                return $this->errorResponse($message, 422);
+            }
+
+            // A pre-order line is allowed past the shelf - that is what the toggle promises. The
+            // hold still happens, so the overshoot lands in To Buy as the amount to go and buy.
+            foreach ($materialDemand['preorder'] as $invId => $needed) {
+                MaterialClaim::hold((string) $invId, (int) $needed);
+                $materialClaims[(string) $invId] = ($materialClaims[(string) $invId] ?? 0) + (int) $needed;
+            }
+
+            // ── Atomic stock reservation BEFORE order creation ───────────
+            // Uses findOneAndUpdate with $gte condition: if two buyers race,
+            // only one succeeds; the other gets a 422 and no order is created.
+            $stockReservations = [];
+            foreach ($orderItems as $item) {
+                $prod = Product::find($item['productId'] ?? null);
+                if (!$prod || !$prod->inventoryId) continue;
+                $inv = Inventory::find($prod->inventoryId);
+                if (!$inv || $inv->isOnDemand) continue;
+
+                $qty = (int) $item['qty'];
+
+                $updated = DB::connection('mongodb')
+                    ->getCollection('inventories')
+                    ->findOneAndUpdate(
+                        [
+                            '_id'      => new \MongoDB\BSON\ObjectId((string) $inv->_id),
+                            'stockQty' => ['$gte' => $qty],
+                        ],
+                        ['$inc' => ['stockQty' => -$qty]],
+                        ['returnDocument' => \MongoDB\Operation\FindOneAndUpdate::RETURN_DOCUMENT_AFTER]
+                    );
+
+                if ($updated === null) {
+                    // Rollback all previous reservations in this request
+                    foreach ($stockReservations as $r) {
+                        DB::connection('mongodb')
+                            ->getCollection('inventories')
+                            ->updateOne(
+                                ['_id' => new \MongoDB\BSON\ObjectId($r['invId'])],
+                                ['$inc' => ['stockQty' => $r['qty']]]
+                            );
+                    }
+                    MaterialClaim::releaseAll($materialClaims);
+                    $currentStock = (int) ($inv->stockQty ?? 0);
+                    return $this->errorResponse(
+                        "\"{$prod->name}\" only has {$currentStock} item(s) in stock.",
+                        422
+                    );
+                }
+
+                $stockReservations[] = [
+                    'invId'       => (string) $inv->_id,
+                    'qty'         => $qty,
+                    'newStockQty' => (int) ($updated->stockQty ?? 0),
+                    'unitCost'    => $this->unitCostOf($inv),
+                    'productId'   => (string) $prod->_id,
+                    'productName' => $prod->name ?? '',
+                ];
+            }
+
+            // The voucher is claimed here, after every check that can still turn the order away. It
+            // used to be claimed before the stock and material checks, so an order refused for stock
+            // had already spent the customer's voucher - with no order to show for it.
+            // ── Voucher discount - atomic claim ───────────────────────────
             $discountAmount = 0.0;
             $appliedVoucher = null;
 
@@ -407,118 +562,6 @@ class OrderController extends Controller
                 }
             }
 
-            // ── Pre-validate BOM products against can-produce ────────────
-            foreach ($orderItems as $item) {
-                $bomProd  = Product::find($item['productId'] ?? null);
-                $itemQty  = (int) ($item['qty'] ?? 1);
-                $variantId = $item['variantId'] ?? null;
-
-                if (!$bomProd) continue;
-
-                // Determine the BOM to validate against
-                $bom = null;
-                if (!empty($bomProd->bomGroupName) && $variantId) {
-                    $bom = BillOfMaterial::find($variantId);
-                } elseif (!empty($bomProd->bomId)) {
-                    $bom = BillOfMaterial::find($bomProd->bomId);
-                }
-                // per-combination bomId: each combo stores its own bomId
-                if (!$bom && $variantId && !empty($bomProd->combinations)) {
-                    foreach ($bomProd->combinations as $combo) {
-                        if ((string) ($combo['id'] ?? $combo['_id'] ?? '') === (string) $variantId && !empty($combo['bomId'])) {
-                            $bom = BillOfMaterial::find($combo['bomId']);
-                            break;
-                        }
-                    }
-                }
-
-                if (!$bom || empty($bom->components)) continue;
-
-                // Per-variant manual cap stored in variantStock
-                if (!empty($bomProd->bomGroupName) && $variantId) {
-                    $variantCap = isset($bomProd->variantStock[$variantId]) && (int) $bomProd->variantStock[$variantId] > 0
-                        ? (int) $bomProd->variantStock[$variantId]
-                        : null;
-                    if ($variantCap !== null && $itemQty > $variantCap) {
-                        return $this->errorResponse(
-                            "\"{$bomProd->name}\" has a storefront cap of {$variantCap} unit(s) for that variant.",
-                            422
-                        );
-                    }
-                } elseif ($bomProd->storeStockCap !== null && $itemQty > (int) $bomProd->storeStockCap) {
-                    return $this->errorResponse(
-                        "\"{$bomProd->name}\" has a storefront limit of {$bomProd->storeStockCap} unit(s).",
-                        422
-                    );
-                }
-
-                $canProduce = PHP_INT_MAX;
-                foreach ($bom->components as $component) {
-                    $rawInv = Inventory::find($component['inventoryId'] ?? null);
-                    if (!$rawInv || $rawInv->isOnDemand) continue;
-                    $qpu = (float) ($component['qty'] ?? 0);
-                    if ($qpu <= 0) continue;
-                    // Available for new orders = physical stock minus what's already reserved for production.
-                    $available = max(0, (int) ($rawInv->stockQty ?? 0) - (int) ($rawInv->reservedQty ?? 0));
-                    $canProduce = min($canProduce, (int) floor($available / $qpu));
-                }
-                if ($canProduce !== PHP_INT_MAX && $itemQty > $canProduce) {
-                    return $this->errorResponse(
-                        "\"{$bomProd->name}\" can only produce {$canProduce} unit(s) with current materials.",
-                        422
-                    );
-                }
-            }
-
-            // ── Atomic stock reservation BEFORE order creation ───────────
-            // Uses findOneAndUpdate with $gte condition: if two buyers race,
-            // only one succeeds; the other gets a 422 and no order is created.
-            $stockReservations = [];
-            foreach ($orderItems as $item) {
-                $prod = Product::find($item['productId'] ?? null);
-                if (!$prod || !$prod->inventoryId) continue;
-                $inv = Inventory::find($prod->inventoryId);
-                if (!$inv || $inv->isOnDemand) continue;
-
-                $qty = (int) $item['qty'];
-
-                $updated = DB::connection('mongodb')
-                    ->getCollection('inventories')
-                    ->findOneAndUpdate(
-                        [
-                            '_id'      => new \MongoDB\BSON\ObjectId((string) $inv->_id),
-                            'stockQty' => ['$gte' => $qty],
-                        ],
-                        ['$inc' => ['stockQty' => -$qty]],
-                        ['returnDocument' => \MongoDB\Operation\FindOneAndUpdate::RETURN_DOCUMENT_AFTER]
-                    );
-
-                if ($updated === null) {
-                    // Rollback all previous reservations in this request
-                    foreach ($stockReservations as $r) {
-                        DB::connection('mongodb')
-                            ->getCollection('inventories')
-                            ->updateOne(
-                                ['_id' => new \MongoDB\BSON\ObjectId($r['invId'])],
-                                ['$inc' => ['stockQty' => $r['qty']]]
-                            );
-                    }
-                    $currentStock = (int) ($inv->stockQty ?? 0);
-                    return $this->errorResponse(
-                        "\"{$prod->name}\" only has {$currentStock} item(s) in stock.",
-                        422
-                    );
-                }
-
-                $stockReservations[] = [
-                    'invId'       => (string) $inv->_id,
-                    'qty'         => $qty,
-                    'newStockQty' => (int) ($updated->stockQty ?? 0),
-                    'unitCost'    => $this->unitCostOf($inv),
-                    'productId'   => (string) $prod->_id,
-                    'productName' => $prod->name ?? '',
-                ];
-            }
 
             // Order-level design context, derived from the lines so a cart order behaves the
             // same as a single one. designFilePath mirrors the first uploaded artwork; the
@@ -621,6 +664,8 @@ class OrderController extends Controller
             }
 
             // ── BOM material deduction at order creation ──────────────
+            // What a pre-ordered ready-made line could not get off the shelf. See App\Support\Backorder.
+            $owedHere = [];
             foreach ($orderItems as $item) {
                 $prod      = Product::find($item['productId'] ?? null);
                 $variantId = $item['variantId'] ?? null;
@@ -651,8 +696,9 @@ class OrderController extends Controller
                         $deductQty = (int) round(($component['qty'] ?? 0) * ($item['qty'] ?? 1));
                         if ($deductQty <= 0) continue;
                         if ($producedItem) {
-                            $rawInv->reservedQty = (int) ($rawInv->reservedQty ?? 0) + $deductQty;
-                            $rawInv->save();
+                            // Already held by the cart-wide claim above; incrementing again here
+                            // would double the hold. Only the paper trail is left to write.
+                            $rawInv->refresh();
                             StockHistory::create([
                                 'inventoryId'  => (string) $rawInv->_id,
                                 'quantity'     => $deductQty,
@@ -670,16 +716,34 @@ class OrderController extends Controller
                                 'createdAt'    => now(),
                             ]);
                         } else {
-                            $this->deductInventoryFIFO(
-                                inventory:    $rawInv,
-                                qty:          $deductQty,
-                                reason:       'sale_reserved',
-                                unitPrice:    0.0,
-                                orderId:      (string) $order->_id,
-                                productId:    (string) $prod->_id,
-                                productName:  $prod->name ?? '',
-                                customerName: $order->userSnapshot['name'] ?? '',
-                            );
+                            // A ready-made line turns its hold into a real deduction, so the hold
+                            // has to go first or the material is counted against the shelf twice.
+                            MaterialClaim::release((string) $rawInv->_id, $deductQty);
+                            // A pre-order line can ask for more than the shelf has. Take what is free
+                            // and hold the rest as owed - the deduction used to stop at zero and the
+                            // missing units disappeared from every count.
+                            [$take, $owe] = Backorder::split((string) $rawInv->_id, $deductQty);
+                            $rawInv->refresh();
+                            if ($take > 0) {
+                                $this->deductInventoryFIFO(
+                                    inventory:    $rawInv,
+                                    qty:          $take,
+                                    reason:       'sale_reserved',
+                                    unitPrice:    0.0,
+                                    orderId:      (string) $order->_id,
+                                    productId:    (string) $prod->_id,
+                                    productName:  $prod->name ?? '',
+                                    customerName: $order->userSnapshot['name'] ?? '',
+                                );
+                            }
+                            if ($owe > 0) {
+                                Backorder::hold((string) $rawInv->_id, $owe, (string) $order->_id, [
+                                    'productId'    => (string) $prod->_id,
+                                    'productName'  => $prod->name ?? '',
+                                    'customerName' => $order->userSnapshot['name'] ?? '',
+                                ]);
+                                $owedHere[] = ['inventoryId' => (string) $rawInv->_id, 'qty' => $owe];
+                            }
                         }
                     }
                 } catch (\Exception $bomErr) {
@@ -690,6 +754,16 @@ class OrderController extends Controller
                     ]);
                 }
             }
+
+            if ($owedHere) {
+                $order->backorders = Backorder::merge($order->backorders ?? [], $owedHere);
+                $order->save();
+            }
+
+            // The order now owns what is still held, and cancelling it is what gives that back.
+            // Left in the list, a later failure - a broadcast, an email - would have the catch
+            // release material the order is genuinely holding.
+            $materialClaims = [];
 
             // Broadcast new order to admin channel
             try {
@@ -702,55 +776,20 @@ class OrderController extends Controller
                 Log::warning('OrderController@store: broadcast failed', ['error' => $e->getMessage()]);
             }
 
-            // Notify owner
-            $this->notifyOwner($order);
-
-            // In-app notification to admin — B-13
-            try {
-                $admin = \App\Models\User::where('role', 'admin')->first();
-                if ($admin) {
-                    Notification::create([
-                        'user_id'    => (string) $admin->_id,
-                        'type'       => 'new_order',
-                        'title'      => 'New Order Received',
-                        'message'    => 'Order #' . strtoupper(substr((string) $order->_id, -8)) .
-                                        ' placed by ' . ($order->userSnapshot['name'] ?? 'Unknown') . '.',
-                        'is_read'    => false,
-                        'data'       => ['orderId' => (string) $order->_id],
-                        'created_at' => now(),
-                    ]);
-                }
-            } catch (\Exception $e) {
-                Log::warning('store: admin notification failed', ['error' => $e->getMessage()]);
-            }
-
-            // Notify customer — order confirmation
-            try {
-                $customerEmail = $order->userSnapshot['email'] ?? null;
-                $customerName  = $order->userSnapshot['name'] ?? '';
-                $firstName     = explode(' ', trim($customerName))[0] ?? 'Customer';
-                if ($customerEmail) {
-                    Mail::to($customerEmail)->send(new OrderConfirmationMail(
-                        firstName:   $firstName,
-                        orderId:     (string) $order->_id,
-                        items:       $order->items ?? [],
-                        totalAmount: (float) ($order->totalAmount ?? 0),
-                        status:      $order->orderStatus ?? 'Pending',
-                        notes:       $order->notes ?? ''
-                    ));
-                }
-            } catch (\Exception $e) {
-                Log::error('OrderController @store: Failed to send confirmation email', [
-                    'order_id' => (string) $order->_id,
-                    'error'    => $e->getMessage(),
-                ]);
-            }
+            // One copy of this, shared with the payment paths that create orders too - they had
+            // none of it, so a customer who paid a design fee heard nothing at all. See
+            // App\Support\OrderNotifier.
+            OrderNotifier::placed($order);
 
             return $this->successResponse('Order placed successfully!', $order, 201);
 
         } catch (\Illuminate\Validation\ValidationException $e) {
+            MaterialClaim::releaseAll($materialClaims ?? []);
             return $this->validationErrorResponse($e);
         } catch (\Exception $e) {
+            // A claim that outlives the request that made it holds material against an order that
+            // was never created, and nothing later would ever give it back.
+            MaterialClaim::releaseAll($materialClaims ?? []);
             return $this->serverErrorResponse($e, 'An unexpected error occurred while placing your order.');
         }
     }
@@ -771,8 +810,15 @@ class OrderController extends Controller
             $page   = max(1, (int) $request->query('page', 1));
             $offset = ($page - 1) * $limit;
 
-            $total  = Order::where('userId', (string) $user->_id)->count();
+            // A checkout still being paid, or one whose payment failed, is not an order yet - it does
+            // not belong in the customer's list. See App\Support\CheckoutHold.
+            $total  = Order::where('userId', (string) $user->_id)
+                           ->where('checkoutPending', '!=', true)
+                           ->where('voidedCheckout', '!=', true)
+                           ->count();
             $orders = Order::where('userId', (string) $user->_id)
+                           ->where('checkoutPending', '!=', true)
+                           ->where('voidedCheckout', '!=', true)
                            ->orderBy('createdAt', 'desc')
                            ->skip($offset)
                            ->limit($limit)
@@ -840,7 +886,7 @@ class OrderController extends Controller
             $order = Order::find($id);
             if (!$order) return $this->notFoundResponse('Order');
 
-            if (strtolower((string) ($order->paymentMethod ?? '')) === 'cod') {
+            if (PaymentMethod::isCod($order->paymentMethod)) {
                 return $this->errorResponse('This is a cash-on-delivery order - there is nothing to settle in advance.', 422);
             }
 
@@ -1107,13 +1153,23 @@ class OrderController extends Controller
             'subtotal',
             'shippingFee',
             'courierFee',
+            'courierFeePaid',
+            'courierFeeOnDelivery',
+            // What was actually collected, which is not the same as the fee once the fee changes.
+            'courierFeePaidAmount',
+            'courierFeePaidAt',
+            'courierFeePaidMethod',
             'totalAmount',
             'total',
             'totalPrice',
             'downPayment',
+            'downpaymentMixed',
             'balance',
             'paymentMethod',
             'paymentHistory',
+            // Money the shop owes back. Without these on the projection the obligation exists in
+            // the database and nowhere a person will ever look.
+            'refunds', 'refundOwed',
             'notes',
             'joId',
             // A mixed order produces one job order per printable item, so the admin screens need the
@@ -1127,6 +1183,7 @@ class OrderController extends Controller
             'discountAmount',
             'courierName',
             'trackingNumber',
+            'trackingUrl',
             'createdAt',
             'updatedAt',
             'shippingAddress',
@@ -1144,10 +1201,17 @@ class OrderController extends Controller
             'paymentDueAt',
             'revisionCount',
             'revisionFees',
+            // A paid quote becomes an ordinary Order, which is right - but nothing on either
+            // screen said where it came from, and there was no way back to the quotation whose
+            // prices and terms the customer actually agreed to.
+            'orderRequestId',
             'designRejectionReason',
             'designFiles',
             'adminDesignUrl',
             'adminDesignUrls',
+            // Informational mockups sent after approval. Listed here or the admin list silently
+            // drops them, which is how every other field on this projection has gone missing.
+            'mockups',
             'revisionNotes',
             'requiresDownpayment',
             'downpaymentPercent',
@@ -1169,6 +1233,7 @@ class OrderController extends Controller
         return [
             'subtotal', 'shippingFee', 'courierFee', 'totalAmount', 'total', 'totalPrice',
             'downPayment', 'balance', 'paymentMethod', 'paymentHistory', 'discountAmount',
+            'refunds', 'refundOwed',
             'designFee', 'designFeePaid', 'designFeePaidAmount', 'rushFee', 'revisionFees',
         ];
     }
@@ -1186,7 +1251,7 @@ class OrderController extends Controller
             || \App\Support\Rbac::allows($user, 'sales.view')
             || \App\Support\Rbac::allows($user, 'pos');
         if ($canSeeMoney) {
-            return $orders; // full financial view — unchanged
+            return $orders; // full financial view - unchanged
         }
 
         $keys  = $this->orderFinancialKeys();
@@ -1236,9 +1301,17 @@ class OrderController extends Controller
                 'paymentStatus' => 'sometimes|in:unpaid,partial,paid',
                 'notes'         => 'nullable|string|max:1000',
                 'shippingFee'   => 'sometimes|numeric|min:0|max:50000',
-                // Courier-booked delivery fee — paid by the customer directly to the
+                // Courier-booked delivery fee - paid by the customer directly to the
                 // rider on delivery. Informational only: does NOT change the order total.
                 'courierFee'    => 'sometimes|numeric|min:0|max:50000',
+                // Whether the customer has already settled the courier fee - by GCash ahead of the
+                // rider, usually. Without it the shop had no way to record that, so the chat kept
+                // telling the customer to have cash ready for something they had already sent.
+                'courierFeePaid' => 'sometimes|boolean',
+                // Whether this courier takes cash at the door. True for an on-demand rider
+                // (Lalamove, Grab); false for a parcel network like J&T, which is prepaid at the
+                // branch. Only the shop knows which it is about to book, so the shop says.
+                'courierFeeOnDelivery' => 'sometimes|boolean',
                 // Admin can adjust the promised delivery window (e.g. production backlog); the
                 // customer is notified below when it changes.
                 'estimatedDeliveryMin' => 'sometimes|nullable|date',
@@ -1247,7 +1320,7 @@ class OrderController extends Controller
 
             $prevDeliveryMax = $order->estimatedDeliveryMax ?? null;
 
-            // Balance gate — a non-COD order must be fully paid before it can be released for
+            // Balance gate - a non-COD order must be fully paid before it can be released for
             // delivery/marked delivered (COD collects on delivery, so it's exempt). Casing-tolerant.
             if (isset($validated['orderStatus'])) {
                 $targetNorm = OrderStatus::normalize($validated['orderStatus']);
@@ -1264,13 +1337,13 @@ class OrderController extends Controller
                 }
 
                 if (in_array($targetNorm, [OrderStatus::FOR_DELIVERY, OrderStatus::DELIVERED], true)) {
-                    $isCOD = strtolower((string) ($order->paymentMethod ?? '')) === 'cod';
+                    $isCOD = PaymentMethod::isCod($order->paymentMethod);
                     if (!$isCOD && ($order->paymentStatus ?? '') !== 'paid') {
                         return response()->json(['message' => 'The remaining balance must be fully paid before this order can be released for delivery.'], 422);
                     }
                 }
 
-                // Production gate — a custom order enters production only by creating a Job Order,
+                // Production gate - a custom order enters production only by creating a Job Order,
                 // which enforces downpayment-paid + design-approved and gives Production/QC a JO to
                 // work on. Block a manual jump straight to In Production that would bypass both gates
                 // and leave the Production module with nothing to build.
@@ -1279,15 +1352,37 @@ class OrderController extends Controller
                     && empty($order->joId)) {
                     return response()->json(['message' => 'Create a Job Order to start production. The downpayment must be paid and the design approved first.'], 422);
                 }
+
+                // Nothing to produce means no production stage. Without this the UI dropdown was the
+                // only thing stopping a shelf-goods order from entering a stage Production and QC
+                // have no job order for, and it could never be released from there by QC either.
+                if ($targetNorm === OrderStatus::IN_PRODUCTION) {
+                    $produces = collect($order->items ?? [])->contains(fn ($it) =>
+                        !empty($it['isCustom']) || !empty($it['isMadeToOrder'])
+                        || !empty($it['designRequested']) || !empty($it['designUrl'])
+                        || !empty($it['designFiles'])
+                    );
+                    if (!$produces) {
+                        return response()->json(['message' => 'Nothing on this order has to be produced - it is ready-made stock. Send it straight to delivery.'], 422);
+                    }
+                }
             }
 
             $oldStatus = $order->orderStatus;
 
-            // Store courier info when moving to (Out for) Delivery — casing-tolerant.
+            // Store courier info when moving to (Out for) Delivery - casing-tolerant.
             if (isset($validated['orderStatus']) && OrderStatus::normalize($validated['orderStatus']) === OrderStatus::FOR_DELIVERY) {
                 $order->courierName    = $request->input('courierName') ?: null;
                 $order->trackingNumber = $request->input('trackingNumber') ?: null;
+                // Lalamove and Grab give a share link and no number; a parcel gives a number and
+                // no link. Both are kept, and whichever exists is what the customer is shown.
+                $order->trackingUrl    = $request->input('trackingUrl') ?: null;
             }
+
+            // Read before the save, not after. update() resyncs the model's originals, so anything
+            // that wants to know what a field USED to be has to capture it here.
+            $prevCourierFee     = (float) ($order->courierFee ?? 0);
+            $prevCourierFeePaid = (bool) ($order->courierFeePaid ?? false);
 
             $order->update($validated);
 
@@ -1323,29 +1418,158 @@ class OrderController extends Controller
                 $order->save();
             }
 
+            // Settling the courier fee ahead of the rider. Confirming it is not bookkeeping - the
+            // customer is standing by with cash they no longer need to hand over, and only the shop
+            // knows the transfer landed.
+            if (array_key_exists('courierFeePaid', $validated)
+                && (bool) $validated['courierFeePaid'] && !$prevCourierFeePaid) {
+                try {
+                    $fee = (float) ($order->courierFee ?? 0);
+
+                    // The online path records all of this; ticking the box recorded only the
+                    // boolean, so the two were indistinguishable afterwards - and the shortfall
+                    // check had no earlier amount to compare against. 'manual' is the honest
+                    // method name: the shop saw the money somewhere this system cannot.
+                    $order->courierFeePaidAmount = $fee;
+                    $order->courierFeePaidAt     = now();
+                    $order->courierFeePaidMethod = 'manual';
+                    $order->save();
+
+                    Notification::create([
+                        'user_id'    => (string) $order->userId,
+                        'type'       => 'delivery_fee_settled',
+                        'title'      => 'Delivery Fee Received',
+                        'message'    => 'We have received your ₱' . number_format($fee, 2)
+                            . ' delivery fee for order #' . strtoupper(substr((string) $order->_id, -8))
+                            . '. Nothing to pay the rider for delivery.',
+                        'is_read'    => false,
+                        'data'       => ['orderId' => (string) $order->_id, 'courierFee' => $fee],
+                        'created_at' => now(),
+                    ]);
+                    $this->postOrderCardToChat(
+                        $order,
+                        'delivery_fee_settled',
+                        'Received - thank you. Your P' . number_format($fee, 2) . ' delivery fee is '
+                            . 'settled, so there is nothing to pay the rider for the delivery itself.',
+                        ['courierFee' => $fee, 'courierFeePaid' => true]
+                    );
+                } catch (\Exception $e) {
+                    Log::warning('adminUpdate: courier fee settled notification failed', ['error' => $e->getMessage()]);
+                }
+            }
+
             // Courier-booked delivery fee: store as informational only (paid by the
-            // customer to the rider on delivery — NOT added to the shop's order total).
+            // customer to the rider on delivery - NOT added to the shop's order total).
             // Notify the customer so they have cash ready.
+            // Set before the fee block below, so the wording it chooses already knows.
+            // Undoing it has to clear the evidence too, or the next reader sees an amount and
+            // a timestamp on a fee nobody has paid.
+            if (array_key_exists('courierFeePaid', $validated)
+                && !(bool) $validated['courierFeePaid'] && $prevCourierFeePaid) {
+                $order->courierFeePaidAmount = null;
+                $order->courierFeePaidAt     = null;
+                $order->courierFeePaidMethod = null;
+                $order->courierFeePaymentRef = null;
+                $order->save();
+            }
+
+            if (array_key_exists('courierFeeOnDelivery', $validated)) {
+                $order->courierFeeOnDelivery = (bool) $validated['courierFeeOnDelivery'];
+            }
+
             if (array_key_exists('courierFee', $validated)) {
                 $newFee = (float) $validated['courierFee'];
-                $prevFee = (float) ($order->getOriginal('courierFee') ?? 0);
+                $prevFee = $prevCourierFee;
+                // update() above has already persisted it; this only keeps the in-memory model
+                // consistent for the notification payloads below.
                 $order->courierFee = $newFee;
-                $order->save();
 
-                if ($newFee > 0 && abs($newFee - $prevFee) > 0.001) {
+                // Announce it only when the customer still owes it. On a flat-rate or
+                // distance-priced order the shipping is already inside the total they paid, and
+                // telling them a delivery fee is due reads as being charged twice. The field
+                // stays writable either way - it is also how the shop records what the courier
+                // actually cost it.
+                $shippingAlreadyCharged = (float) ($order->shippingFee ?? 0) > 0;
+
+                if ($newFee > 0 && abs($newFee - $prevFee) > 0.001 && !$shippingAlreadyCharged) {
                     try {
+                        $isCOD    = PaymentMethod::isCod($order->paymentMethod);
+                        $stillDue = max(0.0, round((float) ($order->totalAmount ?? $order->totalPrice ?? 0) - $this->paidSoFar($order), 2));
+                        // What the customer actually hands over on arrival. For COD that is the
+                        // goods plus the courier; for a prepaid order it is the courier alone.
+                        $onArrival = $isCOD ? round($stillDue + $newFee, 2) : $newFee;
+
+                        // Can this courier take cash at the door? An on-demand rider can; a parcel
+                        // network cannot, and telling a provincial customer to pay the rider leaves
+                        // the shop out of pocket for a delivery it already prepaid. Defaults true:
+                        // that is what this was built for, and how any older order was booked.
+                        $onDelivery = (bool) ($order->courierFeeOnDelivery ?? true);
+                        $ref        = '#' . strtoupper(substr((string) $order->_id, -8));
+                        $peso       = '₱' . number_format($newFee, 2);
+
+                        if (!$onDelivery) {
+                            $noticeMessage = "Your delivery fee for order {$ref} is {$peso}. This one ships by parcel "
+                                . 'courier, so it is settled in My Orders before we send it out - they cannot take '
+                                . 'cash at the door.';
+                            $chatMessage = 'Your delivery fee for this order is P' . number_format($newFee, 2)
+                                . '. This one goes out through a parcel courier rather than a booked rider, so it '
+                                . 'cannot be paid on arrival. Settle it in My Orders and we will send it out. It is '
+                                . 'separate from your order total.';
+                        } elseif ($isCOD) {
+                            $noticeMessage = "Your delivery fee for order {$ref} is {$peso}. Together with your order "
+                                . 'this is ₱' . number_format($onArrival, 2) . ' to hand the rider on arrival.';
+                            $chatMessage = 'Your delivery fee for this order is P' . number_format($newFee, 2)
+                                . '. Your order is P' . number_format($stillDue, 2) . ', so please have P'
+                                . number_format($onArrival, 2) . ' ready for the rider on arrival - one payment '
+                                . 'covers both. If you would rather send the delivery part ahead, message us here '
+                                . 'for our GCash or Maya details and we will confirm it.';
+                        } elseif ($stillDue > 0.009) {
+                            $noticeMessage = "Your delivery fee for order {$ref} is {$peso}. Your order balance of ₱"
+                                . number_format($stillDue, 2) . ' is paid here in My Orders - you can add the '
+                                . 'delivery to that payment, or hand it to the rider in cash.';
+                            $chatMessage = 'Your delivery fee for this order is P' . number_format($newFee, 2)
+                                . ', and it is separate from your order. Your order balance of P'
+                                . number_format($stillDue, 2) . ' is still open in My Orders, and you can add the '
+                                . 'delivery to that payment. Or leave it and hand P' . number_format($newFee, 2)
+                                . ' to the rider in cash.';
+                        } else {
+                            $noticeMessage = "Your delivery fee for order {$ref} is {$peso}. Pay it in My Orders, or "
+                                . 'hand it to the rider in cash on arrival. It is separate from the item total.';
+                            $chatMessage = 'Your delivery fee for this order is P' . number_format($newFee, 2)
+                                . '. You can pay it in My Orders, or hand it to the rider in cash on delivery. '
+                                . 'This is the courier\'s charge - it is not part of the item total you already paid.';
+                        }
+
                         Notification::create([
                             'user_id'    => (string) $order->userId,
                             'type'       => 'delivery_fee_set',
                             'title'      => 'Delivery Fee',
-                            'message'    => 'Your delivery fee for order #' .
-                                strtoupper(substr((string) $order->_id, -8)) .
-                                ' is ₱' . number_format($newFee, 2) .
-                                '. Please prepare this amount in cash to pay the rider on delivery.',
+                            'message'    => $noticeMessage,
                             'is_read'    => false,
                             'data'       => ['orderId' => (string) $order->_id, 'courierFee' => $newFee],
                             'created_at' => now(),
                         ]);
+                        $this->postOrderCardToChat(
+                            $order,
+                            'delivery_fee',
+                            $chatMessage,
+                            ['courierFee' => $newFee, 'courierFeeOnDelivery' => $onDelivery]
+                        );
+
+                        $to = $order->userSnapshot['email'] ?? null;
+                        if ($to) {
+                            $first = trim((string) ($order->userSnapshot['name'] ?? ''));
+                            $first = $first !== '' ? explode(' ', $first)[0] : 'there';
+                            Mail::to($to)->send(new DeliveryFeeMail(
+                                $first,
+                                (string) $order->_id,
+                                $newFee,
+                                (float) ($order->totalAmount ?? 0),
+                                $isCOD,
+                                $onArrival,
+                                $onDelivery
+                            ));
+                        }
                     } catch (\Exception $e) {
                         Log::warning('adminUpdate: courier fee notification failed', ['error' => $e->getMessage()]);
                     }
@@ -1353,13 +1577,23 @@ class OrderController extends Controller
             }
 
             // Handle cancellation: cancel linked JobOrder and restore inventory
-            if (isset($validated['orderStatus']) && $order->orderStatus === 'Cancelled' && $oldStatus !== 'Cancelled') {
+            // Compared through normalize: the dropdown sends "Cancelled" but the Cancel button sends
+            // "cancelled", and an exact match meant the button cancelled without returning stock.
+            if (isset($validated['orderStatus']) && OrderStatus::normalize($order->orderStatus) === OrderStatus::CANCELLED
+                && OrderStatus::normalize($oldStatus) !== OrderStatus::CANCELLED) {
+                $jobStages = $this->jobStagesFor($order);
+                $keepBack  = (array) $request->input('stockSettlement', []);
                 $this->cancelLinkedJobOrder($order);
-                $this->restoreStockOnCancel($order);
+                $this->restoreStockOnCancel($order, $jobStages, $keepBack);
+                // The Orders screen sends the reason and the refund figure here, and this path
+                // dropped both: a shop cancellation recorded no reason, no "cancelled by" and no
+                // refund owed. Same bookkeeping as the status route now.
+                $this->recordShopCancellation($order, $request, $request->user(), (string) $oldStatus);
             }
 
             // Handle return: restore inventory
-            if (isset($validated['orderStatus']) && $order->orderStatus === 'Returned' && $oldStatus !== 'Returned') {
+            if (isset($validated['orderStatus']) && OrderStatus::normalize($order->orderStatus) === OrderStatus::RETURNED
+                && OrderStatus::normalize($oldStatus) !== OrderStatus::RETURNED) {
                 $this->restoreInventoryOnReturn($order);
             }
 
@@ -1367,7 +1601,7 @@ class OrderController extends Controller
             // Balance-due-before-delivery reminder when an admin moves the order to Ready for Delivery.
             if (isset($validated['orderStatus']) && $oldStatus !== $order->orderStatus
                 && OrderStatus::normalize($order->orderStatus) === OrderStatus::READY_FOR_DELIVERY) {
-                $rfdCOD     = strtolower((string) ($order->paymentMethod ?? '')) === 'cod';
+                $rfdCOD     = PaymentMethod::isCod($order->paymentMethod);
                 $rfdBalance = $order->balance !== null && $order->balance !== ''
                     ? (float) $order->balance
                     : max(0, (float) ($order->totalAmount ?? 0) - (float) ($order->downPayment ?? 0));
@@ -1417,32 +1651,37 @@ class OrderController extends Controller
             }
 
             // Handle completion: Create sales records and deduct inventory
-            if ($order->orderStatus === 'Delivered' && $oldStatus !== 'Delivered') {
+            if (OrderStatus::normalize($order->orderStatus) === OrderStatus::DELIVERED
+                && OrderStatus::normalize($oldStatus) !== OrderStatus::DELIVERED) {
                 $this->completeOrder($order);
             }
 
-            // Notify customer if status changed
-            if (isset($validated['orderStatus']) && $oldStatus !== $order->orderStatus) {
-                try {
-                    $customerEmail = $order->userSnapshot['email']
-                        ?? optional(User::find($order->userId))->email
-                        ?? null;
-                    $customerName  = $order->userSnapshot['name'] ?? '';
-                    $firstName     = explode(' ', trim($customerName))[0] ?? 'Customer';
-                    if ($customerEmail) {
-                        Mail::to($customerEmail)->send(new OrderStatusMail(
-                            firstName:   $firstName,
-                            orderId:     (string) $order->_id,
-                            newStatus:   $order->orderStatus,
-                            totalAmount: (float) ($order->totalAmount ?? 0)
-                        ));
-                    }
-                } catch (\Exception $e) {
-                    Log::error('OrderController @adminUpdate: Failed to send status email', [
-                        'order_id' => (string) $order->_id,
-                        'error'    => $e->getMessage(),
-                    ]);
-                }
+            // Delivered means collected. This lived only in updateStatus, which the Orders screen
+            // does not call - so a COD order marked Delivered here wrote its Sale rows and still
+            // read Unpaid, and the owner had to record the cash by hand every time.
+            if (OrderStatus::normalize($order->orderStatus) === OrderStatus::DELIVERED) {
+                $this->settleOnDelivered($order, $request->user());
+            }
+
+            // Leaving the shop: anything owed from the shelf is taken now. See App\Support\Backorder.
+            if (!empty($order->backorders)
+                && in_array(OrderStatus::normalize($order->orderStatus), [OrderStatus::FOR_DELIVERY, OrderStatus::DELIVERED], true)) {
+                Backorder::settle($order, fn ($inv, $qty) => $this->deductInventoryFIFO(
+                    inventory:    $inv,
+                    qty:          $qty,
+                    reason:       'sale_backorder',
+                    orderId:      (string) $order->_id,
+                    customerName: $order->userSnapshot['name'] ?? '',
+                ));
+            }
+
+            // One announcer for every path: the bell as well as the email, and it carries the
+            // unpaid delivery fee and the courier - the two things a customer needs at the end.
+            // notifyCustomer=false is only sent by orders:close-abandoned, which closes test orders in
+            // bulk; a "your order is on its way" to a survey participant would only confuse.
+            if (isset($validated['orderStatus']) && $oldStatus !== $order->orderStatus
+                && $request->boolean('notifyCustomer', true)) {
+                OrderNotifier::statusChanged($order, $oldStatus);
             }
 
             return $this->successResponse('Order updated successfully.', $order);
@@ -1466,15 +1705,18 @@ class OrderController extends Controller
 
             $cacheKey = 'admin_order_stats_' . md5($request->getQueryString() ?? '');
             $data = Cache::remember($cacheKey, 30, function () use ($request) {
+                // Checkouts still being paid, or whose payment failed, are not orders.
                 $base = Order::query()
+                    ->where('checkoutPending', '!=', true)
+                    ->where('voidedCheckout', '!=', true)
                     ->when($request->filled('startDate'), fn($q) => $q->where('createdAt', '>=', $request->startDate))
                     ->when($request->filled('endDate'),   fn($q) => $q->where('createdAt', '<=', $request->endDate));
 
                 $totalOrders     = (clone $base)->count();
-                $pendingOrders   = (clone $base)->where('orderStatus', 'Pending')->count();
-                $completedOrders = (clone $base)->where('orderStatus', 'Delivered')->count();
-                $cancelledOrders = (clone $base)->where('orderStatus', 'Cancelled')->count();
-                $totalRevenue    = (clone $base)->where('orderStatus', 'Delivered')->sum('totalAmount');
+                $pendingOrders   = (clone $base)->whereIn('orderStatus', OrderStatus::spellings(OrderStatus::PENDING))->count();
+                $completedOrders = (clone $base)->whereIn('orderStatus', OrderStatus::spellings(OrderStatus::DELIVERED))->count();
+                $cancelledOrders = (clone $base)->whereIn('orderStatus', OrderStatus::spellings(OrderStatus::CANCELLED))->count();
+                $totalRevenue    = (clone $base)->whereIn('orderStatus', OrderStatus::spellings(OrderStatus::DELIVERED))->sum('totalAmount');
 
                 $cancellationRate = $totalOrders > 0
                     ? round(($cancelledOrders / $totalOrders) * 100, 2)
@@ -1499,10 +1741,61 @@ class OrderController extends Controller
     /**
      * Processes completion of an order: creates sales and deducts stock.
      */
+    /**
+     * What delivery settles.
+     *
+     * Called on every save of a delivered order, not only on the transition into Delivered: an
+     * order marked delivered before these rules existed can never cross that edge again, so keying
+     * on what is TRUE NOW also repairs the ones already stuck.
+     *
+     * Two separate pots of money:
+     *   - COD goods. The rider handed the cash over; a delivered COD order is a paid one. Leaving
+     *     it unpaid put the sale in Reports while the order still showed a balance - two records of
+     *     one transaction disagreeing, reconciled by hand every time.
+     *   - The delivery fee, only when the RIDER collects it. The customer paid the rider on
+     *     arrival, so nothing is outstanding. A parcel order is left alone: a parcel courier takes
+     *     no cash at the door, so an unpaid fee there is genuinely unpaid and must stay visible.
+     */
+    private function settleOnDelivered(Order $order, $user = null): void
+    {
+        $by = trim((string) (($user->firstName ?? '') . ' ' . ($user->lastName ?? ''))) ?: 'system';
+
+        if (PaymentMethod::isCod($order->paymentMethod)) {
+            $total = (float) ($order->totalAmount ?? $order->totalPrice ?? 0);
+            $due   = round($total - $this->paidSoFar($order), 2);
+            if ($due > 0.009) {
+                $history   = $order->paymentHistory ?? [];
+                $history[] = [
+                    'amount'     => $due,
+                    'method'     => 'cod',
+                    'reference'  => 'Collected on delivery',
+                    'paidAt'     => now()->toISOString(),
+                    'recordedBy' => $by,
+                ];
+                $order->paymentHistory = $history;
+                $order->downPayment    = $total;
+                $order->balance        = 0;
+                $order->paymentStatus  = 'paid';
+                $order->save();
+            }
+        }
+
+        $fee = (float) ($order->courierFee ?? 0);
+        if ($fee > 0.009
+            && !($order->courierFeePaid ?? false)
+            && ($order->courierFeeOnDelivery ?? true)) {
+            $order->courierFeePaid       = true;
+            $order->courierFeePaidAmount = $fee;
+            $order->courierFeePaidAt     = now();
+            $order->courierFeePaidMethod = 'rider_cash';
+            $order->save();
+        }
+    }
+
     private function completeOrder(Order $order): void
     {
         try {
-            // Idempotency guard — if sales already exist for this order, skip entirely
+            // Idempotency guard - if sales already exist for this order, skip entirely
             $existingSale = Sale::where('notes', 'like', '%' . ($order->orderId ?? $order->_id) . '%')->first();
             if ($existingSale) {
                 Log::warning('completeOrder: sales already exist for order, skipping to prevent duplication', [
@@ -1565,25 +1858,8 @@ class OrderController extends Controller
                 ]);
 
                 // 3. Increment Flash Sale stockUsed (if item was part of a flash sale)
-                if (!empty($item['flashSaleId'])) {
-                    try {
-                        $flashSale = FlashSale::find($item['flashSaleId']);
-                        if ($flashSale && $flashSale->isActive) {
-                            $flashSale->stockUsed = ($flashSale->stockUsed ?? 0) + $item['qty'];
-                            if ($flashSale->stockLimit !== null &&
-                                $flashSale->stockUsed >= $flashSale->stockLimit) {
-                                $flashSale->isActive = false;
-                            }
-                            $flashSale->save();
-                        }
-                    } catch (\Exception $flashErr) {
-                        Log::warning('completeOrder: failed to update flash sale stockUsed', [
-                            'orderId'     => (string) $order->_id,
-                            'flashSaleId' => $item['flashSaleId'],
-                            'error'       => $flashErr->getMessage(),
-                        ]);
-                    }
-                }
+                // The flash sale's sold count is raised once, when the order is placed. Raising it again
+                // here counted every unit twice, so a sale capped at 100 stopped at 50 real units.
 
                 // BOM materials are deducted at order creation (store/initiatePayment), not here.
             }
@@ -1628,7 +1904,7 @@ class OrderController extends Controller
                 'requested'   => $qty,
                 'available'   => $available,
             ]);
-            // Fall back to stockQty only — batches may be unpopulated
+            // Fall back to stockQty only - batches may be unpopulated
             $inventory->stockQty = max(0, (int) ($inventory->stockQty ?? 0) - $qty);
             $inventory->updatedAt = now();
             $inventory->save();
@@ -1791,7 +2067,10 @@ class OrderController extends Controller
 
             $showArchived = $request->boolean('showArchived', false);
 
+            // Not orders yet: a checkout still being paid, or one whose payment failed.
             $query = Order::select($this->orderListFields())
+                ->where('checkoutPending', '!=', true)
+                ->where('voidedCheckout', '!=', true)
                 ->orderBy('createdAt', 'desc')
                 ->skip($skip)
                 ->limit($limit);
@@ -1812,6 +2091,39 @@ class OrderController extends Controller
      * GET /api/orders/{id}
      * Returns a single order by ID (new schema).
      */
+    /**
+     * The customer's own receipt, as a file.
+     *
+     * Scoped to the signed-in customer's orders: a receipt carries an address and a phone number,
+     * so it is never fetched by id alone.
+     */
+    public function myReceiptPdf(Request $request, $id)
+    {
+        try {
+            $user = $request->user();
+            if (!$user) {
+                return $this->unauthorizedResponse();
+            }
+
+            $order = Order::where('_id', $id)->where('userId', (string) $user->_id)->first();
+            if (!$order) {
+                return $this->notFoundResponse('Order');
+            }
+
+            $pdf = \App\Support\ReceiptPdf::forOrder((string) $order->_id);
+            if (!$pdf) {
+                return $this->errorResponse('We could not build that receipt just now.', 500);
+            }
+
+            return response($pdf, 200, [
+                'Content-Type'        => 'application/pdf',
+                'Content-Disposition' => 'attachment; filename="' . \App\Support\ReceiptPdf::filename((string) $order->_id) . '"',
+            ]);
+        } catch (\Exception $e) {
+            return $this->serverErrorResponse($e, 'Failed to build the receipt.');
+        }
+    }
+
     public function show(Request $request, $id)
     {
         try {
@@ -1829,7 +2141,7 @@ class OrderController extends Controller
             $order = Order::find($id);
 
             // Fall back to suffix match if not found and input looks like a short code
-            // (8 hex chars, case-insensitive — matches the #XXXXXXXX shown on receipts)
+            // (8 hex chars, case-insensitive - matches the #XXXXXXXX shown on receipts)
             if (!$order && preg_match('/^[0-9a-fA-F]{8}$/', $id)) {
                 $order = Order::whereRaw([
                     '$expr' => [
@@ -1880,7 +2192,7 @@ class OrderController extends Controller
             }
 
             // Phase 1: validate transitions canonically (casing-tolerant) but STORE the raw value
-            // unchanged — the admin Orders UI still reads the legacy casing until its focused rewire.
+            // unchanged - the admin Orders UI still reads the legacy casing until its focused rewire.
             $newRaw    = $validated['orderStatus'];
             $oldStatus = OrderStatus::normalize($order->orderStatus);
             $newStatus = OrderStatus::normalize($newRaw);
@@ -1898,7 +2210,7 @@ class OrderController extends Controller
                 ], 422);
             }
 
-            // Payment gate — downpayment required before entering production
+            // Payment gate - downpayment required before entering production
             // COD orders are exempt from this gate if paymentMethod is 'cod'
             // or if at least one payment has been recorded via paymentHistory.
             if ($newStatus === OrderStatus::IN_PRODUCTION) {
@@ -1907,7 +2219,7 @@ class OrderController extends Controller
                 $paymentHistory = $order->paymentHistory ?? [];
                 $paymentStatus  = $order->paymentStatus ?? '';
 
-                $hasCodMethod    = $paymentMethod === 'cod';
+                $hasCodMethod    = PaymentMethod::isCod($paymentMethod);
                 $hasAnyPayment   = $downPayment > 0 || count($paymentHistory) > 0 || $paymentStatus === 'paid';
 
                 if (!$hasCodMethod && !$hasAnyPayment) {
@@ -1917,14 +2229,45 @@ class OrderController extends Controller
                 }
             }
 
+            // Nothing to produce means no production stage. The same rule lives in adminUpdate, but
+            // the admin UI posts status changes HERE - so a guard that existed only there was never
+            // once consulted by the screen the owner actually uses.
+            if ($newStatus === OrderStatus::IN_PRODUCTION) {
+                $produces = collect($order->items ?? [])->contains(fn ($it) =>
+                    !empty($it['isCustom']) || !empty($it['isMadeToOrder'])
+                    || !empty($it['designRequested']) || !empty($it['designUrl'])
+                    || !empty($it['designFiles'])
+                );
+                if (!$produces) {
+                    return response()->json([
+                        'error' => 'Nothing on this order has to be produced - it is ready-made stock. Send it straight to delivery.',
+                    ], 422);
+                }
+            }
+
+            // Every job order has to have passed QC before the goods can leave. adminUpdate enforces
+            // this and this path did not, so the release that Quality Control owns could be taken
+            // from the Orders screen instead.
+            if (in_array($newStatus, [OrderStatus::READY_FOR_DELIVERY, OrderStatus::FOR_DELIVERY, OrderStatus::DELIVERED], true)) {
+                $openJobs = \App\Models\JobOrder::where('orderId', (string) $order->_id)->get()
+                    ->filter(fn ($j) => !in_array($j->joStatus, ['QC_Passed', 'Completed', 'Cancelled'], true));
+                if ($openJobs->isNotEmpty()) {
+                    return response()->json([
+                        'error' => $openJobs->count() . ' job order(s) have not passed QC yet. The order is released for delivery by Quality Control.',
+                    ], 422);
+                }
+            }
+
             // Courier required when moving to Out for Delivery
             if ($newStatus === OrderStatus::FOR_DELIVERY) {
                 $validated2 = $request->validate([
                     'courierName'    => 'required|string|max:100',
                     'trackingNumber' => 'nullable|string|max:200',
+                    'trackingUrl'    => 'nullable|string|max:500',
                 ]);
                 $order->courierName    = $validated2['courierName'];
                 $order->trackingNumber = $validated2['trackingNumber'] ?? null;
+                $order->trackingUrl    = $validated2['trackingUrl'] ?? null;
             }
 
             $order->orderStatus    = $newRaw;
@@ -1950,10 +2293,25 @@ class OrderController extends Controller
                 $this->completeOrder($order);
             }
 
+            // Settled on EVERY save of a delivered COD order, not only on the transition into
+            // Delivered. An order marked delivered before this rule existed can never cross that
+            // edge again, so it sat delivered and unpaid forever with no way back but recording the
+            // payment by hand - which is the bug this rule was written to remove. Keyed on what is
+            // true now (delivered, COD, still owing) rather than on catching a moment, it also
+            // repairs the ones already stuck.
+            if ($newStatus === OrderStatus::DELIVERED) {
+                $this->settleOnDelivered($order, $user);
+            }
+
             // Handle cancellation: cancel linked JobOrder and restore inventory
             if ($newStatus === OrderStatus::CANCELLED) {
+                $jobStages = $this->jobStagesFor($order);
+                $keepBack  = (array) $request->input('stockSettlement', []);
                 $this->cancelLinkedJobOrder($order);
-                if ($oldStatus !== OrderStatus::CANCELLED) $this->restoreStockOnCancel($order);
+                if ($oldStatus !== OrderStatus::CANCELLED) {
+                    $this->restoreStockOnCancel($order, $jobStages, $keepBack);
+                    $this->recordShopCancellation($order, $request, $user, (string) ($order->getOriginal('orderStatus') ?? ''));
+                }
             }
 
             // Handle return: restore inventory
@@ -1989,28 +2347,21 @@ class OrderController extends Controller
                 ]);
             }
 
-            // Notify customer on status change
+            // Leaving the shop: anything owed from the shelf is taken now. See App\Support\Backorder.
+            if (!empty($order->backorders)
+                && in_array(OrderStatus::normalize($order->orderStatus), [OrderStatus::FOR_DELIVERY, OrderStatus::DELIVERED], true)) {
+                Backorder::settle($order, fn ($inv, $qty) => $this->deductInventoryFIFO(
+                    inventory:    $inv,
+                    qty:          $qty,
+                    reason:       'sale_backorder',
+                    orderId:      (string) $order->_id,
+                    customerName: $order->userSnapshot['name'] ?? '',
+                ));
+            }
+
+            // Same announcer as adminUpdate - one place decides what a stage sounds like.
             if ($oldStatus !== $order->orderStatus) {
-                try {
-                    $customerEmail = $order->userSnapshot['email']
-                        ?? optional(User::find($order->userId))->email
-                        ?? null;
-                    $customerName  = $order->userSnapshot['name'] ?? '';
-                    $firstName     = explode(' ', trim($customerName))[0] ?? 'Customer';
-                    if ($customerEmail) {
-                        Mail::to($customerEmail)->send(new OrderStatusMail(
-                            firstName:   $firstName,
-                            orderId:     (string) $order->_id,
-                            newStatus:   $order->orderStatus,
-                            totalAmount: (float) ($order->totalAmount ?? 0)
-                        ));
-                    }
-                } catch (\Exception $e) {
-                    Log::error('OrderController @updateStatus: Failed to send status email', [
-                        'order_id' => (string) $order->_id,
-                        'error'    => $e->getMessage(),
-                    ]);
-                }
+                OrderNotifier::statusChanged($order, $oldStatus);
             }
 
             return response()->json([
@@ -2034,11 +2385,247 @@ class OrderController extends Controller
      */
     public function releaseReservationsFor(Order $order): void
     {
-        $this->restoreStockOnCancel($order);
+        $this->restoreStockOnCancel($order, $this->jobStagesFor($order));
     }
 
-    private function restoreStockOnCancel(Order $order): void
+    /**
+     * How far each item got, keyed by itemIndex, read BEFORE the job orders are cancelled.
+     *
+     * cancelLinkedJobOrder() sets every open JO to Cancelled, which destroys the only record of
+     * whether anything had actually been pulled and worked on. Read it first or the settlement
+     * below has nothing to decide with - the same ordering trap that made the courier-fee
+     * notification compare a value to itself.
+     */
+    private function jobStagesFor(Order $order): array
     {
+        $stages = [];
+        try {
+            foreach (\App\Models\JobOrder::where('orderId', (string) $order->_id)->get() as $jo) {
+                $idx = $jo->itemIndex;
+                if ($idx === null) continue;
+                $stages[(int) $idx] = (string) ($jo->joStatus ?? '');
+            }
+        } catch (\Throwable $e) {
+            Log::warning('jobStagesFor failed', ['order' => (string) $order->_id, 'error' => $e->getMessage()]);
+        }
+        return $stages;
+    }
+
+    /**
+     * POST /api/cart/availability
+     *
+     * What a cart would be refused for, before the customer has typed an address.
+     *
+     * The gate itself lives at order creation, where it has to be - that is the only moment a
+     * claim can be made atomically. But finding out there means finding out after the delivery
+     * address, the delivery speed and the payment method, which is a bad place to learn that a
+     * quantity was never possible. This asks the same question read-only, so the cart can say so
+     * while the customer is still looking at the line they would change.
+     *
+     * Read-only and approximate by nature: someone else can take the last boxes between this call
+     * and checkout. That is why the real refusal stays where it is.
+     */
+    public function cartAvailability(Request $request)
+    {
+        try {
+            $items = $request->input('items', []);
+            if (!is_array($items) || empty($items)) {
+                return $this->successResponse('Nothing to check.', ['ok' => true, 'shortages' => []]);
+            }
+
+            // Same shape MaterialClaim reads at checkout, so the two cannot answer differently.
+            // Every line is kept at its index (the client maps the answer back by position); a line
+            // the customer has not ticked is `selected: false` - it still gets a ceiling, but it is
+            // not part of the checkout the shortage warning is about.
+            $lines    = [];
+            $selected = [];
+            foreach (array_slice($items, 0, 50) as $idx => $item) {
+                $lines[$idx] = [
+                    'productId' => $item['productId'] ?? null,
+                    'variantId' => $item['variantId'] ?? null,
+                    'qty'       => max(0, (int) ($item['qty'] ?? 0)),
+                ];
+                $selected[$idx] = !array_key_exists('selected', $item) || (bool) $item['selected'];
+            }
+            $checkoutLines = array_values(array_filter($lines, fn ($l, $i) => $selected[$i] && $l['qty'] > 0, ARRAY_FILTER_USE_BOTH));
+
+            // Only the gated half. A pre-order line is allowed past the shelf at checkout, so
+            // warning about it here would contradict the very gate this mirrors.
+            $shortages = [];
+            foreach (MaterialClaim::demandSplit($checkoutLines)['gated'] as $invId => $needed) {
+                $inv = Inventory::find($invId);
+                if (!$inv) continue;
+
+                $available = max(0, (int) ($inv->stockQty ?? 0) - (int) ($inv->reservedQty ?? 0));
+                if ($needed <= $available) continue;
+
+                $shortages[] = [
+                    'name'      => $inv->name,
+                    'uom'       => $inv->uom,
+                    'available' => $available,
+                    'needed'    => (int) $needed,
+                    'short'     => (int) $needed - $available,
+                ];
+            }
+
+            // Each line's ceiling - what the + button should stop at. The cart used to guess this
+            // from a snapshot taken when the line was added, and fell back to a flat 99 whenever the
+            // snapshot had no trackInventory flag, which is how a mug with fifty blanks accepted
+            // ninety-nine. And it was each line ALONE: two lines drawing on the same box each got the
+            // whole box, so 50 + 50 of a 50-blank mousepad passed the + button and only the checkout
+            // said no. What the other ticked lines already take is subtracted first.
+            $lineDemand   = [];   // idx => [inventoryId => units this line needs]
+            $sharedDemand = [];   // inventoryId => units every ticked line needs together
+            foreach ($lines as $idx => $line) {
+                $product = Product::find($line['productId'] ?? null);
+                $bom     = MaterialClaim::bomFor($product, $line['variantId'] ?? null);
+                foreach (($bom->components ?? []) as $component) {
+                    $invId = (string) ($component['inventoryId'] ?? '');
+                    $qpu   = (float) ($component['qty'] ?? 0);
+                    if ($invId === '' || $qpu <= 0) continue;
+                    $units = (int) ceil($line['qty'] * $qpu);
+                    $lineDemand[$idx][$invId] = $units;
+                    if ($selected[$idx]) $sharedDemand[$invId] = ($sharedDemand[$invId] ?? 0) + $units;
+                }
+            }
+
+            $maxes = [];
+            foreach ($lines as $idx => $line) {
+                $product = Product::find($line['productId'] ?? null);
+                // Past "Ask for a quote above" the quantity is quoted, not sold - the cart stops there
+                // too, whatever the stock would allow.
+                $quoteCap = (int) ($product->quoteAboveQty ?? 0) > 0 ? (int) $product->quoteAboveQty : null;
+                $bom     = MaterialClaim::bomFor($product, $line['variantId'] ?? null);
+                if (!$bom || empty($bom->components)) { $maxes[$idx] = $quoteCap; continue; }
+                // Null = no ceiling. On a pre-order line there genuinely is none.
+                if ((bool) ($product->allowPreorder ?? false)) { $maxes[$idx] = $quoteCap; continue; }
+
+                $max = null;
+                foreach ($bom->components as $component) {
+                    $inv = Inventory::find($component['inventoryId'] ?? null);
+                    if (!$inv || $inv->isOnDemand) continue;
+                    $qpu = (float) ($component['qty'] ?? 0);
+                    if ($qpu <= 0) continue;
+                    $free = max(0, (int) ($inv->stockQty ?? 0) - (int) ($inv->reservedQty ?? 0));
+                    $invKey = (string) $inv->_id;
+                    $others = ($sharedDemand[$invKey] ?? 0) - ($selected[$idx] ? ($lineDemand[$idx][$invKey] ?? 0) : 0);
+                    $can  = (int) floor(max(0, $free - $others) / $qpu);
+                    $max  = $max === null ? $can : min($max, $can);
+                }
+                // Null means nothing counted constrains it - not zero. Zero here would read as
+                // "sold out" on a product whose every material is cost-only.
+                if ($quoteCap !== null) $max = $max === null ? $quoteCap : min($max, $quoteCap);
+                $maxes[$idx] = $max;
+            }
+
+            return $this->successResponse('Availability checked.', [
+                'ok'        => empty($shortages),
+                'shortages' => $shortages,
+                'lineMax'   => $maxes,
+            ]);
+        } catch (\Exception $e) {
+            // Never break a cart over a check that only exists to be helpful.
+            Log::warning('cartAvailability failed', ['error' => $e->getMessage()]);
+            return $this->successResponse('Availability unavailable.', ['ok' => true, 'shortages' => []]);
+        }
+    }
+
+    /**
+     * GET /api/admin/orders/{id}/cancel-settlement
+     *
+     * What cancelling this order would do to inventory, per material. Read-only - it decides
+     * nothing, it reports what the settlement below is going to do, so the modal cannot show a
+     * plan the code then contradicts.
+     */
+    public function cancelSettlement(Request $request, $id)
+    {
+        try {
+            if (!$this->hasPermission($request, 'orders.edit')) {
+                return $this->unauthorizedResponse();
+            }
+            $order = Order::find($id);
+            if (!$order) return $this->notFoundResponse('Order');
+
+            $stages = $this->jobStagesFor($order);
+            $rows   = [];
+
+            foreach (($order->items ?? []) as $itemIdx => $item) {
+                $product = Product::find($item['productId'] ?? null);
+                if (!$product) continue;
+
+                $produced = \App\Support\OrderLine::isProduced($product, (array) $item);
+                $stage    = $stages[$itemIdx] ?? null;
+
+                $action = !$produced
+                    ? 'restock'
+                    : ($this->stageAlreadySettled($stage) ? 'none'
+                        : ($this->stageConsumedMaterial($stage) ? 'consume' : 'release'));
+
+                $variantId = $item['variantId'] ?? null;
+                $bom       = $product->resolveBom($variantId);
+                $materials = [];
+
+                foreach (($bom->components ?? []) as $component) {
+                    $inv = Inventory::find($component['inventoryId'] ?? null);
+                    if (!$inv || $inv->isOnDemand) continue;
+                    $qty = (int) round(($component['qty'] ?? 0) * ($item['qty'] ?? 0));
+                    if ($qty <= 0) continue;
+
+                    $materials[] = [
+                        'inventoryId' => (string) $inv->_id,
+                        'name'        => $inv->name,
+                        'uom'         => $inv->uom,
+                        'qty'         => $qty,
+                        'onHand'      => (int) ($inv->stockQty ?? 0),
+                        'unitCost'    => round($this->unitCostOf($inv), 2),
+                    ];
+                }
+
+                $rows[] = [
+                    'itemIndex'   => (int) $itemIdx,
+                    'itemName'    => $item['productName'] ?? ($product->name ?? 'Item'),
+                    'variantName' => $item['variantName'] ?? null,
+                    'qty'         => (int) ($item['qty'] ?? 0),
+                    'produced'    => $produced,
+                    'jobStage'    => $stage,
+                    'action'      => $action,
+                    'materials'   => $materials,
+                ];
+            }
+
+            return $this->successResponse('Cancel settlement computed.', [
+                'orderRef' => strtoupper(substr((string) $order->_id, -8)),
+                'paidSoFar'=> round($this->paidSoFar($order), 2),
+                'items'    => $rows,
+            ]);
+        } catch (\Throwable $e) {
+            return $this->serverErrorResponse($e, 'Failed to compute the cancellation settlement.');
+        }
+    }
+
+    /** Material was pulled from the shelf and worked on, so it cannot go back. */
+    private function stageConsumedMaterial(?string $joStatus): bool
+    {
+        return in_array($joStatus, ['In Progress', 'QC_Pending', 'QC_Failed'], true);
+    }
+
+    /** QC pass already cut stockQty and released the reservation - nothing left to settle. */
+    private function stageAlreadySettled(?string $joStatus): bool
+    {
+        return in_array($joStatus, ['QC_Passed', 'Completed'], true);
+    }
+
+    /**
+     * @param array $keepBack inventoryId => how many units survived and go back on the shelf.
+     *        Only consulted for material that would otherwise be written off. The person at the
+     *        bench is the only one who knows the box was never opened while the mug was printed,
+     *        so the stage decides the default and they decide the exception.
+     */
+    private function restoreStockOnCancel(Order $order, array $jobStages = [], array $keepBack = []): void
+    {
+        // Every cancel path comes through here, so this is where the promotions go back too.
+        PromotionRelease::forCancelledOrder($order);
+
         try {
             foreach ($order->items as $item) {
                 $product = Product::find($item['productId'] ?? null);
@@ -2048,7 +2635,7 @@ class OrderController extends Controller
                 $qty = (int) ($item['qty'] ?? 0);
                 if ($qty <= 0) continue;
 
-                // Atomic restore — mirrors the atomic reservation on order creation
+                // Atomic restore - mirrors the atomic reservation on order creation
                 $updated = DB::connection('mongodb')
                     ->getCollection('inventories')
                     ->findOneAndUpdate(
@@ -2091,8 +2678,81 @@ class OrderController extends Controller
                 }
             }
 
+            // A quote-converted order holds materials the ADMIN chose when drafting the quote,
+            // in the admin's own quantities - not the product's BOM. Releasing it through the
+            // BOM path below would release the wrong amount, or nothing at all when the quoted
+            // service has no BOM, and the real hold would never come back. Release what was
+            // actually taken, then skip the BOM path so nothing is released twice.
+            // quoteDeductions marks the current format: holds (produced), takes (ready-made) and
+            // owed amounts are recorded apart, because each one comes back differently.
+            if (isset($order->quoteDeductions) || !empty($order->quoteReservations)) {
+                foreach ($order->quoteDeductions ?? [] as $taken) {
+                    try {
+                        $inv = Inventory::find($taken['inventoryId'] ?? null);
+                        $qty = (int) ($taken['qty'] ?? 0);
+                        if (!$inv || $inv->isOnDemand || $qty <= 0) continue;
+                        $updated = DB::connection('mongodb')->getCollection('inventories')->findOneAndUpdate(
+                            ['_id' => new \MongoDB\BSON\ObjectId((string) $inv->_id)],
+                            ['$inc' => ['stockQty' => $qty]],
+                            ['returnDocument' => \MongoDB\Operation\FindOneAndUpdate::RETURN_DOCUMENT_AFTER]
+                        );
+                        StockHistory::create([
+                            'inventoryId'  => (string) $inv->_id,
+                            'quantity'     => $qty,
+                            'remainingQty' => (int) ($updated->stockQty ?? 0),
+                            'unitCost'     => $this->unitCostOf($inv),
+                            'totalCost'    => 0,
+                            'reason'       => 'order_cancelled',
+                            'type'         => 'adjustment',
+                            'performedBy'  => 'system',
+                            'orderId'      => (string) $order->_id,
+                            'customerName' => $order->userSnapshot['name'] ?? '',
+                            'remarks'      => 'Quote order cancelled (ready-made returned to shelf): ' . (string) $order->_id,
+                            'createdAt'    => now(),
+                        ]);
+                    } catch (\Throwable $e) {
+                        Log::warning('restoreStockOnCancel: quote deduction restore failed', ['orderId' => (string) $order->_id, 'error' => $e->getMessage()]);
+                    }
+                }
+                Backorder::releaseForCancel($order);
+                foreach ($order->quoteReservations ?? [] as $held) {
+                    try {
+                        $inv = Inventory::find($held['inventoryId'] ?? null);
+                        $qty = (int) ($held['qty'] ?? 0);
+                        if (!$inv || $inv->isOnDemand || $qty <= 0) continue;
+                        $inv->reservedQty = max(0, (int) ($inv->reservedQty ?? 0) - $qty);
+                        $inv->save();
+                        StockHistory::create([
+                            'inventoryId'  => (string) $inv->_id,
+                            'quantity'     => $qty,
+                            'remainingQty' => (int) ($inv->stockQty ?? 0),
+                            'unitCost'     => $this->unitCostOf($inv),
+                            'totalCost'    => 0,
+                            'reason'       => 'reservation_released',
+                            'type'         => 'reservation',
+                            'performedBy'  => 'system',
+                            'orderId'      => (string) $order->_id,
+                            'customerName' => $order->userSnapshot['name'] ?? '',
+                            'remarks'      => 'Quote order cancelled (reservation released): ' . (string) $order->_id,
+                            'createdAt'    => now(),
+                        ]);
+                    } catch (\Throwable $e) {
+                        Log::warning('restoreStockOnCancel: quote reservation release failed', [
+                            'orderId' => (string) $order->_id,
+                            'error'   => $e->getMessage(),
+                        ]);
+                    }
+                }
+                return;
+            }
+
+            // Owed units of a ready-made line were held, never taken off the shelf - they are
+            // released, and only the part that was actually taken goes back into stock.
+            $owedLeft = Backorder::owedMap($order);
+            Backorder::releaseForCancel($order);
+
             // Restore BOM raw materials deducted at order creation
-            foreach ($order->items as $item) {
+            foreach ($order->items as $itemIdx => $item) {
                 $bomProduct = Product::find($item['productId'] ?? null);
                 if (!$bomProduct) continue;
                 $variantId = $item['variantId'] ?? null;
@@ -2122,7 +2782,55 @@ class OrderController extends Controller
                         $qty = (int) round(($component['qty'] ?? 0) * ($item['qty'] ?? 0));
                         if ($qty <= 0) continue;
                         if ($producedItem) {
+                            $stage = $jobStages[$itemIdx] ?? null;
+
+                            // Already consumed at QC pass - stockQty was cut and the reservation
+                            // released there. Touching it again would resurrect burnt material.
+                            if ($this->stageAlreadySettled($stage)) {
+                                continue;
+                            }
+
                             // Materials were RESERVED (consumed only at QC) → release the reservation.
+                            // But a reservation is only releasable while the material is still on
+                            // the shelf. Once the job started, the mug carries someone's name and
+                            // the transfer paper is spent: releasing it says "available again"
+                            // about something that no longer exists. So past that point it is
+                            // consumed and recorded as spoilage instead, which is what the deposit
+                            // is there to cover.
+                            if ($this->stageConsumedMaterial($stage)) {
+                                // Whatever survived stays on the shelf; only the rest is written
+                                // off. Clamped to what this line actually held, so a mistyped
+                                // figure cannot invent stock.
+                                $saved  = max(0, min($qty, (int) ($keepBack[(string) $rawInv->_id] ?? 0)));
+                                $spoiled = $qty - $saved;
+
+                                $rawInv->stockQty    = max(0, (int) ($rawInv->stockQty ?? 0) - $spoiled);
+                                $rawInv->reservedQty = max(0, (int) ($rawInv->reservedQty ?? 0) - $qty);
+                                $rawInv->save();
+
+                                if ($spoiled <= 0) {
+                                    continue;   // all of it came back; nothing to write off
+                                }
+                                StockHistory::create([
+                                    'inventoryId'  => (string) $rawInv->_id,
+                                    'quantity'     => $spoiled,
+                                    'remainingQty' => (int) ($rawInv->stockQty ?? 0),
+                                    'unitCost'     => $this->unitCostOf($rawInv),
+                                    'totalCost'    => round($this->unitCostOf($rawInv) * $spoiled, 2),
+                                    'reason'       => 'production_spoilage',
+                                    'type'         => 'adjustment',
+                                    'performedBy'  => 'system',
+                                    'orderId'      => (string) $order->_id,
+                                    'productId'    => (string) ($bomProduct->_id ?? ''),
+                                    'productName'  => $bomProduct->name ?? '',
+                                    'customerName' => $order->userSnapshot['name'] ?? '',
+                                    'remarks'      => 'Cancelled mid-production (' . ($stage ?: 'in production')
+                                        . ') - material already worked and cannot be returned: ' . (string) $order->_id,
+                                    'createdAt'    => now(),
+                                ]);
+                                continue;
+                            }
+
                             $rawInv->reservedQty = max(0, (int) ($rawInv->reservedQty ?? 0) - $qty);
                             $rawInv->save();
                             StockHistory::create([
@@ -2142,6 +2850,12 @@ class OrderController extends Controller
                                 'createdAt'    => now(),
                             ]);
                             continue;
+                        }
+                        $owedPart = min($qty, (int) ($owedLeft[(string) $rawInv->_id] ?? 0));
+                        if ($owedPart > 0) {
+                            $owedLeft[(string) $rawInv->_id] -= $owedPart;
+                            $qty -= $owedPart;
+                            if ($qty <= 0) continue;
                         }
                         $updated = DB::connection('mongodb')
                             ->getCollection('inventories')
@@ -2191,7 +2905,7 @@ class OrderController extends Controller
     private function cancelLinkedJobOrder(Order $order): void
     {
         try {
-            // A multi-item order has one job order per item — cancel ALL of them that are still
+            // A multi-item order has one job order per item - cancel ALL of them that are still
             // in-flight, not just the first, or the rest orphan in Production/QC.
             $jobOrders = \App\Models\JobOrder::where('orderId', (string) $order->_id)
                 ->whereIn('joStatus', ['Queued', 'In Progress'])
@@ -2279,31 +2993,276 @@ class OrderController extends Controller
     /**
      * Sends a branded email to the store owner when a new order is placed.
      */
-    private function notifyOwner(Order $order): void
-    {
-        try {
-            $ownerEmail = env('ADMIN_EMAIL');
-            if (!$ownerEmail) return;
-
-            Mail::to($ownerEmail)->send(new AdminNewOrderMail(
-                orderId:       (string) $order->_id,
-                customerName:  $order->userSnapshot['name']  ?? 'Unknown',
-                customerEmail: $order->userSnapshot['email'] ?? '',
-                customerPhone: $order->userSnapshot['phone'] ?? '',
-                items:         $order->items ?? [],
-                totalAmount:   (float) ($order->totalAmount ?? 0),
-                notes:         $order->notes ?? ''
-            ));
-        } catch (\Exception $e) {
-            Log::error('OrderController@notifyOwner: ' . $e->getMessage());
-        }
-    }
 
     /**
      * POST /api/admin/orders/{id}/record-payment
      * Records a cash payment against an order (COD or partial payment).
      * Appends to paymentHistory[], recalculates downPayment and balance.
      */
+    /**
+     * Record that the shop owes the customer money back.
+     *
+     * Cancelling a paid order and declining a paid-for rush both take money the shop is not
+     * entitled to keep, and neither said so anywhere. This does not MOVE money - no refund
+     * API exists - it makes the obligation visible so somebody can send it.
+     */
+    /**
+     * The bookkeeping of a cancellation the SHOP made: who, why, when, and what money goes back.
+     *
+     * `refundAmount` lets the shop keep a deposit when work had already started - personalised goods
+     * cannot be resold, which is what a deposit is for - but the DEFAULT is everything received,
+     * because a shop that cancels an order nobody has made yet is not entitled to any of it.
+     * `notifyCustomer=false` is for closing abandoned test orders in bulk, where a "your order was
+     * cancelled" notice to a survey participant would only confuse.
+     */
+    private function recordShopCancellation(Order $order, Request $request, $user, string $previousStatus): void
+    {
+        $reason = trim((string) $request->input('cancelReason', ''));
+        $by     = trim(($user->firstName ?? '') . ' ' . ($user->lastName ?? '')) ?: null;
+
+        $order->cancelledBy     = 'admin';
+        $order->cancelledReason = $reason !== '' ? mb_substr($reason, 0, 500) : null;
+        $order->cancelledAt     = now();
+
+        // The design fee is not part of the default: the terms make it non-refundable once the
+        // designer has started, and a paid fee means they did. Only the goods side is returned
+        // unless the shop types a different figure.
+        $paid       = $this->paidSoFar($order);
+        $designKept = ($order->designFeePaid ?? false)
+            ? (float) ($order->designFeePaidAmount ?? $order->designFee ?? 0)
+            : 0.0;
+        $refund = $request->has('refundAmount')
+            ? max(0, min($paid, (float) $request->input('refundAmount')))
+            : max(0, $paid - $designKept);
+        $this->recordRefundOwed(
+            $order,
+            $refund,
+            ($reason !== '' ? 'Cancelled by the shop - ' . mb_substr($reason, 0, 200) : 'Cancelled by the shop')
+                . ($designKept > 0 && !$request->has('refundAmount') ? ' (design fee retained)' : ''),
+            $by
+        );
+        $this->refundCourierFeeOnCancel($order, $previousStatus, $by);
+        $order->save();
+
+        if (!$request->boolean('notifyCustomer', true)) return;
+        try {
+            Notification::create([
+                'user_id'    => (string) $order->userId,
+                'type'       => 'order_cancelled',
+                'title'      => 'Order Cancelled',
+                'message'    => 'Order #' . strtoupper(substr((string) $order->_id, -8))
+                    . ' was cancelled by the shop.'
+                    . ($reason !== '' ? ' Reason: ' . mb_substr($reason, 0, 200) : '')
+                    . ($refund > 0 ? ' A refund of P' . number_format($refund, 2) . ' is being arranged.' : ''),
+                'is_read'    => false,
+                'data'       => ['orderId' => (string) $order->_id],
+                'created_at' => now(),
+            ]);
+        } catch (\Exception $e) {
+            Log::warning('recordShopCancellation: notification failed', ['error' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * A delivery fee the shop already collected, on an order that will now never be delivered.
+     *
+     * It is the courier's money, not the shop's, and it is not part of paidSoFar - so neither
+     * cancellation path counted it, and it would simply have been kept. Only while the order had
+     * not gone out: once it was with the rider, the courier has been paid for the trip.
+     */
+    private function refundCourierFeeOnCancel($order, ?string $previousStatus, ?string $by): void
+    {
+        if (!($order->courierFeePaid ?? false)) {
+            return;
+        }
+        $fee = (float) ($order->courierFeePaidAmount ?? $order->courierFee ?? 0);
+        if ($fee <= 0.009) {
+            return;
+        }
+        if (in_array((string) $previousStatus, ['for_delivery', 'shipped', 'ready_for_pickup', 'out_for_delivery', 'delivered', 'completed'], true)) {
+            return;
+        }
+        $this->recordRefundOwed($order, $fee, 'Delivery fee returned - the order was cancelled before it went out', $by);
+    }
+
+    private function recordRefundOwed($order, float $amount, string $reason, ?string $by = null): void
+    {
+        if ($amount <= 0.009) return;
+        $refunds   = $order->refunds ?? [];
+        $refunds[] = [
+            'amount'     => round($amount, 2),
+            'reason'     => mb_substr($reason, 0, 300),
+            'status'     => 'owed',
+            'recordedBy' => $by,
+            'recordedAt' => now()->toISOString(),
+        ];
+        $order->refunds    = $refunds;
+        $order->refundOwed = round(
+            collect($refunds)->filter(fn ($r) => ($r['status'] ?? 'owed') === 'owed')
+                ->sum(fn ($r) => (float) ($r['amount'] ?? 0)),
+            2
+        );
+    }
+
+    /** What the customer has actually handed over, however it was recorded. */
+    private function paidSoFar($order): float
+    {
+        return max(
+            (float) ($order->downPayment ?? 0),
+            (float) collect($order->paymentHistory ?? [])->sum(fn ($p) => (float) ($p['amount'] ?? 0))
+        );
+    }
+
+    /**
+     * POST /api/admin/orders/{id}/mark-refunded
+     *
+     * The other half of recordRefundOwed. That one records that money is owed; nothing until now
+     * could record that it had been sent, so the debt sat on the order forever and the only way to
+     * clear it was to forget about it. There is still no refund API - the shop sends it by hand -
+     * so this is a receipt, not a transfer, and it says who logged it and how.
+     */
+    /**
+     * POST /api/admin/orders/{id}/waive-refund
+     * The shop keeps what it is owed-back on paper but entitled to: a design fee for work already
+     * delivered, a deposit on personalised goods that cannot be resold. Nothing is sent; the row
+     * stops reading as a debt and the reason is kept.
+     */
+    public function waiveRefund(Request $request, $id)
+    {
+        try {
+            $user = $request->user();
+            if (!$this->hasPermission($request, 'payments.create')) {
+                return $this->unauthorizedResponse();
+            }
+            $order = Order::find($id);
+            if (!$order) return $this->notFoundResponse('Order');
+            if ((float) ($order->refundOwed ?? 0) <= 0) {
+                return $this->errorResponse('This order has no refund outstanding.', 422);
+            }
+            $validated = $request->validate(['reason' => 'required|string|max:300']);
+            $reason = htmlspecialchars(strip_tags(trim($validated['reason'])), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+
+            $refunds = $order->refunds ?? [];
+            foreach ($refunds as $i => $r) {
+                if (($r['status'] ?? 'owed') !== 'owed') continue;
+                $refunds[$i]['status']       = 'waived';
+                $refunds[$i]['waivedAt']     = now()->toISOString();
+                $refunds[$i]['waivedBy']     = trim(($user->firstName ?? '') . ' ' . ($user->lastName ?? '')) ?: null;
+                $refunds[$i]['waivedReason'] = $reason;
+            }
+            $order->refunds    = array_values($refunds);
+            $order->refundOwed = 0;
+            $order->updatedAt  = now();
+            $order->save();
+
+            $this->logActivity($request, 'order.refund_waived', 'order', (string) $order->_id,
+                'Refund waived on order #' . strtoupper(substr((string) $order->_id, -8)) . ': ' . $reason, ['reason' => $reason]);
+
+            return $this->successResponse('Refund waived.', ['refunds' => $order->refunds, 'refundOwed' => 0]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return $this->validationErrorResponse($e);
+        } catch (\Exception $e) {
+            return $this->serverErrorResponse($e, 'Failed to waive the refund.');
+        }
+    }
+
+    public function markRefunded(Request $request, $id)
+    {
+        try {
+            $user = $request->user();
+            if (!$this->hasPermission($request, 'payments.create')) {
+                return $this->unauthorizedResponse();
+            }
+
+            $order = Order::find($id);
+            if (!$order) return $this->notFoundResponse('Order');
+
+            $owed = (float) ($order->refundOwed ?? 0);
+            if ($owed <= 0) {
+                return $this->errorResponse('This order has no refund outstanding.', 422);
+            }
+
+            $validated = $request->validate([
+                'amount' => 'required|numeric|min:0.01',
+                'method' => 'required|string|in:gcash,maya,bank_transfer,cash,paymongo',
+                'note'   => 'nullable|string|max:500',
+            ]);
+
+            $amount = round((float) $validated['amount'], 2);
+            if ($amount > $owed + 0.01) {
+                return $this->errorResponse(
+                    'That is more than the ' . number_format($owed, 2) . ' owed on this order.',
+                    422
+                );
+            }
+
+            // Mark the owed entries settled oldest first, so a partial payment clears the oldest
+            // debt rather than leaving several half-paid rows nobody can reconcile.
+            $left    = $amount;
+            $refunds = $order->refunds ?? [];
+            foreach ($refunds as $i => $r) {
+                if (($r['status'] ?? 'owed') !== 'owed') continue;
+                if ($left <= 0.009) break;
+                $rowAmt = (float) ($r['amount'] ?? 0);
+                if ($rowAmt <= $left + 0.009) {
+                    $refunds[$i]['status']   = 'paid';
+                    $refunds[$i]['paidAt']   = now()->toISOString();
+                    $refunds[$i]['paidVia']  = $validated['method'];
+                    $refunds[$i]['paidBy']   = trim(($user->firstName ?? '') . ' ' . ($user->lastName ?? '')) ?: null;
+                    $refunds[$i]['paidNote'] = isset($validated['note'])
+                        ? htmlspecialchars(strip_tags(trim($validated['note'])), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')
+                        : null;
+                    $left -= $rowAmt;
+                } else {
+                    // Partly settled: split it so the remainder is still visibly owed.
+                    $refunds[$i]['amount'] = round($rowAmt - $left, 2);
+                    $refunds[] = [
+                        'amount'     => round($left, 2),
+                        'reason'     => $r['reason'] ?? 'Refund',
+                        'status'     => 'paid',
+                        'recordedBy' => $r['recordedBy'] ?? null,
+                        'recordedAt' => $r['recordedAt'] ?? now()->toISOString(),
+                        'paidAt'     => now()->toISOString(),
+                        'paidVia'    => $validated['method'],
+                        'paidBy'     => trim(($user->firstName ?? '') . ' ' . ($user->lastName ?? '')) ?: null,
+                    ];
+                    $left = 0;
+                }
+            }
+
+            $order->refunds    = array_values($refunds);
+            $order->refundOwed = round(
+                collect($order->refunds)->filter(fn ($r) => ($r['status'] ?? 'owed') === 'owed')
+                    ->sum(fn ($r) => (float) ($r['amount'] ?? 0)),
+                2
+            );
+            $order->updatedAt = now();
+            $order->save();
+
+            try {
+                Notification::create([
+                    'user_id'    => (string) $order->userId,
+                    'type'       => 'refund_sent',
+                    'title'      => 'Refund Sent',
+                    'message'    => 'We have sent P' . number_format($amount, 2) . ' back for order #'
+                        . strtoupper(substr((string) $order->_id, -8))
+                        . ' via ' . strtoupper($validated['method']) . '.',
+                    'is_read'    => false,
+                    'data'       => ['orderId' => (string) $order->_id],
+                    'created_at' => now(),
+                ]);
+            } catch (\Exception $e) {
+                Log::warning('markRefunded: notification failed', ['error' => $e->getMessage()]);
+            }
+
+            return $this->successResponse('Refund recorded.', $order);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return $this->validationErrorResponse($e);
+        } catch (\Exception $e) {
+            return $this->serverErrorResponse($e, 'Failed to record the refund.');
+        }
+    }
+
     public function recordPayment(Request $request, $id)
     {
         try {
@@ -2318,7 +3277,7 @@ class OrderController extends Controller
                 return $this->notFoundResponse('Order');
             }
 
-            if (in_array($order->orderStatus, ['Cancelled', 'Returned'])) {
+            if (in_array(OrderStatus::normalize($order->orderStatus), [OrderStatus::CANCELLED, OrderStatus::RETURNED], true)) {
                 return response()->json([
                     'error' => "Cannot record payment for an order with status: {$order->orderStatus}.",
                 ], 422);
@@ -2327,8 +3286,8 @@ class OrderController extends Controller
             // Allow payment recording on Delivered orders only if:
             // - payment method is COD (courier collects after delivery), AND
             // - order is not already fully paid
-            if ($order->orderStatus === 'Delivered') {
-                $isCod       = ($order->paymentMethod ?? '') === 'cod';
+            if (OrderStatus::normalize($order->orderStatus) === OrderStatus::DELIVERED) {
+                $isCod       = PaymentMethod::isCod($order->paymentMethod);
                 $isFullyPaid = ($order->paymentStatus ?? '') === 'paid';
                 if (!$isCod || $isFullyPaid) {
                     return response()->json([
@@ -2386,6 +3345,31 @@ class OrderController extends Controller
             $order->paymentStatus  = $balance <= 0 ? 'paid' : 'partial';
             $order->updatedAt      = now();
             $order->save();
+
+            // Money is the one record a customer may need months later, for a reimbursement or a
+            // dispute, and it should exist somewhere the shop does not control. It also closes the
+            // loop on a GCash or Maya transfer, where until now they had no way of knowing we saw
+            // it. Failure to send must not fail the payment that was already written.
+            try {
+                $to = $order->userSnapshot['email'] ?? null;
+                if ($to) {
+                    $whole = trim((string) ($order->userSnapshot['name'] ?? ''));
+                    $first = $whole !== '' ? explode(' ', $whole)[0] : 'there';
+                    Mail::to($to)->send(new PaymentReceivedMail(
+                        $first,
+                        strtoupper(substr((string) $order->_id, -8)),
+                        (float) $validated['amount'],
+                        (string) $validated['method'],
+                        (float) $totalPaid,
+                        (float) max(0, $balance),
+                        $validated['note'] ?? null,
+                        // A payment recorded by hand gets the updated receipt too.
+                        (string) $order->_id
+                    ));
+                }
+            } catch (\Throwable $mailErr) {
+                Log::warning('recordPayment: receipt email failed', ['error' => $mailErr->getMessage()]);
+            }
 
             return $this->successResponse('Payment recorded successfully.', $order);
 
@@ -2448,6 +3432,212 @@ class OrderController extends Controller
     }
 
     /**
+     * POST /api/orders/my/{id}/restart-design-job
+     * The customer is past the revision cap and still wants changes. "Treated as a new design
+     * job, back to base price" only means something if the new job carries the same terms as the
+     * first one - the design fee that buys a few free rounds, not a bare re-charge with nothing
+     * included. So this mirrors what the original design fee bought: it re-bills designRequestFee
+     * and resets the round counter to zero, rather than leaving the customer paying full price for
+     * every round of a job that is, on paper, brand new.
+     */
+    public function restartDesignJob(Request $request, $id)
+    {
+        try {
+            $user = $this->getAuthUser($request);
+            if (!$user) return $this->unauthorizedResponse();
+
+            $order = Order::find($id);
+            if (!$order || (string) $order->userId !== (string) $user->_id) {
+                return $this->notFoundResponse('Order');
+            }
+
+            if (!$order->adminDesignUrl) {
+                return $this->errorResponse('No design draft available for this order.', 422);
+            }
+
+            $validated = $request->validate([
+                'notes'     => 'required|string|min:5|max:1000',
+                'itemIndex' => 'nullable|integer|min:0',
+            ], [
+                'notes.required' => 'Please describe what the new design should do differently.',
+                'notes.min'      => 'Please give a little more detail.',
+            ]);
+            $notes = htmlspecialchars(strip_tags(trim($validated['notes'])), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+
+            $owner        = User::where('role', 'owner')->first();
+            $maxRevisions = max(0, (int) ($owner->maxRevisions ?? 5));
+            $designFee    = max(0, (float) ($owner->designRequestFee ?? 100));
+
+            $itemIndex = $request->input('itemIndex');
+            $items     = $order->items ?? [];
+            $isLine    = is_numeric($itemIndex) && isset($items[(int) $itemIndex]);
+            $usedSoFar = $isLine
+                ? (int) ($items[(int) $itemIndex]['revisionCount'] ?? 0)
+                : (int) ($order->revisionCount ?? 0);
+
+            // Restarting is only a real "new job" once the customer has actually used up what the
+            // first one bought. Allowing it earlier would let the cap be skipped for free by anyone
+            // who just prefers to pay ₱100 rather than describe changes to the current draft.
+            if ($usedSoFar < $maxRevisions) {
+                return $this->errorResponse(
+                    "This item still has revisions left ({$usedSoFar} of {$maxRevisions} used). Use \"Request changes\" instead.",
+                    422
+                );
+            }
+
+            $history   = $order->statusHistory ?? [];
+            $history[] = ['status' => 'design_job_restarted', 'at' => now()->toISOString()];
+
+            // Same reset the original job started from: zero rounds used, waiting on a fresh proof.
+            if (!$this->applyItemDesignStatus($order, $itemIndex, 'pending_design', [
+                    'revisionCount'  => 0,
+                    'revisionNotes'  => $notes,
+                    'adminDesignUrl' => null,
+                ])) {
+                return $this->errorResponse('Invalid item.', 422);
+            }
+            if (!$isLine) {
+                $order->revisionCount  = 0;
+                $order->designStatus   = 'pending_design';
+                $order->adminDesignUrl = null;
+            }
+
+            if ($designFee > 0) {
+                $order->designRestartFees = round((float) ($order->designRestartFees ?? 0) + $designFee, 2);
+                $order->totalAmount       = round((float) ($order->totalAmount ?? 0) + $designFee, 2);
+                if ($order->balance !== null && $order->balance !== '') {
+                    $order->balance = round((float) $order->balance + $designFee, 2);
+                }
+            }
+
+            $order->orderStatus   = 'pending_design';
+            $order->statusHistory = $history;
+            $order->revisionNotes = $notes;
+            $order->updatedAt     = now();
+            $order->save();
+
+            try {
+                $admins = User::whereIn('role', ['admin', 'owner'])->get();
+                foreach ($admins as $admin) {
+                    Notification::create([
+                        'user_id'    => (string) $admin->_id,
+                        'type'       => 'design_job_restarted',
+                        'title'      => 'New Design Job Requested',
+                        'message'    => 'Customer restarted the design for order #' .
+                            strtoupper(substr((string) $order->_id, -8)) .
+                            ' (₱' . number_format($designFee, 2) . ' charged): ' . substr($notes, 0, 100),
+                        'is_read'    => false,
+                        'data'       => ['orderId' => (string) $order->_id],
+                        'created_at' => now(),
+                    ]);
+                }
+            } catch (\Exception $notifErr) {
+                Log::warning('restartDesignJob: notification failed', ['error' => $notifErr->getMessage()]);
+            }
+
+            return $this->successResponse(
+                'New design job started. We will send a fresh proof.',
+                $this->normalizeOrderForCustomer($order)
+            );
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return $this->validationErrorResponse($e);
+        } catch (\Exception $e) {
+            return $this->serverErrorResponse($e, 'Failed to restart the design job.');
+        }
+    }
+
+    /**
+     * POST /api/admin/orders/{id}/convert-to-design
+     *
+     * The customer uploaded a file, then turned out to want it designed - references rather than
+     * artwork, or artwork that needs work. Until now there was no way to act on that: the design
+     * fee is collected at checkout, so an upload order carries none, and the two mechanisms that
+     * could add one both refuse. restartDesignJob is customer-only and requires an existing
+     * draft; the revision fee requires a proof to revise.
+     *
+     * So the fee is billed onto the BALANCE rather than collected now. Nothing moves until the
+     * customer has agreed in chat - which is the point: a refund of a fee taken too early costs
+     * the shop the gateway charge and cannot be undone cleanly.
+     */
+    public function convertToDesignJob(Request $request, $id)
+    {
+        try {
+            $user = $request->user();
+            if (!in_array($user->role ?? null, ['admin', 'owner', 'superAdmin'], true)) {
+                return $this->unauthorizedResponse();
+            }
+
+            $order = Order::find($id);
+            if (!$order) return $this->notFoundResponse('Order');
+
+            if (($order->designStatus ?? null) === 'approved') {
+                return $this->errorResponse('This design is already approved - revert it first.', 422);
+            }
+            if (\App\Models\JobOrder::where('orderId', (string) $order->_id)
+                    ->get()->contains(fn ($j) => $j->joStatus !== 'Cancelled')) {
+                return $this->errorResponse('This order is already in production.', 422);
+            }
+
+            $owner     = User::where('role', 'owner')->first();
+            $designFee = max(0, (float) ($request->input('designFee', $owner->designRequestFee ?? 100)));
+
+            $itemIndex = $request->input('itemIndex');
+            $items     = $order->items ?? [];
+            if (is_numeric($itemIndex) && isset($items[(int) $itemIndex])) {
+                $items[(int) $itemIndex]['designRequested'] = true;
+                $items[(int) $itemIndex]['designStatus']    = 'pending_design';
+                $order->items = $items;
+            } else {
+                foreach ($items as $i => $it) {
+                    if (!empty($it['isCustom'])) {
+                        $items[$i]['designRequested'] = true;
+                        $items[$i]['designStatus']    = 'pending_design';
+                    }
+                }
+                $order->items = $items;
+            }
+
+            // Billed, not charged. The customer settles it with the rest of the balance.
+            if ($designFee > 0) {
+                $order->designFee   = round((float) ($order->designFee ?? 0) + $designFee, 2);
+                $order->totalAmount = round((float) ($order->totalAmount ?? 0) + $designFee, 2);
+                if ($order->balance !== null && $order->balance !== '') {
+                    $order->balance = round((float) $order->balance + $designFee, 2);
+                }
+            }
+
+            $order->designStatus  = 'pending_design';
+            $order->designType    = 'request';
+            $history              = $order->statusHistory ?? [];
+            $history[]            = ['status' => 'converted_to_design', 'at' => now()->toISOString()];
+            $order->statusHistory = $history;
+            $order->updatedAt     = now();
+            $order->save();
+
+            try {
+                Notification::create([
+                    'user_id'    => (string) $order->userId,
+                    'type'       => 'design_job_started',
+                    'title'      => 'We are designing your order',
+                    'message'    => 'Order #' . strtoupper(substr((string) $order->_id, -8))
+                        . ' - we will create the artwork and send you a mockup to approve.'
+                        . ($designFee > 0 ? ' A design fee of P' . number_format($designFee, 2)
+                            . ' has been added to your balance.' : ''),
+                    'is_read'    => false,
+                    'data'       => ['orderId' => (string) $order->_id],
+                    'created_at' => now(),
+                ]);
+            } catch (\Exception $e) {
+                Log::warning('convertToDesignJob: notification failed', ['error' => $e->getMessage()]);
+            }
+
+            return $this->successResponse('Converted to a design job.', $order);
+        } catch (\Exception $e) {
+            return $this->serverErrorResponse($e, 'Failed to convert this order.');
+        }
+    }
+
+    /**
      * POST /api/admin/orders/{id}/rush-decision  { decision: accepted|declined }
      * The shop confirms a rush REQUEST ("kaya ba isabay"). Declining waives + credits the rush fee.
      */
@@ -2466,14 +3656,27 @@ class OrderController extends Controller
             if ($decision === 'accepted') {
                 $order->rushStatus = 'accepted';
             } else {
-                // Decline: waive the rush fee - drop it from the total and re-derive the balance so a
-                // customer who already paid it in the downpayment is credited.
+                // Decline: waive the rush fee. The old version subtracted it from the balance with
+                // max(0, ...) and called that "credited" - which only works while an unpaid balance
+                // remains to subtract FROM. On an order already settled the balance is 0, so
+                // max(0, 0 - 100) is 0 and the fee simply vanished: the total dropped, the payments
+                // did not, and the shop was left holding money nothing recorded as owed.
                 $rushFee = (float) ($order->rushFee ?? 0);
                 if ($rushFee > 0) {
                     $order->totalAmount = round(max(0, (float) ($order->totalAmount ?? 0) - $rushFee), 2);
+                    $balanceBefore = (float) ($order->balance ?? 0);
+                    $absorbed      = min($rushFee, max(0, $balanceBefore));
                     if ($order->balance !== null && $order->balance !== '') {
-                        $order->balance = round(max(0, (float) $order->balance - $rushFee), 2);
+                        $order->balance = round($balanceBefore - $absorbed, 2);
                     }
+                    // Whatever the outstanding balance could not absorb has already been paid,
+                    // and has to go back.
+                    $this->recordRefundOwed(
+                        $order,
+                        $rushFee - $absorbed,
+                        'Rush declined by the shop - rush fee returned',
+                        trim(($user->firstName ?? '') . ' ' . ($user->lastName ?? '')) ?: null
+                    );
                 }
                 $order->rushStatus = 'declined';
                 $order->isRush = false;
@@ -2535,6 +3738,15 @@ class OrderController extends Controller
             $awaitingPayment = ($order->paymentStatus ?? 'unpaid') === 'unpaid' && $order->designStatus === 'approved';
             if ($awaitingPayment) {
                 $order->orderStatus = 'awaiting_payment';
+            } elseif ($order->designStatus === 'approved' && $this->isBeforeProduction($order->orderStatus)) {
+                // Already paid - an upload is paid at checkout. Approved and paid is exactly where a
+                // request-design order lands when its deposit arrives, so it takes the same status.
+                // This used to leave it on "pending", so the same order read two ways depending on
+                // who clicked Approve.
+                $order->orderStatus   = 'awaiting_production';
+                $history              = $order->statusHistory ?? [];
+                $history[]            = ['status' => 'awaiting_production', 'at' => now()->toISOString(), 'by' => 'admin', 'note' => 'Design approved - paid'];
+                $order->statusHistory = $history;
             }
             $order->updatedAt    = now();
             $order->save();
@@ -2767,7 +3979,7 @@ class OrderController extends Controller
 
     /**
      * POST /api/orders/my/{id}/cancel
-     * Customer cancels their own order — only allowed when Pending.
+     * Customer cancels their own order - only allowed when Pending.
      */
     public function cancelMyOrder(Request $request, $id)
     {
@@ -2821,8 +4033,32 @@ class OrderController extends Controller
             $order->updatedAt    = now();
             $order->save();
 
-            // Restore inventory reserved at order creation
-            $this->restoreStockOnCancel($order);
+            // Restore inventory reserved at order creation - stage-aware, so anything already
+            // worked on is written off rather than handed back to the shelf.
+            $this->restoreStockOnCancel($order, $this->jobStagesFor($order));
+
+            // The gate above lets a PAID order be cancelled - correctly, since nothing has been
+            // made yet - but the money was never mentioned anywhere: the order flipped to Cancelled,
+            // the stock came back, and the customer got an email quoting the total as though it were
+            // a receipt. A design fee is deliberately excluded because the design work was done and
+            // the terms say it is non-refundable; only the goods side is unwound.
+            $paid        = $this->paidSoFar($order);
+            $designKept  = ($order->designFeePaid ?? false)
+                ? (float) ($order->designFeePaidAmount ?? $order->designFee ?? 0)
+                : 0.0;
+            $this->recordRefundOwed(
+                $order,
+                $paid - $designKept,
+                $designKept > 0
+                    ? 'Order cancelled by the customer - goods payment returned, design fee retained'
+                    : 'Order cancelled by the customer before production',
+                'customer cancellation'
+            );
+            // The customer can only cancel before production, so nothing has gone out.
+            $this->refundCourierFeeOnCancel($order, null, 'customer cancellation');
+            if (($order->refundOwed ?? 0) > 0) {
+                $order->save();
+            }
 
             // Email notification to customer
             try {
@@ -2863,7 +4099,7 @@ class OrderController extends Controller
                 ]);
             }
 
-            // In-app notification to admin — B-13
+            // In-app notification to admin - B-13
             try {
                 $admin = \App\Models\User::where('role', 'admin')->first();
                 if ($admin) {
@@ -3073,7 +4309,11 @@ class OrderController extends Controller
                 // goods are still owed. Move to awaiting_payment - that is the state the customer's
                 // "Pay Now" panel keys on - and give them a window to settle before the hold lapses.
                 $awaitingPayment = ($order->paymentStatus ?? 'unpaid') === 'unpaid';
-                $order->orderStatus = $awaitingPayment ? 'awaiting_payment' : 'design_approved';
+                // Paid (deposit or in full) and approved is ready for a job order - the same
+                // awaiting_production a request order reaches when its deposit lands.
+                if ($this->isBeforeProduction($order->orderStatus)) {
+                    $order->orderStatus = $awaitingPayment ? 'awaiting_payment' : 'awaiting_production';
+                }
                 if ($awaitingPayment) {
                     $dueDays = (int) (User::where('role', 'owner')->first()->depositDueDays ?? 7);
                     $order->paymentDueAt = now()->addDays(max(1, $dueDays));
@@ -3083,7 +4323,7 @@ class OrderController extends Controller
             $order->updatedAt     = now();
             $order->save();
 
-            try { broadcast(new \App\Events\OrderStatusUpdated((string) $order->_id, $awaitingPayment ? 'awaiting_payment' : 'design_approved', null)); } catch (\Throwable) {}
+            try { broadcast(new \App\Events\OrderStatusUpdated((string) $order->_id, (string) $order->orderStatus, null)); } catch (\Throwable) {}
 
             // The moment the goods fall due is the moment to say so, in the place the customer is
             // already looking. The card carries the figures but not the checkout: paying needs the
@@ -3127,6 +4367,10 @@ class OrderController extends Controller
             } catch (\Exception $notifErr) {
                 Log::warning('approveAdminDesign: notification failed', ['error' => $notifErr->getMessage()]);
             }
+
+            // The proof card in chat is a stored message and would otherwise keep offering
+            // Approve on a design that is already through.
+            $this->settleOrderCards($order, ['proof_ready'], 'approved');
 
             return $this->successResponse('Design approved. We\'ll proceed to production.', $this->normalizeOrderForCustomer($order));
 
@@ -3244,6 +4488,10 @@ class OrderController extends Controller
                 Log::warning('requestDesignRevision: notification failed', ['error' => $notifErr->getMessage()]);
             }
 
+            // Same card, other outcome: the proof it points at is being redrawn, so approving
+            // it from chat would approve something that no longer stands.
+            $this->settleOrderCards($order, ['proof_ready'], 'changes_requested');
+
             return $this->successResponse('Revision request sent. We\'ll update the design and notify you.', $this->normalizeOrderForCustomer($order));
 
         } catch (\Illuminate\Validation\ValidationException $e) {
@@ -3273,8 +4521,11 @@ class OrderController extends Controller
             return $url;
         }
         $isVideo = (bool) preg_match('/\.(mp4|webm|mov|m4v|ogg)(\?|$)/i', $url);
+        // Video used to get the resize only, so every clip went out with no mark on it - in chat,
+        // in My Orders and as the still frame in the proof email. Cloudinary lays the same text
+        // over video (checked: 200, video/mp4, and the .jpg frame carries it too).
         $tx = $isVideo
-            ? 'w_720,c_limit/q_auto:eco'
+            ? 'w_720,c_limit/q_auto:eco/l_text:Arial_52_bold:PROOF%20ONLY,co_rgb:9a9a9a,o_42,a_-30/fl_layer_apply,g_center'
             : 'w_900,c_limit/q_auto:eco/l_text:Arial_52_bold:PROOF%20ONLY,co_rgb:9a9a9a,o_42,a_-30/fl_layer_apply,g_center';
 
         return str_replace('/upload/', "/upload/{$tx}/", $url);
@@ -3287,6 +4538,35 @@ class OrderController extends Controller
      * The card carries only what it needs to render and to act - the order id, what it covers, and
      * the figures - because a chat message is a pointer to the order, never a second copy of it.
      */
+    /**
+     * Retire the action buttons on cards this order has moved past.
+     *
+     * A chat card is a stored message, so it outlives the state that made it actionable. Without
+     * this, a proof approved last week still offers Approve today - and pressing it acts on a
+     * design stage that has already moved on.
+     *
+     * The message is stamped rather than deleted: the customer should still see that a proof was
+     * sent and what happened to it.
+     */
+    private function settleOrderCards(Order $order, array $kinds, string $outcome): void
+    {
+        try {
+            Message::where('metadata.orderId', (string) $order->_id)
+                ->whereIn('metadata.kind', $kinds)
+                ->where('metadata.settled', '!=', true)
+                ->get()
+                ->each(function ($m) use ($outcome) {
+                    $meta = $m->metadata ?? [];
+                    $meta['settled']        = true;
+                    $meta['settledOutcome'] = $outcome;
+                    $m->metadata = $meta;
+                    $m->save();
+                });
+        } catch (\Throwable $e) {
+            Log::warning('settleOrderCards failed', ['order' => (string) $order->_id, 'error' => $e->getMessage()]);
+        }
+    }
+
     private function postOrderCardToChat(Order $order, string $kind, string $body, array $extra = []): void
     {
         try {
@@ -3360,6 +4640,19 @@ class OrderController extends Controller
 
             if (!$request->hasFile('design')) {
                 return response()->json(['message' => 'At least one design file is required.'], 422);
+            }
+
+            // Sending a mockup after approval is information - "here is what it will look like" -
+            // not a request to approve again. Without the distinction this endpoint rewrote
+            // designStatus and orderStatus unconditionally, and it had no Job Order guard at all,
+            // so a proof sent late could knock an order the shop floor was already building from
+            // back to proof_sent. revertDesignApproval has always refused that; this did not.
+            $informational = $request->boolean('informational');
+            if (!$informational && \App\Models\JobOrder::where('orderId', (string) $order->_id)
+                    ->get()->contains(fn ($j) => $j->joStatus !== 'Cancelled')) {
+                return $this->errorResponse(
+                    'This order is already in production - a proof sent now would send it back for approval. '
+                    . 'Send it as a mockup instead, or cancel the Job Order first.', 422);
             }
 
             // The design fee buys the designer's time, so nothing leaves the studio until it has
@@ -3437,6 +4730,50 @@ class OrderController extends Controller
 
             $adminDesignUrl  = $uploadedUrls[0];
             $adminDesignUrls = $uploadedUrls;
+
+            // Information only: record it, say so, and touch no status. Everything below this
+            // point moves the order backwards through the approval flow, which is right for a
+            // proof and wrong for a courtesy mockup.
+            if ($informational) {
+                $mockups = $order->mockups ?? [];
+                foreach ($adminDesignUrls as $u) {
+                    $mockups[] = [
+                        'url'    => $u,
+                        'sentAt' => now()->toISOString(),
+                        'sentBy' => trim("{$user->firstName} {$user->lastName}"),
+                    ];
+                }
+                $order->mockups   = $mockups;
+                $order->updatedAt = now();
+                $order->save();
+
+                try {
+                    Notification::create([
+                        'user_id'    => (string) $order->userId,
+                        'type'       => 'design_mockup_sent',
+                        'title'      => 'A mockup of your order',
+                        'message'    => 'We sent a mockup for order #' .
+                            strtoupper(substr((string) $order->_id, -8)) .
+                            ' showing how it will look. Nothing needs approving - your design is already confirmed.',
+                        'is_read'    => false,
+                        'data'       => ['orderId' => (string) $order->_id, 'mockups' => $adminDesignUrls],
+                        'created_at' => now(),
+                    ]);
+                } catch (\Exception $notifErr) {
+                    Log::warning('adminUploadDesign: mockup notification failed', ['error' => $notifErr->getMessage()]);
+                }
+
+                $this->postOrderCardToChat(
+                    $order,
+                    'mockup',
+                    'Here is a mockup of your order so you can see how it will look. '
+                        . 'Nothing needs approving - your design is already confirmed and we are '
+                        . 'printing what you approved.',
+                    ['mockups' => array_slice($adminDesignUrls, 0, 6)]
+                );
+
+                return $this->successResponse('Mockup sent to the customer.', $order);
+            }
 
             $history                = $order->statusHistory ?? [];
             $history[]              = ['status' => 'proof_sent', 'at' => now()->toISOString()];
@@ -3526,6 +4863,31 @@ class OrderController extends Controller
                 ]
             );
 
+            // Nothing moves until this is approved - no job order, no production, and on the
+            // deposit model the balance is not even payable yet. A bell notification is seen only
+            // by someone who happens to open the app, so the order could sit still for days with
+            // the shop waiting on a customer who never learned it was their turn.
+            try {
+                $to = $order->userSnapshot['email'] ?? null;
+                if ($to) {
+                    $whole = trim((string) ($order->userSnapshot['name'] ?? ''));
+                    $first = $whole !== '' ? explode(' ', $whole)[0] : 'there';
+                    Mail::to($to)->send(new ProofReadyMail(
+                        $first,
+                        strtoupper(substr((string) $order->_id, -8)),
+                        array_map(fn ($u) => $this->watermarkedProof($u), array_slice($adminDesignUrls, 0, 3)),
+                        // So the mail can say what approving leads to: a payment, or production.
+                        max(0.0, round((float) ($order->totalAmount ?? 0) - $this->paidSoFar($order), 2)),
+                        // The thumbnail opens the order, where a video proof actually plays.
+                        rtrim((string) config('app.frontend_url', ''), '/') !== ''
+                            ? rtrim((string) config('app.frontend_url'), '/') . '/shop/orders-history?order=' . (string) $order->_id
+                            : ''
+                    ));
+                }
+            } catch (\Throwable $mailErr) {
+                Log::warning('adminUploadDesign: proof email failed', ['error' => $mailErr->getMessage()]);
+            }
+
             return $this->successResponse('Design draft uploaded. Customer has been notified.', $order);
 
         } catch (\Illuminate\Validation\ValidationException $e) {
@@ -3546,14 +4908,37 @@ class OrderController extends Controller
             $order = Order::find($id);
             if (!$order) return $this->notFoundResponse('Order');
 
+            // An upload is paid at checkout, so most arrive here paid. Sending every one to
+            // awaiting_payment told a paid customer to pay again.
+            $isUnpaid  = ($order->paymentStatus ?? 'unpaid') === 'unpaid';
+            $next      = $isUnpaid ? 'awaiting_payment' : 'awaiting_production';
             $history   = $order->statusHistory ?? [];
-            $history[] = ['status' => 'awaiting_payment', 'at' => now()->toISOString(), 'by' => 'admin', 'note' => 'Upload approved — awaiting customer payment'];
-            $order->orderStatus   = 'awaiting_payment';
+            $history[] = ['status' => $next, 'at' => now()->toISOString(), 'by' => 'admin', 'note' => $isUnpaid ? 'Upload approved - awaiting customer payment' : 'Upload approved'];
+            if ($this->isBeforeProduction($order->orderStatus)) {
+                $order->orderStatus = $next;
+            }
             $order->statusHistory = $history;
+
+            // This is the OTHER approve path - the quick-view modal posts here while the expanded
+            // row posts to approve-design - and it recorded the money side only. The artwork was
+            // approved and nothing said so, so designStatus stayed pending: the aggregate gate
+            // refused to let a job order be created, and the Create Job Order shortcut, which
+            // keys on the same field, never appeared. Approving in one place has to mean the
+            // same thing as approving in the other.
+            $items = $order->items ?? [];
+            foreach ($items as $i => $it) {
+                $isCustom = ($it['isCustom'] ?? false) || !empty($it['designRequested'])
+                    || !empty($it['designUrl']) || !empty($it['designFiles']);
+                if ($isCustom) {
+                    $items[$i]['designStatus'] = 'approved';
+                }
+            }
+            $order->items = array_values($items);
+            $this->syncDesignAggregate($order);
             $order->updatedAt     = now();
             $order->save();
 
-            try { broadcast(new \App\Events\OrderStatusUpdated((string) $order->_id, 'awaiting_payment', null)); } catch (\Throwable) {}
+            try { broadcast(new \App\Events\OrderStatusUpdated((string) $order->_id, (string) $order->orderStatus, null)); } catch (\Throwable) {}
 
             try {
                 Notification::create([
@@ -3562,7 +4947,9 @@ class OrderController extends Controller
                     'title'   => 'Your Design Was Approved!',
                     'message' => 'Your uploaded design for order #' .
                         strtoupper(substr((string) $order->_id, -8)) .
-                        ' has been approved. Please complete your payment to begin production.',
+                        ($isUnpaid
+                            ? ' has been approved. Please complete your payment to begin production.'
+                            : ' has been approved. We\'ll begin production shortly.'),
                     'is_read' => false,
                     'data'    => ['orderId' => (string) $order->_id],
                     'created_at' => now(),
@@ -3571,9 +4958,21 @@ class OrderController extends Controller
                 Log::warning('approveUploadDesign: notification failed', ['error' => $e->getMessage()]);
             }
 
-            return $this->successResponse('Upload approved. Customer notified to complete payment.', $order);
+            return $this->successResponse($isUnpaid ? 'Upload approved. Customer notified to complete payment.' : 'Upload approved.', $order);
         } catch (\Exception $e) {
             return $this->serverErrorResponse($e, 'Failed to approve upload.');
         }
+    }
+
+    /**
+     * Still before production: approving a design may move the order's status from here, and
+     * nowhere later - a design approved on an order already being made must not rewind it.
+     */
+    private function isBeforeProduction(?string $status): bool
+    {
+        return in_array((string) $status, [
+            'pending', 'Pending', 'pending_review', 'pending_design', 'proof_sent',
+            'revision_requested', 'processing', 'Processing', 'awaiting_payment', 'design_approved',
+        ], true);
     }
 }

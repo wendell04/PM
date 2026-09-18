@@ -169,17 +169,15 @@ class RealDataSeeder extends Seeder
         // Regular Sticker finishes
         $mSRG_G  = $mat(['name'=>'Regular Sticker Paper A4 (Glossy)',       'sku'=>'STK-REG-GLS',    'uom'=>'sheet', 'cat'=>'Stickers & Labels', 'qty'=>200, 'cost'=>4.00,  'min'=>50, 'sup'=>$sup2]);
         $mSRG_M  = $mat(['name'=>'Regular Sticker Paper A4 (Matte)',        'sku'=>'STK-REG-MAT',    'uom'=>'sheet', 'cat'=>'Stickers & Labels', 'qty'=>200, 'cost'=>4.00,  'min'=>50, 'sup'=>$sup2]);
-        // Kraft finishes
-        $mSKF_G  = $mat(['name'=>'Kraft Sticker Paper A4 (Glossy)',         'sku'=>'STK-KFT-GLS',    'uom'=>'sheet', 'cat'=>'Stickers & Labels', 'qty'=>200, 'cost'=>3.00,  'min'=>50, 'sup'=>$sup2]);
-        $mSKF_M  = $mat(['name'=>'Kraft Sticker Paper A4 (Matte)',          'sku'=>'STK-KFT-MAT',    'uom'=>'sheet', 'cat'=>'Stickers & Labels', 'qty'=>200, 'cost'=>3.00,  'min'=>50, 'sup'=>$sup2]);
-        $mSKF_T  = $mat(['name'=>'Kraft Sticker Paper A4 (Transparent)',    'sku'=>'STK-KFT-TRN',    'uom'=>'sheet', 'cat'=>'Stickers & Labels', 'qty'=>200, 'cost'=>3.50,  'min'=>50, 'sup'=>$sup2]);
+        // Kraft comes in one finish only - there is no glossy, matte or transparent kraft.
+        $mSKF    = $mat(['name'=>'Kraft Sticker Paper A4',                  'sku'=>'STK-KFT',        'uom'=>'sheet', 'cat'=>'Stickers & Labels', 'qty'=>200, 'cost'=>3.00,  'min'=>50, 'sup'=>$sup2]);
         // Consumables
         $mPap   = $mat(['name'=>'Sublimation Transfer Paper A3', 'sku'=>'CONS-SUB-PAP-A3', 'uom'=>'sheet', 'cat'=>'Consumables', 'qty'=>500, 'cost'=>6.00,   'min'=>100, 'sup'=>$sup2]);
         $mInk   = $mat(['name'=>'Sublimation Ink Set',           'sku'=>'CONS-SUB-INK',    'uom'=>'set',   'cat'=>'Consumables', 'qty'=>5,   'cost'=>900.00, 'min'=>1,   'sup'=>$sup2]);
         // Packaging
         $mMugBox   = $mat(['name'=>'Mug Box White 11oz',             'sku'=>'PKG-MUG-BOX-11',    'uom'=>'pcs', 'cat'=>'Consumables', 'qty'=>100, 'cost'=>5.00,  'min'=>20,  'sup'=>$sup1]);
         $mBadgePkg = $mat(['name'=>'Button Badge OPP Bag 2.25"',     'sku'=>'PKG-BADGE-OPP-225', 'uom'=>'pcs', 'cat'=>'Consumables', 'qty'=>500, 'cost'=>0.50,  'min'=>100, 'sup'=>$sup3]);
-        // Accessories — Scrunchie colors
+        // Accessories - Scrunchie colors
         $mScrchY = $mat(['name'=>'Scrunchie - Yellow', 'sku'=>'ACC-SCRCH-YEL', 'uom'=>'pcs', 'cat'=>'Accessories', 'qty'=>50, 'cost'=>18.00, 'min'=>10, 'sup'=>$sup3]);
         $mScrchO = $mat(['name'=>'Scrunchie - Orange', 'sku'=>'ACC-SCRCH-ORG', 'uom'=>'pcs', 'cat'=>'Accessories', 'qty'=>50, 'cost'=>18.00, 'min'=>10, 'sup'=>$sup3]);
 
@@ -246,10 +244,8 @@ class RealDataSeeder extends Seeder
         // Regular finish BOMs
         $bSRG_G  = $bom('BOM-STK-REG-GLS',     'Regular Sticker Paper - Glossy',               [$c($mSRG_G,1)]);
         $bSRG_M  = $bom('BOM-STK-REG-MAT',     'Regular Sticker Paper - Matte',                [$c($mSRG_M,1)]);
-        // Kraft finish BOMs
-        $bSKF_G  = $bom('BOM-STK-KFT-GLS',     'Kraft Sticker Paper - Glossy',                 [$c($mSKF_G,1)]);
-        $bSKF_M  = $bom('BOM-STK-KFT-MAT',     'Kraft Sticker Paper - Matte',                  [$c($mSKF_M,1)]);
-        $bSKF_T  = $bom('BOM-STK-KFT-TRN',     'Kraft Sticker Paper - Transparent',            [$c($mSKF_T,1)]);
+        // Kraft BOM
+        $bSKF    = $bom('BOM-STK-KFT',         'Custom Kraft Sticker Paper',                   [$c($mSKF,1)]);
         // Scrunchie color BOMs
         $bScrchY = $bom('BOM-ACC-SCRCH-YEL',   'Scrunchie - Yellow',                           [$c($mScrchY,1)]);
         $bScrchO = $bom('BOM-ACC-SCRCH-ORG',   'Scrunchie - Orange',                           [$c($mScrchO,1)]);
@@ -276,6 +272,14 @@ class RealDataSeeder extends Seeder
         };
 
         $prod = function (array $d) use ($now): Product {
+            // A tier list that ends "501 and above" would otherwise sell any run at the last price.
+            // Above QUOTE_ABOVE pieces the product page asks for a quote instead.
+            if (($d['priceType'] ?? null) === 'tiered' && !array_key_exists('quoteAboveQty', $d)) {
+                $last = collect($d['priceTiers'] ?? [])->sortBy('minQty')->last();
+                if ($last && ($last['maxQty'] ?? null) === null && (int) $last['minQty'] <= \App\Console\Commands\SetQuoteAbove::DEFAULT_QTY) {
+                    $d['quoteAboveQty'] = \App\Console\Commands\SetQuoteAbove::DEFAULT_QTY;
+                }
+            }
             return Product::create(array_merge([
                 'isActive'            => true,
                 'isPublished'         => true,
@@ -298,7 +302,7 @@ class RealDataSeeder extends Seeder
 
         $bid = fn($b) => $b->_id;
 
-        // Mugs — multi-variant (Ceramic White / Inner Color / Magic Mug)
+        // Mugs - multi-variant (Ceramic White / Inner Color / Magic Mug)
         $pMug = $prod([
             'name'           => 'Custom Mug 11oz',
             'description'    => 'Personalized sublimation-printed mug, 11oz. Choose from Ceramic White, Inner Color, or Magic Mug.',
@@ -323,7 +327,7 @@ class RealDataSeeder extends Seeder
             ]),
         ]);
 
-        // Canvas Totebags — multi-variant per style (3 sizes each)
+        // Canvas Totebags - multi-variant per style (3 sizes each)
         $pBagPlain = $prod([
             'name'           => 'Canvas Totebag - Plain',
             'description'    => 'Custom sublimation-printed canvas totebag, plain. Available in Small (10x12"), Medium (12x14"), and Large (14x16").',
@@ -397,7 +401,7 @@ class RealDataSeeder extends Seeder
             ]),
         ]);
 
-        // Button Badges — multi-variant (Button Pin / Magnet Badge / Keychain Badge)
+        // Button Badges - multi-variant (Button Pin / Magnet Badge / Keychain Badge)
         $pBadge = $prod([
             'name'                => 'Custom Badge 2.25"',
             'description'         => 'Custom-printed badge, 2.25" diameter. Choose from Button Pin, Magnet Badge, or Keychain Badge.',
@@ -498,7 +502,7 @@ class RealDataSeeder extends Seeder
         ]);
         $pMBkm = $prod(['name'=>'Magnetic Bookmark 2.5"', 'description'=>'Custom-printed magnetic bookmark. Maximum size: 2.5".', 'category'=>'Souvenirs', 'subCategoryName'=>'Magnetic Bookmark 2.5"', 'priceType'=>'tiered', 'priceTiers'=>$t([[1,20,30],[21,30,28],[31,50,25],[51,100,23],[101,300,20],[301,500,18],[501,null,15]]), 'bomId'=>$bid($bMBkm), 'requiresDownpayment'=>false, 'downpaymentPercent'=>0]);
 
-        // Stickers & Labels — multi-variant per finish (price per A4 sheet, tiers start at 1-30)
+        // Stickers & Labels - multi-variant per finish (price per A4 sheet, tiers start at 1-30)
         $pSVP = $prod([
             'name'                => 'Vinyl Sticker Waterproof (Kisscut/Diecut)',
             'description'         => 'Waterproof vinyl sticker. Choose from Glossy, Matte, or Transparent. Price per A4 sheet.',
@@ -620,28 +624,15 @@ class RealDataSeeder extends Seeder
             ]),
         ]);
         $pSKF = $prod([
-            'name'                => 'Kraft Sticker Paper',
-            'description'         => 'Kraft sticker paper. Choose from Glossy, Matte, or Transparent. Price per A4 sheet.',
+            'name'                => 'Custom Kraft Sticker Paper',
+            'description'         => 'Custom-printed kraft sticker paper, A4. Price per A4 sheet.',
             'category'            => 'Stickers & Labels',
             'subCategoryName'     => 'Kraft Sticker Paper A4',
             'priceType'           => 'tiered',
-            'bomId'               => null,
+            'bomId'               => $bid($bSKF),
             'requiresDownpayment' => false,
             'downpaymentPercent'  => 0,
-            'variantGroups'       => [['id'=>'finish','name'=>'Finish','options'=>['Glossy','Matte','Transparent']]],
-            'combinations'        => [
-                ['id'=>'skf-g','name'=>'Glossy',     'bomId'=>(string)$bid($bSKF_G)],
-                ['id'=>'skf-m','name'=>'Matte',      'bomId'=>(string)$bid($bSKF_M)],
-                ['id'=>'skf-t','name'=>'Transparent','bomId'=>(string)$bid($bSKF_T)],
-            ],
-            'priceTiers'          => $tm([
-                [1,   30,  ['skf-g'=>35,'skf-m'=>35,'skf-t'=>37]],
-                [31,  50,  ['skf-g'=>33,'skf-m'=>33,'skf-t'=>35]],
-                [51,  100, ['skf-g'=>30,'skf-m'=>30,'skf-t'=>32]],
-                [101, 300, ['skf-g'=>28,'skf-m'=>28,'skf-t'=>30]],
-                [301, 500, ['skf-g'=>27,'skf-m'=>27,'skf-t'=>29]],
-                [501, null,['skf-g'=>25,'skf-m'=>25,'skf-t'=>27]],
-            ]),
+            'priceTiers'          => $t([[1,30,35],[31,50,33],[51,100,30],[101,300,28],[301,500,27],[501,null,25]]),
         ]);
 
         // Printing Services (inquiry, made-to-order, no BOM needed)
@@ -663,7 +654,7 @@ class RealDataSeeder extends Seeder
                 'downpaymentPercent'  => 50,
                 'trackInventory'      => false,
                 'bomId'               => null,
-                'stockStatus'         => 'upon-order',
+                'stockStatus'         => 'in-stock',
                 'createdAt'           => $now,
                 'updatedAt'           => $now,
             ], $d));
@@ -675,7 +666,7 @@ class RealDataSeeder extends Seeder
         $pHP   = $svc(['name'=>'Heat Press Subcon',    'description'=>'Heat press sublimation subcontracting. Prices start at ₱5 per press. Final cost depends on quantity, design, and panel print.',                       'category'=>'Printing Services', 'subCategoryName'=>'Heat Press Subcon']);
         $pTsh  = $svc(['name'=>'T-Shirt Printing',     'description'=>'Custom t-shirt printing via DTF or sublimation. Prices start at ₱300. Final cost depends on quantity, design, material, and panel print.',           'category'=>'Printing Services', 'subCategoryName'=>'T-Shirt Printing']);
 
-        // Scrunchie — non-customizable, ready-made, color variants
+        // Scrunchie - non-customizable, ready-made, color variants
         $pScrch = $prod([
             'name'                => 'Scrunchie',
             'description'         => 'Plain scrunchie, ready-made. Available in Yellow or Orange. Perfect as an add-on gift item.',

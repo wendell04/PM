@@ -139,7 +139,7 @@ class OrderRequestController extends Controller
         ]);
 
         try {
-            // Inquiry requests are handled entirely via chat / Messenger — skip the "request received" email.
+            // Inquiry requests are handled entirely via chat / Messenger - skip the "request received" email.
             if (($orderRequest->priceType ?? '') !== 'inquiry') {
                 Mail::to($orderRequest->customerEmail)
                     ->send(new OrderSubmittedMail(
@@ -305,7 +305,7 @@ class OrderRequestController extends Controller
             // Push the quote into the customer's chat + an in-app notification so they can pay.
             $this->notifyQuoteInChat($req);
 
-            // Inquiries are a chat-first channel — the quote card above is the notice, no email.
+            // Inquiries are a chat-first channel - the quote card above is the notice, no email.
             if ($req->priceType !== 'inquiry') {
                 try {
                     Mail::to($req->customerEmail)
@@ -468,7 +468,7 @@ class OrderRequestController extends Controller
                     'orderRequestId' => (string) $req->_id,
                     'error'          => $saleErr->getMessage(),
                 ]);
-                // Non-fatal — do not block the status update
+                // Non-fatal - do not block the status update
             }
         }
 
@@ -479,7 +479,7 @@ class OrderRequestController extends Controller
      * GET /my/order-requests
      */
     /**
-     * POST /admin/quotations — the admin builds a quote straight from the chat.
+     * POST /admin/quotations - the admin builds a quote straight from the chat.
      * Creates a CONFIRMED OrderRequest (the RFQ backbone) for the customer, then posts
      * the View & Pay quotation card into their chat. Works whether or not the customer
      * came through the product "Inquire" button (free-text product/service description).
@@ -516,8 +516,8 @@ class OrderRequestController extends Controller
             return $this->errorResponse('Customer not found.', 404);
         }
 
-        // Every line is resolved against the real catalog item so the quote — and the Order it
-        // later converts into — carries ids/thumbnails, not typed strings. Name/thumbnail come
+        // Every line is resolved against the real catalog item so the quote - and the Order it
+        // later converts into - carries ids/thumbnails, not typed strings. Name/thumbnail come
         // from the product; only qty and price are the admin's to set.
         $lineItems     = [];
         $goodsTotal    = 0.0;
@@ -559,7 +559,23 @@ class OrderRequestController extends Controller
             $lineItems[] = [
                 'productId'    => (string) $product->_id,
                 'productName'  => $product->name,
-                'thumbnail'    => $product->thumbnail ?? ($product->images[0] ?? null),
+                // The variant's own picture when it has one. A quote for a Magic Mug that shows the
+                // plain white mug is describing a different product from the one being bought, and
+                // this is the last screen before the customer pays. Same order of preference the
+                // storefront already uses.
+                'thumbnail'    => (function () use ($product, $row) {
+                    $vid = $row['variantId'] ?? null;
+                    if ($vid) {
+                        $map = (array) ($product->variantImageUrls ?? []);
+                        if (!empty($map[$vid])) return $map[$vid];
+                        foreach ((array) ($product->combinations ?? []) as $c) {
+                            if ((string) ($c['id'] ?? '') === (string) $vid && !empty($c['imageUrl'])) {
+                                return $c['imageUrl'];
+                            }
+                        }
+                    }
+                    return $product->thumbnail ?? ($product->images[0] ?? null);
+                })(),
                 'category'     => $product->category ?? null,
                 'variantId'    => $row['variantId'] ?? null,
                 'variantName'  => $row['variantName'] ?? null,
@@ -574,12 +590,12 @@ class OrderRequestController extends Controller
         $designFee   = round((float) ($validated['designFee'] ?? 0), 2);
         $deliveryFee = round((float) ($validated['deliveryFee'] ?? 0), 2);
         $total       = round($goodsTotal + $designFee + $deliveryFee, 2);
-        // Absent (blank) means "use the 50% default" — nullable rules drop the key entirely, so it
+        // Absent (blank) means "use the 50% default" - nullable rules drop the key entirely, so it
         // must be coalesced rather than read directly.
         $downPayment = isset($validated['downPayment']) ? round((float) $validated['downPayment'], 2) : null;
 
         // A design the owner attaches to the quote is already the agreed artwork (settled in
-        // chat), so it is marked approved — the converted order skips the proof-approval gate
+        // chat), so it is marked approved - the converted order skips the proof-approval gate
         // and goes straight to production. (Customer-uploaded custom designs are NOT approved
         // here; those still route through review on the product-page custom-order flow.)
         $designUrl   = !empty($validated['designUrl']) ? $validated['designUrl'] : null;
@@ -592,7 +608,7 @@ class OrderRequestController extends Controller
             'customerName'  => trim(($customer->firstName ?? '') . ' ' . ($customer->lastName ?? '')),
             'customerEmail' => $customer->email ?? null,
             'items'         => $lineItems,
-            // Singular mirrors of the first line — kept populated so anything still reading the
+            // Singular mirrors of the first line - kept populated so anything still reading the
             // old fields (list previews, legacy screens) keeps working. lineItems is the truth.
             'productId'        => $first['productId'],
             'productName'      => $first['productName'],
@@ -617,7 +633,7 @@ class OrderRequestController extends Controller
             'designApproved'=> $designUrl ? true : false,
             'status'        => 'confirmed',
             'paymentStatus' => 'unpaid',
-            // Quote validity — after this the customer can no longer pay the quoted price (default 7 days).
+            // Quote validity - after this the customer can no longer pay the quoted price (default 7 days).
             'expiresAt'     => now()->addDays((int) ($validated['expiresInDays'] ?? 7)),
             'statusHistory' => [['status' => 'confirmed', 'at' => now()->toISOString()]],
             'createdAt'     => now(),
@@ -636,33 +652,156 @@ class OrderRequestController extends Controller
     /**
      * Post the confirmed quote into the customer's chat as a quotation card (with a
      * View & Pay CTA deep-links to /shop/checkout/quote/{id}) plus an in-app notification.
-     * Chat-first channel for inquiries — replaces the confirmation email. Best-effort/non-fatal.
+     * Chat-first channel for inquiries - replaces the confirmation email. Best-effort/non-fatal.
      */
+    /**
+     * The customer's 1-to-1 thread with the shop, found or created (string participants - matches
+     * ChatController). Shared by the quote card and the stock messages that follow it.
+     *
+     * @return array{0:?Conversation,1:?User}
+     */
+    private function quoteConversation(OrderRequest $req): array
+    {
+        $customerId = (string) $req->customerId;
+        $admin      = User::whereIn('role', ['admin', 'owner'])->first();
+        if (!$admin || $customerId === '') {
+            return [null, null];
+        }
+        $adminId = (string) $admin->_id;
+
+        $participants = [$customerId, $adminId];
+        sort($participants);
+        $conversation = Conversation::where('participants', $customerId)->get()
+            ->first(function ($c) use ($customerId, $adminId) {
+                $parts = array_map('strval', is_array($c->participants) ? $c->participants : []);
+                return in_array($customerId, $parts, true) && in_array($adminId, $parts, true);
+            });
+        if (!$conversation) {
+            $conversation = Conversation::create([
+                'participants'    => $participants,
+                'last_message_at' => now(),
+                'is_active'       => true,
+            ]);
+        }
+        return [$conversation, $admin];
+    }
+
+    /** A plain message from the shop in the customer's thread, plus the bell. */
+    private function postQuoteText(OrderRequest $req, string $body): void
+    {
+        try {
+            [$conversation, $admin] = $this->quoteConversation($req);
+            if (!$conversation) return;
+
+            $message = Message::create([
+                'conversation_id' => (string) $conversation->_id,
+                'sender_id'       => (string) $admin->_id,
+                'sender_name'     => trim(($admin->firstName ?? '') . ' ' . ($admin->lastName ?? '')) ?: 'Store',
+                'body'            => $body,
+                'type'            => 'text',
+                'is_read'         => false,
+            ]);
+            $conversation->update(['last_message' => $body, 'last_message_at' => now()]);
+            try {
+                broadcast(new MessageSent($message))->toOthers();
+            } catch (\Throwable $e) {
+                Log::warning('Quote stock message broadcast failed (message still saved): ' . $e->getMessage());
+            }
+            Notification::create([
+                'user_id'    => (string) $req->customerId,
+                'type'       => 'quote_ready',
+                'title'      => 'Your quote can be paid',
+                'message'    => $body,
+                'is_read'    => false,
+                'data'       => ['orderRequestId' => (string) $req->_id, 'link' => '/shop/checkout/quote/' . (string) $req->_id],
+                'created_at' => now(),
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('postQuoteText failed', ['orderRequestId' => (string) $req->_id, 'error' => $e->getMessage()]);
+        }
+    }
+
+    /** Guard shared by the two stock actions: an unpaid, unexpired quote the admin can act on. */
+    private function actionableQuote(Request $request, string $id)
+    {
+        $user = $request->user();
+        if (!$user || !in_array($user->role ?? null, ['admin', 'owner'])) {
+            return [null, $this->unauthorizedResponse()];
+        }
+        $req = OrderRequest::find($id);
+        if (!$req) {
+            return [null, $this->errorResponse('Quote not found.', 404)];
+        }
+        if (!empty($req->convertedOrderId) || ($req->paymentStatus ?? 'unpaid') !== 'unpaid') {
+            return [null, $this->errorResponse('This quote has already been paid.', 422)];
+        }
+        if ($req->expiresAt && now()->greaterThan($req->expiresAt)) {
+            return [null, $this->errorResponse('This quote has expired - send a new one instead.', 422)];
+        }
+        return [$req, null];
+    }
+
+    /**
+     * POST /api/admin/quotations/{id}/allow-preorder
+     *
+     * Let THIS quote be paid past the shelf. Turning pre-order on for the product would open it on
+     * the storefront for everyone; a quote is a negotiated deal, so the owner decides it alone.
+     */
+    public function allowPreorder(Request $request, string $id)
+    {
+        [$req, $error] = $this->actionableQuote($request, $id);
+        if ($error) return $error;
+
+        $days = 0;
+        foreach (\App\Support\QuoteStock::shortages($req) as $short) {
+            $days = max($days, (int) ($short['leadTimeDays'] ?? 0));
+        }
+
+        $req->allowPreorder = true;
+        $req->stockBlock    = null;
+        $req->save();
+
+        $this->postQuoteText($req, 'Good news - you can pay for your quote now. Part of it will be made after we restock'
+            . ($days > 0 ? ", which adds about {$days} day" . ($days === 1 ? '' : 's') : '')
+            . '. Tap View & Pay on your quote.');
+
+        return $this->successResponse('Pre-order allowed for this quote. The customer has been told they can pay.');
+    }
+
+    /**
+     * POST /api/admin/quotations/{id}/restocked
+     *
+     * The owner says the stock is in. Checked, not trusted - a quote marked restocked while still
+     * short would send the customer straight back into the same refusal.
+     */
+    public function markRestocked(Request $request, string $id)
+    {
+        [$req, $error] = $this->actionableQuote($request, $id);
+        if ($error) return $error;
+
+        $shortages = \App\Support\QuoteStock::shortages($req);
+        if (!\App\Support\QuoteStock::mayPayPastShelf($req, $shortages)) {
+            $list = implode(', ', array_map(fn ($x) => ($x['name'] ?? 'a material') . ' needs ' . $x['short'] . ' more', $shortages));
+            return $this->errorResponse("Still short: {$list}. Stock it in first, or allow pre-order for this quote.", 422);
+        }
+
+        $req->stockBlock = null;
+        $req->save();
+
+        $this->postQuoteText($req, 'The items for your quote are back in stock - you can pay for it now. Tap View & Pay on your quote.');
+
+        return $this->successResponse('Marked restocked. The customer has been told they can pay.');
+    }
+
     private function notifyQuoteInChat(OrderRequest $req, array $extraMeta = []): void
     {
         try {
             $customerId = (string) $req->customerId;
-            $admin      = User::whereIn('role', ['admin', 'owner'])->first();
-            if (!$admin || $customerId === '') {
+            [$conversation, $admin] = $this->quoteConversation($req);
+            if (!$conversation) {
                 return;
             }
             $adminId = (string) $admin->_id;
-
-            // Find or create the 1-to-1 conversation (string participants — matches ChatController).
-            $participants = [$customerId, $adminId];
-            sort($participants);
-            $conversation = Conversation::where('participants', $customerId)->get()
-                ->first(function ($c) use ($customerId, $adminId) {
-                    $parts = array_map('strval', is_array($c->participants) ? $c->participants : []);
-                    return in_array($customerId, $parts, true) && in_array($adminId, $parts, true);
-                });
-            if (!$conversation) {
-                $conversation = Conversation::create([
-                    'participants'    => $participants,
-                    'last_message_at' => now(),
-                    'is_active'       => true,
-                ]);
-            }
 
             $finalPrice = round((float) ($req->finalPrice ?? 0), 2);
             $lineItems  = $req->lineItems;
@@ -722,7 +861,9 @@ class OrderRequestController extends Controller
                 'user_id'    => $customerId,
                 'type'       => 'quote_ready',
                 'title'      => 'Your quote is ready',
-                'message'    => "We've sent a price for \"{$req->productName}\". Tap to review and pay.",
+                'message'    => count($lineItems) > 1
+                    ? "We've sent a price for " . count($lineItems) . " items, including \"{$req->productName}\". Tap to review and pay."
+                    : "We've sent a price for \"{$req->productName}\". Tap to review and pay.",
                 'is_read'    => false,
                 'data'       => [
                     'orderRequestId' => (string) $req->_id,
@@ -766,6 +907,18 @@ class OrderRequestController extends Controller
             return $this->unauthorizedResponse();
         }
 
+        // A file over PHP's upload_max_filesize never arrives - PHP discards it and leaves only an
+        // error code behind, so `required|file` fails as though nothing was attached. Said plainly
+        // here, because "the design field is required" describes a file the customer can see.
+        // Not hasFile() - that calls isValidFile(), which rejects a dropped upload for having an
+        // empty temp path, so the guard would never have run on the one case it exists for.
+        $attempted = $request->file('design');
+        if (is_object($attempted) && $attempted->getError() === UPLOAD_ERR_INI_SIZE) {
+            return response()->json([
+                'message' => 'That file is too large for the server to accept. Please send one under 10 MB.',
+            ], 422);
+        }
+
         $validated = Validator::make($request->all(), [
             // webp was missing here while the storefront offered it, so a .webp passed the
             // browser check and then failed on upload with no useful explanation.
@@ -781,11 +934,22 @@ class OrderRequestController extends Controller
             ], 500);
         }
 
+        // `auto` classifies a PDF as an IMAGE resource, because Cloudinary can rasterise and
+        // transform one. The delivered URL is then /image/upload/....pdf, which returns 401 until PDF
+        // delivery is enabled on the account and, once enabled, serves a derived asset rather than the
+        // bytes the customer uploaded - so the browser reports "Failed to load PDF document" on a file
+        // that is perfectly valid. Artwork must come back byte-identical: it goes to the printer.
+        //
+        // `raw` stores and serves the original untouched. Only the formats Cloudinary genuinely treats
+        // as images stay on the image pipeline, where thumbnails and transforms are worth having.
+        $ext          = strtolower($validated['design']->getClientOriginalExtension());
+        $resourceType = in_array($ext, ['jpg', 'jpeg', 'png', 'webp', 'gif', 'svg'], true) ? 'image' : 'raw';
+
         $response = Http::attach(
             'file',
             file_get_contents($validated['design']->getPathname()),
             $validated['design']->getClientOriginalName()
-        )->post("https://api.cloudinary.com/v1_1/{$cloudName}/auto/upload", [
+        )->post("https://api.cloudinary.com/v1_1/{$cloudName}/{$resourceType}/upload", [
             'upload_preset' => $uploadPreset,
             'folder'        => 'pmp-designs',
         ]);
@@ -801,9 +965,16 @@ class OrderRequestController extends Controller
             ]);
         }
 
+        // Cloudinary states its reason; repeating it beats replacing it, because "failed" sent the
+        // customer back to retry a file that was refused for a fixed reason - size, format, account.
+        Log::warning('Cloudinary design upload failed', [
+            'status' => $response->status(),
+            'body'   => $response->body(),
+        ]);
+
         return response()->json([
-            'message' => 'Failed to upload design.',
-        ], 500);
+            'message' => $response->json('error.message') ?: 'Failed to upload design.',
+        ], 502);
     }
 
     /**

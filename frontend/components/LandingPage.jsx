@@ -4,17 +4,30 @@
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
+import NoImage from '@/components/NoImage';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import { getStorefrontBanners } from '@/lib/bannerUtils';
 import { useAuth } from '@/contexts/AuthContext';
+import PolicyModal from '@/components/PolicyModal';
+import { DEFAULT_REGISTRATION_TERMS } from '@/lib/registrationTerms';
+import Turnstile from '@/components/Turnstile';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useCart } from '@/context/CartContext';
 import { fetchNotifications, markNotificationRead, markAllNotificationsRead } from '@/lib/notificationApi';
 import CustomerChatModal from '@/components/chat/CustomerChatModal';
-// Shared with the shop layout — one sign-up form (fields, CAPTCHA, password rules, T&C) everywhere.
+// Shared with the shop layout - one sign-up form (fields, CAPTCHA, password rules, T&C) everywhere.
 import RegisterForm from '@/components/auth/RegisterForm';
 import { PasswordGuide } from '@/components/auth/PasswordGuide';
 import '@/components/custom-styles.css';
+import useLockBodyScroll from '@/lib/useLockBodyScroll';
+import useSheetDrag from '@/lib/useSheetDrag';
+import { socialsFrom, socialNames } from '@/lib/socialLinks';
+// Full-resolution artwork was being handed to the browser for every tile on the page - 42 images,
+// about 22 MB, several of them 2 MB PNGs, all of it downloaded on a phone. Cloudinary serves a
+// display-sized copy of the same file instead.
+import { cloudinaryThumb } from '@/lib/cloudinaryImage';
+import { priceFrom } from '@/lib/priceFrom';
+import OtpInput from '@/components/auth/OtpInput';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
@@ -33,7 +46,27 @@ const HERO_SLIDER_IMAGES = [
   { src: '/products/Caps.jpg',           label: 'Caps',                 pos: 'center 60%'    },
 ];
 
-const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=[]}) => {
+// A banner button from the CMS can ask for a modal instead of a link: put "register" or
+// "login" in its link field (with or without the #). Anything else stays an ordinary href.
+// Without this every CMS button was an href, so a seeded "Register Free" led to "#".
+function cmsCta(label, link) {
+  if (!label) return null;
+  const raw = String(link || '').trim().replace(/^#/, '').toLowerCase();
+  if (['register', 'signup', 'sign-up'].includes(raw)) return { label, action: 'register' };
+  if (['login', 'signin', 'sign-in'].includes(raw))    return { label, action: 'login' };
+  // A banner seeded with no link at all is the common case, and testers pressed "Register Free"
+  // and got nothing. If the words say what the button is for, honour them.
+  if (raw === '' || raw === '#') {
+    const words = String(label).toLowerCase();
+    if (/regist|sign\s?up|create account/.test(words)) return { label, action: 'register' };
+    if (/log\s?in|sign\s?in/.test(words))             return { label, action: 'login' };
+  }
+  return { label, href: link || '#' };
+}
+
+// mobileV2 is the owner's "New phone layout" switch (Homepage editor). Off renders exactly the
+// layout that shipped before it; every style it turns on lives under .lp-m2 and phone widths only.
+const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=[], mobileV2=false}) => {
   const router = useRouter();
   const { currentUser: user, token, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
@@ -48,9 +81,6 @@ const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [lpCartOpen, setLpCartOpen] = useState(false);
   const [lpNotifOpen, setLpNotifOpen] = useState(false);
-  const cartSheetRef = useRef(null);
-  const notifSheetRef = useRef(null);
-  const sheetDragStartY = useRef(0);
   const [lpNotifications, setLpNotifications] = useState([]);
   const [lpNotifLoading, setLpNotifLoading] = useState(false);
   const [lpUnreadCount, setLpUnreadCount] = useState(0);
@@ -68,10 +98,14 @@ const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=
   const [contactForm, setContactForm]   = useState({name: '', email: '', subject: '', message: ''});
   const [contactErrors, setContactErrors] = useState({});
   const [contactSent, setContactSent]   = useState(false);
+  // Owner-editable from Settings. Defaults keep the form open and the old wording, so the page
+  // behaves exactly as before until someone changes something.
+  const [contactCfg, setContactCfg] = useState({ enabled: true, success: null, closed: null });
   const [loginErrors, setLoginErrors]   = useState({});
   const [sessionMessage, setSessionMessage] = useState('');
   const [errors, setErrors]             = useState({});
   const [verificationModal, setVerificationModal] = useState(false);
+
   const [registeredEmail, setRegisteredEmail]     = useState('');
   const [verificationCode, setVerificationCode]   = useState('');
   const [verifyError, setVerifyError]             = useState('');
@@ -118,10 +152,46 @@ const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=
   // Customer reviews
   const [landingReviews, setLandingReviews] = useState(initialReviews);
   const [reviewsIdx, setReviewsIdx] = useState(0);
+  // How many review cards are actually on screen. The CSS shows 3, then 2, then 1 as the screen
+  // narrows, but the track was always stepped by a third - so on a phone every move left a card
+  // cut down the middle. The step, the arrows and the dots all read this one number.
+  const [reviewsPerView, setReviewsPerView] = useState(3);
+  const [reviewsPaused, setReviewsPaused]   = useState(false);
+  // Pages, not cards: the carousel moves a whole screenful at a time, so a card is never left
+  // half on screen. reviewsIdx is the page.
+  const reviewsPages  = Math.max(1, Math.ceil(landingReviews.length / reviewsPerView));
+  const reviewsMaxIdx = reviewsPages - 1;
+
+  useEffect(() => {
+    // A review card needs about 300px to read: one on a phone, two on a tablet, three on a desktop.
+    const calc = () => setReviewsPerView(window.innerWidth <= 700 ? (mobileV2 ? 2 : 1) : window.innerWidth <= 1023 ? 2 : 3);
+    calc();
+    window.addEventListener('resize', calc);
+    return () => window.removeEventListener('resize', calc);
+  }, [mobileV2]);
+
+  // Rotating the page does not change how many reviews there are, but it changes how many fit -
+  // and an index left past the end shows an empty track.
+  useEffect(() => { setReviewsIdx(i => Math.min(i, reviewsMaxIdx)); }, [reviewsMaxIdx]);
+
+  // Nobody taps an arrow to read a testimonial. It moves on its own, stops while someone is on a
+  // card, and never runs for a visitor who asked for less motion.
+  useEffect(() => {
+    if (reviewsPaused || reviewsMaxIdx <= 0) return undefined;
+    if (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches) return undefined;
+    const t = setInterval(() => setReviewsIdx(i => (i >= reviewsMaxIdx ? 0 : i + 1)), 5000);
+    return () => clearInterval(t);
+  }, [reviewsPaused, reviewsMaxIdx]);
+
   // Real landing stats (orders / customers / avg rating)
   const [landingStats, setLandingStats] = useState(null);
+  const [policyDoc, setPolicyDoc] = useState(null);   // which policy the footer opened
+  const [registrationTerms, setRegistrationTerms] = useState(DEFAULT_REGISTRATION_TERMS);
   // FAQ accordion
   const [openFaq, setOpenFaq] = useState(null);
+  // Phones show the first four questions; the rest are one tap away. Desktop and the old phone
+  // layout always show all six - the cap and the button only exist under .lp-m2.
+  const [faqAll, setFaqAll] = useState(false);
   // CMS-editable pricing (falls back to hardcoded publicPricing)
   const [pricingContent, setPricingContent] = useState(null);
   // CMS-editable Why-Us features / How-It-Works steps / Contact info (fallbacks below)
@@ -138,7 +208,15 @@ const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=
   const [forgotError, setForgotError]     = useState('');
   const [forgotSent, setForgotSent]       = useState(false);
   const [isSendingReset, setIsSendingReset] = useState(false);
+
+  // Every modal on this page left the landing page scrolling behind it, and the chat bubble floated
+  // over their buttons. This call sits BELOW every flag it reads: a state declared further down is
+  // in a temporal dead zone up here, which is a crash on render rather than a warning.
+  // The cart and notification sheets too: without the lock, a drag on the sheet scrolled the page
+  // underneath it on phones.
+  useLockBodyScroll(!!modal || !!verificationModal || forgotModal || !!tAndCModalOpen || lpCartOpen || lpNotifOpen);
   const [forgotStep, setForgotStep]                   = useState(1);
+
   const [forgotCode, setForgotCode]                   = useState('');
   const [forgotNewPassword, setForgotNewPassword]     = useState('');
   const [forgotConfirmPassword, setForgotConfirmPassword] = useState('');
@@ -349,7 +427,7 @@ const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=
       .catch(() => {});
   }, []);
 
-  // Hero carousel auto-advance — taglines loop, images cycle through all (independent)
+  // Hero carousel auto-advance - taglines loop, images cycle through all (independent)
   useEffect(() => {
     if (heroPaused) return;
     const tags = heroBanners.filter(b => b.heroRole === 'tagline');
@@ -360,7 +438,9 @@ const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=
     const t = setInterval(() => {
       setHeroSlide(s => (s + 1) % tCount);
       setHeroImgIdx(i => (i + 1) % iCount);
-    }, 4000);
+      // Four seconds is barely a read on a phone, where the tagline wraps to three lines. Seven
+      // leaves the crossfade room to finish and the words room to land.
+    }, 7000);
     return () => clearInterval(t);
   }, [heroPaused, heroBanners]);
 
@@ -422,6 +502,51 @@ const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=
     if (atBottom) setHasReadTerms(true);
   };
 
+  // A signed-in customer's own address is the one the shop will answer, so it is filled in
+  // and shown locked rather than hidden - hiding it would leave them guessing where the reply
+  // goes. The server ignores this field for signed-in senders either way.
+  const accountName = (u) => {
+    if (!u) return '';
+    const parts = [u.firstName ?? u.first_name, u.lastName ?? u.last_name].filter(Boolean).join(' ').trim();
+    return parts || (u.name ?? u.fullName ?? u.displayName ?? '').trim();
+  };
+
+  useEffect(() => {
+    if (!user) return;
+    setContactForm(f => ({
+      ...f,
+      name:  f.name || accountName(user),
+      email: user.email || f.email,
+    }));
+  }, [user]);
+
+  // Without this the button stayed live through the whole request, so a second click sent a
+  // second copy - and the form is rate-limited, so the duplicate could also spend the
+  // sender's remaining allowance on a message the shop already had.
+  const [contactSending, setContactSending] = useState(false);
+  const [contactTurnstileToken, setContactTurnstileToken] = useState('');
+  const contactTurnstileRef = useRef(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchWithTimeout(`${API_URL}/api/public/settings`, {}, 10000)
+      .then(r => r.json())
+      .then(d => {
+        if (cancelled) return;
+        const st = d?.data ?? d ?? {};
+        if (Array.isArray(st.registrationTerms) && st.registrationTerms.length) {
+          setRegistrationTerms(st.registrationTerms);
+        }
+        setContactCfg({
+          enabled: st.contactFormEnabled !== false,
+          success: st.contactSuccessMessage || null,
+          closed:  st.contactClosedMessage || null,
+        });
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
   const handleContactChange = (field, value) => {
     setContactForm(f => ({...f, [field]: value}));
     if (contactErrors[field]) setContactErrors(e => ({...e, [field]: ''}));
@@ -429,33 +554,47 @@ const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=
 
   const handleContactSubmit = async (e) => {
     e.preventDefault();
+    if (contactSending) return;
     const newErrors = {};
     if (!contactForm.name.trim()) newErrors.name = 'Name is required';
     else if (contactForm.name.trim().length > 120) newErrors.name = 'Name must be 120 characters or fewer';
     if (!contactForm.email.trim()) newErrors.email = 'Email is required';
     else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactForm.email)) newErrors.email = 'Please enter a valid email address';
     if (!contactForm.subject.trim()) newErrors.subject = 'Subject is required';
-    else if (contactForm.subject.trim().length > 200) newErrors.subject = 'Subject must be 200 characters or fewer';
+    else if (contactForm.subject.trim().length > 100) newErrors.subject = 'Subject must be 100 characters or fewer';
     if (!contactForm.message.trim()) newErrors.message = 'Message is required';
-    else if (contactForm.message.trim().length > 5000) newErrors.message = 'Message must be 5000 characters or fewer';
+    else if (contactForm.message.trim().length > 1500) newErrors.message = 'Message must be 1500 characters or fewer';
     setContactErrors(newErrors);
 
     if (Object.keys(newErrors).length === 0) {
+      setContactSending(true);
       try {
         const res = await fetchWithTimeout(`${API_URL}/api/contact`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(contactForm),
+          headers: {
+            'Content-Type': 'application/json',
+            // Sent so the server can file the message under the account that actually wrote it.
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({ ...contactForm, turnstileToken: contactTurnstileToken }),
         }, 15000);
         const data = await res.json();
         if (res.ok && data.message) {
           setContactSent(true);
-          setContactForm({name: '', email: '', subject: '', message: ''});
+          // Single-use: a retry needs a fresh one or the server rejects the stale token.
+          contactTurnstileRef.current?.reset();
+          setContactForm({
+            name:  accountName(user),
+            email: user?.email || '',
+            subject: '', message: '',
+          });
         } else {
           setContactErrors({ submit: data.error || data.message || 'Failed to send message. Please try again.' });
         }
       } catch {
         setContactErrors({ submit: 'Network error. Please try again later.' });
+      } finally {
+        setContactSending(false);
       }
     }
   };
@@ -508,7 +647,7 @@ const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=
     }
   };
 
-  // Scroll to first error — runs after DOM paint using name attributes
+  // Scroll to first error - runs after DOM paint using name attributes
   const scrollToFirstError = (errorObj) => {
     const fieldOrder = ['firstName', 'lastName', 'phoneNumber', 'email', 'password', 'confirmPassword'];
     for (const field of fieldOrder) {
@@ -581,7 +720,7 @@ const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=
       setErrors({email: 'Network error. Make sure the backend server is running.'});
     } finally {
       setIsRegistering(false);
-      // Turnstile tokens are single-use — reset so a re-submit (e.g. after a validation error)
+      // Turnstile tokens are single-use - reset so a re-submit (e.g. after a validation error)
       // gets a fresh token instead of reusing a spent one ("Verification failed").
       turnstileRef.current?.reset();
     }
@@ -614,7 +753,7 @@ const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=
       }
       // Check 2FA requirement BEFORE writing to storage
       if (data.data.requires_2fa) {
-        // Store pending credentials under temporary keys — NOT auth_token/auth_user
+        // Store pending credentials under temporary keys - NOT auth_token/auth_user
         // Final storage write happens in 2fa-challenge onSuccess after OTP verified
         sessionStorage.setItem('pmp_pending_token', data.data.token);
         sessionStorage.setItem('pmp_pending_user', JSON.stringify(data.data.user));
@@ -629,7 +768,7 @@ const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=
         return;
       }
 
-      // No 2FA required — write to storage now
+      // No 2FA required - write to storage now
       localStorage.setItem('auth_token', data.data.token);
       localStorage.setItem('auth_user', JSON.stringify(data.data.user));
       if (data.data.expires_at) localStorage.setItem('auth_expires_at', data.data.expires_at);
@@ -670,18 +809,28 @@ const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=
       });
       const data = await response.json();
       if (!response.ok) { setVerifyError(data.message || 'Verification failed.'); return; }
-      if (pendingAuth) {
-        localStorage.setItem('auth_token', pendingAuth.token);
-        localStorage.setItem('auth_user', JSON.stringify(pendingAuth.user));
-        try {
-          const bc = new BroadcastChannel('pmp_auth');
-          bc.postMessage({ type: 'AUTH_UPDATE', token: pendingAuth.token, user: pendingAuth.user });
-          bc.close();
-        } catch {}
-        setPendingAuth(null);
-      }
+      setPendingAuth(null);
       setVerificationModal(false);
       setVerificationCode('');
+      // Verifying signs the person in: the server returns the same session a login would. (This
+      // used to store the token registration never issued - the word "undefined" - and the next
+      // check of it reported the brand-new session as expired.)
+      const session = data?.data;
+      if (session?.token && session?.user) {
+        localStorage.setItem('auth_token', session.token);
+        localStorage.setItem('auth_user', JSON.stringify(session.user));
+        if (session.expires_at) localStorage.setItem('auth_expires_at', session.expires_at);
+        try {
+          const bc = new BroadcastChannel('pmp_auth');
+          bc.postMessage({ type: 'AUTH_UPDATE', token: session.token, user: session.user });
+          bc.close();
+        } catch {}
+        const redirectPath = sessionStorage.getItem('redirectAfterLogin');
+        sessionStorage.removeItem('redirectAfterLogin');
+        router.push(redirectPath || '/shop');
+        return;
+      }
+      setSessionMessage('Email verified. Sign in to continue.');
       openModal('login');
     } catch (err) {
       setVerifyError('Network error. Make sure backend is running.');
@@ -690,7 +839,7 @@ const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=
     }
   }, [verificationCode, registeredEmail, pendingAuth]);
 
-// STEP 1 — Send reset link to email
+// STEP 1 - Send reset link to email
 const handleForgotSubmit = async () => {
   if (!forgotEmail.trim()) { setForgotError('Email is required'); return; }
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(forgotEmail)) {
@@ -741,7 +890,7 @@ const handleResetLinkClick = async (token, email) => {
   }
 };
 
-// STEP 2 — User confirmed, now send verification code
+// STEP 2 - User confirmed, now send verification code
 const handleSendResetCode = async () => {
   setForgotError('');
   setIsSendingReset(true);
@@ -764,7 +913,7 @@ const handleSendResetCode = async () => {
   }
 };
 
-// STEP 3 — Verify the 6-digit code
+// STEP 3 - Verify the 6-digit code
 const handleForgotVerifyCode = async () => {
   if (forgotCode.length !== 6) { setForgotError('Please enter the 6-digit code'); return; }
   setForgotError('');
@@ -813,7 +962,7 @@ const handleForgotResend = async () => {
   }
 };
 
-// STEP 4 — Submit new password
+// STEP 4 - Submit new password
 const handleForgotResetPassword = async () => {
   if (!forgotNewPassword) { setForgotError('Password is required'); return; }
   if (forgotNewPassword.length < 8) { setForgotError('Password must be at least 8 characters'); return; }
@@ -832,7 +981,7 @@ const handleForgotResetPassword = async () => {
     });
     const data = await response.json();
     if (!response.ok) { setForgotError(data.message || 'Failed to reset password.'); return; }
-    // Success — close and go to login
+    // Success - close and go to login
     setForgotModal(false);
     setForgotStep(1);
     setForgotCode('');
@@ -847,7 +996,7 @@ const handleForgotResetPassword = async () => {
 };
 
   // From the login screen: when login says "verify your email", resend the code and open the
-  // verification modal so the user can enter it — no need to re-register.
+  // verification modal so the user can enter it - no need to re-register.
   // Which of the two paths opened the verification modal, so its wording can be honest.
   const [verifyingExisting, setVerifyingExisting] = useState(false);
 
@@ -967,15 +1116,15 @@ const handleForgotResetPassword = async () => {
   const services = [
     { img: '/products/Tshit_printing.jpg', title: 'T-Shirt Printing',     category: 'tshirts', desc: 'Silkscreen & DTF printing available. Starts at ₱300. Final cost depends on quantity, design complexity, material type, and panel print. Perfect for teams, events, and merchandise.' },
     { img: '/products/DTF.jpg',            title: 'DTF Printing',          category: 'tshirts', desc: 'Direct-to-Film printing. Starts at ₱250 per meter. Vivid, full-color prints on fabric. Final cost depends on quantity. Great for custom apparel and fabric items.' },
-    { img: '/products/mugs.jpg',           title: 'Mugs (11oz)',           category: 'mugs', desc: 'Three variants: Ceramic White, Inner Color Mug, and Magic Mug. Starting at ₱50/pc for 501–1000 pcs. Sublimation-printed for lasting, vibrant color.' },
-    { img: '/products/ButtonPins.jpg',     title: 'Button Pins & Badges',  category: 'bags', desc: 'Available as Badge/Button Pin, Magnet Badge, and Keychain Badge (2.25"). Starting at ₱10/pc for 501–1000 pcs. Ideal for promotions, events, and giveaways.' },
+    { img: '/products/mugs.jpg',           title: 'Mugs (11oz)',           category: 'mugs', desc: 'Three variants: Ceramic White, Inner Color Mug, and Magic Mug. Starting at ₱50/pc for 501-1000 pcs. Sublimation-printed for lasting, vibrant color.' },
+    { img: '/products/ButtonPins.jpg',     title: 'Button Pins & Badges',  category: 'bags', desc: 'Available as Badge/Button Pin, Magnet Badge, and Keychain Badge (2.25"). Starting at ₱10/pc for 501-1000 pcs. Ideal for promotions, events, and giveaways.' },
     { img: '/products/ecobags.jpg',        title: 'Canvas Totebag',        category: 'bags', desc: 'Plain and w/ Zipper & Pocket variants. Sizes: Small (10x12"), Medium (12x14"), Large (14x16"). Starting at ₱70/pc for bulk orders. Eco-friendly and customizable.' },
-    { img: '/products/MousePad.jpg',       title: 'Mousepad',              category: 'stickers', desc: 'Rectangle 22x18cm sublimation-printed mousepad. Starting at ₱70/pc for 501–1000 pcs. Full-color custom design on a smooth, non-slip surface.' },
-    { img: '/products/RefMagnet.jpg',      title: 'Ref Magnet',            category: 'stickers', desc: 'Custom refrigerator magnets up to 3" max size. Starting at ₱15/pc for 501–1000 pcs. Popular souvenir and giveaway item for events and occasions.' },
+    { img: '/products/MousePad.jpg',       title: 'Mousepad',              category: 'stickers', desc: 'Rectangle 22x18cm sublimation-printed mousepad. Starting at ₱70/pc for 501-1000 pcs. Full-color custom design on a smooth, non-slip surface.' },
+    { img: '/products/RefMagnet.jpg',      title: 'Ref Magnet',            category: 'stickers', desc: 'Custom refrigerator magnets up to 3" max size. Starting at ₱15/pc for 501-1000 pcs. Popular souvenir and giveaway item for events and occasions.' },
     { img: '/products/Souvenirs.jpg',      title: 'Souvenirs & Gift Items', category: 'books', desc: 'Custom souvenir items for weddings, birthdays, debuts, and corporate events. Wide variety of personalized items available.' },
     { img: '/products/Stickers.jpg',       title: 'Stickers & Labels',     category: 'stickers', desc: 'Kisscut & Diecut. Variants: Vinyl Waterproof, Laminated, Specialty Label, Photopaper, Regular, and Kraft. Priced per A4 sheet. Starting at ₱25.' },
-    { img: '/products/Bookmarks.jpg',      title: 'Magnetic Bookmark',     category: 'books', desc: 'Maximum size 2.5". Starting at ₱15/pc for 501–1000 pcs. Custom-printed magnetic bookmarks — perfect gifts and giveaways for readers and events.' },
-    { img: '/products/Ballpens.jpg',       title: 'Ballpens',              category: 'books', desc: 'Custom printed ballpens — affordable and practical promotional item. Ideal for corporate giveaways, school events, and bulk orders.' },
+    { img: '/products/Bookmarks.jpg',      title: 'Magnetic Bookmark',     category: 'books', desc: 'Maximum size 2.5". Starting at ₱15/pc for 501-1000 pcs. Custom-printed magnetic bookmarks - perfect gifts and giveaways for readers and events.' },
+    { img: '/products/Ballpens.jpg',       title: 'Ballpens',              category: 'books', desc: 'Custom printed ballpens - affordable and practical promotional item. Ideal for corporate giveaways, school events, and bulk orders.' },
     { img: '/products/Caps.jpg',           title: 'Caps',                  category: 'tshirts', desc: 'Custom printed or embroidered caps. Perfect for teams, sports events, corporate uniforms, and merchandise. Contact us for bulk pricing.' },
   ];
 
@@ -994,17 +1143,17 @@ const handleForgotResetPassword = async () => {
   // CMS pricing cards override the hardcoded defaults when set in the Homepage editor.
   const pricingCards = (pricingContent?.cards?.length) ? pricingContent.cards : publicPricing;
 
-  // Why-Us features + How-It-Works steps + Contact info — CMS override w/ hardcoded fallback.
+  // Why-Us features + How-It-Works steps + Contact info - CMS override w/ hardcoded fallback.
   const DEFAULT_WHYUS = [
     { title: 'Affordable Pricing',   desc: 'Premium prints at prices that make sense. No hidden fees, no overpricing.' },
-    { title: 'Fast Turnaround',      desc: 'Most orders ready within 24–48 hours. Rush orders? We can make it work.' },
+    { title: 'Fast Turnaround',      desc: 'Standard orders arrive in 4-5 days, rush in 2-3. Ready-made items ship the next day.' },
     { title: 'Design Assistance',    desc: 'No designer? No problem. Request a design and our team will create it for you.' },
-    { title: 'Approval Before Print', desc: 'You see and approve the final design before we print — 100% satisfaction guaranteed.' },
+    { title: 'Approval Before Print', desc: 'You see and approve the final design before we print - 100% satisfaction guaranteed.' },
   ];
   const whyusFeatures = whyusContent?.features?.length ? whyusContent.features : DEFAULT_WHYUS;
 
   const DEFAULT_HIW = [
-    { title: 'Browse Products',  desc: 'Explore our full catalogue of personalizable items — shirts, mugs, bags, stickers, and more.' },
+    { title: 'Browse Products',  desc: 'Explore our full catalogue of personalizable items - shirts, mugs, bags, stickers, and more.' },
     { title: 'Personalize It',   desc: 'Add your name, message, or upload a design. We handle every detail to make it uniquely yours.' },
     { title: 'Place Your Order', desc: 'Review your item and check out. We confirm every order and send a proof before production.' },
     { title: 'Receive & Enjoy',  desc: 'Your personalized item is crafted with care and delivered straight to your door.' },
@@ -1017,17 +1166,11 @@ const handleForgotResetPassword = async () => {
     <svg key="3" className="hiw-new-step-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>,
   ];
 
-  // Owner-editable socials/email (?? default => null keeps default, '' hides that icon).
-  const SOCIAL_DEFAULTS = { facebook: 'https://www.facebook.com/share/1Mks4kwnhZ/?mibextid=wwXIfr', instagram: 'https://www.instagram.com/personalizemeprints', tiktok: 'https://www.tiktok.com/@personalizemeprints', shopee: 'https://shopee.ph/personalizemeprints' };
-  const socials = {
-    facebook:  contactContent?.facebook  ?? SOCIAL_DEFAULTS.facebook,
-    instagram: contactContent?.instagram ?? SOCIAL_DEFAULTS.instagram,
-    tiktok:    contactContent?.tiktok    ?? SOCIAL_DEFAULTS.tiktok,
-    shopee:    contactContent?.shopeeUrl ?? SOCIAL_DEFAULTS.shopee,
-    email:     contactContent?.email     ?? '',
-  };
+  // Owner-editable socials/email (never saved => default, cleared '' => that icon is hidden).
+  // Shared with the shop footer, which used to keep its own hardcoded copy.
+  const socials = socialsFrom(contactContent);
 
-  // Accepted payment methods — single source of truth (footer badges + checkout read this).
+  // Accepted payment methods - single source of truth (footer badges + checkout read this).
   // Shape: { enabled: { cod, gcash, paymaya, card } }. Missing key = enabled (default-on).
   const payEnabled = (paymentContent?.enabled && typeof paymentContent.enabled === 'object') ? paymentContent.enabled : {};
   const hasPay = (id) => payEnabled[id] !== false;
@@ -1046,11 +1189,11 @@ const handleForgotResetPassword = async () => {
   };
 
   const FAQS = [
-    { q: 'How long does an order take?', a: 'Most orders are ready within 24–48 hours after you approve the design. Need it sooner? We accept rush orders — just message us and we’ll do our best to make it work.' },
+    { q: 'How long does an order take?', a: 'Custom orders arrive in 4-5 days once you approve the design, or 2-3 days with rush. Ready-made items ship in 1-2 days. Production often finishes sooner when our queue is light, and we message you if yours is ready early.' },
     { q: 'I don’t have a design. Can you make one?', a: 'Yes! Pick “Request a Design” when you order and our team will create it for you. You’ll review and approve the proof before we print anything.' },
     { q: 'What files do you accept for custom uploads?', a: 'PNG, JPG, or PDF work best. For the sharpest print, send high-resolution files (around 300 DPI). If your file isn’t print-ready, we’ll let you know.' },
     { q: 'How do I pay?', a: 'We accept GCash, Maya, and credit/debit cards (Visa & Mastercard). For bulk orders, a downpayment option is available at checkout.' },
-    { q: 'Do you deliver?', a: 'Yes — we ship nationwide via courier. The delivery fee depends on your location and is shown at checkout or arranged with the rider for booked couriers.' },
+    { q: 'Do you deliver?', a: 'Yes - we ship nationwide via courier. The delivery fee depends on your location and is shown at checkout or arranged with the rider for booked couriers.' },
     { q: 'Do you offer bulk or wholesale pricing?', a: 'Definitely. Prices drop as quantity goes up. Log in or register to view the complete pricelist with bulk breakdowns for every product.' },
   ];
 
@@ -1143,11 +1286,11 @@ const handleForgotResetPassword = async () => {
     {
       tag: 'Fast Turnaround',
       titleParts: [
-        {text: 'Ready in ', plain: true},
-        {text: '24 Hours', className: 'gold-text'},
+        {text: 'Delivered in ', plain: true},
+        {text: '4-5 Days', className: 'gold-text'},
       ],
-      subtitle: 'Most orders are printed and ready within a day. Rush orders available for urgent needs.',
-      cta: {label: 'View Services', href: '#services'},
+      subtitle: 'Rush service brings that down to 2-3 days, and ready-made items ship the next day.',
+      cta: {label: 'View Services', href: '/shop?collection=printing-services'},
       cta2: {label: 'Get a Quote', action: 'login'},
     },
     {
@@ -1209,8 +1352,8 @@ const handleForgotResetPassword = async () => {
           tag:        b.tag || null,
           titleParts: parts.length > 0 ? parts : [{ text: '', plain: true }],
           subtitle:   b.subtext || '',
-          cta:        b.ctaLabel  ? { label: b.ctaLabel,  href: b.ctaLink  || '#' } : null,
-          cta2:       b.cta2Label ? { label: b.cta2Label, href: b.cta2Link || '#' } : null,
+          cta:        cmsCta(b.ctaLabel,  b.ctaLink),
+          cta2:       cmsCta(b.cta2Label, b.cta2Link),
         };
       })
     : heroSlides;
@@ -1241,7 +1384,7 @@ const handleForgotResetPassword = async () => {
       return ao - bo;
     });
 
-  // Collections carousel: arrow scroll (desktop) — touch swipes natively.
+  // Collections carousel: arrow scroll (desktop) - touch swipes natively.
   const colScrollRef = useRef(null);
   const scrollCols = (dir) => {
     const el = colScrollRef.current;
@@ -1249,7 +1392,7 @@ const handleForgotResetPassword = async () => {
     el.scrollBy({ left: dir * el.clientWidth * 0.85, behavior: 'smooth' });
   };
 
-  // Lock background scroll when a sheet is open — phones only
+  // Lock background scroll when a sheet is open - phones only
   useEffect(() => {
     if (!lpCartOpen && !lpNotifOpen || window.innerWidth > 640) return;
     const block = (e) => {
@@ -1260,29 +1403,14 @@ const handleForgotResetPassword = async () => {
   }, [lpCartOpen, lpNotifOpen]);
 
   // Drag-to-dismiss handlers
-  const onSheetDragStart = (e) => { sheetDragStartY.current = e.touches[0].clientY; };
-  const onSheetDragMove = (ref) => (e) => {
-    const dy = e.touches[0].clientY - sheetDragStartY.current;
-    if (dy <= 0 || !ref.current) return;
-    ref.current.style.transition = 'none';
-    ref.current.style.transform = `translateY(${dy}px)`;
-  };
-  const onSheetDragEnd = (ref, close) => (e) => {
-    const dy = e.changedTouches[0].clientY - sheetDragStartY.current;
-    if (!ref.current) return;
-    if (dy > 80) {
-      ref.current.style.transition = 'transform 0.28s cubic-bezier(0.4,0,0.2,1)';
-      ref.current.style.transform = 'translateY(110%)';
-      setTimeout(close, 260);
-    } else {
-      ref.current.style.transition = 'transform 0.28s cubic-bezier(0.4,0,0.2,1)';
-      ref.current.style.transform = 'translateY(0)';
-    }
-  };
+  // Same fix as the shop's sheets: drag only while the list inside is at its top, so scrolling
+  // back up through the notifications no longer pulls the sheet down with it.
+  const cartSheetDrag  = useSheetDrag(() => setLpCartOpen(false), 80);
+  const notifSheetDrag = useSheetDrag(() => setLpNotifOpen(false), 80);
 
   // ─── JSX ──────────────────────────────────────────────────────────────────────
   return (
-    <>
+    <div className={mobileV2 ? 'lp-root lp-m2' : 'lp-root'}>
       {/* NAVBAR */}
       <nav className={`navbar ${scrolled ? 'scrolled' : ''}`}>
         <div className="container">
@@ -1340,7 +1468,7 @@ const handleForgotResetPassword = async () => {
                   <div style={{position:'relative'}}>
                     <button className={`lp-nav-avatar-btn${user?.avatar ? ' has-avatar' : ''}`} onClick={() => { setUserMenuOpen(o => !o); setLpCartOpen(false); setLpNotifOpen(false); }} title="Account">
                       {user?.avatar ? (
-                        <img src={user.avatar} alt="avatar" style={{width:'100%',height:'100%',objectFit:'cover'}} />
+                        <img src={cloudinaryThumb(user.avatar, 80)} alt="avatar" style={{width:'100%',height:'100%',objectFit:'cover'}} />
                       ) : (
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                           <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
@@ -1510,12 +1638,9 @@ const handleForgotResetPassword = async () => {
         <div style={{position:'fixed',inset:0,zIndex:198}} onClick={() => { setLpCartOpen(false); setLpNotifOpen(false); }} />
       )}
 
-      {/* Cart sheet — at root level so position:fixed is viewport-relative, not navbar-relative */}
+      {/* Cart sheet - at root level so position:fixed is viewport-relative, not navbar-relative */}
       {lpCartOpen && (
-        <div className="lp-nav-popup" ref={cartSheetRef}
-          onTouchStart={onSheetDragStart}
-          onTouchMove={onSheetDragMove(cartSheetRef)}
-          onTouchEnd={onSheetDragEnd(cartSheetRef, () => setLpCartOpen(false))}>
+        <div className="lp-nav-popup" ref={cartSheetDrag.ref} {...cartSheetDrag.handlers}>
           <div className="lp-nav-popup-header">
             Cart
             {cartCount > 0 && <span className="lp-nav-popup-count">{cartCount}</span>}
@@ -1535,7 +1660,7 @@ const handleForgotResetPassword = async () => {
                 {cartItems.map((item, i) => (
                   <div key={item.lineId || i} className="lp-nav-popup-item">
                     {item.image ? (
-                      <img src={item.image} alt={item.productName} className="lp-nav-popup-item-img" />
+                      <img src={cloudinaryThumb(item.image, 120)} alt={item.productName} loading="lazy" className="lp-nav-popup-item-img" />
                     ) : (
                       <div className="lp-nav-popup-item-img-ph" />
                     )}
@@ -1563,12 +1688,9 @@ const handleForgotResetPassword = async () => {
         </div>
       )}
 
-      {/* Notifications sheet — at root level */}
+      {/* Notifications sheet - at root level */}
       {lpNotifOpen && (
-        <div className="lp-nav-popup lp-nav-notif-popup" ref={notifSheetRef}
-          onTouchStart={onSheetDragStart}
-          onTouchMove={onSheetDragMove(notifSheetRef)}
-          onTouchEnd={onSheetDragEnd(notifSheetRef, () => setLpNotifOpen(false))}>
+        <div className="lp-nav-popup lp-nav-notif-popup" ref={notifSheetDrag.ref} {...notifSheetDrag.handlers}>
           <div className="lp-nav-popup-header">
             Notifications
             {lpUnreadCount > 0 && <span className="lp-nav-popup-count red">{lpUnreadCount}</span>}
@@ -1602,17 +1724,24 @@ const handleForgotResetPassword = async () => {
         </div>
       )}
 
-      {/* Backdrop — click outside drawer to close */}
+      {/* Backdrop - click outside drawer to close */}
       {mobileMenuOpen && (
         <div className="mm-backdrop" onClick={closeMobile} />
       )}
 
-      {/* MOBILE MENU — Nike right-side drawer */}
+      {/* MOBILE MENU - Nike right-side drawer */}
       <div className={`mobile-menu ${mobileMenuOpen ? 'open' : ''}`}>
 
         {/* ── Level 1: main items ── */}
         <div className={`mm-panel mm-l1${mobileNavPanel ? ' mm-hidden' : ''}`}>
+          {/* The drawer opened with 56px of nothing above a lone X. A drawer's top is its header:
+              whose shop this is on the left, the way out on the right. */}
           <div className="mm-close-row">
+            <span className="mm-brand">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/logos/email-logo-v3.png" alt="" width="30" height="30" />
+              <span className="mm-brand-name">PERSONALIZE <span>ME</span> PRINTS</span>
+            </span>
             <button className="mm-close-btn" onClick={closeMobile} aria-label="Close">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
@@ -1782,7 +1911,8 @@ const handleForgotResetPassword = async () => {
                         </svg>
                       </button>
                     ))}
-                    {slide.cta2 && (slide.cta2.href ? (
+                    {/* Asking someone who is already signed in to register is noise. */}
+                    {slide.cta2 && !(user && slide.cta2.action) && (slide.cta2.href ? (
                       <a href={slide.cta2.href} className="btn-secondary">
                         {slide.cta2.label}
                       </a>
@@ -1807,7 +1937,7 @@ const handleForgotResetPassword = async () => {
             {imageList.map((im, i) => (
               <img
                 key={`${im.image}-${i}`}
-                src={im.image}
+                src={cloudinaryThumb(im.image, 1400)}
                 alt=""
                 className={`hero-slider-img hero-cms-img${heroImgIdx % Math.max(1, imageList.length) === i ? ' active' : ''}`}
                 style={{
@@ -1856,7 +1986,7 @@ const handleForgotResetPassword = async () => {
         </div>
       </section>
 
-      {/* COLLECTIONS — Pinnacle-style 4-grid; only collections toggled "Show on Landing Page" appear */}
+      {/* COLLECTIONS - Pinnacle-style 4-grid; only collections toggled "Show on Landing Page" appear */}
       {colSource.length > 0 && (
         <section
           className="lp-pinnacle"
@@ -1888,7 +2018,7 @@ const handleForgotResetPassword = async () => {
               </div>
             </div>
 
-            {/* Collections carousel — square cards. Swipe on touch; arrows on desktop. */}
+            {/* Collections carousel - square cards. Swipe on touch; arrows on desktop. */}
             <div className="lp-pinnacle-mobile-stack" ref={colScrollRef}>
               {colSource.map((col, i) => (
                 <button
@@ -1898,7 +2028,7 @@ const handleForgotResetPassword = async () => {
                 >
                   <div className="lp-mob-card-img">
                     {col.image ? (
-                      <img src={col.image} alt={col.title} style={{ objectPosition: col.landing_image_position || 'center center' }} />
+                      <img src={cloudinaryThumb(col.image, 600)} alt={col.title} loading="lazy" style={{ objectPosition: col.landing_image_position || 'center center' }} />
                     ) : (
                       <div className="lp-mob-card-ph" />
                     )}
@@ -1921,16 +2051,16 @@ const handleForgotResetPassword = async () => {
       {navProducts.length > 0 && (() => {
         const featured = featuredRandom;
         const slugOf  = p => p.slug || (p.name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-        const priceOf = p => p.flatPrice ?? p.price ?? p.basePrice ?? null;
+        const priceOf = p => priceFrom(p);
         const imgOf   = p => p.thumbnail || (Array.isArray(p.images) ? p.images[0] : null) || p.image || null;
         return (
-          <section style={{ padding: '64px 0' }}>
+          <section className="lp-sec" id="featured">
             <div className="container">
               <div className="section-header center">
                 <h2 className="section-title">Featured <span className="gold-text">Products</span></h2>
-                <p className="section-subtitle">A fresh pick every visit — tap any item to customize and order.</p>
+                <p className="section-subtitle">A fresh pick every visit - tap any item to customize and order.</p>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '18px', marginTop: '8px' }}>
+              <div className="lp-featured-grid">
                 {featured.map((p, i) => {
                   const price = priceOf(p);
                   const img = imgOf(p);
@@ -1942,15 +2072,19 @@ const handleForgotResetPassword = async () => {
                       onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.boxShadow = '0 10px 30px rgba(0,0,0,0.18)'; e.currentTarget.style.borderColor = 'rgba(212,168,67,0.4)'; }}
                       onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.borderColor = 'var(--border)'; }}
                     >
+                      {/* NoImage rather than a sixth hand-drawn placeholder: this card carried its
+                          own faint-gold version, so a product with no picture looked washed out here
+                          and like a proper empty frame everywhere else - one absence reading as two
+                          different problems, which is what the shared component exists to stop. */}
                       <div style={{ aspectRatio: '1 / 1', background: 'var(--dark)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
                         {img
-                          ? <img src={img} alt={p.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                          : <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="rgba(212,168,67,0.35)" strokeWidth="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>}
+                          ? <img src={cloudinaryThumb(img, 600)} alt={p.name} loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                          : <NoImage size={36} />}
                       </div>
                       <div style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: '4px', flex: 1 }}>
                         <div style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--white)', lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</div>
                         {p.category && <div style={{ fontSize: '0.72rem', color: 'var(--gray)' }}>{p.category}</div>}
-                        {price != null && <div style={{ marginTop: 'auto', paddingTop: '4px', fontSize: '1rem', fontWeight: 800, color: 'var(--gold)' }}>₱{Number(price).toLocaleString()}</div>}
+                        {price != null && <div style={{ marginTop: 'auto', paddingTop: '4px', fontSize: '1rem', fontWeight: 800, color: 'var(--gold)' }}><span style={{ fontSize: '0.68rem', fontWeight: 600, color: 'var(--gray)', marginRight: '4px' }}>From</span>₱{Number(price).toLocaleString()}</div>}
                       </div>
                     </a>
                   );
@@ -1964,13 +2098,13 @@ const handleForgotResetPassword = async () => {
         );
       })()}
 
-      {/* SERVICE CAROUSEL — hidden
+      {/* SERVICE CAROUSEL - hidden
       <section id="services">
         <div className="container">
           <div className="section-header center">
             <span className="section-tag">What We Offer</span>
             <h2 className="section-title">Our <span className="gold-text">Print</span> Services</h2>
-            <p className="section-subtitle">From apparel to promotional materials — we bring your ideas to life with precision printing at prices that won't break the bank.</p>
+            <p className="section-subtitle">From apparel to promotional materials - we bring your ideas to life with precision printing at prices that won't break the bank.</p>
           </div>
         </div>
         <div style={{position:'relative'}}>
@@ -2050,7 +2184,7 @@ const handleForgotResetPassword = async () => {
               <div className="section-header">
                 <span className="section-tag">Why Choose Us</span>
                 <h2 className="section-title">Quality You Can <span className="gold-text">Feel</span></h2>
-                <p className="section-subtitle">We're not just a print shop — we're your creative partner. Every order is handled with care, precision, and pride.</p>
+                <p className="section-subtitle">We're not just a print shop - we're your creative partner. Every order is handled with care, precision, and pride.</p>
               </div>
               <div className="feature-list">
                 {whyusFeatures.map((f, i) => (
@@ -2065,18 +2199,27 @@ const handleForgotResetPassword = async () => {
               <div className="feature-card-stack">
                 <div className="fcard"><div className="fcard-inner">
                   <div className="fcard-label">Total Orders</div>
-                  <div className="fcard-value gold-text">{landingStats ? landingStats.orders.toLocaleString() : '—'}</div>
+                  <div className="fcard-value gold-text">{landingStats ? landingStats.orders.toLocaleString() : '-'}</div>
                   <div className="fcard-bar"><div className="fcard-bar-fill" style={{width:'82%',background:'linear-gradient(90deg,var(--gold-dark),var(--gold))'}}/></div>
                 </div></div>
                 <div className="fcard"><div className="fcard-inner">
                   <div className="fcard-label">Satisfaction Rate</div>
-                  <div className="fcard-value red-text">{landingStats?.avgRating ? `${Math.round(landingStats.avgRating / 5 * 100)}%` : '—'}</div>
+                  <div className="fcard-value red-text">{landingStats?.avgRating ? `${Math.round(landingStats.avgRating / 5 * 100)}%` : '-'}</div>
                   <div className="fcard-bar"><div className="fcard-bar-fill" style={{width: landingStats?.avgRating ? `${Math.round(landingStats.avgRating / 5 * 100)}%` : '0%',background:'linear-gradient(90deg,var(--red-dark),var(--red))'}}/></div>
+                  {/* The count belongs to the rating it is the basis of. It used to sit under the
+                      customer count, where it read as a claim about customers. */}
+                  <div className="fcard-note">
+                    {landingStats?.reviewsCount
+                      ? `from ${landingStats.reviewsCount} verified review${landingStats.reviewsCount === 1 ? '' : 's'}`
+                      : 'awaiting the first review'}
+                  </div>
                 </div></div>
                 <div className="fcard"><div className="fcard-inner">
-                  <div className="fcard-label">Happy Customers</div>
-                  <div className="fcard-value gold-text">{landingStats ? landingStats.customers.toLocaleString() : '—'}</div>
-                  <div style={{fontSize:'.75rem',color:'var(--gray)',marginTop:'.5rem'}}>{landingStats?.reviewsCount ? `${landingStats.reviewsCount} verified review${landingStats.reviewsCount === 1 ? '' : 's'}` : 'and counting'}</div>
+                  {/* "Happy" is a claim about how people feel, and nothing here measures that -
+                      this is the number of people who ordered. Say that instead. */}
+                  <div className="fcard-label">Customers Served</div>
+                  <div className="fcard-value gold-text">{landingStats ? landingStats.customers.toLocaleString() : '-'}</div>
+                  <div className="fcard-note">and counting</div>
                 </div></div>
               </div>
             </div>
@@ -2090,10 +2233,15 @@ const handleForgotResetPassword = async () => {
           <div className="container">
             <div className="section-header center">
               <span className="section-tag">Customer Reviews</span>
-              <h2 className="section-title">What Our <span className="gold-text">Customers</span> Say</h2>
+              <h2 className="section-title">What Our <br className="lp-br-sm" /><span className="gold-text">Customers</span> Say</h2>
               <p className="section-subtitle">Real feedback from real customers who ordered with us.</p>
             </div>
-            <div className="reviews-carousel-wrap">
+            <div
+              className="reviews-carousel-wrap"
+              onMouseEnter={() => setReviewsPaused(true)}
+              onMouseLeave={() => setReviewsPaused(false)}
+              onTouchStart={() => setReviewsPaused(true)}
+            >
               <button
                 className="reviews-arrow reviews-arrow-left"
                 onClick={() => setReviewsIdx(i => Math.max(0, i - 1))}
@@ -2101,12 +2249,14 @@ const handleForgotResetPassword = async () => {
                 aria-label="Previous reviews"
               >&#8249;</button>
               <div className="reviews-track-outer">
-                <div
-                  className="reviews-track"
-                  style={{ transform: `translateX(-${reviewsIdx * (100 / 3)}%)` }}
-                >
-                  {landingReviews.map((rv, i) => (
-                    <div className="review-card" key={i}>
+                {/* The page is SWAPPED, not slid. A slide has to agree with the card width and the
+                    20px gap at every screen size, and a gap's worth of drift is what left the second
+                    card cut in half. Nothing here is measured, so nothing can drift. */}
+                <div className="reviews-track reviews-track-swap">
+                  {landingReviews
+                    .slice(reviewsIdx * reviewsPerView, reviewsIdx * reviewsPerView + reviewsPerView)
+                    .map((rv, i) => (
+                    <div className="review-card" key={`p${reviewsIdx}-${i}`}>
                       <div className="review-stars">
                         {[1,2,3,4,5].map(s => (
                           <span key={s} style={{ color: s <= rv.rating ? 'var(--gold)' : 'rgba(255,255,255,0.2)', fontSize: '1rem' }}>★</span>
@@ -2114,6 +2264,14 @@ const handleForgotResetPassword = async () => {
                       </div>
                       <p className="review-comment">&ldquo;{rv.comment}&rdquo;</p>
                       <div className="review-meta">
+                        {/* The reviewer's own photo when they have one; the initial otherwise -
+                            same rule as the product page and the quick view. */}
+                        <span className="review-avatar" aria-hidden="true">
+                          {rv.avatar ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={cloudinaryThumb(rv.avatar, 80)} alt="" loading="lazy" onError={e => { e.currentTarget.style.display = 'none'; }} />
+                          ) : (rv.customerName || 'C').charAt(0).toUpperCase()}
+                        </span>
                         <span className="review-name">{rv.customerName}</span>
                         {rv.created_at && (
                           <span className="review-date">
@@ -2127,13 +2285,13 @@ const handleForgotResetPassword = async () => {
               </div>
               <button
                 className="reviews-arrow reviews-arrow-right"
-                onClick={() => setReviewsIdx(i => Math.min(landingReviews.length - 1, i + 1))}
-                disabled={reviewsIdx >= landingReviews.length - 3}
+                onClick={() => setReviewsIdx(i => Math.min(reviewsMaxIdx, i + 1))}
+                disabled={reviewsIdx >= reviewsMaxIdx}
                 aria-label="Next reviews"
               >&#8250;</button>
             </div>
             <div className="reviews-dots">
-              {Array.from({ length: Math.max(0, landingReviews.length - 2) }).map((_, i) => (
+              {Array.from({ length: reviewsMaxIdx + 1 }).map((_, i) => (
                 <button
                   key={i}
                   className={`reviews-dot${reviewsIdx === i ? ' active' : ''}`}
@@ -2148,7 +2306,7 @@ const handleForgotResetPassword = async () => {
 
       {/* OUR WORK GALLERY */}
       {cmsGallery.length > 0 && (
-        <section style={{ padding: '64px 0' }}>
+        <section className="lp-sec" id="our-work">
           <div className="container">
             <div className="section-header center">
               <span className="section-tag">Our Work</span>
@@ -2159,7 +2317,7 @@ const handleForgotResetPassword = async () => {
               {cmsGallery.map((g, i) => (
                 <div key={g._id || g.id || i} style={{ aspectRatio: '1 / 1', borderRadius: '12px', overflow: 'hidden', background: 'var(--dark2)', border: '1px solid var(--border)' }}>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={g.image} alt={g.name || 'Our work'} loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                  <img src={cloudinaryThumb(g.image, 500)} alt={g.name || 'Our work'} loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                 </div>
               ))}
             </div>
@@ -2173,10 +2331,10 @@ const handleForgotResetPassword = async () => {
           <div className="section-header center">
             <span className="section-tag">Transparent Pricing</span>
             <h2 className="section-title">Our <span className="gold-text">Price</span> List</h2>
-            <p className="section-subtitle">Starting prices for all our products — see the complete bulk pricing breakdowns inside.</p>
+            <p className="section-subtitle">Starting prices for all our products - see the complete bulk pricing breakdowns inside.</p>
           </div>
           <div className="pricing-new-layout">
-            {/* Left — unlock card */}
+            {/* Left - unlock card */}
             <div className="pricing-unlock-card">
               <div className="pricing-unlock-icon">
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -2199,7 +2357,7 @@ const handleForgotResetPassword = async () => {
               )}
             </div>
 
-            {/* Right — pricing grid */}
+            {/* Right - pricing grid */}
             <div className="pub-pricing-grid">
               {pricingCards.map((item, i) => (
                 <div className="pub-pricing-card fade-up" key={i}
@@ -2225,14 +2383,14 @@ const handleForgotResetPassword = async () => {
       </section>
 
       {/* FAQ */}
-      <section style={{ padding: '64px 0' }}>
+      <section className="lp-sec" id="faq">
         <div className="container" style={{ maxWidth: '780px' }}>
           <div className="section-header center">
             <span className="section-tag">Got Questions?</span>
             <h2 className="section-title">Frequently Asked <span className="gold-text">Questions</span></h2>
             <p className="section-subtitle">Everything you need to know before you order.</p>
           </div>
-          <div style={{ marginTop: '8px', borderTop: '1px solid var(--border)' }}>
+          <div className={`lp-faq-list${faqAll ? ' lp-faq-all' : ''}`} style={{ marginTop: '8px', borderTop: '1px solid var(--border)' }}>
             {FAQS.map((item, i) => {
               const open = openFaq === i;
               return (
@@ -2252,6 +2410,9 @@ const handleForgotResetPassword = async () => {
               );
             })}
           </div>
+          <button type="button" className="lp-faq-more" onClick={() => setFaqAll(v => !v)}>
+            {faqAll ? 'Show fewer questions' : `Show all ${FAQS.length} questions`}
+          </button>
         </div>
       </section>
 
@@ -2270,7 +2431,7 @@ const handleForgotResetPassword = async () => {
                     <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
                   </svg>
                 </div>
-                <div><h4>Message Us</h4><p>Facebook, Instagram, TikTok</p><p style={{fontSize:'.78rem',color:'var(--gray)',marginTop:'.2rem'}}>{contactContent?.handle || '@personalizemeprints'}</p>{socials.email && <p style={{fontSize:'.78rem',marginTop:'.3rem'}}><a href={`mailto:${socials.email}`} className="auth-link">{socials.email}</a></p>}</div>
+                <div><h4>Message Us</h4><p>{socialNames(socials) || 'Chat with us on this page'}</p><p style={{fontSize:'.78rem',color:'var(--gray)',marginTop:'.2rem'}}>{contactContent?.handle || '@personalizemeprints'}</p>{socials.email && <p style={{fontSize:'.78rem',marginTop:'.3rem'}}><a href={`mailto:${socials.email}`} className="auth-link">{socials.email}</a></p>}</div>
               </div>
               <div className="contact-info-card">
                 <div className="contact-info-icon" style={{color:'var(--gold)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
@@ -2278,8 +2439,16 @@ const handleForgotResetPassword = async () => {
                     <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
                   </svg>
                 </div>
-                <div><h4>Business Hours</h4><p>{contactContent?.hours1 || 'Mon - Sat: 9:00 AM - 6:00 PM'}</p><p style={{fontSize:'.78rem',color:'var(--gray)',marginTop:'.2rem'}}>{contactContent?.hours2 || 'Sunday: By Appointment'}</p></div>
+                <div><h4>Business Hours</h4><p>{contactContent?.hours1 || 'Mon - Sat: 9:00 AM - 6:00 PM'}</p><p style={{fontSize:'.78rem',color:'var(--gray)',marginTop:'.2rem'}}>{contactContent?.hours2 || 'Sunday: By Appointment'}</p>
+                  {/* The one line that answers "I ordered on a Sunday - when does anything start?".
+                      Owner-editable beside the hours it qualifies, so the two cannot drift apart. */}
+                  <p style={{fontSize:'.74rem',color:'var(--gray)',marginTop:'.45rem',lineHeight:1.5,opacity:.85}}>
+                    {contactContent?.hoursNote || 'You can order any time. Orders placed on Sundays or holidays start production the next working day.'}
+                  </p></div>
               </div>
+              {/* Clearing the Shopee link hid its footer icon but this card fell back to the old link
+                  (|| instead of ??), so the store could not be removed from the page. */}
+              {socials.shopee && (
               <div className="contact-info-card">
                 <div className="contact-info-icon" style={{color:'var(--gold)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -2287,8 +2456,9 @@ const handleForgotResetPassword = async () => {
                     <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
                   </svg>
                 </div>
-                <div><h4>Shop Online</h4><a href={contactContent?.shopeeUrl || 'https://shopee.ph/personalizemeprints'} target="_blank" rel="noopener noreferrer" className="auth-link">{contactContent?.shopeeText || 'Shopee: personalizemeprints'}</a></div>
+                <div><h4>Shop Online</h4><a href={socials.shopee} target="_blank" rel="noopener noreferrer" className="auth-link">{contactContent?.shopeeText || 'Shopee: personalizemeprints'}</a></div>
               </div>
+              )}
               <div className="contact-socials">
                 {socials.facebook && (
                 <a href={socials.facebook} className="contact-social-btn" target="_blank" rel="noopener noreferrer">
@@ -2320,38 +2490,58 @@ const handleForgotResetPassword = async () => {
                     </svg>
                   </div>
                   <h3>Message Sent!</h3>
-                  <p>Thanks for reaching out! We'll get back to you within 24 hours.</p>
+                  {/* "within 24 hours" is a promise the shop cannot keep on a Sunday, and the page
+                      itself says Sunday is by appointment. Editable, and no longer a deadline by
+                      default. */}
+                  <p>{contactCfg.success || "Thanks for reaching out. We'll get back to you as soon as we can."}</p>
                   <button type="button" className="btn-primary" onClick={() => { setContactSent(false); setContactErrors({}); }} style={{marginTop: '1rem'}}>
                     Send Another Message
                   </button>
+                </div>
+              ) : !contactCfg.enabled ? (
+                /* Switched off in Settings. The endpoint refuses too - hiding the form would
+                   otherwise leave the URL open to anyone who already knows it. */
+                <div className="contact-success">
+                  <h3>Send us a message another way</h3>
+                  <p>{contactCfg.closed || 'Our contact form is closed right now. Reach us on Facebook, Instagram or TikTok, or through the chat button on this page.'}</p>
                 </div>
               ) : (
                 <form className="contact-form" onSubmit={handleContactSubmit}>
                   <div className="contact-fields-row">
                     <div className="auth-field">
                       <label>Your Name</label>
-                      <input type="text" placeholder="Juan Dela Cruz" value={contactForm.name} onChange={(e) => handleContactChange('name', e.target.value)} className={contactErrors.name ? 'error' : ''} maxLength={120}/>
+                      <input type="text" id="contact-name" name="name" autoComplete="name" placeholder="Juan Dela Cruz" value={contactForm.name} onChange={(e) => handleContactChange('name', e.target.value)} className={contactErrors.name ? 'error' : ''} maxLength={120} readOnly={!!user} title={user ? 'From your account' : undefined} style={user ? { opacity: 0.75, cursor: 'not-allowed' } : undefined}/>
                       {contactErrors.name && <span className="error-message">{contactErrors.name}</span>}
                     </div>
                     <div className="auth-field">
                       <label>Email Address</label>
-                      <input type="email" placeholder="you@example.com" value={contactForm.email} onChange={(e) => handleContactChange('email', e.target.value)} className={contactErrors.email ? 'error' : ''}/>
+                      <input type="email" id="contact-email" name="email" autoComplete="email" placeholder="you@example.com" value={contactForm.email} onChange={(e) => handleContactChange('email', e.target.value)} className={contactErrors.email ? 'error' : ''} maxLength={255} readOnly={!!user} title={user ? 'From your account' : undefined} style={user ? { opacity: 0.75, cursor: 'not-allowed' } : undefined}/>
                       {contactErrors.email && <span className="error-message">{contactErrors.email}</span>}
                     </div>
                   </div>
                   <div className="auth-field">
                     <label>Subject</label>
-                    <input type="text" placeholder="Bulk order inquiry, custom design, etc." value={contactForm.subject} onChange={(e) => handleContactChange('subject', e.target.value)} className={contactErrors.subject ? 'error' : ''} maxLength={200}/>
+                    <input type="text" id="contact-subject" name="subject" placeholder="Bulk order inquiry, custom design, etc." value={contactForm.subject} onChange={(e) => handleContactChange('subject', e.target.value)} className={contactErrors.subject ? 'error' : ''} maxLength={100}/>
+                    <span style={{ display: 'block', fontSize: '0.7rem', color: 'var(--gray)', textAlign: 'right', marginTop: '0.2rem' }}>{(contactForm.subject || '').length}/100</span>
                     {contactErrors.subject && <span className="error-message">{contactErrors.subject}</span>}
                   </div>
                   <div className="auth-field">
                     <label>Message</label>
-                    <textarea placeholder="Tell us about your order, design, ideas, or any questions you have..." value={contactForm.message} onChange={(e) => handleContactChange('message', e.target.value)} className={`contact-textarea ${contactErrors.message ? 'error' : ''}`} rows={5} maxLength={5000}/>
+                    <textarea id="contact-message" name="message" placeholder="Tell us about your order, design, ideas, or any questions you have..." value={contactForm.message} onChange={(e) => handleContactChange('message', e.target.value)} className={`contact-textarea ${contactErrors.message ? 'error' : ''}`} rows={5} maxLength={1500}/>
+                    <span style={{ display: 'block', fontSize: '0.7rem', color: 'var(--gray)', textAlign: 'right', marginTop: '0.2rem' }}>{(contactForm.message || '').length}/1500</span>
                     {contactErrors.message && <span className="error-message">{contactErrors.message}</span>}
                   </div>
-                  <button type="submit" className="btn-primary contact-submit-btn">
-                    Send Message
-                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 8h12M10 4l4 4-4 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                  {/* No wrapper margin: .contact-form is a flex column with gap 1rem, so a margin
+                      here is added to that gap rather than replacing it, and the widget ends up
+                      floating in twice the space every other field gets. */}
+                  <Turnstile ref={contactTurnstileRef} onVerify={setContactTurnstileToken} theme={theme} />
+                  <button type="submit" className="btn-primary contact-submit-btn"
+                    disabled={contactSending}
+                    style={contactSending ? { opacity: 0.65, cursor: 'wait' } : undefined}>
+                    {contactSending ? 'Sending...' : 'Send Message'}
+                    {!contactSending && (
+                      <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 8h12M10 4l4 4-4 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                    )}
                   </button>
                 </form>
               )}
@@ -2361,17 +2551,17 @@ const handleForgotResetPassword = async () => {
       </section>
 
       {/* CTA */}
-      <section>
+      <section id="cta">
         <div className="container">
           <div className="cta-banner fade-up">
             <h2>Ready to <span className="red-text">Personalize</span> Something?</h2>
-            <p>Whether it's a shirt for your team or a gift for someone special — we're here to print it perfectly.</p>
+            <p>Whether it's a shirt for your team or a gift for someone special - we're here to print it perfectly.</p>
             <div className="cta-actions">
               <button className="btn-primary" onClick={handleEnterShop}>
                 Browse Products
                 <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
               </button>
-              <a href="#services" className="btn-secondary">View Services</a>
+              <a href="/shop?collection=printing-services" className="btn-secondary">View Services</a>
             </div>
           </div>
         </div>
@@ -2442,6 +2632,16 @@ const handleForgotResetPassword = async () => {
               )}
             </div>
           </details>
+          {/* Phones only, like the shop footer: the policies get their own Legal section among the
+              other accordions. On a wider screen they sit in the bottom bar instead. */}
+          <details className="lp-footer-col lp-footer-legal-col">
+            <summary>
+              <h4>Legal</h4>
+              <svg className="lp-footer-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+            </summary>
+            <button type="button" className="lp-footer-policy-btn" onClick={() => setPolicyDoc('policy_privacy')}>Privacy Policy</button>
+            <button type="button" className="lp-footer-policy-btn" onClick={() => setPolicyDoc('policy_terms')}>T&amp;C</button>
+          </details>
         </div>
         <div className="lp-footer-bottom">
           <span className="lp-footer-copy">© {new Date().getFullYear()} Personalize Me Prints. All rights reserved.</span>
@@ -2457,12 +2657,16 @@ const handleForgotResetPassword = async () => {
               <><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>Dark</>
             )}
           </button>
+          {/* These were href="#" - links that look like policies and go nowhere. They open the
+              real documents now, in a modal, the way the rest of the shop reads them. */}
           <div className="lp-footer-legal">
-            <a href="#">Privacy Policy</a>
-            <a href="#">Terms of Service</a>
+            <button type="button" onClick={() => setPolicyDoc('policy_privacy')}>Privacy Policy</button>
+            <button type="button" onClick={() => setPolicyDoc('policy_terms')}>T&amp;C</button>
           </div>
         </div>
       </footer>
+
+      <PolicyModal docKey={policyDoc} onClose={() => setPolicyDoc(null)} />
 
       {/* ── AUTH MODAL ── */}
       {modal && (
@@ -2541,7 +2745,7 @@ const handleForgotResetPassword = async () => {
                           width:'14px', height:'14px', borderRadius:'50%', verticalAlign:'middle',
                           background:'var(--border)', color:'var(--gray)', fontSize:'0.65rem',
                           marginLeft:'4px', cursor:'help', flexShrink: 0 }}
-                          title="Keep you logged in for 30 days. Don't use on shared devices.">?</span>
+                          title="Keeps you signed in on this device and skips the emailed code. Not for shared computers.">?</span>
                       </label>
                       <button type="button" className="auth-link"
                         onClick={() => { setModal(null); setForgotModal(true); setForgotEmail(''); setForgotError(''); setForgotSent(false); setForgotStep(1); setForgotCode(''); setForgotNewPassword(''); setForgotConfirmPassword(''); }}>
@@ -2565,7 +2769,7 @@ const handleForgotResetPassword = async () => {
                   <div><h2>Create Account</h2><p>Join Personalize Me Prints</p></div>
                   <button className="auth-close" onClick={closeModal}>✕</button>
                 </div>
-                {/* Shared with the shop layout — one sign-up form everywhere. */}
+                {/* Shared with the shop layout - one sign-up form everywhere. */}
                 <RegisterForm
                   theme={theme}
                   onSwitchToLogin={() => setModal('login')}
@@ -2600,24 +2804,15 @@ const handleForgotResetPassword = async () => {
               </p>
             )}
             <div className="tnc-content" ref={termsScrollRef} onScroll={handleTermsScroll}>
-              <p><strong>1. Acceptance of Terms</strong></p>
-              <p>By creating an account with Personalize Me Prints, you agree to comply with and be bound by these Terms and Conditions. If you do not agree with any part of these terms, please do not use our services.</p>
-              <p><strong>2. Account Registration</strong></p>
-              <p>You must provide accurate and complete information when registering for an account. You are responsible for maintaining the confidentiality of your account credentials and for all activities that occur under your account.</p>
-              <p><strong>3. Product Quality</strong></p>
-              <p>We strive to provide high-quality custom printing services. All products are subject to quality inspection before shipment. We are not responsible for damages caused by improper use or handling of printed products.</p>
-              <p><strong>4. Intellectual Property</strong></p>
-              <p>You warrant that any designs or content you upload for printing do not infringe upon any third-party rights. You grant us a non-exclusive license to use your designs solely for the purpose of fulfilling your order.</p>
-              <p><strong>5. Payment and Pricing</strong></p>
-              <p>All prices are subject to change without notice. Payment is required before production begins. We reserve the right to refuse any order for any reason.</p>
-              <p><strong>6. Shipping and Delivery</strong></p>
-              <p>Delivery times are estimates and not guaranteed. We are not responsible for delays caused by shipping carriers or customs processing.</p>
-              <p><strong>7. Returns and Refunds</strong></p>
-              <p>Due to the custom nature of our products, all sales are final. We will only accept returns or provide refunds for products that are damaged or significantly different from the approved proof.</p>
-              <p><strong>8. Limitation of Liability</strong></p>
-              <p>Personalize Me Prints shall not be liable for any indirect, incidental, or consequential damages arising from the use of our products or services.</p>
-              <p><strong>9. Changes to Terms</strong></p>
-              <p>We reserve the right to modify these terms at any time. Changes will be effective immediately upon posting on our website. Your continued use of our services after any changes constitutes acceptance of the new terms.</p>
+              {/* The clauses come from Settings - the same list the sign-up form and the footer
+                  read. They used to be typed here as well, so the shop had two wordings of the
+                  document people sign, and only one of them could be edited. */}
+              {registrationTerms.map((t, i) => (
+                <div key={i}>
+                  <p><strong>{i + 1}. {t.title}</strong></p>
+                  <p>{t.body}</p>
+                </div>
+              ))}
             </div>
             {hasReadTerms && (
               <div style={{padding:'1rem 1.5rem',borderTop:'1px solid var(--border)',display:'flex',alignItems:'center',gap:'0.75rem'}}>
@@ -2643,7 +2838,7 @@ const handleForgotResetPassword = async () => {
       )}
 
       {/* ── FORGOT PASSWORD MODAL ── */}
-      {/* No backdrop-close: 3-step email/code/new-password flow — a stray click would wipe progress. */}
+      {/* No backdrop-close: 3-step email/code/new-password flow - a stray click would wipe progress. */}
       {forgotModal && (
         <div className="auth-overlay">
           <div className="auth-modal" onClick={e => e.stopPropagation()} style={{maxWidth:'420px'}}>
@@ -2661,8 +2856,31 @@ const handleForgotResetPassword = async () => {
             </div>
             <div className="auth-modal-body">
 
-              {/* STEP 1 — Enter Email */}
-              {forgotStep === 1 && (
+              {/* STEP 1 - Enter Email */}
+              {forgotStep === 1 && forgotSent && (
+                <div style={{display:'flex',flexDirection:'column',gap:'1rem'}}>
+                  <div style={{textAlign:'center',padding:'0.5rem 0'}}>
+                    <div style={{display:'flex',alignItems:'center',justifyContent:'center',width:'64px',height:'64px',borderRadius:'50%',background:'rgba(212,168,67,0.1)',border:'1px solid rgba(212,168,67,0.25)',margin:'0 auto 1rem'}}>
+                      <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+                        <polyline points="22,6 12,13 2,6"/>
+                      </svg>
+                    </div>
+                    <p style={{color:'var(--gray)',fontSize:'0.88rem',lineHeight:'1.6',margin:0}}>
+                      We sent a reset link to <strong style={{color:'var(--white)'}}>{forgotEmail}</strong>. Open it to continue. Check your spam folder if it is not there in a minute.
+                    </p>
+                  </div>
+                  <button className="btn-auth-submit" disabled={isSendingReset} onClick={handleForgotSubmit}>
+                    {isSendingReset ? 'Sending...' : 'Send it again'}
+                  </button>
+                  <p style={{textAlign:'center',color:'var(--gray)',fontSize:'0.85rem',margin:0}}>
+                    Wrong email?{' '}
+                    <button type="button" onClick={() => { setForgotSent(false); setForgotError(''); }} style={{background:'none',border:'none',color:'var(--gold)',fontWeight:600,cursor:'pointer',padding:0}}>Change it</button>
+                  </p>
+                </div>
+              )}
+
+              {forgotStep === 1 && !forgotSent && (
                 <div style={{display:'flex',flexDirection:'column',gap:'1rem'}}>
                   <p style={{color:'var(--gray)',fontSize:'0.9rem',lineHeight:'1.6',margin:0}}>
                     Enter the email address associated with your account and we'll send you a password reset link.
@@ -2679,11 +2897,6 @@ const handleForgotResetPassword = async () => {
                     />
                     {forgotError && <span className="error-message">{forgotError}</span>}
                   </div>
-                  {forgotSent && (
-                    <div style={{padding:'0.75rem',borderRadius:'8px',background:'rgba(74,222,128,0.12)',border:'1px solid rgba(74,222,128,0.3)',color:'var(--green)',fontSize:'0.85rem'}}>
-                      ✓ A reset link has been sent to your email.
-                    </div>
-                  )}
                   <button className="btn-auth-submit" disabled={isSendingReset} onClick={handleForgotSubmit}>
                     {isSendingReset ? 'Sending...' : 'Send Reset Link'}
                   </button>
@@ -2694,7 +2907,7 @@ const handleForgotResetPassword = async () => {
                 </div>
               )}
 
-              {/* STEP 2 — Confirm it's you (shown after clicking link from email) */}
+              {/* STEP 2 - Confirm it's you (shown after clicking link from email) */}
               {forgotStep === 2 && (
                 <div style={{display:'flex',flexDirection:'column',gap:'1rem'}}>
                   <div style={{textAlign:'center',padding:'0.5rem 0'}}>
@@ -2740,7 +2953,7 @@ const handleForgotResetPassword = async () => {
                 </div>
               )}
 
-              {/* STEP 3 — Enter Verification Code */}
+              {/* STEP 3 - Enter Verification Code */}
               {forgotStep === 3 && (
                 <div style={{display:'flex',flexDirection:'column',gap:'1rem'}}>
                   <div style={{textAlign:'center',padding:'0.5rem 0'}}>
@@ -2795,7 +3008,7 @@ const handleForgotResetPassword = async () => {
                 </div>
               )}
 
-              {/* STEP 4 — New Password */}
+              {/* STEP 4 - New Password */}
               {forgotStep === 4 && (
                 <div style={{display:'flex',flexDirection:'column',gap:'1rem'}}>
                   <p style={{color:'var(--gray)',fontSize:'0.9rem',lineHeight:'1.6',margin:0}}>
@@ -2876,7 +3089,7 @@ const handleForgotResetPassword = async () => {
                     <div className="pl-tiers">
                       {item.tiers.map(([qty, price], j) => (
                         <div className="pl-tier-row" key={j}>
-                          <span className="pl-qty">{qty}</span><span className="pl-dash">—</span><span className="pl-price gold-text">₱{price}</span>
+                          <span className="pl-qty">{qty}</span><span className="pl-dash">-</span><span className="pl-price gold-text">₱{price}</span>
                         </div>
                       ))}
                     </div>
@@ -2889,7 +3102,7 @@ const handleForgotResetPassword = async () => {
                           <div className="pl-tiers">
                             {v.tiers.map(([qty, price], k) => (
                               <div className="pl-tier-row" key={k}>
-                                <span className="pl-qty">{qty}</span><span className="pl-dash">—</span><span className="pl-price gold-text">₱{price}</span>
+                                <span className="pl-qty">{qty}</span><span className="pl-dash">-</span><span className="pl-price gold-text">₱{price}</span>
                               </div>
                             ))}
                           </div>
@@ -2906,7 +3119,7 @@ const handleForgotResetPassword = async () => {
 
       {/* ── EMAIL VERIFICATION ── */}
       {verificationModal && (
-        // No backdrop-close: OTP entry — a stray click would drop the code the user is typing.
+        // No backdrop-close: OTP entry - a stray click would drop the code the user is typing.
         <div className="auth-overlay">
           <div className="verify-modal" onClick={e => e.stopPropagation()}>
             <div className="verify-icon-wrap">
@@ -2932,16 +3145,17 @@ const handleForgotResetPassword = async () => {
               {registeredEmail}
             </div>
             <div className="verify-code-wrap">
-              <input type="text" className="verify-code-input" placeholder="Enter 6-digit code" maxLength={6}
-                value={verificationCode} onChange={e => setVerificationCode(e.target.value.replace(/\D/g, ''))}/>
+              {/* Was one text box asking for six digits, while the 2FA screen asked the same
+                  question as six boxes that advance, step back and take a pasted code. Same
+                  component in both places now, so they cannot drift again. */}
+              <OtpInput value={verificationCode} onChange={setVerificationCode} autoFocus />
               {verifyError   && <span className="error-message" style={{display:'block',marginTop:'0.4rem',textAlign:'center'}}>{verifyError}</span>}
               {resendSuccess && <span style={{display:'block',fontSize:'0.8rem',color:'var(--color-text-success)',background:'var(--color-background-success)',border:'1px solid var(--color-border-success)',padding:'0.5rem 0.75rem',borderRadius:'6px',marginTop:'0.4rem',textAlign:'center'}}>A new code has been sent to your email.</span>}
             </div>
-            <div className="verify-steps">
-              <div className="verify-step"><div className="verify-step-num">1</div><span>Check your inbox (and spam folder)</span></div>
-              <div className="verify-step"><div className="verify-step-num">2</div><span>Enter the 6-digit code</span></div>
-              <div className="verify-step"><div className="verify-step-num">3</div><span>Click verify to activate your account</span></div>
-            </div>
+            {/* A numbered three-step list explaining "enter the 6-digit code" to someone already
+                looking at the code field is what made this read as a long form rather than a
+                modal. The only part that carried information is the spam folder. */}
+            <p className="verify-hint">Not in your inbox? Check the spam folder.</p>
             <div className="verify-actions">
               <button
                 className="btn-primary verify-login-btn"
@@ -2985,13 +3199,13 @@ const handleForgotResetPassword = async () => {
         </div>
       )}
 
-      {/* Chat bubble — login gate when not signed in */}
+      {/* Chat bubble - login gate when not signed in */}
       <CustomerChatModal
         user={user}
         token={token}
         onRequestLogin={() => openModal('login')}
       />
-    </>
+    </div>
   );
 };
 

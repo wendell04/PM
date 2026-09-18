@@ -1,4 +1,5 @@
 'use client';
+import { cloudinaryThumb } from '@/lib/cloudinaryImage';
 
 import ErrorBoundary from '../../../../components/ErrorBoundary';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
@@ -9,6 +10,7 @@ import { remainingDue, depositDue, paidSoFar, orderTotal } from '@/lib/orderBala
 import { S, ICONS, SearchBar, SummaryCard, PaginationBar, EmptyState, usePagination, CustomSelect, ConfirmModal } from '../inventory-v2/shared';
 import { DEFAULT_CUSTOM_ORDER_TERMS } from '@/lib/customOrderTerms';
 import { orderNo } from '@/lib/orderNumber';
+import NoImage from '@/components/NoImage';
 import { deliveryRisk, joRisk, RISK_STYLE } from '@/lib/deliveryRisk';
 import { fetchJobOrders, updateJobOrder } from '@/lib/jobOrderApi';
 import { JobOrderStatusBadge, DesignPreview, designUrl, joDocId, fmtJODate } from '@/components/dashboard/JobOrderBits';
@@ -17,6 +19,7 @@ import ImageLightbox from '@/components/shop/ImageLightbox';
 import ProofGallery from '@/components/shop/ProofGallery';
 import useLockBodyScroll from '@/lib/useLockBodyScroll';
 import { normalizeStatus, statusLabel, ORDER_STATUS_ORDER } from '@/lib/orderStatus';
+import { isCodMethod } from '@/lib/paymentMethod';
 
 const API_URL    = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 const POLL_MS    = 30000;
@@ -25,6 +28,11 @@ const EXPIRY_DAYS = 7;
 
 // Preset reasons for rejecting a customer's uploaded file (bounce back for re-upload). "Other"
 // reveals a free-text box. The chosen reason is saved on the order and shown to the customer.
+// What the shop actually books. "Own rider" is here because a delivery someone drives over
+// themselves still has to say so on the customer's order.
+const COURIERS = ['J&T Express', 'Flash Express', 'LBC', 'Ninja Van', 'Lalamove', 'Grab', 'Own rider', 'Other'];
+const isForDelivery = (s) => String(s ?? '').toLowerCase().replace(/[\s-]+/g, '_') === 'for_delivery';
+
 const REJECT_REASONS = [
   'Wrong file format or file type',
   'Low resolution or blurry',
@@ -69,11 +77,19 @@ function StatusBadge({ status }) {
   );
 }
 
-function PayBadge({ status }) {
+function PayBadge({ status, method }) {
   const c = PAY_CFG[status] ?? PAY_CFG.unpaid;
+  const isCOD = isCodMethod(method);
   return (
-    <span style={{ ...S.badge, background:c.bg, color:c.color, border:`1px solid ${c.border}`, fontSize:'10px' }}>
-      {c.label}
+    <span style={{ display:'inline-flex', flexDirection:'column', alignItems:'flex-end', gap:'2px' }}>
+      <span style={{ ...S.badge, background:c.bg, color:c.color, border:`1px solid ${c.border}`, fontSize:'10px' }}>
+        {c.label}
+      </span>
+      {isCOD && (
+        <span style={{ fontSize:'9px', fontWeight:800, letterSpacing:'.06em', color:'var(--gray)' }}>
+          COD
+        </span>
+      )}
     </span>
   );
 }
@@ -678,7 +694,7 @@ function SectionLabel({ children }) {
 // ── Timeout helper ────────────────────────────────────────────────────────────
 
 function isExpired(order) {
-  if (order.orderStatus !== 'Pending') return false;
+  if (String(order.orderStatus).toLowerCase() !== 'pending') return false;
   if (order.paymentStatus === 'paid') return false;
   return (Date.now() - new Date(order.createdAt).getTime()) / 86400000 >= EXPIRY_DAYS;
 }
@@ -710,7 +726,7 @@ function getAvailableStatuses(o) {
   };
 
   const s = o.orderStatus;
-  const isCOD = (o.paymentMethod || '').toLowerCase() === 'cod';
+  const isCOD = isCodMethod(o.paymentMethod);
   if (o.isCustom) {
     // Once any payment (downpayment or COD) has landed, "Awaiting Payment" is no longer a valid
     // next step - the customer already paid to unlock production. Only offer it when still unpaid.
@@ -724,10 +740,18 @@ function getAvailableStatuses(o) {
     return pick({
       pending:             ['Cancelled'],
       Pending:             ['Cancelled'],
-      pending_review:      paidCustom ? [] : ['awaiting_payment'],
-      design_approved:     paidCustom ? [] : ['awaiting_payment'],
-      awaiting_payment:    [],
-      awaiting_production: [],
+      // Cancel stays on offer until production starts. A paid, approved order had no moves at
+      // all, so it could be cancelled only while it still read "pending".
+      pending_review:      paidCustom ? ['Cancelled'] : ['awaiting_payment', 'Cancelled'],
+      // The design stages had no entry at all, so an order abandoned after its design fee - proof
+      // sent, never answered - showed "No available transitions" and could not be closed. Nothing
+      // has been produced at these stages, so Cancel is the only move that makes sense.
+      pending_design:      ['Cancelled'],
+      proof_sent:          ['Cancelled'],
+      revision_requested:  ['Cancelled'],
+      design_approved:     paidCustom ? ['Cancelled'] : ['awaiting_payment', 'Cancelled'],
+      awaiting_payment:    ['Cancelled'],
+      awaiting_production: ['Cancelled'],
       processing:          ['Cancelled'],
       Processing:          ['Cancelled'],
       in_production:       ['for_qc'],
@@ -741,6 +765,16 @@ function getAvailableStatuses(o) {
     });
   }
   if (isCOD) {
+    // A shelf item is picked, not produced. Offering In Production for one sends an order into a
+    // stage with no Job Order behind it, which Production and QC then have nothing to work on.
+    if (!o.needsProduction) {
+      return pick({
+        Pending:        ['Processing', 'Cancelled'],
+        Processing:     ['For Delivery', 'Cancelled'],
+        'For Delivery': ['Delivered', 'Returned'],
+        Delivered:      ['Returned'],
+      });
+    }
     return pick({
       Pending:        ['Processing', 'Cancelled'],
       Processing:     ['In Production', 'For Delivery', 'Cancelled'],
@@ -840,7 +874,9 @@ function DraftFilePreview({ files = [], onRemove, onOpen }) {
             <div style={{ position:'relative', width:'92px', height:'92px', borderRadius:'8px', overflow:'hidden', border:'1px solid var(--border)', background:'var(--dark2)', display:'flex', alignItems:'center', justifyContent:'center' }}>
               {isImg ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={m.url} alt={m.file.name} onClick={() => onOpen?.(m.url, 'image')}
+                // Thumbnail to look at; the click still opens the original, because that is the
+                // file the shop has to inspect before it prints.
+                <img src={cloudinaryThumb(m.url, 320)} alt={m.file.name} onClick={() => onOpen?.(m.url, 'image')}
                   title="Click to enlarge"
                   style={{ width:'100%', height:'100%', objectFit:'contain', cursor:'zoom-in' }} />
               ) : isVid ? (
@@ -897,6 +933,9 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
 
   const [lo,          setLo]          = useState(o);
   const [selStatus,   setSelStatus]   = useState(o.orderStatus);
+  const [courier,     setCourier]     = useState(o.courierName || '');
+  const [trackingNo,  setTrackingNo]  = useState(o.trackingNumber || '');
+  const [trackingUrl, setTrackingUrl] = useState(o.trackingUrl || '');
   const [confirmSt,   setConfirmSt]   = useState(false);
   const [isUpdating,  setIsUpdating]  = useState(false);
   const [updateErr,   setUpdateErr]   = useState('');
@@ -919,6 +958,10 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
   // Which custom line the admin is acting on (per-item design, Option 2 mixed cart).
   const [activeItemIdx, setActiveItemIdx] = useState(0);
   const [showProof, setShowProof] = useState(false);   // T&C acceptance proof panel
+  // Per line: the customer's reference folds away once that line's proof is approved.
+  const [showRefFor, setShowRefFor] = useState({});
+  // Same upload panel, two jobs: a proof asks the customer to approve, a mockup only shows them.
+  const [mockupMode, setMockupMode] = useState(false);
   const [delivDate,   setDelivDate]   = useState('');
   const [savingDeliv, setSavingDeliv] = useState(false);
   const [feeErr,      setFeeErr]      = useState('');
@@ -949,6 +992,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
   // One click here starts real work or hands the batch to the next station, from a compact row in a
   // busy panel. Neither is easy to undo, so both ask first.
   const [joConfirm, setJoConfirm] = useState(null);
+  const [joShortage, setJoShortage] = useState(null);
   // A status change is the one thing on this screen that reaches the CUSTOMER: it emails them and,
   // at the far end, closes the sale. So each one says what it will actually do rather than a bare
   // "Are you sure?", which teaches people to click through without reading.
@@ -977,16 +1021,21 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
     'QC_Pending':  { title: 'Send to quality control?',   body: 'The batch leaves the bench and QC decides what passes. Anything rejected comes back to be remade.', label: 'Send to QC' },
   };
 
-  const advanceJO = async (jo, joStatus) => {
+  const advanceJO = async (jo, joStatus, materialOverride = false) => {
     const id = joDocId(jo);
     setJoBusyId(id);
     try {
-      await updateJobOrder(token, id, { joStatus });
+      await updateJobOrder(token, id, { joStatus, ...(materialOverride ? { materialOverride: true } : {}) });
       setJoConfirm(null);
+      setJoShortage(null);
       await loadJobOrders();
       const fresh = await refetchOrder();
       if (fresh) setLo(fresh);
-    } catch (e) { setUpdateErr(e.message || 'Could not update the job order.'); }
+    } catch (e) {
+      // Short material is a decision, not an error - see the same handling on the Production floor.
+      if (e.shortages) { setJoConfirm(null); setJoShortage({ jo, to: joStatus, rows: e.shortages }); }
+      else setUpdateErr(e.message || 'Could not update the job order.');
+    }
     finally { setJoBusyId(null); }
   };
 
@@ -1010,11 +1059,46 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
   useEffect(() => {
     const first = (o.items || []).findIndex(it => it.isCustom || it.designRequested || it.designUrl || it.designName || it.adminDesignUrl);
     setActiveItemIdx(first >= 0 ? first : 0);
-    setShowReject(false); setShowFix(false); setConfirmApprove(false); setDraftFiles([]); setShowProof(false);
+    setShowReject(false); setShowFix(false); setConfirmApprove(false); setDraftFiles([]); setShowProof(false); setMockupMode(false);
     // Intentionally keyed on the order id alone: re-running this on every `o.items` change would
     // clear staged files again, which is the bug this is fixing.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [o.id]);
+
+  const handleCourierFeePaid = async (paid) => {
+    setSavingFee(true); setFeeErr('');
+    try {
+      const res = await fetchWithTimeout(`${API_URL}/api/admin/orders/${lo.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type':'application/json', Authorization:`Bearer ${token}` },
+        body: JSON.stringify({ courierFeePaid: paid }),
+      }, 15000);
+      if (!res.ok) { const d = await res.json().catch(()=>({})); throw new Error(d.message || 'Failed to update'); }
+      const updated = { ...lo, courierFeePaid: paid };
+      setLo(updated);
+      if (onStatusUpdated) onStatusUpdated(lo.id, updated);
+    } catch (err) { setFeeErr(err.message || 'Failed to update'); }
+    finally { setSavingFee(false); }
+  };
+
+  // Which courier this is decides what the customer may be told. An on-demand rider can take
+  // cash at the door; a parcel network is prepaid at the branch, and promising the rider there
+  // leaves the shop paying for a delivery it never collected.
+  const handleCourierMode = async (onDelivery) => {
+    setSavingFee(true); setFeeErr('');
+    try {
+      const res = await fetchWithTimeout(`${API_URL}/api/admin/orders/${lo.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type':'application/json', Authorization:`Bearer ${token}` },
+        body: JSON.stringify({ courierFeeOnDelivery: onDelivery }),
+      }, 15000);
+      if (!res.ok) { const d = await res.json().catch(()=>({})); throw new Error(d.message || 'Failed to update'); }
+      const updated = { ...lo, courierFeeOnDelivery: onDelivery };
+      setLo(updated);
+      if (onStatusUpdated) onStatusUpdated(lo.id, updated);
+    } catch (err) { setFeeErr(err.message || 'Failed to update'); }
+    finally { setSavingFee(false); }
+  };
 
   const handleSaveCourierFee = async () => {
     const val = parseFloat(feeInput);
@@ -1034,8 +1118,8 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
     finally { setSavingFee(false); }
   };
 
-  const canDelete  = ['Cancelled','Delivered','Returned'].includes(lo.orderStatus);
-  const canExpire  = lo.orderStatus === 'Pending' && lo.paymentStatus !== 'paid' && isExpired(lo);
+  const canDelete  = ['cancelled','delivered','returned'].includes(normalizeStatus(lo.orderStatus));
+  const canExpire  = String(lo.orderStatus).toLowerCase() === 'pending' && lo.paymentStatus !== 'paid' && isExpired(lo);
 
   const handleExpire = async () => {
     setExpiring(true); setExpireErr('');
@@ -1089,6 +1173,106 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
   const [returnReason,   setReturnReason]   = useState('');
   const [returnOther,    setReturnOther]    = useState('');
   const [returnSellable, setReturnSellable] = useState(false);
+  const [cancelReason,   setCancelReason]   = useState('');
+  const [cancelOther,    setCancelOther]    = useState('');
+  const [refundAmt,      setRefundAmt]      = useState('');
+  const [payingRefund,   setPayingRefund]   = useState(false);
+  const [refundMethod,   setRefundMethod]   = useState('gcash');
+  const [refundErr,      setRefundErr]      = useState('');
+
+  // What cancelling would do to the material, per line, from the backend that will actually do it -
+  // so the modal shows the plan the code follows instead of a guess that can contradict it.
+  const [settlement,     setSettlement]     = useState(null);
+  const [settlementErr,  setSettlementErr]  = useState('');
+  const [keepBack,       setKeepBack]       = useState({});
+
+  useEffect(() => {
+    if (String(selStatus).toLowerCase() !== 'cancelled') return;
+    let dropped = false;
+    (async () => {
+      setSettlementErr('');
+      try {
+        const res = await fetchWithTimeout(
+          `${API_URL}/api/admin/orders/${lo.id}/cancel-settlement`,
+          { headers: { Authorization: `Bearer ${token}` } },
+          15000,
+        );
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(d.message || d.error || 'Could not work out what cancelling would do.');
+        if (dropped) return;
+        const plan = d?.data ?? d;
+        setSettlement(plan);
+        // Written off by default - the safe direction. The shop assumes the material is spent and
+        // the person at the bench says otherwise, rather than inventing stock nobody has.
+        const seed = {};
+        (plan?.items ?? []).forEach(row => {
+          if (row.action !== 'consume') return;
+          (row.materials ?? []).forEach(m => { seed[m.inventoryId] = 0; });
+        });
+        setKeepBack(seed);
+      } catch (err) {
+        if (!dropped) setSettlementErr(err.message || 'Could not work out what cancelling would do.');
+      }
+    })();
+    return () => { dropped = true; };
+  }, [selStatus, lo.id, token]);
+
+  // Only lines whose material was already pulled onto the bench are a question. A released
+  // reservation comes back whole, and a settled job has nothing left to give.
+  const consumeRows = (settlement?.items ?? []).filter(r => r.action === 'consume');
+  const settlementSummary = (() => {
+    let back = 0, off = 0, offValue = 0;
+    consumeRows.forEach(r => (r.materials ?? []).forEach(m => {
+      const survived = Math.min(Math.max(0, Number(keepBack[m.inventoryId] ?? 0)), m.qty);
+      const spoiled  = m.qty - survived;
+      back += survived;
+      off  += spoiled;
+      offValue += spoiled * (m.unitCost || 0);
+    }));
+    return { back, off, offValue };
+  })();
+
+  const handleWaiveRefund = async () => {
+    const reason = window.prompt('Why is this kept? (shown in the audit log)', lo.designFeePaid ? 'Design fee - non-refundable once the designer started' : '');
+    if (reason == null || !reason.trim()) return;
+    setPayingRefund(true); setRefundErr('');
+    try {
+      const res = await fetchWithTimeout(`${API_URL}/api/admin/orders/${lo.id}/waive-refund`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ reason: reason.trim() }),
+      }, 15000);
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.message || d.error || 'Could not record it.');
+      const updated = { ...lo, refundOwed: 0, refunds: d?.data?.refunds ?? lo.refunds };
+      setLo(updated);
+      if (onStatusUpdated) onStatusUpdated(lo.id, updated);
+    } catch (err) {
+      setRefundErr(err.message || 'Could not record it.');
+    } finally {
+      setPayingRefund(false);
+    }
+  };
+
+  const handleMarkRefunded = async () => {
+    setPayingRefund(true); setRefundErr('');
+    try {
+      const res = await fetchWithTimeout(`${API_URL}/api/admin/orders/${lo.id}/mark-refunded`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ amount: Number(lo.refundOwed || 0), method: refundMethod }),
+      }, 15000);
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.message || d.error || 'Could not record the refund.');
+      const updated = { ...lo, refundOwed: 0, refunds: d?.data?.refunds ?? lo.refunds };
+      setLo(updated);
+      if (onStatusUpdated) onStatusUpdated(lo.id, updated);
+    } catch (err) {
+      setRefundErr(err.message || 'Could not record the refund.');
+    } finally {
+      setPayingRefund(false);
+    }
+  };
 
   const handleUpdateStatus = async () => {
     if (!selStatus || selStatus === lo.orderStatus) return;
@@ -1098,20 +1282,48 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
     setIsUpdating(true); setUpdateErr('');
     try {
       const payload = selStatus === 'Paid' ? { paymentStatus:'paid' } : { orderStatus: selStatus };
+      // Who is carrying it, and how the customer can follow it. Blank is allowed - an own rider
+      // has no tracking of any kind - but the customer's order shows whatever is here.
+      if (isForDelivery(selStatus)) {
+        payload.courierName    = courier.trim();
+        payload.trackingNumber = trackingNo.trim();
+        payload.trackingUrl    = trackingUrl.trim();
+      }
       // A return needs two facts nothing else records: why the goods came back, and whether they are
       // sellable. Without the second, ready-made stock the shop physically has is written off.
       if (String(selStatus).toLowerCase() === 'returned') {
         payload.returnReason = returnReason === 'Other' ? returnOther.trim() : returnReason;
         payload.restock      = returnSellable;
       }
+      // A cancellation the customer did not ask for needs the same two facts a return does: why,
+      // and what happens to the money. Blank refund means "everything back", which is the right
+      // default when nothing was made.
+      if (String(selStatus).toLowerCase() === 'cancelled') {
+        payload.cancelReason = cancelReason === 'Other' ? cancelOther.trim() : cancelReason;
+        if (refundAmt !== '') payload.refundAmount = Number(refundAmt);
+        // Sent only when something actually survived. Absent, the backend writes off the whole held
+        // amount exactly as it did before this modal existed.
+        const survived = Object.entries(keepBack)
+          .filter(([, n]) => Number(n) > 0)
+          .reduce((acc, [id, n]) => { acc[id] = Number(n); return acc; }, {});
+        if (Object.keys(survived).length) payload.stockSettlement = survived;
+      }
       const res = await fetchWithTimeout(`${API_URL}/api/admin/orders/${lo.id}`, {
         method:'PUT', headers:{ 'Content-Type':'application/json', Authorization:`Bearer ${token}` },
         body: JSON.stringify(payload),
       }, 15000);
       if (!res.ok) { const d = await res.json().catch(()=>({})); throw new Error(d.message || d.error || 'Update failed'); }
-      const updated = selStatus === 'Paid'
+      const patched = selStatus === 'Paid'
         ? { ...lo, paymentStatus:'paid' }
-        : { ...lo, orderStatus: selStatus };
+        : { ...lo, orderStatus: selStatus,
+            ...(isForDelivery(selStatus)
+              ? { courierName: courier.trim(), trackingNumber: trackingNo.trim(), trackingUrl: trackingUrl.trim() }
+              : {}) };
+      // A status change does more on the server than change the status: Delivered records the
+      // rider's cash for the delivery fee and COD money, Cancelled writes refunds. Patching only the
+      // status here left the fee reading "unpaid" on a delivered order until it was reopened.
+      const fresh = await refetchOrder();
+      const updated = fresh ? { ...patched, ...fresh, id: lo.id } : patched;
       setLo(updated);
       setConfirmSt(false);
       if (onStatusUpdated) onStatusUpdated(lo.id, updated);
@@ -1257,6 +1469,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
       const form = new FormData();
       files.forEach(f => form.append('design[]', f));
       form.append('itemIndex', String(activeItemIdx));
+      if (mockupMode) form.append('informational', '1');
       // A shared artwork lands on every product it covers in one send, instead of the owner
       // uploading the identical proof once per line.
       (uploadTargets ?? [activeItemIdx]).forEach(i => form.append('itemIndexes[]', String(i)));
@@ -1288,7 +1501,13 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
   const designItems = (lo.items || []).map((it, idx) => ({ it, idx })).filter(({ it }) => it.isCustom || it.designRequested || it.designUrl || it.designName || it.adminDesignUrl);
   const ai = lo.items?.[activeItemIdx] ?? {};
   const aiStatus = ai.designStatus ?? (designItems.length <= 1 ? lo.designStatus : null) ?? null;
-  const aiFiles = (ai.designFiles?.length ? ai.designFiles.map(f => f.url) : [ai.designUrl]).filter(Boolean);
+  // Kept as { url, name } rather than mapped down to url strings. Cloudinary renames every upload to
+  // a random public_id, so the URL cannot tell anyone what the customer actually sent - the original
+  // filename only exists on the line, and dropping it here was why the tiles were anonymous.
+  const aiFiles = (ai.designFiles?.length
+    ? ai.designFiles.map(f => ({ url: f.url, name: f.name || null }))
+    : [{ url: ai.designUrl, name: ai.designName || null }]
+  ).filter(f => f.url);
   // A proof can be several files. Reading only adminDesignUrl showed the owner one tile after
   // sending two, while the customer - who already reads the plural field - saw both. Prefer the
   // array, fall back to the single legacy field for proofs sent before it existed.
@@ -1311,6 +1530,58 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
   const uploadTargets = activeSection?.indices ?? [activeItemIdx];
 
   const [reviewLinkState, setReviewLinkState] = useState(null);
+  const [msgState, setMsgState] = useState('idle');
+  const [convertState, setConvertState] = useState('idle');
+  const [confirmConvert, setConfirmConvert] = useState(false);
+
+  // Bills the design fee onto the BALANCE rather than charging it. Nothing moves until the
+  // customer settles the rest, which is why this is safe to press after they have agreed in
+  // chat - and why taking the fee up front and refunding it would not have been.
+  const convertToDesign = async () => {
+    setConvertState('sending');
+    try {
+      const res = await fetchWithTimeout(`${API_URL}/api/admin/orders/${lo.id}/convert-to-design`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({}),
+      }, 15000);
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.message || d.error || 'Could not convert this order.');
+      const updated = { ...lo, ...(d?.data ?? {}), id: lo.id };
+      setLo(updated);
+      setConfirmConvert(false);
+      setConvertState('done');
+      if (onStatusUpdated) onStatusUpdated(lo.id, updated);
+    } catch (err) {
+      setConvertState('error');
+    }
+  };
+
+  const messageCustomer = async () => {
+    setMsgState('sending');
+    try {
+      const res = await fetchWithTimeout(`${API_URL}/api/chat/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          recipient_id: String(lo.userId ?? lo.user_id ?? ''),
+          type: 'order_reference',
+          order_id: String(lo.id ?? lo._id ?? ''),
+          body: 'Hi! We have your file but no printing instructions with it. '
+            + 'Could you tell us how you would like it printed - which side, roughly what size, '
+            + 'and whether this file is the final artwork or reference for us to design from? '
+            + 'We will not print until you confirm.',
+          metadata: {
+            orderId: String(lo.id ?? lo._id ?? ''),
+            orderNo: lo.orderNumber ?? lo.orderNo ?? 'Order',
+            products: (lo.items ?? []).map(i => i.productName).filter(Boolean).join(', '),
+          },
+        }),
+      }, 15000);
+      setMsgState(res.ok ? 'sent' : 'error');
+    } catch { setMsgState('error'); }
+  };
+
   const sendReviewLink = async () => {
     setReviewLinkState('sending');
     try {
@@ -1403,7 +1674,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                     <a href={`https://www.google.com/maps/search/?api=1&query=${lo.deliveryAddress.lat},${lo.deliveryAddress.lng}`}
                        target="_blank" rel="noopener noreferrer"
                        style={{ display:'inline-flex', alignItems:'center', gap:'4px', padding:'5px 10px', fontSize:'11px', fontWeight:600, borderRadius:'6px', border:'1px solid var(--border)', background:'var(--dark)', color:'var(--white)', textDecoration:'none', cursor:'pointer' }}>
-                      📍 Google Maps
+                      Google Maps
                     </a>
                     <a href={`https://waze.com/ul?ll=${lo.deliveryAddress.lat},${lo.deliveryAddress.lng}&navigate=yes`}
                        target="_blank" rel="noopener noreferrer"
@@ -1423,9 +1694,57 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
               {!(Number(lo.shippingFee) > 0) && (
                 <div style={{ marginTop:'10px', padding:'10px 12px', background:'var(--dark2)', border:'1px solid var(--border)', borderRadius:'8px' }}>
                   <div style={{ fontSize:'11px', fontWeight:600, color:'var(--gray-light)', marginBottom:'2px' }}>Delivery fee (paid by customer to rider)</div>
-                  <div style={{ fontSize:'10.5px', color:'var(--gray)', marginBottom:'6px' }}>
-                    After you book the courier, enter the fee. The customer is notified to pay this in cash on delivery.
+                  {/* Once it is settled, everything below this is an answer to a question nobody is
+                      asking any more. The record of what was charged and how stays; the controls go. */}
+                  {!lo.courierFeePaid && (
+                  <div style={{ fontSize:'10.5px', color:'var(--gray)', marginBottom:'8px' }}>
+                    Enter the fee once you know it. Pick who collects it - that decides what the customer
+                    is told and whether they can leave it for the rider.
                   </div>
+                  )}
+
+                  {/* The fee is not needed to send a proof - that is a conversation about artwork,
+                      and the address can still change after approval. It is needed the moment the
+                      customer is about to pay, because then it can ride on the same payment
+                      instead of becoming a second one. */}
+                  {!(Number(lo.courierFee) > 0) && lo.paymentStatus !== 'paid'
+                    && ['Awaiting Payment', 'awaiting_payment'].includes(String(lo.orderStatus)) && (
+                    <div style={{ display:'flex', gap:'7px', alignItems:'flex-start', padding:'8px 10px', marginBottom:'8px', background:'rgba(245,158,11,0.08)', border:'1px solid rgba(245,158,11,0.3)', borderRadius:'7px' }}>
+                      <span style={{ color:'#b45309', fontWeight:900, fontSize:'11px', lineHeight:1.5 }}>!</span>
+                      <span style={{ fontSize:'10.5px', color:'#b45309', lineHeight:1.5 }}>
+                        No delivery fee set. The customer is about to pay - set it now and they can
+                        settle both in one go. Leave it and they will have to pay the delivery separately later.
+                      </span>
+                    </div>
+                  )}
+
+                  {/* An on-demand rider can take cash at the door; a parcel network is prepaid at
+                      the branch. Getting this wrong on a provincial order means the shop pays the
+                      courier and never collects. */}
+                  {!lo.courierFeePaid && (
+                  <div style={{ display:'flex', gap:'6px', marginBottom:'8px', flexWrap:'wrap' }}>
+                    {[
+                      { on:true,  label:'Rider collects it',      hint:'Lalamove, Grab, same-day' },
+                      { on:false, label:'Paid before we ship',    hint:'J&T, parcel, provincial' },
+                    ].map(opt => {
+                      const active = (lo.courierFeeOnDelivery ?? true) === opt.on;
+                      return (
+                        <button key={String(opt.on)} type="button" disabled={savingFee}
+                          onClick={() => handleCourierMode(opt.on)}
+                          style={{ flex:'1 1 150px', textAlign:'left', padding:'7px 10px', borderRadius:'7px',
+                                   border:`1px solid ${active ? 'var(--gold)' : 'var(--border)'}`,
+                                   background: active ? 'rgba(212,168,67,0.1)' : 'transparent',
+                                   color: active ? 'var(--gold)' : 'var(--gray)',
+                                   cursor: savingFee ? 'not-allowed' : 'pointer', lineHeight:1.35 }}>
+                          <span style={{ display:'block', fontSize:'11px', fontWeight:700 }}>{opt.label}</span>
+                          <span style={{ display:'block', fontSize:'10px', opacity:0.75 }}>{opt.hint}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  )}
+
+                  {!lo.courierFeePaid && (
                   <div style={{ display:'flex', gap:'6px', alignItems:'center', flexWrap:'wrap' }}>
                     <div style={{ display:'flex', alignItems:'center', border:'1px solid var(--border)', borderRadius:'6px', overflow:'hidden', background:'var(--dark)' }}>
                       <span style={{ padding:'0 8px', fontSize:'12px', color:'var(--gray)' }}>₱</span>
@@ -1442,10 +1761,75 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                     </button>
                     {Number(lo.courierFee) > 0 && (
                       <span style={{ fontSize:'11px', color:'#166534', fontWeight:600 }}>
-                        Set: ₱{fmt(lo.courierFee)} · customer notified
+                        Set: ₱{fmt(lo.courierFee)}
                       </span>
                     )}
                   </div>
+                  )}
+
+                  {/* Only offered once a fee exists - there is nothing to settle before that. */}
+                  {Number(lo.courierFee) > 0 && (
+                    <div style={{ display:'flex', alignItems:'center', gap:'8px', flexWrap:'wrap', marginTop:'8px', paddingTop:'8px', borderTop:'1px solid var(--border)' }}>
+                      {lo.courierFeePaid ? (
+                        <>
+                          {/* Raising the fee after it was paid used to leave the shop short in
+                              silence. Chasing the difference or absorbing it is a judgement call,
+                              so this reports rather than re-opens a payment. */}
+                          {(() => {
+                            const paid  = Number(lo.courierFeePaidAmount ?? 0);
+                            const now   = Number(lo.courierFee ?? 0);
+                            const short = Math.round((now - paid) * 100) / 100;
+                            const how  = String(lo.courierFeePaidMethod || '').toLowerCase();
+                            const when = lo.courierFeePaidAt
+                              ? new Date(lo.courierFeePaidAt).toLocaleDateString('en-PH', { month:'short', day:'numeric' })
+                              : '';
+                            // Money in PayMongo and a ticked box are not the same fact, and the
+                            // shop has to reconcile one of them against a statement.
+                            const source = !how ? ''
+                              : how === 'manual'
+                                ? `Marked received by you${when ? ' - ' + when : ''}`
+                                : `Paid online via ${how.toUpperCase()}${when ? ' - ' + when : ''}`;
+                            if (!(paid > 0) || short <= 0.009) return (
+                              <span style={{ fontSize:'11px', fontWeight:700, color:'#166534', lineHeight:1.5 }}>
+                                {how && how !== 'manual'
+                                  ? 'Paid online - you pay the courier; the rider collects nothing from the customer'
+                                  : 'Delivery fee received - nothing for the rider to collect'}
+                                {source && (
+                                  <span style={{ display:'block', fontWeight:500, color:'var(--gray)' }}>
+                                    {source}{paid > 0 ? ` · ₱${fmt(paid)}` : ''}
+                                  </span>
+                                )}
+                              </span>
+                            );
+                            return (
+                              <span style={{ fontSize:'11px', fontWeight:700, color:'#b45309', lineHeight:1.5 }}>
+                                Paid ₱{fmt(paid)}, fee is now ₱{fmt(now)} - ₱{fmt(short)} short.
+                                <span style={{ display:'block', fontWeight:500, color:'var(--gray)' }}>
+                                  Ask for it in chat, or absorb it. Nothing is billed automatically.
+                                </span>
+                              </span>
+                            );
+                          })()}
+                          <button type="button" onClick={() => handleCourierFeePaid(false)} disabled={savingFee}
+                            style={{ padding:'3px 9px', fontSize:'10.5px', fontWeight:600, borderRadius:'6px', border:'1px solid var(--border)', background:'transparent', color:'var(--gray)', cursor: savingFee ? 'not-allowed' : 'pointer' }}>
+                            Undo
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <span style={{ fontSize:'11px', color:'var(--gray)' }}>
+                            {(lo.courierFeeOnDelivery ?? true)
+                              ? 'Paid the rider in cash, or sent it ahead by GCash / Maya?'
+                              : 'Settle it here if they paid you another way.'}
+                          </span>
+                          <button type="button" onClick={() => handleCourierFeePaid(true)} disabled={savingFee}
+                            style={{ padding:'4px 11px', fontSize:'11px', fontWeight:700, borderRadius:'6px', border:'1px solid #166534', background:'transparent', color:'#166534', cursor: savingFee ? 'not-allowed' : 'pointer' }}>
+                            Mark fee received
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  )}
                   {feeErr && <div style={{ marginTop:'4px', fontSize:'11px', color:'#dc2626' }}>{feeErr}</div>}
                 </div>
               )}
@@ -1522,7 +1906,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                     const active = sec.indices.includes(activeItemIdx);
                     const done = sec.entries.every(({ it }) => it.designStatus === 'approved');
                     return (
-                      <button key={sec.key} onClick={() => { setActiveItemIdx(sec.indices[0]); setShowReject(false); setShowFix(false); setConfirmApprove(false); setDraftFiles([]); setDesignErr(''); }}
+                      <button key={sec.key} onClick={() => { setActiveItemIdx(sec.indices[0]); setShowReject(false); setShowFix(false); setConfirmApprove(false); setDraftFiles([]); setDesignErr(''); setMockupMode(false); }}
                         style={{ padding:'4px 10px', borderRadius:'999px', border:`1px solid ${active?'var(--gold)':done?'#bbf7d0':'var(--border)'}`, background: active?'rgba(212,168,67,0.1)':'transparent', color: active?'var(--gold)':'var(--gray)', fontSize:'11px', fontWeight:700, cursor:'pointer' }}>
                         {sec.label}{done ? ' - approved' : ''}
                       </button>
@@ -1566,13 +1950,38 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
               {(() => {
                 const files = aiFiles;
                 if (!files.length) return null;
+                // Approved: the proof is the artwork now, and this is only the inspiration it was
+                // drawn from. Leading with it puts "do not print them" at the top of the screen
+                // someone reads before printing.
+                if (aiStatus === 'approved' && !showRefFor[activeItemIdx]) {
+                  return (
+                    <button type="button"
+                      onClick={() => setShowRefFor(m => ({ ...m, [activeItemIdx]: true }))}
+                      style={{ marginBottom:'8px', padding:'5px 10px', fontSize:'11px', fontWeight:600, borderRadius:'6px', border:'1px solid var(--border)', background:'transparent', color:'var(--gray)', cursor:'pointer', fontFamily:'inherit' }}>
+                      Show the customer&apos;s reference ({files.length})
+                    </button>
+                  );
+                }
                 return (
+                  <>
+                  {/* Shown on request once the line is approved - so it can be put away again. */}
+                  {aiStatus === 'approved' && (
+                    <button type="button"
+                      onClick={() => setShowRefFor(m => ({ ...m, [activeItemIdx]: false }))}
+                      style={{ marginBottom:'6px', padding:'4px 10px', fontSize:'11px', fontWeight:600, borderRadius:'6px', border:'1px solid var(--border)', background:'transparent', color:'var(--gray)', cursor:'pointer', fontFamily:'inherit' }}>
+                      Hide the customer&apos;s reference
+                    </button>
+                  )}
                   <div style={{ display:'flex', flexWrap:'wrap', gap:'8px', marginBottom:'8px' }}>
-                    {files.map((raw, i) => {
+                    {files.map((f, i) => {
+                      const raw = f.url;
                       const url = raw.startsWith('http') ? raw : `${API_URL}/storage/${raw}`;
                       const isImg = /\.(jpe?g|png|webp|gif|avif|svg)(\?|$)/i.test(url);
-                      const isPdf = /\.pdf(\?|$)/i.test(url);
-                      // Image opens a full-screen lightbox in place; PDF embeds; other formats open in a new tab.
+                      // The format label comes off the URL (Cloudinary keeps the extension on raw
+                      // uploads); the NAME has to come off the line, because the public_id is random.
+                      const ext = (url.split('?')[0].split('.').pop() || '').toUpperCase().slice(0, 4);
+                      const fname = f.name || 'Customer file';
+                      // Image opens a full-screen lightbox in place; everything else is a labelled card.
                       return isImg ? (
                         <button key={i} type="button" onClick={() => setLightboxUrl(url)} title="Click to preview"
                           style={{ padding:0, border:'none', background:'none', cursor:'zoom-in', display:'block' }}>
@@ -1580,27 +1989,37 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                           <img src={url} alt="Customer design" style={{ width:'120px', height:'120px', objectFit:'contain', background:'#f3f4f6', borderRadius:'8px', border:'1px solid var(--border)', display:'block' }} />
                         </button>
                       ) : (
-                        <a key={i} href={url} target="_blank" rel="noopener noreferrer" title="Open full file"
+                        // One card for every non-image format. The PDF branch used to be an
+                        // <embed>, which rendered as a blank white box: Cloudinary serves these from
+                        // /raw/upload/ with a generic content-type, and a browser will not open a PDF
+                        // viewer for that (cross-origin embedding is commonly refused too). A frame
+                        // that silently shows nothing is worse than no frame - it reads as a broken
+                        // upload rather than a file that simply has no inline preview. So: say what
+                        // the format is, say what the customer called it, and open it on click.
+                        <a key={i} href={url} target="_blank" rel="noopener noreferrer" title={`Open ${fname}`}
                           style={{ display:'block', textDecoration:'none' }}>
-                          {isPdf ? (
-                            <embed src={url} type="application/pdf" style={{ width:'160px', height:'120px', borderRadius:'8px', border:'1px solid var(--border)', pointerEvents:'none' }} />
-                          ) : (
-                            <div style={{ width:'120px', height:'120px', borderRadius:'8px', border:'1px solid var(--border)', background:'#f9fafb', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:'6px', color:'var(--gray)', fontSize:'11px', textAlign:'center', padding:'6px' }}>
-                              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                              No preview<br/>Open to download
-                            </div>
-                          )}
+                          <div style={{ width:'120px', height:'120px', borderRadius:'8px', border:'1px solid var(--border)', background:'#f9fafb', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:'4px', padding:'8px', boxSizing:'border-box' }}>
+                            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#d4a843" strokeWidth="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                            <span style={{ fontSize:'11px', fontWeight:800, color:'#d4a843', letterSpacing:'0.04em' }}>{ext || 'FILE'}</span>
+                            <span style={{ fontSize:'10px', color:'var(--gray)', textAlign:'center', lineHeight:1.3, wordBreak:'break-word', display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical', overflow:'hidden' }}>{fname}</span>
+                          </div>
                         </a>
                       );
                     })}
                   </div>
+                  </>
                 );
               })()}
 
               <ImageLightbox url={lightboxUrl} kind={lightboxKind} onClose={() => { setLightboxUrl(null); setLightboxKind(null); }} />
 
+              {aiHasFile && aiRequested && !(aiStatus === 'approved' && !showRefFor[activeItemIdx]) && (
+                <div style={{ fontSize: 11.5, color: 'var(--gold)', fontWeight: 600, marginBottom: 4 }}>
+                  Reference from the customer - design from these, do not print them
+                </div>
+              )}
               {aiHasFile && (
-                <a href={aiFiles[0]?.startsWith('http') ? aiFiles[0] : `${API_URL}/storage/${aiFiles[0]}`} target="_blank" rel="noopener noreferrer"
+                <a href={aiFiles[0]?.url?.startsWith('http') ? aiFiles[0].url : `${API_URL}/storage/${aiFiles[0]?.url}`} target="_blank" rel="noopener noreferrer"
                   style={{ display:'inline-flex', alignItems:'center', gap:'4px', fontSize:'12px', fontWeight:600, color:'#2563eb', textDecoration:'none', marginBottom:'8px' }}>
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
                   Open full file
@@ -1617,6 +2036,70 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
               {/* Upload-line review: three choices - approve as-is, bounce back for a re-upload
                   (with a reason), or fix it yourself and send an adjusted proof for the customer
                   to approve (reuses the request-design proof flow below via showFix). */}
+              {/* An uploaded file with nothing said about it. The shop is the one who finds
+                  out, so the shop is the one that gets told - with the question already
+                  addressed to the right person. Kept above Approve/Reject deliberately:
+                  approving artwork nobody has explained is the mistake this prevents. */}
+              {aiHasFile && !aiNotes && aiStatus === 'pending_review' && (
+                <div style={{ marginBottom: '10px', padding: '10px 12px', borderRadius: 8,
+                  background: 'rgba(212,168,67,0.07)', border: '1px solid rgba(212,168,67,0.3)' }}>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#b45309"
+                      strokeWidth="2" style={{ flexShrink: 0, marginTop: 1 }}>
+                      <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+                      <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+                    </svg>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 12.5, fontWeight: 700, color: '#b45309' }}>No printing instructions</div>
+                      <div style={{ fontSize: 11.5, color: 'var(--gray)', marginTop: 3, lineHeight: 1.5 }}>
+                        The customer sent a file and said nothing about it - which side, what size,
+                        whether it is even finished artwork. Ask before producing.
+                      </div>
+                    </div>
+                  </div>
+                      <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+                    <button type="button" onClick={messageCustomer} disabled={msgState === 'sending'}
+                      style={{ ...S.btnSm, cursor: msgState === 'sending' ? 'wait' : 'pointer' }}>
+                      {msgState === 'sent' ? 'Sent - open Messages'
+                        : msgState === 'sending' ? 'Sending...'
+                        : msgState === 'error' ? 'Could not send - try again'
+                        : 'Message customer'}
+                    </button>
+                    {!confirmConvert && (
+                      <button type="button" onClick={() => setConfirmConvert(true)} style={S.btnSmGhost}>
+                        Convert to design job
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Confirmed, because it puts money on somebody's bill. Press it after they
+                      have agreed in chat, not instead of asking. */}
+                  {confirmConvert && (
+                    <div style={{ marginTop: 8, padding: '9px 11px', borderRadius: 6,
+                      background: 'var(--dark)', border: '1px solid var(--border)' }}>
+                      <div style={{ fontSize: 11.5, color: 'var(--gray)', lineHeight: 1.5, marginBottom: 7 }}>
+                        This becomes a design job: you draw the artwork and send a mockup to approve.
+                        The design fee is <strong style={{ color: 'var(--white)' }}>added to their balance</strong>,
+                        not charged now - so only do this once they have agreed to it.
+                      </div>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <button type="button" onClick={convertToDesign} disabled={convertState === 'sending'}
+                          style={{ ...S.btnSm, cursor: convertState === 'sending' ? 'wait' : 'pointer' }}>
+                          {convertState === 'sending' ? 'Converting...' : 'Yes, convert and bill the fee'}
+                        </button>
+                        <button type="button" onClick={() => { setConfirmConvert(false); setConvertState('idle'); }}
+                          style={S.btnSmGhost}>Cancel</button>
+                      </div>
+                      {convertState === 'error' && (
+                        <div style={{ fontSize: 11, color: '#b91c1c', marginTop: 6 }}>
+                          Could not convert - try again.
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {aiStatus==='pending_review' && aiHasFile && !aiRequested && !showReject && !showFix && !confirmApprove && (
                 <div style={{ display:'flex', gap:'6px', marginBottom:'8px', flexWrap:'wrap' }}>
                   <button onClick={() => { setConfirmApprove(true); setDesignErr(''); }} disabled={!!designAct}
@@ -1649,6 +2132,18 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                       Cancel
                     </button>
                   </div>
+                </div>
+              )}
+
+              {/* A mockup after approval changes nothing, so unlike Revert it stays available once a
+                  Job Order exists - which is exactly when someone asks to see what they are getting. */}
+              {aiStatus === 'approved' && !showFix && (
+                <div style={{ display:'flex', alignItems:'center', gap:'8px', marginBottom:'8px' }}>
+                  <span style={{ fontSize:'11px', color:'var(--gray)' }}>Show them what it will look like?</span>
+                  <button onClick={() => { setMockupMode(true); setShowFix(true); setDesignErr(''); }} disabled={!!designAct}
+                    style={{ padding:'4px 10px', background:'rgba(212,168,67,0.08)', border:'1px solid var(--gold)', borderRadius:'6px', color:'var(--gold)', fontSize:'11px', fontWeight:700, cursor:designAct?'not-allowed':'pointer', opacity:designAct?.6:1 }}>
+                    Send mockup
+                  </button>
                 </div>
               )}
 
@@ -1722,12 +2217,16 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                 </button>
               )}
 
-              {(aiRequested || showFix) && aiStatus !== 'approved' && (
+              {(aiRequested || showFix) && (aiStatus !== 'approved' || mockupMode) && (
                 <div>
                   {showFix && (
                     <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'6px' }}>
-                      <span style={{ fontSize:'11px', color:'var(--gray)' }}>Upload your adjusted design - the customer will approve it.</span>
-                      <button onClick={() => { setShowFix(false); setDraftFiles([]); }} disabled={uploading}
+                      <span style={{ fontSize:'11px', color:'var(--gray)' }}>
+                        {mockupMode
+                          ? 'Send a mockup - information only. The approval and the Job Order stay exactly as they are.'
+                          : 'Upload your adjusted design - the customer will approve it.'}
+                      </span>
+                      <button onClick={() => { setShowFix(false); setDraftFiles([]); setMockupMode(false); }} disabled={uploading}
                         style={{ padding:'2px 8px', background:'transparent', border:'1px solid var(--border)', borderRadius:'6px', color:'var(--gray)', fontSize:'11px', cursor:'pointer' }}>
                         Back
                       </button>
@@ -1769,7 +2268,9 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                           style={{ flex:1, padding:'5px 0', background:'var(--gold)', border:'none', borderRadius:'6px', color:'var(--dark)', fontSize:'12px', fontWeight:700, cursor:uploading?'not-allowed':'pointer', opacity:uploading?.6:1 }}>
                           {uploading
                             ? `Uploading ${(draftFiles.reduce((n,f)=>n+f.size,0)/1048576).toFixed(1)} MB…`
-                            : `Send ${draftFiles.length} File${draftFiles.length>1?'s':''}`}
+                            : mockupMode
+                              ? `Send ${draftFiles.length} Mockup${draftFiles.length>1?'s':''}`
+                              : `Send ${draftFiles.length} File${draftFiles.length>1?'s':''}`}
                         </button>
                         {/* Staging a file used to be a one-shot decision - Send or start over. Let more
                             be added to the same batch, up to the five the endpoint accepts. */}
@@ -1882,7 +2383,9 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                   </div>
                 )
               )}
-              {availableRaw.includes('cancelled') && (
+              {/* The transition maps spell it "Cancelled"; an exact lowercase match hid the button on
+                  every awaiting-payment order, whose own message says "cancel it below". */}
+              {availableRaw.map(normalizeStatus).includes('cancelled') && (
                 <button onClick={() => { setSelStatus('cancelled'); setConfirmSt(true); }}
                   style={{ ...S.btnSmGhost, justifyContent:'center', color:'var(--st-red-fg)' }}>
                   Cancel this order
@@ -1905,6 +2408,26 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                   ...available.map(s => ({ value: s, label: getStatusBadge(s).label })),
                 ]}
               />
+              {isForDelivery(selStatus) && (
+                <div style={{ padding:'10px', borderRadius:'7px', border:'1px solid var(--border)', display:'flex', flexDirection:'column', gap:'7px' }}>
+                  <span style={{ fontSize:'11px', fontWeight:700, color:'var(--gray)', textTransform:'uppercase', letterSpacing:'.5px' }}>Who is carrying it?</span>
+                  <CustomSelect
+                    value={courier}
+                    onChange={setCourier}
+                    options={[{ value:'', label:'Select courier' }, ...COURIERS.map(c => ({ value:c, label:c }))]}
+                  />
+                  <input value={trackingNo} onChange={e => setTrackingNo(e.target.value)} maxLength={200}
+                    placeholder="Tracking number (J&T, LBC, parcel)"
+                    style={{ padding:'8px 10px', borderRadius:'7px', border:'1px solid var(--border)', background:'var(--dark)', color:'var(--white)', fontSize:'12px' }} />
+                  <input value={trackingUrl} onChange={e => setTrackingUrl(e.target.value)} maxLength={500}
+                    placeholder="Tracking link (Lalamove / Grab share link)"
+                    style={{ padding:'8px 10px', borderRadius:'7px', border:'1px solid var(--border)', background:'var(--dark)', color:'var(--white)', fontSize:'12px' }} />
+                  <span style={{ fontSize:'10.5px', color:'var(--gray)', lineHeight:1.5 }}>
+                    Whatever you fill in is what the customer sees on their order and in the email. A J&amp;T number
+                    becomes a tracking link on its own; for Lalamove or Grab, paste their share link.
+                  </span>
+                </div>
+              )}
               {String(selStatus).toLowerCase() === 'returned' && (
                 <div style={{ padding:'10px', borderRadius:'7px', border:'1px solid var(--border)', display:'flex', flexDirection:'column', gap:'7px' }}>
                   <span style={{ fontSize:'11px', fontWeight:700, color:'var(--gray)', textTransform:'uppercase', letterSpacing:'.5px' }}>Why did it come back?</span>
@@ -1935,7 +2458,126 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                     </span>
                   </label>
                 </div>
+
               )}
+
+                {/* Cancelling a PAID order is the case that costs money, so both questions are asked
+                    here rather than discovered afterwards. */}
+                {String(selStatus).toLowerCase() === 'cancelled' && (
+                  <div style={{ display:'flex', flexDirection:'column', gap:'8px', marginTop:'10px' }}>
+                    <div style={{ fontSize:'11px', fontWeight:700, color:'var(--gray)', textTransform:'uppercase', letterSpacing:'.5px' }}>
+                      Why are you cancelling?
+                    </div>
+                    <div style={{ display:'flex', flexWrap:'wrap', gap:'6px' }}>
+                      {['Cannot fulfil', 'Out of stock', 'Customer asked', 'Duplicate order', 'Payment problem', 'Other'].map(r => (
+                        <button key={r} type="button" onClick={() => setCancelReason(r)}
+                          style={{ padding:'5px 11px', borderRadius:'999px', fontSize:'11.5px', cursor:'pointer',
+                            border:`1px solid ${cancelReason === r ? 'var(--gold)' : 'var(--border)'}`,
+                            background: cancelReason === r ? 'rgba(212,168,67,0.1)' : 'transparent',
+                            color: cancelReason === r ? 'var(--gold)' : 'var(--gray)',
+                            fontWeight: cancelReason === r ? 700 : 500 }}>{r}</button>
+                      ))}
+                    </div>
+                    {cancelReason === 'Other' && (
+                      <input value={cancelOther} onChange={e => setCancelOther(e.target.value)} maxLength={200}
+                        placeholder="Say what happened - the customer is told this" style={S.input} />
+                    )}
+
+                    {settlementErr && (
+                      <div style={{ fontSize:'11.5px', color:'#b91c1c' }}>{settlementErr}</div>
+                    )}
+
+                    {consumeRows.length > 0 && (
+                      <div style={{ marginTop:'4px', padding:'10px 12px', borderRadius:'6px',
+                        background:'rgba(212,168,67,0.05)', border:'1px solid rgba(212,168,67,0.25)' }}>
+                        <div style={{ fontSize:'12px', fontWeight:700, color:'var(--white)', marginBottom:'3px' }}>
+                          Production had already started
+                        </div>
+                        <div style={{ fontSize:'11.5px', color:'var(--gray)', lineHeight:1.5, marginBottom:'9px' }}>
+                          How much of the material can still go back on the shelf? Only you can say -
+                          the mug carries a name, the transfer paper is spent, the box was never opened.
+                        </div>
+
+                        {consumeRows.map(row => (
+                          <div key={row.itemIndex} style={{ marginBottom:'10px' }}>
+                            <div style={{ fontSize:'11px', fontWeight:700, color:'var(--gray)',
+                              textTransform:'uppercase', letterSpacing:'.4px', marginBottom:'5px' }}>
+                              {row.itemName}{row.variantName ? ` - ${row.variantName}` : ''} &times;{row.qty}
+                              {row.jobStage ? ` (${row.jobStage})` : ''}
+                            </div>
+                            {(row.materials ?? []).map(m => (
+                              <div key={`${row.itemIndex}-${m.inventoryId}`}
+                                style={{ display:'flex', alignItems:'center', gap:'8px', padding:'4px 0' }}>
+                                <div style={{ flex:1, minWidth:0, fontSize:'12px', color:'var(--white)',
+                                  overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                                  {m.name}
+                                </div>
+                                <div style={{ fontSize:'11px', color:'var(--gray)', whiteSpace:'nowrap' }}>
+                                  held {m.qty}{m.uom ? ` ${m.uom}` : ''}
+                                </div>
+                                <input
+                                  value={keepBack[m.inventoryId] ?? 0}
+                                  onChange={e => {
+                                    const raw = e.target.value.replace(/[^0-9]/g, '');
+                                    // Capped at what this line actually held, so a mistyped figure
+                                    // cannot invent stock the shop never had.
+                                    const n = raw === '' ? '' : Math.min(Number(raw), m.qty);
+                                    setKeepBack(p => ({ ...p, [m.inventoryId]: n }));
+                                  }}
+                                  inputMode="numeric" maxLength={6}
+                                  style={{ ...S.input, width:'72px', textAlign:'center', padding:'5px 6px' }} />
+                                <button type="button" onClick={() => setKeepBack(p => ({ ...p, [m.inventoryId]: m.qty }))}
+                                  style={{ ...S.btnSmGhost, padding:'4px 9px', fontSize:'11px' }}>All</button>
+                                <button type="button" onClick={() => setKeepBack(p => ({ ...p, [m.inventoryId]: 0 }))}
+                                  style={{ ...S.btnSmGhost, padding:'4px 9px', fontSize:'11px' }}>None</button>
+                              </div>
+                            ))}
+                          </div>
+                        ))}
+
+                        <div style={{ display:'flex', justifyContent:'space-between', gap:'10px', paddingTop:'8px',
+                          borderTop:'1px solid var(--border)', fontSize:'12px' }}>
+                          <span style={{ color:'var(--gray)' }}>
+                            Back to stock <b style={{ color:'var(--white)' }}>{settlementSummary.back}</b>
+                          </span>
+                          <span style={{ color:'var(--gray)' }}>
+                            Written off <b style={{ color:'#b91c1c' }}>{settlementSummary.off}</b>
+                            {settlementSummary.offValue > 0 && ` (\u20B1${fmt(settlementSummary.offValue)})`}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
+                    {paidSoFar(lo) > 0 && (
+                      <div style={{ marginTop:'4px', padding:'9px 11px', borderRadius:'6px',
+                        background:'rgba(239,68,68,0.06)', border:'1px solid rgba(239,68,68,0.25)' }}>
+                        <div style={{ fontSize:'12px', fontWeight:700, color:'#b91c1c', marginBottom:'4px' }}>
+                          This customer has paid &#8369;{fmt(paidSoFar(lo))}
+                        </div>
+                        {(() => {
+                          const kept = lo.designFeePaid ? Number(lo.designFeePaidAmount ?? lo.designFee ?? 0) : 0;
+                          const dflt = Math.max(0, paidSoFar(lo) - kept);
+                          return (
+                            <>
+                              <div style={{ fontSize:'11.5px', color:'var(--gray)', lineHeight:1.5, marginBottom:'7px' }}>
+                                {kept > 0
+                                  ? `The design fee of \u20B1${fmt(kept)} is kept - the terms make it non-refundable once the designer has started. Blank returns the rest (\u20B1${fmt(dflt)}).`
+                                  : 'Leave blank to return all of it - which is right when nothing has been made.'}
+                                {' '}Enter less only if production had already started: personalised goods cannot be
+                                resold, and the deposit is what covers that.
+                              </div>
+                              <input value={refundAmt}
+                                onChange={e => setRefundAmt(e.target.value.replace(/[^0-9.]/g, ''))}
+                                inputMode="decimal" maxLength={9}
+                                placeholder={`Refund amount - blank means \u20B1${fmt(dflt)}`}
+                                style={S.input} />
+                            </>
+                          );
+                        })()}
+                      </div>
+                    )}
+                  </div>
+                )}
 
               {/* One button, one modal. The old version swapped this button in place for a "Set to X"
                   confirm, so a double-click landed on the confirm and fired it - the exact accident
@@ -1946,6 +2588,26 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                 Update Status
               </button>
               {updateErr && <div style={{ fontSize:'11px', color:'#991b1b' }}>{updateErr}</div>}
+
+              {/* The shortcut used to live only in the branch for orders with no legal transition
+                  left, as though needing a job order and having a status to move were
+                  alternatives. They are not: an approved upload is paid, still has moves
+                  available, and needs a job order - so the dropdown showed and the shortcut never
+                  did. Request-design orders happened to land on a status with nothing to move to,
+                  which is the only reason it ever appeared. */}
+              {lo.isCustom && lo.designStatus === 'approved' && jobOrdersMissing > 0 && (
+                <>
+                  <span style={{ fontSize:'11px', color:'var(--gray)', fontStyle:'italic' }}>
+                    {hasAnyJobOrder
+                      ? `${jobOrdersMissing} item${jobOrdersMissing > 1 ? 's' : ''} on this order still has no job order.`
+                      : 'Ready for production - create a Job Order to start.'}
+                  </span>
+                  <a href="/dashboard/business/job-orders" target="_blank" rel="noopener noreferrer"
+                    style={{ ...S.btnSmGhost, justifyContent:'center', textDecoration:'none', display:'inline-flex', alignItems:'center', gap:'6px' }}>
+                    {ICONS.plus} Create Job Order
+                  </a>
+                </>
+              )}
             </div>
           ) : (
             (lo.isCustom && lo.designStatus === 'approved' && jobOrdersMissing > 0) ? (
@@ -1962,14 +2624,14 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
               </div>
             ) : (
               <span style={{ fontSize:'11px', color:'var(--gray)', fontStyle:'italic' }}>
-                {['Cancelled','Returned','Delivered'].includes(lo.orderStatus) ? 'No further updates' : 'No available transitions'}
+                {['cancelled','returned','delivered'].includes(normalizeStatus(lo.orderStatus)) ? 'No further updates' : 'No available transitions'}
               </span>
             )
           )}
 
           {/* Delivery date - shown + editable so the admin can move the promise on a backlog.
               Saving notifies the customer. */}
-          {!['Cancelled','Returned','Delivered'].includes(lo.orderStatus) && (
+          {!['cancelled','returned','delivered'].includes(normalizeStatus(lo.orderStatus)) && (
             <>
               <div style={S.divider} />
               <SectionLabel>Delivery</SectionLabel>
@@ -1991,12 +2653,26 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                 {/* Rush is a REQUEST - the shop decides if it can fit it in ("kaya ba isabay"). */}
                 {lo.rushStatus === 'requested' && (
                   <div style={{ padding:'10px', background:'#fff7ed', border:'1px solid #fdba74', borderRadius:'8px', display:'flex', flexDirection:'column', gap:'8px' }}>
-                    <div style={{ fontSize:'12px', fontWeight:700, color:'#c2410c' }}>Rush requested (+₱{Number(lo.rushFee ?? 0).toLocaleString('en-PH')}) - can you fit it in?</div>
+                    {/* The customer has ALREADY paid this - it was collected in the checkout total,
+                        so "Accept" confirms and charges nothing. Declining is the expensive half,
+                        and the old label ("waive fee") read as though it cost the shop nothing. */}
+                    <div style={{ fontSize:'12px', fontWeight:700, color:'#c2410c' }}>
+                      Rush requested (+₱{Number(lo.rushFee ?? 0).toLocaleString('en-PH')}) - can you fit it in?
+                    </div>
+                    <div style={{ fontSize:'11px', color:'var(--gray)', lineHeight:1.45, marginTop:-2 }}>
+                      {Number(lo.balance ?? 0) <= 0
+                        ? 'Already paid. Accepting charges nothing more; declining means sending the fee back by hand.'
+                        : 'Accepting charges nothing more - the fee is already in the order total.'}
+                    </div>
                     <div style={{ display:'flex', gap:'6px' }}>
                       <button onClick={() => handleRushDecision('accepted')} disabled={savingDeliv}
                         style={{ flex:1, padding:'6px 0', background:'#166534', border:'none', borderRadius:'6px', color:'#fff', fontSize:'12px', fontWeight:700, cursor:savingDeliv?'not-allowed':'pointer', opacity:savingDeliv?.6:1 }}>Accept rush</button>
                       <button onClick={() => handleRushDecision('declined')} disabled={savingDeliv}
-                        style={{ flex:1, padding:'6px 0', background:'transparent', border:'1px solid #fecaca', borderRadius:'6px', color:'#991b1b', fontSize:'12px', fontWeight:700, cursor:savingDeliv?'not-allowed':'pointer', opacity:savingDeliv?.6:1 }}>Decline (waive fee)</button>
+                        style={{ flex:1, padding:'6px 0', background:'transparent', border:'1px solid #fecaca', borderRadius:'6px', color:'#991b1b', fontSize:'12px', fontWeight:700, cursor:savingDeliv?'not-allowed':'pointer', opacity:savingDeliv?.6:1 }}>
+                        {Number(lo.balance ?? 0) <= 0
+                          ? `Decline & refund \u20B1${Number(lo.rushFee ?? 0).toLocaleString('en-PH')}`
+                          : 'Decline (waive fee)'}
+                      </button>
                     </div>
                   </div>
                 )}
@@ -2073,7 +2749,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                   <div style={{ width:'38px', height:'38px', borderRadius:'6px', background:item.thumbnail?'transparent':'#e9ecef', flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center', overflow:'hidden' }}>
                     {item.thumbnail
                       ? <img src={item.thumbnail} alt={name} style={{ objectFit:'cover', width:'38px', height:'38px', borderRadius:'6px' }} />
-                      : <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#adb5bd" strokeWidth="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                      : <NoImage size={16} />
                     }
                   </div>
                   <div style={{ flex:1, minWidth:0 }}>
@@ -2117,16 +2793,58 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
           {Number(lo.shippingFee) > 0 && (
             <InfoRow label="Shipping" value={`₱${fmt(lo.shippingFee)}`} />
           )}
+          {Number(lo.designFee) > 0 && (
+            <InfoRow
+              label={`Design fee${lo.designFeePaid ? '' : ' (unpaid)'}`}
+              value={`₱${fmt(lo.designFee)}`}
+            />
+          )}
+          {Number(lo.rushFee) > 0 && (
+            <div style={{ display:'flex', justifyContent:'space-between', fontSize:'12px', padding:'3px 0' }}>
+              <span style={{ color:'var(--gray)' }}>
+                Rush fee
+                {lo.rushStatus === 'accepted' ? null : (
+                  <span style={{ marginLeft:6, fontSize:'10px', fontWeight:700, textTransform:'uppercase', letterSpacing:'.04em', color: lo.rushStatus === 'declined' ? '#c2410c' : 'var(--gray)' }}>
+                    {lo.rushStatus === 'declined' ? 'declined' : 'not yet accepted'}
+                  </span>
+                )}
+              </span>
+              <span style={{ fontWeight:600, color:'var(--white)' }}>₱{fmt(lo.rushFee)}</span>
+            </div>
+          )}
           <div style={{ display:'flex', justifyContent:'space-between', fontSize:'13px', fontWeight:700, padding:'4px 0', borderTop:'1px solid var(--border)', marginTop:'4px' }}>
             <span style={{ color:'var(--white)' }}>Total</span>
             <span style={{ color:'var(--gold)' }}>₱{fmt(lo.totalAmount ?? lo.totalPrice)}</span>
           </div>
-          {Number(lo.courierFee) > 0 && (
-            <div style={{ display:'flex', justifyContent:'space-between', fontSize:'11px', padding:'3px 0', color:'var(--gray)' }}>
-              <span>Delivery fee (customer → rider)</span>
-              <span style={{ fontWeight:600 }}>₱{fmt(lo.courierFee)}</span>
-            </div>
-          )}
+          {Number(lo.courierFee) > 0 && (() => {
+            // The panel on the left already said the fee was settled while this line said nothing,
+            // so the same order read "received" and "outstanding" at once. It says which, and who
+            // is holding the money: paid online means the shop owes the courier, cash at the door
+            // means the rider already has it.
+            const feePaid = !!lo.courierFeePaid;
+            const how     = String(lo.courierFeePaidMethod || '').toLowerCase();
+            const ended   = ['returned', 'cancelled'].includes(normalizeStatus(lo.orderStatus));
+            const note    = !feePaid
+              ? (ended
+                  // Refused at the door or cancelled: nobody paid the rider, whatever the fee setting says.
+                  ? 'not collected - the order did not go through'
+                  : (lo.courierFeeOnDelivery ?? true) ? 'rider collects on arrival' : 'to be paid before we ship')
+              : how === 'manual' || how === 'rider_cash'
+                ? 'received - the rider was paid'
+                : 'paid online - you pay the courier';
+            return (
+              <div style={{ display:'flex', justifyContent:'space-between', gap:'10px', fontSize:'11px', padding:'3px 0', color:'var(--gray)' }}>
+                <span>
+                  Delivery fee{' '}
+                  <span style={{ color: feePaid ? '#16a34a' : 'var(--gray)', fontWeight: feePaid ? 700 : 400 }}>
+                    {feePaid ? '(paid)' : '(unpaid)'}
+                  </span>
+                  <span style={{ display:'block', fontSize:'10px' }}>{note}</span>
+                </span>
+                <span style={{ fontWeight:600, whiteSpace:'nowrap', color: feePaid ? '#16a34a' : 'var(--gray)' }}>₱{fmt(lo.courierFee)}</span>
+              </div>
+            );
+          })()}
           {/* balance is only written once a payment lands, so an unpaid order reported
               ₱0.00 owing on a ₱1,057.88 order. Derive it when it has never been set. */}
           {(() => {
@@ -2136,9 +2854,9 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
             const history = (lo.paymentHistory ?? []).reduce((t, x) => t + (Number(x.amount) || 0), 0);
             const paid  = Math.max(Number(lo.downPayment ?? 0), history);
             const total = Number(lo.totalAmount ?? lo.totalPrice ?? 0);
-            const owing = lo.balance != null && lo.balance !== ''
-              ? Number(lo.balance)
-              : Math.max(0, Math.round((total - paid) * 100) / 100);
+            // Always derived. Preferring the stored field is what reported P0.00 owing beside a
+            // P350.00 total with P100.00 paid - the number the owner then acts on.
+            const owing = Math.max(0, Math.round((total - paid) * 100) / 100);
             return (
               <>
                 <InfoRow label="Paid" value={`₱${fmt(paid)}`} />
@@ -2146,6 +2864,50 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                   <span style={{ color:'var(--gray)' }}>Balance</span>
                   <span style={{ fontWeight:700, color: owing <= 0 ? '#166534' : '#c2410c' }}>₱{fmt(owing)}</span>
                 </div>
+
+                {/* Money owed BACK. A cancelled paid order and a declined paid-for rush both leave
+                    the shop holding money it is not entitled to, and until now neither said so
+                    anywhere - the order simply read as cancelled and the total quietly dropped.
+                    There is no refund API, so this is a to-do for a person, not a button that
+                    moves money; the value of it is that the debt is no longer invisible. */}
+                {Number(lo.refundOwed || 0) > 0 && (
+                  <div style={{ marginTop: 8, padding: '9px 11px', borderRadius: 6,
+                    background: 'rgba(239,68,68,0.07)', border: '1px solid rgba(239,68,68,0.28)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, fontWeight: 700, color: '#b91c1c' }}>
+                      <span>Refund owed</span>
+                      <span>₱{fmt(Number(lo.refundOwed))}</span>
+                    </div>
+                    {(lo.refunds || []).filter(r => (r.status || 'owed') === 'owed').map((r, i) => (
+                      <div key={i} style={{ fontSize: 11, color: 'var(--gray)', marginTop: 4, lineHeight: 1.45 }}>
+                        ₱{fmt(Number(r.amount || 0))} - {r.reason}
+                      </div>
+                    ))}
+                    <div style={{ fontSize: 10.5, color: 'var(--gray)', marginTop: 6, fontStyle: 'italic' }}>
+                      Send this back by hand - the system cannot return it for you. Log it here once
+                      you have, so the order stops reading as unpaid business.
+                    </div>
+                    <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+                      <select value={refundMethod} onChange={e => setRefundMethod(e.target.value)}
+                        style={{ ...S.input, width: 'auto', flex: '0 0 auto', fontSize: 12, padding: '5px 8px' }}>
+                        <option value="gcash">GCash</option>
+                        <option value="maya">Maya</option>
+                        <option value="bank_transfer">Bank transfer</option>
+                        <option value="cash">Cash</option>
+                      </select>
+                      <button type="button" onClick={handleMarkRefunded} disabled={payingRefund}
+                        style={{ ...S.btnSm, opacity: payingRefund ? 0.6 : 1 }}>
+                        {payingRefund ? 'Recording...' : `I have sent \u20B1${fmt(Number(lo.refundOwed))}`}
+                      </button>
+                      {/* For money the shop is entitled to keep - a design fee for delivered work, a deposit
+                          on goods that cannot be resold. Closes the debt with a reason, sends nothing. */}
+                      <button type="button" onClick={handleWaiveRefund} disabled={payingRefund}
+                        style={{ ...S.btnSmGhost, opacity: payingRefund ? 0.6 : 1 }}>
+                        Keep it - not refundable
+                      </button>
+                    </div>
+                    {refundErr && <div style={{ fontSize: 11, color: '#b91c1c', marginTop: 5 }}>{refundErr}</div>}
+                  </div>
+                )}
 
                 {/* The automatic balance notice fires once, when the last job passes QC. Without a way
                     to send it again the only follow-up was typing in the chat by hand. */}
@@ -2208,7 +2970,22 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
         confirmStyle={statusCopy(selStatus).danger ? 'danger' : 'primary'}
         message={updateErr
           ? `${updateErr}. Nothing was changed - the order is still ${getStatusBadge(lo.orderStatus).label}.`
-          : `${lo.orderRef || 'This order'}: ${statusCopy(selStatus).body}`}
+          : `${lo.orderRef || 'This order'}: ${statusCopy(selStatus).body}`
+            /* Delivering a COD order also records the cash as collected, which is a money change,
+               and a money change should never be a side effect nobody was told about. Named here,
+               with the figure, before it happens. */
+            + (String(selStatus) === 'Delivered'
+                && isCodMethod(lo.paymentMethod)
+                && remainingDue(lo) > 0
+                  ? ` This is a Cash on Delivery order, so it will also be marked PAID and ₱${fmt(remainingDue(lo))} recorded as collected by the rider.`
+                  : '')
+            /* Sending it out closes the customer's online payment for the delivery fee. Who
+               collects it from here is a money question, and it is answered before, not after. */
+            + (isForDelivery(selStatus) && Number(lo.courierFee ?? 0) > 0 && !lo.courierFeePaid
+                ? ((lo.courierFeeOnDelivery ?? true)
+                    ? ` The ₱${fmt(lo.courierFee)} delivery fee is still unpaid. Once this is sent out the customer can no longer pay it online - the rider collects ₱${fmt(lo.courierFee)} in cash. Tick "Mark fee received" once you have it.`
+                    : ` The ₱${fmt(lo.courierFee)} delivery fee is still unpaid, and a parcel courier cannot collect cash on arrival. Get it settled before you ship.`)
+                : '')}
       />
 
       <ConfirmModal
@@ -2221,6 +2998,28 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
         confirmLabel={joConfirm ? JO_COPY[joConfirm.to]?.label : 'Confirm'}
         message={joConfirm
           ? `${joConfirm.jo.joId} - ${joConfirm.jo.product?.productName || joConfirm.jo.product?.name || 'this item'}. ${JO_COPY[joConfirm.to]?.body ?? ''}`
+          : ''}
+      />
+
+      <ConfirmModal
+        open={!!joShortage}
+        onClose={() => setJoShortage(null)}
+        onConfirm={() => joShortage && advanceJO(joShortage.jo, joShortage.to, true)}
+        loading={!!joBusyId}
+        confirmStyle="danger"
+        title="Not enough material on the shelf"
+        confirmLabel="Start anyway"
+        message={joShortage
+          ? [
+              `${joShortage.jo.joId}`,
+              '',
+              ...joShortage.rows.map(r =>
+                `${r.name}: needs ${r.needed}${r.uom ? ' ' + r.uom : ''}, ${r.onHand}${r.uom ? ' ' + r.uom : ''} on hand, short ${r.short}`),
+              '',
+              'Buy it first, or Stock In what you already have in hand. '
+              + 'Starting anyway is recorded against your name.',
+            ].join(`
+`)
           : ''}
       />
     </div>
@@ -2237,7 +3036,8 @@ export default function OrdersPage() {
   const [search,       setSearch]       = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [payFilter,    setPayFilter]    = useState('all');
-  const [dateFilter,   setDateFilter]   = useState('this-month');
+  const [typeFilter,   setTypeFilter]   = useState('all');
+  const [dateFilter,   setDateFilter]   = useState('all-time');
   const [customFrom,   setCustomFrom]   = useState('');
   const [customTo,     setCustomTo]     = useState('');
   const [expandedId,   setExpandedId]   = useState(null);
@@ -2311,18 +3111,41 @@ export default function OrdersPage() {
 
   // ── Filter + sort ───────────────────────────────────────────────────────────
 
-  const filtered = orders.filter(o => {
+  // Everything except the status filter. The cards count this, and the table is this narrowed by
+  // status - so the two can no longer describe different populations.
+  const scoped = orders.filter(o => {
     const q = search.toLowerCase();
     const matchSearch = !q ||
       (o.customerName || '').toLowerCase().includes(q) ||
       (o.id || '').toLowerCase().includes(q) ||
       (o.productName || '').toLowerCase().includes(q);
 
-    // 'needs_attention' is not a stored status - it is the derived delivery-promise risk.
-    const matchStatus = statusFilter === 'all' ? true
-      : statusFilter === 'needs_attention' ? !!deliveryRisk(o)
-      : normalizeStatus(o.orderStatus) === statusFilter;
     const matchPay    = payFilter === 'all' || o.paymentStatus === payFilter;
+
+    // "Custom" covered a line the customer drew themselves and a line we drew for them as one
+    // thing, though they are different work at different cost and a cart holding both is a third
+    // case again - the one most likely to be mishandled, and the one that was hardest to find.
+    // It reads a line the same way the Type badge does. The two disagreed on made-to-order lines
+    // with no artwork yet (a quoted service, before its proof): the badge said Custom and this
+    // filter said Ready Made, so the order vanished from every custom filter.
+    const orderKind = (() => {
+      const its = o.items || [];
+      const hasFile = i => !!(i.designUrl || i.designFiles?.length > 0);
+      const made    = i => !!(i.isCustom || i.isMadeToOrder || i.designRequested || i.designMode === 'request' || hasFile(i));
+      const req   = its.some(i => made(i) && !hasFile(i));
+      const upl   = its.some(hasFile);
+      const plain = its.some(i => !made(i));
+      const kinds = (req ? 1 : 0) + (upl ? 1 : 0);
+      if (kinds > 1 || (kinds === 1 && plain)) return 'mixed';
+      if (req) return 'request';
+      if (upl) return 'upload';
+      return 'ready';
+    })();
+    const matchType =
+      typeFilter === 'all'      ? true
+      : typeFilter === 'ready'    ? !o.needsProduction
+      : typeFilter === 'produced' ? !!o.needsProduction
+      : orderKind === typeFilter;
 
     let matchDate = true;
     const d    = new Date(o.createdAt); d.setHours(0,0,0,0);
@@ -2339,21 +3162,28 @@ export default function OrdersPage() {
       matchDate  = d >= from && d <= to;
     }
 
-    return matchSearch && matchStatus && matchPay && matchDate;
-  }).sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
+    return matchSearch && matchPay && matchType && matchDate;
+  });
+
+  const filtered = scoped.filter(o =>
+    // 'needs_attention' is not a stored status - it is the derived delivery-promise risk.
+    statusFilter === 'all' ? true
+      : statusFilter === 'needs_attention' ? !!deliveryRisk(o)
+      : normalizeStatus(o.orderStatus) === statusFilter
+  ).sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
 
   // ── Summary counts ──────────────────────────────────────────────────────────
 
-  const countBy = (code) => orders.filter(o => normalizeStatus(o.orderStatus) === code).length;
+  const countBy = (code) => scoped.filter(o => normalizeStatus(o.orderStatus) === code).length;
   const counts = {
-    all:          orders.length,
+    all:          scoped.length,
     pending:      countBy('pending'),
     inProduction: countBy('in_production'),
     forDelivery:  countBy('for_delivery'),
     delivered:    countBy('delivered'),
     cancelled:    countBy('cancelled'),
     // Orders whose delivery promise is late or about to be missed (derived, not stored).
-    needsAttention: orders.filter(o => !!deliveryRisk(o)).length,
+    needsAttention: scoped.filter(o => !!deliveryRisk(o)).length,
   };
 
   const { slice, page, perPage, total, setPage, setPerPage } = usePagination(filtered);
@@ -2407,6 +3237,20 @@ export default function OrdersPage() {
               placeholder="Search order, customer, product…" style={{ width:'260px' }} />
 
             <CustomSelect
+              value={typeFilter}
+              onChange={v => { setTypeFilter(v); setPage(1); }}
+              style={{ width:'175px' }}
+              options={[
+                { value:'all',      label:'All Types'        },
+                { value:'produced', label:'All Custom'       },
+                { value:'request',  label:'Custom (Request)' },
+                { value:'upload',   label:'Custom (Upload)'  },
+                { value:'mixed',    label:'Mixed Cart'       },
+                { value:'ready',    label:'Ready Made'       },
+              ]}
+            />
+
+            <CustomSelect
               value={payFilter}
               onChange={v => { setPayFilter(v); setPage(1); }}
               style={{ width:'140px' }}
@@ -2423,10 +3267,10 @@ export default function OrdersPage() {
               onChange={v => setDateFilter(v)}
               style={{ width:'150px' }}
               options={[
+                { value:'all-time',   label:'All Time'     },
                 { value:'today',      label:'Today'        },
                 { value:'this-week',  label:'This Week'    },
                 { value:'this-month', label:'This Month'   },
-                { value:'all-time',   label:'All Time'     },
                 { value:'custom',     label:'Custom Range' },
               ]}
             />
@@ -2493,6 +3337,13 @@ export default function OrdersPage() {
                         </td>
                         <td style={{ ...S.td }}>
                           <TypeBadge isCustom={o.isCustom} items={o.items} />
+                          {/* Its prices were negotiated in chat, not taken from the catalogue.
+                              Worth knowing before anyone questions a figure on it. */}
+                          {(o.orderRequestId || o.orderSource === 'inquiry') && (
+                            <span style={{ ...S.badge, background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe', fontSize: '10px' }}>
+                              Quote
+                            </span>
+                          )}
                         </td>
                         <td style={{ ...S.td }}>
                           <div style={{ fontWeight:600, fontSize:'13px' }}>{o.customerName}</div>
@@ -2518,7 +3369,7 @@ export default function OrdersPage() {
                           })()}
                         </td>
                         <td style={{ ...S.td, textAlign:'center' }}>
-                          <PayBadge status={o.paymentStatus} />
+                          <PayBadge status={o.paymentStatus} method={o.paymentMethod} />
                         </td>
                         <td style={{ ...S.td, fontSize:'11px', color:'var(--gray)', whiteSpace:'nowrap' }}>
                           {o.createdAt ? new Date(o.createdAt).toLocaleDateString('en-PH', { month:'short', day:'numeric', year:'numeric' }) : '-'}

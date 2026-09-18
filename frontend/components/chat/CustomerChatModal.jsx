@@ -3,6 +3,8 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import ChatInput from './ChatInput';
 import { useScrollToLatest } from '@/lib/useScrollToLatest';
+import { cloudinaryThumb } from '@/lib/cloudinaryImage';
+import PhotoLightbox from './PhotoLightbox';
 import { getMessages, sendMessage, markAsRead, sendHeartbeat, getConversations } from '../../lib/chatApi';
 import { getEcho } from '../../lib/echo';
 import './chat.css';
@@ -20,13 +22,38 @@ const nid = (id) => {
 const normalizeMsg = (m) =>
   m ? { ...m, _id: nid(m._id), conversation_id: nid(m.conversation_id), sender_id: nid(m.sender_id) } : m;
 
-const FAQS = [
-  { q: 'How do I place a custom order?' },
-  { q: 'How long does delivery take?' },
-  { q: 'What payment methods do you accept?' },
-  { q: 'Can I request a sample before ordering?' },
-  { q: 'What is your return and refund policy?' },
-];
+// A confirmed message and the placeholder it replaces never share an id - the server assigns its
+// own - so they are paired on what was actually sent. The twin has to be a message never held
+// before, or sending the same words twice pairs the second placeholder with the first message.
+const sameSend = (a, b) =>
+  String(a?.type ?? 'text') === String(b?.type ?? 'text') &&
+  String(a?.body ?? '') === String(b?.body ?? '') &&
+  String(a?.file_url ?? '') === String(b?.file_url ?? '');
+
+const isTwin = (confirmed, pending, knownIds) => {
+  if (confirmed.client_key && pending.clientKey) return confirmed.client_key === pending.clientKey;
+  if (knownIds.has(confirmed._id) || !sameSend(confirmed, pending)) return false;
+  const a = Date.parse(confirmed.created_at ?? '');
+  const b = Date.parse(pending.created_at ?? '');
+  return !a || !b || a >= b - 120000;
+};
+
+// Carries each placeholder's render key onto its confirmed twin, so the list can be rebuilt from
+// server data without any bubble changing identity.
+const absorbPending = (fresh, prev) => {
+  const known = new Set(prev.filter(m => !m.pending).map(m => m._id));
+  const pend  = prev.filter(m => m.pending);
+  const used  = new Set();
+  const mapped = fresh.map(f => {
+    const p = pend.find(x => !used.has(x.clientKey) && isTwin(f, x, known));
+    if (!p) return f;
+    used.add(p.clientKey);
+    return { ...f, clientKey: p.clientKey };
+  });
+  return { mapped, leftover: pend.filter(x => !used.has(x.clientKey)) };
+};
+
+const listSig = (l) => l.map(m => (m.clientKey || m._id) + (m.pending ? ':p' : ':c')).join('|');
 
 const TypingDots = () => (
   <div className="cw-typing-bubble">
@@ -52,6 +79,9 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
   // Proof thumbnails opened in a new tab, which dumps the customer onto a raw Cloudinary URL and out
   // of the conversation they were in. Preview in place instead.
   const [preview, setPreview] = useState(null);
+  // Chat photos get their own album and their own viewer. `preview` still serves the proof cards,
+  // which are a single deliberate image rather than a set to be flipped through.
+  const [chatPhotoIdx, setChatPhotoIdx] = useState(null);
   useEffect(() => {
     if (!preview) return;
     const onKey = (e) => { if (e.key === 'Escape') setPreview(null); };
@@ -86,6 +116,8 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
   };
   const [activeConv, setActiveConv] = useState(null);
   const [messages, setMessages] = useState([]);
+  // Same album the admin side builds: every photo in this thread, in the order it was sent.
+  const chatPhotoUrls = messages.filter(m => m.type === 'image' && m.file_url).map(m => m.file_url);
   const [isSending, setIsSending] = useState(false);
   const [isLoadingMsgs, setIsLoadingMsgs] = useState(false);
   const [isLoadingConvs, setIsLoadingConvs] = useState(false);
@@ -104,7 +136,7 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
   // wherever the previous thread happened to be scrolled to.
   useScrollToLatest(scrollRef, [messages, Object.keys(typingUsers).length, activeConv?._id, open, view]);
 
-  // Keep ref in sync — used in loadConversations to avoid stale closure
+  // Keep ref in sync - used in loadConversations to avoid stale closure
   useEffect(() => { activeConvRef.current = activeConv; }, [activeConv]);
 
   const loadConversations = useCallback(async () => {
@@ -128,11 +160,14 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
               setMessages(prev => {
                 const normalized = msgs.map(normalizeMsg);
                 const freshIds = new Set(normalized.map(m => String(m._id)));
-                // Keep local messages not yet in the fetch — pending OR just-confirmed (racing the DB
-                // read) — so a just-sent message isn't dropped from the view before it re-appears.
-                const localExtra = prev.filter(m => !freshIds.has(String(m._id)) &&
-                  (m.pending || (m.created_at && Date.now() - new Date(m.created_at).getTime() < 15000)));
-                return [...normalized, ...localExtra];
+                const { mapped, leftover } = absorbPending(normalized, prev);
+                // Confirmed messages the fetch has not caught up with yet are kept as well - the
+                // read can race the write - but a placeholder now folds into its twin rather than
+                // being kept beside it.
+                const recent = prev.filter(m => !m.pending && !freshIds.has(String(m._id)) &&
+                  m.created_at && Date.now() - new Date(m.created_at).getTime() < 15000);
+                const next = [...mapped, ...recent, ...leftover];
+                return listSig(next) === listSig(prev) ? prev : next;
               });
             } catch { /* silent */ }
           }
@@ -173,7 +208,7 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
     load();
   }, [activeConv?._id, token]);
 
-  // Message polling — 1.5s fallback, normalized ID to handle {$oid} objects
+  // Message polling - 1.5s fallback, normalized ID to handle {$oid} objects
   useEffect(() => {
     if (!activeConv || activeConv._id?.startsWith('new_') || activeConv._id === 'support_auto' || !token) return;
     const convId = nid(activeConv._id);
@@ -181,11 +216,9 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
       try {
         const data = await getMessages(token, convId);
         setMessages(prev => {
-          const confirmedIds = new Set(data.map(m => normalizeMsg(m)._id));
-          const withoutStale = prev.filter(m => !m.pending || !confirmedIds.has(m._id));
-          const existingIds = new Set(withoutStale.map(m => m._id));
-          const fresh = data.map(normalizeMsg).filter(m => !existingIds.has(m._id));
-          return fresh.length > 0 ? [...withoutStale, ...fresh] : withoutStale.length !== prev.length ? withoutStale : prev;
+          const { mapped, leftover } = absorbPending(data.map(normalizeMsg), prev);
+          const next = [...mapped, ...leftover];
+          return listSig(next) === listSig(prev) ? prev : next;
         });
       } catch { /* silent */ }
     };
@@ -202,7 +235,7 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
     return () => clearInterval(id);
   }, [token]);
 
-  // WebSocket real-time — normalized conversation ID
+  // WebSocket real-time - normalized conversation ID
   useEffect(() => {
     if (!user || !token || !activeConv || activeConv._id?.startsWith('new_') || activeConv._id === 'support_auto') return;
     const echo = getEcho(token);
@@ -211,7 +244,14 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
     const channel = echo.private(`conversation.${convId}`);
     channel.listen('.message.sent', (data) => {
       const msg = normalizeMsg(data.message);
-      setMessages(prev => prev.find(m => m._id === msg._id) ? prev : [...prev, msg]);
+      setMessages(prev => {
+        if (prev.find(m => m._id === msg._id)) return prev;
+        const { mapped } = absorbPending([msg], prev);
+        const key = mapped[0]?.clientKey;
+        return key
+          ? prev.map(m => (m.pending && m.clientKey === key) ? mapped[0] : m)
+          : [...prev, msg];
+      });
     });
     channel.listenForWhisper('typing', (data) => {
       const uid = String(data.userId || '');
@@ -248,6 +288,7 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
     // Optimistic: show bubble immediately
     const optimistic = normalizeMsg({
       _id: tempId,
+      clientKey: tempId,
       conversation_id: activeConv._id || '',
       sender_id: String(user?.id || user?._id || ''),
       type: payload.type || 'text',
@@ -261,7 +302,7 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
     setIsSending(true);
 
     try {
-      const actualPayload = { ...payload };
+      const actualPayload = { ...payload, client_key: tempId };
       if (isNewConv) {
         actualPayload.recipient_id = activeConv.other_user.id;
         delete actualPayload.conversation_id;
@@ -270,10 +311,10 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
 
       // Replace the optimistic bubble with the confirmed message. If the realtime socket already
       // delivered the same message (it can beat the HTTP response), just drop the placeholder instead
-      // of swapping it in — otherwise we'd end up with two copies (the duplicate inquiry/quote card bug).
-      setMessages(prev => prev.some(m => m._id === newMessage._id)
+      // of swapping it in - otherwise we'd end up with two copies (the duplicate inquiry/quote card bug).
+      setMessages(prev => prev.some(m => m._id === newMessage._id && m._id !== tempId)
         ? prev.filter(m => m._id !== tempId)
-        : prev.map(m => m._id === tempId ? newMessage : m));
+        : prev.map(m => m._id === tempId ? { ...newMessage, clientKey: m.clientKey } : m));
 
       if (isNewConv) {
         const convs = await getConversations(token);
@@ -314,7 +355,7 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
     if (pendingCardRef.current) {
       const card = pendingCardRef.current;
       pendingCardRef.current = null;
-      // Dedupe the ACTUAL send — the support_auto → real-conversation transition can re-fire this effect.
+      // Dedupe the ACTUAL send - the support_auto → real-conversation transition can re-fire this effect.
       const key = card.productId || card.productName || '';
       const now = Date.now();
       if (lastInquiryRef.current.key === key && now - lastInquiryRef.current.at < 6000) return;
@@ -328,6 +369,35 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
     handleSendMessage({ body: q, type: 'text', conversation_id: activeConv._id });
   }, [view, activeConv]);
 
+  // Arriving at /#contact from another page, the browser jumps before the landing page has
+  // rendered the section, so the visitor lands at the top. Try again until the section exists.
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const id = window.location.hash.replace('#', '');
+    if (!id) return undefined;
+    let tries = 0;
+    const t = setInterval(() => {
+      const el = document.getElementById(id);
+      if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'start' }); clearInterval(t); }
+      else if (++tries > 30) clearInterval(t);
+    }, 100);
+    return () => clearInterval(t);
+  }, []);
+
+  // The owner's quick questions (Settings -> Chat). Nothing is shown until they load: a built-in list
+  // used to stand in, and its questions had no saved answers behind them - tapping one sent a
+  // question the automatic replies could never match.
+  const [quickQuestions, setQuickQuestions] = useState(null);
+  useEffect(() => {
+    fetch(`${API_URL}/api/storefront/content/chat_auto_replies`)
+      .then(r => r.json())
+      .then(d => {
+        const list = Array.isArray(d?.data?.quickReplies) ? d.data.quickReplies.map(q => q?.question).filter(Boolean) : null;
+        if (list) setQuickQuestions(list);
+      })
+      .catch(() => {});
+  }, []);
+
   const handleFaqClick = (question) => {
     if (!token) { onRequestLogin?.(); return; }
     pendingFaqRef.current = question;
@@ -335,8 +405,8 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
   };
 
   const openNewChat = () => {
-    // Reuse the existing store conversation (a customer chats with a single store) — prefer the
-    // admin/owner thread, else the most recent one — so we never fragment the history into a fresh
+    // Reuse the existing store conversation (a customer chats with a single store) - prefer the
+    // admin/owner thread, else the most recent one - so we never fragment the history into a fresh
     // "support_auto" thread (which clears messages) when a conversation already exists.
     const supportConv = conversations.find(
       c => c.other_user?.role === 'admin' || c.other_user?.role === 'owner'
@@ -357,7 +427,7 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
   };
 
   // Let other parts of the app (e.g. the "Request a Quote" button) open the chat with a
-  // prefilled first message — reuses the FAQ auto-send path (pendingFaqRef).
+  // prefilled first message - reuses the FAQ auto-send path (pendingFaqRef).
   useEffect(() => {
     const handleOpenChat = (e) => {
       if (!token) { onRequestLogin?.(); return; }
@@ -389,13 +459,131 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
     return new Date(ts).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', hour12: true });
   };
 
+  // ── Draggable launcher (Messenger-style chat head) ───────────────────────────────────────
+  // Nailed to the bottom-right, it covered whatever the page put there - Close, "Show results",
+  // a sticky footer. It moves now, snaps to the nearer edge, and remembers where it was left.
+  const FAB_STORE = 'pmp_chat_fab';
+  const [fabPos, setFabPos]       = useState(null);   // { x, y } in viewport px
+  // No docking: the owner tried it and preferred the bubble simply staying where it is put.
+  const [fabDrag, setFabDrag]     = useState(null);   // { x, y } while a drag is in flight
+  // Dragging belongs to touch screens. On a desktop the pointer is precise, nothing is in the
+  // bubble's way, and a button that can half-vanish is only a way to lose it.
+  const [touchLayout, setTouchLayout] = useState(false);
+  const fabRef = useRef({ active: false, moved: false, dx: 0, dy: 0, w: 52, h: 52, sx: 0, sy: 0 });
+
+  useEffect(() => {
+    const calc = () => setTouchLayout(window.innerWidth <= 1024);
+    calc();
+    window.addEventListener('resize', calc);
+    return () => window.removeEventListener('resize', calc);
+  }, []);
+
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(FAB_STORE) || 'null');
+      if (saved && Number.isFinite(saved.x) && Number.isFinite(saved.y)) {
+        setFabPos({ x: saved.x, y: saved.y });
+      }
+    } catch { /* a stored position is a convenience, never a requirement */ }
+  }, []);
+
+  const fabSave = (pos) => {
+    try { localStorage.setItem(FAB_STORE, JSON.stringify(pos)); } catch {}
+  };
+
+  // Where it may come to rest: on screen, clear of the top bar, and above the bottom bar on a
+  // phone. A bubble parked under the tabs is a bubble nobody can reach.
+  const fabClamp = (x, y, w, h) => ({
+    x: Math.max(0, Math.min(x, window.innerWidth - w)),
+    y: Math.max(64, Math.min(y, window.innerHeight - h - (window.innerWidth <= 900 ? 74 : 16))),
+  });
+
+  // A stored position from a bigger window can land off-screen after a rotate or a resize.
+  useEffect(() => {
+    if (!fabPos) return undefined;
+    const onResize = () => setFabPos(p => (p ? fabClamp(p.x, p.y, 52, 52) : p));
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, [fabPos]);
+
+  const onFabPointerDown = (e) => {
+    if (open || !touchLayout) return;       // desktop: the bubble stays where it is
+    const r = e.currentTarget.getBoundingClientRect();
+    fabRef.current = {
+      active: true, moved: false,
+      dx: e.clientX - r.left, dy: e.clientY - r.top,
+      w: r.width, h: r.height, sx: e.clientX, sy: e.clientY,
+    };
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch {}
+  };
+
+  const onFabPointerMove = (e) => {
+    const d = fabRef.current;
+    if (!d.active) return;
+    if (!d.moved && Math.hypot(e.clientX - d.sx, e.clientY - d.sy) > 6) d.moved = true;
+    if (!d.moved) return;
+    e.preventDefault();
+    const x = e.clientX - d.dx;
+    const y = e.clientY - d.dy;
+    setFabDrag({ x, y });
+  };
+
+  const onFabPointerUp = (e) => {
+    const d = fabRef.current;
+    if (!d.active) return;
+    d.active = false;
+    try { e.currentTarget.releasePointerCapture(e.pointerId); } catch {}
+    if (!d.moved) { setFabDrag(null); return; }   // a tap - the click handler takes it
+
+    // It stays exactly where it was put - no edge does anything special to it.
+    const pos = fabClamp(e.clientX - d.dx, e.clientY - d.dy, d.w, d.h);
+    setFabPos(pos);
+    setFabDrag(null);
+    fabSave(pos);
+  };
+
+  // The bubble sits over whatever is at the bottom of the page. On a touch screen it steps aside
+  // while the reader is scrolling down and comes back the moment they stop or scroll up.
+  const [fabHidden, setFabHidden] = useState(false);
+  useEffect(() => {
+    if (!touchLayout) { setFabHidden(false); return undefined; }
+    let last = window.scrollY;
+    let idle;
+    const onScroll = () => {
+      const y = window.scrollY;
+      if (y > last + 8 && y > 240) setFabHidden(true);
+      else if (y < last - 8) setFabHidden(false);
+      last = y;
+      clearTimeout(idle);
+      idle = setTimeout(() => setFabHidden(false), 900);
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => { window.removeEventListener('scroll', onScroll); clearTimeout(idle); };
+  }, [touchLayout]);
+
+  // A desktop ignores whatever a phone stored: the bubble sits where the stylesheet puts it.
+  const fabStyle = !touchLayout
+    ? undefined
+    : fabDrag
+      ? { left: fabDrag.x, top: fabDrag.y, right: 'auto', bottom: 'auto' }
+      : fabPos
+        ? { left: fabPos.x, top: fabPos.y, right: 'auto', bottom: 'auto' }
+        : undefined;
+
   return (
     <>
       {/* Floating launcher */}
       <button
         type="button"
-        className={`cw-launcher ${open ? 'cw-launcher--open' : ''}`}
+        className={`cw-launcher ${open ? 'cw-launcher--open' : ''}${fabDrag ? ' cw-launcher--dragging' : ''}${fabHidden && !open && !fabDrag ? ' cw-launcher--tucked' : ''}`}
+        style={fabStyle}
+        onPointerDown={onFabPointerDown}
+        onPointerMove={onFabPointerMove}
+        onPointerUp={onFabPointerUp}
+        onPointerCancel={onFabPointerUp}
         onClick={() => {
+          // A drag is not a tap. Without this every drag would end by opening the chat.
+          if (fabRef.current.moved) { fabRef.current.moved = false; return; }
           const next = !open;
           setOpen(next);
           if (next && conversations.length > 0 && view === 'home') setView('messages');
@@ -418,9 +606,11 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
         )}
       </button>
 
-      {/* Widget panel */}
+      {/* Widget panel. A signed-out home view is two tiles, and at the fixed 560px the rest was
+          empty space under them, which reads as something that failed to load - so that state
+          sizes to its content. */}
       {open && (
-        <div className="cw-panel">
+        <div className={`cw-panel${!user && view === 'home' ? ' cw-panel--compact' : ''}`}>
 
           {/* ── Home view ── */}
           {view === 'home' && (
@@ -434,30 +624,61 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
                 <div className="cw-home-tagline">How can we help?</div>
               </div>
               <div className="cw-home-body">
+                {/* A guest goes to the contact form, not to a login wall.
+                    Not to a guest chat either: chat here is attached to an order, and a stranger
+                    asking about "my order" is exactly the case where someone fishes for another
+                    customer's address and tracking. The contact form takes a name, an email and a
+                    message from anybody, and is already behind Turnstile and a throttle. */}
                 <button
                   type="button"
                   className="cw-send-msg-row"
                   onClick={() => {
-                    if (!user) { onRequestLogin?.(); setOpen(false); return; }
+                    if (!user) { window.location.href = '/#contact'; setOpen(false); return; }
                     setView('messages');
                   }}
                 >
                   <div>
                     <div className="cw-send-msg-title">Send us a message</div>
-                    <div className="cw-send-msg-sub">We will be back as soon as possible</div>
+                    <div className="cw-send-msg-sub">
+                      {user
+                        ? 'We will be back as soon as possible'
+                        : 'No account needed - we will reply to your email'}
+                    </div>
                   </div>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="9 18 15 12 9 6" /></svg>
                 </button>
 
+                {/* The other half of the answer: chatting about a specific order needs an account,
+                    and saying so is better than a login modal appearing with no explanation. */}
+                {!user && (
+                  <button
+                    type="button"
+                    className="cw-send-msg-row"
+                    onClick={() => { onRequestLogin?.(); setOpen(false); }}
+                    style={{ marginTop: '8px' }}
+                  >
+                    <div>
+                      <div className="cw-send-msg-title">Chat about an order</div>
+                      <div className="cw-send-msg-sub">Sign in - we keep order chats to the account that placed them</div>
+                    </div>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="9 18 15 12 9 6" /></svg>
+                  </button>
+                )}
+
+                {/* Hidden while signed out. These are not help articles - each one calls
+                    handleFaqClick, which puts the question into a chat thread, and a guest has no
+                    thread, so every row was a login modal under a heading promising answers. */}
+                {user && (quickQuestions ?? []).length > 0 && (
                 <div className="cw-faq-section">
-                  <div className="cw-faq-label">Search for help</div>
-                  {FAQS.map((f, i) => (
-                    <button key={i} type="button" className="cw-faq-item" onClick={() => handleFaqClick(f.q)}>
-                      <span>{f.q}</span>
+                  <div className="cw-faq-label">Common questions</div>
+                  {(quickQuestions ?? []).map((q, i) => (
+                    <button key={i} type="button" className="cw-faq-item" onClick={() => handleFaqClick(q)}>
+                      <span>{q}</span>
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" style={{ flexShrink: 0 }}><polyline points="9 18 15 12 9 6" /></svg>
                     </button>
                   ))}
                 </div>
+                )}
               </div>
             </>
           )}
@@ -557,12 +778,61 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
                     {messages.map((msg, idx) => {
                       const myId = String(user?.id || user?._id || '');
                       const isMe = msg.sender_id === myId;
-                      const msgKey = msg._id || `msg-${idx}`;
+                      // clientKey first, so a bubble that began as a placeholder keeps its identity
+                      // through confirmation and React updates it rather than replacing it.
+                      const msgKey = msg.clientKey || msg._id || `msg-${idx}`;
+
+                      if (msg.type === 'file' && msg.file_url) {
+                        return (
+                          <div key={msgKey} style={{ display: 'flex', justifyContent: isMe ? 'flex-end' : 'flex-start' }}>
+                            {(() => {
+                          const fname = msg.metadata?.name || 'Attachment';
+                          const ext = (fname.split('.').pop() || 'FILE').toUpperCase().slice(0, 4);
+                          const kb = msg.metadata?.size
+                            ? (msg.metadata.size < 1024 * 1024
+                                ? Math.round(msg.metadata.size / 1024) + ' KB'
+                                : (msg.metadata.size / (1024 * 1024)).toFixed(1) + ' MB')
+                            : null;
+                          return (
+                            <a href={msg.file_url} target="_blank" rel="noopener noreferrer"
+                              style={{
+                                display: 'flex', alignItems: 'center', gap: '10px',
+                                padding: '10px 12px', borderRadius: '10px', maxWidth: '280px',
+                                background: 'rgba(212,168,67,0.08)', border: '1px solid rgba(212,168,67,0.25)',
+                                textDecoration: 'none', color: 'inherit',
+                              }}>
+                              <div style={{
+                                width: '34px', height: '34px', borderRadius: '7px', flexShrink: 0,
+                                background: 'rgba(212,168,67,0.15)', display: 'flex',
+                                alignItems: 'center', justifyContent: 'center',
+                              }}>
+                                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#d4a843" strokeWidth="1.8">
+                                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/>
+                                </svg>
+                              </div>
+                              <div style={{ minWidth: 0, flex: 1 }}>
+                                <div style={{ fontSize: '0.78rem', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{fname}</div>
+                                <div style={{ fontSize: '0.68rem', opacity: 0.65, marginTop: '1px' }}>{ext}{kb ? ' - ' + kb : ''}</div>
+                              </div>
+                            </a>
+                          );
+                        })()}
+                          </div>
+                        );
+                      }
 
                       if (msg.type === 'image' && msg.file_url) {
                         return (
                           <div key={msgKey} style={{ display: 'flex', justifyContent: isMe ? 'flex-end' : 'flex-start' }}>
-                            <img src={msg.file_url} alt="" style={{ maxWidth: '65%', borderRadius: '10px', border: '1px solid var(--border)' }} />
+                            {/* Scaled for the bubble and clickable into the lightbox this modal already
+                                had for proofs. A photo the customer could not open was the one thing
+                                the admin side could do and this side could not. */}
+                            <img
+                              src={cloudinaryThumb(msg.file_url, 520)}
+                              alt=""
+                              onClick={() => setChatPhotoIdx(chatPhotoUrls.indexOf(msg.file_url))}
+                              style={{ maxWidth: '65%', borderRadius: '10px', border: '1px solid var(--border)', cursor: 'zoom-in', display: 'block' }}
+                            />
                           </div>
                         );
                       }
@@ -577,13 +847,17 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
                           <div key={msgKey} style={{ display: 'flex', justifyContent: isMe ? 'flex-end' : 'flex-start' }}>
                             <div className="quotation-card">
                               <div className="quotation-header">
-                                <span className="quotation-tag">{m.kind === 'deposit_due' ? 'Deposit due' : 'Design order'}</span>
+                                <span className="quotation-tag">{
+                                  m.kind === 'deposit_due'  ? 'Deposit due'
+                                : m.kind === 'delivery_fee' ? 'Delivery fee'
+                                : m.kind === 'proof_ready'  ? 'Proof ready'
+                                : 'Design order'}</span>
                               </div>
                               <div className="quotation-body">
                                 <div className="quotation-product" style={{ margin: 0 }}>{m.orderNo || 'Order'}</div>
-                                {m.products && <div style={{ fontSize: '0.72rem', color: '#9ca3af' }}>{m.products}</div>}
+                                {m.products && <div style={{ fontSize: '0.72rem', color: 'var(--gray)' }}>{m.products}</div>}
                               </div>
-                              {msg.body && <div style={{ padding: '2px 12px 6px', fontSize: '0.82rem', color: '#4b5563' }}>{msg.body}</div>}
+                              {msg.body && <div style={{ padding: '2px 12px 6px', fontSize: '0.82rem', color: 'var(--gray-light)' }}>{msg.body}</div>}
 
                               {/* Every order card is a pointer to an order, so it always offers the way
                                   there. Without this a card the customer sent themselves was a dead end. */}
@@ -603,7 +877,7 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
                                       {m.proofs.slice(0, 6).map((u, n) => (
                                         <button key={n} type="button" title="Click to preview"
                                           onClick={() => setPreview(u)}
-                                          style={{ width: 46, height: 46, padding: 0, borderRadius: 6, overflow: 'hidden', border: '1px solid #e5e7eb', background: '#000', display: 'block', cursor: 'zoom-in' }}>
+                                          style={{ width: 46, height: 46, padding: 0, borderRadius: 6, overflow: 'hidden', border: '1px solid var(--border)', background: '#000', display: 'block', cursor: 'zoom-in' }}>
                                           {/* eslint-disable-next-line @next/next/no-img-element */}
                                           <img src={/\.(mp4|webm|mov|m4v|ogg)(\?|$)/i.test(u) ? u.replace(/\.(mp4|webm|mov|m4v|ogg)(\?|$)/i, '.jpg$2') : u}
                                             alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
@@ -611,8 +885,16 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
                                       ))}
                                     </div>
                                   )}
-                                  {busy === 'done' ? (
-                                    <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#166534' }}>Approved - thank you.</div>
+                                  {/* `busy` is per-session UI state, so on a reload the buttons came
+                                      back on a proof that had already been settled. The message
+                                      itself carries the outcome now. */}
+                                  {m.settled || busy === 'done' ? (
+                                    <div style={{ fontSize: '0.78rem', fontWeight: 700, color: m.settledOutcome === 'changes_requested' ? '#b45309' : m.settledOutcome === 'superseded' ? '#6b6b6b' : '#166534' }}>
+                                      {m.settledOutcome === 'changes_requested'
+                                        ? 'Changes requested - we are redrawing this.'
+                                        : m.settledOutcome === 'superseded' ? 'Replaced by a newer proof below.'
+                                        : 'Approved - thank you.'}
+                                    </div>
                                   ) : (
                                     <>
                                       <div style={{ display: 'flex', gap: 6 }}>
@@ -621,7 +903,7 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
                                           {busy === 'busy' ? 'Approving...' : 'Approve'}
                                         </button>
                                         <a href={orderHref(m.orderId)}
-                                          style={{ flex: 1, textAlign: 'center', padding: '7px', borderRadius: 8, border: '1px solid #e5e7eb', color: '#6b7280', fontSize: '0.76rem', fontWeight: 600, textDecoration: 'none' }}>
+                                          style={{ flex: 1, textAlign: 'center', padding: '7px', borderRadius: 8, border: '1px solid var(--border)', color: 'var(--gray)', fontSize: '0.76rem', fontWeight: 600, textDecoration: 'none' }}>
                                           Request changes
                                         </a>
                                       </div>
@@ -631,11 +913,18 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
                                 </div>
                               )}
 
-                              {m.kind === 'deposit_due' && (
+                              {/* Worked out from the order on load, so a deposit already paid no
+                                  longer offers Pay now. */}
+                              {m.kind === 'deposit_due' && m.settled && (
+                                <div style={{ padding: '2px 12px 10px', fontSize: '0.78rem', fontWeight: 700, color: '#166534' }}>
+                                  Paid - thank you.
+                                </div>
+                              )}
+                              {m.kind === 'deposit_due' && !m.settled && (
                                 <div style={{ padding: '2px 12px 10px' }}>
-                                  <div style={{ fontSize: '0.78rem', color: '#4b5563', lineHeight: 1.6, marginBottom: 8 }}>
+                                  <div style={{ fontSize: '0.78rem', color: 'var(--gray-light)', lineHeight: 1.6, marginBottom: 8 }}>
                                     {m.dueNow && <div>Due now: <strong style={{ color: '#111' }}>{m.dueNow}</strong>{m.dueFull ? <> or in full <strong style={{ color: '#111' }}>{m.dueFull}</strong></> : null}</div>}
-                                    {m.heldUntil && <div style={{ color: '#6b7280' }}>Held until {m.heldUntil}</div>}
+                                    {m.heldUntil && <div style={{ color: 'var(--gray)' }}>Held until {m.heldUntil}</div>}
                                   </div>
                                   <a href={orderHref(m.orderId)}
                                     style={{ display: 'block', textAlign: 'center', padding: '7px', borderRadius: 8, background: '#d4a843', color: '#000', fontSize: '0.76rem', fontWeight: 700, textDecoration: 'none' }}>
@@ -664,16 +953,16 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
                                     <img src={m.thumbnail} alt="" style={{ width: 46, height: 46, borderRadius: 8, objectFit: 'cover', flexShrink: 0 }} />
                                   ) : (
                                     <div style={{ width: 46, height: 46, borderRadius: 8, background: 'rgba(0,0,0,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--gray)" strokeWidth="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
                                     </div>
                                   )}
                                   <div style={{ minWidth: 0 }}>
                                     <div className="quotation-product" style={{ margin: 0 }}>{m.productName}</div>
-                                    {m.category && <div style={{ fontSize: '0.72rem', color: '#9ca3af' }}>{m.category}</div>}
+                                    {m.category && <div style={{ fontSize: '0.72rem', color: 'var(--gray)' }}>{m.category}</div>}
                                   </div>
                                 </div>
                               </a>
-                              {msg.body && <div style={{ padding: '2px 12px 6px', fontSize: '0.82rem', color: '#4b5563' }}>{msg.body}</div>}
+                              {msg.body && <div style={{ padding: '2px 12px 6px', fontSize: '0.82rem', color: 'var(--gray-light)' }}>{msg.body}</div>}
                               <div className="quotation-timestamp">{formatTime(msg.created_at)}</div>
                             </div>
                           </div>
@@ -708,7 +997,7 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
                                     <div className="quotation-product" style={{ marginBottom: '2px' }}>
                                       {li.productName}
                                       {li.variantName && (
-                                        <span style={{ fontWeight: 500, color: '#6b7280' }}> - {li.variantName}</span>
+                                        <span style={{ fontWeight: 500, color: 'var(--gray)' }}> - {li.variantName}</span>
                                       )}
                                     </div>
                                     <div className="quotation-line">
@@ -737,10 +1026,10 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
                                   <a href={`/shop/checkout/quote/${m.orderRequestId}`} className="btn-add-cart" style={{ display: 'block', textAlign: 'center', textDecoration: 'none' }}>
                                     View &amp; Pay
                                   </a>
-                                ) : addToCart && (
-                                  <button className="btn-add-cart" onClick={() => addToCart({ _id: `quotation_${msgKey}`, name: `${m.productName} (${m.qty} pcs)`, flatPrice: m.total, isCustom: true, thumbnail: null }, 1, null, null, null, m.note ? { notes: m.note } : null)}>
-                                    Add to Cart
-                                  </button>
+                                ) : (
+                                  <div style={{ fontSize: '0.72rem', color: 'var(--gray)', lineHeight: 1.5, marginTop: 6 }}>
+                                    A quote is a fixed offer, so it is never added to the cart - change the quantity there and the agreed price would no longer apply. This one was sent before quotes carried their own checkout, so message us and we will reissue it with a pay link.
+                                  </div>
                                 ))}
                               </div>
                               <div className="quotation-timestamp">{formatTime(msg.created_at)}</div>
@@ -752,7 +1041,7 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
                       const body = msg.body || msg.text || msg.message || '';
                       return (
                         <div key={msgKey} className={`cw-bubble-wrap ${isMe ? 'me' : 'them'}`}
-                          style={msg.pending ? { opacity: 0.6 } : msg.failed ? { opacity: 0.7 } : undefined}>
+                          style={{ transition: 'opacity .22s ease', opacity: msg.pending ? 0.6 : msg.failed ? 0.7 : 1 }}>
                           <div className={`cw-bubble ${isMe ? 'me' : 'them'}`}>{body}</div>
                           <div className="cw-bubble-time">
                             {msg.failed ? (
@@ -760,7 +1049,10 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
                             ) : msg.pending ? (
                               <span>Sending…</span>
                             ) : (
-                              formatTime(msg.created_at)
+                              <>
+                                {formatTime(msg.created_at)}
+                                {msg.metadata?.automated && <span> &middot; Automatic reply</span>}
+                              </>
                             )}
                           </div>
                         </div>
@@ -790,6 +1082,13 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
 
       {/* In-place preview. A new tab would have dropped the customer onto a bare Cloudinary URL and out
           of the conversation; this keeps them where they were. Backdrop and Esc both close. */}
+      <PhotoLightbox
+        urls={chatPhotoUrls}
+        index={chatPhotoIdx}
+        onIndexChange={setChatPhotoIdx}
+        onClose={() => setChatPhotoIdx(null)}
+      />
+
       {preview && (
         <div
           onClick={() => setPreview(null)}
@@ -802,7 +1101,7 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
           <button type="button" onClick={() => setPreview(null)} aria-label="Close preview"
             style={{
               position: 'absolute', top: 16, right: 18, width: 34, height: 34, borderRadius: '50%',
-              border: 'none', background: 'rgba(255,255,255,0.15)', color: '#fff', fontSize: 18,
+              border: 'none', background: 'rgba(255,255,255,0.15)', color: 'var(--dark)', fontSize: 18,
               cursor: 'pointer', lineHeight: 1,
             }}>
             &times;

@@ -28,6 +28,7 @@ class FlashSaleController extends Controller
                 && $sale->endDate >= $now;
 
             $product = Product::find($sale->productId);
+            $sale->productMissing = !$product;
             $originalPrice = $product ? $this->getBasePrice($product) : null;
 
             if ($originalPrice !== null && $sale->discountType === 'percentage') {
@@ -88,7 +89,9 @@ class FlashSaleController extends Controller
             ], 422);
         }
 
-        $basePrice = $product->flatPrice ?? $product->price ?? 0;
+        // The lowest price the product sells at, whatever its pricing type. flatPrice alone is empty
+        // on a tiered product, which made every fixed discount on one "more than the price".
+        $basePrice = $this->getBasePrice($product) ?? 0;
 
         if ($validated['discountType'] === 'percentage' && $validated['discountValue'] >= 100) {
             return response()->json([
@@ -183,7 +186,9 @@ class FlashSaleController extends Controller
             ], 422);
         }
 
-        $basePrice = $product->flatPrice ?? $product->price ?? 0;
+        // The lowest price the product sells at, whatever its pricing type. flatPrice alone is empty
+        // on a tiered product, which made every fixed discount on one "more than the price".
+        $basePrice = $this->getBasePrice($product) ?? 0;
 
         if ($validated['discountType'] === 'percentage' && $validated['discountValue'] >= 100) {
             return response()->json([
@@ -316,6 +321,10 @@ class FlashSaleController extends Controller
             ->orderBy('endDate', 'asc')
             ->get();
 
+        // A sale that has sold its cap no longer discounts at checkout, so it must stop showing a
+        // sale price too - otherwise the card promises a price the order will not give.
+        $sales = $sales->filter(fn ($sale) => $sale->stockLimit === null || (int) ($sale->stockUsed ?? 0) < (int) $sale->stockLimit)->values();
+
         $mapped = $sales->map(function ($sale) {
             $product = Product::find($sale->productId);
             $originalPrice = $product ? $this->getBasePrice($product) : null;
@@ -330,6 +339,10 @@ class FlashSaleController extends Controller
             }
 
             return [
+                // The id is what checkout sends back so the server applies the sale. Without it the
+                // storefront showed the discount and every order was charged the full price.
+                'id'               => (string) $sale->_id,
+                '_id'              => (string) $sale->_id,
                 'productId'        => $sale->productId,
                 'productName'      => $sale->productName,
                 'productThumbnail' => $sale->productThumbnail,

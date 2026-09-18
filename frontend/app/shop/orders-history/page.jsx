@@ -4,18 +4,23 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
+import { billingName } from '@/lib/billingName';
 import { fetchMyShopOrders, fetchMyShopOrder } from '@/lib/orderTrackingApi';
 import { orderNo } from '@/lib/orderNumber';
 import { StatusBadge, humanizeStatus, formatDate, formatPeso } from '@/lib/shopUtils';
 import { remainingDue } from '@/lib/orderBalance';
 import { getEcho } from '@/lib/echo';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
+import useLockBodyScroll from '@/lib/useLockBodyScroll';
 import { useCart } from '@/app/shop/layout';
 import { normalizeStatus } from '@/lib/orderStatus';
+import NoImage from '@/components/NoImage';
 import PaymentPicker from '@/components/shop/PaymentPicker';
 import ImageLightbox from '@/components/shop/ImageLightbox';
 import ProofGallery from '@/components/shop/ProofGallery';
 import { watermarkProofs } from '@/lib/proofWatermark';
+import { isCodMethod } from '@/lib/paymentMethod';
+import OrderReceipt from '@/components/shop/OrderReceipt';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
@@ -109,6 +114,22 @@ function owesDesignFee(order) {
   return hasRequest && Number(order?.designFee) > 0 && !order?.designFeePaid;
 }
 
+// A link the customer can open. The shop pastes one for Lalamove and Grab; for a parcel it is
+// built from the number. Only couriers whose URL is known get a built link - a guessed one looks
+// like tracking and opens on an error page.
+function trackingLink(order) {
+  const pasted = String(order?.trackingUrl ?? '').trim();
+  if (/^https?:\/\//i.test(pasted)) return pasted;
+  const no      = String(order?.trackingNumber ?? '').trim();
+  const courier = String(order?.courierName ?? '').toLowerCase();
+  if (!no || !courier) return '';
+  if (courier.includes('j&t') || courier.includes('jt express')) {
+    return `https://www.jtexpress.ph/trajectoryQuery?waybillNo=${encodeURIComponent(no)}`;
+  }
+  if (courier.includes('lbc')) return 'https://www.lbcexpress.com/track/';
+  return '';
+}
+
 const CUSTOM_STATUS_LABEL = {
   pending_review:      'Under Review',
   awaiting_payment:    'Awaiting Payment',
@@ -184,7 +205,7 @@ function OrderTracker({ status, paymentMethod, paymentStatus, statusHistory = []
   const historyMap = {};
   (statusHistory || []).forEach(e => { if (e?.status && e?.at) historyMap[e.status] = e.at; });
 
-  const isCOD = (paymentMethod || '').toLowerCase() === 'cod';
+  const isCOD = isCodMethod(paymentMethod);
   const trackSteps = isCOD ? COD_TRACK_STEPS : ONLINE_TRACK_STEPS;
   const isTerminal = status === 'Cancelled' || status === 'Returned';
 
@@ -298,7 +319,7 @@ function CustomOrderTracker({ orderStatus, designType, designStatus, paymentStat
   const effectiveType = isMixed ? 'mixed' : designType;
 
   const steps = effectiveType === 'upload' ? UPLOAD_STEPS : REQUEST_STEPS;
-  const isTerminal = orderStatus === 'Cancelled' || orderStatus === 'Returned';
+  const isTerminal = ['cancelled', 'returned'].includes(normalizeStatus(orderStatus));
   const statusLabel = CUSTOM_STATUS_LABEL[orderStatus] || humanizeStatus(orderStatus);
 
   function getStepIdx(status) {
@@ -415,13 +436,19 @@ function CustomOrderTracker({ orderStatus, designType, designStatus, paymentStat
                     ? <span style={{ width: 8, height: 8, borderRadius: '50%', background: GOLD }} />
                     : step.icon}
               </div>
-              <div style={{ marginTop: '8px', textAlign: 'center', lineHeight: 1.3, fontSize: '0.66rem', fontWeight: isCurrent ? 700 : 500, color: isCurrent ? GOLD : isDone ? 'var(--white)' : 'var(--gray)', maxWidth: '64px' }}>
+              <div className="oh-step-label" style={{ marginTop: '8px', textAlign: 'center', lineHeight: 1.3, fontSize: '0.66rem', fontWeight: isCurrent ? 700 : 500, color: isCurrent ? GOLD : isDone ? 'var(--white)' : 'var(--gray)', maxWidth: '64px' }}>
                 {step.label}
               </div>
             </div>
           );
         })}
       </div>
+      {currentIdx >= 0 && (
+        <div className="oh-step-caption">
+          <span><strong>{steps[currentIdx].label}</strong> - step {currentIdx + 1} of {steps.length}</span>
+          {currentIdx < steps.length - 1 && !isDelivered && <span>Next: {steps[currentIdx + 1].label}</span>}
+        </div>
+      )}
       <ItemProgressNote jobs={productionJobs} />
       {orderStatus === 'awaiting_payment' && (
         <div style={{ marginTop: '14px', padding: '10px 14px', background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: '8px', fontSize: '0.8rem', color: '#f59e0b' }}>
@@ -435,7 +462,7 @@ function CustomOrderTracker({ orderStatus, designType, designStatus, paymentStat
       )}
       {orderStatus === 'revision_requested' && (
         <div style={{ marginTop: '14px', padding: '10px 14px', background: 'rgba(249,115,22,0.06)', border: '1px solid rgba(249,115,22,0.2)', borderRadius: '8px', fontSize: '0.8rem', color: '#f97316' }}>
-          Revision submitted — we're working on the updated design and will notify you when ready.
+          Revision submitted - we're working on the updated design and will notify you when ready.
         </div>
       )}
     </div>
@@ -534,8 +561,14 @@ export default function OrdersHistoryPage() {
 
   const [payNowLoading, setPayNowLoading] = useState(false);
   const [payNowError, setPayNowError]     = useState(null);
+  const [payNowSuccess, setPayNowSuccess] = useState(null);
   const [payMethod, setPayMethod]         = useState(null);
   const [payFullToggle, setPayFullToggle] = useState(false);
+  // Defaults on. Two payments for one order is the thing this exists to avoid, so the customer
+  // has to opt OUT of settling it now, not opt in.
+  const [includeCourier, setIncludeCourier] = useState(true);
+  const [receiptOpen, setReceiptOpen] = useState(false);
+  const [receiptSaving, setReceiptSaving] = useState(false);
   // Owner-controlled method availability (Homepage CMS -> Payment Methods). Missing = enabled.
   const [payEnabled, setPayEnabled] = useState({});
   // Revision allowance and the price of a paid round live in shop settings, so the modal can state
@@ -582,6 +615,12 @@ export default function OrdersHistoryPage() {
   const [revisionNotes, setRevisionNotes]               = useState('');
   const [revisionLoading, setRevisionLoading]           = useState(false);
   const [revisionError, setRevisionError]               = useState(null);
+  // A restart is its own action, not another revision - it carries a real charge, so it gets its
+  // own confirm step rather than reusing the revision textarea's "just send it" flow.
+  const [restartForIdx, setRestartForIdx]                = useState(null);
+  const [restartNotes, setRestartNotes]                  = useState('');
+  const [restartLoading, setRestartLoading]              = useState(false);
+  const [restartError, setRestartError]                  = useState(null);
   const [revisionSuccess, setRevisionSuccess]           = useState(false);
 
   const [existingReview, setExistingReview]         = useState(null);
@@ -624,14 +663,11 @@ export default function OrdersHistoryPage() {
     return () => clearInterval(pollRef.current);
   }, [token, modalOpen, loadOrders]);
 
-  // Lock background scroll while any modal/overlay is open (fixes mobile bg-scroll)
-  useEffect(() => {
-    const anyOpen = modalOpen || !!cancelTarget || payNowFailedModal;
-    if (!anyOpen) return;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = prev; };
-  }, [modalOpen, cancelTarget, payNowFailedModal]);
+  // Lock background scroll while any modal/overlay is open. This was a hand-rolled copy of the
+  // shared hook and, being a copy, it never picked up what the hook learned: marking the body so
+  // anything fixed to the viewport steps aside. That is why the chat launcher still sat on top of
+  // this modal's own buttons on a phone.
+  useLockBodyScroll(modalOpen || !!cancelTarget || payNowFailedModal);
 
   useEffect(() => {
     if (!token || orders.length === 0) return;
@@ -714,7 +750,7 @@ export default function OrdersHistoryPage() {
   }, [payNowVerifyId, token]);
 
   const resetModalState = () => {
-    setPayNowError(null); setPayMethod(null); setPayFullToggle(false);
+    setPayNowError(null); setPayNowSuccess(null); setPayMethod(null); setPayFullToggle(false);
     setPayNowEWalletPhone(''); setPayNowShowEWalletPhone(false);
     setPayNowCardNumber(''); setPayNowCardExpiry(''); setPayNowCardCvc(''); setPayNowCardName('');
     setReuploadForIdx(null); setReuploadFile(null); setReuploadNotes(''); setReuploadError(null); setReuploadSuccess(false);
@@ -812,10 +848,11 @@ export default function OrdersHistoryPage() {
   };
 
   // Called by the shared PaymentPicker with (method, cardData). opts.designFeeOnly charges
-  // only the request-design fee (first payment); otherwise it pays the DP/balance.
+  // only the request-design fee (first payment); opts.courierFeeOnly charges only the courier's
+  // delivery fee, which is not part of the order total at all; otherwise it pays the DP/balance.
   const handlePayNow = async (method, cardData, opts = {}) => {
     if (!selectedOrder || !token || !method) return;
-    setPayNowLoading(true); setPayNowError(null);
+    setPayNowLoading(true); setPayNowError(null); setPayNowSuccess(null);
     try {
       let paymentMethodId = null;
       if (method === 'card') {
@@ -824,7 +861,7 @@ export default function OrdersHistoryPage() {
         const pmRes = await fetch('https://api.paymongo.com/v1/payment_methods', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Basic ${btoa(publicKey+':')}` },
-          body: JSON.stringify({ data: { attributes: { type: 'card', details: { card_number: (cardData?.number || '').replace(/\s/g,''), exp_month: parseInt(expMonth), exp_year: parseInt('20'+(expYear||'')), cvc: cardData?.cvc }, billing: { name: (cardData?.name || '').trim() || currentUser?.name || '', email: currentUser?.email || '', phone: '' } } } }),
+          body: JSON.stringify({ data: { attributes: { type: 'card', details: { card_number: (cardData?.number || '').replace(/\s/g,''), exp_month: parseInt(expMonth), exp_year: parseInt('20'+(expYear||'')), cvc: cardData?.cvc }, billing: { name: billingName(currentUser), email: currentUser?.email || '', phone: '' } } } }),
         });
         const pmData = await pmRes.json();
         if (!pmRes.ok) {
@@ -832,7 +869,7 @@ export default function OrdersHistoryPage() {
           if (detail.includes('card_number')) throw new Error('Card number is invalid.');
           if (detail.includes('exp_month')||detail.includes('exp_year')) throw new Error('Expiry date is invalid.');
           if (detail.includes('cvc')) throw new Error('Security code is invalid.');
-          throw new Error('Invalid card details. Please check and try again.');
+          throw new Error(detail || 'Invalid card details. Please check and try again.');
         }
         paymentMethodId = pmData.data.id;
       }
@@ -845,21 +882,73 @@ export default function OrdersHistoryPage() {
           paymentMethod: method,
           payFull: payFullToggle,
           ...(opts.designFeeOnly ? { designFeeOnly: true } : {}),
+          ...(opts.courierFeeOnly ? { courierFeeOnly: true } : {}),
+          ...(opts.includeCourierFee ? { includeCourierFee: true } : {}),
           ...(method === 'card' && paymentMethodId ? { paymentMethodId } : {}),
         }),
-      }, 15000);
+      }, 60000);
       const data = await res.json();
       if (!res.ok) { setPayNowError(data.message || 'Failed to create payment link.'); return; }
       if (data.data?.status === 'succeeded') {
-        loadOrders();
+        // A card that clears without 3-D Secure never leaves this page, so the open order has to be
+        // refreshed here. Left stale it kept its Pay button, and a second click charged the next
+        // payment on top of the first.
+        setPayNowSuccess('Payment received. Your receipt is on its way to your email.');
+        try {
+          const fresh = await fetchMyShopOrder(token, orderId);
+          const detail = fresh?.data ?? fresh;
+          if (detail) setSelectedOrder(detail);
+        } catch {}
+        loadOrders(true);
         return;
       }
       if (data.data?.checkoutUrl) {
         sessionStorage.setItem('pending_paynow_order_id', orderId);
         window.location.href = data.data.checkoutUrl;
       }
-    } catch (err) { setPayNowError(err.message || 'Failed to create payment link.'); }
+    } catch (err) {
+      // A timeout is not a failure: the card may have been charged while the answer was on its way.
+      // Re-read the order so the screen shows what actually happened, and warn against paying again.
+      if (/timed out/i.test(err?.message || '')) {
+        try {
+          const fresh = await fetchMyShopOrder(token, selectedOrder._id ?? selectedOrder.id);
+          const detail = fresh?.data ?? fresh;
+          if (detail) setSelectedOrder(detail);
+        } catch {}
+        loadOrders(true);
+        setPayNowError('We could not confirm this payment yet. Check your email or this order in a minute before trying again, so you are not charged twice.');
+      } else {
+        setPayNowError(err.message || 'Failed to create payment link.');
+      }
+    }
     finally { setPayNowLoading(false); }
+  };
+
+  // An <a href> cannot carry a bearer token, and the receipt is scoped to the signed-in
+  // customer, so the file is fetched and handed to the browser as a blob.
+  const handleDownloadReceipt = async () => {
+    const id = selectedOrder?._id ?? selectedOrder?.id;
+    if (!id || !token) return;
+    setReceiptSaving(true);
+    try {
+      const res = await fetchWithTimeout(`${API_URL}/api/orders/my/${id}/receipt-pdf`, {
+        headers: apiHeaders(token),
+      }, 30000);
+      if (!res.ok) throw new Error('Could not build the receipt.');
+      const blob = await res.blob();
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href = url;
+      a.download = `Receipt-${orderNo(selectedOrder)}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      // Printing still works, and the same PDF is already in their email.
+    } finally {
+      setReceiptSaving(false);
+    }
   };
 
   // After any per-item design action the backend returns the updated order (with the re-synced
@@ -922,6 +1011,23 @@ export default function OrdersHistoryPage() {
     finally { setRevisionLoading(false); }
   };
 
+  const handleRestartDesignJob = async (idx = null) => {
+    if (restartNotes.trim().length < REVISION_MIN) {
+      setRestartError(`Please describe what the new design should do differently (at least ${REVISION_MIN} characters).`);
+      return;
+    }
+    if (!selectedOrder || !token) return;
+    setRestartLoading(true); setRestartError(null);
+    try {
+      const res = await fetchWithTimeout(`${API_URL}/api/orders/my/${selectedOrder._id ?? selectedOrder.id}/restart-design-job`, { method: 'POST', headers: { ...apiHeaders(token), 'Content-Type': 'application/json' }, body: JSON.stringify({ notes: restartNotes.trim(), ...(idx != null ? { itemIndex: idx } : {}) }) }, 15000);
+      const data = await res.json();
+      if (!res.ok) { setRestartError(data.message || 'Failed to start a new design job.'); return; }
+      mergeUpdatedOrder(data);
+      setRestartForIdx(null); setRestartNotes('');
+    } catch (err) { setRestartError(err.message || 'Failed to start a new design job.'); }
+    finally { setRestartLoading(false); }
+  };
+
   const handleSubmitReview = async (productId) => {
     if (!selectedOrder || !token || reviewRating === 0 || reviewComment.trim().length < 5) return;
     setReviewSubmitting(true); setReviewError(null);
@@ -957,6 +1063,28 @@ export default function OrdersHistoryPage() {
 
   // ── Render ──────────────────────────────────────────
   return (
+    <>
+      {/* On a 375px screen the status badge refused to shrink, leaving the left side about 150px -
+          so ORD-090DCDB0 broke across two lines and "Upload Design" split into two words on two
+          rows. The header stacks instead: reference and labels take the full width, badges sit
+          under them, and neither the reference nor the label is allowed to break mid-phrase. */}
+      <style>{`
+        @media (max-width: 640px) {
+          .oh-card-head { flex-direction: column; align-items: stretch !important; gap: 6px !important; padding: 12px 14px 10px !important; }
+          .oh-card-badges { justify-content: flex-start !important; }
+          .oh-card-ref, .oh-card-type { white-space: nowrap; }
+        }
+        /* The custom-order tracker has six or seven steps. On a 360px phone that is about 42px a
+           step, and "Production" alone is 55px - the labels ran into each other ("ApprovedProduction",
+           "DeliveryDelivered") and "QC Check" broke in two. The dots stay; the words move to one
+           line underneath that names where the order is and what comes next. */
+        .oh-step-caption { display: none; }
+        @media (max-width: 480px) {
+          .oh-step-label { display: none; }
+          .oh-step-caption { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-top: 12px; font-size: 0.76rem; color: var(--gray); }
+          .oh-step-caption strong { color: #d4a843; font-weight: 700; }
+        }
+      `}</style>
     <div style={{ minHeight: '100vh' }}>
 
       <div style={{ maxWidth: '1040px', margin: '0 auto', padding: '28px 16px 48px' }}>
@@ -977,7 +1105,7 @@ export default function OrdersHistoryPage() {
                 : tab === 'Custom' ? visibleOrders.filter(o => o.isCustomOrder).length
                 : visibleOrders.filter(o => orderBucket(o) === tab).length;
               const isActive = activeTab === tab;
-              // Hide empty filters to cut clutter — keep "All" and whatever is currently selected.
+              // Hide empty filters to cut clutter - keep "All" and whatever is currently selected.
               if (count === 0 && tab !== 'All' && !isActive) return null;
               return (
                 <button
@@ -1077,10 +1205,10 @@ export default function OrdersHistoryPage() {
                     </div>
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ padding: '14px 16px 10px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px' }}>
+                    <div className="oh-card-head" style={{ padding: '14px 16px 10px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px' }}>
                       <div style={{ minWidth: 0 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                          <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--white)', fontFamily: 'monospace', letterSpacing: '0.5px' }}>
+                        <div className="oh-card-meta" style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                          <span className="oh-card-ref" style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--white)', fontFamily: 'monospace', letterSpacing: '0.5px' }}>
                             {orderNo(oid)}
                           </span>
                           {order.isCustomOrder && (
@@ -1089,14 +1217,14 @@ export default function OrdersHistoryPage() {
                             </span>
                           )}
                           {order.isCustomOrder && order.designType && (
-                            <span style={{ fontSize: '0.72rem', color: 'var(--gray)' }}>
+                            <span className="oh-card-type" style={{ fontSize: '0.72rem', color: 'var(--gray)' }}>
                               {customTypeLabel(order)}
                             </span>
                           )}
                         </div>
                         <div style={{ fontSize: '0.73rem', color: 'var(--gray)', marginTop: '3px' }}>{formatDate(order.createdAt)}</div>
                       </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                      <div className="oh-card-badges" style={{ display: 'flex', alignItems: 'center', gap: '5px', flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                         <PaymentStatusBadge status={order.paymentStatus} />
                         <StatusBadge status={order.orderStatus} />
                       </div>
@@ -1172,13 +1300,107 @@ export default function OrdersHistoryPage() {
             .oh-modal-left-col { overflow-y:visible !important; }
             .oh-modal-right { width:100%; flex-shrink:0; overflow-y:visible; height:auto; }
           }
+          /* A phone gets a full-screen sheet. The desktop shape - a 16px inset card with 24px of
+             padding inside - left every column about a third of the width it needs, and the styles
+             it fights are inline, which is what the !important here is for. */
+          @media(max-width:640px){
+            .oh-modal-overlay { padding:0 !important; align-items:stretch !important; }
+            .oh-modal-panel {
+              max-width:100% !important; width:100% !important;
+              max-height:100% !important; height:100% !important;
+              border-radius:0 !important; border:none !important;
+            }
+            /* The scrolling area, said plainly: iOS needs the momentum hint, and touch-action
+               keeps a vertical drag as a scroll instead of a gesture the browser swallows. */
+            .oh-modal-outer {
+              flex:1 1 auto; min-height:0;
+              overflow-y:auto !important;
+              -webkit-overflow-scrolling:touch;
+              touch-action:pan-y;
+            }
+            .oh-modal-header { padding:12px 14px !important; }
+            .oh-modal-header > div:first-child > div:first-child { font-size:0.6rem !important; }
+            .oh-modal-columns { padding:10px !important; gap:10px !important; }
+            .oh-modal-left-col, .oh-modal-right { border-radius:12px !important; }
+            /* The footer is where Close lives, so it stays reachable without scrolling to the end,
+               and clears the iPhone home bar. */
+            .oh-modal-footer {
+              position:sticky; bottom:0; z-index:2;
+              padding:10px 12px calc(10px + env(safe-area-inset-bottom)) !important;
+              background:var(--dark) !important;
+              border-top:1px solid var(--border);
+            }
+            .oh-modal-footer button { font-size:0.8rem !important; padding:9px 14px !important; }
+            .oh-receipt-panel { max-width:100% !important; border-radius:0 !important; height:100% !important; max-height:100% !important; }
+          }
         `}</style>
-        <div onClick={closeModal} style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
+        {/* No backdrop close. This modal carries proofs, a payment choice and a receipt, and a
+            misclick used to throw all of it away with nothing to bring it back. The X in the header
+            and the Close button are the ways out. */}
+        <div className="oh-modal-overlay" style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
           <ImageLightbox url={lightboxUrl} onClose={() => setLightboxUrl(null)} />
+
+          {/* The receipt, where the order is. One layer above the details overlay, so closing it
+              returns to the order rather than to the list. */}
+          {receiptOpen && selectedOrder && (
+            <div
+              onClick={() => setReceiptOpen(false)}
+              style={{ position: 'fixed', inset: 0, zIndex: 1200, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}
+            >
+              <div
+                className="oh-receipt-panel"
+                onClick={e => e.stopPropagation()}
+                style={{ background: '#ffffff', borderRadius: '14px', width: '100%', maxWidth: '760px', maxHeight: '92vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 24px 70px rgba(0,0,0,0.45)' }}
+              >
+                <div style={{ padding: '13px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', borderBottom: '1px solid #eee', flexShrink: 0 }}>
+                  <span style={{ fontSize: '0.72rem', fontWeight: 800, letterSpacing: '1.2px', textTransform: 'uppercase', color: '#888' }}>Receipt</span>
+                  <button type="button" onClick={() => setReceiptOpen(false)} aria-label="Close receipt"
+                    style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#666', padding: '2px', lineHeight: 0, fontFamily: 'inherit' }}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                  </button>
+                </div>
+
+                {/* min-height:0 is what lets this scroll inside the card instead of growing it. */}
+                <div style={{ flex: '1 1 auto', minHeight: 0, overflowY: 'auto', padding: '24px 28px' }}>
+                  <OrderReceipt order={selectedOrder} />
+                </div>
+
+                <div style={{ padding: '12px 18px', borderTop: '1px solid #eee', display: 'flex', justifyContent: 'flex-end', gap: '9px', flexShrink: 0 }}>
+                  <button type="button" onClick={handleDownloadReceipt} disabled={receiptSaving}
+                    style={{ padding: '9px 16px', borderRadius: '8px', border: '1px solid #c8922e', background: 'transparent', color: '#a67c1a', fontSize: '0.83rem', fontWeight: 700, cursor: receiptSaving ? 'wait' : 'pointer', fontFamily: 'inherit' }}>
+                    {receiptSaving ? 'Preparing...' : 'Download PDF'}
+                  </button>
+                  <button type="button" onClick={() => window.print()}
+                    style={{ padding: '9px 16px', borderRadius: '8px', border: 'none', background: '#c8922e', color: '#fff', fontSize: '0.83rem', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>
+                    Print
+                  </button>
+                </div>
+              </div>
+
+              {/* Print the document, not the page around it. The receipt is portaled nowhere, so
+                  everything else is hidden and the panel is unwrapped to plain flow. */}
+              <style jsx global>{`
+                @media print {
+                  body * { visibility: hidden !important; }
+                  .oh-receipt-panel, .oh-receipt-panel * { visibility: visible !important; }
+                  .oh-receipt-panel {
+                    position: fixed !important; inset: 0 !important;
+                    max-width: none !important; max-height: none !important;
+                    box-shadow: none !important; border-radius: 0 !important;
+                    overflow: visible !important;
+                  }
+                  .oh-receipt-panel > div:first-child,
+                  .oh-receipt-panel > div:last-child { display: none !important; }
+                  .oh-receipt-panel > div { overflow: visible !important; }
+                  @page { margin: 12mm; }
+                }
+              `}</style>
+            </div>
+          )}
           <div className="oh-modal-panel" onClick={e => e.stopPropagation()} style={{ background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '16px', width: '100%', maxWidth: '880px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 24px 70px rgba(0,0,0,0.35)', fontFamily: 'Inter, system-ui, sans-serif' }}>
 
             {/* Modal header */}
-            <div style={{ padding: '16px 22px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', background: 'transparent', flexShrink: 0 }}>
+            <div className="oh-modal-header" style={{ padding: '16px 22px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', background: 'transparent', flexShrink: 0 }}>
               <div>
                 <div style={{ fontSize: '0.65rem', color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.8px', fontWeight: 600, marginBottom: '4px' }}>Order Details</div>
                 {selectedOrder && (
@@ -1186,6 +1408,13 @@ export default function OrdersHistoryPage() {
                     <span style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--white)', fontFamily: 'monospace', letterSpacing: '0.5px' }}>
                       {orderNo(selectedOrder)}
                     </span>
+                    {/* A paid quote becomes an ordinary order, which is right - but the prices on
+                        it were negotiated, not listed, and nothing said so. */}
+                    {(selectedOrder.orderRequestId || selectedOrder.orderSource === 'inquiry') && (
+                      <span style={{ fontSize: '0.62rem', fontWeight: 700, padding: '3px 10px', borderRadius: '999px', letterSpacing: '0.03em', background: 'rgba(59,130,246,0.08)', color: '#3b82f6', border: '1px solid rgba(59,130,246,0.25)' }}>
+                        FROM QUOTATION
+                      </span>
+                    )}
                     {selectedOrder.isCustomOrder ? (
                       <span style={{ fontSize: '0.62rem', fontWeight: 700, padding: '3px 10px', borderRadius: '999px', letterSpacing: '0.03em', background: 'rgba(212,168,67,0.08)', color: '#d4a843', border: '1px solid rgba(212,168,67,0.2)' }}>
                         CUSTOM · {customTypeLabel(selectedOrder).toUpperCase()}
@@ -1211,6 +1440,12 @@ export default function OrdersHistoryPage() {
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
               </button>
             </div>
+
+            {payNowSuccess && (
+              <div role="status" style={{ margin: '0 22px 10px', padding: '10px 14px', borderRadius: '10px', background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.25)', color: '#16a34a', fontSize: '0.8rem', fontWeight: 600, flexShrink: 0 }}>
+                {payNowSuccess}
+              </div>
+            )}
 
             {/* Modal body */}
             <div className="oh-modal-outer" style={{ flex: 1, overflow: 'hidden', display: 'flex', minHeight: 0 }}>
@@ -1279,8 +1514,40 @@ export default function OrdersHistoryPage() {
                             }
                           </div>
                         ))}
+                        {/* The same thing checkout says, said again where the date actually lives.
+                            It is the latest a customer should expect, not a target - and reading it
+                            as a target is what turns an early delivery into a broken promise the
+                            other way round. */}
+                        {selectedOrder.estimatedDeliveryMin
+                          && !['delivered','Delivered','cancelled','Cancelled','returned','Returned'].includes(selectedOrder.orderStatus) && (
+                          <p style={{ margin: '6px 0 0', fontSize: '11.5px', color: 'var(--gray)', lineHeight: 1.5 }}>
+                            This is the latest you should expect it. Orders often arrive earlier when
+                            our production queue is light - we message you as soon as yours is ready.
+                          </p>
+                        )}
                       </div>
                     </div>
+
+                    {selectedOrder.mockups?.length > 0 && (
+                      <div style={{ marginTop: '14px', padding: '12px', background: 'rgba(212,168,67,0.06)', border: '1px solid rgba(212,168,67,0.2)', borderRadius: '10px' }}>
+                        <div style={{ fontSize: '12px', fontWeight: 700, color: '#d4a843', marginBottom: '2px' }}>
+                          Mockup from the shop
+                        </div>
+                        <div style={{ fontSize: '11px', color: 'var(--gray)', lineHeight: 1.5, marginBottom: '8px' }}>
+                          How your order will look. Nothing to approve here - your design is already confirmed.
+                        </div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                          {selectedOrder.mockups.map((m, i) => (
+                            <a key={i} href={m.url} target="_blank" rel="noopener noreferrer"
+                              title={m.sentAt ? `Sent ${new Date(m.sentAt).toLocaleDateString()}` : 'Open'}
+                              style={{ display: 'block', width: '84px', height: '84px', borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--border)', background: '#fff' }}>
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img src={m.url} alt="Mockup" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                            </a>
+                          ))}
+                        </div>
+                      </div>
+                    )}
 
                     {/* Per-item designs (Option 2): each custom line has its own artwork state and
                         actions, so a mixed order can approve one item, review another and wait on a
@@ -1403,19 +1670,59 @@ export default function OrdersHistoryPage() {
                                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                     {!grouped && <div style={{ fontSize: '0.76rem', color: 'var(--gray)' }}>Please review the proof for this item.</div>}
                                     {approveDesignError && <div style={{ fontSize: '0.72rem', color: '#ef4444' }}>{approveDesignError}</div>}
-                                    {revisionForIdx !== idx ? (
-                                      <div style={{ display: 'flex', gap: '6px' }}>
-                                        {(() => {
-                                          const busy = approvingIdx === idx;
-                                          const anyBusy = approvingIdx !== null;
-                                          return (
-                                            <button onClick={() => handleApproveAdminDesign(idx)} disabled={anyBusy}
-                                              style={{ flex: 1, padding: '8px', borderRadius: '8px', border: 'none', background: anyBusy ? 'var(--border)' : '#d4a843', color: '#000', fontSize: '0.76rem', fontWeight: 700, cursor: anyBusy ? 'not-allowed' : 'pointer' }}>
-                                              {busy ? 'Approving...' : 'Approve'}
-                                            </button>
-                                          );
-                                        })()}
-                                        <button onClick={() => { setRevisionForIdx(idx); setRevisionNotes(''); setRevisionError(null); }} style={{ flex: 1, padding: '8px', borderRadius: '8px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--gray)', fontSize: '0.76rem', fontWeight: 600, cursor: 'pointer' }}>Request changes</button>
+                                    {revisionForIdx !== idx && restartForIdx !== idx ? (
+                                      (() => {
+                                        const usedNow = Number(it.revisionCount ?? 0);
+                                        const maxNow  = Number(storeSettings?.maxRevisions ?? 5);
+                                        const atCap   = usedNow >= maxNow;
+                                        const anyBusy = approvingIdx !== null;
+                                        return (
+                                          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                            <div style={{ display: 'flex', gap: '6px' }}>
+                                              {(() => {
+                                                const busy = approvingIdx === idx;
+                                                return (
+                                                  <button onClick={() => handleApproveAdminDesign(idx)} disabled={anyBusy}
+                                                    style={{ flex: 1, padding: '8px', borderRadius: '8px', border: 'none', background: anyBusy ? 'var(--border)' : '#d4a843', color: '#000', fontSize: '0.76rem', fontWeight: 700, cursor: anyBusy ? 'not-allowed' : 'pointer' }}>
+                                                    {busy ? 'Approving...' : 'Approve'}
+                                                  </button>
+                                                );
+                                              })()}
+                                              {/* Past the cap, "Request changes" would just hit the same wall the
+                                                  backend enforces - so it is replaced rather than left to fail. */}
+                                              {atCap ? (
+                                                <button onClick={() => { setRestartForIdx(idx); setRestartNotes(''); setRestartError(null); }} style={{ flex: 1, padding: '8px', borderRadius: '8px', border: '1px solid rgba(212,168,67,0.4)', background: 'rgba(212,168,67,0.08)', color: '#d4a843', fontSize: '0.76rem', fontWeight: 700, cursor: 'pointer' }}>Start new design job</button>
+                                              ) : (
+                                                <button onClick={() => { setRevisionForIdx(idx); setRevisionNotes(''); setRevisionError(null); }} style={{ flex: 1, padding: '8px', borderRadius: '8px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--gray)', fontSize: '0.76rem', fontWeight: 600, cursor: 'pointer' }}>Request changes</button>
+                                              )}
+                                            </div>
+                                            {atCap && (
+                                              <div style={{ fontSize: '0.68rem', color: 'var(--gray)', lineHeight: 1.5 }}>
+                                                You have used all {maxNow} revisions on this draft. Starting a new design
+                                                job restarts the round count with a fresh {formatPeso(Number(storeSettings?.designRequestFee ?? 100))} design fee.
+                                              </div>
+                                            )}
+                                          </div>
+                                        );
+                                      })()
+                                    ) : restartForIdx === idx ? (
+                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                        <div style={{ padding: '8px 11px', borderRadius: '8px', fontSize: '0.72rem', lineHeight: 1.5, background: 'rgba(212,168,67,0.08)', border: '1px solid rgba(212,168,67,0.3)', color: 'var(--gray)' }}>
+                                          This starts over as a new design job: <strong style={{ color: '#d4a843' }}>{formatPeso(Number(storeSettings?.designRequestFee ?? 100))}</strong> is
+                                          added to your order balance, and you get a fresh set of included revisions on the new draft.
+                                        </div>
+                                        <textarea placeholder="What should the new design do differently?" value={restartNotes} maxLength={REVISION_MAX} onChange={e => setRestartNotes(e.target.value)} rows={3} style={{ background: 'var(--dark2)', border: `1px solid ${restartNotes.trim().length > 0 && restartNotes.trim().length < REVISION_MIN ? '#ef4444' : 'var(--border)'}`, borderRadius: '8px', color: 'var(--white)', fontSize: '0.76rem', padding: '7px 10px', resize: 'vertical', outline: 'none', width: '100%', boxSizing: 'border-box' }} />
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.68rem', color: 'var(--gray)' }}>
+                                          <span>{restartNotes.trim().length < REVISION_MIN ? `At least ${REVISION_MIN} characters` : 'Ready to send'}</span>
+                                          <span>{restartNotes.length}/{REVISION_MAX}</span>
+                                        </div>
+                                        {restartError && <div style={{ fontSize: '0.72rem', color: '#ef4444' }}>{restartError}</div>}
+                                        <div style={{ display: 'flex', gap: '6px' }}>
+                                          <button onClick={() => handleRestartDesignJob(idx)} disabled={restartLoading || restartNotes.trim().length < REVISION_MIN} style={{ flex: 1, padding: '7px', borderRadius: '8px', border: 'none', background: (restartLoading || restartNotes.trim().length < REVISION_MIN) ? 'var(--border)' : '#d4a843', color: (restartLoading || restartNotes.trim().length < REVISION_MIN) ? 'var(--gray)' : '#000', fontSize: '0.76rem', fontWeight: 700, cursor: (restartLoading || restartNotes.trim().length < REVISION_MIN) ? 'not-allowed' : 'pointer' }}>
+                                            {restartLoading ? 'Starting...' : `Confirm & pay ${formatPeso(Number(storeSettings?.designRequestFee ?? 100))}`}
+                                          </button>
+                                          <button onClick={() => { setRestartForIdx(null); setRestartNotes(''); }} style={{ padding: '7px 12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--gray)', fontSize: '0.76rem', cursor: 'pointer' }}>Cancel</button>
+                                        </div>
                                       </div>
                                     ) : (
                                       <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -1515,7 +1822,7 @@ export default function OrdersHistoryPage() {
                     )}
 
                     {/* Shipment */}
-                    {(selectedOrder.courierName || selectedOrder.trackingNumber) && (
+                    {(selectedOrder.courierName || selectedOrder.trackingNumber || selectedOrder.trackingUrl) && (
                       <div>
                         <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '10px' }}>Shipment</div>
                         <div style={{ background: 'var(--dark)', borderRadius: '8px', border: '1px solid var(--border)', overflow: 'hidden' }}>
@@ -1534,6 +1841,14 @@ export default function OrdersHistoryPage() {
                                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                                 </button>
                               </div>
+                            </div>
+                          )}
+                          {trackingLink(selectedOrder) && (
+                            <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '9px 14px', borderTop: '1px solid var(--border)' }}>
+                              <a href={trackingLink(selectedOrder)} target="_blank" rel="noopener noreferrer"
+                                style={{ fontSize: '0.78rem', color: '#d4a843', fontWeight: 700, textDecoration: 'none' }}>
+                                Track your delivery
+                              </a>
                             </div>
                           )}
                         </div>
@@ -1574,7 +1889,7 @@ export default function OrdersHistoryPage() {
                       </div>
                     )}
 
-                    {/* Review — only after payment confirmed */}
+                    {/* Review - only after payment confirmed */}
                     {selectedOrder.orderStatus?.toLowerCase() === 'delivered' && selectedOrder.paymentStatus === 'paid' && (
                       <div>
                         <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '10px' }}>Your Review</div>
@@ -1679,7 +1994,7 @@ export default function OrdersHistoryPage() {
                                 <div style={{ width: '38px', height: '38px', borderRadius: '6px', background: (item.thumbnail || item.imageUrl) ? 'transparent' : 'rgba(212,168,67,0.06)', border: '1px solid var(--border)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
                                   {(item.thumbnail || item.imageUrl)
                                     ? <img src={item.thumbnail || item.imageUrl} alt={name} style={{ width: '38px', height: '38px', objectFit: 'cover' }} />
-                                    : <span style={{ fontSize: '0.9rem', fontWeight: 800, color: '#d4a843', opacity: 0.5 }}>{(name[0] || 'P').toUpperCase()}</span>
+                                    : <NoImage size={18} />
                                   }
                                 </div>
                                 <div style={{ flex: 1, minWidth: 0 }}>
@@ -1705,19 +2020,14 @@ export default function OrdersHistoryPage() {
                           <span style={{ fontSize: '12px', color: 'var(--white)' }}>{formatPeso(selectedOrder.subtotal)}</span>
                         </div>
                       )}
-                      {/* A zero shipping fee means two different things - delivery is free, or the
-                          recipient pays the rider on arrival. Showing P0.00 for both lets a customer
-                          reasonably believe they owe nothing, then meet a rider asking for money. */}
-                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <span style={{ fontSize: '12px', color: 'var(--gray)' }}>Shipping</span>
-                        {selectedOrder.shippingMode === 'courier_booked' && !(Number(selectedOrder.shippingFee) > 0) ? (
-                          <span style={{ fontSize: '12px', color: '#d4a843', textAlign: 'right' }}>
-                            Paid to the rider on delivery
-                          </span>
-                        ) : (
-                          <span style={{ fontSize: '12px', color: 'var(--white)' }}>{formatPeso(selectedOrder.shippingFee ?? 0)}</span>
-                        )}
-                      </div>
+                      {/* Only a shop-charged shipping fee is part of the total, so only it sits above the Total.
+                          The courier's fee is not, and is listed below the Total - see the next block. */}
+                      {Number(selectedOrder.courierFee ?? 0) <= 0 && Number(selectedOrder.shippingFee ?? 0) > 0 && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span style={{ fontSize: '12px', color: 'var(--gray)' }}>Shipping</span>
+                          <span style={{ fontSize: '12px', color: 'var(--white)' }}>{formatPeso(selectedOrder.shippingFee)}</span>
+                        </div>
+                      )}
                       {selectedOrder.isRush && Number(selectedOrder.rushFee) > 0 && (
                         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                           <span style={{ fontSize: '12px', color: 'var(--gray)' }}>Rush fee</span>
@@ -1743,7 +2053,9 @@ export default function OrdersHistoryPage() {
                       })()}
                       {selectedOrder.requiresDownpayment && selectedOrder.downPayment > 0 && (
                         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                          <span style={{ fontSize: '12px', color: 'var(--gray)' }}>Down Payment</span>
+                          {/* downPayment holds the full amount once an order is paid off, and
+                              labelling that "Down Payment" misread a full payment as a deposit. */}
+                          <span style={{ fontSize: '12px', color: 'var(--gray)' }}>{selectedOrder.paymentStatus === 'paid' ? 'Paid' : 'Down Payment'}</span>
                           <span style={{ fontSize: '12px', color: 'var(--white)' }}>{formatPeso(selectedOrder.downPayment)}</span>
                         </div>
                       )}
@@ -1757,6 +2069,39 @@ export default function OrdersHistoryPage() {
                         <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--white)' }}>Total</span>
                         <span style={{ fontSize: '13px', fontWeight: 700, color: '#d4a843' }}>{formatPeso(selectedOrder.totalAmount)}</span>
                       </div>
+                      {/* The courier's charge, kept OUT of the figures above so they add up to the Total.
+                          Customers used to marketplaces read a shipping line above a total as included in it.
+                          A zero here is not free delivery - the fee is simply not known yet. */}
+                      {(() => {
+                        const cf = Number(selectedOrder.courierFee ?? 0);
+                        const sf = Number(selectedOrder.shippingFee ?? 0);
+                        if (cf <= 0 && sf > 0) return null;
+                        // A cancelled or returned order has no delivery fee to settle - asking for cash
+                        // for a rider who is not coming would only confuse.
+                        if (['returned', 'cancelled'].includes(normalizeStatus(selectedOrder.orderStatus)) && !selectedOrder.courierFeePaid) return null;
+                        const riderCollects = selectedOrder.courierFeeOnDelivery ?? true;
+                        const dispatched = ['for_delivery', 'shipped', 'ready_for_pickup', 'out_for_delivery'].includes(normalizeStatus(selectedOrder.orderStatus));
+                        const note = cf <= 0
+                          ? 'We will send the exact fee in chat'
+                          : selectedOrder.courierFeePaid
+                            ? (String(selectedOrder.courierFeePaidMethod || '') === 'rider_cash'
+                                ? 'Paid to the rider in cash'
+                                : 'Received - nothing to pay the rider')
+                            : !riderCollects
+                              ? 'Pay it below before we ship'
+                              : dispatched
+                                ? 'Have it ready in cash for the rider'
+                                : 'Pay it below, or hand it to the rider on arrival';
+                        return (
+                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px' }}>
+                            <span style={{ fontSize: '12px', color: 'var(--gray)' }}>Delivery fee <span style={{ fontSize: '10.5px' }}>(not in total)</span></span>
+                            <span style={{ fontSize: '12px', color: '#d4a843', textAlign: 'right' }}>
+                              {cf > 0 ? formatPeso(cf) : 'To follow'}
+                              <span style={{ display: 'block', fontSize: '10.5px', color: 'var(--gray)', fontWeight: 400, marginTop: '1px' }}>{note}</span>
+                            </span>
+                          </div>
+                        );
+                      })()}
                     </div>
 
                     {/* Pay Design Fee - the FIRST payment on a request-design order, collected
@@ -1787,10 +2132,69 @@ export default function OrdersHistoryPage() {
                       </div>
                     )}
 
+                    {/* Out for delivery with the fee still owed to a rider who collects: the online
+                        option has closed, so say plainly what happens instead. Every status test here
+                        goes through normalizeStatus - the admin stores 'For Delivery', and an exact
+                        'for_delivery' kept the online fee payment open after the parcel had left. */}
+                    {Number(selectedOrder.courierFee) > 0
+                      && !selectedOrder.courierFeePaid
+                      && selectedOrder.paymentMethod !== 'cod'
+                      && (selectedOrder.courierFeeOnDelivery ?? true)
+                      && ['for_delivery', 'shipped', 'ready_for_pickup', 'out_for_delivery'].includes(normalizeStatus(selectedOrder.orderStatus))
+                      && (
+                      <div style={{ padding: '0 18px 18px' }}>
+                        <div style={{ padding: '10px 12px', background: 'var(--dark)', borderRadius: '8px', border: '1px solid rgba(212,168,67,0.35)', fontSize: '0.78rem', color: 'var(--gray-light)', lineHeight: 1.55 }}>
+                          <strong style={{ color: 'var(--white)' }}>Your order is on its way.</strong>{' '}
+                          Have {formatPeso(selectedOrder.courierFee)} ready in cash for the rider - that is the delivery fee.
+                        </div>
+                      </div>
+                    )}
+
+                    {/* The courier's fee, payable on its own.
+
+                        It is not part of the order total and never has been - the customer hands it
+                        to the rider. That works, but it means the shop cannot know it is covered
+                        until the parcel is already out, and a customer who would rather settle it
+                        now had to ask in chat and wait for someone to answer.
+
+                        Shown whenever a fee has been set and not yet received. Cash to the rider
+                        stays available; this is an option, not a replacement. COD is excluded
+                        because there the fee is already bundled into what the rider collects. */}
+                    {Number(selectedOrder.courierFee) > 0
+                      && !selectedOrder.courierFeePaid
+                      && selectedOrder.paymentStatus === 'paid'
+                      && selectedOrder.paymentMethod !== 'cod'
+                      && !['cancelled', 'delivered', 'completed'].includes(normalizeStatus(selectedOrder.orderStatus))
+                      && !(['for_delivery', 'shipped', 'ready_for_pickup', 'out_for_delivery'].includes(normalizeStatus(selectedOrder.orderStatus))
+                        && (selectedOrder.courierFeeOnDelivery ?? true))
+                      && (
+                      <div style={{ padding: '0 18px 18px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '2px' }}>Pay Delivery Fee</div>
+                        <div style={{ padding: '10px 12px', background: 'var(--dark)', borderRadius: '8px', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '4px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', fontWeight: 700 }}>
+                            <span style={{ color: 'var(--white)' }}>Delivery fee</span>
+                            <span style={{ color: '#d4a843' }}>{formatPeso(selectedOrder.courierFee)}</span>
+                          </div>
+                          <span style={{ fontSize: '0.72rem', color: 'var(--gray)', lineHeight: 1.5 }}>
+                            {(selectedOrder.courierFeeOnDelivery ?? true)
+                              ? <>The courier&apos;s charge, separate from your order total. <strong style={{ color: 'var(--white)' }}>Pay it here before we send your order out</strong> and there is nothing to hand the rider. If you don&apos;t, have {formatPeso(selectedOrder.courierFee)} ready in cash when it arrives.</>
+                              : <>This one ships by parcel courier, so the delivery is <strong style={{ color: 'var(--white)' }}>paid here before we send it out</strong> - the courier cannot take cash at the door.</>}
+                          </span>
+                        </div>
+                        <PaymentPicker
+                          methods={['gcash', 'paymaya', 'card'].filter(m => payEnabled[m] !== false)}
+                          amount={Number(selectedOrder.courierFee)}
+                          onPay={(m, c) => handlePayNow(m, c, { courierFeeOnly: true })}
+                          loading={payNowLoading}
+                          error={payNowError}
+                        />
+                      </div>
+                    )}
+
                     {/* The order is finished and waiting on money. The bell notification is easy to
                         miss, and the Pay Now block below says what to press without saying why it
                         matters now, so the reason sits right above it. */}
-                    {['ready_for_delivery', 'for_delivery'].includes(String(selectedOrder.orderStatus))
+                    {['ready_for_delivery', 'for_delivery'].includes(normalizeStatus(selectedOrder.orderStatus))
                       && selectedOrder.paymentStatus !== 'paid'
                       && selectedOrder.paymentMethod !== 'cod'
                       && remainingDue(selectedOrder) > 0 && (
@@ -1813,7 +2217,10 @@ export default function OrdersHistoryPage() {
                       && !['delivered','Delivered','cancelled','Cancelled','returned','Returned'].includes(selectedOrder.orderStatus)
                       && (selectedOrder.orderStatus === 'awaiting_payment'
                         || selectedOrder.paymentStatus === 'partial'
-                        || (selectedOrder.orderStatus === 'Pending' && selectedOrder.paymentMethod !== 'cod'))
+                        // Compared through normalizeStatus: the cart checkout stores canonical 'pending',
+                        // and an exact match on 'Pending' hid Pay Now from every online order whose
+                        // payment failed - the list filed it under To Pay with no way to pay.
+                        || (normalizeStatus(selectedOrder.orderStatus) === 'pending' && selectedOrder.paymentMethod !== 'cod'))
                       && (
                       <div style={{ padding: '0 18px 18px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                         <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '2px' }}>
@@ -1832,6 +2239,18 @@ export default function OrdersHistoryPage() {
                           </div>
                         )}
 
+                        {/* What cancelling costs, said where the money is committed rather than
+                            only in a clause ticked weeks ago on the product page. Deliberately
+                            derived from the deposit already shown above - the deposit IS the cap. */}
+                        <div style={{ padding: '8px 11px', borderRadius: '8px', background: 'var(--dark)', border: '1px solid var(--border)', fontSize: '0.7rem', color: 'var(--gray)', lineHeight: 1.55 }}>
+                            <strong style={{ color: 'var(--white)' }}>If you cancel later:</strong>{' '}
+                            before we start making it, everything comes back except the downpayment.
+                            Once production has started we keep the downpayment and nothing more -
+                            anything you paid above it is refunded, and you are never billed extra
+                            for materials. If <em>we</em> cancel, or we get your order wrong, you get
+                            all of it back.
+                        </div>
+
                         {/* Breakdown for awaiting_payment */}
                         {selectedOrder.orderStatus === 'awaiting_payment' && (
                           <div style={{ padding: '10px 12px', background: 'var(--dark)', borderRadius: '8px', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '5px', marginBottom: '4px' }}>
@@ -1839,10 +2258,33 @@ export default function OrdersHistoryPage() {
                               <span style={{ color: 'var(--gray)' }}>Items subtotal</span>
                               <span style={{ color: 'var(--white)' }}>{formatPeso((selectedOrder.items || []).reduce((s, it) => s + (it.lineTotal || (it.unitPrice || 0) * (it.qty || 1)), 0))}</span>
                             </div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem' }}>
-                              <span style={{ color: 'var(--gray)' }}>Shipping</span>
-                              <span style={{ color: 'var(--white)' }}>{formatPeso(selectedOrder.shippingFee ?? 0)}</span>
-                            </div>
+                            {/* Every charge inside Total Due is listed above it, so the lines add up. The design
+                                fee used to be subtracted below without ever being listed, and the courier fee was
+                                listed without being in the total - the figures matched neither way. */}
+                            {Number(selectedOrder.courierFee ?? 0) <= 0 && Number(selectedOrder.shippingFee ?? 0) > 0 && (
+                              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem' }}>
+                                <span style={{ color: 'var(--gray)' }}>Shipping</span>
+                                <span style={{ color: 'var(--white)' }}>{formatPeso(selectedOrder.shippingFee)}</span>
+                              </div>
+                            )}
+                            {Number(selectedOrder.designFeePaidAmount ?? selectedOrder.designFee ?? 0) > 0 && (
+                              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem' }}>
+                                <span style={{ color: 'var(--gray)' }}>Design fee</span>
+                                <span style={{ color: 'var(--white)' }}>{formatPeso(Number(selectedOrder.designFeePaidAmount ?? selectedOrder.designFee ?? 0))}</span>
+                              </div>
+                            )}
+                            {selectedOrder.isRush && Number(selectedOrder.rushFee) > 0 && (
+                              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem' }}>
+                                <span style={{ color: 'var(--gray)' }}>Rush fee</span>
+                                <span style={{ color: 'var(--white)' }}>{formatPeso(selectedOrder.rushFee)}</span>
+                              </div>
+                            )}
+                            {selectedOrder.discountAmount > 0 && (
+                              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem' }}>
+                                <span style={{ color: 'var(--gray)' }}>Discount</span>
+                                <span style={{ color: '#22c55e' }}>-{formatPeso(selectedOrder.discountAmount)}</span>
+                              </div>
+                            )}
                             {feeCredit > 0 && (
                               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem' }}>
                                 <span style={{ color: '#22c55e' }}>Design fee paid</span>
@@ -1863,11 +2305,36 @@ export default function OrdersHistoryPage() {
                                 {formatPeso(selectedOrder.downPayment > 0 ? selectedOrder.balance : Math.max(0, (selectedOrder.totalAmount || 0) - feeCredit))}
                               </span>
                             </div>
+                            {(() => {
+                              const cf = Number(selectedOrder.courierFee ?? 0);
+                              const sf = Number(selectedOrder.shippingFee ?? 0);
+                              if (cf <= 0 && sf > 0) return null;
+                              const riderCollects = selectedOrder.courierFeeOnDelivery ?? true;
+                              const note = cf <= 0
+                                ? 'We will send the exact fee in chat'
+                                : selectedOrder.courierFeePaid
+                                  ? 'Already paid'
+                                  : riderCollects
+                                    ? 'Add it with the checkbox below, or hand it to the rider'
+                                    : 'Pay it with this payment - a parcel courier cannot take cash';
+                              return (
+                                <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', fontSize: '0.75rem', marginTop: '2px' }}>
+                                  <span style={{ color: 'var(--gray)' }}>Delivery fee <span style={{ fontSize: '0.68rem' }}>(not in total)</span></span>
+                                  <span style={{ color: '#d4a843', textAlign: 'right' }}>
+                                    {cf > 0 ? formatPeso(cf) : 'To follow'}
+                                    <span style={{ display: 'block', fontSize: '0.68rem', color: 'var(--gray)', marginTop: '1px' }}>{note}</span>
+                                  </span>
+                                </div>
+                              );
+                            })()}
                           </div>
                         )}
 
-                        {/* DP / Full toggle — only if no DP paid yet and order supports DP */}
-                        {selectedOrder.orderStatus === 'awaiting_payment' && !selectedOrder.downPayment && selectedOrder.requiresDownpayment && selectedOrder.downpaymentPercent > 0 && (() => {
+                        {/* DP / Full toggle - only if no DP paid yet and order supports DP */}
+                        {/* A cart whose lines carry different deposit rules has no single
+                            percentage to offer - downpaymentMixed says so, and what is left is
+                            simply what is left. */}
+                        {selectedOrder.orderStatus === 'awaiting_payment' && !selectedOrder.downPayment && selectedOrder.requiresDownpayment && !selectedOrder.downpaymentMixed && selectedOrder.downpaymentPercent > 0 && (() => {
                           const owed = Math.max(0, (selectedOrder.totalAmount || 0) - feeCredit);
                           const dpAmt = Math.round(owed * selectedOrder.downpaymentPercent / 100 * 100) / 100;
                           return (
@@ -1896,17 +2363,52 @@ export default function OrdersHistoryPage() {
                           const balanceAmt = selectedOrder.balance != null && selectedOrder.balance !== ''
                             ? Number(selectedOrder.balance)
                             : Math.max(0, (selectedOrder.totalAmount || 0) - (selectedOrder.downPayment || 0));
-                          const chargeAmount = isUnpaidFirst
+                          const orderAmount = isUnpaidFirst
                             ? ((selectedOrder.requiresDownpayment && selectedOrder.downpaymentPercent > 0 && !payFullToggle) ? dpAmt : owed)
                             : balanceAmt;
+                          // The courier fee is usually set before the balance is settled, so
+                          // offering it here is what keeps this to one payment for one order.
+                          const courierDue = Number(selectedOrder.courierFee ?? 0);
+                          const canRide = courierDue > 0
+                            && !selectedOrder.courierFeePaid
+                            && selectedOrder.paymentMethod !== 'cod';
+                          // A parcel courier is prepaid at the branch - there is no rider to hand
+                          // it to, so declining is not one of the choices on offer.
+                          const riderCollects = selectedOrder.courierFeeOnDelivery ?? true;
+                          const withCourier = canRide && (includeCourier || !riderCollects);
+                          const chargeAmount = orderAmount + (withCourier ? courierDue : 0);
                           return (
+                            <>
+                            {canRide && (
+                              <label style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', padding: '9px 11px', marginBottom: '8px', background: 'var(--dark)', border: `1px solid ${withCourier ? '#d4a843' : 'var(--border)'}`, borderRadius: '8px', cursor: riderCollects ? 'pointer' : 'default' }}>
+                                <input type="checkbox" checked={withCourier} disabled={!riderCollects}
+                                  onChange={(e) => setIncludeCourier(e.target.checked)}
+                                  style={{ accentColor: '#d4a843', marginTop: '2px', cursor: riderCollects ? 'pointer' : 'default' }} />
+                                <span style={{ fontSize: '0.74rem', lineHeight: 1.5, color: 'var(--gray)' }}>
+                                  <span style={{ color: 'var(--white)', fontWeight: 700 }}>
+                                    Include the {formatPeso(courierDue)} delivery fee
+                                  </span>
+                                  <span style={{ display: 'block', marginTop: '1px' }}>
+                                    {riderCollects
+                                      ? 'Settle it now and there is nothing to hand the rider. Untick to pay them in cash on arrival instead.'
+                                      : 'This one ships by parcel courier, so it cannot be paid at your door. It goes out once this clears.'}
+                                  </span>
+                                </span>
+                              </label>
+                            )}
                             <PaymentPicker
                               methods={['gcash', 'paymaya', 'card'].filter(m => payEnabled[m] !== false)}
                               amount={chargeAmount}
-                              onPay={handlePayNow}
+                              onPay={(m, c) => handlePayNow(m, c, withCourier ? { includeCourierFee: true } : {})}
                               loading={payNowLoading}
                               error={payNowError}
                             />
+                            {canRide && !withCourier && (
+                              <p style={{ margin: '6px 2px 0', fontSize: '0.7rem', color: 'var(--gray)', lineHeight: 1.5 }}>
+                                You will hand {formatPeso(courierDue)} to the rider in cash when your order arrives.
+                              </p>
+                            )}
+                            </>
                           );
                         })()}
                       </div>
@@ -1917,7 +2419,7 @@ export default function OrdersHistoryPage() {
             </div>
 
             {/* Modal footer */}
-            <div style={{ padding: '14px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap', background: 'transparent', flexShrink: 0 }}>
+            <div className="oh-modal-footer" style={{ padding: '14px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap', background: 'transparent', flexShrink: 0 }}>
               <div>
                 {reorderMsg && <span style={{ fontSize: '0.8rem', color: reorderMsg.includes('Failed') ? '#ef4444' : '#22c55e', fontWeight: 600 }}>{reorderMsg}</span>}
               </div>
@@ -1935,23 +2437,24 @@ export default function OrdersHistoryPage() {
                     Cancel Order
                   </button>
                 )}
-                {!detailLoading && !detailError && !selectedOrder?.isCustomOrder && selectedOrder?.orderStatus === 'Delivered' && selectedOrder?.items?.length > 0 && (
+                {!detailLoading && !detailError && !selectedOrder?.isCustomOrder && normalizeStatus(selectedOrder?.orderStatus) === 'delivered' && selectedOrder?.items?.length > 0 && (
                   <button onClick={handleReorder} disabled={reorderLoading} style={{ padding: '9px 20px', borderRadius: '8px', border: 'none', background: '#d4a843', color: '#000', fontSize: '0.875rem', fontWeight: 700, cursor: reorderLoading ? 'not-allowed' : 'pointer', opacity: reorderLoading ? 0.7 : 1, display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.39"/></svg>
                     {reorderLoading ? 'Adding...' : 'Reorder'}
                   </button>
                 )}
-                {/* View Receipt - re-accessible anytime (payment-success renders the receipt from the
-                    order id: shows the downpayment receipt while partial, the fully-paid one once paid). */}
+                {/* Opens here rather than in a new tab. It used to link to payment-success?view=1 -
+                    a URL announcing a payment succeeded, on an order where only a design fee had
+                    been taken. */}
                 {!detailLoading && !detailError && (['partial', 'paid'].includes(selectedOrder?.paymentStatus) || selectedOrder?.designFeePaid) && (
-                  <a
-                    href={`/shop/payment-success?id=${selectedOrder?._id ?? selectedOrder?.id}&view=1`}
-                    target="_blank" rel="noopener noreferrer"
-                    style={{ padding: '9px 18px', borderRadius: '8px', border: '1px solid var(--gold)', background: 'transparent', color: 'var(--gold)', fontSize: '0.875rem', fontWeight: 700, cursor: 'pointer', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                  <button
+                    type="button"
+                    onClick={() => setReceiptOpen(true)}
+                    style={{ padding: '9px 18px', borderRadius: '8px', border: '1px solid var(--gold)', background: 'transparent', color: 'var(--gold)', fontSize: '0.875rem', fontWeight: 700, cursor: 'pointer', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '6px', fontFamily: 'inherit' }}
                   >
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/></svg>
                     View Receipt
-                  </a>
+                  </button>
                 )}
                 <button onClick={closeModal} style={{ padding: '9px 20px', borderRadius: '8px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--gray)', fontSize: '0.875rem', cursor: 'pointer' }}>
                   Close
@@ -2053,5 +2556,6 @@ export default function OrdersHistoryPage() {
         </div>
       )}
     </div>
+    </>
   );
 }

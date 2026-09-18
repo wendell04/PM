@@ -7,7 +7,7 @@ import { PasswordGuide } from '@/components/auth/PasswordGuide';
 import PhoneInput, { isValidPhone } from '@/components/auth/PhoneInput';
 import { DEFAULT_REGISTRATION_TERMS } from '@/lib/registrationTerms';
 // The .auth-* modal/field styles live here. Importing them from the shared form means every host
-// (landing, shop, product pages) renders an identical modal — the shop layout only loaded shop.css,
+// (landing, shop, product pages) renders an identical modal - the shop layout only loaded shop.css,
 // which has no auth styles, so its modal looked off. This file is entirely class-scoped (no global
 // element selectors), so it cannot bleed into shop layouts.
 import '@/components/custom-styles.css';
@@ -59,10 +59,10 @@ const EMPTY = {
 };
 
 /**
- * Shared register form — the single source of truth used by BOTH the landing page and the shop
+ * Shared register form - the single source of truth used by BOTH the landing page and the shop
  * layout, so the sign-up experience (fields, CAPTCHA, password rules, T&C) can never drift apart.
  *
- * onSuccess(user, token, rememberMe, requires2fa) — the caller decides what happens next
+ * onSuccess(user, token, rememberMe, requires2fa) - the caller decides what happens next
  * (e.g. open its own email-verification step).
  */
 export default function RegisterForm({ onSuccess, onSwitchToLogin, theme = 'light' }) {
@@ -156,7 +156,7 @@ export default function RegisterForm({ onSuccess, onSwitchToLogin, theme = 'ligh
   };
 
   const handleChange = (field, value) => {
-    // Names: letters (incl. accented / ñ / José), spaces, hyphens, apostrophes only — no digits
+    // Names: letters (incl. accented / ñ / José), spaces, hyphens, apostrophes only - no digits
     // or other symbols; capped at 50 chars so an absurdly long value can't be typed or pasted.
     if (['firstName', 'lastName'].includes(field)) value = value.replace(/[^\p{L}\s'-]/gu, '').slice(0, 50);
     if (field === 'middleInitial') value = value.replace(/[^a-zA-Z]/g, '').toUpperCase().slice(0, 2);
@@ -218,7 +218,7 @@ export default function RegisterForm({ onSuccess, onSwitchToLogin, theme = 'ligh
       setTAndCOpen(false);
     } finally {
       setLoading(false);
-      // Turnstile tokens are single-use — reset so a retry gets a fresh one.
+      // Turnstile tokens are single-use - reset so a retry gets a fresh one.
       turnstileRef.current?.reset();
     }
   };
@@ -238,7 +238,7 @@ export default function RegisterForm({ onSuccess, onSwitchToLogin, theme = 'ligh
               {errors.firstName && <span className="error-message">{errors.firstName}</span>}
             </div>
             <div className="auth-field">
-              <label>Middle Initial</label>
+              <label><span className="auth-label-long">Middle Initial</span><span className="auth-label-short">M.I.</span></label>
               <input type="text" placeholder="D." value={formData.middleInitial} maxLength="2"
                 onChange={e => handleChange('middleInitial', e.target.value.toUpperCase())}
                 className={errors.middleInitial ? 'error' : ''} />
@@ -275,7 +275,7 @@ export default function RegisterForm({ onSuccess, onSwitchToLogin, theme = 'ligh
           <div className="auth-fields-grid">
             <div className="auth-field">
               <label>Password</label>
-              {/* Anchor the popover to the INPUT, not the grid cell — the cell stretches to match the
+              {/* Anchor the popover to the INPUT, not the grid cell - the cell stretches to match the
                   taller confirm-password column, which would leave a gap under the field. */}
               <div style={{ position: 'relative' }}>
                 <div className="auth-input-wrap">
@@ -362,13 +362,15 @@ export default function RegisterForm({ onSuccess, onSwitchToLogin, theme = 'ligh
                 I have read and agree to the Terms and Conditions
               </label>
             </div>
-            <div style={{ padding: '0 1.5rem 1.25rem', display: 'flex', gap: '0.75rem' }}>
-              <button className="btn-auth-submit" style={{ flex: 1 }}
+            {/* One button. The X above and the backdrop both already close this, so a Cancel
+                was a third way out of a two-line decision, competing with the only thing anyone
+                opened this modal to do. */}
+            <div style={{ padding: '0 1.5rem 1.25rem' }}>
+              <button className="btn-auth-submit" style={{ width: '100%' }}
                 disabled={!formData.agreeToTerms || loading}
                 onClick={submitRegistration}>
                 {loading ? 'Creating Account...' : 'Create Account'}
               </button>
-              <button className="btn-secondary" style={{ flex: 1 }} onClick={() => setTAndCOpen(false)}>Cancel</button>
             </div>
           </div>
         </div>

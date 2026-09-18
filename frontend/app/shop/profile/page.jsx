@@ -7,6 +7,7 @@ import {
   updateTwoFactorMethod,
 } from "@/lib/authApi";
 import { fetchWithTimeout } from "@/lib/fetchWithTimeout";
+import { normalizeStatus } from "@/lib/orderStatus";
 import dynamic from "next/dynamic";
 import Image from "next/image";
 import Link from "next/link";
@@ -17,6 +18,29 @@ import AddressBook from "../../../components/profile/AddressBook";
 import ImageCropper from "../../../components/ImageCropper";
 import { useAuth } from "../../../contexts/AuthContext";
 import "../shop.css";
+
+// A session is shown to the person who owns it, and "Mozilla/5.0 (Linux; Android 10; K)
+// AppleWebKit/537.36..." tells them nothing they can act on - it also wraps into a wall of text on
+// a phone. They recognise a browser and a device; that is enough to spot one that is not theirs.
+function deviceLabel(ua) {
+  const s = String(ua || '');
+  if (!s || !/[)/]/.test(s)) return s || 'Web session';   // already a friendly name - leave it
+  const browser = /Edg\//i.test(s) ? 'Edge'
+    : /OPR\/|Opera/i.test(s) ? 'Opera'
+    : /Chrome\//i.test(s) ? 'Chrome'
+    : /Firefox\//i.test(s) ? 'Firefox'
+    : /Safari\//i.test(s) ? 'Safari'
+    : 'Browser';
+  const device = /iPhone/i.test(s) ? 'iPhone'
+    : /iPad/i.test(s) ? 'iPad'
+    : /Android/i.test(s) ? 'Android'
+    : /Windows/i.test(s) ? 'Windows'
+    : /Mac OS X|Macintosh/i.test(s) ? 'Mac'
+    : /Linux/i.test(s) ? 'Linux'
+    : 'this device';
+  return `${browser} on ${device}`;
+}
+import { CustomSelect } from '@/app/dashboard/business/inventory-v2/shared';
 
 const ReadOnlyPinMap = dynamic(
   () => import("@/components/maps/ReadOnlyPinMap"),
@@ -195,7 +219,7 @@ function TwoFactorSection({ token, twoFactorEnabled, setTwoFactorEnabled }) {
   };
 
   return (
-    <div style={{ border: "1px solid var(--border)", borderRadius: "12px", overflow: "hidden" }}>
+    <div className="pf-group" style={{ border: "1px solid var(--border)", borderRadius: "12px", overflow: "hidden" }}>
       <div style={{ padding: "0.875rem 1.25rem", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: "0.5rem" }}>
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gray-light)" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
         <span style={{ fontSize: "0.8125rem", fontWeight: 600, color: "var(--white)" }}>Two-Factor Authentication</span>
@@ -298,15 +322,15 @@ function TwoFactorSection({ token, twoFactorEnabled, setTwoFactorEnabled }) {
         )}
       </div>
 
-      {/* ── Verification methods — shown when 2FA is enabled ── */}
+      {/* ── Verification methods - shown when 2FA is enabled ── */}
       {twoFactorEnabled && totpStep !== "setup" && totpStep !== "confirm" && totpStep !== "remove" && (
         <div style={{ marginTop: "1.25rem", display: "flex", flexDirection: "column", gap: "0.75rem" }}>
           <p style={{ margin: 0, fontSize: "0.78rem", color: "var(--gray)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>
             Verification Methods
           </p>
 
-          {/* Email OTP — always available */}
-          <div style={{
+          {/* Email OTP - always available */}
+          <div className="pf-method" style={{
             display: "flex", alignItems: "center", gap: "0.875rem",
             padding: "0.875rem 1rem", borderRadius: "10px",
             border: "1.5px solid rgba(96,165,250,0.35)",
@@ -331,8 +355,8 @@ function TwoFactorSection({ token, twoFactorEnabled, setTwoFactorEnabled }) {
             </span>
           </div>
 
-          {/* Authenticator App — setup or active */}
-          <div style={{
+          {/* Authenticator App - setup or active */}
+          <div className="pf-method" style={{
             display: "flex", alignItems: "center", gap: "0.875rem",
             padding: "0.875rem 1rem", borderRadius: "10px",
             border: `1.5px solid ${totpConfirmed ? "rgba(74,222,128,0.45)" : "rgba(255,255,255,0.09)"}`,
@@ -385,7 +409,7 @@ function TwoFactorSection({ token, twoFactorEnabled, setTwoFactorEnabled }) {
         </div>
       )}
 
-      {/* ── TOTP Setup — Show QR code ── */}
+      {/* ── TOTP Setup - Show QR code ── */}
       {totpStep === "setup" && (
         <div style={{ marginTop: "1.25rem", ...s.card }}>
           <h4
@@ -463,7 +487,7 @@ function TwoFactorSection({ token, twoFactorEnabled, setTwoFactorEnabled }) {
         </div>
       )}
 
-      {/* ── TOTP Confirm — Enter first code ── */}
+      {/* ── TOTP Confirm - Enter first code ── */}
       {totpStep === "confirm" && (
         <div style={{ marginTop: "1.25rem", ...s.card }}>
           <h4
@@ -542,7 +566,7 @@ function TwoFactorSection({ token, twoFactorEnabled, setTwoFactorEnabled }) {
         </div>
       )}
 
-      {/* ── Remove TOTP — password confirmation ── */}
+      {/* ── Remove TOTP - password confirmation ── */}
       {totpStep === "remove" && (
         <div style={{ marginTop: "1.25rem", ...s.card }}>
           <h4
@@ -1232,22 +1256,40 @@ export default function CustomerProfilePage() {
           }
           .profile-aside-divider { margin:0.85rem 0 !important; }
 
-          /* Nav becomes a swipeable pill strip */
-          .profile-nav {
-            flex-direction:row !important;
-            overflow-x:auto;
-            gap:0.5rem !important;
-            padding-bottom:4px;
-            scrollbar-width:none;
-            -webkit-overflow-scrolling:touch;
+          /* Header: avatar beside the name instead of stacked above it. Stacked, the header filled
+             the first screen of EVERY tab, and the tab you opened started below the fold. */
+          .profile-aside {
+            display:grid !important;
+            grid-template-columns:64px minmax(0,1fr);
+            column-gap:0.9rem;
+            align-items:center;
           }
-          .profile-nav::-webkit-scrollbar { display:none; }
+          .profile-avatar { grid-row:1 / span 2; width:64px !important; height:64px !important; margin:0 !important; }
+          .profile-avatar img, .profile-avatar > div:first-child {
+            width:64px !important; height:64px !important; min-width:64px !important; font-size:1.5rem !important;
+          }
+          .profile-identity { grid-column:2; text-align:left !important; margin:0 !important; overflow-wrap:anywhere; }
+          .profile-identity > div:nth-child(2) { font-size:0.72rem !important; }
+          .profile-meta { grid-column:2; flex-direction:row !important; flex-wrap:wrap; align-items:center !important; gap:8px !important; margin-top:4px !important; }
+          .profile-aside-divider, .profile-nav { grid-column:1 / -1; }
+
+          /* All five tabs on screen at once. As a swipe strip only two and a half showed, the rest
+             were cut off with nothing saying they existed, and the tab you were on could be the
+             half-hidden one. */
+          .profile-nav {
+            display:grid !important;
+            grid-template-columns:repeat(5, minmax(0,1fr));
+            gap:4px !important;
+          }
           .profile-nav .profile-nav-item {
-            flex-shrink:0 !important;
-            white-space:nowrap;
-            background:rgba(255,255,255,0.05);
-            padding:0.5rem 0.9rem !important;
-            font-size:0.82rem !important;
+            flex-direction:column !important;
+            justify-content:center !important;
+            text-align:center !important;
+            gap:4px !important;
+            padding:0.55rem 0.15rem !important;
+            font-size:0.64rem !important;
+            line-height:1.15;
+            min-width:0;
           }
         }
       `}</style>
@@ -1307,6 +1349,7 @@ export default function CustomerProfilePage() {
         >
           {/* Avatar */}
           <div
+            className="profile-avatar"
             style={{
               position: "relative",
               width: "80px",
@@ -1323,6 +1366,11 @@ export default function CustomerProfilePage() {
                 width={80}
                 height={80}
                 style={{
+                  // Stated in CSS as well as in the props: with only width/height attributes a
+                  // narrow column could shrink it, which is what happened on a phone.
+                  width: "80px",
+                  height: "80px",
+                  minWidth: "80px",
                   borderRadius: "50%",
                   objectFit: "cover",
                   display: "block",
@@ -1687,6 +1735,7 @@ export default function CustomerProfilePage() {
         {/* RIGHT: Tab Content */}
         <section style={{ flex: 1, minWidth: 0 }}>
           <div
+            className="profile-tab-card"
             style={{
               background: "var(--dark2)",
               border: "1px solid var(--border)",
@@ -1694,16 +1743,18 @@ export default function CustomerProfilePage() {
               padding: "2rem",
             }}
           >
-            {/* TAB 1: Overview — Customer Dashboard */}
+            {/* TAB 1: Overview - Customer Dashboard */}
             {activeTab === "overview" && (() => {
               const orders = Array.isArray(overviewOrders) ? overviewOrders : [];
-              const inProgressStatuses = ["Pending", "Confirmed", "Processing", "awaiting_production", "pending_design", "proof_sent", "revision_requested", "design_approved", "in_production", "In Production", "for_qc", "For QC", "ready_for_delivery", "for_delivery", "For Delivery", "For Pick-up"];
+              // Statuses are stored in mixed spellings ("Pending", "pending", "For Delivery"), so a
+              // fixed list missed some; anything not finished is in progress.
+              const isInProgress = (o) => !!o.orderStatus && !['delivered', 'cancelled', 'returned'].includes(normalizeStatus(o.orderStatus));
               const total = orders.length;
-              const inProgress = orders.filter(o => inProgressStatuses.includes(o.orderStatus)).length;
-              const delivered = orders.filter(o => o.orderStatus === "Delivered").length;
+              const inProgress = orders.filter(isInProgress).length;
+              const delivered = orders.filter(o => normalizeStatus(o.orderStatus) === 'delivered').length;
               const totalSpent = orders.filter(o => o.paymentStatus === "paid").reduce((s, o) => s + (parseFloat(o.totalAmount) || 0), 0);
               const needsDesignApproval = orders.filter(o => o.designStatus === "proof_sent" || o.designStatus === "pending_approval");
-              const paymentDue = orders.filter(o => inProgressStatuses.includes(o.orderStatus) && o.paymentStatus !== "paid" && parseFloat(o.balance || 0) > 0);
+              const paymentDue = orders.filter(o => isInProgress(o) && o.paymentStatus !== "paid" && parseFloat(o.balance || 0) > 0);
               const hasActions = needsDesignApproval.length > 0 || paymentDue.length > 0;
 
               const statusLabel = (status) => {
@@ -1783,7 +1834,19 @@ export default function CustomerProfilePage() {
               const completePct = Math.round((completenessItems.filter(c => c.done).length / completenessItems.length) * 100);
 
               // Active order tracker
-              const orderSteps = ["Pending", "Confirmed", "In Production", "For QC", "For Delivery", "Delivered"];
+              const activeOrder = orders.find(isInProgress);
+              // Does anything on THIS order have to be made? A scrunchie is picked off a shelf, so
+              // showing it "In Production" and "For QC" describes work that will never happen, and
+              // leaves the customer watching for stages the order can never reach. Same predicate
+              // the admin table and the order normalizer use.
+              const activeNeedsProduction = !!(activeOrder && (
+                activeOrder.isCustomOrder
+                || (activeOrder.items ?? []).some(i =>
+                     i?.isCustom || i?.isMadeToOrder || i?.designRequested || i?.designUrl || i?.designFiles?.length)
+              ));
+              const orderSteps = activeNeedsProduction
+                ? ["Pending", "Confirmed", "In Production", "For QC", "For Delivery", "Delivered"]
+                : ["Pending", "Confirmed", "For Delivery", "Delivered"];
               const statusToStep = {
                 awaiting_production: "In Production", in_production: "In Production",
                 pending_design: "Confirmed", proof_sent: "Confirmed",
@@ -1791,17 +1854,18 @@ export default function CustomerProfilePage() {
                 awaiting_payment: "Pending",
                 for_qc: "For QC", ready_for_delivery: "For Delivery", for_delivery: "For Delivery",
                 delivered: "Delivered", cancelled: "Delivered",
-                Processing: "In Production",
+                // Processing means "being made" only when there is something to make. On a
+                // ready-made order it is the shop confirming and packing it.
+                Processing: activeNeedsProduction ? "In Production" : "Confirmed",
               };
-              const activeOrder = orders.find(o => inProgressStatuses.includes(o.orderStatus));
               const activeStepIdx = activeOrder
                 ? orderSteps.indexOf(statusToStep[activeOrder.orderStatus] ?? activeOrder.orderStatus)
                 : -1;
 
               // Pending reviews (delivered + paid)
-              const pendingReviews = orders.filter(o => o.orderStatus === "Delivered" && o.paymentStatus === "paid");
+              const pendingReviews = orders.filter(o => normalizeStatus(o.orderStatus) === 'delivered' && o.paymentStatus === "paid");
 
-              // Voucher usage — derived from order data, no extra fetch needed
+              // Voucher usage - derived from order data, no extra fetch needed
               const voucherOrders = orders.filter(o => o.voucherCode && o.voucherCode.trim() !== "");
               const totalVoucherSavings = voucherOrders.reduce((s, o) => s + (parseFloat(o.discountAmount) || 0), 0);
               const uniqueVouchers = [...new Set(voucherOrders.map(o => o.voucherCode.trim().toUpperCase()))];
@@ -1841,12 +1905,14 @@ export default function CustomerProfilePage() {
                           )}
                         </div>
                       </div>
-                      {/* Account Completeness */}
-                      <div style={{ textAlign: "right", flexShrink: 0 }}>
+                      {/* Account Completeness. A right-aligned side column on desktop; on a phone it wraps
+                          under the name, where right alignment and an 80px bar read as a cut-off block
+                          (see .pf-setup in shop.css). */}
+                      <div className="pf-setup" style={{ textAlign: "right", flexShrink: 0 }}>
                         <div style={{ fontSize: "0.6rem", fontWeight: 700, color: "var(--gray)", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: "0.1rem" }}>Profile Setup</div>
                         <div style={{ fontSize: "0.62rem", color: "var(--gray)", opacity: 0.6, marginBottom: "0.35rem" }}>Photo · Phone · Address · 2FA</div>
                         <div style={{ fontSize: "1.25rem", fontWeight: 800, color: "var(--white)", letterSpacing: "-0.02em", marginBottom: "0.4rem" }}>{completePct}%</div>
-                        <div style={{ width: "80px", height: "4px", background: "rgba(255,255,255,0.08)", borderRadius: "2px", overflow: "hidden", marginLeft: "auto" }}>
+                        <div className="pf-setup-bar" style={{ width: "80px", height: "4px", background: "rgba(255,255,255,0.08)", borderRadius: "2px", overflow: "hidden", marginLeft: "auto" }}>
                           <div style={{ height: "100%", width: `${completePct}%`, background: completePct === 100 ? "#4ade80" : "var(--gold)", borderRadius: "2px", transition: "width 0.5s ease" }} />
                         </div>
                         {completePct < 100 && (
@@ -1856,7 +1922,7 @@ export default function CustomerProfilePage() {
                         )}
                       </div>
                     </div>
-                    {/* Completeness items — show only if incomplete */}
+                    {/* Completeness items - show only if incomplete */}
                     {completePct < 100 && (
                       <div style={{ marginTop: "1rem", paddingTop: "0.875rem", borderTop: "1px solid var(--border)", display: "flex", gap: "0.625rem", flexWrap: "wrap" }}>
                         {completenessItems.map((c, i) => (
@@ -1879,10 +1945,10 @@ export default function CustomerProfilePage() {
                   {/* ── Stats ── */}
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "0.75rem" }}>
                     {[
-                      { label: "Total Orders",  value: overviewOrdersLoading ? "—" : total },
-                      { label: "In Progress",   value: overviewOrdersLoading ? "—" : inProgress },
-                      { label: "Delivered",     value: overviewOrdersLoading ? "—" : delivered },
-                      { label: "Total Spent",   value: overviewOrdersLoading ? "—" : `₱${totalSpent.toLocaleString("en-PH", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` },
+                      { label: "Total Orders",  value: overviewOrdersLoading ? "-" : total },
+                      { label: "In Progress",   value: overviewOrdersLoading ? "-" : inProgress },
+                      { label: "Delivered",     value: overviewOrdersLoading ? "-" : delivered },
+                      { label: "Total Spent",   value: overviewOrdersLoading ? "-" : `₱${totalSpent.toLocaleString("en-PH", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` },
                     ].map((s, i) => (
                       <div key={i} style={{ background: "var(--dark)", border: "1px solid var(--border)", borderRadius: "10px", padding: "1.125rem 1.25rem" }}>
                         <div style={{ fontSize: "0.62rem", fontWeight: 700, color: "var(--gray)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "0.5rem" }}>{s.label}</div>
@@ -1942,7 +2008,7 @@ export default function CustomerProfilePage() {
                           <Link key={o.id ?? o._id} href="/shop/orders-history" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0.75rem 1rem", borderBottom: idx < needsDesignApproval.length - 1 || paymentDue.length > 0 ? "1px solid var(--border)" : "none", textDecoration: "none" }}>
                             <div style={{ minWidth: 0 }}>
                               <span style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--white)" }}>Order #{String(o.id ?? o._id).slice(-8).toUpperCase()}</span>
-                              <span style={{ fontSize: "0.72rem", color: "var(--gray)", display: "block", marginTop: "0.15rem" }}>Design proof sent — review and approve to proceed to production</span>
+                              <span style={{ fontSize: "0.72rem", color: "var(--gray)", display: "block", marginTop: "0.15rem" }}>Design proof sent - review and approve to proceed to production</span>
                             </div>
                             <span style={{ fontSize: "0.72rem", color: "var(--gold)", fontWeight: 600, flexShrink: 0, marginLeft: "1rem" }}>Review →</span>
                           </Link>
@@ -1972,7 +2038,7 @@ export default function CustomerProfilePage() {
                         <Link href="/shop/orders-history" style={{ fontSize: "0.72rem", color: "var(--gold)", textDecoration: "none", fontWeight: 600, whiteSpace: "nowrap", flexShrink: 0 }}>View details →</Link>
                       </div>
                       <div style={{ padding: "1.25rem 1rem" }}>
-                        {/* Step tracker — full wizard (tablet/desktop) */}
+                        {/* Step tracker - full wizard (tablet/desktop) */}
                         <div className="order-stepper-full" style={{ display: "flex", alignItems: "center", gap: 0, position: "relative" }}>
                           {orderSteps.map((step, i) => {
                             const isPast = i < activeStepIdx;
@@ -2000,7 +2066,7 @@ export default function CustomerProfilePage() {
                             );
                           })}
                         </div>
-                        {/* Step tracker — compact (mobile): status badge + progress bar */}
+                        {/* Step tracker - compact (mobile): status badge + progress bar */}
                         {(() => {
                           const st = statusStyle(activeOrder.orderStatus);
                           const stepNo = Math.max(1, activeStepIdx + 1);
@@ -2090,9 +2156,9 @@ export default function CustomerProfilePage() {
                       <div style={{ background: "var(--dark)", border: "1px solid var(--border)", borderRadius: "10px", overflow: "hidden" }}>
                         {orders.slice(0, 4).map((order, idx) => {
                           const sc = statusStyle(order.orderStatus);
-                          const date = order.createdAt ? new Date(order.createdAt).toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" }) : "—";
+                          const date = order.createdAt ? new Date(order.createdAt).toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" }) : "-";
                           const firstItem = order.items?.[0];
-                          const itemLabel = firstItem ? `${firstItem.productName || firstItem.name || "Item"}${order.items.length > 1 ? ` +${order.items.length - 1} more` : ""}` : "—";
+                          const itemLabel = firstItem ? `${firstItem.productName || firstItem.name || "Item"}${order.items.length > 1 ? ` +${order.items.length - 1} more` : ""}` : "-";
                           return (
                             <div key={order.id ?? order._id} style={{ display: "flex", alignItems: "center", gap: "0.75rem", padding: "0.875rem 1rem", borderBottom: idx < Math.min(orders.length, 4) - 1 ? "1px solid var(--border)" : "none" }}>
                               <div style={{ flex: 1, minWidth: 0 }}>
@@ -2121,14 +2187,14 @@ export default function CustomerProfilePage() {
                         <div style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--white)", marginBottom: "0.15rem" }}>
                           {pendingReviews.length === 1 ? "You have a delivered order" : `You have ${pendingReviews.length} delivered orders`}
                         </div>
-                        <div style={{ fontSize: "0.72rem", color: "var(--gray)" }}>Share your experience — your review helps other shoppers</div>
+                        <div style={{ fontSize: "0.72rem", color: "var(--gray)" }}>Share your experience - your review helps other shoppers</div>
                       </div>
                       <Link href="/shop/orders-history" style={{ fontSize: "0.72rem", color: "var(--gold)", textDecoration: "none", fontWeight: 600, flexShrink: 0, marginLeft: "1rem" }}>Leave a review →</Link>
                     </div>
                   )}
 
-                  {/* ── Quick Actions ── */}
-                  <div style={{ paddingTop: "0.5rem", borderTop: "1px solid var(--border)" }}>
+                  {/* ── Quick Actions ── (hidden on phones: the tab row at the top is the same set) */}
+                  <div className="pf-quick-actions" style={{ paddingTop: "0.5rem", borderTop: "1px solid var(--border)" }}>
                     <div style={{ fontSize: "0.62rem", fontWeight: 700, color: "var(--gray)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "0.75rem" }}>Quick Actions</div>
                     <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
                       <Link href="/shop" style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem", padding: "0.5rem 1rem", background: "var(--gold)", borderRadius: "8px", color: "#000", fontWeight: 700, fontSize: "0.78rem", textDecoration: "none" }}>
@@ -2150,6 +2216,27 @@ export default function CustomerProfilePage() {
                     </div>
                   </div>
 
+                  {/* Signing out lived only behind the avatar in the header, which on a phone is a
+                      small circle nobody thinks to press. The "You" tab is where a person goes to
+                      leave, so the way out is here too - full width, in the body of the tab rather
+                      than in Quick Actions, which is hidden on phones. The layout owns the actual
+                      logout (server-side token revoke, storage, other tabs, cart); this only asks. */}
+                  <button
+                    type="button"
+                    onClick={() => window.dispatchEvent(new Event('pmp:logout-request'))}
+                    style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem",
+                      width: "100%", marginTop: "1rem", padding: "0.8rem 1rem", background: "transparent",
+                      border: "1px solid rgba(239,68,68,0.35)", borderRadius: "10px", color: "#ef4444",
+                      fontWeight: 700, fontSize: "0.85rem", cursor: "pointer" }}>
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
+                    </svg>
+                    Log out
+                  </button>
+                  <p style={{ textAlign: "center", fontSize: "0.72rem", color: "var(--gray)", margin: "0.5rem 0 0" }}>
+                    Signs you out on this device only. Your orders and saved addresses stay.
+                  </p>
+
                 </div>
               );
             })()}
@@ -2158,8 +2245,8 @@ export default function CustomerProfilePage() {
             {activeTab === "personal" && (
               <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
                 {/* Tab header */}
-                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "1rem", paddingBottom: "1.25rem", borderBottom: "1px solid var(--border)" }}>
-                  <div>
+                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: "0.75rem 1rem", paddingBottom: "1.25rem", borderBottom: "1px solid var(--border)" }}>
+                  <div style={{ flex: "1 1 200px", minWidth: 0 }}>
                     <h2 style={{ margin: 0, fontSize: "1.1rem", fontWeight: 700, color: "var(--white)", letterSpacing: "-0.01em" }}>Personal Information</h2>
                     <p style={{ margin: "0.3rem 0 0", fontSize: "0.78rem", color: "var(--gray)" }}>Manage your name, contact details, and display information</p>
                   </div>
@@ -2190,7 +2277,7 @@ export default function CustomerProfilePage() {
                 {!isEditingProfile ? (
                   <>
                     {/* Name section */}
-                    <div style={{ border: "1px solid var(--border)", borderRadius: "12px", overflow: "hidden" }}>
+                    <div className="pf-group" style={{ border: "1px solid var(--border)", borderRadius: "12px", overflow: "hidden" }}>
                       <div style={{ padding: "0.75rem 1.25rem", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: "0.5rem" }}>
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gray-light)" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
                         <span style={{ fontSize: "0.8125rem", fontWeight: 600, color: "var(--white)" }}>Identity</span>
@@ -2209,16 +2296,16 @@ export default function CustomerProfilePage() {
                     </div>
 
                     {/* Contact section */}
-                    <div style={{ border: "1px solid var(--border)", borderRadius: "12px", overflow: "hidden" }}>
+                    <div className="pf-group" style={{ border: "1px solid var(--border)", borderRadius: "12px", overflow: "hidden" }}>
                       <div style={{ padding: "0.75rem 1.25rem", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: "0.5rem" }}>
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gray-light)" strokeWidth="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
                         <span style={{ fontSize: "0.8125rem", fontWeight: 600, color: "var(--white)" }}>Contact</span>
                       </div>
                       <div style={{ display: "flex", flexDirection: "column" }}>
                         <div style={{ padding: "1rem 1.25rem", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "1rem" }}>
-                          <div>
+                          <div style={{ minWidth: 0 }}>
                             <div style={{ fontSize: "0.68rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--gray)", marginBottom: "0.35rem" }}>Email Address</div>
-                            <div style={{ fontSize: "0.925rem", fontWeight: 500, color: "var(--white)" }}>{profileForm.email || "—"}</div>
+                            <div style={{ fontSize: "0.925rem", fontWeight: 500, color: "var(--white)", overflowWrap: "anywhere" }}>{profileForm.email || "-"}</div>
                           </div>
                           <span style={{ flexShrink: 0, fontSize: "0.65rem", fontWeight: 600, padding: "2px 8px", borderRadius: "999px", background: "rgba(255,255,255,0.05)", color: "var(--gray)", border: "1px solid var(--border)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Locked</span>
                         </div>
@@ -2238,7 +2325,7 @@ export default function CustomerProfilePage() {
                   </>
                 ) : (
                   /* Edit form */
-                  <div style={{ border: "1px solid var(--border)", borderRadius: "12px", overflow: "hidden" }}>
+                  <div className="pf-group" style={{ border: "1px solid var(--border)", borderRadius: "12px", overflow: "hidden" }}>
                     <div style={{ padding: "0.75rem 1.25rem", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: "0.5rem", background: "rgba(212,168,67,0.04)" }}>
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                       <span style={{ fontSize: "0.68rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--gray)" }}>Editing Profile</span>
@@ -2248,13 +2335,13 @@ export default function CustomerProfilePage() {
                         <label style={{ display: "block", fontSize: "0.72rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--gray)", marginBottom: "0.4rem" }}>
                           First Name <span style={{ color: "var(--red)" }}>*</span>
                         </label>
-                        <input type="text" value={profileForm.firstName} onChange={(e) => handleProfileChange("firstName", e.target.value)} style={{ width: "100%", padding: "0.625rem 0.75rem", background: "var(--dark)", border: "1px solid var(--border)", borderRadius: "8px", color: "var(--white)", fontSize: "0.875rem", boxSizing: "border-box" }} />
+                        <input type="text" maxLength={100} value={profileForm.firstName} onChange={(e) => handleProfileChange("firstName", e.target.value)} style={{ width: "100%", padding: "0.625rem 0.75rem", background: "var(--dark)", border: "1px solid var(--border)", borderRadius: "8px", color: "var(--white)", fontSize: "0.875rem", boxSizing: "border-box" }} />
                       </div>
                       <div>
                         <label style={{ display: "block", fontSize: "0.72rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--gray)", marginBottom: "0.4rem" }}>
                           Last Name <span style={{ color: "var(--red)" }}>*</span>
                         </label>
-                        <input type="text" value={profileForm.lastName} onChange={(e) => handleProfileChange("lastName", e.target.value)} style={{ width: "100%", padding: "0.625rem 0.75rem", background: "var(--dark)", border: "1px solid var(--border)", borderRadius: "8px", color: "var(--white)", fontSize: "0.875rem", boxSizing: "border-box" }} />
+                        <input type="text" maxLength={100} value={profileForm.lastName} onChange={(e) => handleProfileChange("lastName", e.target.value)} style={{ width: "100%", padding: "0.625rem 0.75rem", background: "var(--dark)", border: "1px solid var(--border)", borderRadius: "8px", color: "var(--white)", fontSize: "0.875rem", boxSizing: "border-box" }} />
                       </div>
                       <div>
                         <label style={{ display: "block", fontSize: "0.72rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--gray)", marginBottom: "0.4rem" }}>
@@ -2266,7 +2353,7 @@ export default function CustomerProfilePage() {
                         <label style={{ display: "block", fontSize: "0.72rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--gray)", marginBottom: "0.4rem" }}>
                           Phone Number <span style={{ color: "var(--red)" }}>*</span>
                         </label>
-                        <input type="text" value={profileForm.phoneNumber} onChange={(e) => handleProfileChange("phoneNumber", e.target.value)} placeholder="+639XXXXXXXXX" style={{ width: "100%", padding: "0.625rem 0.75rem", background: "var(--dark)", border: "1px solid var(--border)", borderRadius: "8px", color: "var(--white)", fontSize: "0.875rem", boxSizing: "border-box" }} />
+                        <input type="text" maxLength={20} value={profileForm.phoneNumber} onChange={(e) => handleProfileChange("phoneNumber", e.target.value)} placeholder="+639XXXXXXXXX" style={{ width: "100%", padding: "0.625rem 0.75rem", background: "var(--dark)", border: "1px solid var(--border)", borderRadius: "8px", color: "var(--white)", fontSize: "0.875rem", boxSizing: "border-box" }} />
                       </div>
                       <div style={{ gridColumn: "1 / -1", display: "flex", gap: "0.75rem", justifyContent: "flex-end", paddingTop: "0.25rem", borderTop: "1px solid var(--border)" }}>
                         <button onClick={handleCancelEdit} style={{ padding: "0.625rem 1.25rem", background: "transparent", border: "1px solid var(--border)", borderRadius: "8px", color: "var(--gray)", fontSize: "0.875rem", cursor: "pointer" }}>Cancel</button>
@@ -2290,7 +2377,7 @@ export default function CustomerProfilePage() {
                 </div>
 
                 {/* Password card */}
-                <div style={{ border: "1px solid var(--border)", borderRadius: "12px", overflow: "hidden" }}>
+                <div className="pf-group" style={{ border: "1px solid var(--border)", borderRadius: "12px", overflow: "hidden" }}>
                   <div style={{ padding: "0.75rem 1.25rem", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: "0.5rem" }}>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gray-light)" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
                     <span style={{ fontSize: "0.8125rem", fontWeight: 600, color: "var(--white)" }}>Change Password</span>
@@ -2795,10 +2882,10 @@ export default function CustomerProfilePage() {
                     with two headings. */}
                 <div style={{ border: "1px solid var(--border)", borderRadius: "12px", overflow: "hidden", marginBottom: "1.25rem" }}>
                   <div style={{ padding: "0.75rem 1.25rem", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "0.75rem" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                    <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: "0.25rem 0.5rem" }}>
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gray-light)" strokeWidth="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-                      <span style={{ fontSize: "0.8125rem", fontWeight: 600, color: "var(--white)" }}>Active Sessions</span>
-                      <span style={{ fontSize: "0.68rem", color: "var(--gray)" }}>— Devices currently logged in</span>
+                      <span style={{ fontSize: "0.8125rem", fontWeight: 600, color: "var(--white)", whiteSpace: "nowrap" }}>Active Sessions</span>
+                      <span style={{ fontSize: "0.68rem", color: "var(--gray)" }}>- Devices currently logged in</span>
                     </div>
                     <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
                       {sessions.filter((s) => !s.is_current).length > 0 && (
@@ -2928,6 +3015,7 @@ export default function CustomerProfilePage() {
                           {sessions.map((session) => (
                             <div
                               key={session.id}
+                              className="pf-split"
                               style={{
                                 display: "flex",
                                 alignItems: "center",
@@ -3009,10 +3097,9 @@ export default function CustomerProfilePage() {
                                         fontSize: "0.875rem",
                                         fontWeight: 600,
                                         color: "var(--white)",
-                                        textTransform: "capitalize",
                                       }}
                                     >
-                                      {session.name || "Web Session"}
+                                      {deviceLabel(session.name)}
                                     </span>
                                     {session.is_current && (
                                       <span
@@ -3095,10 +3182,10 @@ export default function CustomerProfilePage() {
               />
             )}
 
-            {/* Delete Account — Danger Zone */}
+            {/* Delete Account - Danger Zone */}
             {activeTab === "security" && (
               <div style={{ maxWidth: '500px', marginTop: '2rem' }}>
-                <div style={{
+                <div className="pf-split" style={{
                   border: '1px solid rgba(239,68,68,0.3)',
                   borderRadius: '10px',
                   padding: '1rem 1.25rem',
@@ -3183,7 +3270,7 @@ export default function CustomerProfilePage() {
                   </div>
 
                   <div style={{ padding: '1.25rem 1.5rem', maxHeight: '80vh', overflowY: 'auto' }}>
-                    {/* What happens — two columns */}
+                    {/* What happens - two columns */}
                     <div className="profile-info-2col" style={{ display: 'grid', gap: '0.625rem', marginBottom: '1.25rem' }}>
                       <div style={{ padding: '0.75rem', background: 'rgba(239,68,68,0.06)', borderRadius: '8px', fontSize: '0.77rem', lineHeight: 1.6, color: 'var(--gray)' }}>
                         <strong style={{ color: 'var(--white)', display: 'block', marginBottom: '0.3rem', fontSize: '0.78rem' }}>Removed</strong>
@@ -3200,18 +3287,23 @@ export default function CustomerProfilePage() {
                       <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px' }}>
                         Why are you leaving? (optional)
                       </label>
-                      <select
+                      {/* A native select draws the operating system's own list - the blue
+                          highlight, the system font, the system corners - inside a modal styled
+                          by the app. The rest of the shop already uses CustomSelect, which is
+                          portal-based so it is not clipped by the modal either. */}
+                      <CustomSelect
                         value={deleteReason}
-                        onChange={e => setDeleteReason(e.target.value)}
-                        style={{ width: '100%', height: '40px', padding: '0 12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--dark)', color: 'var(--white)', fontSize: '0.875rem' }}
-                      >
-                        <option value="">Prefer not to say</option>
-                        <option value="No longer using the service">No longer using the service</option>
-                        <option value="Privacy concerns">Privacy concerns</option>
-                        <option value="Switching to another provider">Switching to another provider</option>
-                        <option value="Poor experience">Poor experience</option>
-                        <option value="Other">Other</option>
-                      </select>
+                        onChange={setDeleteReason}
+                        placeholder="Prefer not to say"
+                        options={[
+                          { value: '',                              label: 'Prefer not to say' },
+                          { value: 'No longer using the service',    label: 'No longer using the service' },
+                          { value: 'Privacy concerns',               label: 'Privacy concerns' },
+                          { value: 'Switching to another provider',  label: 'Switching to another provider' },
+                          { value: 'Poor experience',                label: 'Poor experience' },
+                          { value: 'Other',                          label: 'Other' },
+                        ]}
+                      />
                     </div>
 
                     {/* Password */}

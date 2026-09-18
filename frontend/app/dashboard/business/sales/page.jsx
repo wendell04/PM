@@ -51,8 +51,8 @@ function orderToRow(o) {
   const isCancelled = (o.orderStatus || '').toLowerCase() === 'cancelled' || o.status === 'cancelled';
   return {
     id,
-    orderNumber: o.orderId || o.orderNumber || id?.slice?.(-8) || '—',
-    customerName: o.userSnapshot?.name || o.customerName || '—',
+    orderNumber: o.orderId || o.orderNumber || id?.slice?.(-8) || '-',
+    customerName: o.userSnapshot?.name || o.customerName || '-',
     customerContact: o.userSnapshot?.phone || o.customerContact || null,
     customerEmail: o.userSnapshot?.email || o.customerEmail || null,
     items: (o.items || []).map(item => ({
@@ -63,7 +63,26 @@ function orderToRow(o) {
       quantity: item.qty ?? item.quantity ?? 1,
       unitPrice: item.unitPrice ?? 0,
       designFee: Number(item.designFee ?? 0),
+      isCustom: item.isCustom ?? false,
+      designRequested: item.designRequested ?? false,
+      designMode: item.designMode ?? null,
+      designUrl: item.designUrl ?? null,
+      designFiles: item.designFiles ?? null,
     })),
+    // What kind of order this is, decided once. A line the customer drew themselves and a line
+    // we drew for them are different work at different cost, and a cart holding both is a third
+    // thing again - but the list showed all three as one undifferentiated row.
+    orderKind: (() => {
+      const its = o.items || [];
+      const req = its.some(i => i.designMode === 'request' || i.designRequested);
+      const upl = its.some(i => i.designUrl || (i.designFiles?.length > 0));
+      const plain = its.some(i => !i.isCustom && !i.designRequested && !i.designUrl && !(i.designFiles?.length > 0));
+      const customKinds = (req ? 1 : 0) + (upl ? 1 : 0);
+      if (customKinds > 1 || (customKinds === 1 && plain)) return 'mixed';
+      if (req) return 'request';
+      if (upl) return 'upload';
+      return 'ready';
+    })(),
     quantity: (o.items || []).reduce((s, i) => s + (i.qty ?? i.quantity ?? 0), 0),
     orderDate: o.createdAt || o.orderDate || new Date().toISOString(),
     dueDate: o.dueDate || null,
@@ -95,8 +114,8 @@ function OrderExpandRow({ order, colSpan, cost }) {
           <div>
             <div style={label}>Customer</div>
             <div style={{ fontSize: '13px', color: 'var(--white)', fontWeight: 600 }}>{order.customerName || 'N/A'}</div>
-            <div style={{ fontSize: '12px', color: 'var(--gray)' }}>{order.customerContact || '—'}</div>
-            <div style={{ fontSize: '12px', color: 'var(--gray)', overflow: 'hidden', textOverflow: 'ellipsis' }}>{order.customerEmail || '—'}</div>
+            <div style={{ fontSize: '12px', color: 'var(--gray)' }}>{order.customerContact || '-'}</div>
+            <div style={{ fontSize: '12px', color: 'var(--gray)', overflow: 'hidden', textOverflow: 'ellipsis' }}>{order.customerEmail || '-'}</div>
           </div>
 
           <div>
@@ -126,7 +145,7 @@ function OrderExpandRow({ order, colSpan, cost }) {
               </div>
               );
             }) : (
-              <div style={{ fontSize: '13px', color: 'var(--gray)', fontStyle: 'italic' }}>—</div>
+              <div style={{ fontSize: '13px', color: 'var(--gray)', fontStyle: 'italic' }}>-</div>
             )}
           </div>
 
@@ -181,10 +200,10 @@ function OrderExpandRow({ order, colSpan, cost }) {
 
           <div>
             <div style={label}>Order Notes</div>
-            <div style={{ fontSize: '13px', color: 'var(--gray-light)' }}>{order.notes || '—'}</div>
+            <div style={{ fontSize: '13px', color: 'var(--gray-light)' }}>{order.notes || '-'}</div>
             <div style={{ fontSize: '12px', color: 'var(--gray)', marginTop: '8px' }}>
               <div>Order Date: {new Date(order.orderDate).toLocaleDateString()}</div>
-              <div>Due Date: {order.dueDate ? new Date(order.dueDate).toLocaleDateString() : '—'}</div>
+              <div>Due Date: {order.dueDate ? new Date(order.dueDate).toLocaleDateString() : '-'}</div>
               <div style={{ color: 'var(--gold)', marginTop: '2px' }}>
                 Source: {order.source === 'manual' ? 'Outside System (Manual Sale)' : 'Online Storefront'}
               </div>
@@ -326,7 +345,7 @@ function ReportsView({ reports, hasCostData }) {
             { label: 'Category', render: r => r.name },
             { label: 'Units',    render: r => r.qty },
             { label: 'Revenue',  render: r => formatPrice(r.revenue) },
-            { label: 'Share',    render: r => revenue > 0 ? pct(r.revenue / revenue) : '—' },
+            { label: 'Share',    render: r => revenue > 0 ? pct(r.revenue / revenue) : '-' },
           ]} />
         </Panel>
 
@@ -363,6 +382,7 @@ export default function SalesListPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [paymentFilter, setPaymentFilter] = useState('');
   const [dateFilter, setDateFilter] = useState('all');
+  const [kindFilter, setKindFilter] = useState('all');
   const [customDateRange, setCustomDateRange] = useState({ fromMonth: 0, toMonth: 0, year: 2026 });
   const [expandedRows, setExpandedRows] = useState(new Set());
   const [sPage, setSPage] = useState(1);
@@ -455,11 +475,28 @@ export default function SalesListPage() {
       else if (dateFilter === 'this-month') matchesDate = orderDate.getMonth() === today.getMonth() && orderDate.getFullYear() === today.getFullYear();
       else if (dateFilter === 'custom') matchesDate = orderDate.getFullYear() === customDateRange.year && orderDate.getMonth() >= customDateRange.fromMonth && orderDate.getMonth() <= customDateRange.toMonth;
 
-      return matchesSearch && matchesPayment && matchesDate;
+      const matchesKind =
+        kindFilter === 'all'    ? true
+        : kindFilter === 'custom' ? order.orderKind !== 'ready'
+        : order.orderKind === kindFilter;
+
+      return matchesSearch && matchesPayment && matchesDate && matchesKind;
     });
-  }, [sales, searchQuery, paymentFilter, dateFilter, customDateRange]);
+  }, [sales, searchQuery, paymentFilter, dateFilter, customDateRange, kindFilter]);
 
   const pagedSales = filteredSales.slice((sPage - 1) * sRpp, sPage * sRpp);
+
+  // Under Courier Booked (the default) the delivery fee is never part of an order's total - the rider
+  // collects it, or the customer pays it on top - so there is no shipping money in Sales to show. The
+  // card only means something when checkout itself charges shipping (Flat Rate / Distance).
+  const [shippingMode, setShippingMode] = useState(null);
+  useEffect(() => {
+    fetch(`${API_URL}/api/public/settings`)
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => setShippingMode((d?.data ?? d)?.shippingMode || 'courier_booked'))
+      .catch(() => setShippingMode('courier_booked'));
+  }, []);
+  const checkoutChargesShipping = shippingMode === 'flat' || shippingMode === 'distance';
 
   const m = useMemo(() => {
     const active    = scopedSales.filter(o => o.status !== 'cancelled');
@@ -573,7 +610,7 @@ export default function SalesListPage() {
     const agg = (keyer) => {
       const map = {};
       active.forEach(o => (o.items || []).forEach(i => {
-        const key = keyer(i) || '—';
+        const key = keyer(i) || '-';
         if (!map[key]) map[key] = { name: key, qty: 0, revenue: 0 };
         map[key].qty += Number(i.quantity || 0);
         map[key].revenue += Number(i.unitPrice || 0) * Number(i.quantity || 0);
@@ -711,7 +748,9 @@ export default function SalesListPage() {
     // amount, since a big number on a big order is not the same thing as a good one.
     const profitStyle = (row) => {
       const margin = Number(row[11]);
-      if (!Number.isFinite(margin)) return '';
+      // An un-costed order writes '' here, and Number('') is 0, not NaN - so without the empty check
+      // a blank margin slips past isFinite and gets painted red as a loss. Missing data, not a loss.
+      if (row[11] === '' || !Number.isFinite(margin)) return '';
       if (margin >= 50) return 'background:#d9ead3;color:#0b5c25;font-weight:bold;';
       if (margin >= 25) return 'background:#fff2cc;color:#7a5c00;font-weight:bold;';
       return 'background:#f9d5d3;color:#8c1d18;font-weight:bold;';
@@ -720,8 +759,16 @@ export default function SalesListPage() {
     const th = 'background:#1a1a1a;color:#ffffff;font-weight:bold;padding:6px;border:1px solid #444;';
     const td = 'padding:5px;border:1px solid #ddd;';
 
-    const body = dataRows.map(r => '<tr>' + r.map((c, i) =>
-      `<td style="${td}${i === 10 ? profitStyle(r) : ''}">${esc(c)}</td>`).join('') + '</tr>').join('');
+    // A heavier rule where the order ref changes. On a multi-item order the reader was left working
+    // out by eye where one order stopped and the next began - and the order-level columns, written on
+    // the first line only, read as though the second line had no shipping rather than sharing the
+    // first line's. One line does the whole job; nothing else about the layout needs to move.
+    const body = dataRows.map((r, idx) => {
+      const startsOrder = idx === 0 || r[0] !== dataRows[idx - 1][0];
+      const edge = startsOrder ? 'border-top:2px solid #333;' : '';
+      return '<tr>' + r.map((c, i) =>
+        `<td style="${td}${edge}${i === 10 ? profitStyle(r) : ''}">${esc(c)}</td>`).join('') + '</tr>';
+    }).join('');
 
     const foot = '<tr>' + totals.map(c =>
       `<td style="${td}background:#f0f0f0;font-weight:bold;border-top:2px solid #333;">${esc(c)}</td>`).join('') + '</tr>';
@@ -756,11 +803,12 @@ export default function SalesListPage() {
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '10px' }}>
           <SummaryCard label="Total Revenue"      value={formatPrice(m.revenue)}           sub="Excludes shipping" accent />
           <SummaryCard label="Outstanding"        value={formatPrice(m.outstanding)}       sub="Unpaid balances"   color={m.outstanding > 0 ? 'var(--gold)' : undefined} />
-          {/* "Owed to courier" claimed the shop owes exactly this. It does not: the customer was charged
-              an ESTIMATE at checkout, and what the courier actually bills on the day will differ. What is
-              true is that this money came in for delivery and is not income, which is why Total Revenue
-              excludes it. Under Courier Booked this is zero - the rider collects from the recipient. */}
-          <SummaryCard label="Shipping Collected" value={formatPrice(m.shippingCollected)} sub="Held for delivery, not income" color="var(--st-blue-fg)" />
+          {/* Shipping charged at checkout is money held for the courier, not income, which is why Total
+              Revenue excludes it. Shown only while checkout charges shipping: under Courier Booked it
+              could only ever repeat old orders from before the switch. */}
+          {checkoutChargesShipping && (
+            <SummaryCard label="Shipping Collected" value={formatPrice(m.shippingCollected)} sub="Held for delivery, not income" color="var(--st-blue-fg)" />
+          )}
           <SummaryCard label="Products Sold"      value={m.topProductsCount}               sub="Distinct products" color="var(--st-purple-fg)" />
         </div>
 
@@ -776,11 +824,22 @@ export default function SalesListPage() {
 
         {error && <div style={{ ...S.note, background: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b', marginBottom: '10px' }}>{error}</div>}
 
-        {/* Toolbar — separate card above the table, exactly like the Orders module */}
+        {/* Toolbar - separate card above the table, exactly like the Orders module */}
         <div style={{ ...S.card, ...S.rowBetween, marginBottom: '10px', padding: '12px 16px' }}>
           <div style={{ ...S.row, gap: '8px', flex: 1 }}>
             <SearchBar value={searchQuery} onChange={v => { setSearchQuery(v); setSPage(1); }}
               placeholder="Search customer or order number…" style={{ width: '260px' }} />
+            <CustomSelect
+              value={kindFilter} onChange={v => { setKindFilter(v); setSPage(1); }} style={{ width: '170px' }}
+              options={[
+                { value: 'all', label: 'All order types' },
+                { value: 'custom', label: 'All Custom' },
+                { value: 'request', label: 'Custom (Request)' },
+                { value: 'upload', label: 'Custom (Upload)' },
+                { value: 'mixed', label: 'Mixed Cart' },
+                { value: 'ready', label: 'Ready-made' },
+              ]}
+            />
             <CustomSelect
               value={dateFilter} onChange={setDateFilter} style={{ width: '150px' }}
               options={[
@@ -876,7 +935,7 @@ export default function SalesListPage() {
                               where a figure belongs, under a heading it no longer matched. The column
                               answers one question, how much has been received, so it shows that
                               amount and lets the Balance beside it say what is left. */}
-                          {cancelled ? <span style={{ color: 'var(--gray)' }}>—</span>
+                          {cancelled ? <span style={{ color: 'var(--gray)' }}>-</span>
                             : fullyPaid ? (
                               <>
                                 <span style={{ fontWeight: 700, color: 'var(--st-green-fg)' }}>{formatPrice(order.totalPrice)}</span>
@@ -888,11 +947,11 @@ export default function SalesListPage() {
                                 <span style={{ fontWeight: 600, color: 'var(--st-green-fg)' }}>{formatPrice(order.downPayment)}</span>
                                 {order.downpaymentPercent ? <div style={{ fontSize: '11px', color: 'var(--st-green-fg)' }}>{order.downpaymentPercent}% DP</div> : null}
                               </>
-                            ) : <span style={{ color: 'var(--gray)' }}>—</span>}
+                            ) : <span style={{ color: 'var(--gray)' }}>-</span>}
                         </td>
                         <td style={{ ...S.td, textAlign: 'center' }}>
                           <span style={{ fontWeight: 600, color: cancelled ? 'var(--gray)' : (order.balance === 0 ? 'var(--st-green-fg)' : '#e0a43a') }}>
-                            {cancelled ? '—' : formatPrice(order.balance)}
+                            {cancelled ? '-' : formatPrice(order.balance)}
                           </span>
                         </td>
                         <td style={{ ...S.td, textAlign: 'center' }}><StatusPill status={order.status} /></td>

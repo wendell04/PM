@@ -147,3 +147,99 @@ export function formatPeso(n) {
     maximumFractionDigits: 2,
   })}`;
 }
+
+// The extension, upper-cased, for a tile that cannot show a picture of itself.
+//
+// A generic document icon tells the reader only that this is not an image - which they can already
+// see. Whether it is a PDF they can open in the browser or an AI file that will download and want
+// Illustrator is the thing they actually need before clicking, and it is three characters.
+//
+// Query strings and Cloudinary's version segment are stripped first; anything with no usable
+// extension keeps the generic word rather than showing a fragment of a filename.
+export function fileExtLabel(url, fallback = 'FILE') {
+  const clean = String(url ?? '').split(/[?#]/)[0];
+  const name  = clean.substring(clean.lastIndexOf('/') + 1);
+  const dot   = name.lastIndexOf('.');
+  if (dot <= 0) return fallback;
+  const ext = name.slice(dot + 1);
+  return /^[a-z0-9]{1,5}$/i.test(ext) ? ext.toUpperCase() : fallback;
+}
+
+// ── Product options ───────────────────────────────────────────────────────────
+// An option changes HOW an item is made, not what it is made of, so it carries no BOM and does not
+// divide the stock. It reaches the order by joining the variant name and adding to the unit price -
+// both of which every screen from the cart to the Job Order already carries. Threading a separate
+// field through the cart context, the cart API, checkout, order creation and the JO snapshot would
+// buy a structured value nobody reads yet, at the cost of five places that could go wrong.
+// Identity for a group and an option, falling back when the stored record has no id.
+//
+// Rows written before ids were persisted have none at all - and comparing two undefineds is true, so
+// EVERY button in a group drew itself as the selected one. Falling back to the name means old
+// products keep working without anyone re-saving them, and it fails safe: two options with the same
+// label in one group is already a mistake the owner can see.
+export function optionKey(opt, i = 0) {
+  return String(opt?.id ?? opt?.label ?? i);
+}
+
+export function groupKey(g, i = 0) {
+  return String(g?.id ?? g?.name ?? i);
+}
+
+export function optionGroupsOf(product) {
+  const gs = product?.optionGroups;
+  return Array.isArray(gs) ? gs.filter(g => g?.name && Array.isArray(g.options) && g.options.length) : [];
+}
+
+// Nothing is preselected, deliberately. A cut that arrives at the bench because it was the first
+// button in the list is not a decision anybody made, and the cost of getting it wrong is a reprint -
+// so the customer is asked, and the order cannot be placed until they answer.
+export function defaultOptionSelection() {
+  return {};
+}
+
+// Which groups still have no answer. Empty means the order is complete.
+export function unansweredOptionGroups(product, selection) {
+  return optionGroupsOf(product).filter((g, gi) => !selection?.[groupKey(g, gi)]);
+}
+
+export function selectedOptionList(product, selection) {
+  const out = [];
+  optionGroupsOf(product).forEach((g, gi) => {
+    const gk  = groupKey(g, gi);
+    const opt = g.options.find((o, oi) => optionKey(o, oi) === selection?.[gk]);
+    if (opt) out.push({
+      group: g.name,
+      label: opt.label,
+      priceAdd: Number(opt.priceAdd) || 0,
+      priceMode: opt.priceMode === 'order' ? 'order' : 'unit',
+      imageUrl: opt.imageUrl || null,
+    });
+  });
+  return out;
+}
+
+// Two ways an option can cost money, and they are not interchangeable.
+//
+//   per piece  - extra work on every unit. A tighter cut takes longer on each sticker.
+//   per order  - paid once, however many are made. A die has to be cut before the first sticker
+//                and never again, so charging it per piece bills a 100-piece order a hundred dies.
+//
+// Getting this wrong is not a rounding error; it is the difference between P5 and P500 on the same
+// job, so the two are kept apart all the way through rather than summed into one number early.
+export function optionsUnitAdd(product, selection) {
+  return selectedOptionList(product, selection)
+    .filter(o => o.priceMode !== 'order')
+    .reduce((t, o) => t + o.priceAdd, 0);
+}
+
+export function optionsOrderAdd(product, selection) {
+  return selectedOptionList(product, selection)
+    .filter(o => o.priceMode === 'order')
+    .reduce((t, o) => t + o.priceAdd, 0);
+}
+
+export function withOptionSuffix(variantName, product, selection) {
+  const labels = selectedOptionList(product, selection).map(o => o.label);
+  if (!labels.length) return variantName;
+  return [variantName, ...labels].filter(Boolean).join(' \u00b7 ');
+}

@@ -92,7 +92,7 @@ function normalizeOrder(apiOrder) {
   if (items.length === 1) {
     const name    = items[0].product_name || items[0].productName || 'Product';
     const variant = items[0].variantName  || items[0].variant_name || null;
-    productName   = variant ? `${name} — ${variant}` : name;
+    productName   = variant ? `${name} - ${variant}` : name;
   } else if (items.length > 1) {
     const names       = items.map(i => i.product_name || i.productName || 'Product');
     const uniqueNames = [...new Set(names)];
@@ -132,7 +132,15 @@ function normalizeOrder(apiOrder) {
   const totalAmount = parseFloat(
     apiOrder.totalAmount || apiOrder.total || apiOrder.totalPrice || 0
   );
-  const isCustom = !!(items[0]?.isCustom || apiOrder.designFilePath || apiOrder.design_file_path);
+  // Does anything on this order have to be MADE? Any line that is custom, made-to-order, or
+  // carries artwork needs a Job Order; an order of only shelf goods does not. Checked across every
+  // line, not just the first - a mixed cart is the whole reason the batch Job Order creator exists.
+  const needsProduction = items.some(i =>
+    i?.isCustom || i?.isMadeToOrder || i?.designRequested || i?.designUrl || i?.designFiles?.length
+  );
+  const isCustom = !!(
+    apiOrder.isCustomOrder || needsProduction || apiOrder.designFilePath || apiOrder.design_file_path
+  );
   const productType = isCustom ? 'Customized' : 'Ready Made';
 
   return {
@@ -149,6 +157,9 @@ function normalizeOrder(apiOrder) {
     customerContact: apiOrder.userSnapshot?.phone || apiOrder.customer?.phone || apiOrder.customerContact || '',
     items: items,
     isCustom: isCustom,
+    // Whether anything on the order has to be MADE. Listed explicitly because this normalizer
+    // builds its result field by field - anything not named here never reaches the UI.
+    needsProduction: needsProduction,
     productType: productType,
     productName: productName,
     category: category,
@@ -166,6 +177,10 @@ function normalizeOrder(apiOrder) {
     paymentStatus: apiOrder.payment_status || apiOrder.paymentStatus || 'unpaid',
     paymentMethod: apiOrder.payment_method || apiOrder.paymentMethod || '',
     shippingAddress: apiOrder.shipping_address || apiOrder.shippingAddress || {},
+    deliveryAddress: apiOrder.deliveryAddress ?? apiOrder.delivery_address ?? null,
+    deliveryNotes:   apiOrder.deliveryNotes ?? apiOrder.delivery_notes ?? null,
+    courierFee:      apiOrder.courierFee ?? null,
+    courierFeePaid:  apiOrder.courierFeePaid ?? false,
     courierName: apiOrder.courier_name || apiOrder.courierName || '',
     trackingNumber: apiOrder.tracking_number || apiOrder.trackingNumber || '',
     notes: apiOrder.notes || '',
@@ -326,7 +341,7 @@ export async function updateOrderStatusNew(orderId, status, token) {
 }
 
 /**
- * Update order (admin) — maps to PATCH /orders/{id}/status
+ * Update order (admin) - maps to PATCH /orders/{id}/status
  * Accepts a partial order object; only orderStatus is sent to backend.
  * @param {string} orderId
  * @param {Object} updatedOrder - { orderStatus: string, ...rest ignored by backend }
@@ -396,7 +411,7 @@ export async function updateJobOrderStatus(joId, joStatus, token) {
     }
   } catch (error) {
     console.error('Error updating job order status:', error);
-    // Non-fatal — do not rethrow. Order status update already succeeded.
+    // Non-fatal - do not rethrow. Order status update already succeeded.
   }
 }
 

@@ -23,7 +23,7 @@ class AdminAnalyticsController extends Controller
 
             $data = Cache::remember('admin_dashboard_stats', 30, function () {
                 $totalOrders   = Order::count();
-                $pendingOrders = Order::where('orderStatus', 'Pending')->count();
+                $pendingOrders = Order::whereIn('orderStatus', \App\Support\OrderStatus::spellings(\App\Support\OrderStatus::PENDING))->count();
                 $totalRevenue  = (float) Sale::where('status', 'completed')->sum('totalPrice');
                 $totalProducts = Product::where('isPublished', true)->count();
 
@@ -48,7 +48,7 @@ class AdminAnalyticsController extends Controller
                         $name = $o->customerName
                             ?? data_get($o->userSnapshot, 'name')
                             ?? data_get($o->customer, 'name')
-                            ?? '—';
+                            ?? '-';
                         return [
                             '_id'          => (string) $o->_id,
                             'orderId'      => $o->orderId ?? (string) $o->_id,
@@ -141,7 +141,10 @@ class AdminAnalyticsController extends Controller
                 ];
             })->sortByDesc('revenue')->values()->take(10)->all();
 
+            // Checkouts still being paid, or whose payment failed, are not orders.
             $ordersInRange = Order::query()
+                ->where('checkoutPending', '!=', true)
+                ->where('voidedCheckout', '!=', true)
                 ->whereBetween('createdAt', [$start, $end])
                 ->get();
 

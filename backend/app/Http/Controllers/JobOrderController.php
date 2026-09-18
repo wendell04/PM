@@ -9,9 +9,11 @@ use App\Models\BillOfMaterial;
 use App\Models\Inventory;
 use App\Support\OrderStatus;
 use App\Models\StockHistory;
+use App\Support\OrderNotifier;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use App\Support\PaymentMethod;
 
 class JobOrderController extends Controller
 {
@@ -52,6 +54,59 @@ class JobOrderController extends Controller
                 'unit'        => $inv->uom ?? ($c['unit'] ?? ''),
                 'qtyPerUnit'  => $per,
                 'totalQty'    => $per * max(1, $qty),
+            ];
+        }
+        return $snapshot;
+    }
+
+    /**
+     * The job's material list, from the product's BOM or - failing that - from the quote.
+     *
+     * A quotation can be for something with no BOM at all: "T-shirt printing" is a service, and
+     * the shirts, the film and the ink are chosen by the admin while drafting the quote. Those
+     * choices are carried onto the order line. Without this fallback the job order came out with
+     * an empty snapshot, so Production and QC showed no materials for the job, and QC pass
+     * consumed nothing - leaving the stock the quote had already reserved held for good, on an
+     * order that was finished and delivered.
+     *
+     * A quote line records a TOTAL for the line, not a per-unit figure, so it is divided back out
+     * to match the shape a BOM produces.
+     */
+    private function snapshotFor(?Order $order, $itemIndex, $productId, $variantId, int $qty): array
+    {
+        $snap = $this->computeBomSnapshot($productId, $variantId, $qty);
+        if (!empty($snap)) {
+            return $snap;
+        }
+
+        $items = $order?->items ?? [];
+        $line  = is_numeric($itemIndex) ? ($items[(int) $itemIndex] ?? null) : null;
+
+        // Single-JO path has no item index; fall back to the line for this product.
+        if (!$line && $productId) {
+            foreach ($items as $it) {
+                if ((string) ($it['productId'] ?? '') === (string) $productId) { $line = $it; break; }
+            }
+        }
+
+        $mats = $line['materials'] ?? [];
+        if (empty($mats)) {
+            return [];
+        }
+
+        $units    = max(1, $qty);
+        $snapshot = [];
+        foreach ($mats as $m) {
+            $invId = $m['inventoryId'] ?? null;
+            $inv   = $invId ? Inventory::find($invId) : null;
+            $total = (float) ($m['qty'] ?? 0);
+            if ($total <= 0) continue;
+            $snapshot[] = [
+                'inventoryId' => $invId ? (string) $invId : null,
+                'name'        => $inv->name ?? ($m['name'] ?? 'Material'),
+                'unit'        => $inv->uom ?? ($m['unit'] ?? ''),
+                'qtyPerUnit'  => $total / $units,
+                'totalQty'    => $total,
             ];
         }
         return $snapshot;
@@ -146,6 +201,9 @@ class JobOrderController extends Controller
                 'product.quantity' => 'required|integer|min:1',
                 'product.productId'=> 'nullable|string',
                 'product.variantId'=> 'nullable|string',
+                // Which order line this job is for. Only used to find the line's own materials
+                // when the product has no BOM - a quoted service, where the admin chose them.
+                'itemIndex'        => 'nullable|integer|min:0',
                 'targetCompletion' => 'required|date',
                 'isRush'           => 'boolean',
                 'assignedTo'       => 'nullable|string',
@@ -164,7 +222,7 @@ class JobOrderController extends Controller
                 return $this->errorResponse('Linked order not found.', 404);
             }
 
-            // Gate 1 — payment: a downpayment (or COD) is required before production. Mirrors the
+            // Gate 1 - payment: a downpayment (or COD) is required before production. Mirrors the
             // gate in OrderController@updateStatus so creating a JO can't bypass it.
             $payMethod  = strtolower((string) ($linkedOrder->paymentMethod ?? ''));
             $hasPayment = ($linkedOrder->downPayment ?? 0) > 0
@@ -174,7 +232,7 @@ class JobOrderController extends Controller
                 return $this->errorResponse('A downpayment is required before this order can go into production.', 422);
             }
 
-            // Gate 2 — design: a custom order must have an approved design before production.
+            // Gate 2 - design: a custom order must have an approved design before production.
             if (($linkedOrder->isCustomOrder ?? false) && ($linkedOrder->designStatus ?? null) !== 'approved') {
                 return $this->errorResponse('The customer must approve the design before this order can go into production.', 422);
             }
@@ -196,8 +254,10 @@ class JobOrderController extends Controller
             ]);
 
             // Snapshot the product's BOM raw materials onto the JO so Production/QC can see what it
-            // needs to make (e.g. DTF film, white mug, mug box). Display only — no stock change here.
-            $snap = $this->computeBomSnapshot(
+            // needs to make (e.g. DTF film, white mug, mug box). Display only - no stock change here.
+            $snap = $this->snapshotFor(
+                $linkedOrder,
+                $validated['itemIndex'] ?? null,
                 $validated['product']['productId'] ?? null,
                 $validated['product']['variantId'] ?? null,
                 (int) ($validated['product']['quantity'] ?? 1)
@@ -229,7 +289,7 @@ class JobOrderController extends Controller
     }
 
     /**
-     * Batch create — one Job Order PER printable item of a mixed order. Each item prints its own
+     * Batch create - one Job Order PER printable item of a mixed order. Each item prints its own
      * artwork with its own recipe/QC, so a 2-custom-item order produces 2 JOs (JOB-001, JOB-002)
      * that share the order's backward-scheduled target date and rush flag. Ready-made items carry
      * no design and are never sent here (fulfilled from stock). The pay/design gates run ONCE.
@@ -262,7 +322,7 @@ class JobOrderController extends Controller
                 return $this->errorResponse('Linked order not found.', 404);
             }
 
-            // Gate 1 — payment (downpayment or COD), mirrors store().
+            // Gate 1 - payment (downpayment or COD), mirrors store().
             $payMethod  = strtolower((string) ($linkedOrder->paymentMethod ?? ''));
             $hasPayment = ($linkedOrder->downPayment ?? 0) > 0
                 || count($linkedOrder->paymentHistory ?? []) > 0
@@ -271,7 +331,7 @@ class JobOrderController extends Controller
                 return $this->errorResponse('A downpayment is required before this order can go into production.', 422);
             }
 
-            // Gate 2 — design: custom order must be design-approved (order-level aggregate = approved
+            // Gate 2 - design: custom order must be design-approved (order-level aggregate = approved
             // only when every custom item is approved).
             if (($linkedOrder->isCustomOrder ?? false) && ($linkedOrder->designStatus ?? null) !== 'approved') {
                 return $this->errorResponse('The customer must approve the design before this order can go into production.', 422);
@@ -341,7 +401,9 @@ class JobOrderController extends Controller
                     'updatedAt'        => now(),
                 ]);
 
-                $snap = $this->computeBomSnapshot(
+                $snap = $this->snapshotFor(
+                    $linkedOrder,
+                    $idx,
                     $product['productId'] ?? null,
                     $product['variantId'] ?? null,
                     (int) ($product['quantity'] ?? 1)
@@ -369,6 +431,14 @@ class JobOrderController extends Controller
 
             $this->syncOrderProductionStage($validated['orderId']);
 
+            // Creating the job orders is what puts a custom order into production, and nobody
+            // touches the status dropdown to do it - so this is the only place the customer can
+            // be told that work has started.
+            $moved = Order::find($validated['orderId']);
+            if ($moved) {
+                OrderNotifier::statusChanged($moved);
+            }
+
             return $this->successResponse(count($created) . ' job order(s) created successfully.', $created, 201);
         } catch (\Illuminate\Validation\ValidationException $e) {
             return $this->validationErrorResponse($e);
@@ -379,7 +449,7 @@ class JobOrderController extends Controller
 
     /**
      * Aggregate readiness across ALL of an order's job orders. A multi-item order produces one JO per
-     * item, so a single JO completing must NOT release the whole order — only when EVERY non-cancelled
+     * item, so a single JO completing must NOT release the whole order - only when EVERY non-cancelled
      * JO is done (QC-passed / Completed) does the order become Ready for Delivery. Idempotent and
      * self-guarding; safe to call after any JO status change or deletion.
      */
@@ -387,7 +457,7 @@ class JobOrderController extends Controller
     {
         $order = Order::where('_id', $orderId)->first();
         if (!$order) return;
-        // Already at/past ready — never walk it back from here.
+        // Already at/past ready - never walk it back from here.
         if (in_array(OrderStatus::normalize($order->orderStatus), [OrderStatus::READY_FOR_DELIVERY, OrderStatus::FOR_DELIVERY, OrderStatus::DELIVERED, OrderStatus::CANCELLED], true)) {
             return;
         }
@@ -396,7 +466,7 @@ class JobOrderController extends Controller
 
         $allDone = $jobs->every(fn ($j) => in_array($j->joStatus, ['QC_Passed', 'Completed'], true));
         if (!$allDone) {
-            // Partial progress — keep it in production, just reflect that work has started.
+            // Partial progress - keep it in production, just reflect that work has started.
             $order->joStatus  = 'In Progress';
             $order->updatedAt = now();
             $order->save();
@@ -405,18 +475,26 @@ class JobOrderController extends Controller
 
         $order->joStatus    = 'Completed';
         $order->orderStatus = OrderStatus::READY_FOR_DELIVERY;
+        // The move was never recorded, so an order could sit at Ready for Delivery above a history
+        // that stopped at For QC - and the customer's tracker had nothing to read.
+        $history              = $order->statusHistory ?? [];
+        $history[]            = ['status' => OrderStatus::READY_FOR_DELIVERY, 'at' => now()->toISOString(), 'by' => 'qc'];
+        $order->statusHistory = $history;
         // When the goods started waiting. Personalised stock cannot be resold, so the shop needs to
         // know how long it has been sitting - that is the whole basis of the holding period.
         if (empty($order->readyAt)) $order->readyAt = now();
         $order->updatedAt   = now();
         $order->save();
+        // Both, and in this order: the balance reminder only fires when money is owed, while a
+        // fully paid order still has to hear that its goods are packed - which it never did.
         $this->notifyBalanceDue($order);
+        OrderNotifier::statusChanged($order);
     }
 
     /** Balance-due-before-delivery reminder once an order is fully produced (non-COD, unpaid balance). */
     private function notifyBalanceDue(Order $order): void
     {
-        $isCOD   = strtolower((string) ($order->paymentMethod ?? '')) === 'cod';
+        $isCOD   = PaymentMethod::isCod($order->paymentMethod);
         $balance = $order->balance !== null && $order->balance !== ''
             ? (float) $order->balance
             : max(0, (float) ($order->totalAmount ?? 0) - (float) ($order->downPayment ?? 0));
@@ -458,6 +536,9 @@ class JobOrderController extends Controller
                 // looks like a record and is not one.
                 'materialsPulled'  => 'sometimes|array',
                 'materialsPulled.*'=> 'string|max:200',
+                // Set by the confirm dialog after it has shown what is short. Kept out of the
+                // model write below - it records a decision, not a property of the job.
+                'materialOverride' => 'sometimes|boolean',
                 'targetCompletion' => 'sometimes|date',
                 'isRush'           => 'sometimes|boolean',
                 'assignedTo'       => 'nullable|string',
@@ -466,6 +547,45 @@ class JobOrderController extends Controller
 
             if (isset($validated['notes'])) {
                 $validated['notes'] = htmlspecialchars(strip_tags(trim($validated['notes'])), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+            }
+
+            // A QC verdict is recorded by Quality Control (submitQC): that is where the accepted
+            // count is taken, the materials are consumed and the order is released. Setting the
+            // status here skipped all of it - the job read "QC Passed" with its materials still
+            // reserved for good, and no inspection on record.
+            $wanted = $validated['joStatus'] ?? null;
+            if (in_array($wanted, ['QC_Passed', 'QC_Failed'], true) && $wanted !== $jobOrder->joStatus) {
+                return response()->json(['message' => 'QC results are recorded in Quality Control, not by changing the status here.'], 422);
+            }
+
+            // -- Material availability at job release ------------------------------------
+            // Nothing checked this before: a job could be started with an empty shelf and the
+            // shortage only surfaced at QC, by which time the promise had already been made.
+            $override = (bool) ($validated['materialOverride'] ?? false);
+            unset($validated['materialOverride']);
+
+            if (($validated['joStatus'] ?? null) === 'In Progress' && $jobOrder->joStatus !== 'In Progress') {
+                $shortages = $this->materialShortages($jobOrder);
+                if ($shortages && !$override) {
+                    return $this->errorResponse(
+                        'Not enough material on the shelf to start this job.',
+                        422,
+                        ['shortages' => $shortages]
+                    );
+                }
+                // Started anyway. Who decided that is worth keeping - it is the one moment the
+                // shop knowingly went ahead of its own stock.
+                if ($shortages) {
+                    $validated['materialOverride']   = true;
+                    $validated['materialShortAt']    = $shortages;
+                    $validated['materialOverrideAt'] = now();
+                    $validated['materialOverrideBy'] = optional($request->user())->email ?? 'system';
+                    Log::info('Job order started with short material', [
+                        'joId'      => $jobOrder->joId,
+                        'shortages' => $shortages,
+                        'by'        => $validated['materialOverrideBy'],
+                    ]);
+                }
             }
 
             // A job being cancelled stops needing its materials. Release BEFORE the write, while the
@@ -511,7 +631,7 @@ class JobOrderController extends Controller
     /**
      * DELETE /api/admin/job-orders/{id}
      * Hard-delete a job order. GUARDED to test/junk cleanup: only a JO that has produced nothing
-     * (still 'Queued', or already 'Cancelled') may be deleted — anything In Progress / QC-passed /
+     * (still 'Queued', or already 'Cancelled') may be deleted - anything In Progress / QC-passed /
      * Completed has consumed materials or has QC history and must be CANCELLED (soft) instead, so the
      * audit trail and inventory stay intact. On delete the linked order is relinked (the joId is
      * pulled from its joIds); if no job orders remain, the order drops back to Processing so it can be
@@ -714,7 +834,11 @@ class JobOrderController extends Controller
 
                 foreach (($jobOrder->bomSnapshot['components'] ?? $jobOrder->bomSnapshot ?? []) as $c) {
                     $inv = Inventory::find($c['inventoryId'] ?? null);
-                    if (!$inv || ($inv->isOnDemand ?? false)) continue;
+                    // Cost-only material is not skipped here. It never gates a sale and is never
+                    // reserved, but it is still bought, still counted, and a scrapped job burnt it
+                    // like everything else. Skipping it left the box on the shelf in the system
+                    // after it had gone in the bin, and To Buy then under-reported the next order.
+                    if (!$inv) continue;
                     if (is_array($lost) && !in_array((string) ($c['inventoryId'] ?? ''), $lost, true)) continue;
 
                     // The snapshot stores qtyPerUnit. Reading 'qty' returned 0 for every component,
@@ -769,7 +893,10 @@ class JobOrderController extends Controller
                         if (!$inventoryId) continue;
 
                         $inventory = \App\Models\Inventory::find($inventoryId);
-                        if (!$inventory || $inventory->isOnDemand) continue;
+                        // Cost-only material is consumed here like any other. It is excluded from
+                        // availability and from reservation - not from having been used. reservedQty
+                        // is already 0 for it, and max(0, ...) keeps it there.
+                        if (!$inventory) continue;
 
                         $consumeQty = (float) ($component['qty'] ?? 0) * (int) $joQty;
                         if ($consumeQty <= 0) continue;
@@ -835,7 +962,7 @@ class JobOrderController extends Controller
 
             } else {
                 // ── QC FAILED ──────────────────────────────────────────────────
-                // reservedQty stays — materials still committed for reprint
+                // reservedQty stays - materials still committed for reprint
                 // Do NOT deduct stockQty
                 // Partly good is not the same as failed. If some units were accepted, the job is not
                 // in a rework loop - it simply still owes the balance, so it goes back to production
@@ -849,7 +976,7 @@ class JobOrderController extends Controller
                 $jobOrder->updatedAt = now();
                 $jobOrder->save();
 
-                // Log the failure for audit — no inventory change
+                // Log the failure for audit - no inventory change
                 Log::info('submitQC: QC failed, materials remain reserved for reprint', [
                     'jobOrderId' => (string) $jobOrder->_id,
                     'joId'       => $jobOrder->joId,
@@ -1028,6 +1155,46 @@ class JobOrderController extends Controller
      * Only for a job that has NOT consumed yet. Once QC has passed, the material is gone rather than
      * held, and there is nothing to give back.
      */
+    /**
+     * What this job is short of, right now, on the shelf.
+     *
+     * A different question from the one the storefront asks. Selling is gated on the blank alone -
+     * a box can be bought before the delivery date, so refusing the sale over one loses a job for
+     * eight pesos. Starting the job is the opposite: you need the box in your hand today, and that
+     * includes every cost-only material.
+     *
+     * Measured against stockQty, not stockQty minus reserved: a reservation is a claim on paper,
+     * and what matters at the bench is whether the material is physically there.
+     *
+     * @return array<int, array{inventoryId:string,name:string,uom:?string,needed:int,onHand:int,short:int}>
+     */
+    private function materialShortages(JobOrder $jo): array
+    {
+        $short = [];
+
+        foreach (($jo->bomSnapshot['components'] ?? $jo->bomSnapshot ?? []) as $c) {
+            $inv = Inventory::find($c['inventoryId'] ?? null);
+            if (!$inv) continue;
+
+            $needed = (int) round($c['totalQty'] ?? ((float) ($c['qty'] ?? 0) * (int) ($jo->product['quantity'] ?? 0)));
+            if ($needed <= 0) continue;
+
+            $onHand = (int) ($inv->stockQty ?? 0);
+            if ($onHand >= $needed) continue;
+
+            $short[] = [
+                'inventoryId' => (string) $inv->_id,
+                'name'        => $inv->name,
+                'uom'         => $inv->uom,
+                'needed'      => $needed,
+                'onHand'      => $onHand,
+                'short'       => $needed - $onHand,
+            ];
+        }
+
+        return $short;
+    }
+
     private function releaseJobOrderMaterials(JobOrder $jo, string $why): int
     {
         if (in_array($jo->joStatus, ['QC_Passed', 'Completed'], true)) {
@@ -1124,7 +1291,8 @@ class JobOrderController extends Controller
                 if (is_array($lost) && !in_array($invId, $lost, true)) continue;
 
                 $inv = Inventory::find($c['inventoryId'] ?? null);
-                if (!$inv || ($inv->isOnDemand ?? false)) continue;
+                // Spoilage destroys cost-only material too - see the QC paths above.
+                if (!$inv) continue;
                 $per = (float) ($c['qty'] ?? 0);
                 if ($per <= 0) continue;
 

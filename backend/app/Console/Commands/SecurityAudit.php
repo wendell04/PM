@@ -47,13 +47,13 @@ class SecurityAudit extends Command
         $this->newLine();
 
         if ($hasHighSeverity) {
-            Log::warning('security.audit: vulnerabilities detected — review output above');
+            Log::warning('security.audit: vulnerabilities detected - review output above');
             $this->error('Vulnerabilities found. Run `composer audit` or `npm audit fix` to resolve.');
             return self::FAILURE;
         }
 
-        Log::info('security.audit: clean — no vulnerabilities');
-        $this->info('All clear — no known vulnerabilities detected.');
+        Log::info('security.audit: clean - no vulnerabilities');
+        $this->info('All clear - no known vulnerabilities detected.');
         return self::SUCCESS;
     }
 
@@ -89,7 +89,11 @@ class SecurityAudit extends Command
         } elseif ($format === 'composer' && isset($decoded['advisories'])) {
             foreach ($decoded['advisories'] as $pkg => $advisories) {
                 foreach ($advisories as $advisory) {
-                    $this->line("  <fg=red>[ADVISORY]</> {$pkg}: {$advisory['title']} ({$advisory['cve'] ?? 'no CVE'})");
+                    // ?? is not allowed inside string interpolation, so this file has never
+                    // parsed and the command could not run once - which is a poor state for a
+                    // security audit to be in.
+                    $cve = $advisory['cve'] ?? 'no CVE';
+                    $this->line("  <fg=red>[ADVISORY]</> {$pkg}: {$advisory['title']} ({$cve})");
                 }
             }
         } else {

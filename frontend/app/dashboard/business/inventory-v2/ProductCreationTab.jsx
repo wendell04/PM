@@ -246,7 +246,7 @@ export default function ProductCreationTab({ boms, setBoms, materials, batches, 
             <div style={{ display:'flex', gap:'8px' }}>
               <CustomSelect value={addMat} onChange={setAddMat}
                 options={availableMats.map(m => ({ value:m.id, label:`${m.name} (${m.unit})` }))}
-                placeholder="Select material"
+                placeholder="Select material" searchable
                 style={{ flex:1 }} />
               <button onClick={addItem} disabled={!addMat} style={{ ...S.btnPrimary, opacity: addMat ? 1 : .5 }}>{ICONS.plus} Add</button>
             </div>

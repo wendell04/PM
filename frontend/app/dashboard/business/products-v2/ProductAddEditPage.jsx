@@ -1,4 +1,5 @@
 'use client';
+import NoImage from '@/components/NoImage';
 import { PLAIN_OR_CUSTOM_ENABLED } from '@/lib/featureFlags';
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
@@ -26,6 +27,12 @@ const LIBRARY_IMAGES = [
 
 const EMPTY_VARIANT = () => ({ id: uid('v'), name: '', bomId: '', price: '' });
 
+// An option changes HOW the item is made, not what it is made of - cut, finish, corner style. It
+// carries no BOM and no stock of its own, because a different cut is the same sheet.
+// priceAdd is left blank for the common case; blank means free and shows no badge to the customer.
+const EMPTY_OPTION       = () => ({ id: uid('o'), label: '', priceAdd: '', priceMode: 'unit', imageUrl: '' });
+const EMPTY_OPTION_GROUP = () => ({ id: uid('og'), name: '', options: [EMPTY_OPTION(), EMPTY_OPTION()] });
+
 function emptyTier(keys) {
   return { id: uid('t'), minQty: '1', maxQty: '', prices: keys.reduce((a, k) => ({ ...a, [k]: '' }), {}) };
 }
@@ -37,10 +44,11 @@ const EMPTY_FORM = {
   pricingMode: 'fixed', price: '',
   tiers: [{ id: uid('t'), minQty: '1', maxQty: '', prices: { __base__: '' } }],
   collectionIds: [],
-  isCustomizable: false, allowPlain: true, allowCOD: true, isMadeToOrder: false,
+  isCustomizable: false, allowPlain: true, allowCOD: true, isMadeToOrder: false, allowPreorder: false,
+  optionGroups: [],
   downpaymentPct: '0', hideWhenOutOfStock: false, isPublished: false,
   isFeatured: false,
-  designFee: '', minOrderQty: '1',
+  designFee: '', minOrderQty: '1', quoteAboveQty: '',
   designTemplates: [],
 };
 
@@ -102,7 +110,7 @@ function MediaLibraryModal({ multi = false, onSelect, onClose, existingImages = 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1000,
       display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      {/* No backdrop-close: large product form — a stray click would discard all edits. */}
+      {/* No backdrop-close: large product form - a stray click would discard all edits. */}
       <div style={{ background: 'var(--dark)', borderRadius: '12px', width: '620px', maxWidth: '95vw',
         maxHeight: '82vh', display: 'flex', flexDirection: 'column', overflow: 'hidden',
         boxShadow: '0 20px 60px rgba(0,0,0,0.25)' }}>
@@ -216,7 +224,7 @@ function StorefrontPreview({ name, description, thumbnail, priceRange, variantCo
       <div style={{ background: 'var(--dark)', border: '1px solid var(--border)',
         borderRadius: '12px', overflow: 'hidden' }}>
 
-        {/* Image area — 1:1 aspect */}
+        {/* Image area - 1:1 aspect */}
         <div style={{ aspectRatio: '1/1', width: '100%',
           background: 'var(--dark2)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -224,22 +232,18 @@ function StorefrontPreview({ name, description, thumbnail, priceRange, variantCo
           {thumbnail ? (
             <img src={thumbnail} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
           ) : (
-            <div style={{ textAlign: 'center', color: 'var(--border)' }}>
-              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                strokeWidth="1" strokeLinecap="round" strokeLinejoin="round"
-                style={{ display: 'block', margin: '0 auto 8px' }}>
-                <rect x="3" y="3" width="18" height="18" rx="2"/>
-                <circle cx="8.5" cy="8.5" r="1.5"/>
-                <polyline points="21 15 16 10 5 21"/>
-              </svg>
-              <div style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>No image</div>
-            </div>
+            /* One mark, not two. Swapping the old "No image" caption for the shared component left
+               the 48px icon that had been sitting above it, so the preview drew the same picture
+               frame twice. */
+            <NoImage size={48} color="var(--border)" />
           )}
           {isCustomizable && (
             <div style={{ position: 'absolute', top: '10px', right: '10px', background: 'var(--gold)',
               color: 'var(--dark)', fontSize: '0.6rem', fontWeight: 700, padding: '3px 8px',
               borderRadius: '6px', textTransform: 'uppercase', letterSpacing: '0.5px', zIndex: 2 }}>
-              Customizable
+              {/* The same words the shop shows. A preview labelled "How customers see it" that says
+                  something the customer never sees is worse than no preview. */}
+              Print to order
             </div>
           )}
         </div>
@@ -327,7 +331,7 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
   const [errors,         setErrors]        = useState({});
   const [variantImages,  setVariantImages] = useState({});
   const [uploadingCount, setUploadingCount] = useState(0);
-  const [prodCrop, setProdCrop] = useState(null); // { src, target } — square-crop a single picked image
+  const [prodCrop, setProdCrop] = useState(null); // { src, target } - square-crop a single picked image
 
   // ── Media picker state ──────────────────────────────────────────────────────
   const [mediaMenuOpen,  setMediaMenuOpen] = useState(false);
@@ -397,17 +401,33 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
       tiers,
       collectionIds:      product.collectionIds || [],
       isCustomizable:     product.isCustomizable ?? false,
+      // Backfill ids and the charge mode on the way IN. Rows saved before those keys existed have
+      // neither, and the form was sending back exactly what it received - so the gap repaired itself
+      // never, and every save looked like it had failed.
+      optionGroups: (Array.isArray(product.optionGroups) ? product.optionGroups : []).map(g => ({
+        ...g,
+        id: g.id || uid('og'),
+        options: (g.options || []).map(o => ({
+          ...o,
+          id: o.id || uid('o'),
+          priceMode: o.priceMode === 'order' ? 'order' : 'unit',
+          priceAdd: o.priceAdd ?? '',
+          imageUrl: o.imageUrl || '',
+        })),
+      })),
       allowPlain:         PLAIN_OR_CUSTOM_ENABLED
                             ? (product.allowPlain ?? !product.isCustomizable)
                             : !product.isCustomizable,
       allowCOD:           product.allowCOD ?? true,
       isMadeToOrder:      product.isMadeToOrder ?? false,
+      allowPreorder:      product.allowPreorder ?? false,
       downpaymentPct:     product.downpaymentPct != null ? String(product.downpaymentPct) : '0',
       hideWhenOutOfStock: product.hideWhenOutOfStock ?? false,
       isPublished:        product.isPublished ?? false,
       isFeatured:         product.isFeatured ?? false,
       designFee:          product.designFee != null ? String(product.designFee) : '',
       minOrderQty:        product.minOrderQty != null ? String(product.minOrderQty) : '1',
+      quoteAboveQty:      product.quoteAboveQty != null ? String(product.quoteAboveQty) : '',
       designTemplates:    Array.isArray(product.designTemplates) ? product.designTemplates : [],
     });
     setErrors({});
@@ -433,6 +453,33 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
   };
 
   const removeImage = (i) => setF('images', form.images.filter((_, j) => j !== i));
+
+  // ── Option groups ───────────────────────────────────────────────────────────
+  const [optionUploading, setOptionUploading] = useState(null);
+  const [imgPreview, setImgPreview] = useState(null);
+
+  const uploadOptionImage = async (gi, oi, file) => {
+    if (!file) return;
+    const key = gi + ':' + oi;
+    setOptionUploading(key);
+    try {
+      const result = await uploadImage(await compressImage(file), 'pmp-options', token);
+      patchOption(gi, oi, 'imageUrl', result.url);
+    } catch {
+      setErrors(p => ({ ...p, optionGroups: 'That image would not upload. Try another file.' }));
+    } finally {
+      setOptionUploading(null);
+    }
+  };
+
+  const setGroups = (fn) => setF('optionGroups', fn(form.optionGroups || []));
+  const addGroup    = ()      => setGroups(gs => [...gs, EMPTY_OPTION_GROUP()]);
+  const removeGroup = (gi)    => setGroups(gs => gs.filter((_, i) => i !== gi));
+  const patchGroup  = (gi, k, v) => setGroups(gs => gs.map((g, i) => i === gi ? { ...g, [k]: v } : g));
+  const addOption   = (gi)    => setGroups(gs => gs.map((g, i) => i === gi ? { ...g, options: [...g.options, EMPTY_OPTION()] } : g));
+  const removeOption= (gi, oi)=> setGroups(gs => gs.map((g, i) => i === gi ? { ...g, options: g.options.filter((_, j) => j !== oi) } : g));
+  const patchOption = (gi, oi, k, v) => setGroups(gs => gs.map((g, i) =>
+    i === gi ? { ...g, options: g.options.map((o, j) => j === oi ? { ...o, [k]: v } : o) } : g));
 
   const routeUploaded = (url, target) => {
     if (target === 'product') {
@@ -486,6 +533,8 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
   // Paste anywhere on the page, not just inside the Media card. A plain div never receives
   // paste events - it cannot take focus - which is why Ctrl+V looked broken. Typing into a
   // real field still pastes normally; only image pastes outside inputs are intercepted.
+  // This is the ONLY page-level image paste: the Media card used to upload the same paste
+  // directly as well, so Cancel on the cropper still added the picture.
   useEffect(() => {
     const onPaste = (e) => {
       const tag = (e.target?.tagName || '').toLowerCase();
@@ -500,26 +549,22 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
     return () => window.removeEventListener('paste', onPaste);
   });
 
-  const handleMediaPaste = async (e) => {
-    const items = e.clipboardData?.items;
-    if (!items) return;
-    for (const item of items) {
-      if (item.type.startsWith('image/')) {
-        e.preventDefault();
-        const file = item.getAsFile();
-        if (file) {
-          setUploadingCount(c => c + 1);
-          try {
-            const result = await uploadImage(await compressImage(file), 'pmp-products', token);
-            addImages([result.url]);
-          } catch {
-            setErrors(p => ({ ...p, images: 'Image failed to upload. Please try again.' }));
-          } finally {
-            setUploadingCount(c => c - 1);
-          }
-        }
-        return;
-      }
+  // What a URL box receives when someone copies from Google Images is often not a link at all:
+  // "Copy image" puts the picture itself on the clipboard (a text box pastes nothing), and "Copy
+  // image address" on a thumbnail gives a data: string thousands of characters long. Both are turned
+  // into a file and uploaded, exactly like the Upload button. An ordinary https link is left alone.
+  const pastedImageFile = (e) => {
+    const item = Array.from(e.clipboardData?.items || []).find(i => i.type?.startsWith('image/'));
+    if (item) return item.getAsFile();
+    const m = (e.clipboardData?.getData('text') || '').trim().match(/^data:(image\/[a-z0-9.+-]+);base64,([a-z0-9+/=\s]+)$/i);
+    if (!m) return null;
+    try {
+      const bin = atob(m[2].replace(/\s/g, ''));
+      const bytes = new Uint8Array(bin.length);
+      for (let k = 0; k < bin.length; k++) bytes[k] = bin.charCodeAt(k);
+      return new File([bytes], `pasted.${m[1].split('/')[1].replace('jpeg', 'jpg').replace('+xml', '')}`, { type: m[1] });
+    } catch {
+      return null;
     }
   };
 
@@ -611,11 +656,19 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
       let tiers = p.tiers;
       if (newMode === 'tiered') {
         const keys = p.type === 'standalone' ? ['__base__'] : p.variants.map(v => v.id);
+        // Keep what is already typed. Switching to Fixed and back is a way of LOOKING at the other
+        // mode, not a decision to throw the table away - and blanking it meant every glance at Fixed
+        // cost the owner the whole tier grid, retyped from memory.
+        // A key with no previous value still starts blank, so a newly added variant is not given
+        // some other variant's price by accident.
         tiers = p.tiers.length
-          ? p.tiers.map(t => ({ ...t, prices: keys.reduce((a, k) => ({ ...a, [k]: '' }), {}) }))
+          ? p.tiers.map(t => ({
+              ...t,
+              prices: keys.reduce((a, k) => ({ ...a, [k]: t.prices?.[k] ?? '' }), {}),
+            }))
           : [emptyTier(keys)];
       }
-      // Inquiry products are made-to-order (quoted + produced per order) — enable MTO automatically.
+      // Inquiry products are made-to-order (quoted + produced per order) - enable MTO automatically.
       const isMadeToOrder = newMode === 'inquiry' ? true : p.isMadeToOrder;
       return { ...p, pricingMode: newMode, tiers, isMadeToOrder };
     });
@@ -628,6 +681,10 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
       : [...form.collectionIds, id]);
 
   // ── BOM cost + max producible ───────────────────────────────────────────────
+
+  // A BOM anywhere - on the product itself or on any variant - means the cost is already known,
+  // so the Cost Price box has nothing left to answer.
+  const hasAnyBom = !!form.bomId || (form.variants || []).some(v => !!v.bomId);
 
   const floorCostMap = useMemo(() => {
     const map = {};
@@ -690,9 +747,27 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
       type: f.type, pricingMode: f.pricingMode,
       collectionIds: f.collectionIds,
       isCustomizable: f.isCustomizable, allowCOD: f.allowCOD, isMadeToOrder: f.isMadeToOrder,
+      allowPreorder: f.allowPreorder,
       // Both names, because the API has historically read `isCustom` while this form has spoken
       // `isCustomizable`.
       isCustom: f.isCustomizable,
+      // Blank price means free - stored as 0 so the storefront never has to guess what an empty
+      // string meant, and empty rows are dropped rather than shipped as unnamed buttons.
+      optionGroups: (f.optionGroups || [])
+        .map(g => ({
+          id: g.id,
+          name: (g.name || '').trim(),
+          options: (g.options || [])
+            .filter(o => (o.label || '').trim())
+            .map(o => ({
+            id: o.id,
+            label: o.label.trim(),
+            priceAdd: Number(o.priceAdd) || 0,
+            priceMode: o.priceMode === 'order' ? 'order' : 'unit',
+            imageUrl: (o.imageUrl || '').trim() || null,
+          })),
+        }))
+        .filter(g => g.name && g.options.length),
       allowPlainPurchase: f.allowPlain,
       downpaymentPct: (!f.isCustomizable && !f.isMadeToOrder) ? 0 : Number(f.downpaymentPct),
       hideWhenOutOfStock: f.hideWhenOutOfStock, isPublished: f.isPublished,
@@ -703,6 +778,8 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
             .map(t => ({ label: t.label.trim(), url: t.url.trim() }))
         : [],
       minOrderQty: Number(f.minOrderQty) || 1,
+      // Blank means no ceiling - the last tier's price keeps applying however large the order is.
+      quoteAboveQty: f.quoteAboveQty === '' ? null : (Number(f.quoteAboveQty) || null),
       cost: (f.cost !== '' && f.cost != null) ? Number(f.cost) : null,
     };
     let data;
@@ -733,6 +810,16 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
 
   return (
     <div style={{ minHeight: '100%', paddingBottom: '60px' }}>
+
+      {imgPreview && (
+        <div onClick={() => setImgPreview(null)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.72)', zIndex: 1200,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '32px', cursor: 'zoom-out' }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={imgPreview} alt="" onClick={e => e.stopPropagation()}
+            style={{ maxWidth: '100%', maxHeight: '100%', borderRadius: '10px', cursor: 'default' }} />
+        </div>
+      )}
 
       {prodCrop && (
         <ImageCropper src={prodCrop.src} aspect={1} title="Crop image (1:1)"
@@ -789,7 +876,7 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
             </Card>
 
             {/* ── MEDIA ── */}
-            <Card onPaste={handleMediaPaste}>
+            <Card>
               <CardTitle>Media</CardTitle>
 
               {/* Image grid */}
@@ -904,7 +991,14 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
                 <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
                   <input value={mediaUrlInput} onChange={e => setMediaUrlInput(e.target.value)}
                     onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), commitMediaUrl())}
-                    placeholder="Paste image URL here..." autoFocus
+                    onPaste={e => {
+                      const f = pastedImageFile(e);
+                      if (!f) return;
+                      e.preventDefault();
+                      setMediaUrlMode(false); setMediaUrlInput('');
+                      handleFileUpload([f], 'product');
+                    }}
+                    placeholder="Paste an image, or its URL..." autoFocus
                     style={{ ...S.input, flex: 1 }} />
                   <button onClick={commitMediaUrl} style={S.btnSm}>Add</button>
                   <button onClick={() => { setMediaUrlMode(false); setMediaUrlInput(''); }} style={S.btnGhost}>Cancel</button>
@@ -950,7 +1044,7 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
                     <Field label="Bill of Materials (BOM)" required error={errors.bomId}>
                       <CustomSelect value={form.bomId} onChange={v => setF('bomId', v)}
                         options={boms.map(b => ({ value:b.id, label:b.productName }))}
-                        placeholder="Select BOM"
+                        placeholder="Select BOM" searchable
                         error={errors.bomId} />
                     </Field>
                     {form.bomId && (
@@ -1055,8 +1149,15 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
                               {urlOpen && (
                                 <div style={{ marginTop: '4px', display: 'flex', gap: '4px', width: '190px' }}>
                                   <input value={vImgInput} onChange={e => setVImgInput(e.target.value)} autoFocus
+                                    onPaste={e => {
+                                      const f = pastedImageFile(e);
+                                      if (!f) return;
+                                      e.preventDefault();
+                                      setVImgInput(''); setVImgUrlId(null);
+                                      handleFileUpload([f], v.id);
+                                    }}
                                     onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); if (vImgInput.trim()) { const u = vImgInput.trim(); setVariantImages(p => ({...p, [v.id]: u})); addImages([u]); setVImgInput(''); setVImgUrlId(null); } } }}
-                                    placeholder="Image URL" style={{ ...S.input, flex: 1, fontSize: '11px', padding: '4px 6px' }} />
+                                    placeholder="Paste image or URL" style={{ ...S.input, flex: 1, fontSize: '11px', padding: '4px 6px' }} />
                                   <button onClick={() => { if (vImgInput.trim()) { const u = vImgInput.trim(); setVariantImages(p => ({...p, [v.id]: u})); addImages([u]); setVImgInput(''); setVImgUrlId(null); } }}
                                     style={{ ...S.btnSm, padding: '4px 8px', fontSize: '11px' }}>Set</button>
                                 </div>
@@ -1074,7 +1175,7 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
                                 <CustomSelect value={v.bomId}
                                   onChange={val => setVariant(i, 'bomId', val)}
                                   options={boms.map(b => ({ value:b.id, label:b.productName }))}
-                                  placeholder="Select BOM"
+                                  placeholder="Select BOM" searchable
                                   error={errors[`vbom_${i}`]} />
                               </Field>
                             </div>
@@ -1096,6 +1197,114 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
                     })}
                   </div>
                 )}
+              </div>
+            </Card>
+
+            {/* Options - choices that change how it is made, not what it is made of */}
+            <Card>
+              <CardTitle>Options</CardTitle>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <Note>
+                  Choices that do not change the material. They use no BOM or stock. Leave the price
+                  blank if it costs nothing extra.
+                </Note>
+
+                {(form.optionGroups || []).map((g, gi) => (
+                  <div key={g.id} style={{ border: '1px solid var(--border)', borderRadius: '8px', padding: '12px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end' }}>
+                      <Field label="Group name" style={{ flex: 1 }}>
+                        <input value={g.name} maxLength={60} placeholder="e.g. Cut type"
+                          onChange={e => patchGroup(gi, 'name', e.target.value)} style={S.input} />
+                      </Field>
+                      <button onClick={() => removeGroup(gi)} style={{ ...S.btnSmDanger, marginBottom: '2px' }}
+                        title="Remove this group">{ICONS.trash}</button>
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      <div style={{ display: 'flex', gap: '8px', fontSize: '11px', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '.4px' }}>
+                        <span style={{ flex: 1 }}>Option</span>
+                        <span style={{ width: '96px' }}>Adds (₱)</span>
+                        <span style={{ width: '124px' }}>Charged</span>
+                        <span style={{ width: '38px' }}>Pic</span>
+                        <span style={{ width: '30px' }} />
+                      </div>
+                      {g.options.map((o, oi) => (
+                        <div key={o.id} style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                          <input value={o.label} maxLength={60}
+                            placeholder={`e.g. ${['Kisscut', 'Diecut', 'Cut to shape'][oi % 3]}`}
+                            onChange={e => patchOption(gi, oi, 'label', e.target.value)}
+                            style={{ ...S.input, flex: 1 }} />
+                          <DecimalInput value={o.priceAdd} placeholder="e.g. 5.00"
+                            onChange={v => patchOption(gi, oi, 'priceAdd', v)}
+                            style={{ ...S.input, width: '96px' }} />
+                          {/* Per piece or per order. A die is cut once however many stickers follow,
+                              so charging it per piece bills a 100-piece job for a hundred dies. */}
+                          <CustomSelect
+                            value={o.priceMode || 'unit'}
+                            onChange={v => patchOption(gi, oi, 'priceMode', v)}
+                            options={[
+                              { value: 'unit',  label: 'per piece' },
+                              { value: 'order', label: 'per order' },
+                            ]}
+                            style={{ width: '124px' }}
+                          />
+                          {/* Three separate jobs, three separate targets. Once a picture is set,
+                              the tile opens it full size and a small x removes it - a single control
+                              that both previewed and replaced would make every look at the image a
+                              chance to overwrite it by accident. */}
+                          <div style={{ width: '38px', height: '38px', flexShrink: 0, position: 'relative' }}>
+                            {o.imageUrl ? (
+                              <>
+                                <button type="button" onClick={() => setImgPreview(o.imageUrl)}
+                                  title="View this picture"
+                                  style={{ width: '100%', height: '100%', borderRadius: '6px', overflow: 'hidden',
+                                    border: '1px solid var(--border)', padding: 0, cursor: 'zoom-in',
+                                    background: 'var(--dark2)', display: 'block' }}>
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img src={o.imageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                </button>
+                                <button type="button" onClick={() => patchOption(gi, oi, 'imageUrl', '')}
+                                  title="Remove this picture"
+                                  style={{ position: 'absolute', top: '-6px', right: '-6px', width: '17px', height: '17px',
+                                    borderRadius: '50%', border: '1px solid var(--border)', background: 'var(--dark)',
+                                    color: 'var(--gray)', fontSize: '11px', lineHeight: 1, cursor: 'pointer',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}>
+                                  &times;
+                                </button>
+                              </>
+                            ) : (
+                              <label style={{ width: '100%', height: '100%', borderRadius: '6px',
+                                border: '1px dashed var(--border)', display: 'flex', alignItems: 'center',
+                                justifyContent: 'center', cursor: 'pointer', overflow: 'hidden',
+                                background: 'var(--dark2)' }}
+                                title="Add a picture of this option">
+                                {optionUploading === (gi + ':' + oi)
+                                  ? <span style={{ fontSize: '10px', color: 'var(--gray)' }}>...</span>
+                                  : <span style={{ fontSize: '15px', color: 'var(--gray)' }}>+</span>}
+                                <input type="file" accept="image/*" style={{ display: 'none' }}
+                                  onChange={e => { uploadOptionImage(gi, oi, e.target.files?.[0]); e.target.value = ''; }} />
+                              </label>
+                            )}
+                          </div>
+                          <button onClick={() => removeOption(gi, oi)}
+                            disabled={g.options.length <= 1}
+                            style={{ ...S.btnSmGhost, width: '30px', padding: 0, justifyContent: 'center',
+                              opacity: g.options.length <= 1 ? .4 : 1 }}
+                            title={g.options.length <= 1 ? 'A group needs at least one option' : 'Remove'}>
+                            {ICONS.x ?? '\u00d7'}
+                          </button>
+                        </div>
+                      ))}
+                      <button onClick={() => addOption(gi)} style={{ ...S.btnSm, alignSelf: 'flex-start' }}>
+                        {ICONS.plus} Add option
+                      </button>
+                    </div>
+                  </div>
+                ))}
+
+                <button onClick={addGroup} style={{ ...S.btnSm, alignSelf: 'flex-start' }}>
+                  {ICONS.plus} Add option group
+                </button>
               </div>
             </Card>
 
@@ -1126,16 +1335,22 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
                     <DecimalInput value={form.price} onChange={v => setF('price', v)}
                       placeholder="0.00" style={errors.price ? S.inputErr : undefined} />
                     {standaloneBelowCost && (
-                      <Note type="warn">Below BOM cost — you would lose P{(floorCostMap[form.bomId] - Number(form.price)).toFixed(2)} per unit.</Note>
+                      <Note type="warn">Below BOM cost - you would lose P{(floorCostMap[form.bomId] - Number(form.price)).toFixed(2)} per unit.</Note>
                     )}
                   </Field>
                 )}
 
                 {/* COGS fallback: used for profit when a product has no BOM and no linked inventory. */}
-                <Field label="Cost Price / Buy Price (P, optional)">
+                {/* Every product in this catalogue draws its cost from a bill of materials, so this box
+                    answers a question that is already answered - and invites a number that will be
+                    ignored. It appears only where nothing else can say what the item cost: something
+                    bought finished and resold, with no BOM behind it. */}
+                {!hasAnyBom && (
+                  <Field label="Cost Price / Buy Price (P, optional)">
                   <DecimalInput value={form.cost} onChange={v => setF('cost', v)} placeholder="0.00" />
                   <Note type="info">What you pay the supplier per unit. Used to compute profit when this product has no BOM or linked inventory. Leave blank if the cost comes from a BOM or inventory item.</Note>
                 </Field>
+                )}
 
                 {form.pricingMode === 'fixed' && form.type === 'multi-variant' && (
                   <div style={{ overflowX: 'auto' }}>
@@ -1291,8 +1506,50 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
             <Card>
               <CardTitle>Order Settings</CardTitle>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                <ToggleRow label="Made to Order" hint="No stock held; supplies ordered on demand" on={form.isMadeToOrder} onChange={v => setF('isMadeToOrder', v)} />
-                <ToggleRow label="Customizable" hint="Customers upload or request a design" on={form.isCustomizable} onChange={v => setF('isCustomizable', v)} />
+                {/* The old hint - "No stock held; supplies ordered on demand" - described a different
+                    flag entirely. Buying per order is isOnDemand on the MATERIAL; this toggle has
+                    never done that, and reading it that way is what made the storefront offer
+                    quantities the checkout then refused. */}
+{/* Pre-order sits with the product because it is a selling decision about THIS item.
+                    It deliberately does not live on the material: a material is shared across
+                    recipes - Mug Box White 11oz is in all three mug BOMs - so a promise made there
+                    would silently promise products nobody considered. Applies to ready-made and
+                    customizable alike. */}
+                <ToggleRow
+                  label="Allow pre-order"
+                  hint="Customers can keep ordering after the stock runs out, and the card shows Pre-order instead of Out of Stock. Only for what you can genuinely restock in time - the delivery date is already on the order."
+                  on={form.allowPreorder}
+                  onChange={v => setF('allowPreorder', v)} />
+
+                {/* Made to Order is what routes a line to a job order. A customizable product is
+                    produced by definition, so it is already on and the toggle would be a second
+                    switch for one outcome; it only earns its place on a non-customizable product
+                    that is still made rather than picked off a shelf. */}
+                {form.isCustomizable ? (
+                  <div style={{ padding: '10px 12px', borderRadius: 8, background: 'rgba(212,168,67,0.06)', border: '1px solid rgba(212,168,67,0.2)' }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--white)' }}>Made to Order - always on here</div>
+                    <div style={{ fontSize: 11.5, color: 'var(--gray)', marginTop: 3, lineHeight: 1.5 }}>
+                      A customizable product is produced after the order, so it already gets a job order.
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <ToggleRow label="Made to Order" hint="Produced after the order, so it gets a job order. Leave off for anything you pick off a shelf." on={form.isMadeToOrder} onChange={v => setF('isMadeToOrder', v)} />
+                    {form.isMadeToOrder && (
+                      <div style={{ marginTop: -4, padding: '10px 12px', borderRadius: 8, background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.25)' }}>
+                        <div style={{ fontSize: 12.5, fontWeight: 700, color: '#b91c1c' }}>This product will not ship on its own</div>
+                        <div style={{ fontSize: 11.5, color: 'var(--gray)', marginTop: 3, lineHeight: 1.5 }}>
+                          Every order of it waits for someone to create a Job Order and pass QC, and its
+                          materials are held rather than deducted. Correct if you really make it per order.
+                          If it sits on a shelf ready to pack, switch this off - nothing chases a stalled
+                          job, so the promised delivery date would just pass.
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+                <ToggleRow label="Customizable" hint="Customers upload or request a design" on={form.isCustomizable}
+                  onChange={v => setForm(p => ({ ...p, isCustomizable: v, isMadeToOrder: v ? true : p.isMadeToOrder }))} />
                 {/* These are NOT opposites. A totebag can be sold blank off the shelf AND printed to
                     order, from the same stock. Before this, making it plain meant nobody could
                     customise it any more - one flag doing the work of two. */}
@@ -1397,18 +1654,47 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
                     </div>
                   )}
                 </Field>
+
+                {/* The last tier promises its price for every quantity above it, which is a promise
+                    about work nobody has costed. At 5,000 pieces the materials, the machine time and
+                    often a subcontractor are all different, and a published number leaves no room to
+                    say so. Above this figure the product asks rather than sells. */}
+                <Field label="Ask for a quote above">
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <IntegerInput value={form.quoteAboveQty} onChange={v => setF('quoteAboveQty', v)}
+                      min={1} placeholder="none"
+                      style={{ ...S.input, width: '70px' }} />
+                    <span style={{ fontSize: '11px', color: 'var(--gray)' }}>pcs - leave blank to keep selling at the last tier price</span>
+                  </div>
+                  {Number(form.quoteAboveQty) > 0 && (
+                    <div style={{ marginTop: '6px', fontSize: '11px', color: 'var(--gray)' }}>
+                      Above {Number(form.quoteAboveQty)} pcs the product page stops showing a price and
+                      offers to open a chat instead.
+                    </div>
+                  )}
+                </Field>
               </div>
             </Card>
 
             <Card>
               <CardTitle>Visibility</CardTitle>
+              {/* Pre-order and hide-at-zero are opposites: one keeps the product selling with an
+                  empty shelf, the other takes it off the shop the moment the shelf empties. Leaving
+                  both switchable invites a setting that cancels the one beside it, and the shop is
+                  left wondering why a pre-order product vanished. */}
               <ToggleRow
                 label="Hide when out of stock"
                 hint="Won't appear in shop when stock is 0"
-                on={form.hideWhenOutOfStock} onChange={v => setF('hideWhenOutOfStock', v)}
-                disabled={form.isMadeToOrder}
+                on={form.allowPreorder ? false : form.hideWhenOutOfStock}
+                onChange={v => setF('hideWhenOutOfStock', v)}
+                disabled={form.isMadeToOrder || form.allowPreorder}
               />
-              {form.isMadeToOrder && (
+              {form.allowPreorder ? (
+                <span style={{ fontSize: '11px', color: 'var(--gray)', marginTop: '8px', display: 'block' }}>
+                  Off while pre-order is on - the point of pre-order is that the product keeps
+                  selling once the stock runs out.
+                </span>
+              ) : form.isMadeToOrder && (
                 <span style={{ fontSize: '11px', color: 'var(--gray)', marginTop: '8px', display: 'block' }}>
                   Not applicable for made-to-order products.
                 </span>

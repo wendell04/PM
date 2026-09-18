@@ -7,6 +7,7 @@ import {
   verifyTwoFactorOtp,
 } from "@/lib/authApi";
 import { useEffect, useRef, useState } from "react";
+import OtpInput from './OtpInput';
 
 function maskEmail(email) {
   if (!email || !email.includes("@")) return email || "";
@@ -73,36 +74,36 @@ function MethodSelector({ onSelect, onBack }) {
       key: "email",
       label: "Email OTP",
       desc: "A 6-digit code is sent to your registered email address.",
-      accentColor: "#60a5fa",
+      accentColor: "#d4a843",
       bgColor: "rgba(96,165,250,0.07)",
       borderColor: (active) => active ? "rgba(96,165,250,0.7)" : "rgba(255,255,255,0.09)",
       icon: (active) => (
         <svg width="28" height="28" viewBox="0 0 24 24" fill="none"
-          stroke={active ? "#60a5fa" : "rgba(255,255,255,0.35)"} strokeWidth="1.8">
+          stroke={active ? "#d4a843" : "rgba(255,255,255,0.35)"} strokeWidth="1.8">
           <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
           <polyline points="22,6 12,13 2,6"/>
         </svg>
       ),
       badge: "Recommended",
-      badgeColor: "#60a5fa",
+      badgeColor: "#d4a843",
     },
     {
       key: "totp",
       label: "Authenticator App",
       desc: "Open Google Authenticator or Authy and enter your code. Works offline.",
-      accentColor: "#4ade80",
+      accentColor: "#d4a843",
       bgColor: "rgba(74,222,128,0.07)",
       borderColor: (active) => active ? "rgba(74,222,128,0.7)" : "rgba(255,255,255,0.09)",
       icon: (active) => (
         <svg width="28" height="28" viewBox="0 0 24 24" fill="none"
-          stroke={active ? "#4ade80" : "rgba(255,255,255,0.35)"} strokeWidth="1.8">
+          stroke={active ? "#d4a843" : "rgba(255,255,255,0.35)"} strokeWidth="1.8">
           <rect x="5" y="2" width="14" height="20" rx="2"/>
           <path d="M9 7h6M9 11h6M9 15h4"/>
-          <circle cx="15" cy="15" r="0.5" fill={active ? "#4ade80" : "rgba(255,255,255,0.35)"}/>
+          <circle cx="15" cy="15" r="0.5" fill={active ? "#d4a843" : "rgba(255,255,255,0.35)"}/>
         </svg>
       ),
       badge: "More secure",
-      badgeColor: "#4ade80",
+      badgeColor: "#d4a843",
     },
   ];
 
@@ -234,7 +235,6 @@ function MethodSelector({ onSelect, onBack }) {
 
 // ── Code Entry Screen ───────────────────────────────────────────────────────
 function CodeEntry({ token, method, userEmail, persistLogin, onSuccess, onBack, onSwitchMethod }) {
-  const inputRefs = useRef([]);
   const hasSentInitial = useRef(false);
   const isTOTP = method === "totp";
 
@@ -244,7 +244,6 @@ function CodeEntry({ token, method, userEmail, persistLogin, onSuccess, onBack, 
   const [error, setError] = useState(null);
   const [isLocked, setIsLocked] = useState(false);
   const [lockedUntil, setLockedUntil] = useState(null);
-  const [remember, setRemember] = useState(false);
   const [countdown, setCountdown] = useState(30);
   const [canResend, setCanResend] = useState(false);
 
@@ -282,29 +281,6 @@ function CodeEntry({ token, method, userEmail, persistLogin, onSuccess, onBack, 
     } finally { setSending(false); }
   };
 
-  const handleInputChange = (idx, val) => {
-    if (val && !/^\d$/.test(val)) return;
-    const next = [...digits]; next[idx] = val; setDigits(next);
-    if (val && idx < 5) inputRefs.current[idx + 1]?.focus();
-  };
-
-  const handleKeyDown = (idx, e) => {
-    if (e.key === "Backspace" && !digits[idx] && idx > 0) {
-      inputRefs.current[idx - 1]?.focus();
-      const next = [...digits]; next[idx - 1] = ""; setDigits(next);
-    }
-  };
-
-  const handlePaste = (e) => {
-    e.preventDefault();
-    const pasted = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, 6);
-    if (!pasted) return;
-    const next = [...digits];
-    for (let i = 0; i < pasted.length; i++) next[i] = pasted[i];
-    setDigits(next);
-    inputRefs.current[Math.min(pasted.length, 5)]?.focus();
-  };
-
   const handleVerify = async () => {
     if (!token) return;
     const code = digits.join("");
@@ -317,14 +293,16 @@ function CodeEntry({ token, method, userEmail, persistLogin, onSuccess, onBack, 
 
       if (result.verified) {
         // The server mints the real full-access token only now; the pending token used to
-        // reach this point is limited and already revoked — use the new one from here on.
+        // reach this point is limited and already revoked - use the new one from here on.
         const sessionToken = result.token || token;
-        if (remember && result.token) {
+        if (persistLogin && result.token) {
           try {
             const dr = await rememberDevice(sessionToken);
             if (dr.device_token) {
-              const storage = persistLogin ? localStorage : sessionStorage;
-              storage.setItem("device_token", dr.device_token);
+              // Always localStorage. This recognises the DEVICE for 90 days and is separate from
+              // how long the login itself lasts - putting it in sessionStorage tied a 90-day
+              // promise to the life of a tab.
+              localStorage.setItem("device_token", dr.device_token);
             }
           } catch { /* non-fatal */ }
         }
@@ -338,7 +316,6 @@ function CodeEntry({ token, method, userEmail, persistLogin, onSuccess, onBack, 
       else {
         setError(err.message || "Invalid code. Please try again.");
         setDigits(["", "", "", "", "", ""]);
-        inputRefs.current[0]?.focus();
       }
     } finally { setLoading(false); }
   };
@@ -346,7 +323,7 @@ function CodeEntry({ token, method, userEmail, persistLogin, onSuccess, onBack, 
   const handleResend = async () => {
     if (!canResend || isTOTP) return;
     setCanResend(false); setError(null); setIsLocked(false); setLockedUntil(null);
-    setDigits(["", "", "", "", "", ""]); inputRefs.current[0]?.focus();
+    setDigits(["", "", "", "", "", ""]);
     setSending(true);
     try { await sendTwoFactorOtp(token); setCountdown(30); }
     catch (err) {
@@ -357,7 +334,10 @@ function CodeEntry({ token, method, userEmail, persistLogin, onSuccess, onBack, 
   };
 
   const isEmail = method === "email";
-  const accent = isEmail ? "#60a5fa" : "#4ade80";
+  // The shop's gold, written as a literal because the styles below build translucent
+  // variants by appending hex alpha - "var(--gold)" plus "12" is not a colour, and the
+  // badge, the borders and the filled box would all have quietly lost their fill.
+  const accent = "#d4a843";
   const methodIcon = isEmail ? (
     <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke={accent} strokeWidth="1.8">
       <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
@@ -394,6 +374,15 @@ function CodeEntry({ token, method, userEmail, persistLogin, onSuccess, onBack, 
   return (
     <div style={overlayStyle}>
       <div style={cardStyle}>
+        {/* The shop's mark, as every other modal on the site carries. Without it this screen -
+            which is the one asking for a security code - looked like it belonged to something
+            else, which is the opposite of what a verification step should feel like. */}
+        <div style={{ display: "flex", justifyContent: "center", marginBottom: "14px" }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logos/PersonalizeMe logo.png" alt="Personalize Me Prints"
+            style={{ width: 54, height: 54, borderRadius: "50%", objectFit: "cover" }} />
+        </div>
+
         {/* Method badge */}
         <div style={{ display: "flex", justifyContent: "center", marginBottom: "18px" }}>
           <div style={{
@@ -426,37 +415,16 @@ function CodeEntry({ token, method, userEmail, persistLogin, onSuccess, onBack, 
           </p>
         )}
 
-        {/* Digit inputs */}
-        <div style={{ display: "flex", justifyContent: "center", gap: "8px", marginBottom: "16px" }}>
-          {digits.map((digit, idx) => (
-            <input
-              key={idx}
-              ref={(el) => (inputRefs.current[idx] = el)}
-              type="text"
-              inputMode="numeric"
-              maxLength={1}
-              value={digit}
-              onChange={(e) => handleInputChange(idx, e.target.value)}
-              onKeyDown={(e) => handleKeyDown(idx, e)}
-              onPaste={handlePaste}
-              disabled={loading || sending}
-              style={{
-                width: "48px",
-                height: "56px",
-                fontSize: "24px",
-                textAlign: "center",
-                borderRadius: "10px",
-                border: `1.5px solid ${digit ? `${accent}80` : "rgba(255,255,255,0.1)"}`,
-                background: digit ? `${accent}0d` : "var(--dark, #1a1a1a)",
-                color: "var(--white, #f5f5f5)",
-                outline: "none",
-                transition: "all 0.15s",
-                fontFamily: "monospace",
-              }}
-              onFocus={(e) => { e.target.style.borderColor = `${accent}80`; }}
-              onBlur={(e) => { if (!digit) e.target.style.borderColor = "rgba(255,255,255,0.1)"; }}
-            />
-          ))}
+        {/* Digit inputs - shared with account verification, which used to ask for the same six
+            digits in a single text box. One component, so the two cannot drift again. */}
+        <div style={{ marginBottom: "16px" }}>
+          <OtpInput
+            value={digits.join("")}
+            onChange={(code) => setDigits(Array.from({ length: 6 }, (_, i) => code[i] ?? ""))}
+            disabled={loading || sending}
+            accent={accent}
+            autoFocus
+          />
         </div>
 
         <div style={{ minHeight: "22px", marginBottom: "12px" }}>
@@ -486,19 +454,13 @@ function CodeEntry({ token, method, userEmail, persistLogin, onSuccess, onBack, 
           {loading ? "Verifying…" : sending ? "Sending code…" : "Verify"}
         </button>
 
-        {/* Remember device */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", marginTop: "16px" }}>
-          <input
-            type="checkbox"
-            id="tfa-remember"
-            checked={remember}
-            onChange={(e) => setRemember(e.target.checked)}
-            style={{ width: "16px", height: "16px", accentColor: accent, cursor: "pointer" }}
-          />
-          <label htmlFor="tfa-remember" style={{ fontSize: "13px", color: "var(--gray, #888)", cursor: "pointer" }}>
-            Remember this device for 90 days
-          </label>
-        </div>
+        {/* The device is remembered when the login said to remember it - see persistLogin.
+            A second checkbox here asked the same question twice in one flow. */}
+        {persistLogin && (
+          <p style={{ marginTop: "16px", fontSize: "12px", color: "var(--gray, #888)" }}>
+            We will not ask for a code on this device next time.
+          </p>
+        )}
 
         {/* Resend (email only) */}
         {!isTOTP && (

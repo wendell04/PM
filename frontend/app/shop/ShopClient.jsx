@@ -1,6 +1,10 @@
 'use client';
+import { optionGroupsOf, selectedOptionList, optionsUnitAdd, optionsOrderAdd, withOptionSuffix, unansweredOptionGroups, optionKey, groupKey } from '@/lib/shopUtils';
+import NoImage from '@/components/NoImage';
 import { PLAIN_OR_CUSTOM_ENABLED } from '@/lib/featureFlags';
 
+import useLockBodyScroll from '@/lib/useLockBodyScroll';
+import useSheetDrag from '@/lib/useSheetDrag';
 import { useState, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Image from 'next/image';
@@ -27,7 +31,7 @@ function getDisplayPrice(product) {
       if (!prices.length) return 'Price on request';
       const min = Math.min(...prices);
       const max = Math.max(...prices);
-      return min === max ? fmt(min) : `${fmt(min)} – ${fmt(max)}`;
+      return min === max ? fmt(min) : `${fmt(min)} - ${fmt(max)}`;
     }
     const p = parseFloat(product.flatPrice || product.price);
     if (p > 0) return fmt(p);
@@ -40,7 +44,7 @@ function getDisplayPrice(product) {
     if (!allPrices.length) return 'Price on request';
     const min = Math.min(...allPrices);
     const max = Math.max(...allPrices);
-    return min === max ? fmt(min) : `${fmt(min)} – ${fmt(max)}`;
+    return min === max ? fmt(min) : `${fmt(min)} - ${fmt(max)}`;
   }
   const fallback = parseFloat(product.flatPrice || product.price);
   if (fallback > 0) return fmt(fallback);
@@ -49,7 +53,17 @@ function getDisplayPrice(product) {
 
 // ─── Quick View Modal ─────────────────────────────────────────────────────────
 function QuickViewModal({ product, flashSale, onClose, onToast }) {
+  const router = useRouter();
+  const productSlug = product?.slug || String(product?.name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  const productHref = productSlug ? `/shop/products/${productSlug}` : null;
+  // Down closes the preview; up asks for the whole product page, which is what a preview is for.
+  // A client-side push, not window.location: the full reload re-downloaded the whole shop and
+  // showed a blank page between the sheet and the product.
+  const qvDrag = useSheetDrag(onClose, 90, () => { if (productHref) router.push(productHref); });
+  // Fetched while the preview is open, so pulling up lands on a page that is already there.
+  useEffect(() => { if (productHref) router.prefetch(productHref); }, [productHref, router]);
   const moq = product.minOrderQty || 1;
+  const [selOpts, setSelOpts] = useState({});
   const [selVars, setSelVars] = useState(() => {
     const init = {};
     (product.variantGroups || []).forEach(g => {
@@ -70,7 +84,6 @@ function QuickViewModal({ product, flashSale, onClose, onToast }) {
   const [showReviews, setShowReviews] = useState(false);
   const [showPricing, setShowPricing] = useState(false);
   const { addToCart } = useCart();
-  const router = useRouter();
 
   const images = (() => {
     const seen = new Set(); const out = [];
@@ -106,8 +119,19 @@ function QuickViewModal({ product, flashSale, onClose, onToast }) {
     return match;
   };
 
-  const fmt = n => n == null ? '—' : `₱${Number(n).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const fmt = n => n == null ? '-' : `₱${Number(n).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   const mode = product.priceType || product.pricingMode || 'fixed';
+  // Nothing preselected here either, and the quick view refuses to add until the choice is made -
+  // otherwise the one door that skipped the question would be the fastest door in the shop.
+  const optGroups    = optionGroupsOf(product);
+  const optUnitAdd   = optionsUnitAdd(product, selOpts);
+  const optOrderAdd  = optionsOrderAdd(product, selOpts);
+  const chosenOpts   = selectedOptionList(product, selOpts);
+  const optsPending  = unansweredOptionGroups(product, selOpts).length > 0;
+  const optsPrompt   = optsPending
+    ? `Choose ${unansweredOptionGroups(product, selOpts).map(g => g.name).join(' and ')}`
+    : null;
+
   const combo = resolveCombo(selVars);
   const comboId = combo?.id ?? null;
 
@@ -158,7 +182,10 @@ function QuickViewModal({ product, flashSale, onClose, onToast }) {
   ) : unitPrice;
 
   const isOOS = (() => {
-    if (!product.trackInventory || product.isMadeToOrder || product.stockStatus === 'upon-order') return false;
+    // Availability comes from what can actually be built, not from the made-to-order flag.
+    // A product genuinely bought per order has on-demand materials, which canProduce already
+    // skips - so it stays available truthfully rather than by assertion.
+    if (!product.trackInventory) return false;
     if (comboId != null && product.variantAvailableQty?.[comboId] != null) return Number(product.variantAvailableQty[comboId]) === 0;
     if (product.availableQty != null) return Number(product.availableQty) === 0;
     if (comboId != null && product.variantStock?.[comboId] != null) return Number(product.variantStock[comboId]) === 0;
@@ -166,20 +193,39 @@ function QuickViewModal({ product, flashSale, onClose, onToast }) {
   })();
 
   const maxQty = (() => {
-    if (!product.trackInventory || product.isMadeToOrder || product.stockStatus === 'upon-order') return 9999;
-    if (comboId != null && product.variantBackorder?.[comboId]) return 9999;
+    if (!product.trackInventory) return NO_CAP;
+    // The flag, not the old 9999 that used to be written into the quantity itself. Pre-order is
+    // the shop saying a shortfall does not stop the sale - it is a yes or no, not a count.
+    if (product.allowPreorder) return NO_CAP;
+    if (comboId != null && product.variantPreorder?.[comboId]) return NO_CAP;
+    if (comboId != null && product.variantBackorder?.[comboId]) return NO_CAP;
     if (comboId != null && product.variantAvailableQty?.[comboId] != null) return Math.max(Number(product.variantAvailableQty[comboId]), 0);
     if (product.availableQty != null) return Math.max(Number(product.availableQty), 0);
     if (comboId != null && product.variantStock?.[comboId] != null) return Math.max(Number(product.variantStock[comboId]), 0);
-    return product.stock != null ? Math.max(Number(product.stock), 0) : 9999;
+    return product.stock != null ? Math.max(Number(product.stock), 0) : NO_CAP;
   })();
 
+  // What can really be built right now, ignoring the pre-order allowance. Null here means no
+  // counted material constrains this variant at all - which is not the same as zero.
+  const readyNow = (() => {
+    if (comboId != null && product.variantCanProduce?.[comboId] != null) return Number(product.variantCanProduce[comboId]);
+    if (product.canProduce != null) return Number(product.canProduce);
+    if (comboId != null && product.variantStock?.[comboId] != null) return Number(product.variantStock[comboId]);
+    return product.stock != null ? Number(product.stock) : null;
+  })();
+
+  // Made to Order is not a supply claim. It says the product is produced after the order (job
+  // order, materials held); the blank it is printed on can still run out, and pre-order decides
+  // what happens then. So the badge reads the real count for every product. "Upon Order" was the
+  // old name for the same flag and is gone from the product form.
   const displayStock = (() => {
-    if (product.isMadeToOrder) return null;
-    if (product.stockStatus === 'upon-order') return { label: 'Upon Order', type: 'gold' };
+    // Sold out on the shelf but still orderable, because the shop said it can restock.
+    if (product.allowPreorder && readyNow != null && readyNow <= 0) return { label: 'Pre-order', type: 'gold' };
     if (isOOS) return { label: 'Out of Stock', type: 'red' };
-    if (comboId != null && product.variantAvailableQty?.[comboId] != null) {
-      const n = Number(product.variantAvailableQty[comboId]);
+    // What the shop can actually build today, never the backorder sentinel. Pre-order changes
+    // whether an order is accepted past this number - it does not change the number.
+    if (readyNow != null) {
+      const n = Number(readyNow);
       if (n <= 10) return { label: `Only ${n} left!`, type: 'gold' };
       return { label: `${n} units available`, type: 'gold' };
     }
@@ -187,16 +233,18 @@ function QuickViewModal({ product, flashSale, onClose, onToast }) {
       const n = Number(product.availableQty);
       return { label: n <= 10 ? `Only ${n} left!` : `${n} units available`, type: 'gold' };
     }
-    return { label: 'In Stock', type: 'gold' };
+    // Nothing counted constrains it: every material is bought per order.
+    return { label: product.isMadeToOrder ? 'Made to Order' : 'In Stock', type: 'gold' };
   })();
 
   const buildCart = () => {
-    const variantLabel = combo
+    const baseLabel = combo
       ? (combo.label || combo.name || Object.values(selVars).join(', ') || null)
       : (Object.values(selVars).filter(Boolean).join(', ') || null);
-    const basePrice = (comboId && product.variantPrices?.[comboId])
+    const variantLabel = withOptionSuffix(baseLabel, product, selOpts);
+    const basePrice = ((comboId && product.variantPrices?.[comboId])
       ? parseFloat(product.variantPrices[comboId])
-      : parseFloat(product.flatPrice || product.price || 0);
+      : parseFloat(product.flatPrice || product.price || 0)) + optUnitAdd;
     const effectivePrice = flashSale ? Math.max(0, flashSale.discountType === 'percentage'
       ? basePrice * (1 - flashSale.discountValue / 100)
       : basePrice - flashSale.discountValue) : basePrice;
@@ -219,7 +267,7 @@ function QuickViewModal({ product, flashSale, onClose, onToast }) {
   const handleCheckout = () => {
     if (isOOS) return;
     const { productForCart, comboId: cid, variantLabel } = buildCart();
-    // Direct checkout (Buy Now): straight to checkout with only this item — do NOT add it to the
+    // Direct checkout (Buy Now): straight to checkout with only this item - do NOT add it to the
     // cart. The selected variant's image goes first so the checkout thumbnail matches the choice.
     const variantImg = cid ? (product.variantImageUrls?.[cid] ?? product.variantImageUrls?.[String(cid)] ?? null) : null;
     const payload = {
@@ -282,7 +330,11 @@ function QuickViewModal({ product, flashSale, onClose, onToast }) {
 
   return (
     <div className="shop-qv-backdrop" onClick={onClose}>
-      <div className="shop-qv-modal" onClick={e => e.stopPropagation()}>
+      <div className="shop-qv-modal" ref={qvDrag.ref} onClick={e => e.stopPropagation()}>
+        {/* Only the strip at the top drags the sheet. Listening on the whole sheet turned an
+            ordinary scroll through the details into a drag - scroll up from the top of the list
+            and the sheet read it as "pull up" and opened the product page. A handle is a handle. */}
+        <div className="shop-qv-drag-zone" {...qvDrag.handlers} aria-hidden="true" />
         <button className="shop-qv-close" onClick={onClose}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
@@ -316,7 +368,7 @@ function QuickViewModal({ product, flashSale, onClose, onToast }) {
             )}
           </div>
 
-          {/* Right: details — mirrors product page layout */}
+          {/* Right: details - mirrors product page layout */}
           <div className="shop-qv-details">
             {/* Category + badges row */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px' }}>
@@ -327,10 +379,27 @@ function QuickViewModal({ product, flashSale, onClose, onToast }) {
                   requirement - as though the only way to buy this is to design something. */}
               {product.isCustom && (
                 <span className="shop-qv-badge customizable">
-                  {(PLAIN_OR_CUSTOM_ENABLED && (product.allowPlainPurchase ?? false)) ? 'PLAIN OR CUSTOM' : 'CUSTOMIZABLE'}
+                  {(PLAIN_OR_CUSTOM_ENABLED && (product.allowPlainPurchase ?? false)) ? 'PLAIN OR CUSTOM' : 'PRINT TO ORDER'}
                 </span>
               )}
             </div>
+
+            {/* The product page says this and the quick view did not, so the same item answered
+                "can I just buy it plain?" two different ways depending on where it was opened. */}
+            {product.isCustom && !(PLAIN_OR_CUSTOM_ENABLED && (product.allowPlainPurchase ?? false)) && (
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', marginTop: '8px',
+                background: 'rgba(212,168,67,0.07)', border: '1px solid rgba(212,168,67,0.22)',
+                borderRadius: '8px', padding: '9px 11px' }}>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#D4A843"
+                  strokeWidth="2" style={{ flexShrink: 0, marginTop: '1px' }}>
+                  <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
+                </svg>
+                <span style={{ fontSize: '0.78rem', color: 'var(--gray)', lineHeight: 1.5 }}>
+                  <strong style={{ color: 'var(--white)' }}>Customizable only.</strong>{' '}
+                  This item is printed with design. We do not sell it plain.
+                </span>
+              </div>
+            )}
 
             {/* Name */}
             <h2 className="shop-qv-title">{product.name || product.subCategoryName || 'Product'}</h2>
@@ -356,7 +425,7 @@ function QuickViewModal({ product, flashSale, onClose, onToast }) {
                 </>
               ) : priceRange ? (
                 <span className="shop-qv-price-main">
-                  {fmt(priceRange.min)}{priceRange.max !== priceRange.min && ` – ${fmt(priceRange.max)}`}
+                  {fmt(priceRange.min)}{priceRange.max !== priceRange.min && ` - ${fmt(priceRange.max)}`}
                   <span style={{ fontSize: '0.8rem', fontWeight: 400, color: '#888' }}> / pc</span>
                 </span>
               ) : (
@@ -379,8 +448,8 @@ function QuickViewModal({ product, flashSale, onClose, onToast }) {
             )}
 
             {/* Variant groups (product page style) */}
-            {hasGroups && product.variantGroups.map(group => (
-              <div key={group.id} className="shop-qv-section">
+            {hasGroups && product.variantGroups.map((group, gi) => (
+              <div key={group.id ?? group.name ?? gi} className="shop-qv-section">
                 <div className="shop-qv-section-label">{group.name}</div>
                 <div className="shop-qv-variants">
                   {group.options?.map((opt, oi) => {
@@ -407,6 +476,35 @@ function QuickViewModal({ product, flashSale, onClose, onToast }) {
                 </div>
               </div>
             ))}
+
+            {/* Options - the same picker language as the variants above; what differs is behind the
+                screen, where these touch neither stock nor the bill of materials. */}
+            {optGroups.map((group, gi) => (
+              <div key={groupKey(group, gi)} className="shop-qv-section">
+                <div className="shop-qv-section-label">{group.name}</div>
+                <div className="shop-qv-variants">
+                  {group.options.map((opt, oi) => {
+                    const gk = groupKey(group, gi);
+                    const ok = optionKey(opt, oi);
+                    return (
+                      <button
+                        key={ok}
+                        className={`shop-qv-variant-btn${selOpts[gk] === ok ? ' active' : ''}`}
+                        onClick={() => setSelOpts(p => ({ ...p, [gk]: ok }))}
+                      >
+                        {opt.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+
+            {optsPrompt && (
+              <p style={{ margin: '0 0 .25rem', fontSize: '.78rem', fontWeight: 600, color: 'var(--gold)' }}>
+                {optsPrompt}
+              </p>
+            )}
 
             {/* Quantity */}
             {!isOOS && (
@@ -449,17 +547,30 @@ function QuickViewModal({ product, flashSale, onClose, onToast }) {
                   href={(() => {
                     const qs = new URLSearchParams({ qty: String(qty) });
                     Object.entries(selVars || {}).forEach(([g, v]) => { if (v) qs.set(`v_${g}`, String(v)); });
+                    Object.entries(selOpts || {}).forEach(([g, v]) => { if (v) qs.set(`o_${g}`, String(v)); });
                     return `/shop/products/${product.slug || toSlug(product.name)}/order?${qs.toString()}`;
                   })()}
                   className="shop-qv-btn-cart"
                 >
                   Customize This Product
                 </Link>
-                <button className="shop-qv-btn-checkout" disabled={isOOS} onClick={handleAdd}
+                <button className="shop-qv-btn-checkout" disabled={isOOS || optsPending} onClick={handleAdd}
                   style={{ opacity: isOOS ? 0.5 : 1, cursor: isOOS ? 'not-allowed' : 'pointer' }}>
                   {isOOS ? 'Out of Stock' : 'Buy it plain'}
                 </button>
               </>
+            ) : mode === 'inquiry' ? (
+              /* Checked BEFORE isCustom, not after. A price-on-request service has no price, no
+                 usable quantity and no variant, so the fixed-price order form has nothing to work
+                 with - an inquiry is a conversation. The PDP opens the chat itself; ?inquire=1 tells
+                 it to do that on arrival, so this is one press rather than two. */
+              <Link
+                href={`/shop/products/${product.slug || toSlug(product.name)}?inquire=1`}
+                className="shop-qv-btn-cart"
+                onClick={onClose}
+              >
+                Ask about this
+              </Link>
             ) : product.isCustom ? (
               /* Straight to the order form, not the product page. Sending someone to the PDP made
                  them press the same button a second time - and it silently dropped the variant and
@@ -476,7 +587,7 @@ function QuickViewModal({ product, flashSale, onClose, onToast }) {
                 Customize This Product
               </Link>
             ) : mode === 'inquiry' ? (
-              // Price-on-request items can't be bought at a fixed price — send to the PDP to inquire,
+              // Price-on-request items can't be bought at a fixed price - send to the PDP to inquire,
               // never show Add to Cart / Checkout (would let the item be bought at ₱0).
               <Link href={`/shop/products/${product.slug || toSlug(product.name)}`} className="shop-qv-btn-cart" onClick={onClose}>
                 Inquire / Get a Quote
@@ -494,7 +605,7 @@ function QuickViewModal({ product, flashSale, onClose, onToast }) {
               </>
             )}
 
-            {/* Pricing accordion — tiered products only */}
+            {/* Pricing accordion - tiered products only */}
             {mode === 'tiered' && getTiers().length > 0 && (
               <>
                 <div>
@@ -507,8 +618,8 @@ function QuickViewModal({ product, flashSale, onClose, onToast }) {
                   {showPricing && (
                     <div style={{ marginTop: '10px' }}>
                       <p style={{ margin: '0 0 8px', fontSize: '0.77rem', color: '#888', lineHeight: 1.5 }}>Price per piece depends on quantity ordered.</p>
-                      <div style={{ border: '1px solid #e5e5e5', borderRadius: '8px', overflow: 'hidden' }}>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', padding: '6px 14px', background: '#f5f5f5', fontSize: '0.65rem', fontWeight: 700, color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                      <div style={{ border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', padding: '6px 14px', background: 'var(--dark2)', fontSize: '0.65rem', fontWeight: 700, color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                           <span>Quantity</span><span style={{ textAlign: 'right' }}>Unit Price</span>
                         </div>
                         {[...getTiers()].sort((a, b) => (parseInt(a.minQty) || 0) - (parseInt(b.minQty) || 0)).map((tier, i, arr) => {
@@ -524,13 +635,13 @@ function QuickViewModal({ product, flashSale, onClose, onToast }) {
                             return vals.length ? Math.min(...vals) : null;
                           })();
                           return (
-                            <div key={tier.id ?? i} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', alignItems: 'center', padding: '9px 14px', borderTop: '1px solid #e5e5e5', background: isActive ? 'rgba(212,168,67,0.07)' : '#fff' }}>
+                            <div key={tier.id ?? i} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', alignItems: 'center', padding: '9px 14px', borderTop: '1px solid var(--border)', background: isActive ? 'rgba(212,168,67,0.07)' : 'var(--dark)' }}>
                               <span style={{ fontSize: '0.82rem', color: isActive ? '#b8922f' : '#333', fontWeight: isActive ? 700 : 500, display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                                {`${tier.minQty}${tier.maxQty ? `–${tier.maxQty}` : '+'} pcs`}
+                                {`${tier.minQty}${tier.maxQty ? `-${tier.maxQty}` : '+'} pcs`}
                                 {isActive && <span style={{ fontSize: '0.6rem', background: 'rgba(212,168,67,0.15)', color: '#b8922f', padding: '1px 6px', borderRadius: '999px', fontWeight: 700, textTransform: 'uppercase' }}>Your qty</span>}
                               </span>
                               <span style={{ fontSize: '0.875rem', fontWeight: 700, color: isActive ? '#b8922f' : '#333', textAlign: 'right' }}>
-                                {tierPrice ? `${fmt(tierPrice)} / pc` : '—'}
+                                {tierPrice ? `${fmt(tierPrice)} / pc` : '-'}
                               </span>
                             </div>
                           );
@@ -581,7 +692,14 @@ function QuickViewModal({ product, flashSale, onClose, onToast }) {
                   {reviews.map((r, i) => (
                     <div key={i} className="shop-qv-review-card">
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px', flexWrap: 'wrap' }}>
-                        <div className="shop-qv-avatar">{(r.customerName || 'C').charAt(0).toUpperCase()}</div>
+                        {/* Their photo when they have one, the initial when they do not. */}
+                        <div className="shop-qv-avatar">
+                          {r.avatar ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={r.avatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }}
+                              onError={e => { e.currentTarget.style.display = 'none'; }} />
+                          ) : (r.customerName || 'C').charAt(0).toUpperCase()}
+                        </div>
                         <div>
                           <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#111' }}>{r.customerName || 'Customer'}</div>
                           <div style={{ display: 'flex', gap: '2px' }}>
@@ -613,6 +731,9 @@ function QuickViewModal({ product, flashSale, onClose, onToast }) {
 
 // ─── Product Card ─────────────────────────────────────────────────────────────
 function ProductCard({ product, onAddToCart, onQuickView, flashSale }) {
+  // Declared here because the card needs it too. The stock badge below asked for `mode` while only
+  // QuickViewModal defined one, which threw a ReferenceError and took the whole /shop page down.
+  const mode = product.priceType || product.pricingMode || 'fixed';
   const [hovered, setHovered] = useState(false);
   const hasImage = product.thumbnail || product.images?.length > 0;
   const { cartItems } = useCart();
@@ -668,13 +789,27 @@ function ProductCard({ product, onAddToCart, onQuickView, flashSale }) {
             </div>
           )}
 
-          {/* Stock image badge — top left */}
+          {/* Stock image badge - top left */}
           {(() => {
-            if (product.isMadeToOrder) return (
-              <div className="shop-stock-img-badge in-stock">In Stock</div>
-            );
+            // Price-on-request items are quoted, not stocked. "IN STOCK" on one is a claim about a
+            // shelf that does not exist, and it sits directly beside "Price on request".
+            if (mode === 'inquiry') return null;
+            // Made to Order used to short-circuit to "In Stock" here whatever the shelf held. The
+            // flag routes the order to production; it does not stock the blank.
             const totalStock = (() => {
-              // BOM-computed (from computeAvailability on the API)
+              // canProduce, not availableQty: the latter is 9999 per variant once pre-order is
+              // on, which summed to "29997 PCS" on the card for a mug the shop can make 50 of.
+              // Adding the variant figures up is only right when the variants share nothing. All
+              // three mug variants draw on the same box, each read 50, and the card said 150 for a
+              // shop that could ship 50. canProduceTotal is that sum with shared materials capped.
+              if (product.canProduceTotal != null) return Number(product.canProduceTotal);
+              // Every value null means nothing counted constrains any variant: no limit, not zero.
+              const vals = Object.values(product.variantCanProduce ?? {});
+              if (vals.length > 0 && vals.every(v => v == null)) return null;
+              const vcp = product.variantCanProduce;
+              if (vcp && Object.keys(vcp).length > 0) {
+                return Object.values(vcp).reduce((s, v) => s + (Number(v) || 0), 0);
+              }
               const vaq = product.variantAvailableQty;
               if (vaq && Object.keys(vaq).length > 0) {
                 return Object.values(vaq).reduce((s, v) => s + (Number(v) || 0), 0);
@@ -698,14 +833,14 @@ function ProductCard({ product, onAddToCart, onQuickView, flashSale }) {
               <div className="shop-stock-img-badge in-stock">{totalStock} pcs</div>
             );
             return (
-              <div className="shop-stock-img-badge in-stock">In Stock</div>
+              <div className="shop-stock-img-badge in-stock">{product.isMadeToOrder ? 'Made to Order' : 'In Stock'}</div>
             );
           })()}
 
           {/* Customizable badge */}
           {product.isCustom && (
             <div className="shop-custom-badge">
-              {(PLAIN_OR_CUSTOM_ENABLED && (product.allowPlainPurchase ?? false)) ? 'Plain or custom' : 'Customizable'}
+              {(PLAIN_OR_CUSTOM_ENABLED && (product.allowPlainPurchase ?? false)) ? 'Plain or custom' : 'Print to order'}
             </div>
           )}
 
@@ -738,7 +873,7 @@ function ProductCard({ product, onAddToCart, onQuickView, flashSale }) {
             </div>
           )}
 
-          {/* Quick View trigger — circle + button */}
+          {/* Quick View trigger - circle + button */}
           <button
             className="shop-quick-view-btn"
             onClick={(e) => { e.preventDefault(); e.stopPropagation(); onQuickView(product); }}
@@ -824,6 +959,10 @@ function ProductCard({ product, onAddToCart, onQuickView, flashSale }) {
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
+// A quantity input still needs a number for its max. This is that number, and it is deliberately
+// not the 9999 that used to travel in the API as a stock figure - it never leaves this file.
+const NO_CAP = 99999;
+
 export default function ShopClient({
   initialProducts = [],
   initialCollections = [],
@@ -843,6 +982,18 @@ export default function ShopClient({
   const [priceMax, setPriceMax]         = useState(Infinity);
   const [sidebarOpen, setSidebarOpen]   = useState(false);
   const [mobileSheet, setMobileSheet]   = useState(null);
+  // The sheet slid up and then vanished on close. It leaves the way it arrived: the class runs the
+  // slide-down, and the sheet is unmounted when that finishes.
+  const [sheetClosing, setSheetClosing] = useState(false);
+  const closeSheet = () => {
+    setSheetClosing(true);
+    setTimeout(() => { setMobileSheet(null); setSheetClosing(false); }, 240);
+  };
+
+  // One implementation for every sheet, so they all answer a thumb the same way.
+  const filterDrag = useSheetDrag(() => setMobileSheet(null));
+  // Locks the grid behind the sheet (and the chat launcher steps aside while it is open).
+  useLockBodyScroll(!!mobileSheet);
   const [sortOpen, setSortOpen]         = useState(false);
   const [showMoreCols, setShowMoreCols] = useState(false);
   const [banners, setBanners]         = useState(initialBanners);
@@ -870,6 +1021,13 @@ export default function ShopClient({
     window.addEventListener('pmp_search', handleSearch);
     return () => window.removeEventListener('pmp_search', handleSearch);
   }, []);
+
+  // Someone who pressed Enter in the navbar search on another page arrives here with ?q= - the event
+  // above never reached this component, because it was not mounted when the event fired.
+  useEffect(() => {
+    const q = searchParams.get('q');
+    if (q) setSearchQuery(q);
+  }, [searchParams]);
 
   // Read logged-in user for greeting
   const [shopUser, setShopUser] = useState(null);
@@ -926,7 +1084,7 @@ export default function ShopClient({
       });
       setFlashSales(map);
     } catch {
-      // Non-fatal — shop works without flash sale data
+      // Non-fatal - shop works without flash sale data
     }
   }
 
@@ -1119,7 +1277,6 @@ export default function ShopClient({
   const activeFilterCount = (availability !== 'all' ? 1 : 0) + selectedSlugs.size + (priceFilterActive ? 1 : 0) + (productType ? 1 : 0);
 
   const inStockCount = products.filter(p => {
-    if (p.isMadeToOrder) return true;
     const vaq = p.variantAvailableQty;
     if (vaq && Object.keys(vaq).length > 0)
       return Object.values(vaq).reduce((s, v) => s + (Number(v) || 0), 0) > 0;
@@ -1132,7 +1289,6 @@ export default function ShopClient({
     .filter(p => {
       if (searchQuery && !p.name?.toLowerCase().includes(searchQuery.toLowerCase()) && !p.description?.toLowerCase().includes(searchQuery.toLowerCase())) return false;
       if (availability === 'in-stock') {
-        if (p.isMadeToOrder) return true;
         const vaq = p.variantAvailableQty;
         if (vaq && Object.keys(vaq).length > 0) {
           const t = Object.values(vaq).reduce((s, v) => s + (Number(v) || 0), 0);
@@ -1144,7 +1300,6 @@ export default function ShopClient({
         }
       }
       if (availability === 'out-of-stock') {
-        if (p.isMadeToOrder) return false;
         const vaq = p.variantAvailableQty;
         if (vaq && Object.keys(vaq).length > 0) {
           const t = Object.values(vaq).reduce((s, v) => s + (Number(v) || 0), 0);
@@ -1194,7 +1349,7 @@ export default function ShopClient({
                     />
                   ) : (
                     <div className="shop-carousel-bg-image shop-carousel-placeholder">
-                      <span>No Image</span>
+                      <NoImage size={40} />
                     </div>
                   )}
                   {/* Only show overlay if there's text to protect */}
@@ -1285,7 +1440,7 @@ export default function ShopClient({
               <span className="mobile-active-chip">{productType === 'customizable' ? 'Customizable' : 'Ready Made'} <button onClick={() => setProductType('')} aria-label="Remove"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></span>
             )}
             {priceFilterActive && (
-              <span className="mobile-active-chip">₱{priceMin.toLocaleString()}–{priceMax < Infinity ? `₱${priceMax.toLocaleString()}` : 'Any'} <button onClick={() => { setPriceMin(0); setPriceMax(Infinity); }} aria-label="Remove"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></span>
+              <span className="mobile-active-chip">₱{priceMin.toLocaleString()}-{priceMax < Infinity ? `₱${priceMax.toLocaleString()}` : 'Any'} <button onClick={() => { setPriceMin(0); setPriceMax(Infinity); }} aria-label="Remove"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></span>
             )}
             <button className="mobile-active-clear" onClick={() => { setAvailability('all'); setSelectedSlugs(new Set()); setPriceMin(0); setPriceMax(Infinity); setProductType(''); }}>Clear all</button>
           </div>
@@ -1482,15 +1637,9 @@ export default function ShopClient({
             </div>
           </div>
 
-          {/* Clear all */}
-          {activeFilterCount > 0 && (
-            <button
-              className="shop-filter-clear-btn"
-              onClick={() => { setAvailability('all'); setSelectedSlugs(new Set()); setPriceMin(0); setPriceMax(Infinity); setProductType(''); }}
-            >
-              Clear all filters
-            </button>
-          )}
+          {/* No Clear at the foot of the rail: the rail's own header already has Clear, and the
+              chip row above the grid has Clear all. Three ways to do one thing, two of them
+              within a scroll of each other. */}
         </aside>
 
         {/* Mobile sidebar backdrop */}
@@ -1541,7 +1690,7 @@ export default function ShopClient({
                   )}
                   {priceFilterActive && (
                     <span className="shop-active-chip">
-                      ₱{priceMin.toLocaleString()} – {priceMax < Infinity ? `₱${priceMax.toLocaleString()}` : 'Any'}
+                      ₱{priceMin.toLocaleString()} - {priceMax < Infinity ? `₱${priceMax.toLocaleString()}` : 'Any'}
                       <button onClick={() => { setPriceMin(0); setPriceMax(Infinity); }} aria-label="Remove">
                         <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                       </button>
@@ -1726,7 +1875,7 @@ export default function ShopClient({
                         onClick={() => {
                           if (isOOS) return;
                           setQuickVariant(combo);
-                          const unlimited = !quickAddProduct.trackInventory || quickAddProduct.isMadeToOrder || quickAddProduct.stockStatus === 'upon-order' || !!quickAddProduct.variantBackorder?.[combo.id];
+                          const unlimited = !quickAddProduct.trackInventory || !!quickAddProduct.variantBackorder?.[combo.id];
                           if (!unlimited) {
                             const vqty = quickAddProduct.variantStock?.[combo.id];
                             const cap = vqty != null ? Number(vqty) : (quickAddProduct.availableQty ?? quickAddProduct.stock ?? 9999);
@@ -1774,7 +1923,7 @@ export default function ShopClient({
             {/* Quantity */}
             {(() => {
               const hasVariants = quickAddProduct.combinations?.length > 0;
-              const unlimited = !quickAddProduct.trackInventory || quickAddProduct.isMadeToOrder || quickAddProduct.stockStatus === 'upon-order';
+              const unlimited = !quickAddProduct.trackInventory;
               const effectiveMaxQty = (() => {
                 if (unlimited) return 9999;
                 if (hasVariants && !quickVariant) return 9999;
@@ -1787,9 +1936,8 @@ export default function ShopClient({
               })();
               const stockLabel = (() => {
                 if (!quickAddProduct.trackInventory) return null;
-                if (quickAddProduct.isMadeToOrder || quickAddProduct.stockStatus === 'upon-order') return { text: 'Made to Order', color: 'var(--gold)' };
                 if (hasVariants && !quickVariant) return null;
-                if (quickVariant && quickAddProduct.variantBackorder?.[quickVariant.id]) return { text: 'Backorder OK', color: 'var(--gray)' };
+                if (quickVariant && quickAddProduct.variantBackorder?.[quickVariant.id]) return { text: 'Pre-order', color: 'var(--gold)' };
                 if (effectiveMaxQty < 9999) {
                   const color = effectiveMaxQty <= 5 ? '#ef4444' : effectiveMaxQty <= 10 ? '#f59e0b' : 'var(--gray)';
                   return { text: `${effectiveMaxQty} in stock`, color };
@@ -1909,10 +2057,16 @@ export default function ShopClient({
       {/* ── Mobile filter bottom sheet ── */}
       {mobileSheet && (
         <>
-          <div className="mobile-sheet-backdrop" onClick={() => setMobileSheet(null)} />
-          <div className="mobile-sheet">
-            <div className="mobile-sheet-handle" />
-            <div className="mobile-sheet-header">
+          {/* Locking the page stops the grid scrolling under the sheet, and the lock is what
+              tells the chat launcher to get out from over "Show results". */}
+          <div className={`mobile-sheet-backdrop${sheetClosing ? ' closing' : ''}`} onClick={closeSheet} />
+          <div
+            className={`mobile-sheet${sheetClosing ? ' closing' : ''}`}
+            ref={filterDrag.ref}
+          >
+            {/* The handle and the title bar drag the sheet; the options below only scroll. */}
+            <div className="mobile-sheet-handle" {...filterDrag.handlers} />
+            <div className="mobile-sheet-header" {...filterDrag.handlers}>
               <span className="mobile-sheet-title">
                 {mobileSheet === 'all' && 'Filters & Sort'}
                 {mobileSheet === 'availability' && 'Availability'}
@@ -1920,7 +2074,7 @@ export default function ShopClient({
                 {mobileSheet === 'collections' && 'Collections'}
                 {mobileSheet === 'price' && 'Price Range'}
               </span>
-              <button className="mobile-sheet-close" onClick={() => setMobileSheet(null)} aria-label="Close">
+              <button className="mobile-sheet-close" onClick={closeSheet} aria-label="Close">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
                 </svg>
@@ -2079,7 +2233,7 @@ export default function ShopClient({
                   Clear all
                 </button>
               )}
-              <button className="mobile-sheet-apply" onClick={() => setMobileSheet(null)}>
+              <button className="mobile-sheet-apply" onClick={closeSheet}>
                 {activeFilterCount > 0 ? `Show results (${filtered.length})` : 'Apply'}
               </button>
             </div>

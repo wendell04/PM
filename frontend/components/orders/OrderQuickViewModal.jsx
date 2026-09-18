@@ -5,6 +5,7 @@ import Image from 'next/image';
 import { useAuth } from '@/contexts/AuthContext';
 import { getStatusBadge } from '@/lib/utils/orderHelpers';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
+import { normalizeStatus } from '@/lib/orderStatus';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
@@ -15,15 +16,19 @@ function getAvailableStatuses(order) {
   if (order.isCustomOrder) {
     // Keyed by BOTH canonical and legacy codes - a custom order now starts at plain
     // "pending", which this map did not know about, leaving it with no transitions at all.
+    // Same map as the Orders page. A custom order enters production ONLY by a Job Order, which
+    // checks payment and approval and gives Production and QC something to build - so In Production
+    // is never offered by hand here, and Cancel stays on offer until production starts.
+    const paidCustom = isCOD || ['partial', 'paid'].includes(order.paymentStatus) || Number(order.downPayment) > 0;
     const map = {
-      pending:             ['in_production', 'Cancelled'],
-      Pending:             ['in_production', 'Cancelled'],
-      pending_review:      ['awaiting_payment'],
-      design_approved:     ['awaiting_payment'],
-      awaiting_payment:    ['in_production'],
-      awaiting_production: ['in_production'],
-      processing:          ['in_production', 'Cancelled'],
-      Processing:          ['in_production', 'Cancelled'],
+      pending:             ['Cancelled'],
+      Pending:             ['Cancelled'],
+      pending_review:      paidCustom ? ['Cancelled'] : ['awaiting_payment', 'Cancelled'],
+      design_approved:     paidCustom ? ['Cancelled'] : ['awaiting_payment', 'Cancelled'],
+      awaiting_payment:    ['Cancelled'],
+      awaiting_production: ['Cancelled'],
+      processing:          ['Cancelled'],
+      Processing:          ['Cancelled'],
       in_production:       ['for_qc'],
       for_qc:              order.paymentStatus === 'paid' ? ['for_delivery'] : ['ready_for_delivery'],
       ready_for_delivery:  ['for_delivery'],
@@ -128,7 +133,7 @@ export default function OrderQuickViewModal({
     setIsUpdating(true);
     setUpdateError(null);
     try {
-      // 'Paid' means collect COD payment — only update paymentStatus, orderStatus stays 'Delivered'
+      // 'Paid' means collect COD payment - only update paymentStatus, orderStatus stays 'Delivered'
       const payload = confirmStatus === 'Paid'
         ? { paymentStatus: 'paid' }
         : { orderStatus: confirmStatus };
@@ -337,7 +342,7 @@ export default function OrderQuickViewModal({
               #{String(orderId).slice(-8).toUpperCase()}
             </span>
             {order && (() => {
-              const deliveredPaid = order.orderStatus === 'Delivered' && order.paymentStatus === 'paid';
+              const deliveredPaid = normalizeStatus(order.orderStatus) === 'delivered' && order.paymentStatus === 'paid';
               const badge = deliveredPaid
                 ? { label: 'Delivered', color: '#4ade80', bg: 'rgba(74,222,128,0.15)', border: 'rgba(74,222,128,0.4)' }
                 : getStatusBadge(order.orderStatus);
@@ -482,13 +487,13 @@ export default function OrderQuickViewModal({
                     Customer
                   </h4>
                   <div style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--white)', marginBottom: '0.25rem' }}>
-                    {order.userSnapshot?.name || '—'}
+                    {order.userSnapshot?.name || '-'}
                   </div>
                   <div style={{ fontSize: '0.85rem', color: 'var(--gray)', marginBottom: '0.125rem' }}>
-                    {order.userSnapshot?.email || '—'}
+                    {order.userSnapshot?.email || '-'}
                   </div>
                   <div style={{ fontSize: '0.85rem', color: 'var(--gray)' }}>
-                    {order.userSnapshot?.phone || '—'}
+                    {order.userSnapshot?.phone || '-'}
                   </div>
                 </div>
 
@@ -512,7 +517,7 @@ export default function OrderQuickViewModal({
                         <div key={i}>{line}</div>
                       ))
                     ) : (
-                      <span style={{ color: 'var(--gray)' }}>—</span>
+                      <span style={{ color: 'var(--gray)' }}>-</span>
                     )}
                   </div>
                 </div>
@@ -535,7 +540,7 @@ export default function OrderQuickViewModal({
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                       <span style={{ fontSize: '0.85rem', color: 'var(--gray)' }}>Method:</span>
                       <span style={{ fontSize: '0.85rem', color: 'var(--white)' }}>
-                        {{ cod: 'Cash on Delivery', gcash: 'GCash', paymaya: 'Maya', card: 'Credit / Debit Card' }[order.paymentMethod] || order.paymentMethod || '—'}
+                        {{ cod: 'Cash on Delivery', gcash: 'GCash', paymaya: 'Maya', card: 'Credit / Debit Card' }[order.paymentMethod] || order.paymentMethod || '-'}
                       </span>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
@@ -569,7 +574,7 @@ export default function OrderQuickViewModal({
                   </div>
                 </div>
 
-                {/* Update Status — admin only, left column */}
+                {/* Update Status - admin only, left column */}
                 {mode === 'admin' && (
                   <div>
                     <h4 style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '0.75rem' }}>
@@ -612,7 +617,7 @@ export default function OrderQuickViewModal({
                       </div>
                     ) : (
                       <span style={{ fontSize: '0.8rem', color: 'var(--gray)', fontStyle: 'italic' }}>
-                        {['Cancelled','Returned','Paid','Delivered','delivered'].includes(order.orderStatus)
+                        {(['cancelled','returned','delivered'].includes(normalizeStatus(order.orderStatus)) || order.orderStatus === 'Paid')
                           ? 'No further updates' : 'Managed via action buttons'}
                       </span>
                     )}
@@ -822,7 +827,7 @@ export default function OrderQuickViewModal({
                         style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '0.5rem 1rem', background: 'rgba(96,165,250,0.15)', border: '1px solid rgba(96,165,250,0.4)', borderRadius: '8px', color: '#60a5fa', fontSize: '0.82rem', fontWeight: 700, cursor: isUpdating ? 'not-allowed' : 'pointer', opacity: isUpdating ? 0.6 : 1 }}
                       >
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-                        {isUpdating ? 'Approving...' : 'Approve — Notify Customer to Pay'}
+                        {isUpdating ? 'Approving...' : 'Approve - Notify Customer to Pay'}
                       </button>
                     </div>
                   </div>
@@ -837,7 +842,7 @@ export default function OrderQuickViewModal({
                       <span style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '0.8px' }}>Design Service</span>
                     </div>
                     <div style={{ padding: '0.75rem', background: 'rgba(212,168,67,0.02)' }}>
-                      {/* Already has uploaded draft — show links + replace option */}
+                      {/* Already has uploaded draft - show links + replace option */}
                       {(order.adminDesignUrl || adminDesignSuccess) && !adminDraftFile?.length ? (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -845,9 +850,9 @@ export default function OrderQuickViewModal({
                               Draft Uploaded
                             </span>
                             <span style={{ fontSize: '0.72rem', color: 'var(--gray)' }}>
-                              {order.designStatus === 'draft_ready' ? '— Awaiting customer review'
-                                : order.designStatus === 'approved' ? '— Customer approved'
-                                : adminDesignSuccess ? '— Customer has been notified'
+                              {order.designStatus === 'draft_ready' ? '- Awaiting customer review'
+                                : order.designStatus === 'approved' ? '- Customer approved'
+                                : adminDesignSuccess ? '- Customer has been notified'
                                 : ''}
                             </span>
                           </div>
@@ -858,7 +863,7 @@ export default function OrderQuickViewModal({
                               {arr.length > 1 ? `File ${i + 1}` : 'View Design Draft'}
                             </a>
                           ))}
-                          {/* Replace draft — file picker only, no immediate upload */}
+                          {/* Replace draft - file picker only, no immediate upload */}
                           <label style={{ cursor: 'pointer', display: 'inline-block', marginTop: '0.25rem' }}>
                             <span style={{ fontSize: '0.75rem', color: 'var(--gray)', textDecoration: 'underline', cursor: 'pointer' }}>Replace draft</span>
                             <input
@@ -876,7 +881,7 @@ export default function OrderQuickViewModal({
                         </div>
 
                       ) : adminDraftFile?.length > 0 ? (
-                        /* Files selected — show list + Send button */
+                        /* Files selected - show list + Send button */
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                           <div style={{ fontSize: '0.75rem', color: 'var(--gray)', marginBottom: '0.25rem' }}>
                             {adminDraftFile.length} file{adminDraftFile.length > 1 ? 's' : ''} selected
@@ -917,7 +922,7 @@ export default function OrderQuickViewModal({
                             </label>
                           )}
                           <div style={{ display: 'flex', gap: '6px', marginTop: '0.25rem' }}>
-                            {/* SEND button — this is the action trigger */}
+                            {/* SEND button - this is the action trigger */}
                             <button
                               type="button"
                               disabled={adminDesignUploading}
@@ -957,7 +962,7 @@ export default function OrderQuickViewModal({
                         </div>
 
                       ) : (
-                        /* No files selected, no draft yet — show initial picker */
+                        /* No files selected, no draft yet - show initial picker */
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                           <div style={{ fontSize: '0.8rem', color: 'var(--gray)' }}>
                             Customer requested design service. Upload the design draft when ready.
@@ -989,7 +994,7 @@ export default function OrderQuickViewModal({
                   </div>
                 )}
 
-                {/* Revision Notes — shown prominently when customer requested changes */}
+                {/* Revision Notes - shown prominently when customer requested changes */}
                 {order.orderStatus === 'revision_requested' && order.revisionNotes && (
                   <div style={{ padding: '0.875rem', borderRadius: '8px', background: 'rgba(249,115,22,0.08)', border: '1px solid rgba(249,115,22,0.3)' }}>
                     <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#f97316', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '0.5rem' }}>
@@ -1097,7 +1102,7 @@ export default function OrderQuickViewModal({
                       </div>
                     )}
 
-                    {/* Approve / Reject buttons — only when pending */}
+                    {/* Approve / Reject buttons - only when pending */}
                     {mode === 'admin' &&
                       (!order.designStatus || order.designStatus === 'pending_review') && (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>

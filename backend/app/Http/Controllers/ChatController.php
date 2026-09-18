@@ -7,7 +7,9 @@ use App\Models\Conversation;
 use App\Models\Message;
 use App\Models\User;
 use App\Models\Order;
+use App\Models\SiteContent;
 use Illuminate\Http\Request;
+use App\Models\Notification;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -53,7 +55,7 @@ class ChatController extends Controller
                         'avatar'      => $other->avatar,
                         'role'        => $other->role,
                         'last_seen_at' => $other->last_seen_at ? $other->last_seen_at->toIso8601String() : null,
-                    ] : ['name' => 'Unknown User']
+                    ] : $this->guestParty($c),
                 ];
             }
 
@@ -121,6 +123,99 @@ class ChatController extends Controller
     /**
      * Get messages for a specific conversation.
      */
+    /**
+     * Work out, from the orders as they are now, which chat cards still need acting on.
+     *
+     * A card is a stored message, but whether it is still actionable is a fact about the order.
+     * Deriving it here on every read means cards from before any stamping existed read correctly,
+     * a proof reverted to review becomes actionable again, and an older proof card for the same
+     * line is shown as replaced once a newer one was sent. Nothing is written back.
+     */
+    private function settleCardsFromOrders($messages): void
+    {
+        try {
+            $cards = $messages->filter(fn ($m) => ($m->type ?? null) === 'order_reference'
+                && is_array($m->metadata ?? null)
+                && in_array($m->metadata['kind'] ?? null, ['proof_ready', 'deposit_due', 'delivery_fee'], true)
+                && !empty($m->metadata['orderId']));
+            if ($cards->isEmpty()) {
+                return;
+            }
+
+            $orders = \App\Models\Order::whereIn('_id', $cards->map(fn ($m) => (string) $m->metadata['orderId'])->unique()->values()->all())
+                ->get()
+                ->keyBy(fn ($o) => (string) $o->_id);
+
+            // Messages arrive oldest first, so the last proof card seen for a line is the current one.
+            $lineKey = function (array $meta): string {
+                $idx = $meta['itemIndexes'] ?? (isset($meta['itemIndex']) ? [$meta['itemIndex']] : []);
+                $idx = array_map('intval', array_filter((array) $idx, fn ($v) => $v !== null));
+                sort($idx);
+                return (string) $meta['orderId'] . '|' . implode(',', $idx);
+            };
+            $latestProof = [];
+            foreach ($cards as $pos => $m) {
+                if (($m->metadata['kind'] ?? null) === 'proof_ready') {
+                    $latestProof[$lineKey($m->metadata)] = $pos;
+                }
+            }
+
+            foreach ($cards as $pos => $m) {
+                $meta  = $m->metadata;
+                $order = $orders->get((string) $meta['orderId']);
+                if (!$order) {
+                    continue;
+                }
+
+                $settled = false;
+                $outcome = null;
+
+                if ($meta['kind'] === 'proof_ready') {
+                    if (($latestProof[$lineKey($meta)] ?? $pos) !== $pos) {
+                        // A newer proof went out for this line. Keep what happened to this one if
+                        // it was recorded at the time; otherwise it was simply replaced.
+                        $settled = true;
+                        $outcome = $meta['settledOutcome'] ?? 'superseded';
+                    } else {
+                        $idx = $meta['itemIndexes'] ?? (isset($meta['itemIndex']) ? [$meta['itemIndex']] : []);
+                        $statuses = [];
+                        foreach ((array) $idx as $i) {
+                            if ($i === null) continue;
+                            $s = $order->items[(int) $i]['designStatus'] ?? null;
+                            if ($s !== null) $statuses[] = $s;
+                        }
+                        if (!$statuses) {
+                            $statuses = [$order->designStatus ?? null];
+                        }
+                        if (in_array('revision_requested', $statuses, true)) {
+                            $settled = true;
+                            $outcome = 'changes_requested';
+                        } elseif (count(array_filter($statuses, fn ($s) => $s === 'approved')) === count($statuses)) {
+                            $settled = true;
+                            $outcome = 'approved';
+                        }
+                    }
+                } elseif ($meta['kind'] === 'deposit_due') {
+                    if (in_array($order->paymentStatus ?? null, ['paid', 'partial'], true)) {
+                        $settled = true;
+                        $outcome = 'paid';
+                    }
+                } elseif ($meta['kind'] === 'delivery_fee') {
+                    if ($order->courierFeePaid ?? false) {
+                        $settled = true;
+                        $outcome = 'paid';
+                    }
+                }
+
+                $meta['settled']        = $settled;
+                $meta['settledOutcome'] = $settled ? $outcome : null;
+                $m->metadata = $meta;
+            }
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('settleCardsFromOrders failed', ['error' => $e->getMessage()]);
+        }
+    }
+
     public function show(Request $request, $id)
     {
         try {
@@ -142,6 +237,8 @@ class ChatController extends Controller
                 ->orderBy('created_at', 'asc')
                 ->get();
 
+            $this->settleCardsFromOrders($messages);
+
             return $this->successResponse('Messages fetched successfully', $messages);
         } catch (\Exception $e) {
             return $this->serverErrorResponse($e, 'Failed to fetch messages.');
@@ -159,10 +256,13 @@ class ChatController extends Controller
                 'conversation_id' => 'nullable|string',
                 'recipient_id'    => 'nullable|string',
                 'body'            => 'nullable|string|max:2000',
-                'type'            => 'required|in:text,image,order_reference,quotation,inquiry',
+                'type'            => 'required|in:text,image,file,order_reference,quotation,inquiry',
                 'file_url'        => 'nullable|string',
                 'order_id'        => 'nullable|string',
                 'metadata'        => 'nullable|array',
+                // The sender's own id for this message, echoed back untouched so the browser can
+                // recognise its own optimistic bubble instead of guessing from the text.
+                'client_key'      => 'nullable|string|max:64',
             ]);
 
             $conversationId = $request->conversation_id;
@@ -177,6 +277,18 @@ class ChatController extends Controller
                         return response()->json(['status' => 'error', 'message' => 'No admin available'], 404);
                     }
                     $recipientId = (string)$admin->_id;
+                }
+
+                // This is a shop, not a social network: a customer talks to the shop and the shop
+                // talks back. recipient_id was free-form, so one customer could open a thread with
+                // another and message them unsolicited - a channel nobody asked for and nobody
+                // moderates. Staff keep the run of the place; customers reach the shop only.
+                $isStaff = in_array($user->role ?? null, ['admin', 'owner'], true);
+                if (!$isStaff) {
+                    $recipient = User::find($recipientId);
+                    if (!$recipient || !in_array($recipient->role ?? null, ['admin', 'owner'], true)) {
+                        return $this->errorResponse('You can only start a conversation with the shop.', 403);
+                    }
                 }
 
                 $participants = [(string)$user->_id, (string)$recipientId];
@@ -205,6 +317,16 @@ class ChatController extends Controller
             $conversation = Conversation::find($conversationId);
             if (!$conversation) {
                 return $this->notFoundResponse('Conversation');
+            }
+
+            // show() checked this and store() did not, which meant reading someone else's thread was
+            // refused while writing into it was not: any signed-in account could post a message into
+            // any conversation by supplying its id. Same rule as show(), for the same reason.
+            $senderId     = (string) ($user->_id ?? $user->id ?? '');
+            $participants = array_map('strval', $conversation->participants ?? []);
+            if (!in_array($senderId, $participants, true)
+                && !in_array($user->role ?? null, ['admin', 'owner'], true)) {
+                return $this->unauthorizedResponse();
             }
 
             $metadata = null;
@@ -239,6 +361,21 @@ class ChatController extends Controller
                     'note'        => $m['note'] ?? '',
                     'total'       => floatval($m['total'] ?? 0),
                 ];
+            } elseif ($request->type === 'file' && $request->metadata) {
+                // Without this branch $metadata stayed null and the card fell back to the word
+                // "Attachment" - the file arrived with its name thrown away.
+                $m    = $request->metadata;
+                $name = (string) ($m['name'] ?? '');
+                // basename() first: a name is a label here, never a path, and "../../x.pdf" should
+                // not read as one anywhere it is later echoed or used to build a filename.
+                $name = basename(str_replace(['\\', "\0"], ['/', ''], $name));
+                // Control characters include the right-to-left override used to disguise an
+                // extension - "evilexe.[U+202E]fdp.txt" renders as "eviltxt.pdf". Strip them.
+                $name = preg_replace('/[\p{C}]/u', '', $name);
+                $metadata = [
+                    'name' => mb_substr($name, 0, 120) ?: 'Attachment',
+                    'size' => isset($m['size']) ? (int) $m['size'] : null,
+                ];
             } elseif ($request->type === 'inquiry' && $request->metadata) {
                 $m = $request->metadata;
                 $metadata = [
@@ -250,9 +387,23 @@ class ChatController extends Controller
                 ];
             }
 
-            // Dedupe: ignore a repeat inquiry from the same sender within 20s (the chat widget can
-            // fire the inquiry send more than once). Match on `body` (top-level — reliable in MongoDB,
-            // and identical per product) rather than a nested metadata field. Return the existing one.
+            // Dedupe on the client's own key first. Every send already carries one and the column
+            // already stores it - it was only ever read back to match an optimistic bubble to its
+            // confirmed twin, never to stop the same send landing twice. An exact key beats a time
+            // window: a retried request carries the same key however long the network took, and two
+            // deliberate sends carry different keys however close together they are.
+            $clientKey = $request->input('client_key');
+            if ($clientKey) {
+                $existing = Message::where('sender_id', $user->_id)
+                    ->where('client_key', $clientKey)
+                    ->first();
+                if ($existing) {
+                    return response()->json($existing, 200);
+                }
+            }
+
+            // The time window stays as the net under it, for the case the key cannot catch: the
+            // widget firing the inquiry twice as two separate sends, each with its own key.
             if ($request->type === 'inquiry' && !empty($request->body)) {
                 $existing = Message::where('sender_id', $user->_id)
                     ->where('type', 'inquiry')
@@ -280,6 +431,7 @@ class ChatController extends Controller
                 'type'            => $request->type,
                 'file_url'        => $request->file_url,
                 'metadata'        => $metadata,
+                'client_key'      => $request->input('client_key'),
                 'is_read'         => false,
             ]);
 
@@ -289,12 +441,64 @@ class ChatController extends Controller
                 'last_message_at' => now(),
             ]);
 
-            // Broadcast real-time event — NON-FATAL: the message is already persisted above, so a
+            // Broadcast real-time event - NON-FATAL: the message is already persisted above, so a
             // broadcast failure (e.g. the Reverb/websocket server not running) must NOT fail the send.
             try {
                 broadcast(new MessageSent($message))->toOthers();
             } catch (\Throwable $e) {
                 Log::warning('Chat broadcast failed (message still saved): ' . $e->getMessage());
+            }
+
+            // The owner's automatic replies (Settings -> Chat). Only ever in answer to a customer, and
+            // never able to fail the send: the customer's own message is already saved.
+            if (($user->role ?? 'customer') === 'customer') {
+                $this->sendAutoReplies($conversation, $message, $user);
+            }
+
+            // Something is waiting for this person. Without this, a message only ever reached
+            // someone already looking at the site with the widget open - so a question that
+            // blocks an order could sit unanswered for days with nobody told it had been asked.
+            try {
+                $recipientId = (string) $request->input('recipient_id', '');
+                if ($recipientId === '' && !empty($conversation->participants)) {
+                    $recipientId = (string) collect($conversation->participants)
+                        ->first(fn ($pid) => (string) $pid !== (string) $user->_id, '');
+                }
+                $senderIsStaff = in_array($user->role ?? null, ['admin', 'owner', 'superAdmin', 'staff'], true)
+                    || !empty($user->role) && $user->role !== 'customer';
+                if ($recipientId !== '' && $senderIsStaff) {
+                    // One unread notification per conversation, not one per message. A shop that
+                    // types four short lines is having a conversation, not sending four alerts, and
+                    // stacking them buries every other notification the customer has - the order
+                    // updates and the delivery fee among them. An existing unread one is refreshed
+                    // in place so it carries the latest line and sorts to the top; a new one is
+                    // created only once the customer has read the last.
+                    $existing = Notification::where('user_id', $recipientId)
+                        ->where('type', 'chat_message')
+                        ->where('is_read', false)
+                        ->get()
+                        ->first(fn ($n) => (string) (($n->data['conversationId'] ?? '')) === (string) $conversation->_id);
+
+                    $preview = mb_substr(strip_tags((string) $request->input('body', 'You have a new message.')), 0, 180);
+
+                    if ($existing) {
+                        $existing->message    = $preview;
+                        $existing->created_at = now();
+                        $existing->save();
+                    } else {
+                        Notification::create([
+                            'user_id'    => $recipientId,
+                            'type'       => 'chat_message',
+                            'title'      => 'Message from the shop',
+                            'message'    => $preview,
+                            'is_read'    => false,
+                            'data'       => ['conversationId' => (string) $conversation->_id],
+                            'created_at' => now(),
+                        ]);
+                    }
+                }
+            } catch (\Throwable $e) {
+                Log::warning('Chat notification failed (message still sent): ' . $e->getMessage());
             }
 
             return $this->successResponse('Message sent successfully', $message);
@@ -310,7 +514,16 @@ class ChatController extends Controller
     public function uploadImage(Request $request)
     {
         try {
-            $request->validate(['image' => 'required|image|max:5120']);
+            // A document is not artwork. This accepts one so a customer can ask a question about a
+            // file - "will this fit?" - which until now they could only do by taking a screenshot,
+            // something Messenger has always let them do. What gets printed still travels the design
+            // upload, where it is checked and tied to an order.
+            $request->validate([
+                // No SVG. It is XML that may carry script, and it is the one "image" format a
+                // browser will execute when opened directly - which the file card invites.
+                // Nothing is lost: a customer sending a reference photo has never needed one.
+                'image' => 'required|file|mimes:jpg,jpeg,png,webp,gif,pdf,ai,psd,doc,docx|max:10240',
+            ]);
 
             $cloudName    = config('services.cloudinary.cloud_name');
             $uploadPreset = config('services.cloudinary.upload_preset');
@@ -319,22 +532,37 @@ class ChatController extends Controller
                 return $this->errorResponse('Image uploads are not configured.', 500);
             }
 
-            $file     = $request->file('image');
+            $file = $request->file('image');
+
+            // Same split the design upload makes: Cloudinary treats a PDF as an image it may
+            // rasterise, and the delivered file then is not the one that was sent. `raw` returns the
+            // original bytes untouched, which is the only useful thing to do with a document.
+            $ext          = strtolower($file->getClientOriginalExtension());
+            $isImage      = in_array($ext, ['jpg', 'jpeg', 'png', 'webp', 'gif'], true);
+            $resourceType = $isImage ? 'image' : 'raw';
+
             $response = Http::timeout(55)->attach(
                 'file',
                 fopen($file->getRealPath(), 'r'),
                 $file->getClientOriginalName(),
                 ['Content-Type' => $file->getMimeType()]
-            )->post("https://api.cloudinary.com/v1_1/{$cloudName}/image/upload", [
+            )->post("https://api.cloudinary.com/v1_1/{$cloudName}/{$resourceType}/upload", [
                 'upload_preset' => $uploadPreset,
                 'folder'        => 'pmp-chat',
             ]);
 
             if ($response->successful()) {
-                return $this->successResponse('Image uploaded.', ['url' => $response->json('secure_url')]);
+                return $this->successResponse('File uploaded.', [
+                    'url'  => $response->json('secure_url'),
+                    // Cloudinary names the stored file itself, so without this the reader would see
+                    // a random string where the document's name should be.
+                    'name' => $file->getClientOriginalName(),
+                    'kind' => $isImage ? 'image' : 'file',
+                    'size' => $file->getSize(),
+                ]);
             }
 
-            return $this->errorResponse('Failed to upload image.', 500);
+            return $this->errorResponse($response->json('error.message') ?: 'Failed to upload file.', 502);
         } catch (\Illuminate\Validation\ValidationException $e) {
             return $this->validationErrorResponse($e);
         } catch (\Exception $e) {
@@ -343,7 +571,7 @@ class ChatController extends Controller
     }
 
     /**
-     * Heartbeat — keeps last_seen_at fresh while the user has chat open.
+     * Heartbeat - keeps last_seen_at fresh while the user has chat open.
      */
     public function heartbeat(Request $request)
     {
@@ -362,6 +590,20 @@ class ChatController extends Controller
     {
         try {
             $user = $request->user();
+            // Same participant rule as show() and store(). Without it anyone could clear the unread
+            // state on a conversation they are not in - not a leak, but it lets a stranger hide the
+            // fact that a message is waiting, which is the one thing the badge exists to say.
+            $conversation = Conversation::find($id);
+            if (!$conversation) {
+                return $this->notFoundResponse('Conversation');
+            }
+            $readerId     = (string) ($user->_id ?? $user->id ?? '');
+            $participants = array_map('strval', $conversation->participants ?? []);
+            if (!in_array($readerId, $participants, true)
+                && !in_array($user->role ?? null, ['admin', 'owner'], true)) {
+                return $this->unauthorizedResponse();
+            }
+
             Message::where('conversation_id', $id)
                 ->where('sender_id', '!=', $user->_id)
                 ->where('is_read', false)
@@ -373,6 +615,137 @@ class ChatController extends Controller
             return $this->successResponse('Messages marked as read');
         } catch (\Exception $e) {
             return $this->serverErrorResponse($e, 'Failed to mark messages as read.');
+        }
+    }
+
+    /**
+     * Who a conversation with no second participant belongs to.
+     *
+     * The contact form files a message from someone with no account, so the thread is created
+     * with the shop as its only member. The list then found no other party and labelled it
+     * "Unknown User" - a thread with no name, no address, and no sign that the person cannot
+     * read a reply typed into it. Anything sent there goes nowhere, which is worse than an
+     * empty inbox because it looks like it was answered.
+     *
+     * Their name and address were on the message all along.
+     */
+    private function guestParty($conversation): array
+    {
+        $first = Message::where('conversation_id', (string) $conversation->_id)
+            ->where('sender_id', 'guest')
+            ->orderBy('created_at', 'asc')
+            ->first();
+
+        $email = $conversation->guest_email ?? $first->sender_email ?? null;
+
+        return [
+            'id'        => null,
+            'name'      => $first->sender_name ?? 'Guest',
+            'email'     => $email,
+            'role'      => 'guest',
+            'is_guest'  => true,
+            // The shop must answer by email: this person has no account to read a reply in.
+            'reply_to'  => $email,
+        ];
+    }
+
+    /**
+     * Automatic replies, set up by the owner in Settings -> Chat. The Facebook Page model, no AI:
+     *
+     *  - A saved answer, when the customer's message is one of the owner's quick questions word for
+     *    word (tapping a question in the widget sends exactly that text).
+     *  - An away message, when nobody from the shop is at the inbox - no staff heartbeat in the last
+     *    three minutes, which the Messages page sends while it is open. At most once every six hours
+     *    per conversation, so a customer typing five lines is not told five times.
+     *  - An instant reply, when the shop has not written in this conversation for twelve hours - a
+     *    greeting for someone arriving, not an echo on every line. Skipped when an answer or an away
+     *    message has just gone out, since either already tells the customer they were heard.
+     *
+     * Each is posted as the shop, marked metadata.automated, so both sides can label it and staff
+     * see exactly what was said on their behalf. The conversation's last_message stays the
+     * customer's words: the inbox preview should show what they asked, not the robot's reply.
+     */
+    private function sendAutoReplies(Conversation $conversation, Message $incoming, $customer): void
+    {
+        try {
+            $cfg = optional(SiteContent::where('key', 'chat_auto_replies')->first())->data;
+            if (!is_array($cfg)) return;
+
+            $customerId = (string) ($customer->_id ?? '');
+            $shopId = collect($conversation->participants ?? [])
+                ->map(fn ($p) => (string) $p)
+                ->first(fn ($p) => $p !== $customerId);
+            if (!$shopId) return;
+            $shop = User::find($shopId);
+            if (!$shop || ($shop->role ?? 'customer') === 'customer') return;
+
+            $convId = (string) $conversation->_id;
+            $norm = fn ($v) => mb_strtolower(preg_replace('/\s+/u', ' ', trim((string) $v)));
+            $text = fn ($v) => trim((string) $v);
+
+            $answered = false;
+            $said = $norm($incoming->body ?? '');
+            if (($incoming->type ?? 'text') === 'text' && $said !== '') {
+                foreach ((array) ($cfg['quickReplies'] ?? []) as $qr) {
+                    $question = $norm($qr['question'] ?? '');
+                    $answer   = $text($qr['answer'] ?? '');
+                    if ($question !== '' && $answer !== '' && $question === $said) {
+                        $this->postAutoReply($conversation, $shop, $answer, 'answer');
+                        $answered = true;
+                        break;
+                    }
+                }
+            }
+
+            $away = (array) ($cfg['awayMessage'] ?? []);
+            if (!empty($away['enabled']) && $text($away['message'] ?? '') !== '') {
+                $staffAtInbox = User::whereNotNull('role')
+                    ->where('role', '!=', 'customer')
+                    ->where('last_seen_at', '>=', now()->subMinutes(3))
+                    ->exists();
+                $awaySentRecently = Message::where('conversation_id', $convId)
+                    ->where('metadata.automated', 'away')
+                    ->where('created_at', '>=', now()->subHours(6))
+                    ->exists();
+                if (!$staffAtInbox && !$awaySentRecently) {
+                    $this->postAutoReply($conversation, $shop, $text($away['message']), 'away');
+                    return;
+                }
+            }
+
+            $instant = (array) ($cfg['instantReply'] ?? []);
+            if (!$answered && !empty($instant['enabled']) && $text($instant['message'] ?? '') !== '') {
+                $shopWroteRecently = Message::where('conversation_id', $convId)
+                    ->where('sender_id', $shop->_id)
+                    ->where('created_at', '>=', now()->subHours(12))
+                    ->exists();
+                if (!$shopWroteRecently) {
+                    $this->postAutoReply($conversation, $shop, $text($instant['message']), 'instant');
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Chat auto reply failed (customer message still sent): ' . $e->getMessage());
+        }
+    }
+
+    private function postAutoReply(Conversation $conversation, User $shop, string $body, string $kind): void
+    {
+        $auto = Message::create([
+            'conversation_id' => (string) $conversation->_id,
+            'sender_id'       => $shop->_id,
+            'sender_name'     => trim(($shop->firstName ?? '') . ' ' . ($shop->lastName ?? '')),
+            'body'            => mb_substr($body, 0, 2000),
+            'type'            => 'text',
+            'metadata'        => ['automated' => $kind],
+            'is_read'         => false,
+        ]);
+        $conversation->update(['last_message_at' => now()]);
+
+        // To everyone, the customer included - toOthers() would leave out the very person it answers.
+        try {
+            broadcast(new MessageSent($auto));
+        } catch (\Throwable $e) {
+            Log::warning('Chat auto reply broadcast failed (reply still saved): ' . $e->getMessage());
         }
     }
 }

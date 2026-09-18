@@ -266,6 +266,11 @@ class CollectionController extends Controller
                         'landing_image_position' => $raw['landing_image_position'] ?? null,
                     ];
                 })
+                // A collection with nothing published in it is a door onto an empty room: it shows up
+                // in the shop filters and the landing carousel, invites a click, and lands the shopper
+                // on a page with no products. Dropped here rather than in each storefront surface, so
+                // the two consumers cannot drift apart on what counts as browsable.
+                ->filter(fn ($c) => ($c['productCount'] ?? 0) > 0)
                 ->values()
                 ->all();
 

@@ -1,7 +1,9 @@
 'use client';
+import { cloudinaryThumb } from '@/lib/cloudinaryImage';
 import { PLAIN_OR_CUSTOM_ENABLED } from '@/lib/featureFlags';
+import { optionGroupsOf, defaultOptionSelection, selectedOptionList, optionsUnitAdd, optionsOrderAdd, withOptionSuffix, unansweredOptionGroups, optionKey, groupKey } from '@/lib/shopUtils';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCart } from '@/context/CartContext';
@@ -22,12 +24,18 @@ function applyFlashDiscount(price, sale) {
   return price;
 }
 
+// A quantity input still needs a number for its max. Deliberately not the 9999 that used to
+// travel in the API as a stock figure - this one never leaves the file.
+const NO_CAP = 99999;
+
 export default function ProductDetailPage() {
   const [product, setProduct] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [activeImage, setActiveImage] = useState(0);
+  const swipeRef = useRef(null);   // where a drag on the gallery started
   const [selectedVariants, setSelectedVariants] = useState({});
+  const [selectedOptions, setSelectedOptions] = useState({});
   const [quantity, setQuantity] = useState(1);
   // `designRequestFee` was referenced twice further down but declared nowhere in this file, so the
   // design-request block threw a ReferenceError the moment it rendered. The product's own override is
@@ -157,7 +165,7 @@ export default function ProductDetailPage() {
     fetchFlashSale();
   }, [product]);
 
-  // Recommendations — stale-while-revalidate with shuffle
+  // Recommendations - stale-while-revalidate with shuffle
   useEffect(() => {
     if (!id) return;
     let active = true;
@@ -269,15 +277,15 @@ export default function ProductDetailPage() {
   }
 
   function formatPeso(n) {
-    if (n == null) return '—';
+    if (n == null) return '-';
     return `₱${Number(n).toLocaleString('en-PH', {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     })}`;
   }
 
-  // Design upload removed — users attach design files at checkout via FormData.
-  // Legacy order-request submit removed — flow is cart + checkout.
+  // Design upload removed - users attach design files at checkout via FormData.
+  // Legacy order-request submit removed - flow is cart + checkout.
 
   // Resolve combination from selectedVariants → { id, name, bomId, ... }
   function resolveCombo(variants) {
@@ -306,7 +314,7 @@ export default function ProductDetailPage() {
     return resolveCombo(variants)?.id ?? null;
   }
 
-  // Add to cart — stays on page
+  // Add to cart - stays on page
   async function handleAddToCart() {
     if (!token) {
       window.dispatchEvent(new CustomEvent('pmp_open_auth', { detail: { type: 'login', returnPath: window.location.pathname } }));
@@ -323,7 +331,7 @@ export default function ProductDetailPage() {
         { ...product, flatPrice: effectivePrice, thumbnail: variantImage ?? product.thumbnail },
         quantity,
         comboId,
-        resolveVariantName(selectedVariants),
+        withOptionSuffix(resolveVariantName(selectedVariants), product, selectedOptions),
         flashSale ? (flashSale.id ?? flashSale._id ?? null) : null,
         null
       );
@@ -401,7 +409,7 @@ export default function ProductDetailPage() {
       // variant (e.g. Yellow), not the generic product photo.
       const variantImg = comboId ? (product.variantImageUrls?.[comboId] ?? product.variantImageUrls?.[String(comboId)] ?? null) : null;
       const fsId = flashSale ? (flashSale.id ?? flashSale._id ?? null) : null;
-      // Direct checkout (Buy Now): go straight to checkout with only this item — do NOT add it to
+      // Direct checkout (Buy Now): go straight to checkout with only this item - do NOT add it to
       // the cart, otherwise a leftover item is left behind after the purchase or a cancel.
       const payload = {
         items: [{
@@ -443,48 +451,164 @@ export default function ProductDetailPage() {
   const isInquiry = (product?.priceType ?? product?.pricingMode) === 'inquiry';
 
   const effectiveMaxQty = (() => {
-    if (!product?.trackInventory || product?.isMadeToOrder || product?.stockStatus === 'upon-order') return 9999;
+    // Nothing is reserved for a quote, so there is no quantity to run out of. Inquiry products are
+    // saved with trackInventory true and no BOM, which is why the branch below returned 0 for them.
+    if (isInquiry) return NO_CAP;
+    if (!product?.trackInventory) return NO_CAP;
     const comboId = resolveCombinationId(selectedVariants);
+    // Pre-order says a shortfall does not stop the sale. It used to be expressed by writing 9999
+    // into the quantity itself, which then reached the customer as "9999 units available"; it is
+    // a yes or no and now travels as one.
+    if (product?.allowPreorder) return NO_CAP;
+    if (comboId != null && product?.variantPreorder?.[comboId]) return NO_CAP;
     // Multi-variant BOM: use live per-variant availableQty from server
     if (product?.variantAvailableQty && comboId != null && product.variantAvailableQty[comboId] != null) {
       return Math.max(product.variantAvailableQty[comboId], 0);
     }
-    // No combo selected yet but variant stock data exists — use max so product isn't shown as OOS before selection
+    // No combo selected yet but variant stock data exists - use max so product isn't shown as OOS before selection
     if (product?.variantAvailableQty && comboId == null) {
-      const vals = Object.values(product.variantAvailableQty).map(v => Number(v) || 0);
+      // A null here means that variant has no ceiling at all, so neither does the product.
+      const raw = Object.values(product.variantAvailableQty);
+      if (raw.some(v => v == null)) return NO_CAP;
+      const vals = raw.map(v => Number(v) || 0);
       if (vals.length > 0) return Math.max(...vals);
     }
     // Single BOM product
     if (product?.canProduce != null) return Math.max(product.availableQty ?? 0, 0);
     // Variant product (no BOM)
-    if (comboId != null && product?.variantBackorder?.[comboId]) return 9999;
+    if (comboId != null && product?.variantBackorder?.[comboId]) return NO_CAP;
     if (comboId != null && product?.variantStock?.[comboId] != null) {
       return Math.max(Number(product.variantStock[comboId]), 0);
     }
     return Math.max(product?.availableQty ?? product?.stock ?? 0, 0);
   })();
 
-  const isOutOfStock = effectiveMaxQty === 0 && !product?.isMadeToOrder;
+  // The last one, and the one that mattered: with nothing left to build from, a made-to-order
+  // product still reported itself in stock, so Add to Cart stayed live and the refusal moved
+  // to the checkout. A product whose materials really are bought per order never reaches 0
+  // here anyway - canProduce skips on-demand materials - so it keeps selling, truthfully.
+  // An inquiry product is quoted, never sold from stock, so a stock count cannot put it out of
+  // stock. Without this the CTA read "Out of Stock" and was disabled on the very page that offers
+  // to send a quote in chat - the one action the customer came for.
+  const isOutOfStock = !isInquiry && effectiveMaxQty === 0;
+
+  // Past this quantity the listed tiers stop being an offer. The order is still perfectly welcome -
+  // it just has to be quoted, because at that size the cost is not the one on the page.
+  const quoteAbove = Number(product?.quoteAboveQty) > 0 ? Number(product.quoteAboveQty) : null;
+  const needsQuote = quoteAbove != null && quantity > quoteAbove;
+
+  // Opens the chat with a card naming the product, and records the request behind it. The chat is
+  // opened FIRST and the write is not awaited - waiting on it is what used to make the button feel
+  // stuck and invite a second press.
+  const startInquiry = () => {
+    if (!product || requestingQuote) return;
+    if (!token) {
+      window.dispatchEvent(new CustomEvent('pmp_open_auth', { detail: { type: 'login', returnPath: window.location.pathname } }));
+      return;
+    }
+    setRequestingQuote(true);
+    window.dispatchEvent(new CustomEvent('pmp_open_chat', {
+      detail: {
+        inquiryCard: {
+          productId: String(product._id ?? product.id),
+          productSlug: product.slug || String(product._id ?? product.id),
+          productName: product.name,
+          thumbnail: product.thumbnail || product.images?.[0] || null,
+          category: product.category || product.subCategoryName || 'Custom order',
+        },
+      },
+    }));
+    fetchWithTimeout(`${API_URL}/api/order-requests`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ productId: String(product._id ?? product.id), quantity, isCustom: true }),
+    }, 20000).catch(() => {}).finally(() => setTimeout(() => setRequestingQuote(false), 2000));
+  };
+
+  // Arriving from the shop grid's "Inquire" button, which sends ?inquire=1 rather than trying to
+  // open the chat itself - the auth check and the request write live here, and should stay in one
+  // place. The flag is cleared from the URL so a refresh does not fire a second inquiry.
+  useEffect(() => {
+    if (!product || !isInquiry) return;
+    if (typeof window === 'undefined') return;
+    const url = new URL(window.location.href);
+    if (url.searchParams.get('inquire') !== '1') return;
+    url.searchParams.delete('inquire');
+    window.history.replaceState({}, '', url.pathname + (url.search || '') + url.hash);
+    startInquiry();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [product, isInquiry]);
+
 
   // Computed values
-  const totalPrice = product
+  // Declared before the price maths below reads them. `const` is not hoisted, so a use above the
+  // declaration throws at render - and neither the parser nor the linter can see it, because it is a
+  // runtime rule about order, not a syntax or scope error.
+  const optionGroups   = product ? optionGroupsOf(product) : [];
+  const optionUnitAdd  = product ? optionsUnitAdd(product, selectedOptions) : 0;
+  const optionOrderAdd = product ? optionsOrderAdd(product, selectedOptions) : 0;
+  const chosenOptions  = product ? selectedOptionList(product, selectedOptions) : [];
+  // Whichever chosen option carries a picture takes the main frame. Selecting and looking are then
+  // one gesture on one target - a lightbox on the little thumbnail would put "choose this" and
+  // "show me this" on the same click, and the reader would get whichever one they did not mean.
+  const optionImage = chosenOptions.find(o => o.imageUrl)?.imageUrl ?? null;
+
+  const baseTotalPrice = product
     ? computePrice(product, quantity, selectedVariants)
     : null;
-  const unitPrice = product
+  // The option rides on every piece, so it multiplies with the quantity the same way the unit price
+  // does. Adding it once to the total would quote a 100-piece order the price of a single extra cut.
+  // The per-piece part multiplies with quantity; the per-order part is added once, whatever the
+  // quantity - that is the whole reason the two are tracked separately.
+  const totalPrice = baseTotalPrice === null
+    ? null
+    : baseTotalPrice + optionUnitAdd * quantity + optionOrderAdd;
+  const baseUnitPrice = product
     ? getUnitPrice(product, quantity, selectedVariants)
     : null;
+  // Per piece, not per order: the extra cut is extra work on every sticker, not once on the job.
+  const unitPrice = baseUnitPrice === null ? null : baseUnitPrice + optionUnitAdd;
   const priceRange = product ? getPriceRange(product) : null;
   const tiers = product ? getTiers(product) : [];
   const sortedTiers = [...tiers].sort((a, b) => (parseInt(a.minQty) || 0) - (parseInt(b.minQty) || 0));
 
+  // Seeded from the product, not left empty: a sticker is always cut somehow, and an unanswered
+  // choice would reach production as a question rather than an instruction.
+  useEffect(() => {
+    if (product) setSelectedOptions(defaultOptionSelection(product));
+  }, [product]);
+
+  // Nothing is preselected, so an unanswered group blocks the order rather than sending a guess to
+  // the bench. Named in the message: "choose an option" makes the reader hunt for which one.
+  const unanswered     = product ? unansweredOptionGroups(product, selectedOptions) : [];
+  const optionsPending = unanswered.length > 0;
+  const optionsPrompt  = optionsPending
+    ? `Choose ${unanswered.map(g => g.name).join(' and ')} to continue.`
+    : null;
+
   const activeComboId = product ? resolveCombinationId(selectedVariants) : null;
+  // What can be built from stock TODAY, which is what the ready/pre-order split is measured
+  // against. Null means no counted material constrains it - not zero.
+  const readyNow = (() => {
+    if (activeComboId != null && product?.variantCanProduce?.[activeComboId] != null)
+      return Number(product.variantCanProduce[activeComboId]);
+    if (product?.canProduce != null) return Number(product.canProduce);
+    if (activeComboId != null && product?.variantStock?.[activeComboId] != null)
+      return Number(product.variantStock[activeComboId]);
+    return product?.stock != null ? Number(product.stock) : null;
+  })();
+  // Only the part that is not on the shelf yet. Saying it before the order is placed is the
+  // whole point: a customer who discovers it afterwards reads it as a delay nobody mentioned.
+  const preorderQty = (product?.allowPreorder && readyNow != null && quantity > readyNow)
+    ? quantity - Math.max(0, readyNow)
+    : 0;
   const variantImage = (() => {
     if (!activeComboId || !product?.variantImageUrls) return null;
     return product.variantImageUrls[activeComboId]
       ?? product.variantImageUrls[String(activeComboId)]
       ?? null;
   })();
-  // Stable image list — order never changes when switching variants
+  // Stable image list - order never changes when switching variants
   const displayImages = (() => {
     if (!product) return [];
     const seen = new Set();
@@ -498,12 +622,32 @@ export default function ProductDetailPage() {
 
   return (
     <>
-    <div style={{ padding: '2rem 1rem',
+    {/* No side padding of its own: shop-main-content already provides it, and the two together
+        put this page's content 32px from the edge while the shop grid sat at 16px. */}
+    <div style={{ padding: '2rem 0',
       maxWidth: '1100px', margin: '0 auto' }}>
 
-      {/* Back button */}
+      {/* Back button. It used to always push('/shop'), which threw away wherever the reader actually
+          came from - the landing page, a collection, a search, or a filtered shop they had scrolled
+          halfway down. Going back through history restores all of that for free.
+
+          But history is only safe to walk when the step behind us is our own. A product link opened
+          from Google or a chat app has that site behind it, and "Back to Products" must never be the
+          control that ejects someone off the shop. So: same-origin referrer, or a referrer-less entry
+          that has since navigated in-app (the SPA case, where referrer stays empty), means go back.
+          A foreign referrer, or a cold deep link with nothing behind it, falls back to /shop. */}
       <button
-        onClick={() => router.push('/shop')}
+        onClick={() => {
+          const canGoBack = typeof window !== 'undefined' && window.history.length > 1;
+          const sameOrigin = typeof document !== 'undefined'
+            && document.referrer.startsWith(window.location.origin);
+          // An empty referrer with history behind it is the SPA case - referrer never updates on a
+          // soft navigation, so its absence is not evidence of a cold entry.
+          const inApp = typeof document !== 'undefined'
+            && (sameOrigin || document.referrer === '');
+          if (canGoBack && inApp) router.back();
+          else router.push('/shop');
+        }}
         style={{
           background: 'none', border: 'none',
           color: 'var(--gray)', cursor: 'pointer',
@@ -515,7 +659,7 @@ export default function ProductDetailPage() {
           fill="none" stroke="currentColor" strokeWidth="2">
           <path d="M19 12H5M12 5l-7 7 7 7"/>
         </svg>
-        Back to Products
+        Back
       </button>
 
       {/* Loading state */}
@@ -566,7 +710,7 @@ export default function ProductDetailPage() {
         </div>
       )}
 
-      {/* order-request success overlay removed — flow now uses cart + checkout */}
+      {/* order-request success overlay removed - flow now uses cart + checkout */}
 
       {/* PRODUCT DETAIL */}
       {!loading && !error && product && (
@@ -580,12 +724,12 @@ export default function ProductDetailPage() {
           <div className="pdp-body" style={{ display: 'flex', gap: '1.75rem',
             flexWrap: 'wrap', alignItems: 'flex-start' }}>
 
-          {/* LEFT — Images + Pricing below */}
+          {/* LEFT - Images + Pricing below */}
           <div className="pdp-left-col" style={{ flex: '1 1 320px', maxWidth: '460px', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
 
             {/* Image row: thumbnails + main */}
             <div className="pdp-image-row" style={{ display: 'flex', gap: '10px' }}>
-              {/* Vertical thumbnail strip — max 5, 5th shows +N if more */}
+              {/* Vertical thumbnail strip - max 5, 5th shows +N if more */}
               {displayImages.length > 1 && (
                 <div className="pdp-thumbs" style={{ display: 'flex', flexDirection: 'column', gap: '8px', flexShrink: 0, width: '64px' }}>
                   {displayImages.slice(0, 5).map((img, i) => {
@@ -623,9 +767,27 @@ export default function ProductDetailPage() {
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="9 18 15 12 9 6"/></svg>
                   </button>
                 )}
-                {/* Click to open lightbox */}
-                <div onClick={() => { if (displayImages.length > 0) { setLightboxIndex(activeImage); setLightboxOpen(true); } }}
-                  style={{ position: 'absolute', inset: 0, cursor: 'zoom-in', zIndex: 1 }} />
+                {/* Swipe to change the picture, tap to open it. The arrows were the only way
+                    through the gallery, which is not how anyone holds a phone. A drag past 40px
+                    that is more sideways than up-and-down turns the page; anything smaller is a
+                    tap. touch-action keeps vertical scrolling with the page. */}
+                <div
+                  onPointerDown={e => { swipeRef.current = { x: e.clientX, y: e.clientY }; }}
+                  onPointerUp={e => {
+                    const start = swipeRef.current;
+                    swipeRef.current = null;
+                    if (!start || displayImages.length === 0) return;
+                    const dx = e.clientX - start.x;
+                    const dy = e.clientY - start.y;
+                    if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy)) {
+                      setActiveImage(i => Math.max(0, Math.min(displayImages.length - 1, i + (dx < 0 ? 1 : -1))));
+                      return;
+                    }
+                    setLightboxIndex(activeImage);
+                    setLightboxOpen(true);
+                  }}
+                  onPointerCancel={() => { swipeRef.current = null; }}
+                  style={{ position: 'absolute', inset: 0, cursor: 'zoom-in', zIndex: 1, touchAction: 'pan-y' }} />
                 {flashSale && (
                   <div style={{ position: 'absolute', top: '0.75rem', left: '0.75rem', zIndex: 3, background: flashSale.discountType === 'percentage' ? '#ef4444' : 'var(--gold)', color: flashSale.discountType === 'percentage' ? '#fff' : '#000', fontWeight: 800, fontSize: '0.8rem', padding: '0.3rem 0.75rem', borderRadius: '999px' }}>
                     {flashSale.discountType === 'percentage' ? `${flashSale.discountValue}% OFF` : `₱${flashSale.discountValue} OFF`}
@@ -633,10 +795,13 @@ export default function ProductDetailPage() {
                 )}
                 {product.isCustom && (
                   <div style={{ position: 'absolute', top: '0.75rem', right: '0.75rem', zIndex: 3, background: '#D4A843', color: '#000', fontSize: '0.65rem', fontWeight: 700, padding: '4px 10px', borderRadius: '6px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                    Customizable
+                    Print to order
                   </div>
                 )}
-                {displayImages[activeImage] ? (
+                {optionImage ? (
+                  /* eslint-disable-next-line @next/next/no-img-element */
+                  <img src={optionImage} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', background: 'var(--dark2)', display: 'block', zIndex: 0 }} />
+                ) : displayImages[activeImage] ? (
                   /* eslint-disable-next-line @next/next/no-img-element */
                   <img src={displayImages[activeImage]} alt={product.subCategoryName} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', display: 'block', zIndex: 0 }} />
                 ) : (
@@ -647,7 +812,7 @@ export default function ProductDetailPage() {
               </div>
             </div>
 
-            {/* Pricing — Trove style: header with borderBottom, table in own container */}
+            {/* Pricing - Trove style: header with borderBottom, table in own container */}
             {product.priceType === 'tiered' && tiers.length > 0 && (
               <div>
                 <button
@@ -663,15 +828,25 @@ export default function ProductDetailPage() {
                 {showTiers && (
                   <>
                     <p style={{ margin: '0.6rem 0 0.75rem', fontSize: '0.78rem', color: 'var(--gray)', lineHeight: 1.55 }}>
-                      Price per piece depends on how many you order. The more you buy, the lower the unit price. If your quantity exceeds the last tier, the last tier price still applies.
+                      Price per piece depends on how many you order. The more you buy, the lower the unit price.{' '}
+                      {quoteAbove != null
+                        ? `Past ${quoteAbove} pcs we price the run itself, so that band is quoted rather than listed.`
+                        : 'If your quantity exceeds the last tier, the last tier price still applies.'}
                     </p>
                     <div style={{ border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden' }}>
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', padding: '0.5rem 1rem', background: 'rgba(255,255,255,0.025)', fontSize: '0.65rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                         <span>Quantity</span>
                         <span style={{ textAlign: 'right' }}>Unit Price</span>
                       </div>
-                      {sortedTiers.map((tier, i) => {
-                        const isLastTier = i === sortedTiers.length - 1;
+                      {/* Tiers past the ceiling are not an offer any more, so they are not shown as
+                          one. A table that lists P50/pc at 501 and then offers to quote the same
+                          band underneath is telling the customer two different things. The tier
+                          that straddles the ceiling is displayed ending there. */}
+                      {(quoteAbove == null
+                        ? sortedTiers
+                        : sortedTiers.filter(t => (parseInt(t.minQty) || 0) <= quoteAbove)
+                       ).map((tier, i, shownTiers) => {
+                        const isLastTier = i === shownTiers.length - 1;
                         const isActive = (() => {
                           const min = parseInt(tier.minQty) || 0;
                           if (isLastTier) return quantity >= min;
@@ -682,15 +857,38 @@ export default function ProductDetailPage() {
                         return (
                           <div key={tier.id ?? i} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', alignItems: 'center', padding: '0.625rem 1rem', borderTop: '1px solid var(--border)', background: isActive ? 'rgba(212,168,67,0.07)' : '' }}>
                             <span style={{ fontSize: '0.825rem', color: isActive ? 'var(--gold)' : 'var(--white)', fontWeight: isActive ? 700 : 500, display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
-                              {`${tier.minQty}${tier.maxQty ? `–${tier.maxQty}` : '+'} pcs`}
-                              {isActive && <span style={{ fontSize: '0.58rem', background: 'rgba(212,168,67,0.18)', color: 'var(--gold)', padding: '1px 6px', borderRadius: '999px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Your qty</span>}
+                              {(() => {
+                                const tierMax = tier.maxQty ? parseInt(tier.maxQty) : null;
+                                const capped = quoteAbove != null && (tierMax === null || tierMax > quoteAbove);
+                                if (capped) return `${tier.minQty}-${quoteAbove} pcs`;
+                                return `${tier.minQty}${tier.maxQty ? `-${tier.maxQty}` : '+'} pcs`;
+                              })()}
+                              {isActive && <span style={{ fontSize: '0.58rem', background: 'rgba(212,168,67,0.18)', color: 'var(--gold)', padding: '1px 6px', borderRadius: '999px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{optionUnitAdd > 0 ? 'Your qty - base' : 'Your qty'}</span>}
                             </span>
                             <span style={{ fontSize: '0.875rem', fontWeight: 700, color: isActive ? 'var(--gold)' : 'var(--white)', textAlign: 'right' }}>
-                              {unitP ? `${formatPeso(unitP)} / pc` : '—'}
+                              {unitP ? `${formatPeso(unitP)} / pc` : '-'}
                             </span>
                           </div>
                         );
                       })}
+                      {quoteAbove != null && (
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', alignItems: 'center', padding: '0.625rem 1rem', borderTop: '1px solid var(--border)', background: needsQuote ? 'rgba(212,168,67,0.07)' : '' }}>
+                          <span style={{ fontSize: '0.825rem', color: needsQuote ? 'var(--gold)' : 'var(--white)', fontWeight: needsQuote ? 700 : 500, display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                            {`${quoteAbove + 1}+ pcs`}
+                            {needsQuote && <span style={{ fontSize: '0.58rem', background: 'rgba(212,168,67,0.18)', color: 'var(--gold)', padding: '1px 6px', borderRadius: '999px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Your qty</span>}
+                          </span>
+                          <span style={{ textAlign: 'right' }}>
+                            <button
+                              type="button"
+                              onClick={startInquiry}
+                              disabled={requestingQuote}
+                              style={{ background: 'none', border: 'none', padding: 0, cursor: requestingQuote ? 'wait' : 'pointer', font: 'inherit', fontSize: '0.825rem', fontWeight: 700, color: 'var(--gold)', textDecoration: 'underline' }}
+                            >
+                              {requestingQuote ? 'Opening chat...' : 'Ask for a quote'}
+                            </button>
+                          </span>
+                        </div>
+                      )}
                       {(() => {
                         const lastTier = sortedTiers[sortedTiers.length - 1];
                         const lastUnitP = lastTier ? getPriceFromTier(lastTier, resolveCombinationId(selectedVariants)) : null;
@@ -698,7 +896,9 @@ export default function ProductDetailPage() {
                         const overflowThreshold = lastTier.maxQty ? parseInt(lastTier.maxQty) : parseInt(lastTier.minQty);
                         return (
                           <div style={{ padding: '0.5rem 1rem', borderTop: '1px solid var(--border)', fontSize: '0.7rem', color: 'var(--gray)', fontStyle: 'italic' }}>
-                            Any qty above {overflowThreshold} gets the same price of {formatPeso(lastUnitP)} / pc.
+                            {quoteAbove != null
+                              ? `Above ${quoteAbove} pcs the materials, the machine time and often a subcontractor are all different, so we price the run itself rather than quote a number we would have to take back.`
+                              : `Any qty above ${overflowThreshold} gets the same price of ${formatPeso(lastUnitP)} / pc.`}
                           </div>
                         );
                       })()}
@@ -748,8 +948,15 @@ export default function ProductDetailPage() {
                       {reviews.map((r, i) => (
                         <div key={i} style={{ padding: '12px', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border)', borderRadius: '10px' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px', flexWrap: 'wrap' }}>
-                            <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: 'rgba(212,168,67,0.15)', border: '1px solid rgba(212,168,67,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem', fontWeight: 700, color: 'var(--gold)', flexShrink: 0 }}>
-                              {(r.customerName || 'C').charAt(0).toUpperCase()}
+                            {/* The reviewer's own photo when they have one. The initial is not a
+                                placeholder for a missing image - it is what a reviewer who never
+                                set a photo, or who has since deleted their account, gets. */}
+                            <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: 'rgba(212,168,67,0.15)', border: '1px solid rgba(212,168,67,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem', fontWeight: 700, color: 'var(--gold)', flexShrink: 0, overflow: 'hidden' }}>
+                              {r.avatar ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img src={r.avatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                  onError={e => { e.currentTarget.style.display = 'none'; }} />
+                              ) : (r.customerName || 'C').charAt(0).toUpperCase()}
                             </div>
                             <div>
                               <div style={{ fontSize: '0.825rem', fontWeight: 700, color: 'var(--white)' }}>{r.customerName || 'Customer'}</div>
@@ -793,9 +1000,28 @@ export default function ProductDetailPage() {
                 </div>
               )}
             </div>
+
+            {/* Derived from the two flags that already decide it, NOT typed into the description:
+                a sentence the owner writes by hand goes stale the moment the toggle changes, and
+                then the page contradicts its own buttons. Sits at the foot of the detail column
+                rather than beside the buy button, where it competed with the thing it qualifies. */}
+            {product.isCustom && !(product.allowPlainPurchase ?? false) && (
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start',
+                background: 'rgba(212,168,67,0.07)', border: '1px solid rgba(212,168,67,0.22)',
+                borderRadius: '8px', padding: '10px 12px' }}>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#D4A843"
+                  strokeWidth="2" style={{ flexShrink: 0, marginTop: '1px' }}>
+                  <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
+                </svg>
+                <span style={{ fontSize: '0.8rem', color: 'var(--gray)', lineHeight: 1.5 }}>
+                  <strong style={{ color: 'var(--white)' }}>Customizable only.</strong>{' '}
+                  This item is printed with design. We do not sell it plain.
+                </span>
+              </div>
+            )}
           </div>
 
-          {/* RIGHT — Info + Order Form */}
+          {/* RIGHT - Info + Order Form */}
           <div className="pdp-right-col" style={{ flex: '1 1 360px',
             display: 'flex', flexDirection: 'column',
             gap: '1.25rem' }}>
@@ -822,7 +1048,7 @@ export default function ProductDetailPage() {
 
             {/* Product name */}
             <h1 style={{
-              fontFamily: "'Outfit', sans-serif",
+              fontFamily: "Arial, Arimo, Helvetica, sans-serif",
               fontSize: '1.75rem', fontWeight: 800,
               color: 'var(--white)', margin: 0,
               lineHeight: 1.2 }}>
@@ -868,7 +1094,67 @@ export default function ProductDetailPage() {
                   </div>
                   {quantity > 1 && (
                     <div style={{ fontSize: '0.82rem', color: 'var(--gray)', marginTop: '0.25rem' }}>
-                      Total: <span style={{ color: 'var(--gold)', fontWeight: 700 }}>{formatPeso(unitPrice * quantity)}</span>
+                      {/* totalPrice, not unitPrice x quantity: a per-order charge is added once and
+                          does not multiply, so the shorthand quietly left it out of the figure the
+                          customer reads as what they owe. */}
+                      Total: <span style={{ color: 'var(--gold)', fontWeight: 700 }}>{formatPeso(totalPrice)}</span>
+                    </div>
+                  )}
+
+                  {/* Where the number came from.
+                      Without this the headline says ₱65 while the tier table two inches away says
+                      ₱50, and nothing on the page reconciles them - which reads as a mistake at best
+                      and a trick at worst. It appears only once an option has actually added
+                      something; on a plain product there is nothing to explain. */}
+                  {chosenOptions.length > 0 && (optionUnitAdd > 0 || optionOrderAdd > 0) && (
+                    <div style={{
+                      marginTop: '0.85rem', padding: '0.7rem 0.85rem',
+                      background: 'var(--dark2)', border: '1px solid var(--border)',
+                      borderRadius: '10px', fontSize: '0.8rem',
+                      display: 'flex', flexDirection: 'column', gap: '0.3rem',
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', color: 'var(--gray)' }}>
+                        <span>Base price</span>
+                        <span style={{ fontVariantNumeric: 'tabular-nums' }}>{formatPeso(baseUnitPrice)} / pc</span>
+                      </div>
+
+                      {chosenOptions.filter(o => o.priceAdd > 0 && o.priceMode !== 'order').map((o, i) => (
+                        <div key={'u' + i} style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', color: 'var(--gray)' }}>
+                          <span>{o.label}</span>
+                          <span style={{ fontVariantNumeric: 'tabular-nums' }}>+{formatPeso(o.priceAdd)} / pc</span>
+                        </div>
+                      ))}
+
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem',
+                        paddingTop: '0.35rem', borderTop: '1px solid var(--border)',
+                        color: 'var(--white)', fontWeight: 700 }}>
+                        <span>Unit price</span>
+                        <span style={{ fontVariantNumeric: 'tabular-nums' }}>{formatPeso(unitPrice)} / pc</span>
+                      </div>
+
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', color: 'var(--gray)' }}>
+                        <span>&times; {quantity} pcs</span>
+                        <span style={{ fontVariantNumeric: 'tabular-nums' }}>{formatPeso(unitPrice * quantity)}</span>
+                      </div>
+
+                      {/* Charged once however many are made - the line most likely to be argued
+                          about, so it says "once" rather than leaving the reader to multiply it. */}
+                      {chosenOptions.filter(o => o.priceAdd > 0 && o.priceMode === 'order').map((o, i) => (
+                        <div key={'o' + i} style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', color: 'var(--gray)' }}>
+                          <span>{o.label}</span>
+                          <span style={{ fontVariantNumeric: 'tabular-nums' }}>
+                            +{formatPeso(o.priceAdd)}
+                            <span style={{ opacity: 0.7, fontWeight: 400 }}> once</span>
+                          </span>
+                        </div>
+                      ))}
+
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem',
+                        paddingTop: '0.35rem', borderTop: '1px solid var(--border)',
+                        color: 'var(--gold)', fontWeight: 800 }}>
+                        <span>Total</span>
+                        <span style={{ fontVariantNumeric: 'tabular-nums' }}>{formatPeso(totalPrice)}</span>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -877,7 +1163,7 @@ export default function ProductDetailPage() {
                   fontWeight: 800, color: 'var(--gold)' }}>
                   {formatPeso(priceRange.min)}
                   {priceRange.max !== priceRange.min
-                    && ` – ${formatPeso(priceRange.max)}`}
+                    && ` - ${formatPeso(priceRange.max)}`}
                   <span style={{ fontSize: '0.8rem',
                     color: 'var(--gray)',
                     fontWeight: 400 }}> / pc</span>
@@ -894,30 +1180,42 @@ export default function ProductDetailPage() {
               </p>
             )}
 
+
             {/* Divider */}
             <div style={{ borderTop:
               '1px solid var(--border)' }} />
 
-            {/* Stock badge — hidden for Made to Order */}
-            {!product.isMadeToOrder && (() => {
+            {/* Stock badge. Shown for Made to Order too: the flag routes the order to production, it
+                does not stock the blank, and the customer deserves the same count everyone else gets. */}
+            {(() => {
               const LOW = 10;
               const comboId = resolveCombinationId(selectedVariants);
-              const variantQty = comboId != null && product?.variantAvailableQty?.[comboId] != null
-                ? Number(product.variantAvailableQty[comboId])
-                : null;
+              // canProduce, not availableQty: pre-order changes whether an order is accepted
+              // past this figure, never the figure. (availableQty used to be overwritten with
+              // 9999 when pre-order was on, and that reached the customer as "9999 units
+              // available"; the allowance is a flag now, and this reads the real count.)
+              const variantQty = comboId != null && product?.variantCanProduce?.[comboId] != null
+                ? Number(product.variantCanProduce[comboId])
+                : (comboId != null && product?.variantAvailableQty?.[comboId] != null
+                    ? Number(product.variantAvailableQty[comboId])
+                    : null);
               const displayQty = variantQty ?? product.availableQty ?? null;
 
               const BADGE_GOLD = { color: '#b8922f', background: 'rgba(212,168,67,0.12)', border: '1px solid rgba(212,168,67,0.35)' };
 
-              if (product.stockStatus === 'upon-order') {
+              // Sold out on the shelf but still orderable, because the shop said it can restock.
+              // This is what pre-order actually changes: the badge and whether the order is
+              // accepted - not the count above it.
+              if (product.allowPreorder && displayQty != null && displayQty <= 0) {
                 return (
                   <div style={{ display: 'flex' }}>
                     <span style={{ fontSize: '0.8rem', fontWeight: 700, ...BADGE_GOLD, borderRadius: '999px', padding: '0.25rem 0.75rem' }}>
-                      Upon Order
+                      Pre-order
                     </span>
                   </div>
                 );
               }
+
               if (isOutOfStock) {
                 return (
                   <div style={{ display: 'flex' }}>
@@ -947,7 +1245,7 @@ export default function ProductDetailPage() {
               return (
                 <div style={{ display: 'flex' }}>
                   <span style={{ fontSize: '0.8rem', fontWeight: 700, ...BADGE_GOLD, borderRadius: '999px', padding: '0.25rem 0.75rem' }}>
-                    {displayQty != null && displayQty > 0 ? `${displayQty} units available` : 'In Stock'}
+                    {displayQty != null && displayQty > 0 ? `${displayQty} units available` : (product.isMadeToOrder ? 'Made to Order' : 'In Stock')}
                   </span>
                 </div>
               );
@@ -956,8 +1254,8 @@ export default function ProductDetailPage() {
 
             {/* Variants */}
             {product.variantGroups?.length > 0 && (
-              product.variantGroups.map(group => (
-                <div key={group.id}>
+              product.variantGroups.map((group, gi) => (
+                <div key={group.id ?? group.name ?? gi}>
                   <div style={{ fontSize: '0.8rem',
                     fontWeight: 600, color: 'var(--gray)',
                     textTransform: 'uppercase',
@@ -999,8 +1297,68 @@ export default function ProductDetailPage() {
               ))
             )}
 
+            {/* Options - a choice about how it is made. Same picker language as the variants above,
+                because to the customer they are the same kind of decision; what differs is behind
+                the screen, where these do not touch stock or the bill of materials. */}
+            {optionGroups.map((group, gi) => (
+              <div key={groupKey(group, gi)}>
+                <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--gray)',
+                  textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '0.5rem' }}>
+                  {group.name}
+                </div>
+                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  {group.options.map((opt, oi) => {
+                    const gk = groupKey(group, gi);
+                    const ok = optionKey(opt, oi);
+                    const isSelected = selectedOptions[gk] === ok;
+                    return (
+                      <button
+                        key={ok}
+                        type="button"
+                        onClick={() => setSelectedOptions(p => ({ ...p, [gk]: ok }))}
+                        aria-pressed={isSelected}
+                        style={{
+                          display: 'inline-flex', alignItems: 'center',
+                          padding: '0.4rem 0.875rem',
+                          borderRadius: '8px', cursor: 'pointer',
+                          fontSize: '0.875rem', fontWeight: 600,
+                          border: isSelected ? '2px solid var(--gold)' : '1px solid var(--border)',
+                          background: isSelected ? 'var(--gold)' : 'var(--dark2)',
+                          color: isSelected ? '#000' : 'var(--white)',
+                          transition: 'all 0.15s',
+                        }}
+                      >
+                        {/* A thumbnail where one is set: the difference between a kisscut and a
+                            diecut is visible in a second and unexplainable in a sentence. */}
+                        {opt.imageUrl && (
+                          /* eslint-disable-next-line @next/next/no-img-element */
+                          <img src={cloudinaryThumb(opt.imageUrl, 64)} alt=""
+                            style={{ width: 22, height: 22, borderRadius: 4, objectFit: 'cover',
+                              marginRight: '0.45rem', verticalAlign: 'middle',
+                              border: '1px solid rgba(0,0,0,.15)' }} />
+                        )}
+                        {/* No price on the button. The figure at the top of the page already moves
+                            the moment a choice is made, and it moves to the number the customer
+                            will actually pay - quantity, tier and all. A badge beside the label
+                            repeats that in a form nobody can act on: "+₱15" does not say +₱15 of
+                            what, and on a per-order charge it is actively misleading at any
+                            quantity above one. */}
+                        {opt.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
 
-            {/* Quantity input — hidden when out of stock, and for inquiry (qty is set in the quote) */}
+
+            {optionsPrompt && (
+              <p style={{ margin: '-0.25rem 0 0', fontSize: '0.8rem', fontWeight: 600, color: 'var(--gold)' }}>
+                {optionsPrompt}
+              </p>
+            )}
+
+            {/* Quantity input - hidden when out of stock, and for inquiry (qty is set in the quote) */}
             {!isOutOfStock && !isInquiry && <div>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
                 <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
@@ -1083,9 +1441,27 @@ export default function ProductDetailPage() {
                     justifyContent: 'center',
                   }}>+</button>
               </div>
+
+              {preorderQty > 0 && (
+                <div style={{ marginTop: '0.6rem', display: 'flex', gap: '8px', alignItems: 'flex-start',
+                  background: 'rgba(212,168,67,0.07)', border: '1px solid rgba(212,168,67,0.25)',
+                  borderRadius: '8px', padding: '9px 11px' }}>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#D4A843" strokeWidth="2"
+                    style={{ flexShrink: 0, marginTop: '1px' }}>
+                    <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+                  </svg>
+                  <span style={{ fontSize: '0.8rem', color: 'var(--gray)', lineHeight: 1.5 }}>
+                    <strong style={{ color: 'var(--white)' }}>
+                      {Math.max(0, readyNow)} ready now, {preorderQty} on pre-order.
+                    </strong>{' '}
+                    We have {Math.max(0, readyNow)} in stock and will restock the rest. The whole
+                    order ships together on the delivery date shown at checkout.
+                  </span>
+                </div>
+              )}
             </div>}
 
-            {/* Design format download — filtered to selected variant */}
+            {/* Design format download - filtered to selected variant */}
             {product.isCustom && product.designFormats?.length > 0 && (() => {
               const formats = product.designFormats.filter(fmt =>
                 fmt.bomId == null || String(fmt.bomId) === String(activeComboId)
@@ -1142,9 +1518,14 @@ export default function ProductDetailPage() {
                         if (isOutOfStock || requestingQuote) return;
                         const qs = new URLSearchParams({ qty: String(quantity) });
                         Object.entries(selectedVariants).forEach(([g, v]) => { if (v) qs.set(`v_${g}`, v); });
+                        // The option travels the same way the variant does. Without it the order page
+                        // starts from nothing, quotes the base price, and the cut the customer picked
+                        // a moment ago is simply gone - along with what it added.
+                        Object.entries(selectedOptions).forEach(([g, v]) => { if (v) qs.set(`o_${g}`, v); });
+                        try { sessionStorage.setItem('pmp:cameFromPdp', String(id)); } catch { /* private mode */ }
                         router.push(`/shop/products/${id}/order?${qs.toString()}`);
                       }}
-                      disabled={isOutOfStock}
+                      disabled={isOutOfStock || optionsPending}
                       className="pdp-btn-primary"
                       style={{ opacity: isOutOfStock ? 0.5 : 1, cursor: isOutOfStock ? 'not-allowed' : 'pointer' }}
                     >
@@ -1152,7 +1533,7 @@ export default function ProductDetailPage() {
                     </button>
                     <button
                       onClick={handleAddToCart}
-                      disabled={isOutOfStock}
+                      disabled={isOutOfStock || optionsPending}
                       className="pdp-btn-secondary"
                       style={{ opacity: isOutOfStock ? 0.5 : 1, cursor: isOutOfStock ? 'not-allowed' : 'pointer' }}
                     >
@@ -1162,8 +1543,11 @@ export default function ProductDetailPage() {
                       Plain items ship from stock. Customised ones are printed to order.
                     </p>
                   </>
-                ) : product.isCustom ? (
-                  /* Custom product — goes to order form, not cart */
+                ) : (product.isCustom || isInquiry) ? (
+                  /* Custom product, or anything priced on request - either way it does not go to the
+                     cart. A price-on-request product that is not flagged custom used to fall through
+                     to the Add to Cart branch below, where its price is zero, so it could be bought
+                     for nothing. The quick-view modal has always guarded this; this page did not. */
                   <>
                     <button
                       onClick={() => {
@@ -1171,64 +1555,49 @@ export default function ProductDetailPage() {
                         // Fixed/tiered custom products keep the structured order form.
                         // Carry the variant/qty chosen here so the order page confirms
                         // that choice instead of silently resetting to the first option.
-                        if (!isInquiry) {
+                        if (!isInquiry && !needsQuote) {
                           const qs = new URLSearchParams({ qty: String(quantity) });
                           Object.entries(selectedVariants).forEach(([g, v]) => { if (v) qs.set(`v_${g}`, v); });
+                        // The option travels the same way the variant does. Without it the order page
+                        // starts from nothing, quotes the base price, and the cut the customer picked
+                        // a moment ago is simply gone - along with what it added.
+                        Object.entries(selectedOptions).forEach(([g, v]) => { if (v) qs.set(`o_${g}`, v); });
+                        try { sessionStorage.setItem('pmp:cameFromPdp', String(id)); } catch { /* private mode */ }
                           router.push(`/shop/products/${id}/order?${qs.toString()}`);
                           return;
                         }
-                        if (!token) {
-                          window.dispatchEvent(new CustomEvent('pmp_open_auth', { detail: { type: 'login', returnPath: window.location.pathname } }));
-                          return;
-                        }
-                        setRequestingQuote(true);
-                        // Open the chat INSTANTLY (the lag/spam came from awaiting the request write first).
-                        window.dispatchEvent(new CustomEvent('pmp_open_chat', {
-                          detail: {
-                            inquiryCard: {
-                              productId: String(product._id ?? product.id),
-                              productSlug: product.slug || String(product._id ?? product.id),
-                              productName: product.name,
-                              thumbnail: product.thumbnail || product.images?.[0] || null,
-                              category: product.category || product.subCategoryName || 'Custom order',
-                            },
-                          },
-                        }));
-                        // Track the request in the background — does not block the chat.
-                        fetchWithTimeout(`${API_URL}/api/order-requests`, {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                          body: JSON.stringify({ productId: String(product._id ?? product.id), quantity, isCustom: true }),
-                        }, 20000).catch(() => {}).finally(() => setTimeout(() => setRequestingQuote(false), 2000));
+                        startInquiry();
                       }}
-                      disabled={isOutOfStock || requestingQuote}
+                      disabled={isOutOfStock || requestingQuote || optionsPending}
                       style={{
                         background: (isOutOfStock || requestingQuote) ? 'rgba(107,114,128,0.3)' : 'var(--gold)',
                         color: isOutOfStock ? 'var(--gray)' : '#000',
                         border: 'none', borderRadius: '10px', padding: '0.875rem 1.5rem',
                         fontWeight: 800, fontSize: '1rem',
-                        cursor: isOutOfStock ? 'not-allowed' : 'pointer',
-                        width: '100%', fontFamily: "'Outfit', sans-serif",
+                        cursor: (isOutOfStock || optionsPending) ? 'not-allowed' : 'pointer',
+                        width: '100%', fontFamily: "Arial, Arimo, Helvetica, sans-serif",
                         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
                       }}>
                       {requestingQuote
                         ? 'Opening chat…'
                         : isOutOfStock
                           ? 'Out of Stock'
-                          : (isInquiry ? 'Inquire' : 'Customize This Product')}
+                          : optionsPending
+                            ? optionsPrompt
+                            : (isInquiry || needsQuote ? 'Ask about this' : 'Customize This Product')}
                     </button>
                     <p style={{ textAlign: 'center', fontSize: '0.75rem', color: 'var(--gray)', margin: 0, lineHeight: 1.5 }}>
                       {(product.priceType ?? product.pricingMode) === 'inquiry'
-                        ? "No payment now — we'll review your request and send a quote in chat."
+                        ? "No payment now - we'll review your request and send a quote in chat."
                         : "Custom orders are fulfilled separately. You'll upload or request a design on the next step."}
                     </p>
                   </>
                 ) : (
-                  /* Regular product — Add to Cart + Checkout */
+                  /* Regular product - Add to Cart + Checkout */
                   <>
                     <button
                       onClick={handleAddToCart}
-                      disabled={isOutOfStock}
+                      disabled={isOutOfStock || optionsPending}
                       style={{
                         background: isOutOfStock
                           ? 'rgba(107,114,128,0.3)'
@@ -1237,23 +1606,25 @@ export default function ProductDetailPage() {
                         border: 'none',
                         borderRadius: '10px', padding: '0.875rem 1.5rem',
                         fontWeight: 800, fontSize: '1rem',
-                        cursor: isOutOfStock ? 'not-allowed' : 'pointer',
-                        width: '100%', fontFamily: "'Outfit', sans-serif",
+                        cursor: (isOutOfStock || optionsPending) ? 'not-allowed' : 'pointer',
+                        width: '100%', fontFamily: "Arial, Arimo, Helvetica, sans-serif",
                         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
                         transition: 'opacity 0.15s',
                       }}>
-                      {isOutOfStock ? 'Out of Stock' : addedToCart ? 'Added to Cart!' : 'Add to Cart'}
+                      {isOutOfStock ? 'Out of Stock'
+                        : optionsPending ? optionsPrompt
+                        : addedToCart ? 'Added to Cart!' : 'Add to Cart'}
                     </button>
                     <button
                       onClick={handleAddToCartAndCheckout}
-                      disabled={isOutOfStock}
+                      disabled={isOutOfStock || optionsPending}
                       style={{
                         background: isOutOfStock ? 'rgba(107,114,128,0.3)' : 'var(--gold)',
                         color: isOutOfStock ? 'var(--gray)' : '#000',
                         border: 'none', borderRadius: '10px', padding: '0.875rem 1.5rem',
                         fontWeight: 800, fontSize: '1rem',
-                        cursor: isOutOfStock ? 'not-allowed' : 'pointer',
-                        width: '100%', fontFamily: "'Outfit', sans-serif",
+                        cursor: (isOutOfStock || optionsPending) ? 'not-allowed' : 'pointer',
+                        width: '100%', fontFamily: "Arial, Arimo, Helvetica, sans-serif",
                         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
                         opacity: 0.85,
                       }}>
@@ -1271,7 +1642,7 @@ export default function ProductDetailPage() {
                     background: 'var(--gold)', color: '#000',
                     border: 'none', borderRadius: '10px', padding: '0.875rem 1.5rem',
                     fontWeight: 800, fontSize: '1rem', cursor: 'pointer',
-                    width: '100%', fontFamily: "'Outfit', sans-serif",
+                    width: '100%', fontFamily: "Arial, Arimo, Helvetica, sans-serif",
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                   }}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '6px', flexShrink: 0 }}>
@@ -1373,10 +1744,10 @@ export default function ProductDetailPage() {
                   const all = tiers.flatMap(t => t.price != null ? [parseFloat(t.price)] : Object.values(t.prices||{}).map(Number)).filter(v => v > 0);
                   if (!all.length) return 'Price on request';
                   const [mn, mx] = [Math.min(...all), Math.max(...all)];
-                  return mn === mx ? formatPeso(mn) : `${formatPeso(mn)} – ${formatPeso(mx)}`;
+                  return mn === mx ? formatPeso(mn) : `${formatPeso(mn)} - ${formatPeso(mx)}`;
                 }
                 const vp = Object.values(rec.variantPrices||{}).map(Number).filter(v => v > 0);
-                if (vp.length) { const [mn, mx] = [Math.min(...vp), Math.max(...vp)]; return mn === mx ? formatPeso(mn) : `${formatPeso(mn)} – ${formatPeso(mx)}`; }
+                if (vp.length) { const [mn, mx] = [Math.min(...vp), Math.max(...vp)]; return mn === mx ? formatPeso(mn) : `${formatPeso(mn)} - ${formatPeso(mx)}`; }
                 const price = parseFloat(rec.flatPrice || rec.price);
                 return price > 0 ? formatPeso(price) : 'Price on request';
               })();
@@ -1494,7 +1865,7 @@ export default function ProductDetailPage() {
                   {totalPrice != null && <div style={{ fontSize: '0.85rem', color: 'var(--gold)', marginTop: '0.2rem', fontWeight: 600 }}>₱{Number(totalPrice).toLocaleString('en-PH', { minimumFractionDigits: 2 })}</div>}
                 </div>
                 <div style={{ background: 'rgba(96,165,250,0.07)', border: '1px solid rgba(96,165,250,0.2)', borderRadius: '8px', padding: '0.75rem 1rem', marginBottom: '1.25rem', fontSize: '0.8rem', color: 'rgba(147,197,253,0.9)', lineHeight: 1.5 }}>
-                  No design fee — your file goes directly to our team. We&apos;ll print it as-is and message you if there are any issues.
+                  No design fee - your file goes directly to our team. We&apos;ll print it as-is and message you if there are any issues.
                 </div>
                 <div style={{ marginBottom: '1rem' }}>
                   <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--gray)', marginBottom: '0.375rem', fontWeight: 600 }}>
@@ -1513,11 +1884,11 @@ export default function ProductDetailPage() {
                   <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--gray)', marginBottom: '0.375rem', fontWeight: 600 }}>Notes <span style={{ fontWeight: 400 }}>(optional)</span></label>
                   <textarea value={reqDesignNotes} onChange={e => setReqDesignNotes(e.target.value)} rows={3} maxLength={500}
                     placeholder="Colors, placement, size notes..."
-                    style={{ width: '100%', padding: '0.625rem 0.75rem', background: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--white)', fontSize: '0.85rem', resize: 'vertical', fontFamily: "'Outfit', sans-serif", boxSizing: 'border-box' }} />
+                    style={{ width: '100%', padding: '0.625rem 0.75rem', background: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--white)', fontSize: '0.85rem', resize: 'vertical', fontFamily: "Arial, Arimo, Helvetica, sans-serif", boxSizing: 'border-box' }} />
                 </div>
                 {reqError && <div style={{ color: '#ef4444', fontSize: '0.82rem', marginBottom: '0.75rem' }}>{reqError}</div>}
                 <button onClick={() => handleDesignSubmit('upload')} disabled={reqSubmitting || !reqDesignFile}
-                  style={{ width: '100%', background: reqSubmitting || !reqDesignFile ? 'rgba(255,255,255,0.08)' : 'var(--gold)', color: reqSubmitting || !reqDesignFile ? 'var(--gray)' : '#000', border: 'none', borderRadius: '10px', padding: '0.875rem', fontWeight: 800, fontSize: '0.95rem', cursor: reqSubmitting || !reqDesignFile ? 'not-allowed' : 'pointer', fontFamily: "'Outfit', sans-serif" }}>
+                  style={{ width: '100%', background: reqSubmitting || !reqDesignFile ? 'rgba(255,255,255,0.08)' : 'var(--gold)', color: reqSubmitting || !reqDesignFile ? 'var(--gray)' : '#000', border: 'none', borderRadius: '10px', padding: '0.875rem', fontWeight: 800, fontSize: '0.95rem', cursor: reqSubmitting || !reqDesignFile ? 'not-allowed' : 'pointer', fontFamily: "Arial, Arimo, Helvetica, sans-serif" }}>
                   {reqSubmitting ? 'Uploading…' : 'Submit Design'}
                 </button>
               </div>
@@ -1626,13 +1997,13 @@ export default function ProductDetailPage() {
                 <div style={{ background: 'rgba(212,168,67,0.08)', border: '1px solid rgba(212,168,67,0.25)', borderRadius: '8px', padding: '0.75rem 1rem', marginBottom: '1.25rem' }}>
                   <div style={{ fontSize: '0.78rem', color: '#D4A843', fontWeight: 700, marginBottom: '0.2rem' }}>Design Service Fee: ₱{designRequestFee.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</div>
                   <div style={{ fontSize: '0.75rem', color: 'rgba(212,168,67,0.75)', lineHeight: 1.5 }}>
-                    Our team will create a design for you. We&apos;ll send a proof via chat — you approve before anything gets printed.
+                    Our team will create a design for you. We&apos;ll send a proof via chat - you approve before anything gets printed.
                   </div>
                 </div>
 
                 <div style={{ marginBottom: '1rem' }}>
                   <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--gray)', marginBottom: '0.375rem', fontWeight: 600 }}>
-                    Reference / Inspiration <span style={{ fontWeight: 400 }}>(optional — jpg, png, pdf · max 10MB)</span>
+                    Reference / Inspiration <span style={{ fontWeight: 400 }}>(optional - jpg, png, pdf · max 10MB)</span>
                   </label>
                   <input
                     key={reqFileKey}

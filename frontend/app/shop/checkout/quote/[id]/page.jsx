@@ -1,23 +1,21 @@
 'use client';
+import NoImage from '@/components/NoImage';
 
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import dynamic from 'next/dynamic';
 import { useAuth } from '@/contexts/AuthContext';
 import { fetchMyOrderRequest, createOrderRequestPaymentLink } from '@/lib/orderRequestApi';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import { formatPeso } from '@/lib/shopUtils';
+import { DEFAULT_CUSTOM_ORDER_TERMS, renderTermsBody } from '@/lib/customOrderTerms';
 import '@/app/shop/shop.css';
 
-const AddressBook = dynamic(() => import('@/components/profile/AddressBook'), { ssr: false });
+import AddressPicker from '@/components/shop/AddressPicker';
+import PaymentMethods, { ONLINE_METHODS, tokenizeCard } from '@/components/shop/PaymentMethods';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
-function addressLine(a) {
-  return [a.house_number, a.street, a.subdivision, a.barangay, a.city, a.province, a.zip]
-    .filter(Boolean).join(', ');
-}
 
 /**
  * Checkout for a single quote.
@@ -30,17 +28,28 @@ function addressLine(a) {
 export default function QuoteCheckoutPage() {
   const { id } = useParams();
   const router = useRouter();
-  const { token } = useAuth();
+  const { token, currentUser: user } = useAuth();
 
   const [quote, setQuote] = useState(null);
   const [addresses, setAddresses] = useState([]);
   const [selectedAddressId, setSelectedAddressId] = useState('');
+  // The method is chosen here now, not on PayMongo's page. COD is not offered: a quote is a priced
+  // offer the shop has already scheduled work against, with nothing to collect at a door.
+  const [payEnabled,   setPayEnabled]   = useState({});
+  const [payMethod,    setPayMethod]    = useState('gcash');
+  const [eWalletPhone, setEWalletPhone] = useState('');
+  const [card,         setCard]         = useState({});
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
   const [error, setError] = useState(null);
+  // A quotation is an offer; paying it is the acceptance. This page collected money and recorded no
+  // agreement to anything but the amount - the one route into the shop with no terms on it, and the
+  // one carrying the largest orders.
+  const [settings, setSettings]     = useState(null);
+  const [agreed, setAgreed]         = useState(false);
+  const [showTerms, setShowTerms]   = useState(false);
   const [payType, setPayType] = useState('downpayment');
   const [paying, setPaying] = useState(false);
-  const [showPinModal, setShowPinModal] = useState(false);
 
   const fetchAddresses = useCallback(async (keepSelection = false) => {
     if (!token) return;
@@ -64,6 +73,13 @@ export default function QuoteCheckoutPage() {
     if (!token || !id) return;
     let cancelled = false;
     setLoading(true);
+    // The shop's own clauses, when it has saved any. Falls back to the built-in defaults, so the
+    // terms are never simply absent.
+    fetchWithTimeout(`${API_URL}/api/public/settings`, {}, 10000)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (!cancelled && d) setSettings(d.data ?? d); })
+      .catch(() => {});
+
     Promise.all([fetchMyOrderRequest(token, id), fetchAddresses()])
       .then(([q]) => {
         if (cancelled) return;
@@ -75,6 +91,20 @@ export default function QuoteCheckoutPage() {
   }, [token, id, fetchAddresses]);
 
   const selectedAddress = addresses.find(a => a.id === selectedAddressId) ?? null;
+
+  useEffect(() => {
+    fetch(`${API_URL}/api/storefront/content/payment_methods`)
+      .then(r => r.json())
+      .then(d => { if (d?.data?.enabled && typeof d.data.enabled === 'object') setPayEnabled(d.data.enabled); })
+      .catch(() => {});
+  }, []);
+
+  // If the owner switches off whatever was selected, fall to the first one still offered rather
+  // than leaving a dead choice on screen.
+  const offered = ONLINE_METHODS.filter(m => payEnabled[m.id] !== false).map(m => m.id);
+  useEffect(() => {
+    if (offered.length && !offered.includes(payMethod)) setPayMethod(offered[0]);
+  }, [offered.join(','), payMethod]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const finalPrice = Number(quote?.finalPrice) || 0;
   const isExpired = quote?.expiresAt ? new Date(quote.expiresAt).getTime() < Date.now() : false;
@@ -105,12 +135,29 @@ export default function QuoteCheckoutPage() {
     };
   }
 
+  // 'both' plus the quotation-only clauses. A quote needs everything a custom order needs, and
+  // three things a listed product never does: how long the price holds, exactly what it covers, and
+  // that a per-piece service is billed on what is actually produced.
+  const rawTerms = (() => {
+    const saved = settings?.customOrderTerms?.length ? settings.customOrderTerms : null;
+    const base = saved
+      ? [...saved, ...DEFAULT_CUSTOM_ORDER_TERMS.filter(d =>
+          !saved.some(t => (t.title || '').trim().toLowerCase() === d.title.trim().toLowerCase()))]
+      : DEFAULT_CUSTOM_ORDER_TERMS;
+    return base.map(c => ({ ...c, body: renderTermsBody(c.body, settings) }));
+  })();
+  const activeClauses = rawTerms.filter(t => !t.mode || t.mode === 'both' || t.mode === 'quote');
+  const termsSnapshot = activeClauses.map(t => ({ title: t.title, body: t.body, mode: t.mode || 'both' }));
+  const termsVersion  = settings?.termsVersion ?? 1;
+
   async function handlePay() {
     setError(null);
+    if (!agreed) { setError('Please read and agree to the Custom Order Terms before paying.'); return; }
     if (!selectedAddress) { setError('Please select a delivery address first.'); return; }
     if (!selectedAddress.lat || !selectedAddress.lng) {
-      setError('Please pin your delivery location so the seller can book your courier accurately.');
-      setShowPinModal(true);
+      // The picker shows "No map pin yet - pin it" on the address itself, which opens the form
+      // in place; this only has to say why the payment stopped.
+      setError('Please pin your delivery location so the seller can book your courier accurately - use "pin it" on the address above.');
       return;
     }
     if (!selectedAddress.phone?.trim()) {
@@ -122,8 +169,27 @@ export default function QuoteCheckoutPage() {
 
     setPaying(true);
     try {
-      const res = await createOrderRequestPaymentLink(token, id, payType, buildAddressPayload(selectedAddress));
-      if (res.checkoutUrl) {
+      const payment = { paymentType: payMethod };
+      if (payMethod === 'card') {
+        payment.paymentMethodId = await tokenizeCard(card, user);
+      } else if (eWalletPhone.trim()) {
+        payment.eWalletPhone = `+63${eWalletPhone.trim()}`;
+      }
+
+      const res = await createOrderRequestPaymentLink(token, id, payType, buildAddressPayload(selectedAddress), {
+        agreedToTerms: true,
+        termsVersion,
+        termsAgreedAt: new Date().toISOString(),
+        termsSnapshot,
+      }, payment);
+
+      // An intent that needs authorising hands back a redirect; one that cleared outright (a saved
+      // card, no 3DS) is already done. checkoutUrl is the hosted-page fallback.
+      if (res.redirectUrl) {
+        window.location.href = res.redirectUrl;
+      } else if (res.status === 'succeeded') {
+        window.location.href = `/shop/payment-success?id=${id}&type=order_request`;
+      } else if (res.checkoutUrl) {
         window.location.href = res.checkoutUrl;
       } else {
         setError('Could not start the payment. Please try again.');
@@ -137,42 +203,42 @@ export default function QuoteCheckoutPage() {
 
   if (loading) {
     return <div className="shop-container" style={{ maxWidth: 860, margin: '0 auto', padding: '2rem 1rem' }}>
-      <p style={{ color: '#6b7280' }}>Loading your quote&hellip;</p>
+      <p style={{ color: 'var(--gray)' }}>Loading your quote&hellip;</p>
     </div>;
   }
 
   if (loadError || !quote) {
     return <div className="shop-container" style={{ maxWidth: 640, margin: '0 auto', padding: '3rem 1rem', textAlign: 'center' }}>
       <p style={{ fontWeight: 700, marginBottom: 6 }}>Quote unavailable</p>
-      <p style={{ color: '#6b7280', fontSize: '.88rem', marginBottom: 16 }}>{loadError || 'This quote could not be found.'}</p>
-      <Link href="/shop/orders-history" style={{ color: '#2563eb', fontWeight: 700, textDecoration: 'none' }}>Back to My Orders</Link>
+      <p style={{ color: 'var(--gray)', fontSize: '.88rem', marginBottom: 16 }}>{loadError || 'This quote could not be found.'}</p>
+      <Link href="/shop/orders-history" style={{ color: 'var(--gold)', fontWeight: 700, textDecoration: 'none' }}>Back to My Orders</Link>
     </div>;
   }
 
   if (quote.convertedOrderId) {
     return <div className="shop-container" style={{ maxWidth: 640, margin: '0 auto', padding: '3rem 1rem', textAlign: 'center' }}>
       <p style={{ fontWeight: 700, marginBottom: 6 }}>This quote is already an order</p>
-      <p style={{ color: '#6b7280', fontSize: '.88rem', marginBottom: 16 }}>You&apos;ve paid for this quote — track it in your orders.</p>
-      <Link href="/shop/orders-history" style={{ color: '#2563eb', fontWeight: 700, textDecoration: 'none' }}>Go to My Orders &rarr;</Link>
+      <p style={{ color: 'var(--gray)', fontSize: '.88rem', marginBottom: 16 }}>You&apos;ve paid for this quote - track it in your orders.</p>
+      <Link href="/shop/orders-history" style={{ color: 'var(--gold)', fontWeight: 700, textDecoration: 'none' }}>Go to My Orders &rarr;</Link>
     </div>;
   }
 
   if (!payable) {
     return <div className="shop-container" style={{ maxWidth: 640, margin: '0 auto', padding: '3rem 1rem', textAlign: 'center' }}>
       <p style={{ fontWeight: 700, marginBottom: 6 }}>Not ready for payment yet</p>
-      <p style={{ color: '#6b7280', fontSize: '.88rem', marginBottom: 16 }}>
+      <p style={{ color: 'var(--gray)', fontSize: '.88rem', marginBottom: 16 }}>
         {quote.paymentStatus !== 'unpaid'
           ? 'Payment for this quote has already been received.'
           : 'The store is still preparing your price. You will be notified in chat once the quote is ready.'}
       </p>
-      <Link href="/shop/orders-history" style={{ color: '#2563eb', fontWeight: 700, textDecoration: 'none' }}>Back to My Orders</Link>
+      <Link href="/shop/orders-history" style={{ color: 'var(--gold)', fontWeight: 700, textDecoration: 'none' }}>Back to My Orders</Link>
     </div>;
   }
 
   return (
-    <div className="shop-container" style={{ maxWidth: 860, margin: '0 auto', padding: '1.25rem 1rem 4rem' }}>
+    <div className="shop-container" style={{ maxWidth: 1100, margin: '0 auto', padding: '1.25rem 1rem 4rem' }}>
       <h1 style={{ fontSize: '1.4rem', fontWeight: 800, margin: 0 }}>Checkout</h1>
-      <p style={{ color: '#6b7280', fontSize: '.86rem', margin: '4px 0 18px' }}>
+      <p style={{ color: 'var(--gray)', fontSize: '.86rem', margin: '4px 0 18px' }}>
         Paying your quote sends it straight into production.
       </p>
 
@@ -183,55 +249,22 @@ export default function QuoteCheckoutPage() {
       )}
 
       <div className="quote-checkout-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,340px)', gap: 16, alignItems: 'start' }}>
-        {/* LEFT — address + payment choice */}
+        {/* LEFT - address + payment choice */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <section style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 14 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-              <span style={{ fontSize: '.74rem', fontWeight: 800, letterSpacing: '.03em', textTransform: 'uppercase', color: '#6b7280' }}>
-                Delivery address
-              </span>
-              <button
-                onClick={() => setShowPinModal(true)}
-                style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '.78rem', fontWeight: 700, cursor: 'pointer', padding: 0 }}
-              >
-                {addresses.length ? 'Edit / Pin' : 'Add address'}
-              </button>
-            </div>
-
-            {addresses.length === 0 ? (
-              <p style={{ color: '#6b7280', fontSize: '.82rem', margin: 0 }}>
-                You have no saved address yet. Add one to continue.
-              </p>
-            ) : (
-              <>
-                <select
-                  value={selectedAddressId}
-                  onChange={(e) => setSelectedAddressId(e.target.value)}
-                  style={{ width: '100%', padding: '9px 11px', border: '1px solid #d1d5db', borderRadius: 9, fontSize: '.86rem', background: '#fff' }}
-                >
-                  {addresses.map(a => (
-                    <option key={a.id} value={a.id}>
-                      {(a.label ? `${a.label} — ` : '') + addressLine(a)}
-                    </option>
-                  ))}
-                </select>
-                {selectedAddress && (
-                  <p style={{ color: '#6b7280', fontSize: '.78rem', margin: '8px 0 0' }}>{selectedAddress.phone}</p>
-                )}
-                {selectedAddress && (!selectedAddress.lat || !selectedAddress.lng) && (
-                  <p style={{ color: '#b45309', fontSize: '.78rem', margin: '8px 0 0' }}>
-                    This address has no map pin. The seller needs it to book your courier —{' '}
-                    <button onClick={() => setShowPinModal(true)} style={{ background: 'none', border: 'none', color: '#2563eb', fontWeight: 700, cursor: 'pointer', padding: 0, fontSize: '.78rem' }}>
-                      pin it now
-                    </button>.
-                  </p>
-                )}
-              </>
-            )}
+          <section style={{ background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: 12, padding: 14 }}>
+            {/* Same picker as the custom-order page. The blue "Edit / Pin" link belonged to no
+                palette in this app, and the two screens had drifted into different cards. */}
+            <AddressPicker
+              addresses={addresses}
+              selectedId={selectedAddressId}
+              onSelect={setSelectedAddressId}
+              onSaved={() => fetchAddresses(true)}
+              requirePin
+            />
           </section>
 
-          <section style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 14 }}>
-            <span style={{ display: 'block', fontSize: '.74rem', fontWeight: 800, letterSpacing: '.03em', textTransform: 'uppercase', color: '#6b7280', marginBottom: 10 }}>
+          <section style={{ background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: 12, padding: 14 }}>
+            <span style={{ display: 'block', fontSize: '.74rem', fontWeight: 800, letterSpacing: '.03em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 10 }}>
               How much to pay now
             </span>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -247,48 +280,63 @@ export default function QuoteCheckoutPage() {
                     style={{
                       display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10,
                       textAlign: 'left', width: '100%', padding: '11px 12px', borderRadius: 10, cursor: 'pointer',
-                      border: active ? '2px solid #111827' : '1px solid #e5e7eb',
-                      background: active ? '#f9fafb' : '#fff',
+                      border: active ? '2px solid var(--white)' : '1px solid var(--border)',
+                      background: active ? 'var(--dark2)' : 'var(--dark)',
                     }}
                   >
                     <span>
                       <span style={{ display: 'block', fontWeight: 700, fontSize: '.86rem' }}>{opt.title}</span>
-                      <span style={{ display: 'block', color: '#6b7280', fontSize: '.75rem', marginTop: 2 }}>{opt.sub}</span>
+                      <span style={{ display: 'block', color: 'var(--gray)', fontSize: '.75rem', marginTop: 2 }}>{opt.sub}</span>
                     </span>
                     <span style={{ fontWeight: 800, fontSize: '.9rem', whiteSpace: 'nowrap' }}>{formatPeso(opt.amount)}</span>
                   </button>
                 );
               })}
             </div>
-            <p style={{ color: '#6b7280', fontSize: '.75rem', margin: '10px 0 0' }}>
-              You&apos;ll choose GCash, Maya or card on the secure payment page.
-            </p>
+          </section>
+
+          <section style={{ background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: 12, padding: 14 }}>
+            <span style={{ display: 'block', fontSize: '.74rem', fontWeight: 800, letterSpacing: '.03em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 10 }}>
+              Payment method
+            </span>
+            {/* Picked here rather than on PayMongo's page. The line that used to sit under the
+                amount - "You'll choose GCash, Maya or card on the secure payment page" - was an
+                apology for making the customer decide twice. */}
+            <PaymentMethods
+              value={payMethod}
+              onChange={setPayMethod}
+              enabled={payEnabled}
+              eWalletPhone={eWalletPhone}
+              onEWalletPhone={setEWalletPhone}
+              card={card}
+              onCard={setCard}
+            />
           </section>
         </div>
 
-        {/* RIGHT — quote summary */}
-        <aside style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 14, position: 'sticky', top: 16 }}>
-          <span style={{ display: 'block', fontSize: '.74rem', fontWeight: 800, letterSpacing: '.03em', textTransform: 'uppercase', color: '#6b7280', marginBottom: 10 }}>
+        {/* RIGHT - quote summary */}
+        <aside style={{ background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: 12, padding: 14, position: 'sticky', top: 16 }}>
+          <span style={{ display: 'block', fontSize: '.74rem', fontWeight: 800, letterSpacing: '.03em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 10 }}>
             Your quote
           </span>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 12 }}>
             {lines.map((li, i) => (
               <div key={li.productId ?? i} style={{ display: 'flex', gap: 10 }}>
-                <div style={{ width: 44, height: 44, borderRadius: 8, overflow: 'hidden', background: '#f3f4f6', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <div style={{ width: 44, height: 44, borderRadius: 8, overflow: 'hidden', background: 'var(--dark2)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   {li.thumbnail
                     /* eslint-disable-next-line @next/next/no-img-element */
                     ? <img src={li.thumbnail} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                    : <span style={{ color: '#9ca3af', fontSize: '.6rem' }}>No image</span>}
+                    : <NoImage size={22} />}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontWeight: 700, fontSize: '.84rem', lineHeight: 1.3 }}>
                     {li.productName}
                     {li.variantName && (
-                      <span style={{ fontWeight: 500, color: '#6b7280' }}> - {li.variantName}</span>
+                      <span style={{ fontWeight: 500, color: 'var(--gray)' }}> - {li.variantName}</span>
                     )}
                   </div>
-                  <div style={{ color: '#6b7280', fontSize: '.74rem', marginTop: 1 }}>
+                  <div style={{ color: 'var(--gray)', fontSize: '.74rem', marginTop: 1 }}>
                     {li.qty} &times; {formatPeso(li.unitPrice)}
                   </div>
                 </div>
@@ -298,42 +346,110 @@ export default function QuoteCheckoutPage() {
           </div>
 
           {quote.adminComment && (
-            <div style={{ fontSize: '.78rem', color: '#374151', background: '#f9fafb', border: '1px solid #f0f1f3', borderRadius: 8, padding: '7px 9px', marginBottom: 12 }}>
+            <div style={{ fontSize: '.78rem', color: 'var(--gray-light)', background: 'var(--dark2)', border: '1px solid #f0f1f3', borderRadius: 8, padding: '7px 9px', marginBottom: 12 }}>
               <span style={{ fontWeight: 700 }}>Note from store:</span> {quote.adminComment}
             </div>
           )}
 
+          {/* A quote has no separate proof step - the terms say so - so paying it IS the
+              approval. Showing the artwork as a 44px thumbnail labelled "Your design" asked
+              the customer to approve something they could not actually see. It is the size of
+              the decision now, and says plainly what paying means. */}
           {quote.designUrl && (
-            <a href={quote.designUrl} target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, padding: '8px 10px', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 8, textDecoration: 'none' }}>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={quote.designUrl} alt="" style={{ width: 44, height: 44, borderRadius: 6, objectFit: 'cover', flexShrink: 0 }} />
-              <span style={{ minWidth: 0 }}>
-                <span style={{ display: 'block', fontSize: '.8rem', fontWeight: 700, color: '#111827' }}>Your design</span>
-                <span style={{ display: 'block', fontSize: '.72rem', color: '#2563eb' }}>View full artwork</span>
-              </span>
-            </a>
+            <div style={{ marginBottom: 12, border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden', background: 'var(--dark2)' }}>
+              <a href={quote.designUrl} target="_blank" rel="noopener noreferrer" style={{ display: 'block', textDecoration: 'none' }}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={quote.designUrl} alt="Mockup for this quote"
+                  style={{ display: 'block', width: '100%', maxHeight: 320, objectFit: 'contain', background: 'var(--dark3)' }} />
+              </a>
+              <div style={{ padding: '9px 11px' }}>
+                <div style={{ fontSize: '.8rem', fontWeight: 700, color: 'var(--white)' }}>This is what we will print</div>
+                <div style={{ fontSize: '.72rem', color: 'var(--gray)', lineHeight: 1.5, marginTop: 2 }}>
+                  There is no separate approval step on a quote - paying it approves this artwork.
+                  Check it first, and{' '}
+                  <a href={quote.designUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--gold)', fontWeight: 600 }}>open it full size</a>
+                  {' '}if you need a closer look. Message us if anything is wrong.
+                </div>
+              </div>
+            </div>
           )}
 
-          <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 10, display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <div style={{ borderTop: '1px solid var(--border)', paddingTop: 10, display: 'flex', flexDirection: 'column', gap: 4 }}>
             {designFee > 0 && (
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '.8rem' }}>
-                <span style={{ color: '#6b7280' }}>Design fee</span><span>{formatPeso(designFee)}</span>
+                <span style={{ color: 'var(--gray)' }}>Design fee</span><span>{formatPeso(designFee)}</span>
               </div>
             )}
             {deliveryFee > 0 && (
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '.8rem' }}>
-                <span style={{ color: '#6b7280' }}>Delivery fee</span><span>{formatPeso(deliveryFee)}</span>
+                <span style={{ color: 'var(--gray)' }}>Delivery fee</span><span>{formatPeso(deliveryFee)}</span>
+              </div>
+            )}
+            {/* At zero the line simply vanished, leaving a total that said nothing about
+                delivery - which reads as "included" to anyone who is not looking for it. */}
+            {deliveryFee === 0 && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: '.86rem' }}>
+                <span style={{ color: 'var(--gray)' }}>Delivery</span>
+                <span style={{ color: 'var(--gray)', textAlign: 'right', maxWidth: 260, lineHeight: 1.45 }}>
+                  Not included. The seller books a courier to your address after this is paid and
+                  sends you the exact fee in chat.
+                </span>
               </div>
             )}
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '.86rem', marginTop: 2 }}>
-              <span style={{ color: '#6b7280' }}>Quoted total</span>
+              <span style={{ color: 'var(--gray)' }}>Quoted total</span>
               <span style={{ fontWeight: 800 }}>{formatPeso(finalPrice)}</span>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #e5e7eb', marginTop: 8, paddingTop: 8 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--border)', marginTop: 8, paddingTop: 8 }}>
               <span style={{ fontWeight: 800, fontSize: '.9rem' }}>Pay now</span>
               <span style={{ fontWeight: 900, fontSize: '1.05rem' }}>{formatPeso(amountDue)}</span>
             </div>
           </div>
+
+          {!alreadyPaid && !isExpired && (
+            <div style={{ marginTop: 12, display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+              <input id="quote-terms" type="checkbox" checked={agreed}
+                onChange={e => { setAgreed(e.target.checked); if (e.target.checked) setError(null); }}
+                style={{ marginTop: 2, width: 15, height: 15, accentColor: 'var(--gold)', cursor: 'pointer', flexShrink: 0 }} />
+              <label htmlFor="quote-terms" style={{ fontSize: '.8rem', lineHeight: 1.5, color: 'var(--gray-light)', cursor: 'pointer' }}>
+                I have read and agree to the{' '}
+                <button type="button" onClick={e => { e.preventDefault(); setShowTerms(true); }}
+                  style={{ background: 'none', border: 'none', padding: 0, color: 'var(--gold)', fontWeight: 700, textDecoration: 'underline', cursor: 'pointer', fontSize: '.8rem', fontFamily: 'inherit' }}>
+                  Custom Order Terms
+                </button>{' '}
+                for this quotation.
+              </label>
+            </div>
+          )}
+
+          {/* The exact clauses being agreed to, so the acceptance means something. The same set is
+              recorded on the order as the snapshot. */}
+          {showTerms && (
+            <div onClick={() => setShowTerms(false)}
+              style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 4000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+              <div onClick={e => e.stopPropagation()}
+                style={{ background: 'var(--dark)', color: 'var(--white)', borderRadius: 14, maxWidth: 560, width: '100%', maxHeight: '80vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', border: '1px solid var(--border)' }}>
+                <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)', fontWeight: 800, fontSize: '.95rem' }}>
+                  Custom Order Terms
+                </div>
+                <div style={{ padding: '14px 18px', overflowY: 'auto' }}>
+                  {activeClauses.map((c, i) => (
+                    <div key={i} style={{ marginBottom: 14 }}>
+                      <div style={{ fontWeight: 700, fontSize: '.84rem', marginBottom: 3 }}>{c.title}</div>
+                      <div style={{ fontSize: '.8rem', color: 'var(--gray)', lineHeight: 1.6 }}>{c.body}</div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 18px', borderTop: '1px solid var(--border)' }}>
+                  <span style={{ fontSize: '.72rem', color: 'var(--gray)' }}>Terms v{termsVersion}</span>
+                  <button onClick={() => { setAgreed(true); setShowTerms(false); setError(null); }}
+                    style={{ padding: '8px 18px', background: 'var(--gold)', border: 'none', borderRadius: 8, color: '#000', fontWeight: 700, cursor: 'pointer', fontSize: '.85rem' }}>
+                    I agree
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {alreadyPaid ? (
             <div style={{ marginTop: 12, padding: '9px 12px', borderRadius: 10, fontSize: '.8rem', fontWeight: 700,
@@ -346,7 +462,7 @@ export default function QuoteCheckoutPage() {
               border: `1px solid ${isExpired ? '#fecaca' : '#bbf7d0'}` }}>
               {isExpired
                 ? 'This quote has expired. Please ask the seller for a new quote.'
-                : `Quote valid — expires in ${daysLeft} day${daysLeft === 1 ? '' : 's'} (${new Date(quote.expiresAt).toLocaleDateString()}).`}
+                : `Quote valid - expires in ${daysLeft} day${daysLeft === 1 ? '' : 's'} (${new Date(quote.expiresAt).toLocaleDateString()}).`}
             </div>
           )}
           {!alreadyPaid && (
@@ -355,7 +471,7 @@ export default function QuoteCheckoutPage() {
               disabled={paying || !selectedAddress || isExpired}
               style={{
                 width: '100%', marginTop: 12, padding: '11px 12px', borderRadius: 10, border: 'none',
-                background: '#111827', color: '#fff', fontWeight: 800, fontSize: '.88rem',
+                background: 'var(--white)', color: 'var(--dark)', fontWeight: 800, fontSize: '.88rem',
                 cursor: (paying || !selectedAddress || isExpired) ? 'not-allowed' : 'pointer',
                 opacity: (paying || !selectedAddress || isExpired) ? 0.6 : 1,
               }}
@@ -363,33 +479,11 @@ export default function QuoteCheckoutPage() {
               {isExpired ? 'Quote expired' : paying ? 'Opening payment…' : `Pay ${formatPeso(amountDue)}`}
             </button>
           )}
-          <Link href="/shop/orders-history" style={{ display: 'block', textAlign: 'center', marginTop: 10, fontSize: '.78rem', color: '#6b7280', textDecoration: 'none' }}>
+          <Link href="/shop/orders-history" style={{ display: 'block', textAlign: 'center', marginTop: 10, fontSize: '.78rem', color: 'var(--gray)', textDecoration: 'none' }}>
             Back to My Orders
           </Link>
         </aside>
       </div>
-
-      {showPinModal && (
-        // No backdrop-close: holds the address + map-pin form; a stray click would wipe it.
-        <div
-          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', zIndex: 3000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '1rem', overflowY: 'auto' }}
-        >
-          <div style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '16px', padding: '1.5rem', width: '100%', maxWidth: '580px', marginTop: '2rem', marginBottom: '2rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
-              <h2 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--white)', fontWeight: 700 }}>Pin Your Delivery Location</h2>
-              <button onClick={() => setShowPinModal(false)} style={{ background: 'none', border: 'none', color: 'var(--gray)', cursor: 'pointer', padding: '0.25rem', display: 'flex', alignItems: 'center' }}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-                </svg>
-              </button>
-            </div>
-            <AddressBook
-              initialEditAddress={selectedAddress}
-              onSaved={() => { fetchAddresses(true); setShowPinModal(false); }}
-            />
-          </div>
-        </div>
-      )}
 
       <style jsx>{`
         @media (max-width: 820px) {

@@ -54,7 +54,7 @@ class RolePermission extends Model
 
     /**
      * Flat list of every action-based permission key (module.action) from the
-     * action catalog — used to whitelist incoming keys when a role is saved.
+     * action catalog - used to whitelist incoming keys when a role is saved.
      */
     public static function actionKeys(): array
     {

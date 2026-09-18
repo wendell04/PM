@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\DB;
  * One-time migration: encrypt existing plaintext address and totp_secret
  * fields so they match the 'encrypted' cast added to User model.
  *
- * Run ONCE after deploying the encrypted cast. Safe to re-run — already-
+ * Run ONCE after deploying the encrypted cast. Safe to re-run - already-
  * encrypted values are detected and skipped.
  *
  * Usage: php artisan users:encrypt-pii [--dry-run]

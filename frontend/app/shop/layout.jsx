@@ -1,8 +1,14 @@
 'use client';
-// TwoFactorModal imported for inline 2FA — no page redirect needed
+import NoImage from '@/components/NoImage';
+import PolicyModal from '@/components/PolicyModal';
+import useLockBodyScroll from '@/lib/useLockBodyScroll';
+import useSheetDrag from '@/lib/useSheetDrag';
+import { socialsFrom } from '@/lib/socialLinks';
+// TwoFactorModal imported for inline 2FA - no page redirect needed
 import TwoFactorModal from '@/components/auth/TwoFactorModal';
 // Shared with the landing page so the sign-up form (fields, CAPTCHA, password rules, T&C) is identical.
 import RegisterForm from '@/components/auth/RegisterForm';
+import OtpInput from '@/components/auth/OtpInput';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
@@ -11,7 +17,7 @@ import { useCart as useGlobalCart } from '../../context/CartContext';
 import { syncCart, mergeCart } from '@/lib/cartApi';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import SessionExpiryWarning from '@/components/SessionExpiryWarning';
-import { forgotPassword, sendResetCode, verifyResetCode, resetPassword, getCurrentUser } from '@/lib/authApi';
+import { forgotPassword, getCurrentUser } from '@/lib/authApi';
 import {
   fetchUnreadCount,
   fetchNotifications,
@@ -312,7 +318,7 @@ function PasswordStrength({ password }) {
           transition: 'width 0.3s ease, background 0.3s ease' }}/>
       </div>
       <div style={{ fontSize: '0.72rem', marginTop: '0.25rem', color: isTooLong ? 'var(--red)' : current.color, transition: 'color 0.3s' }}>
-        {isTooLong ? 'Too Long — recommended max 32 characters' : current.label}
+        {isTooLong ? 'Too Long - recommended max 32 characters' : current.label}
       </div>
     </div>
   );
@@ -365,13 +371,13 @@ const EyeClosed = () => (
 export default function ShopLayout({ children }) {
   const router = useRouter();
   const pathname = usePathname();
-  // Product search only makes sense on browsing pages — hide it on cart/orders/account/checkout.
+  // Product search only makes sense on browsing pages - hide it on cart/orders/account/checkout.
   const SEARCH_HIDDEN_ROUTES = ['/shop/cart', '/shop/orders-history', '/shop/profile', '/shop/checkout', '/shop/payment-success', '/shop/payment-failed'];
   const showSearch = !SEARCH_HIDDEN_ROUTES.some(r => pathname === r || pathname.startsWith(r + '/'));
   const { theme, toggleTheme } = useTheme();
   const { setCartItems, cartItems: globalCartItems, cartCount: globalCartCount, addToCart: globalAddToCart, removeFromCart: globalRemoveFromCart } = useGlobalCart();
   const [user, setUser]       = useState(null);
-  // Owner-controlled payment availability (Homepage CMS) — drives footer badges. Missing key = on.
+  // Owner-controlled payment availability (Homepage CMS) - drives footer badges. Missing key = on.
   const [payEnabled, setPayEnabled] = useState({});
   const hasPay = (id) => payEnabled[id] !== false;
   const [cart, setCart]       = useState([]);
@@ -381,6 +387,50 @@ export default function ShopLayout({ children }) {
   const searchRef = useRef(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchFocused, setSearchFocused] = useState(false);
+  // Suggestions come from our own catalogue, fetched once and filtered in memory. A request per
+  // keystroke would trail the typing and could not answer better - the answer IS this list.
+  const [searchIndex, setSearchIndex] = useState(null);
+  const [searchOpen, setSearchOpen]   = useState(false);
+  const [searchHi, setSearchHi]       = useState(-1);
+
+  const loadSearchIndex = async () => {
+    if (searchIndex !== null) return;
+    setSearchIndex([]);
+    try {
+      const res  = await fetch(`${API_URL}/api/products?slim=true`);
+      const data = await res.json();
+      const rows = Array.isArray(data) ? data : (data.data ?? data.products ?? []);
+      setSearchIndex(rows.map(p => ({
+        name:      p.name || p.subCategoryName || '',
+        category:  p.category || '',
+        slug:      p.slug || String(p.name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, ''),
+        thumbnail: p.thumbnail || (Array.isArray(p.images) ? p.images[0] : null),
+      })).filter(p => p.name && p.slug));
+    } catch {
+      // No suggestions is a quiet loss - Enter still searches the grid.
+    }
+  };
+
+  // Name first, then category, so typing "mug" offers the mugs before anything merely tagged one.
+  const searchSuggestions = (() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (q.length < 2 || !searchIndex?.length) return [];
+    const starts = [], contains = [];
+    for (const p of searchIndex) {
+      const n = p.name.toLowerCase();
+      if (n.startsWith(q)) starts.push(p);
+      else if (n.includes(q) || p.category.toLowerCase().includes(q)) contains.push(p);
+    }
+    return [...starts, ...contains].slice(0, 6);
+  })();
+
+  const openSuggestion = (p) => {
+    setSearchOpen(false);
+    setSearchHi(-1);
+    searchRef.current?.blur();
+    router.push(`/shop/products/${p.slug}`);
+  };
+  const [policyDoc, setPolicyDoc] = useState(null);   // which policy the footer opened
   const [menuOpen, setMenuOpen] = useState(false);
   const [cartOpen, setCartOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -435,16 +485,11 @@ export default function ShopLayout({ children }) {
   // Forgot password state
   const [forgotStep, setForgotStep] = useState(1);
   const [forgotEmail, setForgotEmail] = useState('');
-  const [forgotCode, setForgotCode] = useState('');
-  const [forgotNewPassword, setForgotNewPassword] = useState('');
-  const [forgotConfirmPassword, setForgotConfirmPassword] = useState('');
   const [forgotError, setForgotError] = useState('');
   const [forgotSent, setForgotSent] = useState(false);
   const [isSendingReset, setIsSendingReset] = useState(false);
   const [forgotResendSuccess, setForgotResendSuccess] = useState(false);
   const [forgotResendCooldown, setForgotResendCooldown] = useState(0);
-  const [showForgotPassword, setShowForgotPassword] = useState(false);
-  const [showForgotConfirm, setShowForgotConfirm] = useState(false);
 
   // Notification state
   const [notifOpen, setNotifOpen] = useState(false);
@@ -453,9 +498,6 @@ export default function ShopLayout({ children }) {
   const [notifLoading, setNotifLoading] = useState(false);
   const [selectedNotif, setSelectedNotif] = useState(null);
   const notifRef = useRef(null);
-  const shopCartSheetRef = useRef(null);
-  const shopNotifSheetRef = useRef(null);
-  const shopSheetDragStartY = useRef(0);
   const [logoutBanner, setLogoutBanner] = useState(false);
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
 
@@ -511,7 +553,7 @@ export default function ShopLayout({ children }) {
     window.addEventListener('storage', handleStorageUpdate);
     window.addEventListener('pmp_user_updated', handleUserUpdate);
 
-    // Cart is managed entirely by CartContext — no fetch needed here
+    // Cart is managed entirely by CartContext - no fetch needed here
     setCartInitialized(true);
     processPendingAdds();
 
@@ -559,7 +601,7 @@ export default function ShopLayout({ children }) {
   // Handle successful login
   const handleLoginSuccess = async (userData, token, rememberMe = false, requires2fa = false) => {
     if (requires2fa) {
-      // Do NOT write to storage yet — hold in state only.
+      // Do NOT write to storage yet - hold in state only.
       // Storage write happens in onSuccess after OTP verified.
       sessionStorage.setItem('pending_2fa', 'true');
       const isAdminUser = userData.role !== 'customer';
@@ -630,48 +672,60 @@ export default function ShopLayout({ children }) {
     }
   };
 
-  // Handle successful registration
-  const handleRegisterSuccess = async (userData, token, rememberMe = false) => {
-    localStorage.setItem('auth_token', token);
-    localStorage.setItem('auth_user', JSON.stringify(userData));
-    try {
-      const bc = new BroadcastChannel('pmp_auth');
-      bc.postMessage({ type: 'AUTH_UPDATE', token, user: userData });
-      bc.close();
-    } catch {}
+  // Sign-up from the shop: registration does not issue a session (the address is not proven
+  // yet), so the code step comes first. This used to store the token registration never issued,
+  // show the person as signed in, and a minute later report the session as expired - with no way
+  // to ever enter the code from this page.
+  const [verifyEmailFor, setVerifyEmailFor] = useState(null);
+  const [verifyCode, setVerifyCode] = useState('');
+  const [verifyErr, setVerifyErr] = useState('');
+  const [verifyBusy, setVerifyBusy] = useState(false);
+  const [verifyResent, setVerifyResent] = useState('');
+  useLockBodyScroll(!!verifyEmailFor);
 
-    // Redirect admin/owner to dashboard
-    const dashboardRolesReg = ['admin', 'owner', 'salesRep', 'productionOperator', 'qualityControl', 'cashier', 'inventoryManager'];
-    if (dashboardRolesReg.includes(userData.role)) {
-      setAuthModalOpen(false);
-      window.location.href = '/dashboard/business/dashboardoverview';
-      return;
-    }
-
-    setUser(userData);
+  const handleRegisterSuccess = async (userData) => {
     setAuthModalOpen(false);
-    setAuthModalInstanceKey(k => k + 1);
+    setVerifyCode(''); setVerifyErr(''); setVerifyResent('');
+    setVerifyEmailFor(userData?.email || '');
+  };
 
-    // Merge guest cart with user cart after registration
-    // This must happen AFTER token is saved so cartApi can use it
+  const handleVerifySubmit = async () => {
+    if (verifyCode.length !== 6) { setVerifyErr('Enter the 6-digit code from the email.'); return; }
+    setVerifyBusy(true); setVerifyErr('');
     try {
-      const guestCart = localStorage.getItem('pmp_guest_cart');
-      if (guestCart) {
-        const guestItems = (JSON.parse(guestCart) || []).map(normaliseStoredItem);
-        if (guestItems && guestItems.length > 0) {
-          const mergedCart = await mergeCart(guestItems, getToken());
-          // Update both cart systems
-          const mongoItems = (mergedCart?.data ?? mergedCart)?.items || [];
-          const layoutItems = mongoItems.map(toLayoutItem);
-          setCart(layoutItems);        // local display
-          setCartItems(mongoItems);    // cart badge
-          localStorage.removeItem('pmp_guest_cart');
-        }
+      const res = await fetchWithTimeout(`${API_URL}/api/verify-email`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: verifyEmailFor, code: verifyCode }),
+      }, 15000);
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) { setVerifyErr(d.message || 'That code did not work.'); return; }
+      const session = d?.data;
+      setVerifyEmailFor(null);
+      if (session?.token && session?.user) {
+        if (session.expires_at) localStorage.setItem('auth_expires_at', session.expires_at);
+        await handleLoginSuccess(session.user, session.token, false, false);
+      } else {
+        setAuthModalType('login');
+        setAuthModalSubtitle('Email verified. Sign in to continue.');
+        setAuthModalOpen(true);
+        setAuthModalInstanceKey(k => k + 1);
       }
-    } catch (err) {
-      console.warn('Cart merge failed:', err);
-      // Don't block registration if merge fails
-    }
+    } catch { setVerifyErr('Network error. Please try again.'); }
+    finally { setVerifyBusy(false); }
+  };
+
+  const handleVerifyResend = async () => {
+    setVerifyBusy(true); setVerifyErr(''); setVerifyResent('');
+    try {
+      const res = await fetchWithTimeout(`${API_URL}/api/resend-code`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: verifyEmailFor }),
+      }, 15000);
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) { setVerifyErr(d.message || 'Could not resend the code.'); return; }
+      setVerifyResent('A new code is on its way.');
+    } catch { setVerifyErr('Network error. Please try again.'); }
+    finally { setVerifyBusy(false); }
   };
 
   // Persist cart changes
@@ -688,6 +742,16 @@ export default function ShopLayout({ children }) {
       .then(d => { if (d?.data?.enabled && typeof d.data.enabled === 'object') setPayEnabled(d.data.enabled); })
       .catch(() => {});
   }, []);
+
+  // The footer's social links, from the same Let's Talk settings the homepage uses.
+  const [footerContact, setFooterContact] = useState(null);
+  useEffect(() => {
+    fetch(`${API_URL}/api/storefront/content/contact`)
+      .then(r => r.json())
+      .then(d => { if (d?.data && typeof d.data === 'object') setFooterContact(d.data); })
+      .catch(() => {});
+  }, []);
+  const footerSocials = socialsFrom(footerContact);
 
   // Scroll effect
   useEffect(() => {
@@ -709,7 +773,7 @@ export default function ShopLayout({ children }) {
         return prev.map(i => {
           if (`${(i.product.id ?? i.product._id)}_${i.variantId ?? 'none'}` !== key) return i;
           const stockCap = (() => {
-            if (!i.trackInventory || i.stockStatus === 'upon-order') return 99;
+            if (!i.trackInventory) return 99;
             if (i.variantId && i.product?.variantAvailableQty?.[i.variantId] != null)
               return Math.max(i.product.variantAvailableQty[i.variantId], 1);
             if (i.product?.canProduce != null) return Math.max(i.product.availableQty ?? 0, 1);
@@ -799,7 +863,7 @@ export default function ShopLayout({ children }) {
     // Skip sync before cart is initialized
     if (!cartInitialized) return;
 
-    // Skip sync if local cart is empty — CartContext owns the real data
+    // Skip sync if local cart is empty - CartContext owns the real data
     if (cart.length === 0) return;
 
     // Convert to MongoDB format
@@ -821,7 +885,7 @@ export default function ShopLayout({ children }) {
   }, [cart, cartInitialized]);
 
   // ── Forgot Password Handlers ────────────────────────────────────────────────
-  // STEP 1 — Send reset code to email
+  // STEP 1 - Send reset code to email
   const handleForgotSubmit = async () => {
     if (!forgotEmail.trim()) { setForgotError('Email is required'); return; }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(forgotEmail)) {
@@ -841,60 +905,20 @@ export default function ShopLayout({ children }) {
     }
   };
 
-  // STEP 2 — Verify the 6-digit code
-  const handleForgotVerifyCode = async () => {
-    if (forgotCode.length !== 6) { setForgotError('Please enter the 6-digit code'); return; }
+  // "Send it again" is the same request as the first one - a fresh link, and the previous one
+  // stops working. One a minute is enough for a lost email and keeps the day's mail quota intact.
+  const handleForgotResend = async () => {
+    if (forgotResendCooldown > 0 || isSendingReset) return;
+    setForgotResendSuccess(false);
     setForgotError('');
     setIsSendingReset(true);
     try {
-      await verifyResetCode({ email: forgotEmail, code: forgotCode });
-      setForgotStep(3); // Move to password reset step
-    } catch (err) {
-      setForgotError(err.message || 'Invalid or expired code.');
-    } finally {
-      setIsSendingReset(false);
-    }
-  };
-
-  // Resend verification code
-  const handleForgotResend = async () => {
-    if (forgotResendCooldown > 0) return;
-    setForgotResendSuccess(false);
-    setForgotError('');
-    try {
-      await sendResetCode({ email: forgotEmail });
-      setForgotCode('');
+      await forgotPassword({ email: forgotEmail });
       setForgotResendSuccess(true);
       setForgotResendCooldown(60);
       setTimeout(() => setForgotResendSuccess(false), 5000);
     } catch (err) {
-      setForgotError(err.message || 'Failed to resend code.');
-    }
-  };
-
-  // STEP 3 — Submit new password
-  const handleForgotResetPassword = async () => {
-    if (!forgotNewPassword) { setForgotError('Password is required'); return; }
-    if (forgotNewPassword.length < 8) { setForgotError('Password must be at least 8 characters'); return; }
-    if (!/[A-Z]/.test(forgotNewPassword)) { setForgotError('Password must contain at least one uppercase letter'); return; }
-    if (!/[a-z]/.test(forgotNewPassword)) { setForgotError('Password must contain at least one lowercase letter'); return; }
-    if (!/\d/.test(forgotNewPassword)) { setForgotError('Password must contain at least one number'); return; }
-    if (!/[!@#$%^&*(),.?":{}|<>]/.test(forgotNewPassword)) { setForgotError('Password must contain at least one special character'); return; }
-    if (forgotNewPassword !== forgotConfirmPassword) { setForgotError('Passwords do not match'); return; }
-    setForgotError('');
-    setIsSendingReset(true);
-    try {
-      await resetPassword({ email: forgotEmail, code: forgotCode, password: forgotNewPassword, password_confirmation: forgotConfirmPassword });
-      // Success — close and show login
-      setForgotPasswordOpen(false);
-      setForgotStep(1);
-      setForgotCode('');
-      setForgotNewPassword('');
-      setForgotConfirmPassword('');
-      setAuthModalOpen(true);
-      setAuthModalType('login');
-    } catch (err) {
-      setForgotError(err.message || 'Failed to reset password.');
+      setForgotError(err.message || 'Could not send it again.');
     } finally {
       setIsSendingReset(false);
     }
@@ -905,9 +929,6 @@ export default function ShopLayout({ children }) {
     setForgotPasswordOpen(false);
     setForgotStep(1);
     setForgotEmail('');
-    setForgotCode('');
-    setForgotNewPassword('');
-    setForgotConfirmPassword('');
     setForgotError('');
     setForgotSent(false);
   };
@@ -958,9 +979,9 @@ export default function ShopLayout({ children }) {
           setUnreadCount(prev => prev + 1);
         });
     } catch {
-      // Reverb not reachable — polling covers it
+      // Reverb not reachable - polling covers it
     }
-    // Only stop listening to this channel — do NOT disconnect the shared Echo
+    // Only stop listening to this channel - do NOT disconnect the shared Echo
     // singleton here, as ChatModule and other components rely on the same instance.
     return () => {
       try { getEcho(getToken())?.private(`user.${userId}`).stopListening('.notification.created'); } catch { }
@@ -979,6 +1000,24 @@ export default function ShopLayout({ children }) {
     return () => window.removeEventListener('unhandledrejection', handler);
   }, []);
 
+  // Dragging a sheet down dragged the page with it: blocking touchmove outside the panel is not
+  // the same as locking the page, because the drag itself happens INSIDE the panel. The lock does
+  // the rest (and marks the body, so the chat head and the tab bar step aside too).
+  useLockBodyScroll(cartOpen || notifOpen);
+
+  // The search box is ~160px on a phone, where the long placeholder was cut to "Search p".
+  const [narrowNav, setNarrowNav] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 640px)');
+    const apply = () => setNarrowNav(mq.matches);
+    apply();
+    mq.addEventListener('change', apply);
+    return () => mq.removeEventListener('change', apply);
+  }, []);
+  // The sign-in, sign-up, forgot-password, 2FA, logout and notification modals never took the lock,
+  // so on a phone the tab bar and the chat head sat on top of their buttons.
+  useLockBodyScroll(authModalOpen || forgotPasswordOpen || (twoFaOpen && !!twoFaToken) || logoutConfirmOpen || !!selectedNotif);
+
   // Scroll lock when cart or notif sheet is open (phones only)
   useEffect(() => {
     if (!cartOpen && !notifOpen || window.innerWidth > 640) return;
@@ -989,25 +1028,11 @@ export default function ShopLayout({ children }) {
     return () => document.removeEventListener('touchmove', block);
   }, [cartOpen, notifOpen]);
 
-  const onShopSheetDragStart = (e) => { shopSheetDragStartY.current = e.touches[0].clientY; };
-  const onShopSheetDragMove = (ref) => (e) => {
-    const dy = e.touches[0].clientY - shopSheetDragStartY.current;
-    if (dy <= 0 || !ref.current) return;
-    ref.current.style.transition = 'none';
-    ref.current.style.transform = `translateY(${dy}px)`;
-  };
-  const onShopSheetDragEnd = (ref, close) => (e) => {
-    const dy = e.changedTouches[0].clientY - shopSheetDragStartY.current;
-    if (!ref.current) return;
-    if (dy > 80) {
-      ref.current.style.transition = 'transform 0.28s cubic-bezier(0.4,0,0.2,1)';
-      ref.current.style.transform = 'translateY(110%)';
-      setTimeout(close, 260);
-    } else {
-      ref.current.style.transition = 'transform 0.28s cubic-bezier(0.4,0,0.2,1)';
-      ref.current.style.transform = 'translateY(0)';
-    }
-  };
+  // The whole sheet listened for a downward drag with no idea whether its list was scrolled, so
+  // scrolling back up through the notifications dragged the sheet down with the thumb. The shared
+  // hook drags only while the list is at its top - the same rule every other sheet follows.
+  const cartSheetDrag  = useSheetDrag(() => setCartOpen(false), 80);
+  const notifSheetDrag = useSheetDrag(() => setNotifOpen(false), 80);
 
   const handleOpenNotifications = useCallback(async () => {
     const isOpening = !notifOpen;
@@ -1058,8 +1083,19 @@ export default function ShopLayout({ children }) {
     }
   }, []);
 
+  // Pages inside this layout (My Profile) ask for a logout through this event rather than repeating
+  // the routine: the token has to be revoked on the server, four keys cleared, the other tabs told
+  // and the cart dropped. A second copy of that would drift from this one.
+  useEffect(() => {
+    const onLogoutRequest = () => handleLogout();
+    window.addEventListener('pmp:logout-request', onLogoutRequest);
+    return () => window.removeEventListener('pmp:logout-request', onLogoutRequest);
+  }, []);
+
   // ── Logout ─────────────────────────────────────────────────────────────────
   function handleLogout() {
+    // The account menu stayed open behind the confirmation.
+    setMenuOpen(false);
     setLogoutConfirmOpen(true);
   }
 
@@ -1176,6 +1212,8 @@ export default function ShopLayout({ children }) {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
+            // Without this the card was the full width of a phone, edge to edge.
+            padding: '1rem',
           }}
         >
           <div
@@ -1184,9 +1222,9 @@ export default function ShopLayout({ children }) {
               background: 'var(--dark2)',
               border: '1px solid var(--border)',
               borderRadius: '12px',
-              padding: '2rem',
+              padding: '1.5rem',
               width: '100%',
-              maxWidth: '400px',
+              maxWidth: '340px',
               display: 'flex',
               flexDirection: 'column',
               gap: '1.5rem',
@@ -1200,11 +1238,12 @@ export default function ShopLayout({ children }) {
                 Are you sure you want to log out of your account?
               </p>
             </div>
-            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+            <div style={{ display: 'flex', gap: '0.75rem' }}>
               <button
                 onClick={() => setLogoutConfirmOpen(false)}
                 style={{
-                  padding: '0.5rem 1.25rem',
+                  flex: 1,
+                  padding: '0.7rem 1rem',
                   borderRadius: '8px',
                   border: '1px solid var(--border)',
                   background: 'transparent',
@@ -1219,7 +1258,8 @@ export default function ShopLayout({ children }) {
               <button
                 onClick={confirmLogout}
                 style={{
-                  padding: '0.5rem 1.25rem',
+                  flex: 1,
+                  padding: '0.7rem 1rem',
                   borderRadius: '8px',
                   border: 'none',
                   background: 'var(--red)',
@@ -1265,7 +1305,7 @@ export default function ShopLayout({ children }) {
           <div className="shop-navbar-container">
             {/* Left side - Logo and Back button (only show back button when NOT logged in) */}
             <div className="shop-navbar-left">
-              {/* Logo — always links back to landing */}
+              {/* Logo - always links back to landing */}
               <Link href="/" className="shop-navbar-logo">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src="/logos/PersonalizeMe logo.png" alt="Personalize Me Prints" className="shop-navbar-logo-img" />
@@ -1275,11 +1315,22 @@ export default function ShopLayout({ children }) {
               </Link>
             </div>
 
-            {/* Center — Search bar — B-01 (only on product browsing pages) */}
+            {/* Center - Search bar - B-01 (only on product browsing pages) */}
             {showSearch && (
               <div className={`shop-navbar-search${searchFocused ? ' focused' : ''}`}>
+                {/* Enter always worked, but nothing on screen said so - on a product page the box
+                    read as broken. The magnifier runs the same search. */}
                 <svg
                   className="shop-navbar-search-icon"
+                  role="button"
+                  tabIndex={0}
+                  aria-label="Search products"
+                  style={{ cursor: 'pointer' }}
+                  onClick={() => {
+                    const q = searchQuery.trim();
+                    if (!q) { searchRef.current?.focus(); return; }
+                    router.push('/shop?q=' + encodeURIComponent(q));
+                  }}
                   width="16" height="16" viewBox="0 0 24 24"
                   fill="none" stroke="currentColor"
                   strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
@@ -1291,12 +1342,67 @@ export default function ShopLayout({ children }) {
                   ref={searchRef}
                   type="text"
                   className="shop-navbar-search-input"
-                  placeholder="Search products..."
+                  placeholder={narrowNav ? 'Search products' : 'Search products, then press Enter'}
                   value={searchQuery}
-                  onChange={handleSearchChange}
-                  onFocus={() => setSearchFocused(true)}
-                  onBlur={() => setSearchFocused(false)}
+                  onChange={e => { handleSearchChange(e); setSearchOpen(true); setSearchHi(-1); }}
+                  onFocus={() => { setSearchFocused(true); setSearchOpen(true); loadSearchIndex(); }}
+                  onBlur={() => { setSearchFocused(false); setTimeout(() => setSearchOpen(false), 120); }}
+                  onKeyDown={e => {
+                    // Only the shop grid listens for the pmp_search event, so on a product page or
+                    // the cart, typing here answered nothing. The arrows walk the suggestions and
+                    // Enter either opens the highlighted one or carries the query to the grid.
+                    if (e.key === 'Escape') { setSearchOpen(false); setSearchHi(-1); return; }
+                    if (e.key === 'ArrowDown' && searchSuggestions.length) {
+                      e.preventDefault();
+                      setSearchOpen(true);
+                      setSearchHi(i => (i + 1) % searchSuggestions.length);
+                      return;
+                    }
+                    if (e.key === 'ArrowUp' && searchSuggestions.length) {
+                      e.preventDefault();
+                      setSearchHi(i => (i <= 0 ? searchSuggestions.length - 1 : i - 1));
+                      return;
+                    }
+                    if (e.key !== 'Enter') return;
+                    if (searchHi >= 0 && searchSuggestions[searchHi]) {
+                      e.preventDefault();
+                      openSuggestion(searchSuggestions[searchHi]);
+                      return;
+                    }
+                    const q = searchQuery.trim();
+                    if (!q) return;
+                    e.preventDefault();
+                    searchRef.current?.blur();
+                    setSearchOpen(false);
+                    router.push('/shop?q=' + encodeURIComponent(q));
+                  }}
                 />
+                {searchOpen && searchSuggestions.length > 0 && (
+                  <div className="shop-search-suggest" role="listbox">
+                    {searchSuggestions.map((p, i) => (
+                      <button
+                        key={p.slug + i}
+                        type="button"
+                        role="option"
+                        aria-selected={i === searchHi}
+                        className={`shop-search-suggest-row${i === searchHi ? ' active' : ''}`}
+                        onMouseEnter={() => setSearchHi(i)}
+                        onMouseDown={e => e.preventDefault()}
+                        onClick={() => openSuggestion(p)}
+                      >
+                        <span className="shop-search-suggest-thumb">
+                          {p.thumbnail
+                            ? <img src={p.thumbnail} alt="" loading="lazy" />
+                            : <NoImage size={14} />}
+                        </span>
+                        <span className="shop-search-suggest-text">
+                          <span className="shop-search-suggest-name">{p.name}</span>
+                          {p.category && <span className="shop-search-suggest-cat">{p.category}</span>}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
                 {searchQuery && (
                   <button
                     type="button"
@@ -1317,7 +1423,7 @@ export default function ShopLayout({ children }) {
 
             {/* Right side */}
             <div className="shop-navbar-right">
-              {/* Shop button — hidden on storefront browsing pages and landing */}
+              {/* Shop button - hidden on storefront browsing pages and landing */}
               {!(pathname === '/shop' || pathname.startsWith('/shop/products') || pathname.startsWith('/shop/collections') || pathname.startsWith('/shop/search')) && (
                 <Link
                   href="/shop"
@@ -1329,6 +1435,24 @@ export default function ShopLayout({ children }) {
                     <path d="M16 10a4 4 0 0 1-8 0"/>
                   </svg>
                   <span>Shop</span>
+                </Link>
+              )}
+              {/* My Orders is the screen a customer opens to check an order, and it sat two taps
+                  deep behind the avatar - on a phone they simply did not find it. Its own icon on
+                  small screens; the avatar menu still carries it on a desktop. */}
+              {user && (
+                <Link
+                  href="/shop/orders-history"
+                  className="shop-navbar-cart shop-navbar-orders"
+                  aria-label="My Orders"
+                  title="My Orders"
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+                    <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
+                    <line x1="12" y1="22.08" x2="12" y2="12"/>
+                  </svg>
                 </Link>
               )}
               {/* Cart trigger */}
@@ -1356,7 +1480,7 @@ export default function ShopLayout({ children }) {
               {/* User section - Show Login/Register if not logged in, or User menu if logged in */}
               {user ? (
                 <>
-                  {/* Notification Bell — logged-in customers only */}
+                  {/* Notification Bell - logged-in customers only */}
                   <div ref={notifRef} style={{ position: 'relative' }}>
                     <button
                       type="button"
@@ -1392,7 +1516,7 @@ export default function ShopLayout({ children }) {
                         <img
                           src={user.avatar}
                           alt="avatar"
-                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                          style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
                         />
                       ) : (
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1474,18 +1598,18 @@ export default function ShopLayout({ children }) {
               <p className="shop-footer-tagline">Your creative partner for custom print products. Quality printing for every occasion.</p>
               <div className="shop-footer-socials">
                 <img src="/logos/PersonalizeMe logo.png" alt="Logo" className="shop-footer-logo" />
-                <a href="https://www.facebook.com/share/1Mks4kwnhZ/?mibextid=wwXIfr" target="_blank" rel="noopener noreferrer" className="shop-footer-social-btn" aria-label="Facebook">
+                {footerSocials.facebook && (<a href={footerSocials.facebook} target="_blank" rel="noopener noreferrer" className="shop-footer-social-btn" aria-label="Facebook">
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M24 12.073C24 5.404 18.627 0 12 0S0 5.404 0 12.073C0 18.1 4.388 23.094 10.125 24v-8.437H7.078v-3.49h3.047V9.41c0-3.025 1.792-4.697 4.533-4.697 1.312 0 2.686.236 2.686.236v2.97h-1.513c-1.491 0-1.956.93-1.956 1.886v2.267h3.328l-.532 3.49h-2.796V24C19.612 23.094 24 18.1 24 12.073z"/></svg>
-                </a>
-                <a href="https://www.instagram.com/personalizemeprints" target="_blank" rel="noopener noreferrer" className="shop-footer-social-btn" aria-label="Instagram">
+                </a>)}
+                {footerSocials.instagram && (<a href={footerSocials.instagram} target="_blank" rel="noopener noreferrer" className="shop-footer-social-btn" aria-label="Instagram">
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 1 0 0 12.324 6.162 6.162 0 0 0 0-12.324zM12 16a4 4 0 1 1 0-8 4 4 0 0 1 0 8zm6.406-11.845a1.44 1.44 0 1 0 0 2.881 1.44 1.44 0 0 0 0-2.881z"/></svg>
-                </a>
-                <a href="https://www.tiktok.com/@personalizemeprints" target="_blank" rel="noopener noreferrer" className="shop-footer-social-btn" aria-label="TikTok">
+                </a>)}
+                {footerSocials.tiktok && (<a href={footerSocials.tiktok} target="_blank" rel="noopener noreferrer" className="shop-footer-social-btn" aria-label="TikTok">
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-2.88 2.5 2.89 2.89 0 0 1-2.89-2.89 2.89 2.89 0 0 1 2.89-2.89c.28 0 .54.04.79.1V9.01a6.33 6.33 0 0 0-.79-.05 6.34 6.34 0 0 0-6.34 6.34 6.34 6.34 0 0 0 6.34 6.34 6.34 6.34 0 0 0 6.33-6.34V8.69a8.18 8.18 0 0 0 4.78 1.52V6.75a4.85 4.85 0 0 1-1.01-.06z"/></svg>
-                </a>
-                <a href="https://shopee.ph/personalizemeprints" target="_blank" rel="noopener noreferrer" className="shop-footer-social-btn" aria-label="Shopee">
+                </a>)}
+                {footerSocials.shopee && (<a href={footerSocials.shopee} target="_blank" rel="noopener noreferrer" className="shop-footer-social-btn" aria-label="Shopee">
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4H6zm3 9a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5z"/></svg>
-                </a>
+                </a>)}
               </div>
             </div>
             <details className="shop-footer-col">
@@ -1521,6 +1645,17 @@ export default function ShopLayout({ children }) {
                 )}
               </div>
             </details>
+            <details className="shop-footer-col shop-footer-legal">
+              <summary>
+                <h4>Legal</h4>
+                <svg className="shop-footer-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+              </summary>
+              {/* Buttons, not links: the documents open where the customer is, like the rest of
+                  the shop's reading. */}
+              <button type="button" className="shop-footer-policy-btn" onClick={() => setPolicyDoc('policy_privacy')}>Privacy Policy</button>
+              <button type="button" className="shop-footer-policy-btn" onClick={() => setPolicyDoc('policy_terms')}>T&amp;C</button>
+            </details>
+
             <details className="shop-footer-col">
               <summary>
                 <h4>Account</h4>
@@ -1534,6 +1669,9 @@ export default function ShopLayout({ children }) {
           </div>
           <div className="shop-footer-bottom">
             <span className="shop-footer-copy">© {new Date().getFullYear()} Personalize Me Prints. All rights reserved.</span>
+            {/* Desktop: the policies live in this bar, as on the landing page. A phone gets the
+                Legal accordion above instead, where they are easier to reach with a thumb. */}
+
             <button
               type="button"
               onClick={toggleTheme}
@@ -1541,11 +1679,17 @@ export default function ShopLayout({ children }) {
               style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '8px', cursor: 'pointer', color: 'rgba(245,245,245,0.6)', padding: '6px 12px', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem' }}
             >
               {theme === 'dark' ? (
-                <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>Light Mode</>
+                <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>Light</>
               ) : (
-                <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>Dark Mode</>
+                <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>Dark</>
               )}
             </button>
+            {/* Same bar as the landing page: copyright, the theme toggle in the middle, policies on
+                the right. On a phone the Legal accordion above carries them instead. */}
+            <span className="shop-footer-legal-inline">
+              <button type="button" onClick={() => setPolicyDoc('policy_privacy')}>Privacy Policy</button>
+              <button type="button" onClick={() => setPolicyDoc('policy_terms')}>T&amp;C</button>
+            </span>
           </div>
         </footer>
 
@@ -1577,10 +1721,50 @@ export default function ShopLayout({ children }) {
                   />
                 </div>
               ) : (
-                /* RegisterForm renders its own step indicator + .auth-modal-body — wrapping it in
+                /* RegisterForm renders its own step indicator + .auth-modal-body - wrapping it in
                    another .auth-modal-body double-padded it and inset the stepper (landing does not). */
                 <RegisterForm key={`register-${authModalInstanceKey}`} onSuccess={handleRegisterSuccess} onSwitchToLogin={() => setAuthModalType('login')} theme={theme} />
               )}
+
+      {/* Email verification after sign-up. Same screen the landing page shows; no backdrop close,
+          because a stray tap would drop the code being typed. */}
+      {verifyEmailFor && (
+        <div className="auth-overlay" style={{ zIndex: 10050 }}>
+          <div className="verify-modal" onClick={e => e.stopPropagation()}>
+            <div className="verify-icon-wrap">
+              <div className="verify-icon" style={{ color: 'var(--gold)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+                  <polyline points="22,6 12,13 2,6"/>
+                </svg>
+              </div>
+              <div className="verify-pulse"/>
+            </div>
+            <h2 className="verify-title">Account Created!</h2>
+            <p className="verify-subtitle">We sent a 6-digit verification code to {verifyEmailFor}. Enter it below to activate your account.</p>
+            <div className="verify-code-wrap">
+              <OtpInput value={verifyCode} onChange={setVerifyCode} autoFocus />
+              {verifyErr && <span className="error-message" style={{ display: 'block', marginTop: '0.4rem', textAlign: 'center' }}>{verifyErr}</span>}
+              {verifyResent && <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--green)', marginTop: '0.4rem', textAlign: 'center' }}>{verifyResent}</span>}
+            </div>
+            <p className="verify-hint">Not in your inbox? Check the spam folder.</p>
+            <div className="verify-actions">
+              <button className="btn-primary verify-login-btn" onClick={handleVerifySubmit} disabled={verifyBusy}
+                style={{ opacity: verifyBusy ? 0.6 : 1, cursor: verifyBusy ? 'not-allowed' : 'pointer' }}>
+                {verifyBusy ? 'Verifying...' : 'Verify & Sign in'}
+              </button>
+              <button className="btn-secondary" onClick={() => setVerifyEmailFor(null)}>Close</button>
+            </div>
+            <p className="verify-send">
+              Didn't receive the code?{' '}
+              <button className="auth-link" disabled={verifyBusy} onClick={handleVerifyResend}
+                style={{ opacity: verifyBusy ? 0.5 : 1, cursor: verifyBusy ? 'not-allowed' : 'pointer' }}>
+                Resend code
+              </button>
+            </p>
+          </div>
+        </div>
+      )}
             </div>
           </div>
         )}
@@ -1592,7 +1776,7 @@ export default function ShopLayout({ children }) {
             userRole={twoFaRole}
             persistLogin={twoFaPendingRememberMe}
             onSuccess={(redirectTo, sessionToken) => {
-              // OTP verified — write the real full-access token minted by the server on verify.
+              // OTP verified - write the real full-access token minted by the server on verify.
               // The pending token (twoFaToken) is limited and already revoked; never persist it.
               const finalToken = sessionToken || twoFaToken;
               if (twoFaPendingUser && finalToken) {
@@ -1623,8 +1807,8 @@ export default function ShopLayout({ children }) {
           />
         )}
 
-        {/* ── Forgot Password Modal — 3 Step Flow ── */}
-        {/* No backdrop-close: 3-step email/code/new-password flow — a stray click would
+        {/* ── Forgot Password Modal - 3 Step Flow ── */}
+        {/* No backdrop-close: 3-step email/code/new-password flow - a stray click would
             wipe progress. Closes only via the X button. */}
         {forgotPasswordOpen && (
           <div className="auth-overlay" style={{ zIndex: 1000 }}>
@@ -1635,8 +1819,7 @@ export default function ShopLayout({ children }) {
                 <div>
                   <h2>Forgot Password</h2>
                   <p>
-                    {forgotStep === 1 ? "We'll send you a reset code" :
-                     forgotStep === 2 ? "Enter verification code" : "Set a new password"}
+                    {forgotStep === 1 ? "We'll email you a reset link" : 'Check your inbox'}
                   </p>
                 </div>
                 <button className="auth-close" onClick={closeForgotPassword}>
@@ -1644,11 +1827,11 @@ export default function ShopLayout({ children }) {
                 </button>
               </div>
               <div className="auth-modal-body">
-                {/* STEP 1 — Enter Email */}
+                {/* STEP 1 - Enter Email */}
                 {forgotStep === 1 && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                     <p style={{ color: 'var(--gray)', fontSize: '0.9rem', lineHeight: 1.6, margin: 0 }}>
-                      Enter the email address associated with your account and we'll send you a reset code.
+                      Enter the email address associated with your account and we'll email you a reset link.
                     </p>
                     <div className="auth-field">
                       <label>Email Address</label>
@@ -1662,13 +1845,8 @@ export default function ShopLayout({ children }) {
                       />
                       {forgotError && <span className="error-message">{forgotError}</span>}
                     </div>
-                    {forgotSent && (
-                      <div style={{ padding: '0.75rem', borderRadius: '8px', background: 'rgba(74,222,128,0.12)', border: '1px solid rgba(74,222,128,0.3)', color: 'var(--green)', fontSize: '0.85rem' }}>
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{display:'inline',verticalAlign:'middle',marginRight:'6px'}}><polyline points="20 6 9 17 4 12"/></svg> A reset code has been sent to your email.
-                      </div>
-                    )}
                     <button className="btn-auth-submit" disabled={isSendingReset} onClick={handleForgotSubmit}>
-                      {isSendingReset ? 'Sending...' : 'Send Reset Code'}
+                      {isSendingReset ? 'Sending...' : 'Send Reset Link'}
                     </button>
                     <p className="auth-switch" style={{ margin: 0 }}>
                       Remember your password?{' '}
@@ -1677,7 +1855,9 @@ export default function ShopLayout({ children }) {
                   </div>
                 )}
 
-                {/* STEP 2 — Enter Verification Code */}
+                {/* SENT - the link carries on from the customer's inbox, so there is nothing
+                    more to do here. Same screen as the landing page, so a person who starts in
+                    one place and finishes in the other sees one flow. */}
                 {forgotStep === 2 && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                     <div style={{ textAlign: 'center', padding: '0.5rem 0' }}>
@@ -1688,105 +1868,21 @@ export default function ShopLayout({ children }) {
                         </svg>
                       </div>
                       <p style={{ color: 'var(--gray)', fontSize: '0.88rem', lineHeight: 1.6, margin: 0 }}>
-                        We sent a 6-digit code to <strong style={{ color: 'var(--white)' }}>{forgotEmail}</strong>. Check your inbox and spam folder.
+                        We sent a reset link to <strong style={{ color: 'var(--white)' }}>{forgotEmail}</strong>.
+                        Open it to continue. Check your spam folder if it is not there in a minute.
                       </p>
-                    </div>
-                    <div className="auth-field">
-                      <label>6-Digit Verification Code</label>
-                      <input
-                        type="text"
-                        placeholder="Enter 6-digit code"
-                        maxLength={6}
-                        value={forgotCode}
-                        onChange={e => { setForgotCode(e.target.value.replace(/\D/g,'')); setForgotError(''); }}
-                        className={forgotError ? 'error' : ''}
-                        style={{ letterSpacing: '0.25em', fontSize: '1.1rem', textAlign: 'center' }}
-                        onKeyDown={e => e.key === 'Enter' && handleForgotVerifyCode()}
-                      />
-                      {forgotError && <span className="error-message">{forgotError}</span>}
                       {forgotResendSuccess && (
-                        <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--green)', marginTop: '0.4rem' }}>
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{display:'inline',verticalAlign:'middle',marginRight:'4px'}}><polyline points="20 6 9 17 4 12"/></svg> A new code has been sent
-                        </span>
+                        <p style={{ fontSize: '0.8rem', color: 'var(--green)', margin: '0.6rem 0 0' }}>A new link is on its way.</p>
                       )}
+                      {forgotError && <p style={{ fontSize: '0.8rem', color: 'var(--red)', margin: '0.6rem 0 0' }}>{forgotError}</p>}
                     </div>
-                    <button className="btn-auth-submit" disabled={isSendingReset} onClick={handleForgotVerifyCode}>
-                      {isSendingReset ? 'Verifying...' : 'Verify Code'}
+                    <button className="btn-auth-submit" disabled={isSendingReset || forgotResendCooldown > 0} onClick={handleForgotResend}>
+                      {isSendingReset ? 'Sending...' : forgotResendCooldown > 0 ? `Send it again in ${forgotResendCooldown}s` : 'Send it again'}
                     </button>
                     <p className="auth-switch" style={{ margin: 0 }}>
-                      Didn't receive the code?{' '}
-                      <button
-                        type="button"
-                        className="auth-link"
-                        disabled={forgotResendCooldown > 0}
-                        style={forgotResendCooldown > 0 ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
-                        onClick={handleForgotResend}
-                      >
-                        {forgotResendCooldown > 0 ? `Resend in ${forgotResendCooldown}s` : 'Resend Code'}
-                      </button>
+                      Wrong email?{' '}
+                      <button type="button" onClick={() => { setForgotStep(1); setForgotError(''); setForgotSent(false); }}>Change it</button>
                     </p>
-                  </div>
-                )}
-
-                {/* STEP 3 — New Password */}
-                {forgotStep === 3 && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                    <p style={{ color: 'var(--gray)', fontSize: '0.9rem', lineHeight: 1.6, margin: 0 }}>
-                      Create a strong new password for your account.
-                    </p>
-                    <div className="auth-field">
-                      <label>New Password</label>
-                      <div className="auth-input-wrap">
-                        <input
-                          type={showForgotPassword ? 'text' : 'password'}
-                          placeholder="Enter new password"
-                          maxLength={64}
-                          value={forgotNewPassword}
-                          onChange={e => { setForgotNewPassword(e.target.value); setForgotError(''); }}
-                          className={forgotError ? 'error' : ''}
-                        />
-                        <button type="button" className="auth-eye" onClick={() => setShowForgotPassword(v => !v)}>
-                          {showForgotPassword ? (
-                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-                              <path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zm0 12.5a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm0-8a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"/>
-                            </svg>
-                          ) : (
-                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-                              <path d="M12 7c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.83l2.92 2.92c1.51-1.26 2.7-2.89 3.43-4.75C21.27 7.61 17 4.5 12 4.5c-1.23 0-2.41.2-3.51.57l2.17 2.17C11.13 7.09 11.56 7 12 7zM2 4.27l2.28 2.28.46.46A11.8 11.8 0 0 0 1 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22 21 20.73 3.27 3 2 4.27zM7.53 9.8l1.55 1.55c-.05.21-.08.43-.08.65a3 3 0 0 0 3 3c.22 0 .44-.03.65-.08l1.55 1.55c-.67.33-1.41.53-2.2.53a5 5 0 0 1-5-5c0-.79.2-1.53.53-2.2zm4.31-.78 3.15 3.15.02-.16c0-1.66-1.34-3-3-3l-.17.01z"/>
-                            </svg>
-                          )}
-                        </button>
-                      </div>
-                      {forgotError && <span className="error-message">{forgotError}</span>}
-                    </div>
-                    <div className="auth-field">
-                      <label>Confirm New Password</label>
-                      <div className="auth-input-wrap">
-                        <input
-                          type={showForgotConfirm ? 'text' : 'password'}
-                          placeholder="Repeat new password"
-                          maxLength={64}
-                          value={forgotConfirmPassword}
-                          onChange={e => { setForgotConfirmPassword(e.target.value); setForgotError(''); }}
-                          className={forgotError ? 'error' : ''}
-                        />
-                        <button type="button" className="auth-eye" onClick={() => setShowForgotConfirm(v => !v)}>
-                          {showForgotConfirm ? (
-                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-                              <path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zm0 12.5a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm0-8a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"/>
-                            </svg>
-                          ) : (
-                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-                              <path d="M12 7c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.83l2.92 2.92c1.51-1.26 2.7-2.89 3.43-4.75C21.27 7.61 17 4.5 12 4.5c-1.23 0-2.41.2-3.51.57l2.17 2.17C11.13 7.09 11.56 7 12 7zM2 4.27l2.28 2.28.46.46A11.8 11.8 0 0 0 1 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22 21 20.73 3.27 3 2 4.27zM7.53 9.8l1.55 1.55c-.05.21-.08.43-.08.65a3 3 0 0 0 3 3c.22 0 .44-.03.65-.08l1.55 1.55c-.67.33-1.41.53-2.2.53a5 5 0 0 1-5-5c0-.79.2-1.53.53-2.2zm4.31-.78 3.15 3.15.02-.16c0-1.66-1.34-3-3-3l-.17.01z"/>
-                            </svg>
-                          )}
-                        </button>
-                      </div>
-                      {forgotError && <span className="error-message">{forgotError}</span>}
-                    </div>
-                    <button className="btn-auth-submit" disabled={isSendingReset} onClick={handleForgotResetPassword}>
-                      {isSendingReset ? 'Resetting...' : 'Reset Password'}
-                    </button>
                   </div>
                 )}
               </div>
@@ -1796,7 +1892,7 @@ export default function ShopLayout({ children }) {
       </div>
 
 
-      {/* Shop cart / notif sheets — root level so position:fixed is viewport-relative */}
+      {/* Shop cart / notif sheets - root level so position:fixed is viewport-relative */}
       {(cartOpen || notifOpen) && (
         <div className="shop-sheet-backdrop" onClick={() => { setCartOpen(false); setNotifOpen(false); }} />
       )}
@@ -1805,10 +1901,7 @@ export default function ShopLayout({ children }) {
       )}
 
       {cartOpen && (
-        <div className="shop-cart-popup" ref={shopCartSheetRef}
-          onTouchStart={onShopSheetDragStart}
-          onTouchMove={onShopSheetDragMove(shopCartSheetRef)}
-          onTouchEnd={onShopSheetDragEnd(shopCartSheetRef, () => setCartOpen(false))}>
+        <div className="shop-cart-popup" ref={cartSheetDrag.ref} {...cartSheetDrag.handlers}>
           <div className="shop-cart-popup-header">
             Cart
             {globalCartCount > 0 && <span className="shop-cart-popup-count">{globalCartCount}</span>}
@@ -1834,7 +1927,9 @@ export default function ShopLayout({ children }) {
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={item.image} alt={item.productName} className="shop-cart-popup-img" />
                     ) : (
-                      <div className="shop-cart-popup-img-placeholder" />
+                      <div className="shop-cart-popup-img-placeholder">
+                        <NoImage size={20} />
+                      </div>
                     )}
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div className="shop-cart-popup-item-name">{item.productName}</div>
@@ -1860,10 +1955,7 @@ export default function ShopLayout({ children }) {
       )}
 
       {notifOpen && (
-        <div className="shop-notif-panel" ref={shopNotifSheetRef}
-          onTouchStart={onShopSheetDragStart}
-          onTouchMove={onShopSheetDragMove(shopNotifSheetRef)}
-          onTouchEnd={onShopSheetDragEnd(shopNotifSheetRef, () => setNotifOpen(false))}>
+        <div className="shop-notif-panel" ref={notifSheetDrag.ref} {...notifSheetDrag.handlers}>
           <div className="shop-notif-panel-header">
             <div className="shop-notif-panel-title">
               Notifications
@@ -1916,11 +2008,82 @@ export default function ShopLayout({ children }) {
         </div>
       )}
 
+      {/* Bottom bar - phones and small tablets only.
+          Six things were competing for 375px of top bar, which is why the search box was squeezed
+          to 160px. The destinations belong where the thumb is; the top keeps the logo, the search
+          and the bell. Home leaves the shop for the landing page, which is what the owner asked
+          for and what the same bar does on Shopee and Temu. */}
+      <nav className="shop-bottom-nav" aria-label="Shop">
+        <Link href="/" className={`sbn-item${pathname === '/' ? ' active' : ''}`}>
+          <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M3 9.5L12 3l9 6.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>
+          </svg>
+          <span>Home</span>
+        </Link>
+
+        <Link
+          href={user ? '/shop/orders-history' : '/shop'}
+          className={`sbn-item${pathname.startsWith('/shop/orders-history') ? ' active' : ''}`}
+          onClick={e => {
+            // Signed out there is nothing to show, and bouncing someone to an empty page is worse
+            // than asking them to sign in.
+            if (user) return;
+            e.preventDefault();
+            setAuthModalType('login');
+            setAuthModalSubtitle('Sign in to see your orders.');
+            setAuthModalOpen(true);
+          }}
+        >
+          <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+            <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
+            <line x1="12" y1="22.08" x2="12" y2="12"/>
+          </svg>
+          <span>My Orders</span>
+        </Link>
+
+        <Link href="/shop/cart" className={`sbn-item${pathname.startsWith('/shop/cart') ? ' active' : ''}`}>
+          <span className="sbn-icon-wrap">
+            <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/>
+              <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
+            </svg>
+            {globalCartCount > 0 && <span className="sbn-badge">{globalCartCount > 99 ? '99+' : globalCartCount}</span>}
+          </span>
+          <span>Cart</span>
+        </Link>
+
+        <Link
+          href={user ? '/shop/profile' : '/shop'}
+          className={`sbn-item${pathname.startsWith('/shop/profile') ? ' active' : ''}`}
+          onClick={e => {
+            if (user) return;
+            e.preventDefault();
+            setAuthModalType('login');
+            setAuthModalSubtitle('Sign in to your account.');
+            setAuthModalOpen(true);
+          }}
+        >
+          <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+          </svg>
+          <span>You</span>
+        </Link>
+      </nav>
+
+      <PolicyModal docKey={policyDoc} onClose={() => setPolicyDoc(null)} />
+
       {/* Floating chat widget */}
       <CustomerChatModal
         user={user}
         token={getToken()}
         addToCart={globalAddToCart}
+        // Only the landing page used to pass this, so "Chat about an order" did nothing here.
+        onRequestLogin={() => {
+          setAuthModalType('login');
+          setAuthModalSubtitle('Sign in to chat about your order.');
+          setAuthModalOpen(true);
+        }}
       />
 
     </>

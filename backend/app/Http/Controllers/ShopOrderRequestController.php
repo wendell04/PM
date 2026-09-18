@@ -61,7 +61,7 @@ class ShopOrderRequestController extends Controller
 
     /**
      * POST /order-requests/my/{id}/cancel
-     * Customer cancels their own order request — only pending_review allowed.
+     * Customer cancels their own order request - only pending_review allowed.
      */
     public function cancel(Request $request, $id)
     {

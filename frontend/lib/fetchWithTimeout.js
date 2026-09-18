@@ -66,8 +66,14 @@ export async function fetchWithTimeout(
     }
   };
 
+  // Only a read may be repeated. A POST that timed out may still have gone through on the server,
+  // and sending it again charges a card twice or places an order twice - which is exactly how a
+  // one-click deposit became a deposit plus the balance.
+  const method = String(options.method || 'GET').toUpperCase();
+  const maxRetries = method === 'GET' || method === 'HEAD' ? retries : 0;
+
   let lastError;
-  for (let i = 0; i <= retries; i++) {
+  for (let i = 0; i <= maxRetries; i++) {
     try {
       const response = await attempt();
       // Expired/invalid session on an authenticated request: log out + redirect.
@@ -75,18 +81,18 @@ export async function fetchWithTimeout(
         handleSessionExpired();
         return response;
       }
-      // Never retry successful responses or client errors (4xx) — only network/server failures
+      // Never retry successful responses or client errors (4xx) - only network/server failures
       if (response.ok || (response.status >= 400 && response.status < 500)) {
         return response;
       }
-      // 5xx — treat as retryable
+      // 5xx - treat as retryable
       lastError = new Error(`Server error: ${response.status}`);
       lastError.response = response;
-      if (i === retries) return response; // return the last 5xx so callers can read the body
+      if (i === maxRetries) return response; // return the last 5xx so callers can read the body
     } catch (err) {
       lastError = err;
     }
-    if (i < retries) {
+    if (i < maxRetries) {
       // Exponential backoff: 500ms, 1000ms, 2000ms…
       await new Promise(res => setTimeout(res, 500 * Math.pow(2, i)));
     }

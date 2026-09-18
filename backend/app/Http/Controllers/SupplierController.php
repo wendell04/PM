@@ -32,7 +32,7 @@ class SupplierController extends Controller
             $hasSearch = $request->filled('search');
 
             if ($hasSearch) {
-                // Search requests: never cache — build and run directly
+                // Search requests: never cache - build and run directly
                 $search = $request->search;
                 $suppliers = Supplier::where('isActive', true)
                     ->where(function ($q) use ($search) {
@@ -191,7 +191,7 @@ class SupplierController extends Controller
                 return $this->errorResponse('Cannot delete: Supplier is linked to ' . $linkedInventory . ' inventory item(s).', 422);
             }
 
-            // Soft delete — keep data, just hide from list
+            // Soft delete - keep data, just hide from list
             $supplier->update(['isActive' => false]);
 
             Cache::forget('suppliers_list_' . auth()->id());

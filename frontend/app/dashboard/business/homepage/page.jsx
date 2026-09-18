@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * HOMEPAGE CMS — landing page by section.
+ * HOMEPAGE CMS - landing page by section.
  * Hero = TWO lists (Taglines + Hero Images), reusing the banners collection via a
  * `heroRole` discriminator. The live hero pairs tagline[i%T] + image[i%I].
  * Shop promo strips live in the separate Banners module.
@@ -39,7 +39,7 @@ const isLanding = (b) => { const s = b.showOn || 'both'; return s === 'landing' 
 // ── Seed data (mirrors the hardcoded landing hero) ──
 const SEED_TAGLINES = [
   { name: 'Print What Represents You', tag: 'Premium Custom Printing', headline: 'Print What', headlineAccent: 'Represents', headlineAccentColor: 'red', headlineAccent2: 'You', headlineAccent2Color: 'gold', subtext: "High-quality personalized printing for t-shirts, mugs, souvenirs, and more. Upload your design and we'll make it real.", ctaLabel: 'Browse Products', ctaLink: '/shop', cta2Label: 'How It Works', cta2Link: '#how-it-works' },
-  { name: 'Ready in 24 Hours', tag: 'Fast Turnaround', headline: 'Ready in', headlineAccent: '24 Hours', headlineAccentColor: 'gold', headlineAccent2: '', headlineAccent2Color: 'gold', subtext: 'Most orders are printed and ready within a day. Rush orders available for urgent needs.', ctaLabel: 'View Services', ctaLink: '#services', cta2Label: 'Get a Quote', cta2Link: '/shop' },
+  { name: 'Ready in 24 Hours', tag: 'Fast Turnaround', headline: 'Ready in', headlineAccent: '24 Hours', headlineAccentColor: 'gold', headlineAccent2: '', headlineAccent2Color: 'gold', subtext: 'Most orders are printed and ready within a day. Rush orders available for urgent needs.', ctaLabel: 'View Services', ctaLink: '/shop?collection=printing-services', cta2Label: 'Get a Quote', cta2Link: '/shop' },
   { name: 'Big Orders, Better Prices', tag: 'Bulk Orders Welcome', headline: 'Big Orders,', headlineAccent: 'Better Prices', headlineAccentColor: 'gold', headlineAccent2: '', headlineAccent2Color: 'gold', subtext: 'The more you order, the more you save. Check our full pricelist for bulk pricing breakdowns.', ctaLabel: 'View Pricing', ctaLink: '#pricing', cta2Label: 'Register Free', cta2Link: '#' },
 ];
 const SEED_IMAGES = [
@@ -57,7 +57,7 @@ const SEED_IMAGES = [
   ['Caps', '/products/Caps.jpg', 'center 60%'],
 ];
 
-// Mirrors the landing's hardcoded pricing — owner starts from these, then edits.
+// Mirrors the landing's hardcoded pricing - owner starts from these, then edits.
 const DEFAULT_PRICING = [
   { category: 'T-Shirt Printing', startingAt: '₱300', note: 'Final cost depends on quantity, design, material & panel print.' },
   { category: 'DTF Printing', startingAt: '₱250', note: 'Per meter. Final cost depends on quantity.' },
@@ -72,17 +72,17 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
 
 const DEFAULT_WHYUS = [
   { title: 'Affordable Pricing', desc: 'Premium prints at prices that make sense. No hidden fees, no overpricing.' },
-  { title: 'Fast Turnaround', desc: 'Most orders ready within 24–48 hours. Rush orders? We can make it work.' },
+  { title: 'Fast Turnaround', desc: 'Standard orders arrive in 4-5 days, rush in 2-3. Ready-made items ship the next day.' },
   { title: 'Design Assistance', desc: 'No designer? No problem. Request a design and our team will create it for you.' },
-  { title: 'Approval Before Print', desc: 'You see and approve the final design before we print — 100% satisfaction guaranteed.' },
+  { title: 'Approval Before Print', desc: 'You see and approve the final design before we print - 100% satisfaction guaranteed.' },
 ];
 const DEFAULT_HIW = [
-  { title: 'Browse Products', desc: 'Explore our full catalogue of personalizable items — shirts, mugs, bags, stickers, and more.' },
+  { title: 'Browse Products', desc: 'Explore our full catalogue of personalizable items - shirts, mugs, bags, stickers, and more.' },
   { title: 'Personalize It', desc: 'Add your name, message, or upload a design. We handle every detail to make it uniquely yours.' },
   { title: 'Place Your Order', desc: 'Review your item and check out. We confirm every order and send a proof before production.' },
   { title: 'Receive & Enjoy', desc: 'Your personalized item is crafted with care and delivered straight to your door.' },
 ];
-const DEFAULT_CONTACT = { handle: '@personalizemeprints', hours1: 'Mon - Sat: 9:00 AM - 6:00 PM', hours2: 'Sunday: By Appointment', shopeeUrl: 'https://shopee.ph/personalizemeprints', shopeeText: 'Shopee: personalizemeprints', email: '', facebook: 'https://www.facebook.com/share/1Mks4kwnhZ/?mibextid=wwXIfr', instagram: 'https://www.instagram.com/personalizemeprints', tiktok: 'https://www.tiktok.com/@personalizemeprints' };
+const DEFAULT_CONTACT = { handle: '@personalizemeprints', hours1: 'Mon - Sat: 9:00 AM - 6:00 PM', hours2: 'Sunday: By Appointment', hoursNote: 'You can order any time. Orders placed on Sundays or holidays start production the next working day.', shopeeUrl: 'https://shopee.ph/personalizemeprints', shopeeText: 'Shopee: personalizemeprints', email: '', facebook: 'https://www.facebook.com/share/1Mks4kwnhZ/?mibextid=wwXIfr', instagram: 'https://www.instagram.com/personalizemeprints', tiktok: 'https://www.tiktok.com/@personalizemeprints' };
 const PAY_METHODS = [
   { id: 'cod', label: 'Cash on Delivery', sub: 'Pay on delivery. May also be limited per-product and is off for downpayment orders.' },
   { id: 'gcash', label: 'GCash', sub: 'Automated via PayMongo.' },
@@ -102,6 +102,8 @@ export default function HomepageCmsPage() {
   const [modal, setModal]     = useState(null);
   const [dragOver, setDragOver] = useState(false);
 
+  // Owner switch for the phone layout. Off renders the homepage exactly as it was before it.
+  const [mobileV2, setMobileV2] = useState(false);
   const [tagId, setTagId]   = useState(null);
   const [editTag, setEditTag] = useState(null);
   const [imgId, setImgId]   = useState(null);
@@ -123,6 +125,13 @@ export default function HomepageCmsPage() {
     finally { setLoading(false); }
   };
   useEffect(() => { if (token) load(); }, [token]); // eslint-disable-line
+
+  useEffect(() => {
+    fetch(`${API_URL}/api/storefront/content/homepage_layout`)
+      .then(r => r.json())
+      .then(d => setMobileV2(d?.data?.mobileV2 === true))
+      .catch(() => {});
+  }, []);
 
   const selectTag = (id) => { const b = taglines.find(x => bid(x) === id); if (b) { setTagId(id); setEditTag({ ...b }); } };
   const selectImg = (id) => { const b = images.find(x => bid(x) === id); if (b) { setImgId(id); setEditImg({ ...b }); } };
@@ -245,7 +254,7 @@ export default function HomepageCmsPage() {
     },
   });
 
-  // ── Pricing cards (CMS — site_content key 'pricing'; falls back to defaults) ──
+  // ── Pricing cards (CMS - site_content key 'pricing'; falls back to defaults) ──
   const [pricing, setPricing] = useState(null);
   useEffect(() => {
     fetch(`${API_URL}/api/storefront/content/pricing`)
@@ -265,7 +274,7 @@ export default function HomepageCmsPage() {
         body: JSON.stringify({ data: { cards: pricing } }),
       });
       if (!r.ok) throw new Error((await r.json().catch(() => ({}))).message || 'Save failed');
-      setModal({ type: 'success', title: 'Saved', message: 'Pricing updated — live on the homepage.' }); setTimeout(() => setModal(null), 1400);
+      setModal({ type: 'success', title: 'Saved', message: 'Pricing updated - live on the homepage.' }); setTimeout(() => setModal(null), 1400);
     } catch (err) { setModal({ type: 'error', title: 'Save Failed', message: err.message }); }
     finally { setBusy(false); }
   };
@@ -282,12 +291,41 @@ export default function HomepageCmsPage() {
     get('contact').then(d => setContact(d && typeof d === 'object' && !Array.isArray(d) ? { ...DEFAULT_CONTACT, ...d } : DEFAULT_CONTACT));
     get('payment_methods').then(d => setPayment(d?.enabled && typeof d.enabled === 'object' ? { ...DEFAULT_PAY_ENABLED, ...d.enabled } : DEFAULT_PAY_ENABLED));
   }, []);
+  // The Let's Talk form's own switches. They are stored with the shop's settings (the server
+  // checks them before accepting a message), so they load from and save to there - but they are
+  // edited here, next to the section they control.
+  const [contactForm, setContactForm] = useState(null);
+  useEffect(() => {
+    fetch(`${API_URL}/api/public/settings`)
+      .then(r => r.json())
+      .then(d => setContactForm({
+        contactFormEnabled:    d?.data?.contactFormEnabled !== false,
+        contactSuccessMessage: d?.data?.contactSuccessMessage || '',
+        contactClosedMessage:  d?.data?.contactClosedMessage  || '',
+      }))
+      .catch(() => setContactForm({ contactFormEnabled: true, contactSuccessMessage: '', contactClosedMessage: '' }));
+  }, []);
+  const saveContact = async () => {
+    setBusy(true);
+    try {
+      const headers = { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` };
+      const r = await fetch(`${API_URL}/api/admin/content/contact`, { method: 'PUT', headers, body: JSON.stringify({ data: contact }) });
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).message || 'Save failed');
+      if (contactForm) {
+        const s = await fetch(`${API_URL}/api/admin/settings/shipping`, { method: 'PUT', headers, body: JSON.stringify(contactForm) });
+        if (!s.ok) throw new Error((await s.json().catch(() => ({}))).message || 'The contact details saved, but the contact form settings did not.');
+      }
+      setModal({ type: 'success', title: 'Saved', message: "Let's Talk updated - live on the homepage." }); setTimeout(() => setModal(null), 1400);
+    } catch (err) { setModal({ type: 'error', title: 'Save Failed', message: err.message }); }
+    finally { setBusy(false); }
+  };
+
   const saveContent = async (key, data, msg) => {
     setBusy(true);
     try {
       const r = await fetch(`${API_URL}/api/admin/content/${key}`, { method: 'PUT', headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ data }) });
       if (!r.ok) throw new Error((await r.json().catch(() => ({}))).message || 'Save failed');
-      setModal({ type: 'success', title: 'Saved', message: msg || 'Saved — live on the homepage.' }); setTimeout(() => setModal(null), 1400);
+      setModal({ type: 'success', title: 'Saved', message: msg || 'Saved - live on the homepage.' }); setTimeout(() => setModal(null), 1400);
     } catch (err) { setModal({ type: 'error', title: 'Save Failed', message: err.message }); }
     finally { setBusy(false); }
   };
@@ -320,6 +358,27 @@ export default function HomepageCmsPage() {
           </div>
         )}
 
+        {/* ── PHONE LAYOUT SWITCH ── */}
+        <div style={{ ...card, marginBottom: '1.5rem' }}>
+          <h2 style={cardTitle}>Phone Layout <span style={{ fontSize: '0.72rem', fontWeight: 400, color: 'var(--gray)' }}>phones only - desktop never changes</span></h2>
+          <p style={{ color: 'var(--gray-light)', fontSize: '0.85rem', margin: '0 0 1rem', lineHeight: 1.6 }}>
+            The newer phone layout gives every section the same edge, puts headings on the left, turns the
+            Collections, Featured and Pricing cards into rows you swipe, and cuts the empty space between
+            sections. Your text, images and prices are the same either way - this only changes the arrangement.
+            Turn it off any time to go back to the old layout.
+          </p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <button type="button" onClick={() => setMobileV2(v => !v)} role="switch" aria-checked={mobileV2}
+              style={{ width: 52, height: 30, borderRadius: 999, border: '1px solid var(--border)', cursor: 'pointer', padding: 3,
+                background: mobileV2 ? 'var(--gold)' : 'var(--dark2)', display: 'flex', justifyContent: mobileV2 ? 'flex-end' : 'flex-start' }}>
+              <span style={{ width: 22, height: 22, borderRadius: '50%', background: mobileV2 ? 'var(--black)' : 'var(--gray)', display: 'block' }} />
+            </button>
+            <span style={{ fontSize: '0.85rem', color: 'var(--white)', fontWeight: 600 }}>{mobileV2 ? 'New phone layout' : 'Old phone layout'}</span>
+            <button onClick={() => saveContent('homepage_layout', { mobileV2 }, `Phone layout set to ${mobileV2 ? 'new' : 'old'} - open the homepage on a phone to see it.`)}
+              disabled={busy} style={{ ...pubBtn(false), marginLeft: 'auto' }}>{busy ? 'Saving…' : 'Save'}</button>
+          </div>
+        </div>
+
         {/* ── TAGLINES ── */}
         <div style={{ ...card, marginBottom: '1.5rem' }}>
           <h2 style={cardTitle}>Hero Taglines <span style={{ fontSize: '0.72rem', fontWeight: 400, color: 'var(--gray)' }}>looping text</span></h2>
@@ -339,7 +398,7 @@ export default function HomepageCmsPage() {
                 <button onClick={() => save('tag')} disabled={busy} style={{ ...inp, width: 'auto', cursor: 'pointer', background: 'transparent', fontWeight: 600, opacity: 1 }}>Save</button>
                 <button onClick={() => togglePub('tag')} disabled={busy} style={pubBtn(tagLive)}>{tagLive ? 'Unpublish' : 'Publish'}</button>
               </div>
-              {tagLive && <div style={{ fontSize: '0.72rem', color: 'var(--gold)' }}>● Live — saving applies to the homepage immediately.</div>}
+              {tagLive && <div style={{ fontSize: '0.72rem', color: 'var(--gold)' }}>● Live - saving applies to the homepage immediately.</div>}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }} className="hp-2col">
                 <div><label style={lbl}>Name (internal)</label><input style={inp} value={editTag.name || ''} onChange={e => setT('name', e.target.value.slice(0, 50))} maxLength={50} /></div>
                 <div><label style={lbl}>Tag pill</label><input style={inp} value={editTag.tag || ''} onChange={e => setT('tag', e.target.value.slice(0, 40))} maxLength={40} /></div>
@@ -375,8 +434,8 @@ export default function HomepageCmsPage() {
                       <button type="button" onClick={() => setParts([...parts, { text: '', color: 'gold', newLine: false }])} style={{ padding: '0.45rem 0.8rem', borderRadius: 6, border: '1px dashed var(--border)', background: 'transparent', color: 'var(--white)', fontSize: '0.78rem', cursor: 'pointer' }}>+ Add part</button>
                       <span style={{ fontSize: '0.72rem', color: 'var(--gray)' }}>Each part is one color. White = normal text. Toggle ⏎ to start a new line. Same word twice in different colors = just two parts.</span>
                     </div>
-                    {dupIdx > -1 && <div style={{ marginTop: 6, fontSize: '0.72rem', color: 'var(--gold)' }}>Note: parts {dupIdx} &amp; {dupIdx + 1} are the same word in the same color — fine if intentional, but you may have meant different colors.</div>}
-                    {darkParts.length > 0 && <div style={{ marginTop: 6, fontSize: '0.72rem', color: '#f59e0b' }}>Low contrast: part{darkParts.length > 1 ? 's' : ''} {darkParts.join(', ')} use a dark color that may be hard to read on the hero — pick a lighter shade.</div>}
+                    {dupIdx > -1 && <div style={{ marginTop: 6, fontSize: '0.72rem', color: 'var(--gold)' }}>Note: parts {dupIdx} &amp; {dupIdx + 1} are the same word in the same color - fine if intentional, but you may have meant different colors.</div>}
+                    {darkParts.length > 0 && <div style={{ marginTop: 6, fontSize: '0.72rem', color: '#f59e0b' }}>Low contrast: part{darkParts.length > 1 ? 's' : ''} {darkParts.join(', ')} use a dark color that may be hard to read on the hero - pick a lighter shade.</div>}
                     <div style={{ marginTop: 10 }}>
                       <label style={lbl}>Preview</label>
                       <div style={{ background: 'linear-gradient(135deg,#0f0f0f,#1f1f1f)', borderRadius: 8, padding: '0.9rem 1rem', fontSize: '1.4rem', fontWeight: 800, lineHeight: 1.25 }}>
@@ -418,7 +477,7 @@ export default function HomepageCmsPage() {
                   <button onClick={() => save('img')} disabled={busy} style={{ ...inp, width: 'auto', cursor: 'pointer', background: 'transparent', fontWeight: 600, opacity: 1 }}>Save</button>
                   <button onClick={() => togglePub('img')} disabled={busy} style={pubBtn(imgLive)}>{imgLive ? 'Unpublish' : 'Publish'}</button>
                 </div>
-                {imgLive && <div style={{ fontSize: '0.72rem', color: 'var(--gold)' }}>● Live — saving applies to the homepage immediately.</div>}
+                {imgLive && <div style={{ fontSize: '0.72rem', color: 'var(--gold)' }}>● Live - saving applies to the homepage immediately.</div>}
                 <div><label style={lbl}>Label (internal)</label><input style={inp} value={editImg.name || ''} onChange={e => setI('name', e.target.value.slice(0, 50))} maxLength={50} /></div>
                 <div>
                   <label style={lbl}>Image</label>
@@ -503,7 +562,7 @@ export default function HomepageCmsPage() {
                   <input style={inp} placeholder="Description" value={f.desc || ''} onChange={e => setRow(setWhyus, i, 'desc', e.target.value)} />
                 </div>
               ))}
-              <button onClick={() => saveContent('why_us', { features: whyus }, 'Why-Us updated — live on the homepage.')} disabled={busy} style={{ ...pubBtn(false), alignSelf: 'flex-end' }}>{busy ? 'Saving…' : 'Save'}</button>
+              <button onClick={() => saveContent('why_us', { features: whyus }, 'Why-Us updated - live on the homepage.')} disabled={busy} style={{ ...pubBtn(false), alignSelf: 'flex-end' }}>{busy ? 'Saving…' : 'Save'}</button>
             </div>
           )}
         </div>
@@ -520,14 +579,14 @@ export default function HomepageCmsPage() {
                   <input style={inp} placeholder="Step description" value={s.desc || ''} onChange={e => setRow(setHiw, i, 'desc', e.target.value)} />
                 </div>
               ))}
-              <button onClick={() => saveContent('how_it_works', { steps: hiw }, 'How-It-Works updated — live on the homepage.')} disabled={busy} style={{ ...pubBtn(false), alignSelf: 'flex-end' }}>{busy ? 'Saving…' : 'Save'}</button>
+              <button onClick={() => saveContent('how_it_works', { steps: hiw }, 'How-It-Works updated - live on the homepage.')} disabled={busy} style={{ ...pubBtn(false), alignSelf: 'flex-end' }}>{busy ? 'Saving…' : 'Save'}</button>
             </div>
           )}
         </div>
 
         {/* ── CONTACT ── */}
         <div style={{ ...card, marginBottom: '1.5rem' }}>
-          <h2 style={cardTitle}>Contact Info</h2>
+          <h2 style={cardTitle}>Let&apos;s Talk <span style={{ fontSize: '0.72rem', fontWeight: 400, color: 'var(--gray)' }}>contact details and the contact form on the homepage</span></h2>
           {contact === null ? <div style={{ color: 'var(--gray)', fontSize: '0.85rem' }}>Loading…</div> : (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }} className="hp-2col">
               <div><label style={lbl}>Social handle</label><input style={inp} value={contact.handle || ''} onChange={e => setContact(p => ({ ...p, handle: e.target.value }))} /></div>
@@ -539,8 +598,59 @@ export default function HomepageCmsPage() {
               <div><label style={lbl}>Shopee label</label><input style={inp} value={contact.shopeeText || ''} onChange={e => setContact(p => ({ ...p, shopeeText: e.target.value }))} /></div>
               <div><label style={lbl}>Hours line 1</label><input style={inp} value={contact.hours1 || ''} onChange={e => setContact(p => ({ ...p, hours1: e.target.value }))} /></div>
               <div><label style={lbl}>Hours line 2</label><input style={inp} value={contact.hours2 || ''} onChange={e => setContact(p => ({ ...p, hours2: e.target.value }))} /></div>
+              <div style={{ gridColumn: '1 / -1' }}>
+                <label style={lbl}>Hours note</label>
+                <input style={inp} maxLength={200}
+                  value={contact.hoursNote || ''}
+                  onChange={e => setContact(p => ({ ...p, hoursNote: e.target.value }))}
+                  placeholder="Orders placed on Sundays or holidays start production the next working day." />
+                <div style={{ fontSize: '.72rem', color: 'var(--gray)', marginTop: '.3rem' }}>
+                  Shown under Business Hours on the homepage and beside the delivery estimate at checkout. Ordering is never blocked by your hours - this line explains when the clock starts.
+                </div>
+              </div>
               <div style={{ gridColumn: '1 / -1', fontSize: '.74rem', color: 'var(--gray)', marginTop: '-.3rem' }}>Leave any social blank to hide that icon on the homepage &amp; footer.</div>
-              <div style={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'flex-end' }}><button onClick={() => saveContent('contact', contact, 'Contact updated — live on the homepage.')} disabled={busy} style={pubBtn(false)}>{busy ? 'Saving…' : 'Save'}</button></div>
+
+              {/* The contact form itself. A write endpoint anyone can reach, so it can be closed - and
+                  the server refuses messages too, since hiding the form would leave the URL open. */}
+              {contactForm && (
+                <div style={{ gridColumn: '1 / -1', borderTop: '1px solid var(--border)', paddingTop: '1rem', display: 'flex', flexDirection: 'column', gap: '0.9rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--white)' }}>Contact form</div>
+                      <div style={{ fontSize: '0.74rem', color: 'var(--gray)', marginTop: '0.15rem' }}>Accept messages through the form beside the contact details.</div>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={contactForm.contactFormEnabled}
+                      aria-label="Accept messages through the contact form"
+                      onClick={() => setContactForm(f => ({ ...f, contactFormEnabled: !f.contactFormEnabled }))}
+                      style={{ position: 'relative', width: 44, height: 24, borderRadius: 12, border: 'none', cursor: 'pointer', background: contactForm.contactFormEnabled ? 'var(--gold)' : 'var(--border)', transition: 'background 0.2s', padding: 0, flexShrink: 0 }}
+                    >
+                      <span style={{ position: 'absolute', top: 3, left: contactForm.contactFormEnabled ? 23 : 3, width: 18, height: 18, borderRadius: '50%', background: 'var(--dark)', transition: 'left 0.2s' }} />
+                    </button>
+                  </div>
+                  <div>
+                    <label style={lbl}>After someone sends a message</label>
+                    <input style={inp} maxLength={300}
+                      value={contactForm.contactSuccessMessage}
+                      onChange={e => setContactForm(f => ({ ...f, contactSuccessMessage: e.target.value }))}
+                      placeholder="Thanks for reaching out. We'll get back to you as soon as we can." />
+                    <div style={{ fontSize: '.72rem', color: 'var(--gray)', marginTop: '.3rem' }}>Avoid naming a deadline you cannot keep on a Sunday. Leave blank for the default.</div>
+                  </div>
+                  {!contactForm.contactFormEnabled && (
+                    <div>
+                      <label style={lbl}>Shown while the form is closed</label>
+                      <input style={inp} maxLength={300}
+                        value={contactForm.contactClosedMessage}
+                        onChange={e => setContactForm(f => ({ ...f, contactClosedMessage: e.target.value }))}
+                        placeholder="Our contact form is closed right now. Reach us on Facebook, Instagram or TikTok." />
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div style={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'flex-end' }}><button onClick={saveContact} disabled={busy} style={pubBtn(false)}>{busy ? 'Saving…' : 'Save'}</button></div>
             </div>
           )}
         </div>
@@ -567,7 +677,7 @@ export default function HomepageCmsPage() {
                 );
               })}
               <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                <button onClick={() => saveContent('payment_methods', { enabled: payment }, 'Payment methods updated — live on the storefront.')} disabled={busy} style={pubBtn(false)}>{busy ? 'Saving…' : 'Save'}</button>
+                <button onClick={() => saveContent('payment_methods', { enabled: payment }, 'Payment methods updated - live on the storefront.')} disabled={busy} style={pubBtn(false)}>{busy ? 'Saving…' : 'Save'}</button>
               </div>
             </div>
           )}
@@ -576,7 +686,7 @@ export default function HomepageCmsPage() {
         {/* Other sections */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }} className="hp-2col">
           <div style={card}><h2 style={cardTitle}>Shop by Collections</h2><p style={{ color: 'var(--gray)', fontSize: '0.85rem', margin: '0 0 1rem', lineHeight: 1.6 }}>Managed in the Collections module (order + per-image focus).</p><Link href="/dashboard/business/collections" style={{ display: 'inline-flex', gap: '0.4rem', padding: '0.55rem 1.1rem', borderRadius: 8, background: 'var(--dark2)', border: '1px solid var(--border)', color: 'var(--white)', textDecoration: 'none', fontSize: '0.82rem', fontWeight: 600 }}>Open Collections →</Link></div>
-          <div style={card}><h2 style={cardTitle}>All set</h2><p style={{ color: 'var(--gray)', fontSize: '0.85rem', margin: 0, lineHeight: 1.6 }}>Every homepage section is editable here — Hero, Work Gallery, Pricing, Why-Us, How It Works &amp; Contact. Saving applies to the live homepage right away.</p></div>
+          <div style={card}><h2 style={cardTitle}>All set</h2><p style={{ color: 'var(--gray)', fontSize: '0.85rem', margin: 0, lineHeight: 1.6 }}>Every homepage section is editable here - Hero, Work Gallery, Pricing, Why-Us, How It Works &amp; Contact. Saving applies to the live homepage right away.</p></div>
         </div>
 
         {modal && (

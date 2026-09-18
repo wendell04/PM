@@ -1,14 +1,28 @@
 'use client';
 
-import { useState, useEffect, useRef, Suspense } from 'react';
+import AddressPicker from '@/components/shop/AddressPicker';
+import { optionGroupsOf, defaultOptionSelection, selectedOptionList, optionsUnitAdd, optionsOrderAdd, withOptionSuffix, optionKey, groupKey } from '@/lib/shopUtils';
+import NoImage from '@/components/NoImage';
+
+import { useState, useEffect, useRef, useCallback, Suspense } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
+import { billingName } from '@/lib/billingName';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import { uploadDesignFile } from '@/lib/orderRequestApi';
 import { useCart } from '@/context/CartContext';
 import useLockBodyScroll from '@/lib/useLockBodyScroll';
+import { compressImage } from '@/lib/compressImage';
 import { DEFAULT_CUSTOM_ORDER_TERMS, renderTermsBody } from '@/lib/customOrderTerms';
+
+const METRO_CITIES = ['Manila', 'Quezon City', 'Caloocan', 'Las Piñas', 'Makati', 'Malabon', 'Mandaluyong', 'Marikina', 'Muntinlupa', 'Navotas', 'Parañaque', 'Pasay', 'Pasig', 'Pateros', 'San Juan', 'Taguig', 'Valenzuela'];
+function isMetroManila(city, province) {
+  const p = (province || '').toLowerCase();
+  const c = (city || '').toLowerCase();
+  return p.includes('metro manila') || p.includes('ncr') || p.includes('national capital')
+    || METRO_CITIES.some(m => c.includes(m.toLowerCase()));
+}
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
@@ -42,7 +56,12 @@ function getTierForQty(p, qty) {
   return match;
 }
 
-const MAX_DESIGN_FILES = 5;
+// What an "as is" choice records on the order. It is a real instruction, not a blank: the
+// printer reads the same field either way.
+const AS_IS_NOTE = 'Print exactly as the file is - no changes.';
+const MAX_QTY = 10000;   // a print run, not a typo
+const MAX_DESIGN_FILES = 5;    // artwork to be printed
+const MAX_REFERENCE_FILES = 10;  // photos we design FROM - a collage is legitimately many
 // Matched by extension, not MIME type: browsers report .ai as application/pdf and .psd as
 // octet-stream, so a MIME whitelist rejects the very formats a designer sends.
 const ACCEPTED_RE = /\.(jpe?g|png|webp|pdf|ai|psd|svg)$/i;
@@ -92,22 +111,12 @@ function getUnitPrice(p, qty, variants) {
   return null;
 }
 
-function formatAddress(addr) {
-  return [
-    addr.house_number && addr.street ? `${addr.house_number} ${addr.street}` : '',
-    addr.subdivision,
-    addr.barangay ? `Brgy. ${addr.barangay}` : '',
-    addr.city,
-    addr.province,
-    addr.zip,
-  ].filter(Boolean).join(', ');
-}
 
 function CustomOrderInner() {
   const { id } = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { token } = useAuth();
+  const { token, currentUser: authUser } = useAuth();
   const { addToCart } = useCart();
 
   const [product, setProduct] = useState(null);
@@ -115,6 +124,7 @@ function CustomOrderInner() {
   const [loadError, setLoadError] = useState(null);
 
   const [selectedVariants, setSelectedVariants] = useState({});
+  const [selectedOptions, setSelectedOptions] = useState({});
   const [quantity, setQuantity] = useState(1);
   const [quantityInput, setQuantityInput] = useState('1');
 
@@ -126,6 +136,10 @@ function CustomOrderInner() {
   // Each entry: { key, name, size, preview, url, uploading }
   const [designFiles, setDesignFiles] = useState([]);
   const [designNotes, setDesignNotes] = useState('');
+  // Silence used to mean two different things on an upload - "print it as it is" and "I did not
+  // notice this field" - and they arrived looking identical. Making it a choice costs the prepared
+  // customer one click and turns the unprepared one's silence into something they actually said.
+  const [printIntent, setPrintIntent] = useState(null);   // null | 'as_is' | 'notes'
   const fileInputRef = useRef(null);
 
   const [addresses, setAddresses] = useState([]);
@@ -144,6 +158,9 @@ function CustomOrderInner() {
   const [verifyingPayment, setVerifyingPayment] = useState(false);
   const [pendingVerifyId, setPendingVerifyId] = useState(null);
   const [submitError, setSubmitError] = useState(null);
+  // Read from the CMS, never hardcoded - the owner changes their page and this follows. The footer
+  // has the URL baked in, which is why it would quietly point at the wrong place after a rename.
+  const [shopFacebook, setShopFacebook] = useState(null);
   const [requestSubmitted, setRequestSubmitted] = useState(false);
   const [storeSettings, setStoreSettings]     = useState(null);
   const [shippingFeeAmt, setShippingFeeAmt]   = useState(null);
@@ -174,7 +191,22 @@ function CustomOrderInner() {
     const params = new URLSearchParams(window.location.search);
     const isCancelled = params.get('payment_cancelled') === '1';
     const pendingOrderId = sessionStorage.getItem('pending_payment_order_id');
-    if (isCancelled) window.history.replaceState({}, '', window.location.pathname);
+    if (isCancelled) {
+      window.history.replaceState({}, '', window.location.pathname);
+      // Back from a failed payment: put the design and details back where the customer left them.
+      try {
+        const draft = JSON.parse(sessionStorage.getItem(`order_draft_${id}`) || 'null');
+        if (draft) {
+          if (draft.designMode) setDesignMode(draft.designMode);
+          if (draft.designNotes) setDesignNotes(draft.designNotes);
+          if (draft.selectedAddressId) setSelectedAddressId(draft.selectedAddressId);
+          if (Array.isArray(draft.designFiles) && draft.designFiles.length) {
+            setDesignFiles(draft.designFiles.map(f => ({ ...f, preview: f.url, uploading: false, file: null })));
+          }
+        }
+      } catch { /* nothing to restore */ }
+      sessionStorage.removeItem(`order_draft_${id}`);
+    }
     if (pendingOrderId) {
       sessionStorage.removeItem('pending_payment_order_id');
       if (isCancelled) { setFailedModal(true); return; }
@@ -241,6 +273,18 @@ function CustomOrderInner() {
           });
           setSelectedVariants(initial);
         }
+
+        // Same treatment for the options, and read from the URL only - nothing is defaulted here
+        // either. Arriving without a choice means the customer never made one, and the order page is
+        // not the place to invent it.
+        const optInit = {};
+        optionGroupsOf(p).forEach((g, gi) => {
+          const gk = groupKey(g, gi);
+          const fromUrl = searchParams.get(`o_${gk}`);
+          const valid = g.options.map((o, oi) => optionKey(o, oi));
+          if (fromUrl && valid.includes(fromUrl)) optInit[gk] = fromUrl;
+        });
+        setSelectedOptions(optInit);
       })
       .catch(() => setLoadError('Product not found.'))
       .finally(() => setLoading(false));
@@ -253,13 +297,33 @@ function CustomOrderInner() {
       .catch(() => {});
   }, []);
 
+  // A shop can be set to Flat Rate or Courier Booked, and this page used to ignore that entirely -
+  // charging a fabricated distance-based figure regardless. Mirrors the three-mode branch checkout
+  // already has, so the two screens can no longer disagree about what shipping costs.
+  const courierBooked = !storeSettings?.shippingMode || storeSettings.shippingMode === 'courier_booked';
+
   useEffect(() => {
     const addr = addresses.find(a => a.id === selectedAddressId) ?? null;
+
+    if (courierBooked) { setShippingFeeAmt(null); return; }
+
+    if (storeSettings?.shippingMode === 'flat') {
+      if (!addr) { setShippingFeeAmt(null); return; }
+      const fee = isMetroManila(addr.city, addr.province)
+        ? (storeSettings.flatRateInsideMetro  ?? 150)
+        : (storeSettings.flatRateOutsideMetro ?? 250);
+      setShippingFeeAmt(fee);
+      return;
+    }
+
     if (!storeSettings?.storeLat || !storeSettings?.storeLng || !addr?.lat || !addr?.lng) {
       setShippingFeeAmt(null);
       return;
     }
-    const { storeLat, storeLng, shippingBaseRate = 50, shippingPerKmRate = 15 } = storeSettings;
+    const {
+      storeLat, storeLng,
+      shippingBaseRate = 49, shippingPerKmRate = 6, shippingPerKmRateFar = 5, shippingTierKm = 5,
+    } = storeSettings;
     fetch(
       `https://router.project-osrm.org/route/v1/driving/${storeLng},${storeLat};${addr.lng},${addr.lat}?overview=false`
     )
@@ -267,15 +331,23 @@ function CustomOrderInner() {
       .then(d => {
         const distM = d.routes?.[0]?.distance ?? null;
         if (distM !== null) {
-          setShippingFeeAmt(Math.round((shippingBaseRate + shippingPerKmRate * distM / 1000) * 100) / 100);
+          const distKm = distM / 1000;
+          // Tiered like a real motorcycle courier fare (base + a steeper first-tier per-km rate,
+          // then a lower one beyond) - see checkout/page.jsx for the same formula and why.
+          const nearKm = Math.min(distKm, shippingTierKm);
+          const farKm  = Math.max(0, distKm - shippingTierKm);
+          const fee    = shippingBaseRate + shippingPerKmRate * nearKm + shippingPerKmRateFar * farKm;
+          setShippingFeeAmt(Math.round(fee * 100) / 100);
         } else {
           setShippingFeeAmt(null);
         }
       })
       .catch(() => setShippingFeeAmt(null));
-  }, [selectedAddressId, addresses, storeSettings]);
+  }, [selectedAddressId, addresses, storeSettings, courierBooked]);
 
-  useEffect(() => {
+  // Named so the picker can re-run it after saving a new address, instead of the page reloading
+  // and losing whatever the customer had already typed or attached.
+  const fetchAddresses = useCallback((keepSelection = false) => {
     if (!token) return;
     setAddressLoading(true);
     fetchWithTimeout(`${API_URL}/api/addresses`, { headers: { Authorization: `Bearer ${token}` } }, 30000)
@@ -283,27 +355,69 @@ function CustomOrderInner() {
       .then(data => {
         const list = data.addresses || [];
         setAddresses(list);
-        const def = list.find(a => a.is_default);
-        setSelectedAddressId(def?.id ?? list[0]?.id ?? null);
+        setSelectedAddressId(prev => {
+          if (keepSelection && prev && list.some(a => a.id === prev)) return prev;
+          const def = list.find(a => a.is_default);
+          return def?.id ?? list[0]?.id ?? null;
+        });
       })
       .catch(() => {})
       .finally(() => setAddressLoading(false));
   }, [token]);
 
+  useEffect(() => { fetchAddresses(); }, [fetchAddresses]);
+
   const moq = product?.minOrderQty || 1;
-  // Inquiry (quotation) products have no computable price — they go through the quote flow
+
+  // Mirrors effectiveMaxQty on the product page. Kept in the same shape deliberately - two different
+  // answers to "how many may I buy" on two pages of the same purchase is worse than either answer.
+  const maxQty = (() => {
+    if (!product) return MAX_QTY;
+    // Not tracking inventory: the checkout still refuses on real stock, so a number here only moves
+    // the refusal to a worse moment. The sanity cap stays.
+    if (!product.trackInventory) return MAX_QTY;
+    const comboId = resolveCombo(product, selectedVariants)?.id ?? null;
+    if (product.variantAvailableQty && comboId != null && product.variantAvailableQty[comboId] != null) {
+      return Math.max(Number(product.variantAvailableQty[comboId]) || 0, 0);
+    }
+    if (product.variantAvailableQty && comboId == null) {
+      const vals = Object.values(product.variantAvailableQty).map(v => Number(v) || 0);
+      if (vals.length > 0) return Math.max(...vals);
+    }
+    if (product.canProduce != null) return Math.max(product.availableQty ?? 0, 0);
+    if (comboId != null && product.variantBackorder?.[comboId]) return MAX_QTY;
+    if (comboId != null && product.variantStock?.[comboId] != null) {
+      return Math.max(Number(product.variantStock[comboId]), 0);
+    }
+    return Math.max(product.availableQty ?? product.stock ?? 0, 0);
+  })();
+  // "Ask for a quote above": past that many pieces the run is quoted, not sold at the last tier, and
+  // the checkout refuses it - so the field stops there and says where to go instead.
+  const quoteAbove = Number(product?.quoteAboveQty) > 0 ? Number(product.quoteAboveQty) : null;
+  const qtyCeiling = Math.max(moq, Math.min(maxQty, MAX_QTY, quoteAbove ?? Infinity));
+  // Inquiry (quotation) products have no computable price - they go through the quote flow
   // (request now, owner sends a quote, customer pays it later), never a direct ₱0 checkout.
   const isInquiry = (product?.priceType ?? product?.pricingMode) === 'inquiry';
-  const unitPrice = getUnitPrice(product, quantity, selectedVariants);
+
+  const optionGroups  = product ? optionGroupsOf(product) : [];
+  const optionUnitAdd = product ? optionsUnitAdd(product, selectedOptions) : 0;
+  const optionOrderAdd= product ? optionsOrderAdd(product, selectedOptions) : 0;
+  const chosenOptions = product ? selectedOptionList(product, selectedOptions) : [];
+
+  // Per piece, matching the PDP: the extra cut is extra work on every unit.
+  const unitPrice = getUnitPrice(product, quantity, selectedVariants) + optionUnitAdd;
   const designFee = designMode === 'request' ? (product?.designFee ?? 0) : 0;
-  const lineTotal = (unitPrice ?? 0) * quantity;
+  // The per-order charge sits outside the multiplication - it is paid once however many are made,
+  // so folding it into unitPrice would bill it per piece and folding it out of the total would
+  // lose it entirely.
+  const lineTotal = (unitPrice ?? 0) * quantity + optionOrderAdd;
 
   // Delivery speed (turnaround). Config is global (store owner); Rush costs more + is faster.
-  const prodLeadDays = Number(storeSettings?.productionLeadDays ?? 5);
-  const shipMinDays  = Number(storeSettings?.shippingDaysMin ?? 2);
-  const shipMaxDays  = Number(storeSettings?.shippingDaysMax ?? 4);
+  const prodLeadDays = Number(storeSettings?.productionLeadDays ?? 3);
+  const shipMinDays  = Number(storeSettings?.shippingDaysMin ?? 1);
+  const shipMaxDays  = Number(storeSettings?.shippingDaysMax ?? 2);
   const rushEnabled  = !!(storeSettings?.rushEnabled ?? false);
-  const rushLeadDays = Number(storeSettings?.rushLeadDays ?? 2);
+  const rushLeadDays = Number(storeSettings?.rushLeadDays ?? 1);
   const rushFeeAmt   = Number(storeSettings?.rushFee ?? 0);
   const rushActive   = rush && rushEnabled;
   const rushCharge   = rushActive ? rushFeeAmt : 0;
@@ -354,7 +468,10 @@ function CustomOrderInner() {
       : 0;
   const selectedAddress = addresses.find(a => a.id === selectedAddressId) ?? null;
   const combo = product ? resolveCombo(product, selectedVariants) : null;
-  const variantLabel = combo?.label ?? (Object.values(selectedVariants).join(', ') || null);
+  const baseVariantLabel = combo?.label ?? (Object.values(selectedVariants).join(', ') || null);
+  // The option joins the label, so it travels with the order to the job order and the receipt
+  // without a new field on any of them.
+  const variantLabel = product ? withOptionSuffix(baseVariantLabel, product, selectedOptions) : baseVariantLabel;
 
   const uploading     = designFiles.some(f => f.uploading);
   const uploadedFiles = designFiles.filter(f => f.url);
@@ -375,21 +492,36 @@ function CustomOrderInner() {
     });
   }
 
+  useEffect(() => {
+    fetch(`${API_URL}/api/storefront/content/contact`)
+      .then(r => r.json())
+      .then(d => { if (d?.data?.facebook) setShopFacebook(d.data.facebook); })
+      .catch(() => {});
+  }, []);
+
   async function handleFilesSelect(fileList) {
     const picked = Array.from(fileList || []);
     if (!picked.length) return;
 
-    const room = MAX_DESIGN_FILES - designFiles.length;
-    if (room <= 0) { setSubmitError(`You can attach up to ${MAX_DESIGN_FILES} files.`); return; }
+    const cap = designMode === 'request' ? MAX_REFERENCE_FILES : MAX_DESIGN_FILES;
+    const room = cap - designFiles.length;
+    if (room <= 0) { setSubmitError(`You can attach up to ${cap} files.`); return; }
 
     setSubmitError(null);
     const accepted = [];
-    for (const file of picked.slice(0, room)) {
-      if (!ACCEPTED_RE.test(file.name)) { setSubmitError(`${file.name} is not an accepted format.`); continue; }
-      if (file.size > 10 * 1024 * 1024) { setSubmitError(`${file.name} is over 10 MB.`); continue; }
+    // References are looked at, not printed, so a 25 MB phone photo is 25 MB of nothing - shrink it
+    // the way Messenger quietly does. Artwork is never touched: a design file has to reach the press
+    // byte-identical, and re-encoding one would be silent damage to the thing being sold.
+    const isReference = designMode === 'request';
+    for (const original of picked.slice(0, room)) {
+      if (!ACCEPTED_RE.test(original.name)) { setSubmitError(`${original.name} is not an accepted format.`); continue; }
+      const file = isReference ? await compressImage(original) : original;
+      // Checked after shrinking, so a big photo that compresses down is accepted rather than refused
+      // over a size the customer never has to care about.
+      if (file.size > 10 * 1024 * 1024) { setSubmitError(`${original.name} is over 10 MB.`); continue; }
       accepted.push(file);
     }
-    if (picked.length > room) setSubmitError(`Only ${MAX_DESIGN_FILES} files can be attached - the rest were skipped.`);
+    if (picked.length > room) setSubmitError(`Only ${cap} files can be attached - the rest were skipped.`);
     if (!accepted.length) return;
 
     const entries = accepted.map(file => ({
@@ -409,9 +541,15 @@ function CustomOrderInner() {
         setDesignFiles(prev => prev.map(f => f.key === entry.key
           ? { ...f, url, name: name ?? f.name, uploading: false, file: null }
           : f));
-      } catch {
+      } catch (err) {
+        // The catch used to discard err and tell everyone to try again - the same sentence for a
+        // file too large, a format refused, an expired session and a service that was down. Only
+        // one of those is worth retrying, so the customer was being sent to repeat a failure.
         removeDesignFile(entry.key);
-        setSubmitError(`Could not upload ${entry.name}. Please try again.`);
+        const why = err?.message && !/^Failed to upload design file$/i.test(err.message)
+          ? err.message
+          : 'Please try again.';
+        setSubmitError(`${entry.name}: ${why}`);
       }
     }
   }
@@ -421,6 +559,8 @@ function CustomOrderInner() {
   function handleBuyNow() {
     if (designMode === 'upload' && uploading) { setSubmitError('Your files are still uploading, please wait.'); return; }
     if (designMode === 'upload' && !designFileUrl) { setSubmitError('Upload your design first.'); return; }
+    if (designMode === 'upload' && !uploadOk) { setSubmitError('Tell us how to print it, or choose "Print exactly as my file is".'); return; }
+    if (designMode === 'request' && !briefOk) { setSubmitError('Tell us what you need before ordering.'); return; }
     if (!designMode) { setSubmitError('Choose how you want to provide your design.'); return; }
     setSubmitError(null);
 
@@ -489,7 +629,16 @@ function CustomOrderInner() {
   // A custom line can be ordered once its design intent is set: an uploaded design needs its file,
   // a requested design needs nothing yet (the shop draws it after checkout). Quote inquiries have
   // their own Submit button and never hit the cart.
-  const canOrder = !isInquiry && (designMode === 'request' || (designMode === 'upload' && !!designFileUrl));
+  const briefOk = designNotes.trim().length >= 10;
+  // Same ten-character floor as a design request: "ok" and "asap" clear any check that only
+  // rejects an empty box, and neither tells a printer anything.
+  const uploadOk = !!designFileUrl && (
+    printIntent === 'as_is' || (printIntent === 'notes' && briefOk)
+  );
+  const canOrder = !isInquiry && (
+    (designMode === 'request' && briefOk) ||
+    (designMode === 'upload' && uploadOk)
+  );
 
   // Puts the configured item - artwork and all - into the ordinary cart. From here it is a
   // normal line that happens to carry a design, which is what makes a mug and a totebag
@@ -497,6 +646,8 @@ function CustomOrderInner() {
   async function handleAddToCart() {
     if (designMode === 'upload' && uploading) { setSubmitError('Your files are still uploading, please wait.'); return; }
     if (designMode === 'upload' && !designFileUrl) { setSubmitError('Upload your design first.'); return; }
+    if (designMode === 'upload' && !uploadOk) { setSubmitError('Tell us how to print it, or choose "Print exactly as my file is".'); return; }
+    if (designMode === 'request' && !briefOk) { setSubmitError('Tell us what you need before ordering.'); return; }
     if (!designMode) { setSubmitError('Choose how you want to provide your design.'); return; }
     setAddingToCart(true);
     setSubmitError(null);
@@ -545,7 +696,7 @@ function CustomOrderInner() {
       return;
     }
 
-    // Inquiry (quotation) products: submit a quote request only — no address, no payment.
+    // Inquiry (quotation) products: submit a quote request only - no address, no payment.
     // The owner reviews it, sends a quote; the customer pays that quote later.
     if (isInquiry) {
       setSubmitError(null);
@@ -590,7 +741,6 @@ function CustomOrderInner() {
       if (num.length < 16) { setSubmitError('Enter a valid 16-digit card number.'); return; }
       if (!cardExpiry || cardExpiry.length < 4) { setSubmitError('Enter a valid expiry date (MM/YY).'); return; }
       if (cardCvc.length < 3) { setSubmitError('Enter a valid security code.'); return; }
-      if (!cardName.trim()) { setSubmitError('Enter the name on your card.'); return; }
     }
 
     setSubmitError(null);
@@ -614,8 +764,16 @@ function CustomOrderInner() {
             }
           : {}),
         ...(designMode === 'request'
-          ? { designRequested: true, designFee, designNotes: designNotes.trim() || null }
+          ? {
+              designRequested: true,
+              designFee,
+              ...(uploadedFiles.length
+                ? { designFiles: uploadedFiles.map(f => ({ url: f.url, name: f.name })) }
+                : {}),
+            }
           : {}),
+        // True of BOTH modes: someone sending their own artwork still has instructions for it.
+        designNotes: designNotes.trim() || null,
       };
 
       // "Submit for review" must never take money - that is the whole promise of the
@@ -724,7 +882,7 @@ function CustomOrderInner() {
           const pmRes = await fetch('https://api.paymongo.com/v1/payment_methods', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Authorization: `Basic ${btoa(publicKey+':')}` },
-            body: JSON.stringify({ data: { attributes: { type: 'card', details: { card_number: cardNumber.replace(/\s/g,''), exp_month: parseInt(expMonth), exp_year: parseInt('20'+expYear), cvc: cardCvc }, billing: { name: cardName.trim(), email: '', phone: '' } } } }),
+            body: JSON.stringify({ data: { attributes: { type: 'card', details: { card_number: cardNumber.replace(/\s/g,''), exp_month: parseInt(expMonth), exp_year: parseInt('20'+expYear), cvc: cardCvc }, billing: { name: cardName.trim() || billingName(authUser), email: authUser?.email || '', phone: '' } } } }),
           });
           const pmData = await pmRes.json();
           if (!pmRes.ok) {
@@ -753,6 +911,17 @@ function CustomOrderInner() {
           router.push(`/shop/payment-success?id=${orderId}&method=${paymentMethod}`);
         } else if (redirectUrl) {
           sessionStorage.setItem('pending_payment_order_id', orderId);
+          sessionStorage.setItem('checkout_return_to', window.location.pathname + window.location.search);
+          // Leaving for GCash reloads this page on the way back. If the payment fails, the customer
+          // must not have to upload their design and fill the form in again.
+          try {
+            sessionStorage.setItem(`order_draft_${id}`, JSON.stringify({
+              designMode,
+              designNotes,
+              selectedAddressId,
+              designFiles: designFiles.filter(f => f.url).map(f => ({ key: f.key, name: f.name, size: f.size, url: f.url })),
+            }));
+          } catch { /* a draft is a convenience */ }
           window.location.href = redirectUrl;
         } else {
           throw new Error('No redirect URL returned. Please try again.');
@@ -778,7 +947,7 @@ function CustomOrderInner() {
     const bar = (extra) => ({ background: 'var(--dark2)', borderRadius: 8, animation: 'pmPulse 1.4s ease-in-out infinite', ...extra });
     const card = { background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: 14, padding: 20, display: 'flex', flexDirection: 'column', gap: 12 };
     return (
-      <div style={{ minHeight: '100vh', background: 'var(--dark1)', color: 'var(--white)', padding: '2rem 1rem 4rem', fontFamily: "'Outfit', sans-serif" }}>
+      <div style={{ minHeight: '100vh', background: 'var(--black)', color: 'var(--white)', padding: '2rem 1rem 4rem', fontFamily: "Arial, Arimo, Helvetica, sans-serif" }}>
         <style>{`@keyframes pmPulse { 0%,100%{opacity:1} 50%{opacity:.5} }`}</style>
         <div style={{ maxWidth: 1000, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div style={bar({ width: 120, height: 14 })} />
@@ -816,9 +985,9 @@ function CustomOrderInner() {
             <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
           </svg>
         </div>
-        <h2 style={{ color: 'var(--white)', fontWeight: 700, fontSize: '1.3rem', marginBottom: 8 }}>Payment Cancelled</h2>
+        <h2 style={{ color: 'var(--white)', fontWeight: 700, fontSize: '1.3rem', marginBottom: 8 }}>Payment didn't go through</h2>
         <p style={{ color: 'var(--gray)', fontSize: '0.9rem', marginBottom: 28, lineHeight: 1.6 }}>
-          Your payment was not completed. Your order has been saved — you can try again below.
+          Nothing was charged and no order was made. Your items and details are still here - try again, or choose a different payment method.
         </p>
         <button onClick={() => setFailedModal(false)}
           style={{ width: '100%', padding: '12px', background: 'var(--gold)', color: '#000', border: 'none', borderRadius: 9, fontWeight: 700, cursor: 'pointer', fontSize: '0.9rem' }}>
@@ -829,14 +998,14 @@ function CustomOrderInner() {
   );
   
   if (requestSubmitted) return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--dark1)', padding: '20px', fontFamily: "'Outfit', sans-serif" }}>
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--black)', padding: '20px', fontFamily: "Arial, Arimo, Helvetica, sans-serif" }}>
       <div style={{ background: 'var(--dark2)', border: '1px solid rgba(212,168,67,0.25)', borderRadius: '18px', padding: '40px 32px', maxWidth: '420px', width: '100%', textAlign: 'center' }}>
         <div style={{ width: 68, height: 68, borderRadius: '50%', background: 'rgba(212,168,67,0.1)', border: '2px solid var(--gold)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px' }}>
           <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
         </div>
         <h2 style={{ color: 'var(--white)', fontWeight: 700, fontSize: '1.3rem', marginBottom: 8 }}>Quote request submitted</h2>
         <p style={{ color: 'var(--gray)', fontSize: '0.9rem', marginBottom: 28, lineHeight: 1.6 }}>
-          We&apos;ve received your request for <strong style={{ color: 'var(--white)' }}>{product.name}</strong>. We&apos;ll review the details and send you a quote via chat — you only pay once you approve it.
+          We&apos;ve received your request for <strong style={{ color: 'var(--white)' }}>{product.name}</strong>. We&apos;ll review the details and send you a quote via chat - you only pay once you approve it.
         </p>
         <button onClick={() => router.push('/shop')}
           style={{ width: '100%', padding: '12px', background: 'var(--gold)', color: '#000', border: 'none', borderRadius: 9, fontWeight: 700, cursor: 'pointer', fontSize: '0.9rem' }}>
@@ -847,14 +1016,14 @@ function CustomOrderInner() {
   );
 
   if (loadError || !product) return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '1rem', background: 'var(--dark1)', color: 'var(--white)', fontFamily: "'Outfit', sans-serif" }}>
+    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '1rem', background: 'var(--black)', color: 'var(--white)', fontFamily: "Arial, Arimo, Helvetica, sans-serif" }}>
       <p style={{ color: 'var(--gray)' }}>{loadError ?? 'Product not found.'}</p>
       <Link href="/shop" style={{ color: 'var(--gold)', fontSize: '0.9rem' }}>← Back to Shop</Link>
     </div>
   );
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--dark1)', color: 'var(--white)', padding: '2rem 1rem 4rem', fontFamily: "'Outfit', sans-serif" }}>
+    <div style={{ minHeight: '100vh', background: 'var(--black)', color: 'var(--white)', padding: '2rem 1rem 4rem', fontFamily: "Arial, Arimo, Helvetica, sans-serif" }}>
       {showTerms && (
         <div onClick={() => setShowTerms(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 9998, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
           <div onClick={e => e.stopPropagation()} style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '16px', maxWidth: '560px', width: '100%', maxHeight: '85vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -894,8 +1063,8 @@ function CustomOrderInner() {
               You are switching to <strong style={{ color: 'var(--white)' }}>{pendingMode === 'upload' ? 'Upload a design' : 'Request a design'}</strong>. You&apos;ll need to review and accept the Custom Order Terms again.
             </p>
             <div style={{ display: 'flex', gap: '10px' }}>
-              <button onClick={() => setPendingMode(null)} style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--gray)', fontSize: '0.85rem', cursor: 'pointer', fontFamily: "'Outfit', sans-serif" }}>Cancel</button>
-              <button onClick={() => { const m = pendingMode; setPendingMode(null); applyMode(m); }} style={{ flex: 1, padding: '10px', borderRadius: '8px', border: 'none', background: 'var(--gold)', color: '#000', fontSize: '0.85rem', fontWeight: 700, cursor: 'pointer', fontFamily: "'Outfit', sans-serif" }}>Switch</button>
+              <button onClick={() => setPendingMode(null)} style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--gray)', fontSize: '0.85rem', cursor: 'pointer', fontFamily: "Arial, Arimo, Helvetica, sans-serif" }}>Cancel</button>
+              <button onClick={() => { const m = pendingMode; setPendingMode(null); applyMode(m); }} style={{ flex: 1, padding: '10px', borderRadius: '8px', border: 'none', background: 'var(--gold)', color: '#000', fontSize: '0.85rem', fontWeight: 700, cursor: 'pointer', fontFamily: "Arial, Arimo, Helvetica, sans-serif" }}>Switch</button>
             </div>
           </div>
         </div>
@@ -903,14 +1072,44 @@ function CustomOrderInner() {
       <style>{`
         @keyframes spin { to { transform: rotate(360deg); } }
         .custom-order-grid { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,340px); gap: 16px; align-items: start; }
+        /* The two design-mode cards carry three lines of copy each. Side by side on a 390px phone
+           that is a column of single words, so they stack before it gets there. */
+        .co-modes { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-bottom: 1.25rem; }
+        @media (max-width: 560px) { .co-modes { grid-template-columns: 1fr; } }
         @media (max-width: 768px) { .custom-order-grid { grid-template-columns: 1fr; } .custom-order-sidebar { position: static !important; } }
+        /* A phone has a third of the width this page was drawn for, so the chrome gives way first:
+           headings, padding and gaps step down. Controls do NOT shrink - a button under about 44px
+           is a button a thumb misses, and this page is nothing but controls. */
+        @media (max-width: 640px) {
+          .custom-order-grid { gap: 14px !important; }
+          .custom-order-grid h1 { font-size: 1.35rem !important; line-height: 1.25 !important; }
+          .custom-order-grid h2 { font-size: 1.05rem !important; }
+          .custom-order-grid h3, .custom-order-grid h4 { font-size: 0.92rem !important; }
+          .custom-order-grid > div > div { padding: 0.9rem !important; }
+          .custom-order-sidebar > div { padding: 0.95rem !important; }
+          .custom-order-sidebar { margin-bottom: 0 !important; }
+          .co-modes { gap: 8px !important; }
+        }
       `}</style>
 
       <div style={{ maxWidth: 1100, margin: '0 auto' }}>
-        <Link href={`/shop/products/${id}`} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: 'var(--gray)', fontSize: '0.85rem', textDecoration: 'none', marginBottom: '1.5rem' }}>
+        <button type="button"
+          onClick={() => {
+            let cameFromPdp = false;
+            try {
+              cameFromPdp = sessionStorage.getItem('pmp:cameFromPdp') === String(id);
+              if (cameFromPdp) sessionStorage.removeItem('pmp:cameFromPdp');
+            } catch { /* private mode - fall through to replace */ }
+            // Pop when the product page really is the entry behind this one. Otherwise REPLACE
+            // rather than push, so a cold deep link here does not leave a dead entry that the
+            // product page's own Back would bounce straight into.
+            if (cameFromPdp && typeof window !== 'undefined' && window.history.length > 1) router.back();
+            else router.replace(`/shop/products/${id}`);
+          }}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: 'var(--gray)', fontSize: '0.85rem', background: 'none', border: 'none', padding: 0, cursor: 'pointer', marginBottom: '1.5rem', fontFamily: 'inherit' }}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="15 18 9 12 15 6"/></svg>
           Back to Product
-        </Link>
+        </button>
 
         <h1 style={{ fontSize: '1.4rem', fontWeight: 800, marginBottom: '0.2rem' }}>{isInquiry ? 'Request a Quote' : 'Place Custom Order'}</h1>
         <p style={{ color: 'var(--gray)', fontSize: '0.875rem', marginBottom: '2rem' }}>{product.name}</p>
@@ -921,24 +1120,39 @@ function CustomOrderInner() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
 
             {/* Step 1: Product Config */}
-            <section style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: '12px', padding: '1.15rem' }}>
-              <h2 style={{ fontSize: '0.74rem', fontWeight: 800, letterSpacing: '0.03em', textTransform: 'uppercase', color: '#6b7280', marginBottom: '0.85rem' }}>Product details</h2>
+            <section style={{ background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '12px', padding: '1.15rem' }}>
+              <h2 style={{ fontSize: '0.74rem', fontWeight: 800, letterSpacing: '0.03em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: '0.85rem' }}>Product details</h2>
 
               {/* The variant was already chosen on the product page, so it is confirmed
                   here rather than asked again. "Change" goes back to that picker. */}
               {product.variantGroups?.length > 0 && (
                 <div style={{ marginBottom: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-                  {product.variantGroups.map(group => {
+                  {product.variantGroups.map((group, gi) => {
                     const chosen = group.options?.find(o => optValue(o) === selectedVariants[group.id]);
                     return (
-                      <div key={group.id} style={{ display: 'flex', alignItems: 'baseline', gap: '0.6rem' }}>
+                      <div key={group.id ?? group.name ?? gi} style={{ display: 'flex', alignItems: 'baseline', gap: '0.6rem' }}>
                         <p style={{ fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--gray)', margin: 0, minWidth: '90px' }}>{group.name}</p>
                         <p style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--white)', margin: 0 }}>
-                          {chosen ? optLabel(chosen) : '—'}
+                          {chosen ? optLabel(chosen) : '-'}
                         </p>
                       </div>
                     );
                   })}
+                  {/* Confirmed here, chosen on the product page - the same treatment the variant
+                      gets, because to the customer they were the same kind of decision. */}
+                  {chosenOptions.map((o, i) => (
+                    <div key={i} style={{ display: 'flex', alignItems: 'baseline', gap: '0.6rem' }}>
+                      <p style={{ fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--gray)', margin: 0, minWidth: '90px' }}>{o.group}</p>
+                      <p style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--white)', margin: 0 }}>
+                        {o.label}
+                        {o.priceAdd > 0 && (
+                          <span style={{ fontWeight: 500, color: 'var(--gray)', fontSize: '0.8rem' }}>
+                            {'  +' + fmt(o.priceAdd)}{o.priceMode === 'order' ? ' once' : ' / pc'}
+                          </span>
+                        )}
+                      </p>
+                    </div>
+                  ))}
                   <Link
                     href={`/shop/products/${id}`}
                     style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--gold)', textDecoration: 'none' }}
@@ -957,32 +1171,53 @@ function CustomOrderInner() {
                   <button
                     onClick={() => { const n = Math.max(moq, quantity - 1); setQuantity(n); setQuantityInput(String(n)); }}
                     style={{ width: 36, height: 36, borderRadius: '8px', border: '1px solid var(--border)', background: 'rgba(255,255,255,0.05)', color: 'var(--white)', fontSize: '1.1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>−</button>
-                  <input type="text" value={quantityInput}
-                    onChange={e => setQuantityInput(e.target.value)}
-                    onBlur={() => { const n = Math.max(moq, parseInt(quantityInput) || moq); setQuantity(n); setQuantityInput(String(n)); }}
-                    style={{ width: 64, textAlign: 'center', padding: '0.4rem', borderRadius: '8px', border: '1px solid var(--border)', background: 'rgba(255,255,255,0.05)', color: 'var(--white)', fontSize: '0.95rem', fontFamily: "'Outfit', sans-serif" }} />
+                  <input type="text" inputMode="numeric" pattern="[0-9]*" value={quantityInput}
+                    onFocus={e => e.target.select()}
+                    onChange={e => {
+                      // Digits only, and never above the cap. Left empty on purpose while typing -
+                      // forcing a value back in mid-keystroke makes the field impossible to clear.
+                      const raw = e.target.value.replace(/\D/g, '');
+                      if (raw === '') { setQuantityInput(''); return; }
+                      const clamped = Math.min(parseInt(raw, 10), qtyCeiling);
+                      setQuantityInput(String(clamped));
+                      if (clamped >= moq) setQuantity(clamped);
+                    }}
+                    onBlur={() => {
+                      const v = parseInt(quantityInput, 10);
+                      const n = isNaN(v) || v < moq ? moq : Math.min(v, qtyCeiling);
+                      setQuantity(n); setQuantityInput(String(n));
+                    }}
+                    style={{ width: 64, textAlign: 'center', padding: '0.4rem', borderRadius: '8px', border: '1px solid var(--border)', background: 'rgba(255,255,255,0.05)', color: 'var(--white)', fontSize: '0.95rem', fontFamily: "Arial, Arimo, Helvetica, sans-serif" }} />
                   <button
-                    onClick={() => { const n = quantity + 1; setQuantity(n); setQuantityInput(String(n)); }}
+                    onClick={() => { const n = Math.min(qtyCeiling, quantity + 1); setQuantity(n); setQuantityInput(String(n)); }}
                     style={{ width: 36, height: 36, borderRadius: '8px', border: '1px solid var(--border)', background: 'rgba(255,255,255,0.05)', color: 'var(--white)', fontSize: '1.1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>+</button>
                   {unitPrice != null && (
                     <span style={{ marginLeft: '0.5rem', color: 'var(--gray)', fontSize: '0.85rem' }}>{fmt(unitPrice)} / pc</span>
                   )}
                 </div>
+                {quoteAbove != null && quantity >= quoteAbove && quoteAbove <= maxQty && (
+                  <p style={{ margin: '0.5rem 0 0', fontSize: '0.75rem', color: 'var(--gray)', lineHeight: 1.5 }}>
+                    Need more than {quoteAbove} pcs? Larger runs are priced by quote - message us from the chat.
+                  </p>
+                )}
               </div>
             </section>
 
             {/* Step 2: Design */}
-            <section style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: '12px', padding: '1.15rem' }}>
-              <h2 style={{ fontSize: '0.74rem', fontWeight: 800, letterSpacing: '0.03em', textTransform: 'uppercase', color: '#6b7280', marginBottom: '0.85rem' }}>Your design</h2>
+            <section style={{ background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '12px', padding: '1.15rem' }}>
+              <h2 style={{ fontSize: '0.74rem', fontWeight: 800, letterSpacing: '0.03em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: '0.85rem' }}>Your design</h2>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '1.25rem' }}>
+              <div className="co-modes">
                 <button onClick={() => handlePickMode('upload')}
                   style={{ padding: '1.25rem', borderRadius: '10px', border: `1.5px solid ${designMode === 'upload' ? 'var(--gold)' : 'var(--border)'}`, background: designMode === 'upload' ? 'rgba(212,168,67,0.08)' : 'transparent', cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s', color: 'var(--white)' }}>
                   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={designMode === 'upload' ? '#D4A843' : 'var(--gray)'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block', marginBottom: '0.6rem' }}>
                     <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
                   </svg>
                   <p style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.2rem', color: designMode === 'upload' ? 'var(--gold)' : 'var(--white)' }}>I have a design</p>
-                  <p style={{ fontSize: '0.75rem', color: 'var(--gray)', margin: 0 }}>Upload your file (JPG, PNG, PDF, AI)</p>
+                  <p style={{ fontSize: '0.75rem', color: 'var(--gray)', margin: 0, lineHeight: 1.5 }}>
+                    Your file is finished and ready to print as it is. We print exactly what you send.
+                    <span style={{ display: 'block', color: '#166534', fontWeight: 700, marginTop: 4 }}>Free</span>
+                  </p>
                 </button>
 
                 <button onClick={() => handlePickMode('request')}
@@ -991,14 +1226,37 @@ function CustomOrderInner() {
                     <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
                   </svg>
                   <p style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.2rem', color: designMode === 'request' ? 'var(--gold)' : 'var(--white)' }}>Request a design</p>
-                  <p style={{ fontSize: '0.75rem', color: 'var(--gray)', margin: 0 }}>
-                    We&apos;ll create it for you
+                  <p style={{ fontSize: '0.75rem', color: 'var(--gray)', margin: 0, lineHeight: 1.5 }}>
+                    You have photos, ideas or text and want us to make the artwork. We send you a
+                    mockup to approve before anything is printed.
                     {product.designFee > 0 && !isInquiry && (
-                      <span style={{ color: 'var(--gold)', fontWeight: 700, marginLeft: '4px' }}>+{fmt(product.designFee)}</span>
+                      <span style={{ display: 'block', color: 'var(--gold)', fontWeight: 700, marginTop: 4 }}>
+                        +{fmt(product.designFee)} - includes 3 revisions
+                      </span>
                     )}
                   </p>
                 </button>
               </div>
+
+              <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginBottom: '1.1rem',
+                padding: '9px 11px', borderRadius: 8, background: 'rgba(212,168,67,0.06)',
+                border: '1px solid rgba(212,168,67,0.2)' }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#D4A843" strokeWidth="2"
+                  style={{ flexShrink: 0, marginTop: 2 }}>
+                  <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
+                </svg>
+                <span style={{ fontSize: '0.75rem', color: 'var(--gray)', lineHeight: 1.55 }}>
+                  <strong style={{ color: 'var(--white)' }}>Not sure?</strong> Choose{' '}
+                  <strong style={{ color: 'var(--white)' }}>I have a design</strong> and message us -
+                  we will look at your file and tell you if it needs work.{' '}
+                  <strong style={{ color: 'var(--white)' }}>The design fee is only charged if you agree to it.</strong>
+                </span>
+              </div>
+
+              {/* One picker, both modes: the artwork on an upload, the references on a request. */}
+              <input ref={fileInputRef} type="file" multiple accept=".jpg,.jpeg,.png,.webp,.pdf,.ai,.psd,.svg"
+                style={{ display: 'none' }}
+                onChange={e => { handleFilesSelect(e.target.files); e.target.value = ''; }} />
 
               {designMode === 'upload' && (
                 <div>
@@ -1023,8 +1281,6 @@ function CustomOrderInner() {
                       </div>
                     </div>
                   )}
-                  <input ref={fileInputRef} type="file" multiple accept=".jpg,.jpeg,.png,.webp,.pdf,.ai,.psd,.svg" style={{ display: 'none' }}
-                    onChange={e => { handleFilesSelect(e.target.files); e.target.value = ''; }} />
 
                   {designFiles.length > 0 && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '0.75rem' }}>
@@ -1036,7 +1292,7 @@ function CustomOrderInner() {
                             </div>
                           ) : f.preview ? (
                             /* eslint-disable-next-line @next/next/no-img-element */
-                            <img src={f.preview} alt="" style={{ width: 40, height: 40, borderRadius: 8, objectFit: 'cover', flexShrink: 0, background: '#fff' }} />
+                            <img src={f.preview} alt="" style={{ width: 40, height: 40, borderRadius: 8, objectFit: 'cover', flexShrink: 0, background: 'var(--dark)' }} />
                           ) : (
                             <span style={{ width: 40, height: 40, borderRadius: 8, flexShrink: 0, background: 'rgba(212,168,67,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#D4A843" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1082,6 +1338,16 @@ function CustomOrderInner() {
                     </div>
                   )}
 
+                  {/* What decides print quality is invisible in a thumbnail: resolution and size. The
+                      terms further down carry the same two facts, but by then the file is already
+                      chosen - so they are said here as well, as guidance rather than a disclaimer. */}
+                  <p style={{ fontSize: '0.73rem', color: 'var(--gray)', lineHeight: 1.6, marginTop: '0.6rem', marginBottom: 0 }}>
+                    <strong style={{ color: 'var(--white)' }}>For a sharp print:</strong> send it at 300 dpi or higher,
+                    already sized for this item, with text and logos unstretched. Screen colours (RGB) always shift a
+                    little in print (CMYK). We print your file as it is - we do not redraw or resize it unless you ask
+                    for a design request.
+                  </p>
+
                   {product.designFormats?.length > 0 && (
                     <p style={{ fontSize: '0.75rem', color: 'var(--gray)', marginTop: '0.6rem' }}>
                       Accepted: {product.designFormats.map(f => f.name || f).join(', ')}
@@ -1094,75 +1360,142 @@ function CustomOrderInner() {
                   needs these as much as the file itself; without a field they had to guess. */}
               {designMode === 'upload' && (
                 <div style={{ marginTop: '0.85rem' }}>
-                  <p style={{ fontSize: '0.8rem', color: 'var(--gray)', marginBottom: '0.5rem' }}>
-                    Printing instructions (optional):
+                  {/* A choice rather than a required box. A mandatory textarea gets "ok" and "print
+                      po" typed into it to reach the button - a toll, not an instruction. Two radios
+                      cost the prepared customer one click, and make the unprepared one decide
+                      something instead of skipping a field they never read. Either way the order
+                      carries a sentence the printer can act on. */}
+                  <p style={{ fontSize: '0.8rem', color: 'var(--gray)', marginBottom: '0.6rem' }}>
+                    How should we print this?{' '}
+                    <span style={{ color: 'var(--gray)', opacity: 0.85 }}>
+                      This is the only instruction the printer gets.
+                    </span>
                   </p>
-                  <textarea value={designNotes} onChange={e => setDesignNotes(e.target.value)}
-                    placeholder="E.g. Print centered on the front, keep a 1cm margin, match the red exactly."
-                    rows={3}
-                    style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--border)', background: 'rgba(255,255,255,0.05)', color: 'var(--white)', fontSize: '0.85rem', fontFamily: "'Outfit', sans-serif", resize: 'vertical', boxSizing: 'border-box', outline: 'none' }} />
+
+                  {[
+                    { key: 'as_is', title: 'Print exactly as my file is',
+                      sub: 'No changes, no repositioning, no resizing.' },
+                    { key: 'notes', title: 'I have specific instructions',
+                      sub: 'Placement, orientation, margins, exact colours.' },
+                  ].map(opt => {
+                    const on = printIntent === opt.key;
+                    return (
+                      <button key={opt.key} type="button"
+                        onClick={() => {
+                          setPrintIntent(opt.key);
+                          // Leaving the canned sentence behind when they switch would make them
+                          // delete it before they could type; clearing anything they wrote would
+                          // throw away their work. Only ever clear our own text.
+                          if (opt.key === 'as_is') setDesignNotes(AS_IS_NOTE);
+                          else if (designNotes === AS_IS_NOTE) setDesignNotes('');
+                        }}
+                        style={{ display: 'flex', alignItems: 'flex-start', gap: '0.6rem', width: '100%',
+                          textAlign: 'left', padding: '0.7rem 0.8rem', marginBottom: '0.5rem',
+                          borderRadius: '10px', cursor: 'pointer',
+                          border: on ? '1px solid var(--gold)' : '1px solid var(--border)',
+                          background: on ? 'rgba(212,168,67,0.08)' : 'rgba(255,255,255,0.03)' }}>
+                        <span style={{ width: 15, height: 15, borderRadius: '50%', flexShrink: 0, marginTop: 2,
+                          border: on ? '5px solid var(--gold)' : '1.5px solid var(--gray)',
+                          background: 'transparent', boxSizing: 'border-box' }} />
+                        <span>
+                          <span style={{ display: 'block', fontSize: '0.83rem', fontWeight: 600,
+                            color: on ? 'var(--gold)' : 'var(--white)' }}>{opt.title}</span>
+                          <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--gray)', marginTop: 1 }}>
+                            {opt.sub}
+                          </span>
+                        </span>
+                      </button>
+                    );
+                  })}
+
+                  {printIntent === 'notes' && (
+                    <textarea value={designNotes} maxLength={2000} onChange={e => setDesignNotes(e.target.value)}
+                      placeholder="E.g. Portrait, centered on the front, keep a 1cm margin, match the red exactly."
+                      rows={3}
+                      style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--border)', background: 'rgba(255,255,255,0.05)', color: 'var(--white)', fontSize: '0.85rem', fontFamily: "Arial, Arimo, Helvetica, sans-serif", resize: 'vertical', boxSizing: 'border-box', outline: 'none' }} />
+                  )}
                 </div>
               )}
 
               {designMode === 'request' && (
                 <div>
                   <p style={{ fontSize: '0.8rem', color: 'var(--gray)', marginBottom: '0.5rem' }}>
-                    Describe what you need (optional — our designer will contact you via chat to finalize):
+                    Describe what you need <span style={{ color: '#ef4444', fontWeight: 700 }}>*</span>
+                    <span style={{ display: 'block', color: 'var(--gray)', opacity: 0.85, marginTop: 2 }}>
+                      There is nothing to print until we draw it, so we need somewhere to start.
+                      Our designer will follow up in chat.
+                    </span>
                   </p>
-                  <textarea value={designNotes} onChange={e => setDesignNotes(e.target.value)}
+                  <textarea value={designNotes} maxLength={2000} onChange={e => setDesignNotes(e.target.value)}
                     placeholder="E.g. Company logo in blue and white, add 'ABC Corp' in bold. Minimalist style."
                     rows={4}
-                    style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--border)', background: 'rgba(255,255,255,0.05)', color: 'var(--white)', fontSize: '0.85rem', fontFamily: "'Outfit', sans-serif", resize: 'vertical', boxSizing: 'border-box', outline: 'none' }} />
+                    style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--border)', background: 'rgba(255,255,255,0.05)', color: 'var(--white)', fontSize: '0.85rem', fontFamily: "Arial, Arimo, Helvetica, sans-serif", resize: 'vertical', boxSizing: 'border-box', outline: 'none' }} />
+
+                  <div style={{ marginTop: '0.85rem' }}>
+                    <p style={{ fontSize: '0.8rem', color: 'var(--gray)', marginBottom: '0.5rem' }}>
+                      Reference photos (optional)
+                      <span style={{ display: 'block', color: 'var(--gray)', opacity: 0.85, marginTop: 2 }}>
+                        Photos, a logo, a screenshot of something you like. We design from these -
+                        they are not printed as they are.
+                      </span>
+                    </p>
+                    <button type="button" onClick={() => fileInputRef.current?.click()} disabled={uploading}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '8px 14px',
+                        borderRadius: 8, border: '1px solid var(--border)', background: 'transparent',
+                        color: 'var(--white)', fontSize: '0.8rem', fontWeight: 600,
+                        cursor: uploading ? 'wait' : 'pointer' }}>
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" />
+                      </svg>
+                      {uploading ? 'Uploading...' : uploadedFiles.length ? 'Add more' : 'Attach references'}
+                    </button>
+
+                    {uploadedFiles.length > 0 && (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
+                        {uploadedFiles.map((f, i) => (
+                          <div key={i} style={{ position: 'relative', width: 62, height: 62, borderRadius: 8,
+                            overflow: 'hidden', border: '1px solid var(--border)', background: 'var(--dark2)',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            {/\.(jpe?g|png|webp|gif)$/i.test(f.url)
+                              ? <img src={f.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                              : <span style={{ fontSize: 9, fontWeight: 800, color: 'var(--gold)' }}>
+                                  {(f.name || 'FILE').split('.').pop().toUpperCase().slice(0, 4)}
+                                </span>}
+                            <button type="button" onClick={() => removeDesignFile(f.key)}
+                              style={{ position: 'absolute', top: 2, right: 2, width: 17, height: 17,
+                                borderRadius: '50%', border: 'none', background: 'rgba(0,0,0,0.65)',
+                                color: 'var(--dark)', fontSize: 11, lineHeight: 1, cursor: 'pointer', padding: 0 }}>
+                              &times;
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
             </section>
 
-            {/* Step 3: Delivery — shown for both upload and request */}
-            {(designMode === 'upload' || designMode === 'request') && !isInquiry && <section style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: '12px', padding: '1.15rem' }}>
-              <h2 style={{ fontSize: '0.74rem', fontWeight: 800, letterSpacing: '0.03em', textTransform: 'uppercase', color: '#6b7280', marginBottom: '0.85rem' }}>Delivery address</h2>
-              {addressLoading ? (
-                <p style={{ color: 'var(--gray)', fontSize: '0.85rem' }}>Loading addresses...</p>
-              ) : addresses.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '1.25rem 0' }}>
-                  <p style={{ color: 'var(--gray)', fontSize: '0.85rem', marginBottom: '0.75rem' }}>No saved addresses.</p>
-                  <Link href="/shop/profile" style={{ color: 'var(--gold)', fontWeight: 700, fontSize: '0.85rem' }}>+ Add an address in Profile</Link>
-                </div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                  {addresses.map(addr => {
-                    const active = addr.id === selectedAddressId;
-                    return (
-                      <div key={addr.id} onClick={() => setSelectedAddressId(addr.id)}
-                        style={{ padding: '0.875rem 1rem', borderRadius: '10px', border: `1px solid ${active ? 'var(--gold)' : 'var(--border)'}`, background: active ? 'rgba(212,168,67,0.06)' : 'transparent', cursor: 'pointer', display: 'flex', gap: '0.75rem', alignItems: 'flex-start', transition: 'all 0.12s' }}>
-                        <div style={{ width: 16, height: 16, borderRadius: '50%', border: `2px solid ${active ? 'var(--gold)' : 'var(--gray)'}`, flexShrink: 0, marginTop: '2px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          {active && <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--gold)' }} />}
-                        </div>
-                        <div style={{ minWidth: 0 }}>
-                          <p style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '2px' }}>
-                            {addr.label || 'Home'}
-                            {addr.is_default && (
-                              <span style={{ marginLeft: '6px', fontSize: '0.65rem', background: 'rgba(212,168,67,0.15)', color: 'var(--gold)', padding: '1px 6px', borderRadius: '999px', fontWeight: 700 }}>Default</span>
-                            )}
-                          </p>
-                          <p style={{ fontSize: '0.8rem', color: 'var(--gray)', margin: 0 }}>{formatAddress(addr)}</p>
-                          {addr.phone && <p style={{ fontSize: '0.78rem', color: 'var(--gray)', margin: '2px 0 0' }}>{addr.phone}</p>}
-                        </div>
-                      </div>
-                    );
-                  })}
-                  <Link href="/shop/profile" style={{ fontSize: '0.8rem', color: 'var(--gold)', display: 'inline-flex', alignItems: 'center', gap: '4px', marginTop: '0.25rem', textDecoration: 'none' }}>
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                    Manage addresses
-                  </Link>
-                </div>
-              )}
+            {/* Step 3: Delivery - shown for both upload and request */}
+            {(designMode === 'upload' || designMode === 'request') && !isInquiry && <section style={{ background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '12px', padding: '1.15rem' }}>
+              {/* One picker for both screens - see components/shop/AddressPicker. Adding an
+                  address used to send people to /shop/profile, and coming back meant a reload,
+                  which threw away every reference photo they had just attached. */}
+              <AddressPicker
+                addresses={addresses}
+                loading={addressLoading}
+                selectedId={selectedAddressId}
+                onSelect={setSelectedAddressId}
+                onSaved={() => fetchAddresses(true)}
+              />
             </section>}
 
             {/* Step 4: Payment - never on this page any more. Request design submits an unpaid
                 order and pays the design fee (then the goods) from the order detail modal;
                 upload design goes through the cart. Kept only for the legacy inquiry branch. */}
-            {false && <section style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: '12px', padding: '1.15rem' }}>
-              <h2 style={{ fontSize: '0.74rem', fontWeight: 800, letterSpacing: '0.03em', textTransform: 'uppercase', color: '#6b7280', marginBottom: '0.85rem' }}>Payment method</h2>
+            {false && <section style={{ background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '12px', padding: '1.15rem' }}>
+              <h2 style={{ fontSize: '0.74rem', fontWeight: 800, letterSpacing: '0.03em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: '0.85rem' }}>Payment method</h2>
 
               <div style={{ padding: '0.75rem 1rem', background: 'rgba(212,168,67,0.08)', border: '1px solid rgba(212,168,67,0.2)', borderRadius: '8px', marginBottom: '1rem', fontSize: '0.8rem', color: 'var(--gray)', lineHeight: 1.5 }}>
                 {designMode === 'request'
@@ -1185,7 +1518,7 @@ function CustomOrderInner() {
                 return (
                   <div key={opt.id}>
                     <div onClick={() => { setPaymentMethod(opt.id); setEWalletPhone(''); setShowEWalletPhone(false); }}
-                      style={{ display: 'flex', alignItems: 'center', gap: '0.875rem', padding: '0.875rem 1rem', borderRadius: '10px', cursor: 'pointer', border: `1px solid ${isSelected ? opt.accent : 'rgba(255,255,255,0.07)'}`, background: isSelected ? opt.accentBg : 'var(--dark1)', marginBottom: showPanel ? 0 : '0.625rem', transition: 'all 0.18s' }}>
+                      style={{ display: 'flex', alignItems: 'center', gap: '0.875rem', padding: '0.875rem 1rem', borderRadius: '10px', cursor: 'pointer', border: `1px solid ${isSelected ? opt.accent : 'rgba(255,255,255,0.07)'}`, background: isSelected ? opt.accentBg : 'var(--black)', marginBottom: showPanel ? 0 : '0.625rem', transition: 'all 0.18s' }}>
                       <div style={{ width: '44px', height: '44px', borderRadius: '10px', flexShrink: 0, background: isSelected ? opt.accentBg : 'rgba(255,255,255,0.04)', border: `1px solid ${isSelected ? opt.accent : 'rgba(255,255,255,0.06)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img src={opt.logo} alt={opt.label} style={{ width: '30px', height: '30px', objectFit: 'contain', ...(opt.filterImg ? { filter: 'brightness(0) invert(1)', opacity: isSelected ? 1 : 0.45 } : { borderRadius: '6px' }) }} />
@@ -1247,10 +1580,6 @@ function CustomOrderInner() {
                       <input type="text" inputMode="numeric" placeholder="CVC" maxLength={4} value={cardCvc} onChange={e => setCardCvc(e.target.value.replace(/\D/g,'').slice(0,4))} style={{ width: '100%', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '0.72rem 0.875rem', color: 'var(--white)', fontSize: '0.95rem', outline: 'none', fontFamily: 'monospace', boxSizing: 'border-box' }} onFocus={e => { e.target.style.borderColor='#9C7BE8'; }} onBlur={e => { e.target.style.borderColor='rgba(255,255,255,0.1)'; }} />
                     </div>
                   </div>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.72rem', color: 'var(--gray)', fontWeight: 600, marginBottom: '0.35rem' }}>Name on card</label>
-                    <input type="text" placeholder="Full name as on card" value={cardName} onChange={e => setCardName(e.target.value)} style={{ width: '100%', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '0.72rem 0.875rem', color: 'var(--white)', fontSize: '0.95rem', outline: 'none', boxSizing: 'border-box' }} onFocus={e => { e.target.style.borderColor='#9C7BE8'; }} onBlur={e => { e.target.style.borderColor='rgba(255,255,255,0.1)'; }} />
-                  </div>
                 </div>
               )}
             </section>}
@@ -1259,23 +1588,32 @@ function CustomOrderInner() {
 
           {/* ── RIGHT: STICKY SUMMARY ──────────────────────────── */}
           <div className="custom-order-sidebar" style={{ position: 'sticky', top: '5rem' }}>
-            <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: '12px', padding: '1.15rem' }}>
+            <div style={{ background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '12px', padding: '1.15rem' }}>
 
               <div style={{ display: 'flex', gap: '0.875rem', marginBottom: '1.25rem', paddingBottom: '1rem', borderBottom: '1px solid var(--border)' }}>
                 {(() => {
                   // Show the SELECTED variant's image (e.g. Ceramic White) when there is one, not the
                   // generic product thumbnail. Same resolution as the order item's thumbnail above.
                   const img = (combo?.id && product.variantImageUrls?.[combo.id]) || combo?.imageUrl || product.thumbnail || product.images?.[0] || null;
+                  // A product with no picture returned null here, so the box disappeared and the
+                  // name slid left - the card changed shape depending on whether someone had got
+                  // round to uploading a photo. The frame is part of the layout; only its contents
+                  // are conditional.
                   return img ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={img} alt={variantLabel ? `${product.name} - ${variantLabel}` : product.name}
                       style={{ width: 56, height: 56, borderRadius: '8px', objectFit: 'cover', flexShrink: 0 }} />
-                  ) : null;
+                  ) : (
+                    <div style={{ width: 56, height: 56, borderRadius: '8px', flexShrink: 0, background: '#f1f3f5',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <NoImage size={24} />
+                    </div>
+                  );
                 })()}
                 <div style={{ minWidth: 0 }}>
                   <p style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{product.name}</p>
                   {variantLabel && <p style={{ fontSize: '0.78rem', color: 'var(--gray)', margin: '0 0 4px' }}>{variantLabel}</p>}
-                  <div style={{ display: 'inline-flex', background: 'rgba(212,168,67,0.12)', color: 'var(--gold)', borderRadius: '999px', padding: '1px 8px', fontSize: '0.6rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Customizable</div>
+                  <div style={{ display: 'inline-flex', background: 'rgba(212,168,67,0.12)', color: 'var(--gold)', borderRadius: '999px', padding: '1px 8px', fontSize: '0.6rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Print to order</div>
                 </div>
               </div>
 
@@ -1290,6 +1628,14 @@ function CustomOrderInner() {
                     <span style={{ color: 'var(--gray)' }}>{fmt(unitPrice ?? 0)} × {quantity} pc{quantity > 1 ? 's' : ''}</span>
                     <span>{fmt(lineTotal)}</span>
                   </div>
+                  {/* Shown on its own line rather than buried in the unit price, so the reader can
+                      see it is not multiplied - the same reason the design fee has its own line. */}
+                  {chosenOptions.filter(o => o.priceMode === 'order' && o.priceAdd > 0).map((o, i) => (
+                    <div key={'oo' + i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
+                      <span style={{ color: 'var(--gray)' }}>{o.label} <span style={{ opacity: 0.7 }}>once</span></span>
+                      <span style={{ color: 'var(--gold)' }}>+{fmt(o.priceAdd)}</span>
+                    </div>
+                  ))}
                   {designMode === 'request' && designFee > 0 && (
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
                       <span style={{ color: 'var(--gray)' }}>Design fee</span>
@@ -1316,6 +1662,20 @@ function CustomOrderInner() {
                     <span>Total</span>
                     <span>{fmt(grandTotal)}</span>
                   </div>
+                  {/* "Billed separately" above says shipping is missing; this says why and what to
+                      expect, the same note checkout shows - so a customer who reads this on the
+                      product page and checkout later is not told two different things. */}
+                  {courierBooked && (
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem', marginTop: '4px', padding: '10px 12px', background: 'rgba(212,168,67,0.07)', border: '1px solid rgba(212,168,67,0.2)', borderRadius: '8px' }}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="2" style={{ flexShrink: 0, marginTop: '2px' }}>
+                        <rect x="1" y="3" width="15" height="13"/><path d="M16 8h4l3 3v5h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/>
+                      </svg>
+                      <span style={{ fontSize: '0.72rem', color: 'var(--gray-light)', lineHeight: 1.5 }}>
+                        Delivery is not included. We book a courier once your order is confirmed and send
+                        you the fee in chat - usually paid in cash to the rider.
+                      </span>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -1328,8 +1688,8 @@ function CustomOrderInner() {
 
               {designMode === 'upload' && !isInquiry && (
                 <div style={{ padding: '0.875rem', background: 'rgba(96,165,250,0.08)', border: '1px solid rgba(96,165,250,0.2)', borderRadius: '10px', marginBottom: '1rem', fontSize: '0.78rem', color: 'var(--gray)', lineHeight: 1.6 }}>
-                  <strong style={{ color: '#60a5fa', display: 'block', marginBottom: '4px' }}>We check your file before printing</strong>
-                  Your artwork is reviewed before production starts. If anything is not print-ready we message you in chat first - nothing gets printed wrong.
+                  <strong style={{ color: '#60a5fa', display: 'block', marginBottom: '4px' }}>We check your file before we print</strong>
+                  If it will not print well we send you a mockup, or ask for a new file - free either way. If we still cannot print it, you get your money back.
                 </div>
               )}
 
@@ -1347,7 +1707,11 @@ function CustomOrderInner() {
 
               {designMode === 'request' && !isInquiry && (
                 <div style={{ padding: '0.75rem', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border)', borderRadius: '8px', marginBottom: '1rem', fontSize: '0.75rem', color: 'var(--gray)', lineHeight: 1.6 }}>
-                  Our designer will send a proof via chat within 24–48 hrs. Production starts once you approve.
+                  {/* No hours quoted. A number here is a promise the shop has to keep on its
+                      busiest week, and it was the thing customers measured us against. What they
+                      actually need is where to look, since a proof waiting in chat is easy to miss. */}
+                  Our designer will send a proof via chat. You can also find it in My Orders, waiting
+                  for you to approve it - production starts once you do.
                   {/* Said here, before the order exists, rather than only in the terms behind a link. A
                       customer who first meets the revision limit while asking for a fourth change reads
                       it as a penalty; one who was told up front reads it as the deal. Figures come from
@@ -1365,6 +1729,38 @@ function CustomOrderInner() {
                 </div>
               )}
 
+              {/* The checkbox and both buttons vanish under !canOrder, and disappearing silently
+                  reads as broken rather than as "not yet". This names the one thing still missing,
+                  in the same slot the controls will occupy once it is supplied. */}
+              {!canOrder && !isInquiry && (
+                <div style={{ padding: '0.75rem', marginBottom: '1rem', textAlign: 'center', fontSize: '0.82rem', color: 'var(--gray)', fontWeight: 600 }}>
+                  {!designMode
+                    ? 'Choose how you\u2019d like to provide your design to continue.'
+                    : designMode === 'request'
+                      ? 'Tell us what you need above - even a sentence is enough to start.'
+                      : uploading
+                        ? 'Uploading your file\u2026'
+                        : !designFileUrl
+                          ? 'Attach your design file to continue.'
+                          : 'Tell us how to print it above.'}
+                </div>
+              )}
+
+              {/* Offered as a way to ask, not a way to order. A custom order is where the questions
+                  are - will my file work, can you do this size - and a customer who cannot ask
+                  simply leaves. It sits below the real actions and says "not sure", because a link
+                  that reads as an alternative checkout would move the agreement to a place the
+                  order cannot see, which is the thing this system exists to stop. */}
+              {shopFacebook && !addedToCart && (
+                <p style={{ textAlign: 'center', fontSize: '0.75rem', color: 'var(--gray)', margin: '0 0 0.85rem', lineHeight: 1.6 }}>
+                  Not sure about your file or size?{' '}
+                  <a href={shopFacebook} target="_blank" rel="noopener noreferrer"
+                    style={{ color: 'var(--gold)', fontWeight: 700, textDecoration: 'underline' }}>
+                    Message us on Facebook
+                  </a>
+                </p>
+              )}
+
               {/* Custom-order T&C - accepted here (per mode) and carried with the line to checkout. */}
               {(designMode === 'upload' || designMode === 'request' || isInquiry) && (
                 <label style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', margin: '0 0 0.85rem', cursor: 'pointer', fontSize: '0.8rem', color: 'var(--gray)', lineHeight: 1.5 }}>
@@ -1378,33 +1774,57 @@ function CustomOrderInner() {
               {/* Add to cart - upload (with file) OR request. A custom line is just an ordinary cart
                   line carrying its own design, so a ready-made tumbler, an uploaded mug and a
                   requested tote can share one delivery fee and one checkout. The design fee (request)
-                  and the downpayment are worked out at checkout from what the cart holds. */}
-              {canOrder && (
+                  and the downpayment are worked out at checkout from what the cart holds.
+                  Both this and Buy it now disappear once the line is added - each custom line
+                  carries its own uploaded artwork, so a second click here cannot mean "add one
+                  more of the same" the way a plain catalog item would: it would need its own
+                  file. A spent "Added to cart" button that stayed clickable was inviting a second,
+                  silently duplicate line instead of saying what to do next. */}
+              {canOrder && !addedToCart && (
                 <button onClick={handleAddToCart} disabled={placing || addingToCart || !agreedTerms}
                   style={{ width: '100%', padding: '0.9rem', background: addingToCart ? 'rgba(212,168,67,0.55)' : 'var(--gold)',
                     color: '#000', border: 'none', borderRadius: '10px', fontWeight: 800, fontSize: '0.95rem',
-                    cursor: (addingToCart ? 'wait' : (!agreedTerms ? 'not-allowed' : 'pointer')), fontFamily: "'Outfit', sans-serif", opacity: !agreedTerms ? 0.5 : 1 }}>
-                  {addingToCart ? 'Adding...' : addedToCart ? 'Added to cart' : 'Add to cart'}
+                    cursor: (addingToCart ? 'wait' : (!agreedTerms ? 'not-allowed' : 'pointer')), fontFamily: "Arial, Arimo, Helvetica, sans-serif", opacity: !agreedTerms ? 0.5 : 1 }}>
+                  {addingToCart ? 'Adding...' : 'Add to cart'}
                 </button>
               )}
 
               {/* Buy it now - the single-item shortcut that lands in the SAME checkout as the cart.
                   Works for upload and request alike; the checkout charges each line by its own rule. */}
-              {canOrder && (
+              {canOrder && !addedToCart && (
                 <button onClick={handleBuyNow} disabled={placing || addingToCart || !agreedTerms}
                   style={{ width: '100%', padding: '0.85rem', marginTop: '0.6rem', background: 'transparent',
                     color: 'var(--gold)', border: '1.5px solid var(--gold)', borderRadius: '10px', fontWeight: 800,
-                    fontSize: '0.9rem', cursor: !agreedTerms ? 'not-allowed' : 'pointer', fontFamily: "'Outfit', sans-serif", opacity: !agreedTerms ? 0.5 : 1 }}>
+                    fontSize: '0.9rem', cursor: !agreedTerms ? 'not-allowed' : 'pointer', fontFamily: "Arial, Arimo, Helvetica, sans-serif", opacity: !agreedTerms ? 0.5 : 1 }}>
                   Buy it now
                 </button>
               )}
 
+              {/* Added: the line is done, so the two live choices are "check out now" or "keep
+                  shopping" - not "press this again", which is what the old single button implied. */}
+              {addedToCart && !isInquiry && (
+                <div style={{ padding: '0.75rem', marginBottom: '0.6rem', background: 'transparent',
+                  border: '1.5px solid var(--gold)', borderRadius: '10px', color: 'var(--gold)',
+                  fontWeight: 700, fontSize: '0.88rem', textAlign: 'center' }}>
+                  Added to cart
+                </div>
+              )}
+
               {addedToCart && !isInquiry && (
                 <Link href="/shop/cart"
-                  style={{ display: 'block', width: '100%', textAlign: 'center', padding: '0.8rem', marginTop: '0.6rem',
+                  style={{ display: 'block', width: '100%', textAlign: 'center', padding: '0.9rem',
+                    background: 'var(--gold)', color: '#000', border: 'none', borderRadius: '10px',
+                    fontWeight: 800, fontSize: '0.95rem', textDecoration: 'none' }}>
+                  Go to cart and check out
+                </Link>
+              )}
+
+              {addedToCart && !isInquiry && (
+                <Link href="/shop"
+                  style={{ display: 'block', width: '100%', textAlign: 'center', padding: '0.85rem', marginTop: '0.6rem',
                     background: 'transparent', color: 'var(--gold)', border: '1.5px solid var(--gold)', borderRadius: '10px',
                     fontWeight: 800, fontSize: '0.9rem', textDecoration: 'none' }}>
-                  Go to cart and check out
+                  Continue shopping
                 </Link>
               )}
 
@@ -1420,7 +1840,7 @@ function CustomOrderInner() {
                     color: isInquiry ? '#000' : 'var(--gray)',
                     border: isInquiry ? 'none' : '1px solid var(--border)',
                     borderRadius: '10px', fontWeight: isInquiry ? 800 : 600, fontSize: isInquiry ? '0.95rem' : '0.82rem',
-                    cursor: placing ? 'wait' : (!agreedTerms ? 'not-allowed' : 'pointer'), fontFamily: "'Outfit', sans-serif",
+                    cursor: placing ? 'wait' : (!agreedTerms ? 'not-allowed' : 'pointer'), fontFamily: "Arial, Arimo, Helvetica, sans-serif",
                     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', opacity: !agreedTerms ? 0.5 : 1 }}>
                   {placing ? (
                     <>

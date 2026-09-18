@@ -42,7 +42,7 @@ class FixSaleDataQuality extends Command
         $this->newLine();
         $this->info("source: null → 'manual'                 {$nullSource}");
         $this->info("category: 'Acessories' → 'Accessories'   {$typo}");
-        if (!$apply) $this->warn('Dry run only — nothing written. Re-run with --apply after backing up `sales`.');
+        if (!$apply) $this->warn('Dry run only - nothing written. Re-run with --apply after backing up `sales`.');
 
         return self::SUCCESS;
     }

@@ -15,18 +15,19 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "../../../contexts/AuthContext";
 import { useTheme } from "../../../contexts/ThemeContext";
+import useLockBodyScroll from "@/lib/useLockBodyScroll";
 import "./admin-dashboard.css";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 
 // Roles allowed into the /dashboard/business/* admin area. This layout wraps EVERY admin page,
-// so this single allowlist guards the whole dashboard at once. Anyone else — customers, guests,
-// or any unknown/future role — is redirected out. (Data is independently protected server-side.)
+// so this single allowlist guards the whole dashboard at once. Anyone else - customers, guests,
+// or any unknown/future role - is redirected out. (Data is independently protected server-side.)
 const STAFF_ROLES = ['superAdmin', 'admin', 'owner', 'salesRep', 'productionOperator', 'qualityControl', 'cashier', 'inventoryManager'];
 
 // A user belongs in the business dashboard if they are any authenticated
 // non-customer role. Per-module access is enforced by the backend and reflected
-// by can(); this guard only separates staff from customers/guests — so new roles
+// by can(); this guard only separates staff from customers/guests - so new roles
 // (administrator, manager, salesStaff, productionStaff, financeStaff, and any
 // future custom role) work without editing a hard-coded list.
 const isStaffRole = (role) => typeof role === 'string' && role !== '' && role !== 'customer';
@@ -43,6 +44,7 @@ export default function BusinessDashboardLayout({ children }) {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
+  useLockBodyScroll(logoutConfirmOpen);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [saveSuccess, setSaveSuccess] = useState("");
@@ -145,6 +147,7 @@ export default function BusinessDashboardLayout({ children }) {
   }, [activeTab]);
 
   const handleLogout = () => {
+    setUserMenuOpen(false);
     setLogoutConfirmOpen(true);
   };
 
@@ -494,18 +497,18 @@ export default function BusinessDashboardLayout({ children }) {
   }, [token]);
 
   // Owner has full business access. Super Admin (superAdmin/legacy admin) is
-  // governed by the backend access toggle, surfaced via /my/permissions — so
+  // governed by the backend access toggle, surfaced via /my/permissions - so
   // scoped mode hides business modules here too. Everyone else follows their grid.
   const SUPER_ROLES = ["superAdmin", "admin"];
-  // Mirror of backend App\Support\Rbac::gridAllows — bridges coarse module flags
+  // Mirror of backend App\Support\Rbac::gridAllows - bridges coarse module flags
   // and fine module.action keys so can('orders') and can('orders.edit') both work.
   const gridAllows = (perms, key) => {
     if (!perms) return false;
     if (key.includes(".")) {
       if (key in perms) return perms[key] === true;
-      const module = key.split(".")[0];
-      for (const k in perms) if (k.startsWith(module + ".")) return false;
-      return perms[module] === true;
+      const mod = key.split(".")[0];
+      for (const k in perms) if (k.startsWith(mod + ".")) return false;
+      return perms[mod] === true;
     }
     if (perms[key] === true) return true;
     const prefix = key + ".";
@@ -513,6 +516,7 @@ export default function BusinessDashboardLayout({ children }) {
     return false;
   };
   const can = (key) => {
+    if (Array.isArray(key)) return key.some(can);
     if (!currentUser) return false;
     if (currentUser.role === "owner") return true;
     // Super Admin: optimistic until perms load (avoids nav flash); then the
@@ -530,6 +534,15 @@ export default function BusinessDashboardLayout({ children }) {
       permKey: "dashboard",
       icon: "M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z",
     },
+    // The replacement, carried alongside the original rather than swapped in, so the two can be
+    // compared on real data before anything is removed. Same permission key - it is the same
+    // page's job, done differently.
+    {
+      name: "Home (new)",
+      href: "/dashboard/business/home",
+      permKey: "dashboard",
+      icon: "M4 5a1 1 0 011-1h5a1 1 0 011 1v5a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM13 5a1 1 0 011-1h5a1 1 0 011 1v5a1 1 0 01-1 1h-5a1 1 0 01-1-1V5zM4 14a1 1 0 011-1h5a1 1 0 011 1v5a1 1 0 01-1 1H5a1 1 0 01-1-1v-5zM13 14a1 1 0 011-1h5a1 1 0 011 1v5a1 1 0 01-1 1h-5a1 1 0 01-1-1v-5z",
+    },
     { type: "divider", label: "Operations" },
     {
       name: "Orders",
@@ -546,20 +559,21 @@ export default function BusinessDashboardLayout({ children }) {
     {
       name: "Job Orders",
       href: "/dashboard/business/job-orders",
-      permKey: "production",
+      // The role grid grants production work as "jobOrders"; the server accepts either key.
+      permKey: ["jobOrders", "production"],
       icon: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4",
     },
     { type: "divider", label: "Production" },
     {
       name: "Production",
       href: "/dashboard/business/production-preview",
-      permKey: "production",
+      permKey: ["jobOrders", "production"],
       icon: "M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z",
     },
     {
       name: "Quality Control",
       href: "/dashboard/business/qc-preview",
-      permKey: "qc",
+      permKey: ["jobOrders", "qc"],
       icon: "M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z",
     },
     { type: "divider", label: "Inventory" },
@@ -658,26 +672,28 @@ export default function BusinessDashboardLayout({ children }) {
     {
       name: "Staff",
       href: "/dashboard/business/users",
-      permKey: "userManagement",
+      // Staff, Customers, Permissions and the customer inbox are Owner / Super Admin only on the
+      // server, so a department role saw them here and got an error page or an empty inbox.
+      adminOnly: true,
       icon: "M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z",
     },
     {
       name: "Customers",
       href: "/dashboard/business/customers",
-      permKey: "userManagement",
+      adminOnly: true,
       icon: "M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75M9 7a4 4 0 100 8 4 4 0 000-8z",
     },
     {
       name: "Permissions",
       href: "/dashboard/business/role-permissions",
-      permKey: "userManagement",
+      adminOnly: true,
       icon: "M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z",
     },
     { type: "divider", label: "Admin" },
     {
       name: "Messages",
       href: "/dashboard/business/chat",
-      permKey: "dashboard",
+      adminOnly: true,
       icon: "M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z",
     },
     {
@@ -689,6 +705,8 @@ export default function BusinessDashboardLayout({ children }) {
     {
       name: "Settings",
       href: "/dashboard/business/settings",
+      // Everyone keeps Settings for their own profile, password and 2FA; the shop tabs inside it
+      // are shown to Owner / Super Admin only.
       permKey: "dashboard",
       icon: "M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z",
     },
@@ -710,6 +728,7 @@ export default function BusinessDashboardLayout({ children }) {
   const currentPageName = useMemo(() => {
     const map = {
       "/dashboard/business/dashboardoverview": "Dashboard",
+      "/dashboard/business/home": "Home",
       "/dashboard/business/orders": "Orders",
       "/dashboard/business/job-orders": "Job Orders",
       "/dashboard/business/pos": "Point of Sale",
@@ -788,7 +807,7 @@ export default function BusinessDashboardLayout({ children }) {
     return current;
   };
 
-  // Never paint the admin shell for anyone unauthorized — the guard above redirects them.
+  // Never paint the admin shell for anyone unauthorized - the guard above redirects them.
   // This runs after all hooks, so hook order stays stable.
   if (!currentUser || !isStaffRole(currentUser.role)) {
     return null;
@@ -886,6 +905,8 @@ export default function BusinessDashboardLayout({ children }) {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
+            // Without this the card was the full width of a phone, edge to edge.
+            padding: '1rem',
           }}
         >
           <div
@@ -894,9 +915,9 @@ export default function BusinessDashboardLayout({ children }) {
               background: 'var(--dark2)',
               border: '1px solid var(--border)',
               borderRadius: '16px',
-              padding: '2rem',
+              padding: '1.5rem',
               width: '100%',
-              maxWidth: '400px',
+              maxWidth: '340px',
               display: 'flex',
               flexDirection: 'column',
               gap: '1.5rem',
@@ -911,11 +932,12 @@ export default function BusinessDashboardLayout({ children }) {
                 Are you sure you want to log out of your account?
               </p>
             </div>
-            <div style={{ borderTop: '1px solid var(--border)', paddingTop: '1.25rem', display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+            <div style={{ borderTop: '1px solid var(--border)', paddingTop: '1.25rem', display: 'flex', gap: '0.75rem' }}>
               <button
                 onClick={() => setLogoutConfirmOpen(false)}
                 style={{
-                  padding: '0.5rem 1.25rem',
+                  flex: 1,
+                  padding: '0.7rem 1rem',
                   borderRadius: '8px',
                   border: '1px solid var(--border)',
                   background: 'transparent',
@@ -930,7 +952,8 @@ export default function BusinessDashboardLayout({ children }) {
               <button
                 onClick={confirmLogout}
                 style={{
-                  padding: '0.5rem 1.25rem',
+                  flex: 1,
+                  padding: '0.7rem 1rem',
                   borderRadius: '8px',
                   border: 'none',
                   background: '#ef4444',
@@ -1098,8 +1121,8 @@ export default function BusinessDashboardLayout({ children }) {
                 <span
                   title={
                     superAccess.fullAccess
-                      ? "Full Access — Super Admin bypasses all permission checks (SUPERADMIN_FULL_ACCESS=true). Development mode."
-                      : "Scoped — Super Admin is limited to system tasks (users, roles, audit, settings). Set SUPERADMIN_FULL_ACCESS=true to restore full access."
+                      ? "Full Access - Super Admin bypasses all permission checks (SUPERADMIN_FULL_ACCESS=true). Development mode."
+                      : "Scoped - Super Admin is limited to system tasks (users, roles, audit, settings). Set SUPERADMIN_FULL_ACCESS=true to restore full access."
                   }
                   style={{
                     display: "inline-flex",
@@ -1588,7 +1611,7 @@ export default function BusinessDashboardLayout({ children }) {
         </div>
       )}
 
-      {/* Profile Modal — slide-in panel */}
+      {/* Profile Modal - slide-in panel */}
       {profileModalOpen && (
         <div
           className="profile-modal-overlay profile-modal-overlay--slide"
@@ -1630,7 +1653,7 @@ export default function BusinessDashboardLayout({ children }) {
               <div style={{ fontWeight: 700, fontSize: "1.05rem", color: "var(--white)", textAlign: "center", lineHeight: 1.3 }}>
                 {currentUser?.firstName && currentUser?.lastName
                   ? `${currentUser.firstName} ${currentUser.lastName}`
-                  : currentUser?.email || "—"}
+                  : currentUser?.email || "-"}
               </div>
               <div style={{ fontSize: "0.78rem", color: "var(--gray)", marginTop: "0.2rem", textAlign: "center" }}>
                 {currentUser?.email || ""}
@@ -1647,10 +1670,10 @@ export default function BusinessDashboardLayout({ children }) {
                 </span>
                 <div style={{ display: "flex", flexDirection: "column" }}>
                   {[
-                    { label: "Full Name", value: [profileForm.firstName, profileForm.lastName].filter(Boolean).join(" ") || "—" },
-                    { label: "Email", value: profileForm.email || "—" },
-                    { label: "Phone", value: profileForm.phoneNumber || "—" },
-                    { label: "Address", value: profileForm.address || "—" },
+                    { label: "Full Name", value: [profileForm.firstName, profileForm.lastName].filter(Boolean).join(" ") || "-" },
+                    { label: "Email", value: profileForm.email || "-" },
+                    { label: "Phone", value: profileForm.phoneNumber || "-" },
+                    { label: "Address", value: profileForm.address || "-" },
                   ].map((row, i, arr) => (
                     <div key={row.label} style={{ display: "flex", flexDirection: "column", padding: "0.75rem 0", borderBottom: i < arr.length - 1 ? "1px solid var(--border)" : "none" }}>
                       <span style={{ fontSize: "0.68rem", fontWeight: 600, color: "var(--gray)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.25rem" }}>{row.label}</span>

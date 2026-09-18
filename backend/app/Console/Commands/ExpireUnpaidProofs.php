@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\Order;
+use App\Support\PromotionRelease;
 use App\Models\User;
 use App\Models\Notification;
 use App\Models\RawMaterial;
@@ -55,6 +56,11 @@ class ExpireUnpaidProofs extends Command
             ->where('createdAt', '<', $cutoff)
             ->get()
             ->filter(fn ($o) => empty($o->paymentHistory))
+            // Unfinished online checkouts are orders:void-abandoned-checkouts' job, within the hour.
+            ->reject(fn ($o) => (bool) ($o->checkoutPending ?? false) || (bool) ($o->voidedCheckout ?? false))
+            // Cash on delivery is unpaid by definition until the rider collects. Left in, any COD
+            // order still at Pending after the cut-off was cancelled overnight as "never paid".
+            ->reject(fn ($o) => in_array(strtolower((string) ($o->paymentMethod ?? '')), array_map('strtolower', \App\Support\PaymentMethod::codAliases()), true))
             ->reject(fn ($o) => $due->contains(fn ($d) => (string) $d->_id === (string) $o->_id));
 
         if ($stale->isNotEmpty()) {
@@ -89,6 +95,11 @@ class ExpireUnpaidProofs extends Command
                     }
                 }
 
+                // What checkout actually claimed - BOM holds, ready-made deductions, owed quantities,
+                // quote holds. The loop above only understands a legacy shape, so on its own it
+                // released nothing for an order placed today.
+                app(\App\Http\Controllers\OrderController::class)->releaseReservationsFor($order);
+
                 $history   = $order->statusHistory ?? [];
                 $history[] = ['status' => 'cancelled', 'at' => now()->toISOString(), 'note' => 'Deposit not paid before the hold expired.'];
 
@@ -98,6 +109,8 @@ class ExpireUnpaidProofs extends Command
                 $order->cancelReason   = 'The deposit was not paid before the approved proof expired.';
                 $order->updatedAt      = now();
                 $order->save();
+                // This path cancels without restoreStockOnCancel, so it releases promotions itself.
+                PromotionRelease::forCancelledOrder($order);
 
                 try {
                     Notification::create([

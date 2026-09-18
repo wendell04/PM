@@ -163,7 +163,7 @@ function ByOrderTab({ stockOuts, materials }) {
         if (!ord.products[pkey]) {
           ord.products[pkey] = {
             productId:   so.productId,
-            productName: so.productName || so.matName || '—',
+            productName: so.productName || so.matName || '-',
             materials:   [],
           };
         }
@@ -290,7 +290,7 @@ function ByOrderTab({ stockOuts, materials }) {
                                           return (
                                             <tr key={mi} style={{ borderTop:'1px solid var(--border)' }}>
                                               <td style={{ padding:'7px 14px', fontSize:'12px', color:'var(--gray-light)', fontWeight:500 }}>
-                                                {so.matName || mat?.name || '—'}
+                                                {so.matName || mat?.name || '-'}
                                               </td>
                                               <td style={{ padding:'7px 14px', fontSize:'12px', color:'#c62828', fontWeight:600 }}>
                                                 -{outQty(so.qty)} {mat?.unit ?? 'pcs'}
@@ -336,7 +336,7 @@ function ByOrderTab({ stockOuts, materials }) {
       {manualCount > 0 && (
         <div style={{ ...S.card, padding:0, overflow:'hidden' }}>
           <div style={{ ...S.th, padding:'12px 16px', fontSize:'12px', letterSpacing:'.5px' }}>
-            Manual / Adjustments — {manualCount} record{manualCount !== 1 ? 's' : ''}
+            Manual / Adjustments - {manualCount} record{manualCount !== 1 ? 's' : ''}
           </div>
           <table style={{ width:'100%', borderCollapse:'collapse' }}>
             <thead>
@@ -356,11 +356,11 @@ function ByOrderTab({ stockOuts, materials }) {
                     onMouseLeave={e => e.currentTarget.style.background=''}
                   >
                     <td style={{ ...S.td, color:'var(--gray)', fontSize:'12px', whiteSpace:'nowrap' }}>{so.date}</td>
-                    <td style={{ ...S.td, fontWeight:500 }}>{so.matName || mat?.name || '—'}</td>
+                    <td style={{ ...S.td, fontWeight:500 }}>{so.matName || mat?.name || '-'}</td>
                     <td style={{ ...S.td, color:'#c62828', fontWeight:600 }}>-{outQty(so.qty)} {mat?.unit ?? 'pcs'}</td>
                     <td style={{ ...S.td, fontFamily:'monospace', fontSize:'12px' }}>₱{so.unitCost.toFixed(2)}</td>
                     <td style={{ ...S.td }}><ReasonBadge reason={so.reason} /></td>
-                    <td style={{ ...S.td, color:'var(--gray)', fontSize:'12px', maxWidth:'200px', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{so.notes || '—'}</td>
+                    <td style={{ ...S.td, color:'var(--gray)', fontSize:'12px', maxWidth:'200px', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{so.notes || '-'}</td>
                   </tr>
                 );
               })}
@@ -488,8 +488,8 @@ function ByMaterialTab({ stockOuts, materials }) {
                                 <tr key={ri} style={{ borderTop:'1px solid var(--border)' }}>
                                   <td style={{ padding:'7px 14px', fontSize:'11px', color:'var(--gray)', whiteSpace:'nowrap' }}>{so.date}</td>
                                   <td style={{ padding:'7px 14px', fontSize:'11px', fontFamily:'monospace', color:'var(--gray-light)' }}>{so.ref}</td>
-                                  <td style={{ padding:'7px 14px', fontSize:'12px', color:'var(--gray-light)' }}>{so.productName || '—'}</td>
-                                  <td style={{ padding:'7px 14px', fontSize:'12px', color:'var(--gray)' }}>{so.customerName || '—'}</td>
+                                  <td style={{ padding:'7px 14px', fontSize:'12px', color:'var(--gray-light)' }}>{so.productName || '-'}</td>
+                                  <td style={{ padding:'7px 14px', fontSize:'12px', color:'var(--gray)' }}>{so.customerName || '-'}</td>
                                   <td style={{ padding:'7px 14px', fontSize:'12px', color:'#c62828', fontWeight:600 }}>-{outQty(so.qty)} {g.unit}</td>
                                   <td style={{ padding:'7px 14px', fontSize:'12px', fontFamily:'monospace', color:'#166534' }}>₱{so.totalCost.toFixed(2)}</td>
                                   <td style={{ padding:'7px 14px' }}><ReasonBadge reason={so.reason} /></td>

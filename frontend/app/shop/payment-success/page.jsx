@@ -5,29 +5,14 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
+import OrderReceipt from '@/components/shop/OrderReceipt';
 import { useCart } from '@/context/CartContext';
 import { orderNo } from '@/lib/orderNumber';
+import { paymentLabel } from '@/lib/paymentLabel';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
 
-// Payment rows were labelled by POSITION - first is a "Downpayment", the rest are "Balance payment".
-// On a request-design order the first payment is the DESIGN FEE, so the receipt called the design fee
-// a downpayment and the actual downpayment a balance payment. Read the note the payment carries
-// instead; it says what the payment was for.
-function paymentLabel(pmt, index, total) {
-  // Payments recorded from now on carry what they were FOR. Older rows have only the gateway
-  // reference in their note, so they still fall through to the guesses below.
-  const byType = { design_fee: 'Design fee', downpayment: 'Downpayment', balance: 'Balance payment', payment: 'Payment' };
-  if (pmt?.type && byType[pmt.type]) return byType[pmt.type];
-
-  const note = String(pmt?.note ?? '').toLowerCase();
-  if (note.includes('design fee') || note.includes('design_fee')) return 'Design fee';
-  if (note.includes('downpayment') || note.includes('deposit'))   return 'Downpayment';
-  if (note.includes('balance'))                                   return 'Balance payment';
-  if (total <= 1) return 'Payment';
-  return index === 0 ? 'Downpayment' : 'Balance payment';
-}
 
 export default function PaymentSuccessPage() {
   const searchParams  = useSearchParams();
@@ -48,7 +33,7 @@ export default function PaymentSuccessPage() {
   useEffect(() => {
     sessionStorage.removeItem('checkout_payload');
     sessionStorage.removeItem('pending_payment_order_id');
-    // Cart is cleared only once the order is confirmed settled (see fetchOrder), not on mount —
+    // Cart is cleared only once the order is confirmed settled (see fetchOrder), not on mount -
     // otherwise a payment that fails verification would have already emptied the cart.
   }, [orderId]);
 
@@ -142,13 +127,33 @@ export default function PaymentSuccessPage() {
             setLoading(false);
             return;
           }
-          // Payment failed/expired - clear the orphan order then redirect to failed page
-          if (token && orderId) {
-            fetch(`${API_URL}/api/payment/cancel-pending/${orderId}`, {
-              method: 'DELETE',
-              headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
-            }).catch(() => {});
+          // A failed payment at CHECKOUT is not an order: release it (the server re-checks with
+          // PayMongo first) and take the customer back to the checkout they came from, where the
+          // "payment didn't go through" modal and their filled-in details are waiting.
+          const returnTo = sessionStorage.getItem('checkout_return_to');
+          if (returnTo) {
+            let released = false;
+            try {
+              const rel = await fetch(`${API_URL}/api/payment/cancel-pending/${orderId}`, {
+                method: 'DELETE',
+                headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+              });
+              released = rel.ok;
+            } catch { released = false; }
+            if (!released) {
+              // The server would not release it - PayMongo may still be moving the money.
+              setUnconfirmed(true);
+              setVerifying(false);
+              setLoading(false);
+              return;
+            }
+            sessionStorage.removeItem('checkout_return_to');
+            sessionStorage.removeItem('pending_payment_order_id');
+            router.replace(returnTo + (returnTo.includes('?') ? '&' : '?') + 'payment_cancelled=1');
+            return;
           }
+          // A failed payment on an EXISTING order (Pay Now in My Orders) leaves the order alone -
+          // it was a real order before this payment and still is.
           router.replace(`/shop/payment-failed?id=${orderId}`);
         } else {
           // Only the lines that were actually ordered. A cart can hold items the customer
@@ -157,6 +162,7 @@ export default function PaymentSuccessPage() {
           try { ordered = JSON.parse(sessionStorage.getItem('checkout_line_ids') || '[]'); } catch { ordered = []; }
           if (Array.isArray(ordered) && ordered.length) bulkRemove(ordered); else clearCart();
           sessionStorage.removeItem('checkout_line_ids');
+          sessionStorage.removeItem('checkout_return_to');
           setVerifying(false);
           setLoading(false);
         }
@@ -245,7 +251,7 @@ export default function PaymentSuccessPage() {
           )}
         </div>
 
-        <h1 style={{
+        <h1 className="pmp-heading" style={{
           fontSize: '1.5rem',
           fontWeight: 700,
           color: 'var(--white)',
@@ -254,7 +260,7 @@ export default function PaymentSuccessPage() {
           {verifying ? 'Confirming your payment…' : isCod ? 'Order Placed!' : order?.paymentStatus === 'partial' ? 'Downpayment Received!' : (order?.designFeePaid && order?.paymentStatus !== 'paid') ? 'Design Fee Paid!' : 'Payment Successful'}
         </h1>
 
-        <p style={{
+        <p className="pmp-sub" style={{
           color: 'var(--gray)',
           fontSize: '0.95rem',
           marginBottom: '32px',
@@ -267,7 +273,7 @@ export default function PaymentSuccessPage() {
             : order?.paymentStatus === 'partial'
               ? `Your downpayment of ₱${Number(order?.downPayment ?? 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })} has been received. The remaining balance of ₱${Number(order?.balance ?? 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })} is due before delivery.`
               : (order?.designFeePaid && order?.paymentStatus !== 'paid')
-                ? "Your design fee has been received. Our designer will send you a proof via chat within 24–48 hours. The remaining order balance is due after you approve the design."
+                ? "Your design fee has been received. Our designer will send you a proof via chat, and it also appears in My Orders waiting for your approval. The rest of the order is paid once you approve it."
                 : "Thank you for your order. We've received your payment and will begin processing shortly."}
         </p>
 
@@ -286,6 +292,21 @@ export default function PaymentSuccessPage() {
             {error}
           </p>
         )}
+
+        <style>{`
+          /* Gap and alignment are not set inline anywhere in this card, so plain rules reach them. */
+          #pmp-receipt div { gap: 10px; }
+          #pmp-receipt span:last-child { text-align: right; }
+          #pmp-receipt span { overflow-wrap: anywhere; }
+          @media (max-width: 480px) {
+            #pmp-receipt { padding: 13px !important; }
+            #pmp-receipt span { font-size: 0.75rem !important; }
+            /* The total keeps its size so the one number that matters still reads first. */
+            #pmp-receipt .pmp-total-block span { font-size: 0.86rem !important; }
+            .pmp-heading { font-size: 1.25rem !important; }
+            .pmp-sub { font-size: 0.86rem !important; margin-bottom: 22px !important; }
+          }
+        `}</style>
 
         {order && !loading && (
           <div id="pmp-receipt" style={{
@@ -316,7 +337,7 @@ export default function PaymentSuccessPage() {
                   <div key={i} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
                     <span style={{ color: 'var(--gray)', fontSize: '0.82rem', flex: 1, paddingRight: '8px' }}>
                       {item.productName ?? item.product_name ?? 'Item'}
-                      {item.variantName ? ` — ${item.variantName}` : ''} ×{item.qty ?? item.quantity ?? 1}
+                      {item.variantName ? ` - ${item.variantName}` : ''} ×{item.qty ?? item.quantity ?? 1}
                     </span>
                     <span style={{ color: 'var(--white)', fontSize: '0.82rem', flexShrink: 0 }}>
                       ₱{Number(item.lineTotal ?? ((item.unitPrice ?? 0) * (item.qty ?? 1))).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
@@ -375,7 +396,7 @@ export default function PaymentSuccessPage() {
             )}
 
             {/* Total + Status */}
-            <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', marginTop: '8px', paddingTop: '10px' }}>
+            <div className="pmp-total-block" style={{ borderTop: '1px solid rgba(255,255,255,0.06)', marginTop: '8px', paddingTop: '10px' }}>
               {order.paymentStatus === 'partial' ? (
                 <>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
@@ -462,106 +483,9 @@ export default function PaymentSuccessPage() {
 
         {/* Professional invoice-style receipt - portaled to <body> so print can hide everything else
             (no leftover blank page). Hidden on screen, shown only when printing. */}
-        {order && mounted && createPortal((() => {
-          const rItems = order.items ?? [];
-          const rSubtotal = rItems.reduce((s, i) => s + Number(i.lineTotal ?? ((i.unitPrice ?? 0) * (i.qty ?? 1))), 0);
-          const rNum = String(order._id ?? order.id ?? '').slice(-8).toUpperCase();
-          const rName = order.userSnapshot?.name || 'Customer';
-          const rDate = order.createdAt ? new Date(order.createdAt).toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' }) : '';
-          const a = order.deliveryAddress || {};
-          const rAddr = [a.house_number, a.street, a.subdivision, a.barangay, a.city, a.province, a.zip].filter(Boolean).join(', ');
-          const rPhone = a.phone || order.userSnapshot?.phone || '';
-          const rPayments = order.paymentHistory ?? [];
-          const peso = (n) => `₱${Number(n || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-          // Only paymentStatus can say an order is settled. `balance` sits at 0 before the goods have
-          // been billed at all, which is exactly the state a request-design order is in right after
-          // the design fee clears - and reading that as paid printed a receipt claiming a P2,157.89
-          // order was settled by P100.
-          const receiptPaid = (order.paymentHistory ?? []).reduce((t, x) => t + (Number(x.amount) || 0), 0);
-          const settled     = order.paymentStatus === 'paid';
-          const receiptOwed = Math.max(0, Number(order.totalAmount ?? order.finalPrice ?? 0) - receiptPaid);
-          const GOLD = '#c8922e';
-          const th = { padding: '9px 12px', fontWeight: 700 };
-          const tot = (label, val, strong) => (
-            <tr><td style={{ textAlign: 'right', padding: strong ? '6px 12px 2px' : '2px 12px', fontWeight: strong ? 800 : 700, fontSize: strong ? 13.5 : 12.5, color: strong ? '#111' : '#333' }}>{label}</td>
-                <td style={{ textAlign: 'right', padding: strong ? '6px 0 2px' : '2px 0', fontWeight: strong ? 800 : 400, fontSize: strong ? 13.5 : 12.5, color: strong ? '#111' : '#333' }}>{val}</td></tr>
-          );
-          return (
-            <div id="pmp-print-receipt" style={{ textAlign: 'left', color: '#111', fontFamily: 'Arial, Helvetica, sans-serif' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
-                <div style={{ fontSize: 27, fontWeight: 800, letterSpacing: 1, color: '#111' }}>Receipt</div>
-                <div style={{ textAlign: 'right', fontSize: 11.5, color: '#555', lineHeight: 1.7 }}>
-                  <div style={{ fontWeight: 800, color: GOLD, fontSize: 15 }}>Personalize Me Prints</div>
-                  <div>Custom Printing Services</div>
-                  <div>personalizemeprints.com</div>
-                </div>
-              </div>
-              <div style={{ display: 'flex', gap: 40, fontSize: 12, color: '#333', borderTop: '2px solid #111', borderBottom: '1px solid #ddd', padding: '10px 0', marginBottom: 20 }}>
-                <div><div style={{ color: '#888', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>Order No.</div><div style={{ fontWeight: 700, marginTop: 2 }}>{orderNo(order)}</div></div>
-                <div><div style={{ color: '#888', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>Date</div><div style={{ fontWeight: 700, marginTop: 2 }}>{rDate || '-'}</div></div>
-                <div><div style={{ color: '#888', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>Status</div><div style={{ fontWeight: 700, marginTop: 2, color: settled ? '#166534' : '#b45309' }}>{settled ? 'Fully Paid' : receiptOwed > 0 && Number(order.balance) > 0 ? 'Downpayment Paid' : 'Design Fee Paid - Order Unpaid'}</div></div>
-              </div>
-              <div style={{ display: 'flex', gap: 40, marginBottom: 22 }}>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 10.5, fontWeight: 800, color: GOLD, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 5 }}>Bill To</div>
-                  <div style={{ fontSize: 12, color: '#333', lineHeight: 1.6 }}>{rName}{order.userSnapshot?.email ? <><br />{order.userSnapshot.email}</> : null}{rPhone ? <><br />{rPhone}</> : null}</div>
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 10.5, fontWeight: 800, color: GOLD, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 5 }}>Ship To</div>
-                  <div style={{ fontSize: 12, color: '#333', lineHeight: 1.6 }}>{rName}<br />{rAddr || '-'}</div>
-                </div>
-              </div>
-              <div style={{ fontSize: 11, fontWeight: 800, color: '#111', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>Summary</div>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5, marginBottom: 10 }}>
-                <thead><tr style={{ background: GOLD, color: '#fff' }}>
-                  <th style={{ ...th, textAlign: 'left' }}>Product</th><th style={{ ...th, textAlign: 'center' }}>Qty</th><th style={{ ...th, textAlign: 'right' }}>Price</th>
-                </tr></thead>
-                <tbody>
-                  {rItems.map((i, idx) => (
-                    <tr key={idx} style={{ borderBottom: '1px solid #eee' }}>
-                      <td style={{ padding: '9px 12px', color: '#222' }}>{(i.productName || i.product_name || 'Item')}{i.variantName ? ` - ${i.variantName}` : ''}</td>
-                      <td style={{ padding: '9px 12px', textAlign: 'center', color: '#222' }}>{i.qty ?? i.quantity ?? 1}</td>
-                      <td style={{ padding: '9px 12px', textAlign: 'right', color: '#222' }}>{peso(i.lineTotal ?? ((i.unitPrice ?? 0) * (i.qty ?? 1)))}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                <table><tbody>
-                  {tot('Sub-Total:', peso(rSubtotal))}
-                  {Number(order.designFee) > 0 && tot('Design fee:', peso(order.designFee))}
-                  {Number(order.rushFee) > 0 && tot('Rush fee:', peso(order.rushFee))}
-                  {Number(order.shippingFee) > 0 && tot('Delivery:', peso(order.shippingFee))}
-                  {tot('Total:', peso(order.totalAmount ?? order.finalPrice), true)}
-                </tbody></table>
-              </div>
-              {rPayments.length > 0 && (
-                <div style={{ borderTop: '1px solid #ddd', marginTop: 16, paddingTop: 12 }}>
-                  <div style={{ fontSize: 11, fontWeight: 800, color: '#111', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>Payments</div>
-                  {rPayments.map((p, idx) => {
-                    const when = p.recordedAt ?? p.date ?? p.at ?? p.paidAt;
-                    const label = paymentLabel(p, idx, rPayments.length);
-                    return (
-                      <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#333', marginBottom: 3 }}>
-                        <span>{label}{when ? ` - ${new Date(when).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}` : ''}{p.method ? ` - ${String(p.method).toUpperCase()}` : ''}</span>
-                        <span style={{ fontWeight: 700 }}>{peso(p.amount)}</span>
-                      </div>
-                    );
-                  })}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, marginTop: 6, fontWeight: 800, color: settled ? '#166534' : '#b45309' }}>
-                    <span>{settled ? 'Fully Paid' : 'Still Due'}</span>
-                    <span>{settled ? peso(order.totalAmount ?? order.finalPrice) : peso(receiptOwed)}</span>
-                  </div>
-                </div>
-              )}
-              <div style={{ marginTop: 28, borderTop: '1px solid #eee', paddingTop: 12, fontSize: 10.5, color: '#777', lineHeight: 1.7 }}>
-                <div style={{ fontWeight: 700, color: '#555', marginBottom: 3, fontSize: 11 }}>Notes</div>
-                Production starts once your design/proof is approved and the required payment clears. For any queries, reach us at personalizemeprints.com. Thank you for your order.<br />
-                <span style={{ color: '#aaa' }}>&copy; {new Date().getFullYear()} Personalize Me Prints</span>
-              </div>
-            </div>
-          );
-        })(), document.body)}
+        {/* The same receipt /shop/receipt/[id] shows. Portaled to <body> so print can hide
+            everything else, and hidden on screen until then. */}
+        {order && mounted && createPortal(<OrderReceipt order={order} />, document.body)}
 
         {/* On print: the receipt is a direct child of <body> (portaled), so we hide every OTHER body
             child (display:none removes their height -> no leftover blank page) and show the receipt. */}
@@ -611,8 +535,9 @@ export default function PaymentSuccessPage() {
                   is created on first use, so an order nobody has questions about leaves no empty thread. */}
               {/* Mixed carts store designType as 'upload', so keying on it hid the chat button from
                   exactly the orders that need it most - the ones with a design being drawn. */}
-              {(order?.designType === 'request'
-                || (order?.items ?? []).some(i => i?.designRequested || i?.designMode === 'request')) && (
+              {(order?.designType === 'request' || order?.designType === 'upload'
+                || (order?.items ?? []).some(i => i?.designRequested || i?.designMode === 'request'
+                    || i?.designUrl || i?.designFiles?.length || i?.isCustom)) && (
                 <button
                   type="button"
                   onClick={() => window.dispatchEvent(new CustomEvent('pmp_open_chat', { detail: { orderCard: {

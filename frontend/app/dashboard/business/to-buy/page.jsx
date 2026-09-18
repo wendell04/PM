@@ -13,6 +13,7 @@
  */
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { S, ICONS, SearchBar, SummaryCard } from '../inventory-v2/shared';
 
@@ -25,6 +26,32 @@ export default function ToBuyPage() {
   const { token } = useAuth();
   const [rows, setRows]       = useState([]);
   const [totals, setTotals]   = useState({ totalItems: 0, estimatedCost: 0 });
+  // A finished good bought in and resold has no BOM, so it never produced a material line and
+  // this page said nothing about it. It is a different question - buy the thing, not what it is
+  // made of - so it gets its own tab rather than being mixed into the supplier groups.
+  const [productRows, setProductRows] = useState([]);
+  // Quotes a customer tried to pay while stock was short. Kept out of the totals - nothing was paid,
+  // so it is not committed work - but listed first, because a customer who tried to pay is the
+  // warmest sale on the page.
+  const [waitingQuotes, setWaitingQuotes] = useState([]);
+  const [quoteBusy, setQuoteBusy] = useState('');
+  const [quoteNote, setQuoteNote] = useState({});
+  // In the URL like every other tab in this dashboard, so a link to "no material plan" lands
+  // there, the back button steps between them, and a reload does not throw the choice away.
+  const router       = useRouter();
+  const pathname     = usePathname();
+  const searchParams = useSearchParams();
+  const urlTab       = searchParams.get('tab');
+  const [tab, setTab] = useState(urlTab === 'products' ? 'products' : 'materials');
+
+  useEffect(() => {
+    setTab(searchParams.get('tab') === 'products' ? 'products' : 'materials');
+  }, [searchParams]);
+
+  const selectTab = (id) => {
+    setTab(id);
+    router.replace(id === 'materials' ? pathname : pathname + '?tab=' + id, { scroll: false });
+  };
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState('');
   const [search, setSearch]   = useState('');
@@ -41,6 +68,8 @@ export default function ToBuyPage() {
       const data = d?.data ?? d;
       setRows(Array.isArray(data?.items) ? data.items : []);
       setTotals({ totalItems: data?.totalItems ?? 0, estimatedCost: data?.estimatedCost ?? 0 });
+      setProductRows(Array.isArray(data?.products) ? data.products : []);
+      setWaitingQuotes(Array.isArray(data?.waitingQuotes) ? data.waitingQuotes : []);
     } catch {
       setError('Could not load purchase requirements.');
     } finally {
@@ -72,6 +101,32 @@ export default function ToBuyPage() {
     return Object.values(by).sort((a, b) => b.cost - a.cost);
   }, [visible]);
 
+  const quoteAction = async (q, action) => {
+    setQuoteBusy(q.id + action);
+    setQuoteNote(n => ({ ...n, [q.id]: null }));
+    try {
+      const res = await fetch(`${API_URL}/api/admin/quotations/${q.id}/${action}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setQuoteNote(n => ({ ...n, [q.id]: { error: true, text: d?.message || 'That did not work. Try again.' } }));
+        return;
+      }
+      setQuoteNote(n => ({ ...n, [q.id]: { error: false, text: d?.message || 'Done.' } }));
+      await load();
+    } finally {
+      setQuoteBusy('');
+    }
+  };
+
+  const daysLeft = (iso) => {
+    if (!iso) return null;
+    const d = Math.ceil((new Date(iso).getTime() - Date.now()) / 86400000);
+    return d <= 0 ? 'expires today' : `expires in ${d} day${d === 1 ? '' : 's'}`;
+  };
+
   const copyList = (g) => {
     const text = [
       `Order request - ${g.supplier}`,
@@ -82,17 +137,94 @@ export default function ToBuyPage() {
 
   return (
     <div style={{ ...S.page, padding: '24px' }}>
-      <div style={{ ...S.rowBetween, marginBottom: '18px', justifyContent: 'flex-end' }}>
-        <button type="button" onClick={load} style={S.btnGhost}>Refresh</button>
-      </div>
-
       <div style={{ ...S.row, marginBottom: '18px' }}>
         <SummaryCard label="Materials to buy" value={totals.totalItems} accent />
         <SummaryCard label="Estimated cost" value={peso(totals.estimatedCost)} />
         <SummaryCard label="Suppliers to contact" value={groups.length} />
       </div>
 
-      <SearchBar value={search} onChange={setSearch} placeholder="Search material or supplier…" style={{ marginBottom: '14px', maxWidth: '340px' }} />
+      {waitingQuotes.length > 0 && (
+        <div style={{ ...S.card, padding: 0, overflow: 'hidden', marginBottom: '18px', borderColor: 'rgba(224,168,82,0.45)' }}>
+          <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
+            <div style={{ fontSize: '14px', fontWeight: 700 }}>Waiting on stock ({waitingQuotes.length})</div>
+            <div style={{ fontSize: '11px', color: 'var(--gray)', marginTop: '2px' }}>
+              These customers tried to pay a quote, but stock ran short after it was sent. Not counted in the
+              totals above - nothing is paid yet. Allow pre-order for the quote, confirm the stock is back,
+              or send a new quote.
+            </div>
+          </div>
+          {waitingQuotes.map(q => {
+            const note = quoteNote[q.id];
+            return (
+              <div key={q.id} style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap', alignItems: 'baseline' }}>
+                  <div style={{ fontSize: '13px', fontWeight: 700 }}>
+                    Quote #{q.ref} <span style={{ color: 'var(--gray)', fontWeight: 500 }}>· {q.customerName || 'Customer'}</span>
+                  </div>
+                  <div style={{ fontSize: '12px', color: 'var(--gray)' }}>
+                    {peso(q.total)}{daysLeft(q.expiresAt) ? ` · ${daysLeft(q.expiresAt)}` : ''}
+                  </div>
+                </div>
+
+                {q.stillShort ? (
+                  <div style={{ marginTop: '6px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                    {(q.shortages || []).map(x => (
+                      <div key={x.inventoryId} style={{ fontSize: '12px', color: 'var(--gray)' }}>
+                        <span style={{ color: 'var(--white)', fontWeight: 600 }}>{x.name}</span>
+                        {` - needs ${num(x.needed)}, ${num(x.available)} free, `}
+                        <span style={{ color: '#e0a852', fontWeight: 700 }}>short {num(x.short)} {x.uom || ''}</span>
+                        {x.leadTimeDays > 0 && ` · about ${x.leadTimeDays}d to restock`}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div style={{ marginTop: '6px', fontSize: '12px', color: '#4ade80', fontWeight: 600 }}>
+                    Stock is back - tell the customer they can pay.
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '10px' }}>
+                  {q.stillShort && (
+                    <button type="button" disabled={!!quoteBusy} onClick={() => quoteAction(q, 'allow-preorder')}
+                      style={{ ...S.btnSm, background: 'var(--gold)', color: '#111', border: '1px solid var(--gold)', fontWeight: 700 }}
+                      title="Only this quote - the product stays as it is on the storefront">
+                      {quoteBusy === q.id + 'allow-preorder' ? 'Allowing…' : 'Allow pre-order for this quote'}
+                    </button>
+                  )}
+                  <button type="button" disabled={!!quoteBusy} onClick={() => quoteAction(q, 'restocked')} style={{ ...S.btnSm }}>
+                    {quoteBusy === q.id + 'restocked' ? 'Checking…' : 'Restocked - tell the customer'}
+                  </button>
+                  <a href="/dashboard/business/chat" style={{ ...S.btnSm, textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}
+                    title="Send a new quote from the customer's conversation">
+                    Send a new quote
+                  </a>
+                </div>
+                {note && (
+                  <div style={{ marginTop: '8px', fontSize: '12px', color: note.error ? '#e05252' : '#4ade80' }}>{note.text}</div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <div style={{ display: 'flex', gap: '6px', marginBottom: '14px' }}>
+        {[['materials', `By material (${totals.totalItems})`], ['products', `No material plan (${productRows.length})`]].map(([id, label]) => (
+          <button key={id} type="button" onClick={() => selectTab(id)}
+            style={{ ...S.btnSm, background: tab === id ? 'var(--gold)' : 'transparent',
+              color: tab === id ? '#111' : 'var(--gray)', fontWeight: tab === id ? 700 : 600,
+              border: `1px solid ${tab === id ? 'var(--gold)' : 'var(--border)'}` }}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px', flexWrap: 'wrap' }}>
+        {tab === 'materials' && (
+          <SearchBar value={search} onChange={setSearch} placeholder="Search material or supplier…" style={{ maxWidth: '340px', flex: '1 1 240px' }} />
+        )}
+        <button type="button" onClick={load} style={{ ...S.btnGhost, marginLeft: 'auto' }}>Refresh</button>
+      </div>
 
       {error && (
         <div style={{ ...S.card, borderColor: '#c62828', color: '#e05252', fontSize: '13px' }}>
@@ -105,7 +237,55 @@ export default function ToBuyPage() {
       )}
 
       {/* An empty list is the good outcome, so it should read like one. */}
-      {!error && !loading && groups.length === 0 && (
+      {!error && !loading && tab === 'products' && (
+        productRows.length === 0 ? (
+          <div style={{ ...S.card, textAlign: 'center', padding: '36px 20px' }}>
+            <div style={{ fontSize: '15px', fontWeight: 700, marginBottom: '4px' }}>Every job has a material plan</div>
+            <div style={{ fontSize: '13px', color: 'var(--gray)' }}>
+              Nothing committed is being made from materials we are not tracking.
+            </div>
+          </div>
+        ) : (
+          <div style={{ ...S.card, padding: 0, overflow: 'hidden', marginBottom: '14px' }}>
+            <div style={{ ...S.rowBetween, padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
+              <div>
+                <div style={{ fontSize: '14px', fontWeight: 700 }}>Jobs with no material plan</div>
+                <div style={{ fontSize: '11px', color: 'var(--gray)', marginTop: '2px' }}>
+                  Committed work whose product has no BOM - usually a quoted service. Attach its
+                  materials on the quotation and it moves to By material.
+                </div>
+              </div>
+              <span style={{ fontSize: '14px', fontWeight: 700, color: 'var(--gold)' }}>
+                {peso(productRows.reduce((t, r) => t + (Number(r.estimatedCost) || 0), 0))}
+              </span>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 90px 90px 90px 110px', gap: '8px',
+              padding: '8px 16px', fontSize: '10px', fontWeight: 700, letterSpacing: '.05em',
+              textTransform: 'uppercase', color: 'var(--gray)', borderBottom: '1px solid var(--border)' }}>
+              <span>Product</span><span>Ordered</span><span>On hand</span><span>To buy</span><span>Est. cost</span>
+            </div>
+            {productRows.map(r => (
+              <div key={r.productId + (r.variant || '')} style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 90px 90px 90px 110px',
+                gap: '8px', padding: '10px 16px', fontSize: '13px', borderBottom: '1px solid var(--border)', alignItems: 'center' }}>
+                <span style={{ minWidth: 0 }}>
+                  <span style={{ fontWeight: 600 }}>{r.name}</span>
+                  {r.variant && <span style={{ color: 'var(--gray)' }}> - {r.variant}</span>}
+                  <span style={{ display: 'block', fontSize: '11px', color: 'var(--gray)' }}>
+                    {r.hasInventory ? r.supplierName : 'No inventory record - stock is not tracked for this one'}
+                    {r.orders?.length ? ` · ${r.orders.join(', ')}` : ''}
+                  </span>
+                </span>
+                <span>{r.needed}</span>
+                <span>{r.onHand}</span>
+                <span style={{ fontWeight: 700, color: 'var(--gold)' }}>{r.shortfall}</span>
+                <span>{peso(r.estimatedCost)}</span>
+              </div>
+            ))}
+          </div>
+        )
+      )}
+
+      {!error && !loading && tab === 'materials' && groups.length === 0 && (
         <div style={{ ...S.card, textAlign: 'center', padding: '36px 20px' }}>
           <div style={{ fontSize: '15px', fontWeight: 700, marginBottom: '4px' }}>Nothing to buy</div>
           <div style={{ fontSize: '13px', color: 'var(--gray)' }}>
@@ -114,7 +294,7 @@ export default function ToBuyPage() {
         </div>
       )}
 
-      {!error && !loading && groups.map(g => (
+      {!error && !loading && tab === 'materials' && groups.map(g => (
         <div key={g.supplier} style={{ ...S.card, marginBottom: '14px', padding: 0, overflow: 'hidden' }}>
           <div style={{ ...S.rowBetween, padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
             <div>
@@ -126,7 +306,10 @@ export default function ToBuyPage() {
             </div>
             <div style={{ ...S.row, gap: '10px' }}>
               <span style={{ fontSize: '14px', fontWeight: 700, color: 'var(--gold)' }}>{peso(g.cost)}</span>
-              <button type="button" onClick={() => copyList(g)} style={{ ...S.btnSm }}>Copy list</button>
+              <button type="button" onClick={() => copyList(g)} style={{ ...S.btnSm }} title="Copy this list to paste to the supplier">Copy</button>
+              <a href="/dashboard/business/inventory-v2?tab=stockin"
+                style={{ ...S.btnSm, textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}
+                title="Record the delivery once it arrives">Stock In</a>
             </div>
           </div>
 

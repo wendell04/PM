@@ -14,7 +14,7 @@ use App\Models\PersonalAccessToken;
  * handful of endpoints needed to finish the challenge, and nothing else. The real full-access
  * token is minted only after the code is verified. Without this gate, a `2fa-pending` token
  * would still pass `auth:sanctum` (which checks validity, not abilities) and the second factor
- * would be enforced by the frontend redirect alone — i.e. bypassable by calling the API directly.
+ * would be enforced by the frontend redirect alone - i.e. bypassable by calling the API directly.
  */
 class EnsureTwoFactorComplete
 {

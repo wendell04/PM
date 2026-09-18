@@ -64,7 +64,13 @@ export async function login(credentials) {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(credentials),
+        body: JSON.stringify({
+          // Attached here so every caller gets it - the shop layout was sending it and the
+          // landing page's own login was not, which is why "remember this device" appeared to
+          // work in one place and not the other.
+          device_token: (typeof window !== 'undefined' && localStorage.getItem('device_token')) || null,
+          ...credentials,
+        }),
       },
       30000,
     ); // 30 second timeout
@@ -144,8 +150,8 @@ export async function verifyEmail(data) {
       throw new Error(errorData.message || "Email verification failed");
     }
 
-    const data = await response.json();
-    return data;
+    const payload = await response.json();
+    return payload;
   } catch (error) {
     console.error("Error verifying email:", error);
     throw error;
@@ -178,8 +184,8 @@ export async function resendVerificationEmail(data) {
       );
     }
 
-    const data = await response.json();
-    return data;
+    const payload = await response.json();
+    return payload;
   } catch (error) {
     console.error("Error resending verification email:", error);
     throw error;
@@ -210,8 +216,8 @@ export async function forgotPassword(data) {
       throw new Error(errorData.message || "Failed to send reset link");
     }
 
-    const data = await response.json();
-    return data;
+    const payload = await response.json();
+    return payload;
   } catch (error) {
     console.error("Error sending reset link:", error);
     throw error;
@@ -242,8 +248,8 @@ export async function verifyResetToken(data) {
       throw new Error(errorData.message || "Invalid reset token");
     }
 
-    const data = await response.json();
-    return data;
+    const payload = await response.json();
+    return payload;
   } catch (error) {
     console.error("Error verifying reset token:", error);
     throw error;
@@ -274,8 +280,8 @@ export async function sendResetCode(data) {
       throw new Error(errorData.message || "Failed to send reset code");
     }
 
-    const data = await response.json();
-    return data;
+    const payload = await response.json();
+    return payload;
   } catch (error) {
     console.error("Error sending reset code:", error);
     throw error;
@@ -306,8 +312,8 @@ export async function verifyResetCode(data) {
       throw new Error(errorData.message || "Invalid reset code");
     }
 
-    const data = await response.json();
-    return data;
+    const payload = await response.json();
+    return payload;
   } catch (error) {
     console.error("Error verifying reset code:", error);
     throw error;
@@ -338,8 +344,8 @@ export async function resetPassword(data) {
       throw new Error(errorData.message || "Failed to reset password");
     }
 
-    const data = await response.json();
-    return data;
+    const payload = await response.json();
+    return payload;
   } catch (error) {
     console.error("Error resetting password:", error);
     throw error;
@@ -370,8 +376,8 @@ export async function contact(data) {
       throw new Error(errorData.message || "Failed to send message");
     }
 
-    const data = await response.json();
-    return data;
+    const payload = await response.json();
+    return payload;
   } catch (error) {
     console.error("Error sending contact message:", error);
     throw error;
@@ -574,7 +580,7 @@ export async function verifyTwoFactorOtp(token, payload) {
 }
 
 /**
- * Setup TOTP — get QR code and secret
+ * Setup TOTP - get QR code and secret
  * @param {string} token - Auth token
  * @returns {Promise<Object>} { secret, qr_code, manual_entry }
  */
@@ -597,7 +603,7 @@ export async function setupTotp(token) {
 }
 
 /**
- * Confirm TOTP setup — verify first code after scanning
+ * Confirm TOTP setup - verify first code after scanning
  * @param {string} token - Auth token
  * @param {string} code  - 6-digit code from authenticator app
  */
@@ -648,7 +654,7 @@ export async function verifyTotp(token, code, rememberMe = false) {
 }
 
 /**
- * Remove TOTP — requires password confirmation
+ * Remove TOTP - requires password confirmation
  * @param {string} token    - Auth token
  * @param {string} password - Current account password
  */
@@ -672,7 +678,7 @@ export async function removeTotp(token, password) {
 }
 
 /**
- * Update 2FA method — 'email' or 'totp'
+ * Update 2FA method - 'email' or 'totp'
  * @param {string} token  - Auth token
  * @param {string} method - 'email' | 'totp'
  */

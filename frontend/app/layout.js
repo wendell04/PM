@@ -8,7 +8,9 @@ import OfflineBanner from '../components/OfflineBanner';
 
 export const metadata = {
   title: 'Personalize Me Prints',
-  description: 'Custom printing for t-shirts, mugs, souvenirs, and more. Fast turnaround, bulk pricing, and personalized service.',
+  // What search engines show under the site name. Only what the shop does - no prices, days or
+  // hours, which live in the Homepage CMS and would go stale here.
+  description: 'Personalized mugs, totebags, stickers, mousepads, badges, keychains and t-shirt printing. Upload your design or request one, approve a proof, and we print it.',
   icons: {
     icon: '/logos/PersonalizeMe logo.png',
   },
@@ -20,11 +22,18 @@ export default function RootLayout({ children }) {
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
-        {/* Bundle the brand fonts so every device renders the same (DM Sans = UI, Outfit = logo).
-            Without this, devices without these fonts fell back to their system sans-serif. */}
+        {/* Arimo only, and only devices without Arial ever fetch it.
+
+            Measured rather than assumed: probing the live page returned Arial at a width difference
+            of 0.0 and Segoe UI at 42.7, so Windows has been rendering Arial. Android has no Arial
+            and substitutes Roboto, which is why the phone looked wrong.
+
+            Arimo is metrically identical to Arial - same widths, same line breaks. With Arial first
+            in every stack, Windows and iOS match locally and this file is never downloaded there. */}
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet" />
+        <link href="https://fonts.googleapis.com/css2?family=Arimo:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
       <body suppressHydrationWarning={true}>

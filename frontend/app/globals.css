@@ -1,6 +1,6 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Outfit:wght@400;500;600;700;800&display=swap');
-
-@import url('https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600;1,700&display=swap');
+  /* Fonts are loaded once, preconnected, in app/layout.js. A CSS @import here
+     cannot start until this file has been fetched and parsed - a second round trip
+     that shows the device fallback first on a slow connection. */
 
 @tailwind base;
 @tailwind components;

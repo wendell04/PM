@@ -65,7 +65,7 @@ function ReturnModal({ open, onClose, materials, vendors, badOrders, onSave }) {
             <CustomSelect value={matId}
               onChange={v => { setMatId(v); setVendorId(''); setLinkedBO(''); setErrors(p=>({...p,matId:''})); }}
               options={materials.map(m => ({ value:m.id, label:`${m.name} (${m.unit})` }))}
-              placeholder="Select material"
+              placeholder="Select material" searchable
               error={errors.matId} />
           </Field>
 

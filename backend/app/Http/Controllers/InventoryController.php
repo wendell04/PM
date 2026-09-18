@@ -47,27 +47,53 @@ class InventoryController extends Controller
 
             $done = ['delivered', 'Delivered', 'cancelled', 'Cancelled', 'returned', 'Returned'];
 
+            // A COD order is unpaid by definition until the rider collects, so a filter on
+            // paymentStatus hid every one of them and the shop never saw the materials it had
+            // to buy to fulfil them - it would find out at production time, with nothing on the
+            // shelf. What commits the shop here is the order existing, not the money arriving.
             $orders = \App\Models\Order::whereNotIn('orderStatus', $done)
-                ->whereIn('paymentStatus', ['paid', 'partial'])
+                ->where(function ($q) {
+                    $q->whereIn('paymentStatus', ['paid', 'partial'])
+                      ->orWhereIn('paymentMethod', \App\Support\PaymentMethod::codAliases());
+                })
                 ->get();
 
             $demand   = [];   // inventoryId => qty needed
             $sources  = [];   // inventoryId => [order refs]
             $bomCache = [];
+            // A finished good bought in and resold has no BOM, so the loop below resolved no
+            // materials for it and it contributed nothing - the one list that says what to buy
+            // was silent about the things bought as themselves. Counted separately, by product.
+            $goods    = [];   // productId => ['qty' => n, 'variant' => label, 'orders' => []]
 
+            $productCache = [];
             foreach ($orders as $order) {
                 foreach ($order->items ?? [] as $item) {
+                    $productId = (string) ($item['productId'] ?? '');
+                    if (!array_key_exists($productId, $productCache)) {
+                        $productCache[$productId] = $productId ? \App\Models\Product::find($productId) : null;
+                    }
+                    $lineProduct = $productCache[$productId];
+
+                    // A ready-made line took its materials off the shelf the moment the order was
+                    // placed - deductInventoryFIFO cut stockQty there and then. Counting the same
+                    // quantity again here, against the stock it already reduced, asked the shop to
+                    // buy what it had just used: 21 needed against 18 on hand, when the 21 were
+                    // the reason it was 18. Only a produced line still has its materials sitting
+                    // on the shelf waiting to be consumed at QC.
+                    if ($lineProduct && !\App\Support\OrderLine::isProduced($lineProduct, (array) $item)) {
+                        continue;
+                    }
+
                     // A quote records the materials it will actually consume - including for
                     // services whose product has no BOM at all - so trust that when present.
                     $materials = $item['materials'] ?? null;
 
                     if (!$materials) {
-                        $productId = (string) ($item['productId'] ?? '');
                         $variantId = $item['variantId'] ?? null;
                         $key       = $productId . '|' . ($variantId ?? '');
                         if (!array_key_exists($key, $bomCache)) {
-                            $product = $productId ? \App\Models\Product::find($productId) : null;
-                            $bom     = $product ? $product->resolveBom($variantId) : null;
+                            $bom = $lineProduct ? $lineProduct->resolveBom($variantId) : null;
                             $bomCache[$key] = $bom->components ?? [];
                         }
                         $qty = max(1, (int) ($item['qty'] ?? 1));
@@ -75,6 +101,18 @@ class InventoryController extends Controller
                             'inventoryId' => $c['inventoryId'] ?? null,
                             'qty'         => (float) ($c['qty'] ?? 0) * $qty,
                         ], $bomCache[$key]);
+                    }
+
+                    if (!$materials) {
+                        $pid = $productId;
+                        if ($pid !== '') {
+                            $ref = '#' . strtoupper(substr((string) $order->_id, -8));
+                            $key = $pid . '|' . ($item['variantId'] ?? '');
+                            $goods[$key]['productId'] = $pid;
+                            $goods[$key]['variant']   = $item['variantName'] ?? ($item['variantId'] ?? null);
+                            $goods[$key]['qty']       = ($goods[$key]['qty'] ?? 0) + max(1, (int) ($item['qty'] ?? 1));
+                            if (!in_array($ref, $goods[$key]['orders'] ?? [], true)) $goods[$key]['orders'][] = $ref;
+                        }
                     }
 
                     foreach ($materials as $m) {
@@ -85,6 +123,18 @@ class InventoryController extends Controller
                         $ref = '#' . strtoupper(substr((string) $order->_id, -8));
                         if (!in_array($ref, $sources[$invId] ?? [], true)) $sources[$invId][] = $ref;
                     }
+                }
+
+                // Ready-made lines are skipped above because they took their material at checkout -
+                // except the part the shelf could not cover. That part is owed, still to be bought,
+                // and it is exactly what this list exists to show. See App\Support\Backorder.
+                foreach ($order->backorders ?? [] as $owed) {
+                    $invId = (string) ($owed['inventoryId'] ?? '');
+                    $need  = (float) ($owed['qty'] ?? 0);
+                    if ($invId === '' || $need <= 0) continue;
+                    $demand[$invId] = ($demand[$invId] ?? 0) + $need;
+                    $ref = '#' . strtoupper(substr((string) $order->_id, -8));
+                    if (!in_array($ref, $sources[$invId] ?? [], true)) $sources[$invId][] = $ref;
                 }
             }
 
@@ -121,10 +171,72 @@ class InventoryController extends Controller
             // Biggest money first - that is the order the owner should work in.
             usort($rows, fn ($a, $b) => $b['estimatedCost'] <=> $a['estimatedCost']);
 
+            // Finished goods with no BOM: what was ordered against what is on the shelf.
+            $productRows = [];
+            foreach ($goods as $g) {
+                $product = \App\Models\Product::find($g['productId']);
+                if (!$product) continue;
+
+                $inv     = $product->inventoryId ? Inventory::find($product->inventoryId) : null;
+                $onHand  = (int) ($inv->stockQty ?? 0);
+                $need    = (int) $g['qty'];
+                $short   = $need - $onHand;
+                if ($short <= 0) continue;
+
+                $unitCost = (float) ($inv->lastUnitCost ?? 0 ?: $inv->averageCost ?? 0 ?: $inv->baseCost ?? 0 ?: 0);
+
+                $productRows[] = [
+                    'productId'     => (string) $product->_id,
+                    'name'          => $product->name,
+                    'variant'       => $g['variant'] ?: null,
+                    'sku'           => $product->sku ?? ($inv->sku ?? null),
+                    'supplierName'  => $inv->supplierName ?? 'No supplier set',
+                    'needed'        => $need,
+                    'onHand'        => $onHand,
+                    'shortfall'     => $short,
+                    'unitCost'      => $unitCost,
+                    'estimatedCost' => round($short * $unitCost, 2),
+                    'orders'        => array_slice($g['orders'] ?? [], 0, 6),
+                    'hasInventory'  => (bool) $inv,
+                ];
+            }
+            usort($productRows, fn ($a, $b) => $b['estimatedCost'] <=> $a['estimatedCost']);
+
+            // Quotes a customer tried to pay while the shelf could not cover them. Not committed
+            // work - nothing was paid - so they are kept out of the totals above. But a customer who
+            // tried to pay is the warmest sale there is, so they are listed with what is short now.
+            $waitingQuotes = [];
+            $blocked = \App\Models\OrderRequest::whereNotNull('stockBlock')
+                ->where(function ($q) { $q->whereNull('convertedOrderId')->orWhere('convertedOrderId', ''); })
+                ->get();
+            foreach ($blocked as $quote) {
+                if (empty($quote->stockBlock)) continue;
+                if (($quote->paymentStatus ?? 'unpaid') !== 'unpaid') continue;
+                if ($quote->expiresAt && now()->greaterThan($quote->expiresAt)) continue;
+
+                $shortNow = \App\Support\QuoteStock::shortages($quote);
+                $waitingQuotes[] = [
+                    'id'            => (string) $quote->_id,
+                    'ref'           => strtoupper(substr((string) $quote->_id, -8)),
+                    'customerId'    => (string) ($quote->customerId ?? ''),
+                    'customerName'  => $quote->customerName ?? '',
+                    'total'         => (float) ($quote->finalPrice ?? 0),
+                    'blockedAt'     => $quote->stockBlock['at'] ?? null,
+                    'expiresAt'     => $quote->expiresAt ? $quote->expiresAt->toISOString() : null,
+                    'allowPreorder' => (bool) ($quote->allowPreorder ?? false),
+                    'stillShort'    => count($shortNow) > 0,
+                    'shortages'     => $shortNow ?: ($quote->stockBlock['shortages'] ?? []),
+                ];
+            }
+
             return $this->successResponse('Purchase requirements fetched successfully.', [
+                'waitingQuotes' => $waitingQuotes,
                 'items'         => $rows,
                 'totalItems'    => count($rows),
                 'estimatedCost' => round(array_sum(array_column($rows, 'estimatedCost')), 2),
+                'products'      => $productRows,
+                'totalProducts' => count($productRows),
+                'productsCost'  => round(array_sum(array_column($productRows, 'estimatedCost')), 2),
             ]);
         } catch (\Throwable $e) {
             Log::error('toBuy failed', ['error' => $e->getMessage()]);
@@ -300,7 +412,7 @@ class InventoryController extends Controller
                 $performerId = (string) ($m->performedBy ?? '');
                 $performedBy = ($performerId !== '' && isset($userMap[$performerId]))
                     ? $userMap[$performerId]->name
-                    : '—';
+                    : '-';
                 return [
                     'item'        => $inv ? $inv->name : 'Unknown Item',
                     'qty'         => (int) $m->quantity,

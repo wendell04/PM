@@ -88,7 +88,7 @@ export async function sendHeartbeat(token) {
       headers: { 'Authorization': `Bearer ${token}` },
     });
   } catch {
-    // best-effort — silently ignore
+    // best-effort - silently ignore
   }
 }
 

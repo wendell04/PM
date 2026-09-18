@@ -33,3 +33,6 @@ thumbs.db
 # Build log artifacts
 *.log
 .vercel
+
+# Build output - never committed
+.open-next/

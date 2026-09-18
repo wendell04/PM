@@ -18,6 +18,9 @@ class Message extends Model
         'type',        // text, image, order_reference
         'file_url',    // For images
         'metadata',    // For extra data like order details snapshot
+        // The sender's own id for this message, echoed back so a browser can recognise its own
+        // optimistic bubble. Mass assignment drops anything not listed here, silently.
+        'client_key',
         'is_read',
         'read_at',
     ];

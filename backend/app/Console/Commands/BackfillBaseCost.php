@@ -28,7 +28,7 @@ class BackfillBaseCost extends Command
             $fallback = $item->averageCost ?? $item->lastUnitCost ?? 0;
 
             if ($fallback <= 0) {
-                $this->warn("Skipped [{$item->_id}] {$item->name} — no cost source available.");
+                $this->warn("Skipped [{$item->_id}] {$item->name} - no cost source available.");
                 $skipped++;
                 continue;
             }

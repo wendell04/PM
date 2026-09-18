@@ -113,6 +113,8 @@ class RolePermissionController extends Controller
                 // business authority, staff resolve from their role grid.
                 return [
                     'role'          => $user->role,
+                    'role_label'    => \App\Models\RolePermission::where('role', $user->role)->value('label')
+                                        ?? $this->labelFromRole((string) $user->role),
                     'is_super_admin' => \App\Support\Rbac::isSuperAdmin($user),
                     'full_access'   => \App\Support\Rbac::isSuperAdmin($user)
                                         ? \App\Support\Rbac::superAdminFullAccess() : null,

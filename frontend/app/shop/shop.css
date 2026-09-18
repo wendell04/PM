@@ -9,7 +9,7 @@
           min-height: 100vh;
           background: var(--black);
           color: var(--white);
-          font-family: 'Outfit', sans-serif;
+          font-family: Arial, Arimo, Helvetica, sans-serif;
         }
 
         /* ── Navbar ── */
@@ -93,7 +93,7 @@
         }
 
         .shop-navbar-logo-text {
-          font-family: 'Outfit', sans-serif;
+          font-family: Arial, Arimo, Helvetica, sans-serif;
           font-size: 0.75rem;
           font-weight: 800;
           letter-spacing: 1.2px;
@@ -112,7 +112,7 @@
           color: var(--gold);
         }
 
-        /* Search bar — B-01 */
+        /* Search bar - B-01 */
         .shop-navbar-search {
           flex: 1;
           max-width: 520px;
@@ -240,10 +240,17 @@
         }
 
         /* ── Cart Popup ── */
+        /* Anchored to the navbar's content edge, not the window's.
+           These are position:fixed and were pinned at right:20px, which lines up with the icons
+           only while the navbar fills the window. Zoom out and .shop-navbar-container stops at
+           its 1400px max-width and centres, so the icons move inward while the popup stayed
+           against the glass - the panel opened in the corner with nothing above it. This mirrors
+           the container's own maths, so the two move together at any zoom. The profile menu never
+           had the problem because it is absolutely positioned inside the button's wrapper. */
         .shop-cart-popup {
           position: fixed;
           top: 68px;
-          right: 20px;
+          right: max(2rem, calc((100vw - 1400px) / 2 + 2rem));
           width: 340px;
           background: #ffffff;
           border: 1px solid rgba(0,0,0,0.1);
@@ -335,6 +342,11 @@
           border-radius: 8px;
           background: #f0f0f0;
           flex-shrink: 0;
+          /* It holds the no-image mark now, rather than being a bare grey square that reads as a
+             thumbnail still loading. */
+          display: flex;
+          align-items: center;
+          justify-content: center;
         }
         .shop-cart-popup-item-name {
           font-size: 0.85rem;
@@ -433,7 +445,8 @@
         .shop-notif-panel {
           position: fixed;
           top: 68px;
-          right: 20px;
+          /* Same anchoring as .shop-cart-popup above. */
+          right: max(2rem, calc((100vw - 1400px) / 2 + 2rem));
           width: 360px;
           max-height: 480px;
           background: #ffffff;
@@ -619,7 +632,7 @@
           border: 1.5px solid rgba(255,255,255,.25);
           border-radius: 6px;
           cursor: pointer;
-          font-family: 'Montserrat', sans-serif;
+          font-family: Arial, Arimo, Helvetica, sans-serif;
           text-decoration: none;
           transition: border-color .2s, color .2s;
         }
@@ -638,7 +651,7 @@
           border: none;
           border-radius: 6px;
           cursor: pointer;
-          font-family: 'Montserrat', sans-serif;
+          font-family: Arial, Arimo, Helvetica, sans-serif;
           text-decoration: none;
           transition: opacity .2s, transform .2s;
         }
@@ -756,8 +769,9 @@
         }
 
         @media (max-width: 768px) {
-          .shop-navbar-shop-btn span { display: none; }
-          .shop-navbar-shop-btn { padding: 6px 9px; }
+          /* The label stays. A lone bag icon in the top bar read as a logo or a cart, not as the
+             way back to the shop - and the bottom bar freed the room it was hidden to save. */
+          .shop-navbar-shop-btn { padding: 6px 11px; font-size: 0.8rem; }
 
           .shop-navbar-container {
             padding: 0 1rem;
@@ -1543,7 +1557,7 @@
         }
 
         .shop-product-card {
-          background: var(--black);
+          background: var(--dark);
           border: 1px solid rgba(255, 255, 255, 0.07);
           border-radius: 12px;
           overflow: hidden;
@@ -1883,7 +1897,7 @@
             display: none;
           }
 
-          /* Price over variant count, stacked — no cramped single row */
+          /* Price over variant count, stacked - no cramped single row */
           .shop-product-footer {
             margin-top: auto;
             flex-direction: column;
@@ -1944,7 +1958,7 @@
 
   /* Items Section */
   .cart-items-section {
-    background: var(--black);
+    background: var(--dark);
     border: 1px solid rgba(255, 255, 255, 0.07);
     border-radius: 12px;
     overflow: hidden;
@@ -2221,7 +2235,7 @@
 
   /* Summary Panel */
   .cart-summary-panel {
-    background: var(--black);
+    background: var(--dark);
     border: 1px solid rgba(255, 255, 255, 0.07);
     border-radius: 12px;
     overflow: hidden;
@@ -2669,7 +2683,7 @@
   }
 
   .checkout-card {
-    background: var(--black);
+    background: var(--dark);
     border: 1px solid rgba(255, 255, 255, 0.07);
     border-radius: 12px;
     padding: 1.25rem;
@@ -2694,6 +2708,9 @@
     gap: 0.5rem;
   }
 
+  /* Sits beside .checkout-default-badge in an align-items:center flex row, so the two have to be
+     the same shape or they read as misaligned. The margin-bottom was the real culprit - a bottom
+     margin on one flex child pushes it up against its neighbour. */
   .checkout-address-badge {
     display: inline-block;
     background: rgba(212, 168, 67, 0.12);
@@ -2701,8 +2718,8 @@
     border-radius: 20px;
     padding: 0.2rem 0.6rem;
     font-size: 0.7rem;
+    line-height: 1.35;
     color: var(--gold);
-    margin-bottom: 0.5rem;
   }
 
   .checkout-default-badge {
@@ -2710,8 +2727,9 @@
     background: rgba(34, 197, 94, 0.12);
     border: 1px solid rgba(34, 197, 94, 0.3);
     border-radius: 20px;
-    padding: 0.15rem 0.5rem;
-    font-size: 0.65rem;
+    padding: 0.2rem 0.6rem;
+    font-size: 0.7rem;
+    line-height: 1.35;
     color: var(--green);
   }
 
@@ -2882,7 +2900,7 @@
   }
 
   .checkout-summary-card {
-    background: rgba(255, 255, 255, 0.02);
+    background: linear-gradient(rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0.02)), var(--dark);
   }
 
   .checkout-summary-row {
@@ -3005,7 +3023,7 @@
   }
 
   .checkout-modal-content {
-    background: var(--black);
+    background: var(--dark);
     border: 1px solid rgba(255, 255, 255, 0.07);
     border-radius: 16px;
     max-width: 480px;
@@ -3185,6 +3203,17 @@
 /* Address form: stack the 2-column rows on phones (fields too narrow otherwise) */
 @media (max-width: 640px) {
   .addr-2col { grid-template-columns: 1fr !important; }
+  /* Profile Setup wraps under the name on a phone: full width, left-aligned, full-width bar,
+     with a rule above so it reads as its own row rather than a cut-off corner. */
+  .pf-setup {
+    width: 100%;
+    text-align: left !important;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--border);
+  }
+  .pf-setup-bar { width: 100% !important; margin-left: 0 !important; }
+  /* Quick Actions repeats the tab row at the top of the page. */
+  .pf-quick-actions { display: none !important; }
 }
 .profile-nav-item {
   transition: background-color 0.2s ease, color 0.2s ease;
@@ -3212,7 +3241,7 @@
   }
 }
 
-/* Stock badges — B-03 */
+/* Stock badges - B-03 */
 .shop-product-stock {
   margin-bottom: 8px;
 }
@@ -3313,12 +3342,10 @@
   max-height: 90vh;
   overflow-y: auto;
   box-shadow: 0 20px 60px rgba(0,0,0,0.5);
-  scrollbar-width: thin;
-  scrollbar-color: var(--gold, #D4A843) var(--dark2, #222);
   padding: 0 1.5rem 1.5rem;
   box-sizing: border-box;
   color: var(--white, #f5f5f5);
-  font-family: 'Outfit', sans-serif;
+  font-family: Arial, Arimo, Helvetica, sans-serif;
 }
 .modal-content-sm { max-width: 420px; }
 .modal-header {
@@ -3334,7 +3361,7 @@
   font-weight: 700;
   color: var(--white, #f5f5f5);
   margin: 0;
-  font-family: 'Outfit', sans-serif;
+  font-family: Arial, Arimo, Helvetica, sans-serif;
 }
 .modal-close {
   background: var(--dark2, #222);
@@ -3419,6 +3446,27 @@ html.light .checkout-item-thumb-placeholder,
 html.light .checkout-notes-input {
   border-color: var(--border);
 }
+/* These five paint a white film to lift themselves off a dark surface. On a light one
+   a white film is invisible, so each gets the same lift in the other direction. */
+html.light .checkout-summary-card {
+  background: linear-gradient(rgba(0,0,0,0.025), rgba(0,0,0,0.025)), var(--dark);
+}
+html.light .checkout-divider {
+  background: rgba(0,0,0,0.10);
+}
+html.light .checkout-loading-line {
+  background: rgba(0,0,0,0.08);
+}
+html.light .cart-items-header {
+  background: rgba(0,0,0,0.03);
+}
+html.light .cart-continue-shopping {
+  background: rgba(0,0,0,0.03);
+}
+html.light .cart-item-card:hover {
+  background: rgba(0,0,0,0.02);
+}
+
 html.light .checkout-addr-card:hover {
   border-color: rgba(0,0,0,0.2);
 }
@@ -3571,7 +3619,7 @@ html.light .shop-showcase-card:hover {
   box-shadow: 0 8px 24px rgba(0,0,0,0.12);
 }
 
-/* Light mode — collection nav tabs */
+/* Light mode - collection nav tabs */
 html.light .shop-collections-nav {
   background: #fff;
   border-bottom-color: #e5e5e3;
@@ -3612,7 +3660,7 @@ html.light .shop-collection-tab-count {
 }
 
 .shop-footer-brand-name {
-  font-family: 'Montserrat', sans-serif;
+  font-family: Arial, Arimo, Helvetica, sans-serif;
   font-size: 0.8rem;
   font-weight: 800;
   letter-spacing: 1px;
@@ -3703,7 +3751,7 @@ details.shop-footer-col > *:not(summary) { display: block; }
 details.shop-footer-col > .shop-footer-pay-grid { display: flex; }
 /* Tablet/desktop (≥769px): force the details fully open & non-collapsible.
    Modern Chrome hides closed <details> via ::details-content content-visibility,
-   which display:block alone can't override — handle both mechanisms. */
+   which display:block alone can't override - handle both mechanisms. */
 @media (min-width: 769px) {
   details.shop-footer-col::details-content { content-visibility: visible; }
   details.shop-footer-col > summary { pointer-events: none; }
@@ -3761,6 +3809,9 @@ details.shop-footer-col > .shop-footer-pay-grid { display: flex; }
   .shop-footer-inner {
     grid-template-columns: 1fr;
     gap: 0;
+    /* The desktop columns need room above the divider; a list of accordion rows does not - the
+       last row's own padding is the space. */
+    padding-bottom: 0;
   }
   .shop-footer-brand {
     grid-column: 1 / -1;
@@ -3797,7 +3848,8 @@ details.shop-footer-col > .shop-footer-pay-grid { display: flex; }
     align-items: center;
   }
   details.shop-footer-col[open] > summary { flex: 0 0 100%; }
-  details.shop-footer-col[open] > a {
+  details.shop-footer-col[open] > a,
+  details.shop-footer-col[open] > button {
     display: inline-block;
     margin: 0 1.5rem 1rem 0;
   }
@@ -3815,7 +3867,7 @@ details.shop-footer-col > .shop-footer-pay-grid { display: flex; }
   gap: 1.75rem;
 }
 
-/* Mobile filter toggle — hidden on desktop */
+/* Mobile filter toggle - hidden on desktop */
 .shop-filter-toggle {
   display: none;
   align-items: center;
@@ -3841,26 +3893,32 @@ details.shop-footer-col > .shop-footer-pay-grid { display: flex; }
 .shop-sidebar {
   width: 255px;
   flex-shrink: 0;
-  position: sticky;
-  top: 24px;
-  max-height: calc(100vh - 48px);
-  overflow-y: auto;
+  /* Shown whole, on the owner's call. It used to stick to the viewport with its own scrollbar,
+     which meant the price slider sat below a fold that nothing announced. The rail is as tall as
+     its filters now and the page scrolls; the trade is that it no longer follows you down the
+     grid. */
+  position: static;
+  max-height: none;
+  overflow: visible;
   border-radius: 14px;
   background: #1c1c1c;
   border: 1px solid rgba(255,255,255,0.1);
   box-shadow: 0 4px 20px rgba(0,0,0,0.35);
 }
-.shop-sidebar::-webkit-scrollbar { display: none; }
+/* No inner scrollbar to style any more - the rail shows every filter and the page does the
+   scrolling. Kept: a little room under the last control. */
+.shop-sidebar { padding-bottom: 8px; }
 
-/* Sidebar header — "Filters" title + clear button */
+/* Sidebar header - "Filters" title + clear button */
 .shop-sidebar-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0.9rem 1.25rem;
   border-bottom: 1px solid rgba(255,255,255,0.08);
-  position: sticky;
-  top: 0;
+  /* It stuck to the rail's own scroll, which the rail no longer has. Left sticky it would peel
+     off and follow the PAGE instead, floating over the filters. */
+  position: static;
   z-index: 2;
   background: #242424;
   border-radius: 14px 14px 0 0;
@@ -3896,7 +3954,7 @@ details.shop-footer-col > .shop-footer-pay-grid { display: flex; }
   font-size: 0.78rem;
   font-weight: 600;
   cursor: pointer;
-  font-family: 'Outfit', sans-serif;
+  font-family: Arial, Arimo, Helvetica, sans-serif;
   padding: 2px 0;
   transition: opacity 0.15s;
   line-height: 1;
@@ -4084,7 +4142,7 @@ details.shop-footer-col > .shop-footer-pay-grid { display: flex; }
   outline: none;
   cursor: pointer;
   transition: border-color 0.18s, background-color 0.18s;
-  font-family: 'Outfit', sans-serif;
+  font-family: Arial, Arimo, Helvetica, sans-serif;
   min-width: 170px;
 }
 .shop-sort-select:hover {
@@ -4117,7 +4175,7 @@ details.shop-footer-col > .shop-footer-pay-grid { display: flex; }
   border-radius: 8px;
   color: #f5f5f5;
   font-size: 0.875rem;
-  font-family: 'Outfit', sans-serif;
+  font-family: Arial, Arimo, Helvetica, sans-serif;
   font-weight: 500;
   cursor: pointer;
   transition: border-color 0.18s, background 0.18s;
@@ -4170,7 +4228,7 @@ details.shop-footer-col > .shop-footer-pay-grid { display: flex; }
   border-radius: 7px;
   text-align: left;
   font-size: 0.875rem;
-  font-family: 'Outfit', sans-serif;
+  font-family: Arial, Arimo, Helvetica, sans-serif;
   font-weight: 400;
   color: #bbb;
   cursor: pointer;
@@ -4203,7 +4261,7 @@ details.shop-footer-col > .shop-footer-pay-grid { display: flex; }
   cursor: pointer;
   transition: background 0.13s;
   margin-bottom: 1px;
-  font-family: 'Outfit', sans-serif;
+  font-family: Arial, Arimo, Helvetica, sans-serif;
 }
 .shop-filter-check-item:hover {
   background: rgba(255,255,255,0.05);
@@ -4249,7 +4307,7 @@ details.shop-footer-col > .shop-footer-pay-grid { display: flex; }
   font-weight: 500;
   padding: 0.35rem 0.3rem;
   cursor: pointer;
-  font-family: 'Outfit', sans-serif;
+  font-family: Arial, Arimo, Helvetica, sans-serif;
   transition: opacity 0.15s;
   margin-top: 2px;
 }
@@ -4304,7 +4362,7 @@ details.shop-footer-col > .shop-footer-pay-grid { display: flex; }
   font-weight: 600;
   cursor: pointer;
   padding: 0.28rem 0.4rem;
-  font-family: 'Outfit', sans-serif;
+  font-family: Arial, Arimo, Helvetica, sans-serif;
   text-decoration: underline;
   text-underline-offset: 2px;
   transition: color 0.13s;
@@ -4635,7 +4693,7 @@ html.light .shop-active-clear:hover { color: #111; }
   font-weight: 600;
   cursor: pointer;
   transition: all 0.15s;
-  font-family: 'Outfit', sans-serif;
+  font-family: Arial, Arimo, Helvetica, sans-serif;
 }
 .shop-qv-variant-btn:hover:not(.oos) { border-color: #D4A843; }
 .shop-qv-variant-btn.active { border-color: #D4A843; background: rgba(212,168,67,0.1); color: #9a6e10; }
@@ -4656,7 +4714,7 @@ html.light .shop-active-clear:hover { color: #111; }
   align-items: center;
   justify-content: center;
   transition: background 0.15s;
-  font-family: 'Outfit', sans-serif;
+  font-family: Arial, Arimo, Helvetica, sans-serif;
 }
 .shop-qv-qty button:first-child { border-radius: 8px 0 0 8px; }
 .shop-qv-qty button:last-child  { border-radius: 0 8px 8px 0; }
@@ -4673,7 +4731,7 @@ html.light .shop-active-clear:hover { color: #111; }
   font-size: 0.95rem;
   font-weight: 600;
   outline: none;
-  font-family: 'Outfit', sans-serif;
+  font-family: Arial, Arimo, Helvetica, sans-serif;
 }
 
 .shop-qv-btn-cart {
@@ -4690,7 +4748,7 @@ html.light .shop-active-clear:hover { color: #111; }
   text-align: center;
   text-decoration: none;
   display: block;
-  font-family: 'Outfit', sans-serif;
+  font-family: Arial, Arimo, Helvetica, sans-serif;
   letter-spacing: 0.01em;
 }
 .shop-qv-btn-cart:hover:not(:disabled) { filter: brightness(1.08); }
@@ -4707,7 +4765,7 @@ html.light .shop-active-clear:hover { color: #111; }
   cursor: pointer;
   transition: background 0.15s;
   text-align: center;
-  font-family: 'Outfit', sans-serif;
+  font-family: Arial, Arimo, Helvetica, sans-serif;
   letter-spacing: 0.01em;
 }
 .shop-qv-btn-checkout:hover:not(:disabled) { background: rgba(212,168,67,0.16); }
@@ -4717,8 +4775,19 @@ html.light .shop-active-clear:hover { color: #111; }
   .shop-qv-backdrop {
     align-items: flex-end;
     padding: 0;
+    /* A full-screen blur has to be recomputed under the sheet on every frame of a drag, and it was
+       the stutter on a mid-range Android. The backdrop is 82% black - the blur was barely visible. */
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
   }
   .shop-qv-modal {
+    /* An 80px soft shadow is repainted as the sheet moves. A sheet against a dark backdrop needs
+       only a hint of an edge.
+       The second shadow is a solid white skirt hanging below the sheet, off screen at rest. Pulling
+       the sheet up lifted its bottom edge off the screen and showed the dimmed page underneath,
+       so the sheet looked cut off; the skirt fills that space as it rises (the lift never reaches
+       150px). */
+    box-shadow: 0 -4px 16px rgba(0,0,0,0.18), 0 150px 0 0 #fff;
     border-radius: 20px 20px 0 0;
     max-width: 100%;
     width: 100%;
@@ -4806,7 +4875,7 @@ html.light .shop-active-clear:hover { color: #111; }
   }
 }
 
-/* Tablet portrait (769–1023px): the desktop two columns don't fit and wrap,
+/* Tablet portrait (769-1023px): the desktop two columns don't fit and wrap,
    leaving wasted space + a stretched image. Use one centered, width-capped
    column so the gallery stays square. Desktop two-column resumes at ≥1024px. */
 @media (min-width: 769px) and (max-width: 1023px) {
@@ -4939,7 +5008,7 @@ html.light .shop-active-clear:hover { color: #111; }
   font-size: 0.88rem;
   font-weight: 700;
   color: #222;
-  font-family: 'Outfit', sans-serif;
+  font-family: Arial, Arimo, Helvetica, sans-serif;
 }
 .shop-qv-reviews {
   margin-top: 10px;
@@ -4980,7 +5049,7 @@ html.light .shop-quick-view-btn:hover { background: #D4A843; color: #111; }
 
 /* ── Mobile filter chip row ── */
 
-/* ── Banner text scaling — keep aspect ratio, scale text to match ── */
+/* ── Banner text scaling - keep aspect ratio, scale text to match ── */
 @media (max-width: 900px) {
   .shop-carousel-content { padding: 2rem 2.5rem !important; }
   .shop-carousel-title { font-size: 1.8rem !important; margin-bottom: 0.5rem !important; }
@@ -5022,7 +5091,7 @@ html.light .shop-quick-view-btn:hover { background: #D4A843; color: #111; }
     font-weight: 600;
     white-space: nowrap;
     cursor: pointer;
-    font-family: 'Outfit', sans-serif;
+    font-family: Arial, Arimo, Helvetica, sans-serif;
     transition: background 0.15s, border-color 0.15s;
   }
   .mobile-action-pill:active { background: rgba(255,255,255,0.1); }
@@ -5067,7 +5136,7 @@ html.light .shop-quick-view-btn:hover { background: #D4A843; color: #111; }
     font-weight: 600;
     white-space: nowrap;
     flex-shrink: 0;
-    font-family: 'Outfit', sans-serif;
+    font-family: Arial, Arimo, Helvetica, sans-serif;
   }
   .mobile-active-chip button {
     background: none;
@@ -5094,7 +5163,7 @@ html.light .shop-quick-view-btn:hover { background: #D4A843; color: #111; }
     cursor: pointer;
     padding: 4px 8px;
     flex-shrink: 0;
-    font-family: 'Outfit', sans-serif;
+    font-family: Arial, Arimo, Helvetica, sans-serif;
     text-decoration: underline;
     text-underline-offset: 2px;
   }
@@ -5113,7 +5182,7 @@ html.light .shop-quick-view-btn:hover { background: #D4A843; color: #111; }
     color: var(--white, #f5f5f5);
     font-size: 0.95rem;
     font-weight: 500;
-    font-family: 'Outfit', sans-serif;
+    font-family: Arial, Arimo, Helvetica, sans-serif;
     cursor: pointer;
     text-align: left;
   }
@@ -5125,7 +5194,7 @@ html.light .shop-quick-view-btn:hover { background: #D4A843; color: #111; }
   html.light .mobile-sort-option { border-color: rgba(0,0,0,0.06); color: #222; }
   html.light .mobile-sort-option.active { color: #a07020; }
 
-  /* Hide entire sort bar on mobile — sort + active chips handled in mobile-filter-bar */
+  /* Hide entire sort bar on mobile - sort + active chips handled in mobile-filter-bar */
   .shop-sort-bar { display: none; }
 }
 
@@ -5296,7 +5365,7 @@ html.light .shop-quick-view-btn:hover { background: #D4A843; color: #111; }
     font-size: 0.88rem;
     font-weight: 600;
     cursor: pointer;
-    font-family: 'Outfit', sans-serif;
+    font-family: Arial, Arimo, Helvetica, sans-serif;
   }
   html.light .mobile-sheet-clear { border-color: rgba(0,0,0,0.12); color: #222; }
 
@@ -5310,7 +5379,282 @@ html.light .shop-quick-view-btn:hover { background: #D4A843; color: #111; }
     font-size: 0.88rem;
     font-weight: 700;
     cursor: pointer;
-    font-family: 'Outfit', sans-serif;
+    font-family: Arial, Arimo, Helvetica, sans-serif;
   }
   .mobile-sheet-apply:active { filter: brightness(0.9); }
+}
+
+/* Momentum scrolling inside the sheet, and the navbar's My Orders icon on small screens only -
+   a desktop already has it in the avatar menu. */
+.mobile-sheet-body { -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+.shop-navbar-orders { display: none; }
+@media (max-width: 900px) {
+  .shop-navbar-orders { display: inline-flex; align-items: center; justify-content: center; }
+}
+/* In-page jumps glide instead of teleporting, unless the visitor asked for less motion. */
+@media (prefers-reduced-motion: no-preference) {
+  html { scroll-behavior: smooth; }
+}
+
+/* ── Bottom bar (phones and small tablets) ───────────────────────────────────
+   The destinations live where the thumb is. On a desktop this does not exist. */
+.shop-bottom-nav { display: none; }
+
+@media (max-width: 900px) {
+  .shop-bottom-nav {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    position: fixed;
+    left: 0; right: 0; bottom: 0;
+    z-index: 1300;
+    background: #141414;
+    border-top: 1px solid rgba(255,255,255,0.08);
+    /* Lifted off the page. Without a shadow the bar was the same flat tone as the content behind
+       it and read as part of the list rather than as a layer above it. */
+    box-shadow: 0 -8px 24px rgba(0,0,0,0.28);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  html.light .shop-bottom-nav {
+    background: #ffffff;
+    border-top-color: rgba(0,0,0,0.08);
+    box-shadow: 0 -6px 20px rgba(0,0,0,0.12);
+  }
+
+  .sbn-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    /* 56px is the smallest a thumb hits reliably; the label is what makes an icon unambiguous. */
+    min-height: 56px;
+    padding: 6px 2px;
+    text-decoration: none;
+    color: rgba(255,255,255,0.55);
+    font-size: 0.66rem;
+    font-weight: 600;
+    font-family: Arial, Arimo, Helvetica, sans-serif;
+    -webkit-tap-highlight-color: transparent;
+  }
+  html.light .sbn-item { color: rgba(0,0,0,0.5); }
+  .sbn-item.active { color: #d4a843; }
+  .sbn-item:active { opacity: 0.7; }
+
+  /* A modal covers the page; the bar must not float over its buttons - the same rule the chat
+     head follows, driven by the same body class. This is what hid the order modal's own footer. */
+  body.pmp-modal-open .shop-bottom-nav { display: none !important; }
+
+  .sbn-icon-wrap { position: relative; display: inline-flex; }
+  .sbn-badge {
+    position: absolute; top: -5px; right: -9px;
+    min-width: 16px; height: 16px; padding: 0 4px;
+    border-radius: 999px; background: #d4a843; color: #111;
+    font-size: 0.6rem; font-weight: 800;
+    display: flex; align-items: center; justify-content: center;
+  }
+
+  /* Room for the bar, so the last row of a list is not hidden under it. */
+  .shop-wrapper { padding-bottom: calc(60px + env(safe-area-inset-bottom)); }
+
+  /* The same destinations no longer need to crowd the top bar - that is what freed the search box. */
+  .shop-navbar-orders, .shop-navbar-cart:not(.shop-navbar-orders) { display: none !important; }
+}
+
+/* Policy links in the footer are buttons (they open a modal), so they have to be dressed as the
+   links beside them rather than as buttons. */
+/* Identical to the links beside them, in BOTH themes. The shop footer stays dark in light mode,
+   so the light-theme rule I gave these buttons painted near-black text on a near-black band: the
+   Legal column opened onto nothing. They are links in every way but the tag. */
+.shop-footer-policy-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0 0 0.5rem;
+  font-family: inherit;
+  font-size: 0.85rem;
+  color: rgba(255,255,255,0.65);
+  cursor: pointer;
+  text-align: left;
+  display: block;
+  transition: color 0.2s;
+}
+.shop-footer-policy-btn:hover { color: var(--gold); }
+
+/* Search suggestions - the catalogue answering as you type. */
+.shop-search-suggest {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 120;
+  background: #1c1c1c;
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 12px;
+  box-shadow: 0 16px 40px rgba(0,0,0,0.35);
+  overflow: hidden;
+  max-height: 70vh;
+  overflow-y: auto;
+}
+html.light .shop-search-suggest { background: #fff; border-color: rgba(0,0,0,0.1); }
+.shop-search-suggest-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 12px;
+  background: none;
+  border: none;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  cursor: pointer;
+  text-align: left;
+  font-family: Arial, Arimo, Helvetica, sans-serif;
+}
+html.light .shop-search-suggest-row { border-bottom-color: rgba(0,0,0,0.06); }
+.shop-search-suggest-row:last-child { border-bottom: none; }
+.shop-search-suggest-row.active { background: rgba(212,168,67,0.14); }
+.shop-search-suggest-thumb {
+  width: 34px; height: 34px; flex-shrink: 0;
+  border-radius: 8px; overflow: hidden;
+  background: rgba(255,255,255,0.06);
+  display: flex; align-items: center; justify-content: center;
+}
+.shop-search-suggest-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.shop-search-suggest-text { display: flex; flex-direction: column; min-width: 0; }
+.shop-search-suggest-name {
+  font-size: 0.85rem; font-weight: 700; color: #f5f5f5;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+html.light .shop-search-suggest-name { color: #111; }
+.shop-search-suggest-cat { font-size: 0.72rem; color: #9a9a9a; }
+
+/* The sheet leaves the way it came. Without this it simply disappeared, which on a phone reads as
+   the page losing its place rather than a panel closing. */
+@keyframes mobileSheetSlideDown {
+  from { transform: translateY(0); }
+  to   { transform: translateY(100%); }
+}
+@keyframes mobileSheetFadeOut {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+@media (max-width: 900px) {
+  .mobile-sheet.closing {
+    animation: mobileSheetSlideDown 0.24s cubic-bezier(0.32, 0.72, 0, 1) forwards;
+  }
+  .mobile-sheet-backdrop.closing {
+    animation: mobileSheetFadeOut 0.24s ease forwards;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mobile-sheet, .mobile-sheet.closing,
+  .mobile-sheet-backdrop, .mobile-sheet-backdrop.closing { animation: none !important; }
+}
+
+/* The avatar is a circle at every width. An <img> is inline by default, so it sat on a text
+   baseline inside the button and left a sliver of the button's own background showing - which is
+   the gap that made it look shrunken on a phone. The button also keeps its size when the navbar
+   gets tight. */
+/* The avatar fills its circle, and nothing is allowed to change that. Sizing it in the flow left
+   it at the mercy of whatever padding or line box reached the button on a phone; pinned to all four
+   edges it cannot come out smaller than the ring around it. */
+.shop-navbar-user-btn { position: relative; min-width: 40px; min-height: 40px; padding: 0 !important; }
+.shop-navbar-user-btn img {
+  position: absolute; inset: 0;
+  width: 100% !important; height: 100% !important;
+  object-fit: cover; border-radius: 50%; display: block;
+}
+
+/* The quick view's grab strip: the width of the sheet, tall enough for a thumb, above the content
+   but below the close button so the X still works. */
+.shop-qv-drag-zone {
+  position: absolute; top: 0; left: 0; right: 0;
+  height: 36px; z-index: 4;
+  touch-action: none;
+}
+/* The close button sits inside that strip, and the strip is above the content - so the X has to be
+   above the strip, or the grab zone swallows the tap that closes the sheet. */
+.shop-qv-close { z-index: 5 !important; }
+
+/* Profile rows that put text beside a button. On a phone the button keeps its width and the text
+   is squeezed into whatever is left - about a hundred pixels, which is where "Delete Account" and
+   the session list turned into one word per line. They stack instead. */
+@media (max-width: 640px) {
+  .pf-split {
+    flex-direction: column;
+    align-items: stretch !important;
+    gap: 0.75rem !important;
+  }
+  .pf-split > * { min-width: 0; }
+  .pf-split button { width: 100%; }
+}
+
+/* A flick inside a sheet must not hand the rest of the movement to the page behind it. */
+.shop-cart-popup, .shop-notif-panel, .mobile-sheet, .mobile-sheet-body {
+  overscroll-behavior: contain;
+}
+
+/* Profile on a phone: the page had 2rem of padding, the tab card another 2rem inside it, and each
+   field card its own on top of that - about 100px of margin before a 375px screen has shown
+   anything. Boxes inside boxes is right on a desktop and wrong here, so the outer two give way and
+   the innermost keeps its shape. */
+@media (max-width: 640px) {
+  .profile-layout { padding: 12px !important; gap: 12px !important; }
+  .profile-tab-card { padding: 14px !important; border-radius: 12px !important; }
+}
+
+/* Profile groups on a phone: a card inside a card inside a card is a desktop idea. Here the
+   groups lose their own frame and become plain rows separated by a hairline - the pattern every
+   phone's own settings screen uses - so the fields get the full width instead of three sets of
+   padding. */
+@media (max-width: 640px) {
+  .pf-group {
+    border: none !important;
+    border-radius: 0 !important;
+    overflow: visible !important;
+  }
+  .pf-group + .pf-group { border-top: 1px solid var(--border) !important; }
+  .pf-group > div { padding-left: 0 !important; padding-right: 0 !important; }
+}
+
+/* The two verification-method rows put an icon, the description and a chip or button on one line,
+   with nothing allowed to wrap - so "A 6-digit code sent to your email at each login" became one
+   word per line beside a chip that kept its width. The description takes the line; the chip or
+   button drops beneath it when there is no room. */
+@media (max-width: 640px) {
+  .pf-method { flex-wrap: wrap; }
+  .pf-method > div:nth-child(2) { flex: 1 1 180px; min-width: 0; }
+}
+
+/* The address form on a phone: it was a framed card inside the Saved Addresses card inside the
+   profile card, and the inputs, sized to 100% without box-sizing, pushed past the right edge. The
+   form loses its frame and every field fits the width it is given. */
+@media (max-width: 640px) {
+  .ab-form {
+    padding: 0 !important;
+    background: transparent !important;
+    border: none !important;
+    border-radius: 0 !important;
+  }
+}
+.ab-form input, .ab-form select, .ab-form textarea { box-sizing: border-box; max-width: 100%; }
+
+/* The Legal column was empty on every phone, and not because of its colour. The accordion hides
+   everything inside a column and then shows only <a> links when it opens - and the policies are
+   buttons, because they open a modal. They are shown with the links now (see the [open] rule). */
+
+/* Desktop: no Legal column - the policies sit in the bottom bar beside the copyright, exactly as
+   on the landing page. The accordion column is the phone's version. */
+.shop-footer-legal-inline { display: inline-flex; gap: 1.5rem; }
+@media (min-width: 769px) { .shop-footer-bottom { justify-content: space-between; align-items: center; } }
+.shop-footer-legal-inline button {
+  background: none; border: none; padding: 0; cursor: pointer;
+  font-family: Arial, Arimo, Helvetica, sans-serif; font-size: 0.78rem;
+  color: rgba(255,255,255,0.3);
+}
+.shop-footer-legal-inline button:hover { color: var(--gold); }
+@media (min-width: 769px) {
+  details.shop-footer-col.shop-footer-legal { display: none !important; }
+}
+@media (max-width: 768px) {
+  .shop-footer-legal-inline { display: none; }
 }

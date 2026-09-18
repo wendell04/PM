@@ -25,7 +25,7 @@ class StaffController extends Controller
             }
 
             $staff = User::where('role', '!=', 'customer')
-                ->get(['_id', 'firstName', 'lastName', 'email', 'role', 'is_verified', 'lastLogin', 'avatar']);
+                ->get(['_id', 'firstName', 'lastName', 'email', 'role', 'is_verified', 'lastLogin', 'avatar', 'promotedFromCustomer']);
 
             return $this->successResponse('Staff fetched successfully.', $staff);
         } catch (\Exception $e) {
@@ -44,17 +44,85 @@ class StaffController extends Controller
                 return $this->unauthorizedResponse();
             }
 
+            // The store owner's account is made here too, by a Super Admin only - it is not a row in the
+            // permission grid, so it is offered on top of the grid's roles. canAssignRole below is what
+            // actually refuses anyone else.
+            $assignable = $this->getStaffRoles();
+            if (\App\Support\Rbac::isSuperAdmin($request->user())) {
+                $assignable[] = config('rbac.owner_role', 'owner');
+            }
+
             $validated = $request->validate([
                 'firstName' => 'required|string|max:100',
                 'lastName'  => 'required|string|max:100',
-                'email'     => 'required|email|unique:users,email',
-                'password'  => 'required|string|min:8',
-                'role'      => 'required|string|in:' . implode(',', $this->getStaffRoles()),
+                'email'     => 'required|email',
+                'password'  => 'nullable|string|min:8',
+                'role'      => 'required|string|in:' . implode(',', $assignable),
             ]);
+            $makingOwner = $validated['role'] === config('rbac.owner_role', 'owner');
 
             // Escalation guard: cannot create an account at or above your own level.
             if (!\App\Support\Rbac::canAssignRole($request->user(), $validated['role'])) {
                 return $this->errorResponse('You cannot assign a role at or above your own level.', 403);
+            }
+
+            $existing = User::emailIs($validated['email'])->first();
+            if ($existing && ($existing->role ?? 'customer') !== 'customer') {
+                $msg = 'This email is already a staff account.';
+                return response()->json(['success' => false, 'message' => $msg, 'errors' => ['email' => [$msg]]], 422);
+            }
+
+            // An Owner account cannot shop (the cart is switched off for it), so turning someone's
+            // customer account into the Owner would strand their cart and orders. The owner's business
+            // login is its own account.
+            if ($existing && $makingOwner) {
+                $msg = 'This email already shops here. The Owner login cannot shop, so use a separate email for it - for example the store\'s business email.';
+                return response()->json(['success' => false, 'message' => $msg, 'errors' => ['email' => [$msg]]], 422);
+            }
+
+            // Someone who already shops here can be given staff access on that same account - the way
+            // a shop manager in WooCommerce still orders as themselves. Asked first, because it opens
+            // the dashboard to an account the owner did not create: they keep their own password, name
+            // and orders, and removing them from staff later hands the account back as a customer.
+            if ($existing) {
+                if (!$request->boolean('promoteExisting')) {
+                    $name = trim(($existing->firstName ?? '') . ' ' . ($existing->lastName ?? '')) ?: $existing->email;
+                    return response()->json([
+                        'success' => false,
+                        'code'    => 'customer_account',
+                        'name'    => $name,
+                        'message' => "{$name} already shops with this email. Make that same account a staff account? "
+                            . 'They keep their own password and orders, can still shop, and get a Dashboard link. '
+                            . 'Removing them from staff later turns it back into a customer account.',
+                    ], 409);
+                }
+                if (!($existing->is_verified ?? false)) {
+                    return $this->errorResponse('That customer has not verified their email yet. Ask them to finish signing up first.', 422);
+                }
+
+                $existing->role                 = $validated['role'];
+                $existing->promotedFromCustomer = true;
+                $existing->staffSince           = now();
+                $existing->save();
+
+                $this->logActivity(
+                    $request, 'user.role_changed', 'user', (string) $existing->_id,
+                    "Gave customer {$existing->email} staff access as {$existing->role}",
+                    ['email' => $existing->email, 'from' => 'customer', 'to' => $existing->role]
+                );
+
+                return $this->successResponse('Customer account is now a staff account.', [
+                    '_id'       => (string) $existing->_id,
+                    'firstName' => $existing->firstName,
+                    'lastName'  => $existing->lastName,
+                    'email'     => $existing->email,
+                    'role'      => $existing->role,
+                ], 201);
+            }
+
+            if (empty($validated['password'])) {
+                $msg = 'Set a password of at least 8 characters for the new staff account.';
+                return response()->json(['success' => false, 'message' => $msg, 'errors' => ['password' => [$msg]]], 422);
             }
 
             $staff = User::create([
@@ -68,8 +136,8 @@ class StaffController extends Controller
             ]);
 
             $this->logActivity(
-                $request, 'user.created', 'user', (string) $staff->_id,
-                "Created staff {$staff->email} with role {$staff->role}",
+                $request, $makingOwner ? 'user.owner_created' : 'user.created', 'user', (string) $staff->_id,
+                $makingOwner ? "Created the Owner account {$staff->email}" : "Created staff {$staff->email} with role {$staff->role}",
                 ['email' => $staff->email, 'role' => $staff->role]
             );
 
@@ -128,6 +196,10 @@ class StaffController extends Controller
             if (isset($validated['firstName'])) $staff->firstName = $validated['firstName'];
             if (isset($validated['lastName']))  $staff->lastName  = $validated['lastName'];
             if (isset($validated['role']))      $staff->role      = $validated['role'];
+            // A customer given staff access signs in with the password they chose for themselves.
+            if (isset($validated['password']) && ($staff->promotedFromCustomer ?? false)) {
+                return $this->errorResponse('This person uses their own customer account. They change their password themselves.', 422);
+            }
             if (isset($validated['password']))  $staff->password  = Hash::make($validated['password']);
 
             $staff->save();
@@ -175,13 +247,41 @@ class StaffController extends Controller
             $staff = User::find($id);
             if (!$staff) return $this->notFoundResponse('Staff');
 
-            if (\App\Support\Rbac::isSuperAdmin($staff) || \App\Support\Rbac::isOwner($staff)) {
-                return $this->errorResponse('Cannot delete Super Admin or Owner accounts.', 403);
+            // An Owner is protected - except from a Super Admin before that Owner has ever signed in,
+            // so a mistyped email can be fixed. Once the owner is using it, it is theirs.
+            $unusedOwner = \App\Support\Rbac::isOwner($staff)
+                && empty($staff->lastLogin) && empty($staff->last_login_at)
+                && \App\Support\Rbac::isSuperAdmin($request->user());
+            if (\App\Support\Rbac::isSuperAdmin($staff) || (\App\Support\Rbac::isOwner($staff) && !$unusedOwner)) {
+                return $this->errorResponse(\App\Support\Rbac::isOwner($staff)
+                    ? 'The Owner account has been used, so it cannot be deleted here.'
+                    : 'Cannot delete Super Admin accounts.', 403);
             }
 
             // Prevent self-deletion
             if ((string) $staff->_id === (string) $request->user()->_id) {
                 return $this->errorResponse('Cannot delete your own account.', 403);
+            }
+
+            // A customer who was given staff access goes back to being a customer - deleting them would
+            // take their own account and order history with the job. The same for any staff login that
+            // has placed orders.
+            $hasOrders = \App\Models\Order::where('userId', (string) $staff->_id)->exists();
+            if (($staff->promotedFromCustomer ?? false) || $hasOrders) {
+                $oldRole                     = $staff->role;
+                $staff->role                 = 'customer';
+                $staff->promotedFromCustomer = null;
+                $staff->staffSince           = null;
+                $staff->save();
+                // Signed out everywhere, so no open tab keeps showing a dashboard they can no longer use.
+                $staff->tokens()->delete();
+
+                $this->logActivity(
+                    $request, 'user.role_changed', 'user', (string) $staff->_id,
+                    "Removed {$staff->email} from staff ({$oldRole}); kept as a customer",
+                    ['email' => $staff->email, 'from' => $oldRole, 'to' => 'customer']
+                );
+                return $this->successResponse('Removed from staff. Their customer account and orders are kept.');
             }
 
             $deletedEmail = $staff->email;

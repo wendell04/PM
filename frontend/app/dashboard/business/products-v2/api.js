@@ -47,6 +47,10 @@ export function normProduct(raw, collectionMap = {}) {
     price:              Number(raw.price ?? raw.flatPrice ?? 0),
     tiers,
     collectionIds:      collectionMap[id] ?? [],
+    // Every field added to the outgoing payload needs a line here too. Twice now a field has been
+    // sent, stored correctly, and then read back as undefined - which looks exactly like a save that
+    // failed, and sends you hunting in the wrong half of the system.
+    optionGroups:       Array.isArray(raw.optionGroups) ? raw.optionGroups : [],
     isCustomizable:     !!(raw.isCustom),
     // Not the opposite of customizable - both can be on. Older products have no flag, so a
     // non-custom product is assumed plain-purchasable, which is what it already was.
@@ -56,6 +60,13 @@ export function normProduct(raw, collectionMap = {}) {
     isFeatured:         !!(raw.isFeatured),
     allowCOD:           !!(raw.allowCOD ?? true),
     isMadeToOrder:      !!(raw.isMadeToOrder),
+    // The three the warning above was written about, and then not applied to. Read back as
+    // undefined, they made a correct save look like a failed one - and worse, reopening a product
+    // and pressing Save wrote the undefined straight back, so cost and the quote threshold erased
+    // themselves on any edit. Cost is the only figure Reports can derive margin from without a BOM.
+    allowPreorder:      !!(raw.allowPreorder),
+    cost:               raw.cost != null ? Number(raw.cost) : null,
+    quoteAboveQty:      raw.quoteAboveQty != null ? Number(raw.quoteAboveQty) : null,
     downpaymentPct:     Number(raw.downpaymentPercent ?? 0),
     hideWhenOutOfStock: !!(raw.hideWhenOutOfStock),
     isPublished:        !!(raw.isPublished),

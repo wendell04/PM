@@ -10,7 +10,7 @@ export const PASSWORD_RULES = [
 
 export const passwordIsStrong = (p) => p.length > 0 && PASSWORD_RULES.every(r => r.test(p));
 
-/** Thin strength bar — the only thing shown once the field loses focus (and only until strong). */
+/** Thin strength bar - the only thing shown once the field loses focus (and only until strong). */
 export const PasswordStrength = ({password}) => {
   const score = PASSWORD_RULES.filter(r => r.test(password)).length;
   const levels = [
@@ -32,7 +32,7 @@ export const PasswordStrength = ({password}) => {
           transition:'width 0.3s ease, background 0.3s ease'}}/>
       </div>
       <div style={{fontSize:'0.72rem',marginTop:'0.25rem',color: isTooLong ? 'var(--red)' : current.color}}>
-        {isTooLong ? 'Too Long — recommended max 32 characters' : current.label}
+        {isTooLong ? 'Too Long - recommended max 32 characters' : current.label}
       </div>
     </div>
   );
@@ -41,7 +41,7 @@ export const PasswordStrength = ({password}) => {
 /**
  * Password rules helper.
  *  - While the field is FOCUSED: a floating popover (does not push the layout) listing only the
- *    rules still MISSING — a rule disappears once met and returns if broken.
+ *    rules still MISSING - a rule disappears once met and returns if broken.
  *  - When NOT focused: just the strength bar, and only until every rule passes.
  *  - Once strong and unfocused: nothing at all.
  * The parent field must be position:relative for the popover to anchor correctly.

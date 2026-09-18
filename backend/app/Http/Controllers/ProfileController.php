@@ -30,10 +30,16 @@ class ProfileController extends Controller
                 'address' => 'required|string|min:3',
             ]);
 
+            // The rule above compares capitals exactly; this catches "Name@gmail.com" vs "name@gmail.com".
+            $taken = User::emailIs($request->email)->where('_id', '!=', $user->_id)->exists();
+            if ($taken) {
+                return response()->json(['success' => false, 'message' => 'The email has already been taken.', 'errors' => ['email' => ['The email has already been taken.']]], 422);
+            }
+
             $san = fn(string $v) => htmlspecialchars(strip_tags(trim($v)), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 
             $changedFields = [];
-            if ($user->email !== $request->email) $changedFields[] = 'email';
+            if (strtolower((string) $user->email) !== strtolower(trim((string) $request->email))) $changedFields[] = 'email';
             if ($user->phoneNumber !== $request->phoneNumber) $changedFields[] = 'phoneNumber';
 
             $user->firstName   = $san($request->firstName);
@@ -167,7 +173,11 @@ class ProfileController extends Controller
                 'delivered', 'cancelled', 'returned',
             ];
 
+            // A checkout still being paid or one whose payment failed is not an order - and one the
+            // customer cannot see must never be what stops them deleting their account.
             $activeCount = Order::where('userId', $userId)
+                ->where('checkoutPending', '!=', true)
+                ->where('voidedCheckout', '!=', true)
                 ->whereNotIn('orderStatus', $terminalStatuses)
                 ->count();
 
@@ -181,6 +191,8 @@ class ProfileController extends Controller
 
             // Block: outstanding payment balances
             $unpaidCount = Order::where('userId', $userId)
+                ->where('checkoutPending', '!=', true)
+                ->where('voidedCheckout', '!=', true)
                 ->where('paymentStatus', '!=', 'paid')
                 ->where('balance', '>', 0)
                 ->count();
@@ -193,7 +205,7 @@ class ProfileController extends Controller
                 );
             }
 
-            // Anonymize PII — order/transaction records are retained for BIR compliance
+            // Anonymize PII - order/transaction records are retained for BIR compliance
             $user->firstName          = 'Deleted';
             $user->lastName           = 'User';
             $user->middleInitial      = null;

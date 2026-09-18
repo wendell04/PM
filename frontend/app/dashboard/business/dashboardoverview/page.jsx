@@ -13,7 +13,9 @@ const SSA_API_URL = process.env.NEXT_PUBLIC_SSA_API_URL || 'http://localhost:800
 const SECTION_META = [
   { key: 'orderRequests', label: 'Order Requests', href: '/dashboard/business/order-requests', icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2', desc: 'Review and process incoming order requests' },
   { key: 'orders',        label: 'Orders',         href: '/dashboard/business/orders',         icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2', desc: 'View and manage customer orders' },
-  { key: 'jobOrders',     label: 'Job Orders',     href: '/dashboard/business/job-orders',     icon: 'M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10', desc: 'Track and update production job orders' },
+  { key: ['jobOrders', 'production'], label: 'Job Orders', href: '/dashboard/business/job-orders',     icon: 'M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10', desc: 'Track and update production job orders' },
+  { key: ['jobOrders', 'production'], label: 'Production', href: '/dashboard/business/production-preview', icon: 'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z', desc: 'Work through the jobs on the production floor' },
+  { key: ['jobOrders', 'qc'], label: 'Quality Control', href: '/dashboard/business/qc-preview', icon: 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z', desc: 'Pass or fail finished jobs before delivery' },
   { key: 'pos',           label: 'Point of Sale',  href: '/dashboard/business/pos',            icon: 'M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z', desc: 'Process walk-in and manual sales' },
   { key: 'inventory',     label: 'Inventory',      href: '/dashboard/business/inventory-v2',   icon: 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4', desc: 'Manage stock levels and movements' },
   { key: 'vendors',       label: 'Vendors',        href: '/dashboard/business/inventory-v2',   icon: 'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0', desc: 'Manage supplier and vendor information' },
@@ -25,14 +27,15 @@ const SECTION_META = [
   { key: 'flashSales',    label: 'Flash Sales',    href: '/dashboard/business/flash-sales',    icon: 'M13 10V3L4 14h7v7l9-11h-7z', desc: 'Create and manage flash sales' },
   { key: 'vouchers',      label: 'Vouchers',       href: '/dashboard/business/vouchers',       icon: 'M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z', desc: 'Manage discount vouchers and coupons' },
   { key: 'auditLogs',     label: 'Audit Logs',     href: '/dashboard/business/audit-logs',     icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z', desc: 'View system audit and activity logs' },
-  { key: 'userManagement',label: 'User Management',href: '/dashboard/business/users',          icon: 'M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75M9 7a4 4 0 100 8 4 4 0 000-8z', desc: 'Manage staff accounts and roles' },
-  { key: 'rolePermissions',label: 'Role Permissions',href: '/dashboard/business/role-permissions', icon: 'M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z', desc: 'Configure access permissions per role' },
+  { key: 'ownerOnly',     label: 'User Management',href: '/dashboard/business/users',          icon: 'M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75M9 7a4 4 0 100 8 4 4 0 000-8z', desc: 'Manage staff accounts and roles' },
+  { key: 'ownerOnly',     label: 'Role Permissions',href: '/dashboard/business/role-permissions', icon: 'M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z', desc: 'Configure access permissions per role' },
 ];
 
 function StaffDashboard({ currentUser, token }) {
   const router = useRouter();
   const [permissions, setPermissions] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [roleName, setRoleName] = useState('');
 
   useEffect(() => {
     if (!token) return;
@@ -40,15 +43,23 @@ function StaffDashboard({ currentUser, token }) {
       headers: { Authorization: `Bearer ${token}`, Accept: 'application/json', 'ngrok-skip-browser-warning': '1' },
     }, 10000)
       .then(r => r.ok ? r.json() : null)
-      .then(data => { if (data?.data?.permissions) setPermissions(data.data.permissions); })
+      .then(data => {
+        if (data?.data?.permissions) setPermissions(data.data.permissions);
+        if (data?.data?.role_label) setRoleName(data.data.role_label);
+      })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [token]);
 
   const firstName = currentUser?.firstName || currentUser?.email?.split('@')[0] || 'there';
-  const roleLabel = currentUser?.role || 'Staff';
+  const roleLabel = roleName || currentUser?.role || 'Staff';
 
-  const accessible = SECTION_META.filter(s => permissions?.[s.key] === true);
+  // A module is open when its switch is on or any of its actions is ("jobOrders.view" opens Job
+  // Orders) - the same rule the server uses. A list means any one of those keys.
+  const opens = (key) => Array.isArray(key)
+    ? key.some(opens)
+    : permissions?.[key] === true || Object.keys(permissions || {}).some(k => k.startsWith(key + '.') && permissions[k] === true);
+  const accessible = SECTION_META.filter(s => opens(s.key));
 
   if (loading) {
     return (
@@ -94,7 +105,7 @@ function StaffDashboard({ currentUser, token }) {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 14 }}>
             {accessible.map(s => (
               <button
-                key={s.key}
+                key={s.label}
                 type="button"
                 onClick={() => router.push(s.href)}
                 style={{
@@ -186,12 +197,12 @@ export default function DashboardOverviewPage() {
       const allOrders  = ordersJson?.data?.orders ?? ordersJson?.data ?? ordersJson?.orders ?? ordersJson ?? [];
       const orders     = Array.isArray(allOrders) ? allOrders : [];
 
-      // Compute order stats locally from fetched orders — avoids dependency on separate stats endpoint
+      // Compute order stats locally from fetched orders - avoids dependency on separate stats endpoint
       const isDelivered   = (o) => ['Delivered', 'delivered'].includes(o.orderStatus);
       const isCancelled   = (o) => ['Cancelled', 'cancelled'].includes(o.orderStatus);
       const isPending     = (o) => !isDelivered(o) && !isCancelled(o);
       const isExpiredOrder = (o) =>
-        o.orderStatus === 'Pending' &&
+        String(o.orderStatus).toLowerCase() === 'pending' &&
         o.paymentStatus !== 'paid' &&
         (Date.now() - new Date(o.createdAt).getTime()) / 86400000 >= 7;
 
@@ -225,7 +236,7 @@ export default function DashboardOverviewPage() {
       orders.filter(o => !isCancelled(o)).forEach(o => {
         (o.items || []).forEach(item => {
           const key = item.productId || item.productName || 'unknown';
-          if (!prodMap[key]) prodMap[key] = { productName: item.productName || '—', category: item.category || '', totalQty: 0, totalRevenue: 0 };
+          if (!prodMap[key]) prodMap[key] = { productName: item.productName || '-', category: item.category || '', totalQty: 0, totalRevenue: 0 };
           prodMap[key].totalQty     += Number(item.qty ?? item.quantity ?? 0);
           prodMap[key].totalRevenue += Number(item.lineTotal ?? 0);
         });

@@ -218,7 +218,7 @@ class InventoryReturnController extends Controller
                             'unitCost'     => (float) ($inventoryReturn->unitCost ?? 0),
                             'totalCost'    => (float) ($inventoryReturn->unitCost ?? 0) * $qty,
                             'reason'       => $validated['status'] === 'refunded' ? 'adjustment' : 'writeoff',
-                            'remarks'      => $validated['status'] === 'refunded' ? 'Bad order refunded — items removed from stock' : 'Bad order written off',
+                            'remarks'      => $validated['status'] === 'refunded' ? 'Bad order refunded - items removed from stock' : 'Bad order written off',
                             'performedBy'  => $performedBy,
                             'type'         => 'out',
                             'createdAt'    => now(),
@@ -248,7 +248,7 @@ class InventoryReturnController extends Controller
 
             // Replaced: net-zero stock change.
             // The defective units are already counted in stockQty (they were never deducted when BO was created).
-            // Vendor returns equivalent replacement units — defective out, replacement in = same count.
+            // Vendor returns equivalent replacement units - defective out, replacement in = same count.
             // stockQty stays unchanged; only the pending BO is cleared by the status update.
 
             $inventoryReturn->save();

@@ -50,6 +50,8 @@ class User extends Authenticatable
         'storeLng',
         'shippingBaseRate',
         'shippingPerKmRate',
+        'shippingPerKmRateFar',
+        'shippingTierKm',
         'designRequestFee',
         'otp_locked_until',
         'failed_login_attempts',
@@ -71,6 +73,8 @@ class User extends Authenticatable
         'storeLng'               => 'float',
         'shippingBaseRate'       => 'float',
         'shippingPerKmRate'      => 'float',
+        'shippingPerKmRateFar'   => 'float',
+        'shippingTierKm'         => 'float',
         'designRequestFee'       => 'float',
         'last_login_at'          => 'datetime',
         'failed_login_attempts'  => 'integer',
@@ -81,10 +85,10 @@ class User extends Authenticatable
         'two_factor_method'      => 'string',
         'totp_confirmed'         => 'boolean',
         'totp_failed_attempts'   => 'integer',
-        // PII encrypted at rest using APP_KEY — decrypted transparently on read
+        // PII encrypted at rest using APP_KEY - decrypted transparently on read
         'address'                => 'encrypted',
         // phoneNumber intentionally not encrypted: used in uniqueness index queries
-        // totp_secret encrypted — never queried by value, only read per-user
+        // totp_secret encrypted - never queried by value, only read per-user
         'totp_secret'            => 'encrypted',
     ];
 
@@ -100,6 +104,26 @@ class User extends Authenticatable
         'device_tokens',
         'totp_secret',
     ];
+
+    /**
+     * An email address is one identity whatever its capitals. MongoDB compares strings exactly, so
+     * a staff account typed as "Dummersync@gmail.com" could never be signed into as
+     * "dummersync@gmail.com". Every address is stored lowercase from here on.
+     */
+    public function setEmailAttribute($value): void
+    {
+        $this->attributes['email'] = is_string($value) ? strtolower(trim($value)) : $value;
+    }
+
+    /**
+     * Find a user by email ignoring capitals and stray spaces. Use this for every lookup by email -
+     * accounts saved before emails were lowercased may still carry capitals.
+     */
+    public function scopeEmailIs($query, ?string $email)
+    {
+        $email = strtolower(trim((string) $email));
+        return $query->where('email', 'regex', new \MongoDB\BSON\Regex('^' . preg_quote($email, '/') . '$', 'i'));
+    }
 
     /**
      * Session token lifetime by role + "remember me" (single source of truth for login,

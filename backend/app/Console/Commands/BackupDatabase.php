@@ -32,26 +32,26 @@ class BackupDatabase extends Command
         try {
             mkdir($workDir, 0755, true);
 
-            // 1 — Export collections to JSON
+            // 1 - Export collections to JSON
             $errors = $this->exportCollections($workDir);
 
-            // 2 — Compress to zip
+            // 2 - Compress to zip
             $this->compress($workDir, $zipPath);
 
-            // 3 — Encrypt the zip
+            // 3 - Encrypt the zip
             $this->encrypt($zipPath, $encPath);
 
-            // 4 — Remove plaintext zip + tmp dir immediately
+            // 4 - Remove plaintext zip + tmp dir immediately
             @unlink($zipPath);
             $this->removeDir($workDir);
 
-            // 5 — Upload to S3 if configured
+            // 5 - Upload to S3 if configured
             $s3Path = null;
             if (!$this->option('no-s3') && config('filesystems.disks.s3.bucket')) {
                 $s3Path = $this->uploadToS3($encPath, $timestamp);
             }
 
-            // 6 — Prune old local backups
+            // 6 - Prune old local backups
             $this->pruneOldBackups(storage_path('backups'));
 
             $summary = "Backup {$timestamp}: local={$encPath}"

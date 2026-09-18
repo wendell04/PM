@@ -17,17 +17,28 @@ const formatConvTime = (ts) => {
 
 const ChatSidebar = ({ conversations, activeConversation, onSelectConversation, isLoading, onlineUsers = new Set() }) => {
   const [search, setSearch] = useState('');
+  // Contact-form messages from people with no account cannot be answered here, and there is no
+  // account behind them to vouch for who wrote them - so they arrive in volume and they arrive
+  // unverified. Mixed into the customer list they bury the conversations that can actually be
+  // replied to, which is what happened: one thread of test sends sat between two real orders.
+  const [box, setBox] = useState('customers');
+
+  const guests    = useMemo(() => conversations.filter(c => c.other_user?.is_guest), [conversations]);
+  const customers = useMemo(() => conversations.filter(c => !c.other_user?.is_guest), [conversations]);
 
   const filtered = useMemo(() => {
+    const base = box === 'guests' ? guests : customers;
     const q = search.trim().toLowerCase();
-    if (!q) return conversations;
-    return conversations.filter(c =>
+    if (!q) return base;
+    return base.filter(c =>
       (c.other_user?.name || '').toLowerCase().includes(q) ||
+      (c.other_user?.email || '').toLowerCase().includes(q) ||
       (c.last_message || '').toLowerCase().includes(q)
     );
-  }, [conversations, search]);
+  }, [guests, customers, box, search]);
 
-  const totalUnread = conversations.reduce((s, c) => s + (c.unread_count || 0), 0);
+  const totalUnread = customers.reduce((s, c) => s + (c.unread_count || 0), 0);
+  const guestUnread = guests.reduce((s, c) => s + (c.unread_count || 0), 0);
   const onlineCount = conversations.filter(c =>
     onlineUsers.has(c.other_user?.id) || isRecentlySeen(c.other_user?.last_seen_at)
   ).length;
@@ -39,13 +50,26 @@ const ChatSidebar = ({ conversations, activeConversation, onSelectConversation, 
           <div>
             <div className="chat-sidebar-title">Inbox</div>
             <div className="chat-sidebar-meta">
-              {conversations.length} conversation{conversations.length !== 1 ? 's' : ''} · {onlineCount} online
+              {box === 'guests'
+                ? `${guests.length} guest message${guests.length !== 1 ? 's' : ''} · reply by email`
+                : `${customers.length} conversation${customers.length !== 1 ? 's' : ''} · ${onlineCount} online`}
             </div>
           </div>
           {totalUnread > 0 && (
             <span className="chat-total-badge">{totalUnread > 99 ? '99+' : totalUnread}</span>
           )}
         </div>
+        <div className="chat-box-switch">
+          {[['customers', 'Customers', totalUnread], ['guests', 'Guests', guestUnread]].map(([id, label, unread]) => (
+            <button key={id} type="button" onClick={() => setBox(id)}
+              className={`chat-box-tab${box === id ? ' active' : ''}`}
+              aria-pressed={box === id}>
+              {label}
+              {unread > 0 && <span className="chat-box-count">{unread > 99 ? '99+' : unread}</span>}
+            </button>
+          ))}
+        </div>
+
         <div className="chat-search-wrap">
           <svg className="chat-search-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
             <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
@@ -102,12 +126,14 @@ const ChatSidebar = ({ conversations, activeConversation, onSelectConversation, 
                 onClick={() => onSelectConversation(conv)}
                 className={`chat-item${isActive ? ' active' : ''}${hasUnread ? ' has-unread' : ''}`}
               >
-                <div className="chat-avatar" style={{ position: 'relative' }}>
-                  {avatarSrc ? (
-                    <img src={avatarSrc} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                  ) : (
-                    <span>{(conv.other_user?.name || 'U').charAt(0).toUpperCase()}</span>
-                  )}
+                <div className="chat-avatar-wrap">
+                  <div className="chat-avatar">
+                    {avatarSrc ? (
+                      <img src={avatarSrc} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    ) : (
+                      <span>{(conv.other_user?.name || 'U').charAt(0).toUpperCase()}</span>
+                    )}
+                  </div>
                   {isOnline && <span className="chat-online-dot" />}
                 </div>
 

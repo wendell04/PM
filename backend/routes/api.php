@@ -55,16 +55,16 @@ Route::get('/auth/me', function (Request $request) {
     return response()->json($request->user());
 })->middleware('auth:sanctum');
 Route::post('/verify-email',    [AuthController::class, 'verify'])->middleware('throttle:verify');
-Route::post('/resend-code',     [AuthController::class, 'resend'])->middleware('throttle:verify');
-Route::post('/forgot-password', [AuthController::class, 'forgotPassword'])->middleware('throttle:5,1');
+Route::post('/resend-code',     [AuthController::class, 'resend'])->middleware(['throttle:verify', 'throttle:code-address']);
+Route::post('/forgot-password', [AuthController::class, 'forgotPassword'])->middleware(['throttle:5,1', 'throttle:code-address']);
 Route::post('/verify-reset-token', [AuthController::class, 'verifyResetToken'])->middleware('throttle:10,1');
-Route::post('/send-reset-code', [AuthController::class, 'sendResetCode'])->middleware('throttle:5,1');
+Route::post('/send-reset-code', [AuthController::class, 'sendResetCode'])->middleware(['throttle:5,1', 'throttle:code-address']);
 Route::post('/verify-reset-code', [AuthController::class, 'verifyResetCode'])->middleware('throttle:10,1');
 Route::post('/reset-password',  [AuthController::class, 'resetPassword'])->middleware('throttle:5,1');
-Route::post('/contact',         [AuthController::class, 'contact'])->middleware('throttle:5,1');
+Route::post('/contact',         [AuthController::class, 'contact'])->middleware(['throttle:5,1', 'throttle:20,60', \App\Http\Middleware\VerifyTurnstile::class]);
 Route::post('/unlock-request',  [AuthController::class, 'unlockRequest'])->middleware('throttle:3,1');
 
-// ─── Auth (Protected — any logged-in user) ───────────────────────────────────
+// ─── Auth (Protected - any logged-in user) ───────────────────────────────────
 Route::get('/user', function (Request $request) {
     $user = $request->user();
     // Surface the current token's expiry so the client can warn before it lapses.
@@ -76,7 +76,14 @@ Route::get('/user', function (Request $request) {
 Route::get('/public/registration-terms', [SettingsController::class, 'publicRegistrationTerms']);
 Route::get('/public/settings', [SettingsController::class, 'public']);
 
-// ─── Products (Public — no auth required) ────────────────────────────────────
+// Read-only mirror of the material check the checkout runs, so a cart can warn about a quantity
+// while the customer is still looking at the line rather than after the address form. Kept out of
+// the 60/min product group and given room of its own: it fires as someone edits a quantity, and
+// with no TrustProxies every limiter here is one shared bucket - a busy cart would lock the shop
+// out of its own catalogue.
+Route::post('/cart/availability', [OrderController::class, 'cartAvailability'])->middleware('throttle:240,1');
+
+// ─── Products (Public - no auth required) ────────────────────────────────────
 Route::middleware('throttle:60,1')->group(function () {
     Route::get('/products/search',        [ProductController::class, 'search']);
     Route::get('/products',               [ProductController::class, 'index']);
@@ -89,7 +96,7 @@ Route::middleware('throttle:60,1')->group(function () {
     Route::get('/storefront/collections/{slug}',   [CollectionController::class, 'storefrontShow']);
 });
 
-// ─── Protected — any authenticated user ──────────────────────────────────────
+// ─── Protected - any authenticated user ──────────────────────────────────────
 Route::middleware('auth:sanctum')->group(function () {
     // Reverb broadcasting auth
     Route::post('/broadcasting/auth', function (Request $request) {
@@ -106,10 +113,14 @@ Route::middleware('auth:sanctum')->group(function () {
     // ─── Orders (Customer) ────────────────────────────────────────────────────
     Route::get('/orders/my',                            [OrderController::class, 'myOrders']);
     Route::get('/orders/my/{id}',                       [OrderController::class, 'myOrderShow']);
+    // The same PDF the confirmation email attaches, so the copy they save and the copy in their
+    // inbox cannot drift apart. Not every customer owns a printer.
+    Route::get('/orders/my/{id}/receipt-pdf',           [OrderController::class, 'myReceiptPdf']);
     Route::post('/orders/my/{id}/cancel',               [OrderController::class, 'cancelMyOrder']);
-    Route::post('/orders/my/{id}/reupload-design',       [OrderController::class, 'reuploadDesign']);
+    Route::post('/orders/my/{id}/reupload-design',       [OrderController::class, 'reuploadDesign'])->middleware('throttle:20,1');
     Route::post('/orders/my/{id}/approve-admin-design', [OrderController::class, 'approveAdminDesign']);
     Route::post('/orders/my/{id}/request-revision',     [OrderController::class, 'requestDesignRevision']);
+    Route::post('/orders/my/{id}/restart-design-job',  [OrderController::class, 'restartDesignJob'])->middleware('throttle:10,1');
     Route::post('/orders',                              [OrderController::class, 'store']);
 
     // ─── Reviews (Customer) ───────────────────────────────────────────────────
@@ -146,17 +157,21 @@ Route::middleware('auth:sanctum')->group(function () {
     // ─── Chat ────────────────────────────────────────────────────────────────
     Route::get('/chat/conversations',             [ChatController::class, 'index']);
     Route::get('/chat/conversations/{id}',        [ChatController::class, 'show']);
-    Route::post('/chat/messages',                 [ChatController::class, 'store']);
-    Route::post('/chat/upload-image',             [ChatController::class, 'uploadImage']);
+    // Unthrottled, these were a free flood: messages cost a database write and a broadcast, and
+    // every upload costs Cloudinary storage that is never reclaimed. The limits are well above
+    // what a person types or attaches and well below what a script would.
+    Route::post('/chat/messages',                 [ChatController::class, 'store'])->middleware('throttle:60,1');
+    Route::post('/chat/upload-image',             [ChatController::class, 'uploadImage'])->middleware('throttle:30,1');
     Route::patch('/chat/conversations/{id}/read', [ChatController::class, 'markAsRead']);
     Route::patch('/chat/heartbeat',              [ChatController::class, 'heartbeat']);
 });
 
-// ─── Owner/Admin only — store config, staff management, role permissions ─────
+// ─── Owner/Admin only - store config, staff management, role permissions ─────
 Route::middleware(['auth:sanctum', 'isAdmin:owner,admin'])->group(function () {
     Route::get('/admin/settings',                   [SettingsController::class, 'show']);
     Route::put('/admin/settings',                   [SettingsController::class, 'update']);
     Route::put('/admin/settings/shipping',          [SettingsController::class, 'shippingUpdate']);
+    Route::post('/admin/settings/mail-test',        [SettingsController::class, 'mailTest'])->middleware('throttle:6,1');
     Route::put('/admin/settings/terms',             [SettingsController::class, 'termsUpdate']);
 
     Route::get('/admin/role-permissions',            [RolePermissionController::class, 'index']);
@@ -187,7 +202,7 @@ Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
     Route::get('/admin/orders/stats',            [OrderController::class, 'stats']);
     Route::get('/admin/orders/cost-of-goods',    [OrderController::class, 'orderCostOfGoods']);
 
-    // ─── Dashboard & reports (stubs — see AdminAnalyticsController) ───────────
+    // ─── Dashboard & reports (stubs - see AdminAnalyticsController) ───────────
     Route::get('/admin/dashboard/stats',         [AdminAnalyticsController::class, 'dashboardStats']);
     Route::get('/admin/reports/sales',           [AdminAnalyticsController::class, 'reportsSales']);
     Route::get('/admin/reports/inventory',       [AdminAnalyticsController::class, 'reportsInventory']);
@@ -217,7 +232,7 @@ Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
     Route::post('/admin/upload-image',           [ProductController::class, 'uploadImage']);
     Route::post('/admin/upload-file',            [ProductController::class, 'uploadFile']);
 
-    // Customer address lookup — used when drafting a quote (delivery fee / courier booking)
+    // Customer address lookup - used when drafting a quote (delivery fee / courier booking)
     Route::get('/admin/customers/{id}/addresses', [AddressController::class, 'adminIndex']);
 
     // ─── Inventory ───────────────────────────────────────────────────────────
@@ -248,11 +263,14 @@ Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
     Route::post('/admin/returns',                     [InventoryReturnController::class, 'store']);
     Route::put('/admin/returns/{id}',                 [InventoryReturnController::class, 'update']);
 
-    // ─── Orders (Admin) — SECURITY: only admin can list/view all orders ───────
+    // ─── Orders (Admin) - SECURITY: only admin can list/view all orders ───────
     Route::get('/orders',               [OrderController::class, 'index']);
     Route::get('/orders/{id}',          [OrderController::class, 'show']);
     Route::patch('/orders/{id}/status', [OrderController::class, 'updateStatus']);
     Route::put('/admin/orders/{id}',    [OrderController::class, 'adminUpdate']);
+    // What cancelling would do to stock, per material. Read-only; it reports the plan the
+    // settlement will follow so the confirm modal cannot show something different.
+    Route::get('/admin/orders/{id}/cancel-settlement', [OrderController::class, 'cancelSettlement']);
     Route::get('/admin/orders',         [OrderController::class, 'adminIndex']);
     Route::get('/admin/orders/{id}',    [OrderController::class, 'show']);
 
@@ -270,13 +288,15 @@ Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
     Route::post('/admin/orders/{id}/approve-design', [OrderController::class, 'approveDesign']);
     Route::post('/admin/orders/{id}/revert-design',  [OrderController::class, 'revertDesignApproval']);
     Route::post('/admin/orders/{id}/rush-decision',   [OrderController::class, 'rushDecision']);
+    // Turn an uploaded file into a design job the shop will draw, billing the design fee onto
+    // the balance. restartDesignJob does the same money move but is customer-only and needs an
+    // existing draft, so neither side could do this for an order that arrived as an upload.
+    Route::post('/admin/orders/{id}/convert-to-design', [OrderController::class, 'convertToDesignJob']);
     Route::post('/admin/orders/{id}/remind-balance', [OrderController::class, 'remindBalance']);
     Route::post('/admin/orders/{id}/write-off',      [OrderController::class, 'writeOffOrder']);
-    // RBAC: system settings — Owner / Super Admin only (no staff grid grants `systemSettings`)
+    // RBAC: system settings - Owner / Super Admin only (no staff grid grants `systemSettings`)
     Route::post('/admin/settings/registration-terms', [SettingsController::class, 'registrationTermsUpdate'])
         ->middleware('permission:systemSettings');
-    Route::delete('/payment/cancel-pending/{orderId}', [PaymentController::class, 'cancelPending'])
-        ->middleware('permission:orders.edit,payments.edit');
     Route::post('/admin/orders/{id}/reject-design',  [OrderController::class, 'rejectDesign']);
     Route::post('/admin/orders/{id}/upload-design',   [OrderController::class, 'adminUploadDesign']);
     Route::post('/admin/orders/{id}/approve-upload',  [OrderController::class, 'approveUploadDesign']);
@@ -321,6 +341,10 @@ Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
     Route::patch('/admin/order-requests/{id}/status', [OrderRequestController::class, 'updateStatus']);
     // Create a quotation straight from the chat → confirmed OrderRequest + posts the View & Pay card.
     Route::post('/admin/quotations',                  [OrderRequestController::class, 'adminQuote']);
+    // A quote refused at payment because stock ran short: let it be paid as a pre-order, or confirm
+    // the stock is back. Both tell the customer in the chat.
+    Route::post('/admin/quotations/{id}/allow-preorder', [OrderRequestController::class, 'allowPreorder']);
+    Route::post('/admin/quotations/{id}/restocked',      [OrderRequestController::class, 'markRestocked']);
 
     // ─── Bill of Materials ─────────────────────────────────────────────────────────────────────
     Route::get('/admin/bom',                          [BillOfMaterialController::class, 'index']);
@@ -336,7 +360,7 @@ Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
     Route::delete('/admin/job-orders/{id}/production-files/{index}', [JobOrderController::class, 'deleteProductionFile']);
     Route::post('/admin/job-orders/{id}/qc',          [JobOrderController::class, 'submitQC']);
 
-    // ─── Admin notifications (aliases — same handlers as /api/notifications) ────
+    // ─── Admin notifications (aliases - same handlers as /api/notifications) ────
     Route::get('/admin/notifications',                 [NotificationController::class, 'index']);
     Route::patch('/admin/notifications/{id}/read',     [NotificationController::class, 'markRead']);
 
@@ -345,6 +369,10 @@ Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
 
     // ─── Record Payment ────────────────────────────────────────────────────────────────────────
     Route::post('/admin/orders/{id}/record-payment',  [OrderController::class, 'recordPayment']);
+    // Money going the other way. Same permission as taking a payment, because settling a debt to
+    // a customer is the same kind of act as recording one from them.
+    Route::post('/admin/orders/{id}/mark-refunded', [OrderController::class, 'markRefunded']);
+    Route::post('/admin/orders/{id}/waive-refund',  [OrderController::class, 'waiveRefund']);
 
     // ── Walk-in / POS ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
     Route::post('/admin/orders/walk-in',       [WalkInOrderController::class, 'store']);
@@ -376,7 +404,10 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::post('/order-requests',                [OrderRequestController::class, 'store']);
     Route::get('/my/order-requests',              [OrderRequestController::class, 'myRequests']);
-    Route::post('/order-requests/upload-design',  [OrderRequestController::class, 'uploadDesign']);
+    // Uploads are the only unauthenticated-cost endpoint the shop has: every accepted file is
+// Cloudinary storage and bandwidth the shop pays for, and nothing else here caps how fast a
+// logged-in account can push them. 20/minute is far above any real customer attaching artwork.
+    Route::post('/order-requests/upload-design',  [OrderRequestController::class, 'uploadDesign'])->middleware('throttle:20,1');
     Route::post('/order-requests/my/{id}/cancel', [ShopOrderRequestController::class, 'cancel']);
 
     // ─── Shop Order Tracking (Customer) ──────────────────────────────────────
@@ -384,13 +415,13 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/shop/order-requests/{id}',       [ShopOrderRequestController::class, 'show']);
 });
 
-// ─── Storefront (Public — no auth required) ───────────────────────────────────
+// ─── Storefront (Public - no auth required) ───────────────────────────────────
 Route::get('/storefront/banners',                [BannerController::class, 'storefront']);
 Route::get('/storefront/flash-sales',            [FlashSaleController::class, 'storefront']);
 
-// ─── 2FA (Protected — auth:sanctum) ─────────────────────────────────────────
+// ─── 2FA (Protected - auth:sanctum) ─────────────────────────────────────────
 Route::middleware('auth:sanctum')->group(function () {
-    Route::post('/2fa/send',          [TwoFactorController::class, 'sendOtp']);
+    Route::post('/2fa/send',          [TwoFactorController::class, 'sendOtp'])->middleware('throttle:code-address');
     Route::post('/2fa/verify',        [TwoFactorController::class, 'verifyOtp']);
     Route::post('/2fa/remember-device', [TwoFactorController::class, 'rememberDevice']);
     Route::post('/2fa/check-device',  [TwoFactorController::class, 'checkDevice']);
@@ -408,10 +439,14 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/payment/verify-intent',            [PaymentController::class, 'verifyIntent']);
     Route::post('/payment/order-request-link',       [PaymentController::class, 'createOrderRequestLink']);
     Route::post('/payment/create-order-pay-link',    [PaymentController::class, 'createOrderPayLink']);
+    // The CUSTOMER releases their own failed checkout on the way back from GCash; the controller
+    // only touches an order that belongs to the caller. It sat in the admin group behind an admin
+    // permission since 2026-08-26, so every customer got 403 and the hold lived on until the sweeper.
+    Route::delete('/payment/cancel-pending/{orderId}', [PaymentController::class, 'cancelPending']);
 });
 
 Route::middleware('auth:sanctum')->group(function () {
-    Route::post('/2fa/send',            [TwoFactorController::class, 'sendOtp']);
+    Route::post('/2fa/send',            [TwoFactorController::class, 'sendOtp'])->middleware('throttle:code-address');
     Route::post('/2fa/verify',          [TwoFactorController::class, 'verifyOtp']);
     Route::post('/2fa/remember-device', [TwoFactorController::class, 'rememberDevice']);
     Route::post('/2fa/check-device',    [TwoFactorController::class, 'checkDevice']);

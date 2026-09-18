@@ -1,6 +1,8 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
+import { cloudinaryThumb } from '@/lib/cloudinaryImage';
+import PhotoLightbox from './PhotoLightbox';
 import { useScrollToLatest } from '@/lib/useScrollToLatest';
 
 const isRecentlySeen = (ts) => ts && Date.now() - new Date(ts).getTime() < 120_000;
@@ -17,7 +19,12 @@ const dateLabel = (ts) => {
 
 const ChatWindow = ({ activeConversation, messages, user, isLoading, isAdmin, onStartChat, isSending, isLoadingMessages, isLoadingConversations, addToCart, onlineUsers = new Set(), typingUsers = {}, onApproveProof, onRequestChanges, proofActionState }) => {
   const scrollRef = useRef(null);
-  const [lightboxUrl, setLightboxUrl] = useState('');
+  const [lightboxIdx, setLightboxIdx] = useState(null);
+  // Every photo in the thread, in the order it was sent. Built here so the viewer can move between
+  // them - opening one picture in isolation is not how a set of references gets read.
+  const photoUrls = (messages || [])
+    .filter(m => m.type === 'image' && m.file_url)
+    .map(m => m.file_url);
   const [addedToCart, setAddedToCart] = useState({});
 
   const typingNames = Object.entries(typingUsers)
@@ -119,7 +126,9 @@ const ChatWindow = ({ activeConversation, messages, user, isLoading, isAdmin, on
   const renderMessage = (msg, idx) => {
     const myId = String(user?.id || user?._id || '');
     const isMe = msg.sender_id === myId;
-    const msgKey = msg._id || msg.id || `msg-${idx}`;
+    // clientKey first: a bubble that began life as a placeholder keeps it through confirmation, so
+    // React updates the node in place instead of unmounting it and mounting the server's copy.
+    const msgKey = msg.clientKey || msg._id || msg.id || `msg-${idx}`;
 
     // A design order opening a thread. The designer needs to know WHICH order is being discussed
     // before anything else - a wall of "can you make the logo bigger" with no reference is how the
@@ -131,22 +140,26 @@ const ChatWindow = ({ activeConversation, messages, user, isLoading, isAdmin, on
           <div className="quotation-card">
             <div className="quotation-header">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#d4a843" strokeWidth="2.5"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/></svg>
-              <span className="quotation-tag">Design order</span>
+              <span className="quotation-tag">{
+                  m.kind === 'deposit_due'  ? 'Deposit due'
+                : m.kind === 'delivery_fee' ? 'Delivery fee'
+                : m.kind === 'proof_ready'  ? 'Proof ready'
+                : 'Design order'}</span>
             </div>
             {/* The same card is read by both sides, so the destination follows the reader. Sending the
                 shop to the customer's order history showed them a page built for someone else. */}
             <a href={`${isAdmin ? '/dashboard/business/orders' : '/shop/orders-history'}?order=${m.orderId || ''}`} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none', color: 'inherit', cursor: 'pointer' }}>
               <div className="quotation-body">
                 <div className="quotation-product" style={{ margin: 0 }}>{m.orderNo || 'Order'}</div>
-                {m.products && <div style={{ fontSize: '0.72rem', color: '#9ca3af' }}>{m.products}</div>}
+                {m.products && <div style={{ fontSize: '0.72rem', color: 'var(--gray)' }}>{m.products}</div>}
               </div>
             </a>
             {m.brief && (
-              <div style={{ padding: '2px 12px 6px', fontSize: '0.8rem', color: '#4b5563', lineHeight: 1.5 }}>
-                <span style={{ fontWeight: 700, color: '#6b7280' }}>Brief: </span>{m.brief}
+              <div style={{ padding: '2px 12px 6px', fontSize: '0.8rem', color: 'var(--gray-light)', lineHeight: 1.5 }}>
+                <span style={{ fontWeight: 700, color: 'var(--gray)' }}>Brief: </span>{m.brief}
               </div>
             )}
-            {msg.body && <div style={{ padding: '2px 12px 6px', fontSize: '0.82rem', color: '#4b5563' }}>{msg.body}</div>}
+            {msg.body && <div style={{ padding: '2px 12px 6px', fontSize: '0.82rem', color: 'var(--gray-light)' }}>{msg.body}</div>}
 
             {/* The proof is already on screen here, so the decision belongs here too - sending the
                 customer to another page to press a button they could press now is friction with
@@ -158,7 +171,7 @@ const ChatWindow = ({ activeConversation, messages, user, isLoading, isAdmin, on
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
                     {m.proofs.slice(0, 6).map((u, n) => (
                       <a key={n} href={u} target="_blank" rel="noopener noreferrer"
-                        style={{ width: 46, height: 46, borderRadius: 6, overflow: 'hidden', border: '1px solid #e5e7eb', background: '#000', display: 'block' }}>
+                        style={{ width: 46, height: 46, borderRadius: 6, overflow: 'hidden', border: '1px solid var(--border)', background: '#000', display: 'block' }}>
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img src={/\.(mp4|webm|mov|m4v|ogg)(\?|$)/i.test(u) ? u.replace(/\.(mp4|webm|mov|m4v|ogg)(\?|$)/i, '.jpg$2') : u}
                           alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
@@ -166,8 +179,15 @@ const ChatWindow = ({ activeConversation, messages, user, isLoading, isAdmin, on
                     ))}
                   </div>
                 )}
-                {proofActionState?.[m.orderId] === 'done' ? (
-                  <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#166534' }}>Approved - thank you.</div>
+                {/* proofActionState is per-session, so a reload put live Approve buttons back on a
+                    proof that had already been settled. The message carries the outcome now. */}
+                {m.settled || proofActionState?.[m.orderId] === 'done' ? (
+                  <div style={{ fontSize: '0.78rem', fontWeight: 700, color: m.settledOutcome === 'changes_requested' ? '#b45309' : m.settledOutcome === 'superseded' ? '#6b6b6b' : '#166534' }}>
+                    {m.settledOutcome === 'changes_requested'
+                      ? 'Changes requested - we are redrawing this.'
+                                        : m.settledOutcome === 'superseded' ? 'Replaced by a newer proof below.'
+                      : 'Approved - thank you.'}
+                  </div>
                 ) : (
                   <div style={{ display: 'flex', gap: 6 }}>
                     <button type="button" disabled={proofActionState?.[m.orderId] === 'busy'}
@@ -176,7 +196,7 @@ const ChatWindow = ({ activeConversation, messages, user, isLoading, isAdmin, on
                       {proofActionState?.[m.orderId] === 'busy' ? 'Approving...' : 'Approve'}
                     </button>
                     <button type="button" onClick={() => onRequestChanges?.(m)}
-                      style={{ flex: 1, padding: '7px', borderRadius: 8, border: '1px solid #e5e7eb', background: 'transparent', color: '#6b7280', fontSize: '0.76rem', fontWeight: 600, cursor: 'pointer' }}>
+                      style={{ flex: 1, padding: '7px', borderRadius: 8, border: '1px solid var(--border)', background: 'transparent', color: 'var(--gray)', fontSize: '0.76rem', fontWeight: 600, cursor: 'pointer' }}>
                       Request changes
                     </button>
                   </div>
@@ -187,11 +207,16 @@ const ChatWindow = ({ activeConversation, messages, user, isLoading, isAdmin, on
             {/* Payment stays in the order modal: it needs the full breakdown - subtotal, shipping, the
                 design fee already paid, deposit against full - and "what was I shown when I paid" is
                 the question every payment dispute turns on. One tap away, not reproduced here. */}
-            {m.kind === 'deposit_due' && !isAdmin && (
+            {m.kind === 'deposit_due' && !isAdmin && m.settled && (
+              <div style={{ padding: '2px 12px 10px', fontSize: '0.78rem', fontWeight: 700, color: '#166534' }}>
+                Paid - thank you.
+              </div>
+            )}
+            {m.kind === 'deposit_due' && !isAdmin && !m.settled && (
               <div style={{ padding: '2px 12px 10px' }}>
-                <div style={{ fontSize: '0.78rem', color: '#4b5563', lineHeight: 1.6, marginBottom: 8 }}>
+                <div style={{ fontSize: '0.78rem', color: 'var(--gray-light)', lineHeight: 1.6, marginBottom: 8 }}>
                   {m.dueNow != null && <div>Due now: <strong style={{ color: '#111' }}>{m.dueNow}</strong>{m.dueFull ? <> or pay in full <strong style={{ color: '#111' }}>{m.dueFull}</strong></> : null}</div>}
-                  {m.heldUntil && <div style={{ color: '#6b7280' }}>Held until {m.heldUntil}</div>}
+                  {m.heldUntil && <div style={{ color: 'var(--gray)' }}>Held until {m.heldUntil}</div>}
                 </div>
                 <a href={`/shop/orders-history?order=${m.orderId || ''}`}
                   style={{ display: 'block', textAlign: 'center', padding: '7px', borderRadius: 8, background: '#d4a843', color: '#000', fontSize: '0.76rem', fontWeight: 700, textDecoration: 'none' }}>
@@ -224,16 +249,16 @@ const ChatWindow = ({ activeConversation, messages, user, isLoading, isAdmin, on
                   <img src={m.thumbnail} alt="" style={{ width: 46, height: 46, borderRadius: 8, objectFit: 'cover', flexShrink: 0 }} />
                 ) : (
                   <div style={{ width: 46, height: 46, borderRadius: 8, background: 'rgba(0,0,0,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--gray)" strokeWidth="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
                   </div>
                 )}
                 <div style={{ minWidth: 0 }}>
                   <div className="quotation-product" style={{ margin: 0 }}>{m.productName}</div>
-                  {m.category && <div style={{ fontSize: '0.72rem', color: '#9ca3af' }}>{m.category}</div>}
+                  {m.category && <div style={{ fontSize: '0.72rem', color: 'var(--gray)' }}>{m.category}</div>}
                 </div>
               </div>
             </a>
-            {msg.body && <div style={{ padding: '2px 12px 6px', fontSize: '0.82rem', color: '#4b5563' }}>{msg.body}</div>}
+            {msg.body && <div style={{ padding: '2px 12px 6px', fontSize: '0.82rem', color: 'var(--gray-light)' }}>{msg.body}</div>}
             <div className="quotation-timestamp" style={{ textAlign: isMe ? 'right' : 'left' }}>
               {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
             </div>
@@ -291,7 +316,7 @@ const ChatWindow = ({ activeConversation, messages, user, isLoading, isAdmin, on
                   <div className="quotation-product" style={{ marginBottom: '2px' }}>
                     {li.productName}
                     {li.variantName && (
-                      <span style={{ fontWeight: 500, color: '#6b7280' }}> - {li.variantName}</span>
+                      <span style={{ fontWeight: 500, color: 'var(--gray)' }}> - {li.variantName}</span>
                     )}
                   </div>
                   <div className="quotation-line">
@@ -320,14 +345,10 @@ const ChatWindow = ({ activeConversation, messages, user, isLoading, isAdmin, on
               {m.orderRequestId && m.downPayment != null && (
                 <div className="quotation-line"><span>Downpayment ({m.downPaymentPct ?? 50}%)</span><span>&#8369;{fmt(m.downPayment)}</span></div>
               )}
-              {!isAdmin && !isMe && !m.orderRequestId && addToCart && (
-                <button
-                  onClick={handleAddQuotationToCart}
-                  disabled={alreadyAdded}
-                  className={`btn-add-cart${alreadyAdded ? ' added' : ''}`}
-                >
-                  {alreadyAdded ? 'Added to Cart' : 'Add to Cart'}
-                </button>
+              {!isAdmin && !isMe && !m.orderRequestId && (
+                <div style={{ fontSize: '0.72rem', color: 'var(--gray)', lineHeight: 1.5, marginTop: 6 }}>
+                  A quote is a fixed offer, so it is never added to the cart - change the quantity there and the agreed price would no longer apply. This one was sent before quotes carried their own checkout, so message us and we will reissue it with a pay link.
+                </div>
               )}
             </div>
             <div className="quotation-timestamp" style={{ textAlign: isMe ? 'right' : 'left' }}>
@@ -340,27 +361,76 @@ const ChatWindow = ({ activeConversation, messages, user, isLoading, isAdmin, on
 
     return (
       <div key={msgKey} className={`bubble ${isMe ? 'me' : 'them'}`}
-        style={msg.pending ? { opacity: 0.6 } : msg.failed ? { opacity: 0.7 } : undefined}>
-        {msg.type === 'image' && msg.file_url ? (
+        style={{ transition: 'opacity .22s ease', opacity: msg.pending ? 0.6 : msg.failed ? 0.7 : 1 }}>
+        {/* A document has nothing to look at, so it gets a card that names it and opens it -
+            the one thing a reader can usefully do with a PDF in a conversation. */}
+        {msg.type === 'file' && msg.file_url ? (
+          <div style={{ marginBottom: '8px' }}>
+            {(() => {
+              const fname = msg.metadata?.name || 'Attachment';
+              const ext = (fname.split('.').pop() || 'FILE').toUpperCase().slice(0, 4);
+              const kb = msg.metadata?.size
+                ? (msg.metadata.size < 1024 * 1024
+                    ? Math.round(msg.metadata.size / 1024) + ' KB'
+                    : (msg.metadata.size / (1024 * 1024)).toFixed(1) + ' MB')
+                : null;
+              return (
+                <a href={msg.file_url} target="_blank" rel="noopener noreferrer"
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '10px',
+                    padding: '10px 12px', borderRadius: '10px', maxWidth: '280px',
+                    background: 'rgba(212,168,67,0.08)', border: '1px solid rgba(212,168,67,0.25)',
+                    textDecoration: 'none', color: 'inherit',
+                  }}>
+                  <div style={{
+                    width: '34px', height: '34px', borderRadius: '7px', flexShrink: 0,
+                    background: 'rgba(212,168,67,0.15)', display: 'flex',
+                    alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#d4a843" strokeWidth="1.8">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/>
+                    </svg>
+                  </div>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ fontSize: '0.78rem', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{fname}</div>
+                    <div style={{ fontSize: '0.68rem', opacity: 0.65, marginTop: '1px' }}>{ext}{kb ? ' - ' + kb : ''}</div>
+                  </div>
+                </a>
+              );
+            })()}
+          </div>
+        ) : msg.type === 'image' && msg.file_url ? (
           <div style={{ display: 'block', overflow: 'hidden', borderRadius: '10px', marginBottom: '8px', lineHeight: 0 }}>
+            {/* The bubble is 260px wide and was loading the whole 3 MB photo to fill it. Fifteen
+                references in a collage thread meant 45 MB every time anyone opened the thread.
+                The lightbox still opens the untouched original - only the bubble is scaled. */}
             <img
-              src={msg.file_url}
+              src={cloudinaryThumb(msg.file_url, 520)}
               alt=""
-              onClick={() => setLightboxUrl(msg.file_url)}
+              onClick={() => setLightboxIdx(photoUrls.indexOf(msg.file_url))}
               style={{ display: 'block', width: '100%', maxWidth: '260px', height: 'auto', cursor: 'zoom-in', borderRadius: '10px' }}
             />
           </div>
         ) : msg.body ? (
-          <div style={{ wordBreak: 'break-word' }}>{msg.body}</div>
+          <div style={{ wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>{msg.body}</div>
         ) : null}
         <div className="bubble-time" style={{ display: 'flex', alignItems: 'center', gap: '4px', justifyContent: 'flex-end' }}>
           {msg.failed ? (
             <span style={{ color: '#ef4444', fontSize: '10px' }}>Failed to send</span>
-          ) : msg.pending ? (
-            <span style={{ fontSize: '10px', opacity: 0.7 }}>Sending…</span>
           ) : (
-            new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            /* Both states are always mounted and cross-faded, so the line never empties between
+               them - an element that unmounts and remounts is what read as a blink. */
+            <span style={{ position: 'relative', display: 'inline-block', minWidth: '46px', textAlign: 'right' }}>
+              <span style={{ fontSize: '10px', opacity: msg.pending ? 0.7 : 0, transition: 'opacity .18s ease' }}>
+                Sending&hellip;
+              </span>
+              <span aria-hidden={msg.pending} style={{ position: 'absolute', inset: 0, opacity: msg.pending ? 0 : 1, transition: 'opacity .18s ease' }}>
+                {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              </span>
+            </span>
           )}
+          {/* Staff see what was said on the shop's behalf, and that nobody typed it. */}
+          {msg.metadata?.automated && <span style={{ fontSize: '10px', opacity: 0.75 }}>&middot; Automatic reply</span>}
         </div>
       </div>
     );
@@ -376,24 +446,36 @@ const ChatWindow = ({ activeConversation, messages, user, isLoading, isAdmin, on
             const roleLabel = role === 'admin' || role === 'owner' ? 'Staff' : 'Customer';
             return (
               <>
-                <div className="chat-avatar" style={{ width: '38px', height: '38px', position: 'relative', flexShrink: 0 }}>
-                  {activeConversation.other_user?.avatar ? (
-                    <img src={activeConversation.other_user.avatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                  ) : (
-                    <span style={{ fontSize: '0.82rem', fontWeight: 800 }}>{(activeConversation.other_user?.name || 'U').charAt(0)}</span>
-                  )}
+                <div className="chat-avatar-wrap">
+                  <div className="chat-avatar" style={{ width: '38px', height: '38px' }}>
+                    {activeConversation.other_user?.avatar ? (
+                      <img src={activeConversation.other_user.avatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    ) : (
+                      <span style={{ fontSize: '0.82rem', fontWeight: 800 }}>{(activeConversation.other_user?.name || 'U').charAt(0)}</span>
+                    )}
+                  </div>
                   {isOnline && (
-                    <span style={{ position: 'absolute', bottom: '1px', right: '1px', width: '10px', height: '10px', borderRadius: '50%', background: '#22c55e', border: '2px solid var(--dark2)' }} />
+                    <span className="chat-online-dot" />
                   )}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div className="chat-header-name">{activeConversation.other_user?.name || 'Chat'}</div>
                   <div className="chat-header-meta">
-                    <span className={`chat-header-status ${isOnline ? 'online' : 'offline'}`}>
-                      {isOnline ? 'Online' : 'Offline'}
-                    </span>
-                    <span className="chat-header-dot">·</span>
-                    <span className="chat-header-role">{roleLabel}</span>
+                    {activeConversation.other_user?.is_guest ? (
+                      /* No account means no inbox to read a reply in. Saying so in the header,
+                         where the name is, is the only place it arrives before you start typing. */
+                      <span className="chat-header-role" style={{ color: 'var(--gold)' }}>
+                        Guest - reply by email{activeConversation.other_user?.email ? `: ${activeConversation.other_user.email}` : ''}
+                      </span>
+                    ) : (
+                      <>
+                        <span className={`chat-header-status ${isOnline ? 'online' : 'offline'}`}>
+                          {isOnline ? 'Online' : 'Offline'}
+                        </span>
+                        <span className="chat-header-dot">·</span>
+                        <span className="chat-header-role">{roleLabel}</span>
+                      </>
+                    )}
                   </div>
                 </div>
               </>
@@ -439,39 +521,12 @@ const ChatWindow = ({ activeConversation, messages, user, isLoading, isAdmin, on
         </div>
       </div>
 
-      {lightboxUrl && (
-        <div
-          onClick={() => setLightboxUrl('')}
-          style={{
-            position: 'fixed', inset: 0, zIndex: 9999,
-            background: 'rgba(0,0,0,0.92)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            cursor: 'zoom-out',
-          }}
-        >
-          <img
-            src={lightboxUrl}
-            alt=""
-            onClick={e => e.stopPropagation()}
-            style={{ maxWidth: '90vw', maxHeight: '90vh', objectFit: 'contain', borderRadius: '10px', cursor: 'default' }}
-          />
-          <button
-            type="button"
-            onClick={() => setLightboxUrl('')}
-            style={{
-              position: 'absolute', top: '16px', right: '16px',
-              background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.2)',
-              color: '#fff', cursor: 'pointer',
-              width: '40px', height: '40px', borderRadius: '50%',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-            </svg>
-          </button>
-        </div>
-      )}
+      <PhotoLightbox
+        urls={photoUrls}
+        index={lightboxIdx}
+        onIndexChange={setLightboxIdx}
+        onClose={() => setLightboxIdx(null)}
+      />
     </>
   );
 };

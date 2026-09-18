@@ -1,0 +1,181 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
+import useLockBodyScroll from '@/lib/useLockBodyScroll';
+import { DEFAULT_REGISTRATION_TERMS } from '@/lib/registrationTerms';
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
+
+/**
+ * The shop's policies, read in a modal rather than on a page of their own.
+ *
+ * Each document lives in site content under its own key, so the shop can rewrite any of them
+ * without a deploy. Until one is written, the draft below is what a customer sees - a policy that
+ * says nothing is worse than a plain one, and an empty page worse still. The drafts describe what
+ * this shop ACTUALLY does (deposits, proof approval, made-to-order returns); they are a starting
+ * point for the owner to check, not legal advice.
+ */
+const DRAFTS = {
+  policy_privacy: {
+    title: 'Privacy Policy',
+    sections: [
+      { title: 'What we collect', body: 'Your name, email address, mobile number and delivery address, the artwork and instructions you send with an order, and the record of your orders and messages with us. Card details are never collected or stored by us - card payments are handled on PayMongo’s systems.' },
+      { title: 'Why we collect it', body: 'To produce and deliver your order, to send you updates about it, to answer your messages, and to keep our own records of sales as the law requires.' },
+      { title: 'Who else sees it', body: 'Our couriers receive the delivery details needed to bring your order to you. Our payment provider receives what a payment needs. Nobody else receives your information, and we never sell it.' },
+      { title: 'Your artwork', body: 'Files you upload are used to produce your order. We may show finished work as samples, but never a file that carries your name, photo or private details unless you tell us we may.' },
+      { title: 'How long we keep it', body: 'Order records are kept for as long as our accounting obligations require. You may ask us to delete your account at any time; order records that the law requires us to keep will remain.' },
+      { title: 'Contact', body: 'Questions about your information: personalizemeprints.admin@gmail.com.' },
+    ],
+  },
+};
+
+export default function PolicyModal({ docKey, onClose }) {
+  const [doc, setDoc] = useState(null);
+  const [mounted, setMounted] = useState(false);
+  useLockBodyScroll(!!docKey);
+
+  useEffect(() => setMounted(true), []);
+
+  useEffect(() => {
+    if (!docKey) return;
+
+    // The Terms are not a document of this component's own: they are the clauses the shop already
+    // has people accept at sign-up, editable in Settings. Reading them from there is what stops a
+    // second wording existing - the footer must not be able to disagree with what was signed.
+    if (docKey === 'policy_terms') {
+      setDoc({ title: 'Terms and Conditions', sections: DEFAULT_REGISTRATION_TERMS });
+      fetch(`${API_URL}/api/public/settings`)
+        .then(r => r.json())
+        .then(d => {
+          const saved = d?.data?.registrationTerms;
+          if (Array.isArray(saved) && saved.length) {
+            setDoc({ title: 'Terms and Conditions', sections: saved });
+          }
+        })
+        .catch(() => {});
+      return;
+    }
+
+    const fallback = DRAFTS[docKey];
+    setDoc(fallback);
+    // A shop-written version replaces the draft; a failed fetch quietly leaves the draft, because
+    // a customer asking to read a policy should never be met with an error.
+    fetch(`${API_URL}/api/storefront/content/${docKey}`)
+      .then(r => r.json())
+      .then(d => {
+        const data = d?.data;
+        if (data && Array.isArray(data.sections) && data.sections.length) {
+          setDoc({ title: data.title || fallback?.title || 'Policy', sections: data.sections });
+        }
+      })
+      .catch(() => {});
+  }, [docKey]);
+
+  if (!docKey || !mounted || !doc) return null;
+
+  return createPortal(
+    <div
+      className="policy-overlay"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label={doc.title}
+    >
+      {/* Styles travel with the component: it is opened from the landing page and from the shop,
+          which load different stylesheets. */}
+      {/* The same dressing as the sign-up Terms modal - same panel, same type scale, same gold
+          section titles - so a customer reading a policy sees the document they already know.
+          Carried with the component because it opens from the landing page and from the shop,
+          which load different stylesheets. */}
+      <style>{`
+        .policy-overlay {
+          position: fixed; inset: 0; z-index: 4000;
+          background: rgba(0,0,0,0.8);
+          backdrop-filter: blur(8px);
+          display: flex; align-items: center; justify-content: center;
+          padding: 1rem;
+        }
+        .policy-panel {
+          background: var(--dark2, #1a1a1a);
+          border: 1px solid rgba(212,168,67,0.2);
+          border-radius: 20px;
+          width: 100%; max-width: 600px; max-height: 80vh;
+          overflow: hidden;
+          display: flex; flex-direction: column;
+          font-family: Arial, Arimo, Helvetica, sans-serif;
+        }
+        .policy-head {
+          display: flex; align-items: center; justify-content: space-between;
+          padding: 1.5rem 1.75rem;
+          border-bottom: 1px solid var(--border, rgba(255,255,255,0.1));
+          background: rgba(212,168,67,0.05);
+        }
+        .policy-head h2 {
+          margin: 0; font-size: 1.2rem; font-weight: 800;
+          color: var(--white, #f5f5f5);
+        }
+        .policy-head button {
+          background: none; border: none; cursor: pointer;
+          color: var(--gray, #9a9a9a);
+          width: 32px; height: 32px; border-radius: 8px;
+          display: flex; align-items: center; justify-content: center;
+        }
+        .policy-head button:hover { color: var(--gold, #d4a843); }
+        .policy-body {
+          padding: 1.5rem 1.75rem;
+          overflow-y: auto;
+          -webkit-overflow-scrolling: touch;
+          scrollbar-width: thin;
+          scrollbar-color: var(--gold-dark, #a67c1a) transparent;
+        }
+        .policy-body p { margin: 0 0 1rem; line-height: 1.7; color: var(--white, #f5f5f5); }
+        .policy-body p.policy-title { margin-bottom: 0.35rem; }
+        .policy-body p strong { color: var(--gold, #d4a843); }
+        .policy-updated { font-size: 0.8rem; color: var(--gray, #9a9a9a) !important; }
+        .policy-foot {
+          display: flex; justify-content: flex-end;
+          padding: 1.25rem 1.75rem calc(1.5rem + env(safe-area-inset-bottom));
+          border-top: 1px solid var(--border, rgba(255,255,255,0.1));
+        }
+        .policy-foot button {
+          background: var(--gold, #d4a843); color: #111; border: none;
+          border-radius: 10px; padding: 0.7rem 1.5rem;
+          font-size: 0.9rem; font-weight: 800; cursor: pointer;
+          font-family: Arial, Arimo, Helvetica, sans-serif;
+        }
+        @media (max-width: 640px) {
+          .policy-overlay { padding: 0; align-items: stretch; }
+          .policy-panel { max-width: 100%; max-height: 100%; height: 100%; border-radius: 0; border: none; }
+          .policy-head, .policy-body, .policy-foot { padding-left: 1.15rem; padding-right: 1.15rem; }
+        }
+      `}</style>
+
+      <div className="policy-panel" onClick={e => e.stopPropagation()}>
+        <div className="policy-head">
+          <h2>{doc.title}</h2>
+          <button type="button" onClick={onClose} aria-label="Close">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+
+        <div className="policy-body">
+          {doc.sections.map((sec, i) => (
+            <div key={i}>
+              {sec.title && <p className="policy-title"><strong>{i + 1}. {sec.title}</strong></p>}
+              <p>{sec.body}</p>
+            </div>
+          ))}
+          <p className="policy-updated">Last reviewed {new Date().getFullYear()}. Message us if anything here is unclear.</p>
+        </div>
+
+        <div className="policy-foot">
+          <button type="button" onClick={onClose}>I understand</button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}

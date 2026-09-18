@@ -37,11 +37,16 @@ class ErrorBoundary extends Component {
           textAlign: 'center',
           minHeight: '400px',
         }}>
-          <div style={{
-            fontSize: '4rem',
-            marginBottom: '1rem',
-          }}>
-            ⚠️
+          {/* An SVG, not an emoji - emoji render differently on every platform and are the one
+              glyph guaranteed to look wrong on somebody's phone at the exact moment the app has
+              already failed them. */}
+          <div style={{ marginBottom: '1rem', display: 'flex', justifyContent: 'center' }} aria-hidden="true">
+            <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="#d4a843"
+              strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+              <line x1="12" y1="9" x2="12" y2="13" />
+              <line x1="12" y1="17" x2="12.01" y2="17" />
+            </svg>
           </div>
           <h2 style={{
             fontSize: '1.5rem',

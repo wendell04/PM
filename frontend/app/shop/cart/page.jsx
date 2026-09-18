@@ -1,8 +1,12 @@
 'use client';
+import NoImage from '@/components/NoImage';
+import { fileExtLabel } from '@/lib/shopUtils';
+import { cloudinaryThumb } from '@/lib/cloudinaryImage';
 
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import { useCart } from '../layout';
 import ErrorBoundary from '../../../components/ErrorBoundary';
 import { useAuth } from '@/contexts/AuthContext';
@@ -35,10 +39,10 @@ function fileNameFromUrl(url) {
 }
 
 // Same card language as the quote checkout: white surface, hairline border, quiet labels.
-const CARD = { background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 14 };
+const CARD = { background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: 12, padding: 14 };
 const MICRO_LABEL = {
   display: 'block', fontSize: '.74rem', fontWeight: 800, letterSpacing: '.03em',
-  textTransform: 'uppercase', color: '#6b7280',
+  textTransform: 'uppercase', color: 'var(--gray)',
 };
 
 // ── Login Required Modal ──────────────────────────────────────────────────────
@@ -49,11 +53,11 @@ function LoginRequiredModal({ isOpen, onClose }) {
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }} onClick={onClose}>
       <div style={{ ...CARD, padding: 20, width: '100%', maxWidth: 400 }} onClick={e => e.stopPropagation()}>
         <div style={{ textAlign: 'center', marginBottom: 16 }}>
-          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--gray)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
             <rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />
           </svg>
           <p style={{ fontSize: '1rem', fontWeight: 800, margin: '10px 0 4px' }}>Please log in or register</p>
-          <p style={{ fontSize: '.82rem', color: '#6b7280', lineHeight: 1.6, margin: 0 }}>
+          <p style={{ fontSize: '.82rem', color: 'var(--gray)', lineHeight: 1.6, margin: 0 }}>
             You need an account to place orders, so we can process it and keep you updated.
           </p>
         </div>
@@ -61,13 +65,13 @@ function LoginRequiredModal({ isOpen, onClose }) {
         <div style={{ display: 'flex', gap: 8 }}>
           <button
             onClick={() => { onClose(); openAuthModalWithRedirect('/shop/checkout'); }}
-            style={{ flex: 1, padding: '10px 12px', borderRadius: 10, border: '1px solid #d1d5db', background: '#fff', fontWeight: 700, fontSize: '.85rem', cursor: 'pointer' }}
+            style={{ flex: 1, padding: '10px 12px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--dark)', fontWeight: 700, fontSize: '.85rem', cursor: 'pointer' }}
           >
             Log in
           </button>
           <button
             onClick={() => { onClose(); window.dispatchEvent(new CustomEvent('pmp_open_auth', { detail: { type: 'register' } })); }}
-            style={{ flex: 1, padding: '10px 12px', borderRadius: 10, border: 'none', background: '#111827', color: '#fff', fontWeight: 800, fontSize: '.85rem', cursor: 'pointer' }}
+            style={{ flex: 1, padding: '10px 12px', borderRadius: 10, border: 'none', background: 'var(--white)', color: 'var(--dark)', fontWeight: 800, fontSize: '.85rem', cursor: 'pointer' }}
           >
             Register
           </button>
@@ -78,9 +82,32 @@ function LoginRequiredModal({ isOpen, onClose }) {
 }
 
 export default function CartPage() {
+  // Which cart lines have their attachment list expanded. Keyed by line, so opening one
+  // does not open every other multi-file item on the page.
+  const [openFiles, setOpenFiles] = useState({});
   const router = useRouter();
   const { cartItems, isCartLoading, updateQty, removeFromCart, bulkRemove } = useCart();
   const { token } = useAuth();
+  const [hasAddress, setHasAddress] = useState(null);   // null = unknown / not signed in
+  const [addrDismissed, setAddrDismissed] = useState(false);
+
+  // Does this shopper already have somewhere to send things to? Signed out, the question does not
+  // arise - they will be asked to sign in before checkout anyway.
+  useEffect(() => {
+    if (!token) { setHasAddress(null); return; }
+    let cancelled = false;
+    fetchWithTimeout(`${API_URL}/api/addresses`, {
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+    }, 10000)
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => {
+        if (cancelled || !d) return;
+        const list = Array.isArray(d?.data) ? d.data : (d?.data?.addresses ?? d?.addresses ?? []);
+        setHasAddress(list.length > 0);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [token]);
 
   const [selectedItems, setSelectedItems] = useState(new Set());
   const [notes, setNotes] = useState('');
@@ -92,13 +119,19 @@ export default function CartPage() {
   const [designChoices, setDesignChoices] = useState({});
   // Store-level design fee, so the cart quotes the same number checkout will charge.
   const [storeDesignFee, setStoreDesignFee] = useState(0);
+  // ...and the shipping mode, because "Calculated at checkout" is only true for two of the three.
+  const [shippingMode, setShippingMode] = useState(null);
   const removeTimerRef = useRef(null);
 
   useEffect(() => {
     let alive = true;
     fetch(`${API_URL}/api/public/settings`)
       .then(r => r.json())
-      .then(d => { if (alive) setStoreDesignFee(Number(d?.data?.designRequestFee) || 0); })
+      .then(d => {
+        if (!alive) return;
+        setStoreDesignFee(Number(d?.data?.designRequestFee) || 0);
+        setShippingMode(d?.data?.shippingMode ?? 'courier_booked');
+      })
       .catch(() => {});
     return () => { alive = false; };
   }, []);
@@ -158,7 +191,9 @@ export default function CartPage() {
         allowCOD:            item.allowCOD ?? true,
       },
       stockCap: (() => {
-        if (!item.trackInventory || item.stockStatus === 'upon-order') return 99;
+        // 'upon-order' is set by the made-to-order flag and says nothing about supply; the
+        // checkout still refuses on real materials. Cap on what can be built.
+        if (!item.trackInventory) return 99;
         if (item.variantId && item.product?.variantAvailableQty?.[item.variantId] != null)
           return Math.max(item.product.variantAvailableQty[item.variantId], 1);
         if (item.product?.canProduce != null) return Math.max(item.product.availableQty ?? 0, 1);
@@ -191,6 +226,60 @@ export default function CartPage() {
     ? Math.max(storeDesignFee, ...designLines.map(i => Number(i.designFee) || 0))
     : 0;
   const selectedTotal = selectedBaseTotal + selectedDesignFee;
+
+  // The server's answer wins when it has one: it is live and it knows about the materials this
+  // line shares with others. The snapshot cap is the fallback for a line nothing has checked yet.
+  const lineCap = (item) => (lineMax[item.lineId] ?? item.stockCap);
+
+  // The checkout refuses a cart that needs more material than the shop has, and it has to - that is
+  // the only moment the claim can be made atomically. But being refused there means being refused
+  // after the address, the delivery speed and the payment method, over a quantity that was never
+  // possible. This asks the same question read-only so the answer arrives while the line that
+  // caused it is still on screen. Advisory by nature: someone else can take the last of it between
+  // here and checkout, which is why the real refusal stays where it is.
+  const [shortages, setShortages] = useState([]);
+  // lineId -> the ceiling the server worked out for that line. The cart used to guess this from the
+  // snapshot taken when the line was added, and fell back to a flat 99 when the snapshot had no
+  // trackInventory flag - which is how a mug with fifty blanks accepted ninety-nine.
+  const [lineMax, setLineMax] = useState({});
+
+  // Every line is checked, ticked or not, so each + button has a real ceiling; the tick only
+  // decides which lines the shortage warning (and the checkout) is about.
+  const checkKey = enrichedCart
+    .map((i, idx) => `${i.product?._id ?? ''}:${i.variantId ?? ''}:${i.qty}:${selectedItems.has(idx) ? 1 : 0}`)
+    .join('|');
+
+  useEffect(() => {
+    if (!checkKey) { setShortages([]); return; }
+    let dropped = false;
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetchWithTimeout(`${API_URL}/api/cart/availability`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            items: enrichedCart.map((i, idx) => ({
+              productId: i.product?._id,
+              variantId: i.variantId ?? null,
+              qty: i.qty,
+              selected: selectedItems.has(idx),
+            })),
+          }),
+        }, 12000);
+        const d = await res.json().catch(() => ({}));
+        if (dropped || !res.ok) return;
+        const body = d?.data ?? d;
+        setShortages(body?.shortages ?? []);
+        const maxes = {};
+        (body?.lineMax ?? []).forEach((m, i) => {
+          const line = enrichedCart[i];
+          if (line && m != null) maxes[line.lineId] = Number(m);
+        });
+        setLineMax(maxes);
+      } catch { /* a helper that fails stays quiet - it must never block a cart */ }
+    }, 250);
+    return () => { dropped = true; clearTimeout(timer); };
+  }, [checkKey]);
 
   const handleRemoveItem = (lineId, index) => {
     setRemovingId(lineId);
@@ -266,7 +355,7 @@ export default function CartPage() {
       return !choice?.url;
     });
     if (customWithNoDesign.length > 0) {
-      setError(`Please attach a design or request design service for: ${customWithNoDesign.map(i => i.product.name).join(', ')}`);
+      setError(`Choose how the design is provided first - tap Customise on: ${customWithNoDesign.map(i => i.product.name).join(', ')}`);
       return;
     }
 
@@ -325,6 +414,9 @@ export default function CartPage() {
           designNotes:     i.designNotes ?? null,
           designRequested: designRequested,
           designMode:      choice?.mode ?? i.designMode ?? null,
+          // The flash sale the price was taken from. Checkout sends it on and the server applies
+          // the sale again; dropped here, the cart showed the sale price and the order charged full.
+          flashSaleId:     i.flashSaleId ?? null,
           designFee:       designRequested ? designFee : null,
           // Carry the T&C acceptance (accepted per mode on the product page) to checkout for proof.
           termsVersion:    i.termsVersion ?? null,
@@ -350,7 +442,7 @@ export default function CartPage() {
   // ── Empty cart ──────────────────────────────────────────────────────────────
   if (!isCartLoading && enrichedCart.length === 0) {
     return (
-      <div className="shop-container" style={{ maxWidth: 900, margin: '0 auto', padding: '2.5rem 1rem', fontFamily: "'Outfit', sans-serif" }}>
+      <div className="shop-container" style={{ maxWidth: 900, margin: '0 auto', padding: '2.5rem 1rem', fontFamily: "Arial, Arimo, Helvetica, sans-serif" }}>
         <div style={{ textAlign: 'center', padding: '5rem 1.5rem', border: '1px dashed rgba(212,168,67,0.15)', borderRadius: '16px', background: 'rgba(212,168,67,0.02)' }}>
           <div style={{ width: '72px', height: '72px', borderRadius: '50%', margin: '0 auto 20px', background: 'rgba(212,168,67,0.06)', border: '1px solid rgba(212,168,67,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="rgba(212,168,67,0.5)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
@@ -369,15 +461,41 @@ export default function CartPage() {
   return (
     <ErrorBoundary>
       <div className="shop-container" style={{ maxWidth: 980, margin: '0 auto', padding: '1.25rem 1rem 4rem' }}>
-        <Link href="/shop" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: '#6b7280', fontSize: '.82rem', fontWeight: 600, textDecoration: 'none', marginBottom: 10 }}>
+        <Link href="/shop" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--gray)', fontSize: '.82rem', fontWeight: 600, textDecoration: 'none', marginBottom: 10 }}>
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <line x1="19" y1="12" x2="5" y2="12" /><polyline points="12 19 5 12 12 5" />
           </svg>
           Continue shopping
         </Link>
 
+        {hasAddress === false && !addrDismissed && (
+          <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', background: '#fffbeb',
+            border: '1px solid #fcd34d', borderRadius: 10, padding: '11px 13px', marginBottom: 14 }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#b45309" strokeWidth="2"
+              style={{ flexShrink: 0, marginTop: 1 }}>
+              <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" /><circle cx="12" cy="10" r="3" />
+            </svg>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: '.86rem', fontWeight: 700, color: '#92400e' }}>Add your delivery address</div>
+              <div style={{ fontSize: '.8rem', color: '#92400e', marginTop: 2, lineHeight: 1.5 }}>
+                You can save it now instead of at checkout - it also lets us quote you a delivery
+                fee while we are still talking about your order.
+              </div>
+              <Link href="/shop/profile?tab=addresses"
+                style={{ display: 'inline-block', marginTop: 8, fontSize: '.8rem', fontWeight: 700,
+                  color: '#92400e', textDecoration: 'underline' }}>
+                Add address
+              </Link>
+            </div>
+            <button type="button" onClick={() => setAddrDismissed(true)} aria-label="Dismiss"
+              style={{ background: 'none', border: 'none', color: '#b45309', cursor: 'pointer', fontSize: '1rem', lineHeight: 1, padding: 2 }}>
+              &times;
+            </button>
+          </div>
+        )}
+
         <h1 style={{ fontSize: '1.4rem', fontWeight: 800, margin: 0 }}>Shopping cart</h1>
-        <p style={{ color: '#6b7280', fontSize: '.86rem', margin: '4px 0 18px' }}>
+        <p style={{ color: 'var(--gray)', fontSize: '.86rem', margin: '4px 0 18px' }}>
           {enrichedCart.length} item{enrichedCart.length !== 1 ? 's' : ''} saved. Tick what you want to check out now.
         </p>
 
@@ -390,13 +508,13 @@ export default function CartPage() {
         <div className="cart-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,340px)', gap: 16, alignItems: 'start' }}>
           {/* LEFT - items */}
           <section style={{ ...CARD, padding: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '12px 14px', borderBottom: '1px solid #e5e7eb' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '12px 14px', borderBottom: '1px solid var(--border)' }}>
               <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
                 <input
                   type="checkbox"
                   checked={selectedItems.size === enrichedCart.length && enrichedCart.length > 0}
                   onChange={toggleSelectAll}
-                  style={{ width: 16, height: 16, accentColor: '#111827', cursor: 'pointer' }}
+                  style={{ width: 16, height: 16, accentColor: 'var(--white)', cursor: 'pointer' }}
                 />
                 <span style={{ ...MICRO_LABEL, display: 'inline' }}>Select all ({enrichedCart.length})</span>
               </label>
@@ -426,12 +544,17 @@ export default function CartPage() {
                 const designHref = item.designUrl ?? choice?.url ?? null;
                 const fileCount = item.designFiles?.length || (designHref ? 1 : 0);
 
+                // The same expression React uses to tell these rows apart. lineId is not guaranteed -
+                // the key falls back to the index for a reason - and keying the expander on lineId
+                // alone would put every such row under `undefined`, so one chevron would open them
+                // all. That is the bug the review just found here; this is the half of it left over.
+                const fileKey = item.lineId ?? idx;
                 return (
                   <div
-                    key={item.lineId ?? idx}
+                    key={fileKey}
                     style={{
                       display: 'flex', gap: 12, padding: '14px 0',
-                      borderTop: idx > 0 ? '1px solid #f3f4f6' : 'none',
+                      borderTop: idx > 0 ? '1px solid var(--dark2)' : 'none',
                       opacity: isRemoving ? 0 : 1,
                       transform: isRemoving ? 'translateX(-16px)' : 'none',
                       transition: 'opacity .25s, transform .25s',
@@ -441,17 +564,17 @@ export default function CartPage() {
                       type="checkbox"
                       checked={isSelected}
                       onChange={() => toggleSelectItem(idx)}
-                      style={{ width: 16, height: 16, accentColor: '#111827', cursor: 'pointer', marginTop: 4, flexShrink: 0 }}
+                      style={{ width: 16, height: 16, accentColor: 'var(--white)', cursor: 'pointer', marginTop: 4, flexShrink: 0 }}
                     />
 
                     <Link
                       href={`/shop/products/${item.product._id}`}
-                      style={{ width: 72, height: 72, borderRadius: 10, overflow: 'hidden', background: '#f3f4f6', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                      style={{ width: 72, height: 72, borderRadius: 10, overflow: 'hidden', background: 'var(--dark2)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                     >
                       {item.product.images?.[0]
                         /* eslint-disable-next-line @next/next/no-img-element */
                         ? <img src={item.product.images[0]} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                        : <span style={{ color: '#9ca3af', fontSize: '.6rem' }}>No image</span>}
+                        : <NoImage size={22} />}
                     </Link>
 
                     <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 7 }}>
@@ -460,15 +583,15 @@ export default function CartPage() {
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <Link
                             href={`/shop/products/${item.product._id}`}
-                            style={{ fontWeight: 700, fontSize: '.9rem', lineHeight: 1.35, color: '#111827', textDecoration: 'none' }}
+                            style={{ fontWeight: 700, fontSize: '.9rem', lineHeight: 1.35, color: 'var(--white)', textDecoration: 'none' }}
                           >
                             {item.product.name}
                             {item.variantName && (
-                              <span style={{ fontWeight: 500, color: '#6b7280' }}> - {item.variantName}</span>
+                              <span style={{ fontWeight: 500, color: 'var(--gray)' }}> - {item.variantName}</span>
                             )}
                           </Link>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap', marginTop: 3 }}>
-                            <span style={{ color: '#6b7280', fontSize: '.76rem' }}>
+                            <span style={{ color: 'var(--gray)', fontSize: '.76rem' }}>
                               {item.qty} &times; {formatPeso(item.unitPrice)}
                             </span>
                             {/* Per-line deposit indicator: exact % for a downpayment item, or "Pay in full"
@@ -504,21 +627,72 @@ export default function CartPage() {
                               href={designHref} target="_blank" rel="noopener noreferrer"
                               style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, marginRight: 'auto', textDecoration: 'none' }}
                             >
-                              <span style={{ width: 34, height: 34, borderRadius: 7, overflow: 'hidden', background: '#fff', border: '1px solid #bbf7d0', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                              <span style={{ width: 34, height: 34, borderRadius: 7, overflow: 'hidden', background: 'var(--dark)', border: '1px solid #bbf7d0', flexShrink: 0,
+                                display: (fileCount > 1 && openFiles[fileKey]) ? 'none' : 'flex', alignItems: 'center', justifyContent: 'center' }}>
                                 {IMAGE_RE.test(designHref)
                                   /* eslint-disable-next-line @next/next/no-img-element */
-                                  ? <img src={designHref} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                  ? <img src={cloudinaryThumb(designHref, 96)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                                   : <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#166534" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>}
                               </span>
                               <span style={{ minWidth: 0 }}>
-                                <span style={{ display: 'block', fontSize: '.76rem', fontWeight: 700, color: '#166534' }}>
+                                <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '.76rem', fontWeight: 700, color: '#166534' }}>
                                   {fileCount} file{fileCount === 1 ? '' : 's'} attached
+                                  {fileCount > 1 && (
+                                    /* The summary line named the first file and cut the rest off mid-word,
+                                       so a customer with five attachments could see one and had no way to
+                                       check the others without leaving the cart. */
+                                    <span
+                                      role="button" tabIndex={0}
+                                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); setOpenFiles(p => ({ ...p, [fileKey]: !p[fileKey] })); }}
+                                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); setOpenFiles(p => ({ ...p, [fileKey]: !p[fileKey] })); } }}
+                                      title={openFiles[fileKey] ? 'Hide the file list' : 'Show all files'}
+                                      style={{ display: 'inline-flex', cursor: 'pointer', color: '#166534', opacity: .75 }}
+                                    >
+                                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+                                        style={{ transform: openFiles[fileKey] ? 'rotate(180deg)' : 'none', transition: 'transform .18s' }}>
+                                        <polyline points="6 9 12 15 18 9" />
+                                      </svg>
+                                    </span>
+                                  )}
                                 </span>
-                                <span style={{ display: 'block', fontSize: '.7rem', color: '#166534', opacity: .8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                  {fileCount > 1
-                                    ? item.designFiles.map(f => f.name || fileNameFromUrl(f.url)).join(', ')
-                                    : (item.designName || fileNameFromUrl(designHref))}
-                                </span>
+                                {(fileCount <= 1 || !openFiles[fileKey]) ? (
+                                  <span style={{ display: 'block', fontSize: '.7rem', color: '#166534', opacity: .8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    {fileCount > 1
+                                      ? item.designFiles.map(f => f.name || fileNameFromUrl(f.url)).join(', ')
+                                      : (item.designName || fileNameFromUrl(designHref))}
+                                  </span>
+                                ) : (
+                                  /* Each file its own row and its own link - the collapsed line is one
+                                     anchor covering all of them, which opens only the first. */
+                                  <span style={{ display: 'block', marginTop: 4 }}>
+                                    {item.designFiles.map((f, fi) => (
+                                      <a
+                                        key={fi}
+                                        href={f.url} target="_blank" rel="noopener noreferrer"
+                                        onClick={(e) => e.stopPropagation()}
+                                        style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '3px 0',
+                                          textDecoration: 'none', minWidth: 0 }}
+                                      >
+                                        {/* Its own tile per row. One shared icon beside a stack of names says
+                                            nothing about which file is which - and when four of five are
+                                            artwork, the thumbnail IS the identifying detail. */}
+                                        <span style={{ width: 26, height: 26, borderRadius: 6, overflow: 'hidden',
+                                          background: 'var(--dark)', border: '1px solid #bbf7d0', flexShrink: 0,
+                                          display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                          {IMAGE_RE.test(f.url)
+                                            /* eslint-disable-next-line @next/next/no-img-element */
+                                            ? <img src={cloudinaryThumb(f.url, 80)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                            : <span style={{ fontSize: '7.5px', fontWeight: 800, color: '#166534', letterSpacing: '.02em' }}>{fileExtLabel(f.url, 'FILE')}</span>}
+                                        </span>
+                                        <span style={{ fontSize: '.7rem', color: '#166534', opacity: .9,
+                                          textDecoration: 'underline', overflow: 'hidden',
+                                          textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                          {f.name || fileNameFromUrl(f.url)}
+                                        </span>
+                                      </a>
+                                    ))}
+                                  </span>
+                                )}
                               </span>
                             </a>
                           ) : (
@@ -529,42 +703,38 @@ export default function CartPage() {
                             </span>
                           )}
 
-                          {!hasDesign && (
-                            <>
-                              <label style={{
-                                display: 'inline-flex', alignItems: 'center', gap: 5, cursor: 'pointer',
-                                padding: '5px 11px', borderRadius: 999, fontSize: '.74rem', fontWeight: 700,
-                                background: isUpload ? '#111827' : '#fff',
-                                color: isUpload ? '#fff' : '#111827',
-                                border: `1px solid ${isUpload ? '#111827' : '#d1d5db'}`,
-                              }}>
-                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                                  <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" />
-                                </svg>
-                                {isUpload ? 'Replace file' : 'Upload file'}
-                                <input type="file" accept=".jpg,.jpeg,.png,.webp,.pdf,.ai,.psd,.svg" style={{ display: 'none' }} onChange={e => handleDesignFileSelect(item.lineId, e.target.files?.[0])} />
-                              </label>
-                              {item.designFee > 0 && (
-                                <button
-                                  type="button"
-                                  onClick={() => handleRequestDesign(item.lineId, mode)}
-                                  style={{
-                                    padding: '5px 11px', borderRadius: 999, fontSize: '.74rem', fontWeight: 700, cursor: 'pointer',
-                                    background: isReq ? '#111827' : '#fff',
-                                    color: isReq ? '#fff' : '#111827',
-                                    border: `1px solid ${isReq ? '#111827' : '#d1d5db'}`,
-                                  }}
-                                >
-                                  Request design
-                                </button>
-                              )}
-                            </>
+                          {item.designNotes && (
+                            <span style={{ display: 'block', width: '100%', order: 99, marginTop: 6,
+                              fontSize: '.72rem', color: 'var(--gray-light)', lineHeight: 1.5,
+                              borderTop: '1px dashed var(--border)', paddingTop: 6 }}>
+                              <strong style={{ color: 'var(--white)' }}>Your instructions: </strong>
+                              {item.designNotes}
+                            </span>
+                          )}
+
+                          {/* How the design is provided was chosen on the product page, together with that
+                              choice's own terms. Switching it here would carry the other choice's
+                              agreement into the order, so the cart only shows it. To change it, the
+                              item is customised again - and its terms accepted again. */}
+                          {!hasDesign && item.designMode === 'request' && (
+                            <span style={{ display: 'block', width: '100%', order: 100, marginTop: 4, fontSize: '.7rem', color: 'var(--gray)', lineHeight: 1.5 }}>
+                              Want to upload your own file instead? Remove this item and customise it again.
+                            </span>
+                          )}
+                          {!hasDesign && !item.designMode && (
+                            <Link
+                              href={`/shop/products/${item.product._id}/order`}
+                              style={{ padding: '5px 11px', borderRadius: 999, fontSize: '.74rem', fontWeight: 700, textDecoration: 'none',
+                                background: 'var(--dark)', color: 'var(--white)', border: '1px solid var(--border)' }}
+                            >
+                              Customise
+                            </Link>
                           )}
                         </div>
                       )}
 
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', border: '1px solid #d1d5db', borderRadius: 9, overflow: 'hidden', background: '#fff' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', border: '1px solid var(--border)', borderRadius: 9, overflow: 'hidden', background: 'var(--dark)' }}>
                           <button
                             onClick={() => updateQty(item.lineId, item.qty - 1)}
                             disabled={item.qty <= (item.minOrderQty || 1)}
@@ -572,13 +742,13 @@ export default function CartPage() {
                           >
                             &minus;
                           </button>
-                          <span style={{ minWidth: 40, textAlign: 'center', fontSize: '.85rem', fontWeight: 700, borderLeft: '1px solid #e5e7eb', borderRight: '1px solid #e5e7eb', lineHeight: '30px' }}>
+                          <span style={{ minWidth: 40, textAlign: 'center', fontSize: '.85rem', fontWeight: 700, borderLeft: '1px solid var(--border)', borderRight: '1px solid var(--border)', lineHeight: '30px' }}>
                             {item.qty}
                           </span>
                           <button
-                            onClick={() => updateQty(item.lineId, Math.min(item.qty + 1, item.stockCap))}
-                            disabled={item.qty >= item.stockCap}
-                            style={{ width: 30, height: 30, border: 'none', background: 'transparent', fontSize: '1rem', fontWeight: 700, cursor: item.qty >= item.stockCap ? 'not-allowed' : 'pointer', opacity: item.qty >= item.stockCap ? 0.35 : 1 }}
+                            onClick={() => updateQty(item.lineId, Math.min(item.qty + 1, lineCap(item)))}
+                            disabled={item.qty >= lineCap(item)}
+                            style={{ width: 30, height: 30, border: 'none', background: 'transparent', fontSize: '1rem', fontWeight: 700, cursor: item.qty >= lineCap(item) ? 'not-allowed' : 'pointer', opacity: item.qty >= lineCap(item) ? 0.35 : 1 }}
                           >
                             +
                           </button>
@@ -587,7 +757,7 @@ export default function CartPage() {
                         <button
                           onClick={() => handleRemoveItem(item.lineId, idx)}
                           title="Remove item"
-                          style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', color: '#9ca3af', fontSize: '.76rem', fontWeight: 600, cursor: 'pointer', padding: 0 }}
+                          style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', color: 'var(--gray)', fontSize: '.76rem', fontWeight: 600, cursor: 'pointer', padding: 0 }}
                         >
                           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                             <polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
@@ -608,16 +778,16 @@ export default function CartPage() {
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '.8rem' }}>
-                <span style={{ color: '#6b7280' }}>Selected items</span>
+                <span style={{ color: 'var(--gray)' }}>Selected items</span>
                 <span>{selectedCartItems.length} of {enrichedCart.length}</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '.8rem' }}>
-                <span style={{ color: '#6b7280' }}>Subtotal</span>
+                <span style={{ color: 'var(--gray)' }}>Subtotal</span>
                 <span>{formatPeso(selectedBaseTotal)}</span>
               </div>
               {selectedDesignFee > 0 && (
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: '.8rem' }}>
-                  <span style={{ color: '#6b7280' }}>
+                  <span style={{ color: 'var(--gray)' }}>
                     Design fee
                     <span style={{ display: 'block', fontSize: '.7rem', opacity: .8 }}>
                       Charged once, however many products the artwork goes on
@@ -626,13 +796,30 @@ export default function CartPage() {
                   <span style={{ whiteSpace: 'nowrap' }}>{formatPeso(selectedDesignFee)}</span>
                 </div>
               )}
+              {/* Under Courier Booked there is nothing to calculate at checkout either - the fee is
+                  quoted after the order, once a courier is actually booked. Promising a figure at
+                  checkout that never appears there is the kind of small lie a customer notices. */}
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: '.8rem' }}>
-                <span style={{ color: '#6b7280' }}>Shipping</span>
-                <span style={{ color: '#6b7280', textAlign: 'right' }}>Calculated at checkout</span>
+                <span style={{ color: 'var(--gray)' }}>Shipping</span>
+                <span style={{ color: 'var(--gray)', textAlign: 'right' }}>
+                  {shippingMode === 'courier_booked' ? 'Arranged after order' : 'Calculated at checkout'}
+                </span>
               </div>
+              {shippingMode === 'courier_booked' && (
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 8, padding: '9px 11px', background: 'rgba(212,168,67,0.07)', border: '1px solid rgba(212,168,67,0.2)', borderRadius: 8 }}>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#d4a843" strokeWidth="2" style={{ flexShrink: 0, marginTop: 2 }}>
+                    <rect x="1" y="3" width="15" height="13"/><path d="M16 8h4l3 3v5h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/>
+                  </svg>
+                  <span style={{ fontSize: '.72rem', color: 'var(--gray)', lineHeight: 1.5 }}>
+                    Delivery is not included in this total. We book a third-party courier after your
+                    order is confirmed and send you the fee in chat - usually paid in cash to the rider
+                    or the seller. It can vary with the size of your order.
+                  </span>
+                </div>
+              )}
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #e5e7eb', marginTop: 10, paddingTop: 10 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--border)', marginTop: 10, paddingTop: 10 }}>
               <span style={{ fontWeight: 800, fontSize: '.9rem' }}>Total</span>
               <span style={{ fontWeight: 900, fontSize: '1.05rem' }}>{formatPeso(selectedTotal)}</span>
             </div>
@@ -641,32 +828,32 @@ export default function CartPage() {
                 proof is approved. Quoting a deposit here contradicted the checkout that follows and
                 showed the customer a figure they were never going to be charged. */}
             {designLines.length > 0 ? (
-              <div style={{ marginTop: 10, padding: '9px 11px', borderRadius: 10, background: '#f9fafb', border: '1px solid #e5e7eb', display: 'flex', flexDirection: 'column', gap: 5 }}>
+              <div style={{ marginTop: 10, padding: '9px 11px', borderRadius: 10, background: 'var(--dark2)', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 5 }}>
                 <span style={{ fontSize: '.76rem', fontWeight: 800 }}>You pay the design fee first</span>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '.8rem' }}>
-                  <span style={{ color: '#6b7280' }}>Due now</span>
+                  <span style={{ color: 'var(--gray)' }}>Due now</span>
                   <span style={{ fontWeight: 700 }}>{formatPeso(selectedDesignFee)}</span>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '.78rem', color: '#6b7280' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '.78rem', color: 'var(--gray)' }}>
                   <span>After you approve the proof</span>
                   <span>{formatPeso(Math.max(0, selectedTotal - selectedDesignFee))} + delivery</span>
                 </div>
-                <span style={{ fontSize: '.72rem', color: '#6b7280', lineHeight: 1.5, borderTop: '1px solid #e5e7eb', paddingTop: 6 }}>
+                <span style={{ fontSize: '.72rem', color: 'var(--gray)', lineHeight: 1.5, borderTop: '1px solid var(--border)', paddingTop: 6 }}>
                   The design fee is non-refundable - it pays for the designer&apos;s time. You see the artwork before you pay for the goods.
                 </span>
               </div>
             ) : dpRequired && (
-              <div style={{ marginTop: 10, padding: '9px 11px', borderRadius: 10, background: '#f9fafb', border: '1px solid #e5e7eb', display: 'flex', flexDirection: 'column', gap: 5 }}>
+              <div style={{ marginTop: 10, padding: '9px 11px', borderRadius: 10, background: 'var(--dark2)', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 5 }}>
                 <span style={{ fontSize: '.76rem', fontWeight: 800 }}>{dpPercent ? `${dpPercent}% downpayment required` : 'Downpayment required'}</span>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '.8rem' }}>
-                  <span style={{ color: '#6b7280' }}>Due now (excl. shipping)</span>
+                  <span style={{ color: 'var(--gray)' }}>Due now (excl. shipping)</span>
                   <span style={{ fontWeight: 700 }}>{formatPeso(dpAmountDue)}</span>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '.78rem', color: '#6b7280' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '.78rem', color: 'var(--gray)' }}>
                   <span>Balance later</span>
                   <span>{formatPeso(dpRemaining)}</span>
                 </div>
-                <span style={{ fontSize: '.72rem', color: '#6b7280', lineHeight: 1.5, borderTop: '1px solid #e5e7eb', paddingTop: 6 }}>
+                <span style={{ fontSize: '.72rem', color: 'var(--gray)', lineHeight: 1.5, borderTop: '1px solid var(--border)', paddingTop: 6 }}>
                   Due now is the deposit on your items (ready-made items in full). The remaining balance is collected before delivery.
                 </span>
               </div>
@@ -674,7 +861,7 @@ export default function CartPage() {
 
             {/* A zero total next to a priced item reads as a bug rather than a prompt. */}
             {selectedItems.size === 0 && (
-              <p style={{ marginTop: 10, marginBottom: 0, fontSize: '.76rem', color: '#6b7280', lineHeight: 1.5 }}>
+              <p style={{ marginTop: 10, marginBottom: 0, fontSize: '.76rem', color: 'var(--gray)', lineHeight: 1.5 }}>
                 Tick an item to include it - the total updates as you select.
               </p>
             )}
@@ -687,25 +874,47 @@ export default function CartPage() {
                 placeholder="Colour preferences, deadlines, special instructions..."
                 value={notes}
                 onChange={e => setNotes(e.target.value.slice(0, 500))}
-                style={{ width: '100%', padding: '9px 11px', border: '1px solid #d1d5db', borderRadius: 9, fontSize: '.84rem', fontFamily: 'inherit', resize: 'vertical', background: '#fff' }}
+                style={{ width: '100%', padding: '9px 11px', border: '1px solid var(--border)', borderRadius: 9, fontSize: '.84rem', fontFamily: 'inherit', resize: 'vertical', background: 'var(--dark)' }}
               />
-              <span style={{ display: 'block', textAlign: 'right', fontSize: '.7rem', color: '#9ca3af' }}>{notes.length}/500</span>
+              <span style={{ display: 'block', textAlign: 'right', fontSize: '.7rem', color: 'var(--gray)' }}>{notes.length}/500</span>
             </div>
 
+            {shortages.length > 0 && (
+              <div style={{
+                marginTop: 12, padding: '10px 12px', borderRadius: 9,
+                background: 'rgba(180,83,9,0.08)', border: '1px solid rgba(180,83,9,0.35)',
+              }}>
+                <div style={{ fontSize: '.8rem', fontWeight: 700, color: '#b45309', marginBottom: 4 }}>
+                  This is more than we can make right now
+                </div>
+                {shortages.map((m, i) => (
+                  <div key={i} style={{ fontSize: '.76rem', color: 'var(--gray)', lineHeight: 1.6 }}>
+                    {m.name}: {m.available}{m.uom ? ` ${m.uom}` : ''} available, this cart needs {m.needed}{m.uom ? ` ${m.uom}` : ''}
+                  </div>
+                ))}
+                <div style={{ fontSize: '.76rem', color: 'var(--gray)', marginTop: 5, lineHeight: 1.5 }}>
+                  Lower a quantity or untick a line. Checkout will refuse it as it stands.
+                </div>
+              </div>
+            )}
+
+            {/* Advisory was the wrong call. Letting someone through to the address form to be
+                refused there is worse than stopping them here, where the line they would change is
+                still on screen - and the checkout refuses this cart anyway. */}
             <button
               onClick={handlePlaceOrder}
-              disabled={selectedItems.size === 0 || isCheckingOut}
+              disabled={selectedItems.size === 0 || isCheckingOut || shortages.length > 0}
               style={{
                 width: '100%', marginTop: 10, padding: '11px 12px', borderRadius: 10, border: 'none',
-                background: '#111827', color: '#fff', fontWeight: 800, fontSize: '.88rem',
-                cursor: (selectedItems.size === 0 || isCheckingOut) ? 'not-allowed' : 'pointer',
-                opacity: (selectedItems.size === 0 || isCheckingOut) ? 0.5 : 1,
+                background: 'var(--white)', color: 'var(--dark)', fontWeight: 800, fontSize: '.88rem',
+                cursor: (selectedItems.size === 0 || isCheckingOut || shortages.length > 0) ? 'not-allowed' : 'pointer',
+                opacity: (selectedItems.size === 0 || isCheckingOut || shortages.length > 0) ? 0.5 : 1,
               }}
             >
               {isCheckingOut ? 'Preparing checkout...' : `Check out (${selectedItems.size})`}
             </button>
 
-            <p style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '10px 0 0', fontSize: '.74rem', color: '#6b7280' }}>
+            <p style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '10px 0 0', fontSize: '.74rem', color: 'var(--gray)' }}>
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
                 <path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z" /><circle cx="12" cy="10" r="3" />
               </svg>

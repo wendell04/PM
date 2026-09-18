@@ -29,7 +29,7 @@ class AuthController extends Controller
                 'middleInitial' => 'nullable|string|max:2',
                 'lastName'    => 'required|string|min:2',
                 'address'     => 'nullable|string',
-                // E.164 (any country) — the client picks the country and validates its exact
+                // E.164 (any country) - the client picks the country and validates its exact
                 // length/format; this is the shape check for what it sends.
                 'phoneNumber' => ['required', 'string', 'regex:/^\+[1-9]\d{6,14}$/'],
                 'email'       => ['required', 'email'],
@@ -48,7 +48,7 @@ class AuthController extends Controller
             ]);
 
             // Manual uniqueness checks for MongoDB
-            $emailExists = User::where('email', $request->email)
+            $emailExists = User::emailIs($request->email)
                 ->where('is_verified', true)
                 ->exists();
 
@@ -58,7 +58,7 @@ class AuthController extends Controller
                 ]);
             }
 
-            // Phone number is contact info, not an identity — email is the unique key. Same phone with
+            // Phone number is contact info, not an identity - email is the unique key. Same phone with
             // a different email is allowed (households/family), consistent with standard e-commerce.
 
             // Additional email validation
@@ -75,12 +75,12 @@ class AuthController extends Controller
                 return $this->errorResponse('Please provide a valid email address.', 422);
             }
 
-            // Domain whitelist and DNS MX lookup removed — they blocked legitimate
+            // Domain whitelist and DNS MX lookup removed - they blocked legitimate
             // institutional/subdomain emails (e.g. novaliches.sti.edu.ph).
             // Disposable domain check above is sufficient protection.
 
             // Delete any unverified accounts with this email
-            User::where('email', $request->email)->where('is_verified', false)->delete();
+            User::emailIs($request->email)->where('is_verified', false)->delete();
 
             $plainCode = str_pad(random_int(0, 999999), 6, '0', STR_PAD_LEFT);
             $hashedCode = Hash::make($plainCode);
@@ -115,7 +115,7 @@ class AuthController extends Controller
             ]);
 
             // Send the OTP AFTER the HTTP response is flushed. The account already exists at this
-            // point, so registration must never hang waiting on the mail server — a slow or blocked
+            // point, so registration must never hang waiting on the mail server - a slow or blocked
             // SMTP host (Railway blocks outbound port 587) would otherwise stall the request until
             // the client times out. If delivery fails the customer can use "Resend code".
             $verifyEmail = $request->email;
@@ -166,7 +166,7 @@ class AuthController extends Controller
             ]);
 
             $ip = $request->ip();
-            $user = User::where('email', $request->email)->first();
+            $user = User::emailIs($request->email)->first();
 
             if (!$user) {
                 // Constant-time: run a dummy hash so response timing doesn't reveal whether the email
@@ -232,7 +232,7 @@ class AuthController extends Controller
             $user->login_locked_until    = null;
 
             // Decide whether this login still needs a 2FA challenge BEFORE minting the token, so a
-            // pending login receives only a limited, short-lived token — never a full session.
+            // pending login receives only a limited, short-lived token - never a full session.
             $requires2fa  = false;
             $twoFaEnabled = (bool) ($user->two_factor_enabled ?? false);
 
@@ -264,7 +264,7 @@ class AuthController extends Controller
             if ($requires2fa) {
                 // 2FA still pending: issue a LIMITED token that can ONLY reach the 2FA-completion
                 // endpoints (enforced by EnsureTwoFactorComplete). The real full-access token is
-                // minted by TwoFactorController after the code is verified — so the second factor
+                // minted by TwoFactorController after the code is verified - so the second factor
                 // is enforced server-side, not merely by the frontend redirect.
                 $expiresAt    = now()->addMinutes(15);
                 $sanctumToken = $user->createToken($deviceName, ['2fa-pending'], $expiresAt)->plainTextToken;
@@ -325,17 +325,22 @@ class AuthController extends Controller
 
             $expiresAt = $user->sessionExpiresAt($request->boolean('rememberMe'));
 
-            $deviceName = $this->parseDeviceName($request->userAgent() ?? 'Unknown Device');
-
-            // Revoke the current token and issue a fresh one with the new expiry.
+            // Extending the SAME token in place, not revoking it for a new one. Deleting the current
+            // token the instant a new one is issued meant every other authenticated call already in
+            // flight on the old token - a chat heartbeat, a notification poll, the checkout page's own
+            // background fetches - would land moments later, find the token gone, come back 401, and
+            // trip the global session-expired handler (fetchWithTimeout.js) that force-logs-out and
+            // redirects to "/". So clicking "Stay logged in" could log the customer straight back out:
+            // the refresh itself worked, but a concurrent request on the token it had just deleted lost
+            // the race. Pushing this token's own expiry forward keeps every holder of it - this tab,
+            // any other tab, any in-flight request - valid through the same instant, with nothing to race.
             $current = $user->currentAccessToken();
             if ($current) {
-                $current->delete();
+                $current->expires_at = $expiresAt;
+                $current->save();
             }
-            $newToken = $user->createToken($deviceName, ['*'], $expiresAt)->plainTextToken;
 
             return $this->successResponse('Session extended.', [
-                'token'      => $newToken,
                 'expires_at' => $expiresAt->toIso8601String(),
             ]);
         } catch (\Exception $e) {
@@ -351,7 +356,7 @@ class AuthController extends Controller
                 'code'  => 'required|string|size:6',
             ]);
 
-            $user = User::where('email', $request->email)->first();
+            $user = User::emailIs($request->email)->first();
 
             if (!$user) {
                 return $this->errorResponse('No account found with this email address.', 400);
@@ -419,7 +424,35 @@ class AuthController extends Controller
                 ]);
             }
 
-            return $this->successResponse('Email verified successfully! You can now log in.');
+            // The code proves they own the address, which is all a login would prove again. Sending
+            // a person who just typed six digits back to a sign-in form is where new accounts were
+            // being lost - and one page stored a token that did not exist and then reported the
+            // session as expired. Same session as login mints, minus 2FA (a new account has none).
+            $deviceName   = $this->parseDeviceName($request->userAgent() ?? 'Unknown Device');
+            $expiresAt    = $user->sessionExpiresAt($request->boolean('rememberMe'));
+            $sanctumToken = $user->createToken($deviceName, ['*'], $expiresAt)->plainTextToken;
+            $user->lastLogin     = now()->toDateTimeString();
+            $user->last_login_at = now();
+            $user->save();
+
+            return $this->successResponse('Email verified - you are signed in.', [
+                'token'      => $sanctumToken,
+                'expires_at' => $expiresAt->toIso8601String(),
+                'user'       => [
+                    'id'                 => (string) $user->_id,
+                    'firstName'          => $user->firstName,
+                    'lastName'           => $user->lastName,
+                    'email'              => $user->email,
+                    'phoneNumber'        => $user->phoneNumber,
+                    'address'            => $user->address,
+                    'role'               => $user->role,
+                    'lastLogin'          => $user->lastLogin,
+                    'avatar'             => $user->avatar,
+                    'two_factor_enabled' => false,
+                    'two_factor_method'  => $user->two_factor_method ?? 'email',
+                    'totp_confirmed'     => false,
+                ],
+            ]);
         } catch (\Exception $e) {
             return $this->serverErrorResponse($e, 'An unexpected error occurred during email verification.');
         }
@@ -430,7 +463,7 @@ class AuthController extends Controller
         try {
             $request->validate(['email' => 'required|email']);
 
-            $user = User::where('email', $request->email)->first();
+            $user = User::emailIs($request->email)->first();
 
             if (!$user) {
                 return $this->successResponse('If an account with that email exists, a new verification code has been sent.');
@@ -490,7 +523,7 @@ class AuthController extends Controller
             $request->validate(['email' => 'required|email']);
 
             // Only send reset link to verified users (users with existing accounts)
-            $user = User::where('email', $request->email)->where('is_verified', true)->first();
+            $user = User::emailIs($request->email)->where('is_verified', true)->first();
 
             // Always return same message for security (don't reveal if email exists or verification status)
             if (!$user) {
@@ -539,7 +572,7 @@ class AuthController extends Controller
                 'token' => 'required|string|min:20',
             ]);
 
-            $user = User::where('email', $request->email)->where('is_verified', true)->first();
+            $user = User::emailIs($request->email)->where('is_verified', true)->first();
             if (!$user || !$user->reset_token || !$user->reset_token_expires_at) {
                 return $this->errorResponse('Invalid or expired link.', 400);
             }
@@ -569,7 +602,7 @@ class AuthController extends Controller
                 'code' => 'required|string|size:6',
             ]);
 
-            $user = User::where('email', $request->email)->first();
+            $user = User::emailIs($request->email)->first();
 
             if (!$user) {
                 return $this->errorResponse('Invalid or expired code.', 400);
@@ -606,7 +639,7 @@ class AuthController extends Controller
                 'token' => 'required|string|min:20',
             ]);
 
-            $user = User::where('email', $request->email)->where('is_verified', true)->first();
+            $user = User::emailIs($request->email)->where('is_verified', true)->first();
 
             if (!$user) {
                 return $this->successResponse('A reset code has been sent.');
@@ -661,7 +694,7 @@ class AuthController extends Controller
                 'password' => ['required', 'confirmed', Password::min(8)->mixedCase()->numbers()->symbols()],
             ]);
 
-            $user = User::where('email', $request->email)->first();
+            $user = User::emailIs($request->email)->first();
 
             if (!$user) {
                 return $this->errorResponse('Invalid or expired reset code. Please request a new one.', 400);
@@ -688,12 +721,12 @@ class AuthController extends Controller
             $user->reset_token = null;
             $user->reset_token_expires_at = null;
             // Self-service unlock: confirming identity via reset clears any active login lockout
-            // (standard "unlock on identity confirmation" — no admin needed).
+            // (standard "unlock on identity confirmation" - no admin needed).
             $user->login_locked_until    = null;
             $user->failed_login_attempts = 0;
             $user->save();
 
-            // Notify the owner that the password changed — alerts them if it wasn't them. Non-fatal.
+            // Notify the owner that the password changed - alerts them if it wasn't them. Non-fatal.
             try {
                 Mail::to($user->email)->send(new AccountSecurityAlertMail(
                     userName:    $user->firstName ?? 'there',
@@ -721,19 +754,48 @@ class AuthController extends Controller
             $request->validate([
                 'name'    => 'required|string|min:2|max:120',
                 'email'   => 'required|email|max:255',
-                'subject' => 'required|string|max:200',
-                'message' => 'required|string|max:5000',
+                'subject' => 'required|string|max:100',
+                'message' => 'required|string|max:1500',
             ]);
 
-            $adminEmail = env('ADMIN_EMAIL', 'personalizemeprints@gmail.com');
+            // Hiding the form is not closing it: the endpoint is public and anyone who knows the
+            // URL can still post. The switch has to be enforced where the request lands.
+            $formOwner = \App\Models\User::whereIn('role', ['admin', 'owner'])->first();
+            if ($formOwner && ($formOwner->contactFormEnabled ?? true) === false) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $formOwner->contactClosedMessage
+                        ?: 'Our contact form is closed right now. Please message us on Facebook, Instagram or TikTok.',
+                ], 403);
+            }
 
-            $name    = htmlspecialchars(strip_tags(trim($request->name)),    ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+            $adminEmail = config('mail.admin_recipient');
+
+            // Identity comes from the token, never from the box. The sender used to be resolved
+            // as User::where('email', $request->email), so anyone - signed in or not - could type
+            // a customer's address and have their message filed into that customer's own
+            // conversation with the shop, which is also where the reply would then be sent.
+            $authUser   = auth('sanctum')->user();
+            $replyEmail = $authUser ? $authUser->email : $request->email;
+
+            $name    = $authUser
+                ? trim(($authUser->firstName ?? '') . ' ' . ($authUser->lastName ?? ''))
+                : strip_tags(trim($request->name));
+            if ($name === '') {
+                $name = strip_tags(trim($request->name));
+            }
             $subject = str_replace(["\r", "\n", "\0"], '', strip_tags(trim($request->subject)));
-            $messageText = htmlspecialchars(strip_tags(trim($request->message)), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+            // strip_tags removes markup; escaping is left to whoever renders it. React and Blade
+            // both escape on output, so doing it here escaped a second time and an apostrophe
+            // reached the admin's screen as &#039;. Stored mangled, it could not be undone at
+            // display time either.
+            $messageText = strip_tags(trim($request->message));
 
             // ── CHAT INTEGRATION ──
-            // Find existing user by email
-            $sender = User::where('email', $request->email)->first();
+            // A guest stays a guest. Matching a stranger's typed address to an account is what
+            // let one person write into another's thread, and it bought nothing a signed-in
+            // customer does not already get by being signed in.
+            $sender = $authUser;
             $admin  = User::whereIn('role', ['admin', 'owner'])->first();
 
             if ($admin) {
@@ -746,16 +808,27 @@ class AuthController extends Controller
                 sort($participants);
 
                 // Find or create conversation (PHP-level filter avoids exact-array-order match issues)
+                //
+                // A guest has no id to put in participants, so every guest thread has the same
+                // single member - the shop - and this lookup matched the FIRST of them for
+                // everyone. Juan writes, Maria writes, and both land in one thread carrying
+                // Juan's name and address: the shop would answer Juan about Maria's question.
+                // The address is the only thing that distinguishes one guest from another, so
+                // for them the thread is keyed on it as well.
                 $conversation = Conversation::where('participants', (string) ($sender ? $sender->_id : $admin->_id))->get()
-                    ->first(function ($c) use ($participants) {
+                    ->first(function ($c) use ($participants, $sender, $replyEmail) {
                         $parts = array_map('strval', is_array($c->participants) ? $c->participants : []);
                         sort($parts);
-                        return $parts === $participants;
+                        if ($parts !== $participants) {
+                            return false;
+                        }
+                        return $sender ? true : (($c->guest_email ?? null) === $replyEmail);
                     });
                 if (!$conversation) {
                     $conversation = Conversation::create([
                         'participants' => $participants,
                         'subject'      => $subject,
+                        'guest_email'  => $sender ? null : $replyEmail,
                         'last_message_at' => now(),
                         'is_active'    => true
                     ]);
@@ -765,7 +838,7 @@ class AuthController extends Controller
                     'conversation_id' => $conversation->_id,
                     'sender_id'       => $sender ? $sender->_id : 'guest',
                     'sender_name'     => $name,
-                    'sender_email'    => $request->email,
+                    'sender_email'    => $replyEmail,
                     'body'            => "Subject: {$subject}\n\n{$messageText}",
                     'type'            => 'text',
                     'is_read'         => false,
@@ -784,7 +857,21 @@ class AuthController extends Controller
                 }
             }
 
-            Mail::to($adminEmail)->send(new ContactFormMail($name, $request->email, $subject, $messageText));
+            // The message is already stored above, so it is not lost if delivery fails - but the
+            // shop has to be able to tell the difference between "nobody wrote in" and "the mail
+            // relay is down". Failing loudly in the log, quietly to the customer.
+            try {
+                if ($adminEmail) {
+                    Mail::to($adminEmail)->send(new ContactFormMail($name, $replyEmail, $subject, $messageText));
+                } else {
+                    Log::error('Contact form: no admin recipient configured (mail.admin_recipient is empty).');
+                }
+            } catch (\Throwable $mailErr) {
+                Log::error('Contact form: email delivery failed', [
+                    'to'    => $adminEmail,
+                    'error' => $mailErr->getMessage(),
+                ]);
+            }
 
             return $this->successResponse('Message sent successfully! We will get back to you soon.');
         } catch (\Illuminate\Validation\ValidationException $e) {
@@ -834,9 +921,9 @@ class AuthController extends Controller
         try {
             $request->validate(['email' => 'required|email']);
 
-            // Any locked account (customer or staff) may request an unlock — a locked admin must not
+            // Any locked account (customer or staff) may request an unlock - a locked admin must not
             // be shut out. Primary self-service recovery is still password reset (which clears the lock).
-            $user = User::where('email', $request->email)->first();
+            $user = User::emailIs($request->email)->first();
 
             if (!$user) {
                 // Return success to avoid user enumeration

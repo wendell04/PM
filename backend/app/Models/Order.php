@@ -18,6 +18,7 @@ class Order extends Model
         'balance'            => 'float',
         'shippingFee'        => 'float',
         'courierFee'         => 'float',
+        'courierFeePaid'     => 'boolean',
         'totalAmount'        => 'float',
         'targetCompletion'   => 'datetime',
         'paymentDate'          => 'datetime',
@@ -117,11 +118,11 @@ class Order extends Model
 
     public function scopePending($query)
     {
-        return $query->where('orderStatus', 'Pending');
+        return $query->whereIn('orderStatus', \App\Support\OrderStatus::spellings(\App\Support\OrderStatus::PENDING));
     }
 
     public function scopeInProduction($query)
     {
-        return $query->where('orderStatus', 'In Production');
+        return $query->whereIn('orderStatus', \App\Support\OrderStatus::spellings(\App\Support\OrderStatus::IN_PRODUCTION));
     }
 }

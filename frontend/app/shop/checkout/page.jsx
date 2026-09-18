@@ -4,12 +4,14 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import { useAuth } from '@/contexts/AuthContext';
+import { billingName } from '@/lib/billingName';
 import { useCart } from '@/context/CartContext';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import '@/app/shop/shop.css';
 import { applyVoucher } from '@/lib/voucherApi';
 import { useTheme } from '@/contexts/ThemeContext';
 import { DEFAULT_CUSTOM_ORDER_TERMS } from '@/lib/customOrderTerms';
+import useLockBodyScroll from '@/lib/useLockBodyScroll';
 
 const AddressBook = dynamic(() => import('@/components/profile/AddressBook'), { ssr: false });
 
@@ -98,6 +100,7 @@ export default function CheckoutPage() {
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [successModal,       setSuccessModal]       = useState(null); // { orderId, order | null }
   const [failedModal,        setFailedModal]        = useState(false);
+  useLockBodyScroll(failedModal);
   const [pendingVerifyId,    setPendingVerifyId]    = useState(null);
   const [verifyingPayment,   setVerifyingPayment]   = useState(false);
   // Owner-controlled method availability (Homepage CMS → Payment Methods). Missing key = enabled.
@@ -167,7 +170,10 @@ export default function CheckoutPage() {
       return;
     }
     setShippingLoading(true);
-    const { storeLat, storeLng, shippingBaseRate = 50, shippingPerKmRate = 15 } = storeSettings;
+    const {
+      storeLat, storeLng,
+      shippingBaseRate = 49, shippingPerKmRate = 6, shippingPerKmRateFar = 5, shippingTierKm = 5,
+    } = storeSettings;
     fetch(
       `https://router.project-osrm.org/route/v1/driving/${storeLng},${storeLat};${addr.lng},${addr.lat}?overview=false`
     )
@@ -176,7 +182,14 @@ export default function CheckoutPage() {
         const distanceM = d.routes?.[0]?.distance ?? null;
         if (distanceM !== null) {
           const distKm = distanceM / 1000;
-          setShippingFeeAmt(Math.round((shippingBaseRate + shippingPerKmRate * distKm) * 100) / 100);
+          // Tiered like a real motorcycle-courier fare (Lalamove's own published Metro Manila rate is
+          // base + a steeper per-km charge for the first few km, then a lower one beyond) - a single
+          // flat per-km rate for the whole trip isn't a shape any courier actually prices with.
+          // https://www.lalamove.com/en-ph/all-delivery-pricing-detail
+          const nearKm = Math.min(distKm, shippingTierKm);
+          const farKm  = Math.max(0, distKm - shippingTierKm);
+          const fee    = shippingBaseRate + shippingPerKmRate * nearKm + shippingPerKmRateFar * farKm;
+          setShippingFeeAmt(Math.round(fee * 100) / 100);
         } else {
           setShippingFeeAmt(null);
         }
@@ -338,12 +351,12 @@ export default function CheckoutPage() {
   // Zero when there is nothing to produce, so the date shown at checkout matches the one the server
   // snapshots onto the order. A stocked cart was being quoted the full production lead - eleven days
   // for a bag already on the shelf.
-  const prodLead    = needsProduction ? Number(storeSettings?.productionLeadDays ?? 7) : 0;
-  const shipMin     = Number(storeSettings?.shippingDaysMin ?? 2);
-  const shipMax     = Number(storeSettings?.shippingDaysMax ?? 4);
+  const prodLead    = needsProduction ? Number(storeSettings?.productionLeadDays ?? 3) : 0;
+  const shipMin     = Number(storeSettings?.shippingDaysMin ?? 1);
+  const shipMax     = Number(storeSettings?.shippingDaysMax ?? 2);
   const rushEnabled = storeSettings?.rushEnabled !== false && needsProduction;
-  const rushLead    = Number(storeSettings?.rushLeadDays ?? 3);
-  const rushFeeAmt  = Number(storeSettings?.rushFee ?? 100);
+  const rushLead    = Number(storeSettings?.rushLeadDays ?? 1);
+  const rushFeeAmt  = Number(storeSettings?.rushFee ?? 150);
   const addBizDays  = (n) => { const d = new Date(); d.setHours(0,0,0,0); let a = 0; while (a < n) { d.setDate(d.getDate() + 1); if (d.getDay() !== 0) a++; } return d; }; // skip Sundays
   const getByRange  = (lead) => {
     const f = (d) => d.toLocaleDateString('en-PH', { month: 'short', day: 'numeric' });
@@ -352,8 +365,18 @@ export default function CheckoutPage() {
   };
   const isRush      = rushEnabled && rush;
   const rushCharge  = isRush ? rushFeeAmt : 0;
-  // Earliest an optional need-by date may be - no same/next day; at least the rush lead (min 2 biz days).
-  const minNeedByStr = addBizDays(Math.max(2, rushLead)).toISOString().slice(0, 10);
+  // Earliest an optional need-by date may be. Two bugs used to live here: this ignored shipping
+  // transit entirely (rush production alone was treated as the whole promise), and toISOString() on
+  // a local-midnight Date converts to UTC before slicing the date, which in any zone ahead of UTC
+  // (PHT is +8) reads back one calendar day earlier than the Date actually holds - so a real
+  // multi-day minimum was showing up as "tomorrow", which is exactly the promise a rush customer
+  // would hold the shop to.
+  //
+  // A cart with nothing to produce has no rush lead to add - the earliest it can go is however long
+  // the shipping leg itself takes, full stop. Adding rushLead here for a ready-made order would
+  // block dates that are genuinely achievable once nothing is waiting on production.
+  const toLocalDateStr = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const minNeedByStr = toLocalDateStr(addBizDays(shipMin + (needsProduction ? rushLead : 0)));
   // The latest a Standard order arrives. A need-by date on/after this fits Standard (no rush needed).
   const standardEtaMax = addBizDays(prodLead + shipMax);
   // Picking a date auto-sets the speed: sooner than Standard can make it -> Rush; otherwise Standard.
@@ -379,6 +402,11 @@ export default function CheckoutPage() {
   // The design fee and shipping are always collected once, now. The rest is the balance, settled
   // from the order detail modal (upload goods balance + requested-design goods after approval).
   const isReqLine = (i) => (i.designMode === 'request' || i.designRequested) && !i.designUrl;
+  // Only an uploaded file gets reviewed behind the customer's back: a requested design is approved
+  // by the customer themselves before it prints, and a ready-made line has no artwork at all. So
+  // the review promise is shown for upload lines and nothing else - a cart of ready-made mugs
+  // should not be told we are checking a file it never sent.
+  const hasUploadLine = items.some(i => !!i.designUrl || (i.designFiles?.length > 0));
   // A line takes a deposit when the product asks for one - either the flag is set OR a percent is
   // configured (a percent > 0 alone means downpayment, even if the boolean was never saved).
   const lineDpPct = (i) => {
@@ -540,8 +568,7 @@ export default function CheckoutPage() {
     if (!luhnCheck(num)) return 'Card number is invalid. Please check and try again.';
     const [m, y] = cardExpiry.split('/');
     if (!m || !y || parseInt(m) < 1 || parseInt(m) > 12 || y.length < 2) return 'Enter a valid expiry date (MM/YY).';
-    if (cardCvc.length < 3) return 'Enter a valid security code (3–4 digits).';
-    if (!cardName.trim()) return 'Enter the name on your card.';
+    if (cardCvc.length < 3) return 'Enter a valid security code (3-4 digits).';
     return null;
   }
   async function tokenizeCard() {
@@ -563,7 +590,7 @@ export default function CheckoutPage() {
           cvc: cardCvc,
         },
         billing: {
-          name: cardName.trim() || currentUser?.name || '',
+          name: cardName.trim() || billingName(currentUser),
           email: currentUser?.email || '',
           phone: '',
         },
@@ -575,7 +602,7 @@ export default function CheckoutPage() {
       if (detail.includes('card_number')) throw new Error('Card number is invalid. Please check and try again.');
       if (detail.includes('exp_month') || detail.includes('exp_year')) throw new Error('Expiry date is invalid. Use MM/YY format.');
       if (detail.includes('cvc')) throw new Error('Security code is invalid.');
-      throw new Error('Invalid card details. Please check and try again.');
+      throw new Error(detail || 'Invalid card details. Please check and try again.');
     }
     return data.data.id;
   }
@@ -723,7 +750,7 @@ export default function CheckoutPage() {
         router.push(`/shop/payment-success?id=${orderId}&method=cod`);
 
       } else {
-        // Custom payment via Payment Intents — bypasses PayMongo hosted checkout
+        // Custom payment via Payment Intents - bypasses PayMongo hosted checkout
         let paymentMethodId = null;
         if (paymentMethod === 'card') {
           paymentMethodId = await tokenizeCard();
@@ -767,6 +794,8 @@ export default function CheckoutPage() {
           router.push(`/shop/payment-success?id=${orderId}&method=${paymentMethod}`);
         } else if (redirectUrl) {
           sessionStorage.setItem('pending_payment_order_id', orderId);
+          // Where to bring the customer back to if the payment fails - here, with everything still filled in.
+          sessionStorage.setItem('checkout_return_to', window.location.pathname + window.location.search);
           window.location.href = redirectUrl;
         } else {
           throw new Error('No redirect URL returned. Please try again.');
@@ -861,7 +890,7 @@ export default function CheckoutPage() {
                     <div key={i} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
                       <span style={{ color: 'var(--gray)', fontSize: '0.82rem' }}>
                         {item.productName || item.product_name || 'Item'}
-                        {item.variantName ? ` — ${item.variantName}` : ''} ×{item.qty || item.quantity}
+                        {item.variantName ? ` - ${item.variantName}` : ''} ×{item.qty || item.quantity}
                       </span>
                       <span style={{ color: 'var(--white)', fontSize: '0.82rem' }}>
                         ₱{Number(item.lineTotal ?? (item.unitPrice * (item.qty || 1)) ?? 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
@@ -926,9 +955,9 @@ export default function CheckoutPage() {
                 <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
               </svg>
             </div>
-            <h2 style={{ color: 'var(--white)', fontWeight: 700, fontSize: '1.3rem', marginBottom: 8 }}>Payment Cancelled</h2>
+            <h2 style={{ color: 'var(--white)', fontWeight: 700, fontSize: '1.3rem', marginBottom: 8 }}>Payment didn't go through</h2>
             <p style={{ color: 'var(--gray)', fontSize: '0.9rem', marginBottom: 28, lineHeight: 1.6 }}>
-              Your payment was not completed. Your cart items are still saved — you can try again anytime.
+              Nothing was charged and no order was made. Your items and details are still here - try again, or choose a different payment method.
             </p>
             <button
               onClick={() => setFailedModal(false)}
@@ -940,7 +969,7 @@ export default function CheckoutPage() {
         </div>
       )}
 
-      {/* SECTION 1 — Header */}
+      {/* SECTION 1 - Header */}
       <div className="checkout-header">
         <button
           className="checkout-back-btn"
@@ -957,7 +986,7 @@ export default function CheckoutPage() {
         <h1 className="checkout-title">Checkout</h1>
       </div>
 
-      {/* SECTION 2 — Delivery Address */}
+      {/* SECTION 2 - Delivery Address */}
       <div className="checkout-card" style={{ borderLeft: '3px solid var(--gold)' }}>
         <div className="checkout-card-header">
           <div className="checkout-section-label">
@@ -984,7 +1013,7 @@ export default function CheckoutPage() {
             <div className="checkout-address-name">
               {currentUser?.firstName || ''} {currentUser?.lastName || ''}
             </div>
-            <div className="checkout-address-phone">{selectedAddress.phone || '—'}</div>
+            <div className="checkout-address-phone">{selectedAddress.phone || '-'}</div>
             <div className="checkout-address-text">{formatAddress(selectedAddress)}</div>
             {!selectedAddress.lat && !selectedAddress.lng && storeSettings?.shippingMode !== 'flat' && (
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem', marginTop: '0.75rem', padding: '0.625rem 0.75rem', background: 'rgba(234,179,8,0.07)', border: '1px solid rgba(234,179,8,0.25)', borderRadius: '8px' }}>
@@ -1023,7 +1052,7 @@ export default function CheckoutPage() {
         )}
       </div>
 
-      {/* SECTION 3 — Order Items */}
+      {/* SECTION 3 - Order Items */}
       <div className="checkout-card">
         <div className="checkout-section-label">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -1063,7 +1092,15 @@ export default function CheckoutPage() {
                         {item.qty} × ₱{Number(item.unitPrice).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </span>
                       {/* Per-line deposit indicator so a mixed cart (e.g. mug 50%, mousepad 30%, scrunchie full) is clear. */}
-                      {lineDpPct(item) > 0 ? (
+                      {designFeeOnly ? (
+                        /* A design-request checkout collects the design fee and nothing else; the
+                           goods are settled from My Orders after the proof is approved. Printing
+                           "50% DEPOSIT" here contradicts the Due Now panel a few inches below,
+                           which tells the same customer the whole remaining balance comes later. */
+                        <span style={{ background: 'rgba(96,165,250,0.12)', color: '#2563eb', border: '1px solid rgba(96,165,250,0.3)', borderRadius: 999, padding: '1px 7px', fontSize: '.62rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.04em' }}>
+                          Paid after proof
+                        </span>
+                      ) : lineDpPct(item) > 0 ? (
                         <span style={{ background: 'rgba(245,158,11,0.12)', color: '#b45309', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 999, padding: '1px 7px', fontSize: '.62rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.04em' }}>
                           {lineDpPct(item)}% deposit
                         </span>
@@ -1117,7 +1154,7 @@ export default function CheckoutPage() {
         })}
       </div>
 
-      {/* SECTION 3B – Design Upload (only shown for custom print products) */}
+      {/* SECTION 3B - Design Upload (only shown for custom print products) */}
       {hasCustomItem && <div className="checkout-card">
         <div className="checkout-section-label" style={{ marginBottom: '0.75rem' }}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1127,11 +1164,11 @@ export default function CheckoutPage() {
           </svg>
           Design File
           <span style={{ marginLeft: '0.5rem', fontStyle: 'normal', fontWeight: 400, color: 'var(--gray)', textTransform: 'none', letterSpacing: 0, fontSize: '0.72rem' }}>
-            — Optional
+            - Optional
           </span>
         </div>
 
-        {/* Design preview from product page — B-06 */}
+        {/* Design preview from product page - B-06 */}
         {((designPreviewUrl && !designFile) || designFilePreviewUrl) && (
           <div style={{
             display: 'flex',
@@ -1285,21 +1322,48 @@ export default function CheckoutPage() {
             }}
           >
             Design Notes
-            <span style={{ marginLeft: '0.375rem', fontWeight: 400, opacity: 0.7 }}>— Optional</span>
+            <span style={{ marginLeft: '0.375rem', fontWeight: 400, opacity: 0.7 }}>- Optional</span>
           </label>
           <textarea
             id="design-notes"
             rows={3}
             maxLength={500}
             className="checkout-notes-input"
-            placeholder="Describe what you want printed — colors, text, placement, size, or any other details..."
+            placeholder="Describe what you want printed - colors, text, placement, size, or any other details..."
             value={designNotes}
             onChange={e => setDesignNotes(e.target.value.slice(0, 500))}
           />
         </div>
       </div>}
 
-      {/* SECTION 4C — Delivery speed (order-level Standard / Rush). Same card + toggle design language
+      {/* What happens to an uploaded file after payment. The same panel appears on the product page,
+          but that one is read before there is anything to lose - this is the screen where the money
+          actually leaves, and it was silent. The line that matters is not "we will check it" but
+          what becomes of the payment when the file cannot be used: saying nothing there does not
+          protect the shop, it just moves the conversation to a chargeback.
+
+          It promises a proof because the machinery for one already exists and already accepts
+          customer-supplied artwork (adminUploadDesign -> proof_sent -> the customer's own approve
+          in My Orders -> approved, which is what unlocks the Job Order). The proof is also what
+          settles size and placement - the two things the customer never chose when they handed
+          over a file, and the two things every "this is not what I ordered" argument is about.
+          Promising it here means it has to be sent every time. */}
+      {hasUploadLine && (
+        <div className="checkout-card" style={{ background: 'rgba(96,165,250,0.08)', border: '1px solid rgba(96,165,250,0.2)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 700, fontSize: '0.92rem', color: '#60a5fa', marginBottom: '0.4rem' }}>
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="m9 15 2 2 4-4"/></svg>
+            You approve a proof before we print
+          </div>
+          <div style={{ fontSize: '0.8rem', color: 'var(--gray)', lineHeight: 1.65 }}>
+            We send you a proof - a mockup showing exactly how your artwork will look. Nothing
+            goes to production until you approve it. If something is not right you can ask for
+            changes or send a replacement file at no extra cost, and if the file cannot be used at
+            all, we refund what you paid.
+          </div>
+        </div>
+      )}
+
+      {/* SECTION 4C - Delivery speed (order-level Standard / Rush). Same card + toggle design language
           as the cart and the per-product custom page. */}
       {rushEnabled && (
         <div className="checkout-card" style={{ display: 'flex', flexDirection: 'column', gap: '0.7rem' }}>
@@ -1307,6 +1371,12 @@ export default function CheckoutPage() {
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="2"><rect x="1" y="3" width="15" height="13" rx="1"/><path d="M16 8h4l3 3v5h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
             Delivery speed
           </div>
+          {/* The range is a ceiling the shop commits to, not a fixed date - it is stated as a range
+              precisely because production time varies order to order. Saying so here means an early
+              arrival reads as expected rather than as a surprise nobody promised. */}
+          <p style={{ fontSize: '0.72rem', color: 'var(--gray)', margin: 0, lineHeight: 1.5 }}>
+            These are the latest expected dates - your order can arrive sooner if production finishes early.
+          </p>
           {[{ key: false, label: 'Standard', lead: prodLead, fee: 0 }, { key: true, label: 'Rush', lead: rushLead, fee: rushFeeAmt }].map(opt => {
             const active = rush === opt.key;
             // Choosing a speed directly clears any specific date (the two are alternative ways in).
@@ -1322,17 +1392,29 @@ export default function CheckoutPage() {
                     <span style={{ fontSize: '0.74rem', color: 'var(--gray)' }}>Get by {getByRange(opt.lead)}</span>
                   </span>
                 </span>
-                <span style={{ fontSize: '0.85rem', fontWeight: 800, color: opt.fee > 0 ? 'var(--gold)' : 'var(--gray)' }}>{opt.fee > 0 ? `+₱${opt.fee.toLocaleString('en-PH')}` : 'Free'}</span>
+                <span style={{ fontSize: '0.85rem', fontWeight: 800, color: opt.fee > 0 ? 'var(--gold)' : 'var(--gray)' }}>{opt.fee > 0 ? `+₱${opt.fee.toLocaleString('en-PH')}` : 'No extra charge'}</span>
               </button>
             );
           })}
+
+          <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginTop: 4, marginBottom: 4 }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#166534" strokeWidth="2"
+              style={{ flexShrink: 0, marginTop: 2 }}>
+              <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+            </svg>
+            <span style={{ fontSize: '0.75rem', color: 'var(--gray)', lineHeight: 1.55 }}>
+              These dates are the latest you should expect it.{' '}
+              <strong style={{ color: '#166534' }}>Orders often arrive earlier</strong> when our
+              production queue is light - we message you as soon as yours is ready.
+            </span>
+          </div>
 
           {/* Optional exact deadline. Picking a date auto-sets the speed above: sooner than Standard can
               make it -> Rush; otherwise Standard (no fee). The native "dd/mm/yyyy" is hidden. */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
             <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>Need it by a specific date?</span>
             <label onClick={(e) => { const inp = e.currentTarget.querySelector('input[type="date"]'); try { inp?.showPicker(); } catch { inp?.focus(); } }}
-              style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 8, border: `1.5px solid ${needByDate ? 'var(--gold)' : 'var(--border)'}`, borderRadius: '9px', background: 'var(--dark2, #f9fafb)', padding: '7px 11px', cursor: 'pointer', minWidth: 140 }}>
+              style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 8, border: `1.5px solid ${needByDate ? 'var(--gold)' : 'var(--border)'}`, borderRadius: '9px', background: 'var(--dark2, var(--dark2))', padding: '7px 11px', cursor: 'pointer', minWidth: 140 }}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="2" style={{ flexShrink: 0 }}><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
               <span style={{ fontSize: '0.82rem', fontWeight: 600, color: needByDate ? 'var(--white, #111)' : 'var(--gray)', flex: 1 }}>
                 {needByDate ? new Date(needByDate).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Pick a date'}
@@ -1350,13 +1432,38 @@ export default function CheckoutPage() {
           )}
           {isRush && (
             <div style={{ padding: '9px 12px', borderRadius: '9px', background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.3)' }}>
-              <span style={{ fontSize: '0.75rem', color: '#b45309', lineHeight: 1.5 }}>Rush is <strong>subject to our confirmation</strong> based on our current queue. If we cannot make it, we will notify you.</span>
+              <span style={{ fontSize: '0.75rem', color: '#b45309', lineHeight: 1.5 }}>Rush is <strong>subject to our confirmation</strong>. If other orders are still in production ahead of yours, this date may be pushed back - we will notify you either way.</span>
             </div>
           )}
         </div>
       )}
 
-      {/* SECTION 5 — Order Summary */}
+      {/* A cart with nothing to produce has no Standard-or-Rush choice to make, so the whole
+          card was hidden - and the delivery date went with it. The choice was the only part
+          that did not apply. Someone buying a scrunchie still needs to know when it arrives,
+          and for them the answer is better than usual, because it skips production entirely. */}
+      {!rushEnabled && items.length > 0 && (
+        <div className="checkout-card" style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 700, fontSize: '0.92rem' }}>
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="1" y="3" width="15" height="13"/><path d="M16 8h4l3 3v5h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/>
+            </svg>
+            Expected delivery
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, padding: '11px 13px', borderRadius: '10px', border: '1px solid rgba(212,168,67,0.3)', background: 'rgba(212,168,67,0.06)' }}>
+            {/* No "Free" here: it meant "no rush fee", but next to a delivery date it read as free
+                delivery, and the delivery fee is arranged after the order. */}
+            <span style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--gold)' }}>Get by {getByRange(0)}</span>
+          </div>
+          <div style={{ fontSize: '0.75rem', color: 'var(--gray)', lineHeight: 1.55 }}>
+            Ready-made items are already on the shelf, so they skip production and
+            <strong style={{ color: '#16a34a' }}> often arrive sooner than this</strong>. We message
+            you as soon as yours is on the way.
+          </div>
+        </div>
+      )}
+
+      {/* SECTION 5 - Order Summary */}
       <div className="checkout-card checkout-summary-card">
         <div className="checkout-summary-row">
           <span>Subtotal</span>
@@ -1386,14 +1493,14 @@ export default function CheckoutPage() {
             if (storeSettings?.shippingMode === 'flat' && !addr)
               return <span className="checkout-shipping-note">Select an address</span>;
             if ((!storeSettings?.storeLat || !storeSettings?.storeLng) && storeSettings?.shippingMode !== 'flat')
-              return <span className="checkout-shipping-note">—</span>;
+              return <span className="checkout-shipping-note">-</span>;
             if (!addr?.lat || !addr?.lng)
               return (
                 <button type="button" className="checkout-shipping-note" style={{ background: 'none', border: 'none', color: 'var(--gold)', cursor: 'pointer', padding: 0, fontWeight: 600, fontSize: 'inherit', textDecoration: 'underline' }} onClick={() => setShowPinModal(true)}>
                   Pin your address
                 </button>
               );
-            return <span className="checkout-shipping-note">—</span>;
+            return <span className="checkout-shipping-note">-</span>;
           })()}
         </div>
         {isRush && rushCharge > 0 && (
@@ -1487,18 +1594,40 @@ export default function CheckoutPage() {
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="2" style={{ flexShrink: 0, marginTop: '2px' }}>
               <rect x="1" y="3" width="15" height="13"/><path d="M16 8h4l3 3v5h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/>
             </svg>
+            {/* Named plainly rather than left as "arranged after order": what it costs varies with
+                what is being shipped, so the honest promise is that the shop will say - not a number
+                that would have to be walked back once the courier actually quotes the vehicle.
+                Where the number comes from is said too, because "we will tell you later" otherwise
+                reads as "we will make one up". */}
             <span style={{ fontSize: '0.75rem', color: 'var(--gray-light)', lineHeight: 1.5 }}>
-              Total above excludes delivery. The seller books a courier to your pinned location after your order is confirmed, then advises the shipping fee (paid to the rider or the seller).
+              Delivery is not included here. Once your order is confirmed we price it in our courier&apos;s
+              app - it depends on how much you ordered and how far it is going - and send you the exact
+              amount in chat.{' '}
+              <strong style={{ color: 'var(--white)' }}>You can add it to your next payment</strong>, or
+              hand it to the rider in cash on arrival. Whichever you prefer.
             </span>
           </div>
         )}
         {eligibleForDeposit && (
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', marginTop: '6px', padding: '8px 10px', background: 'rgba(212,168,67,0.08)', borderRadius: '8px', border: '1px solid rgba(212,168,67,0.2)' }}>
-            <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--gold)' }}>Due Now</span>
-            <span style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--gold)' }}>₱{amountDue.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+          /* Sized to be read by someone skimming. The figure a customer is about to be charged
+             was the same weight as the subtotal above it, so on a request-design order - where
+             the amount is a hundred pesos against a total of eleven hundred - the eye went to
+             the bigger number and the surprise came at the gateway. The sentence that explains
+             the gap is the one that stops the "why is it only P100" message, so it is bold. */
+          <div style={{ marginTop: '6px', padding: '12px 14px', background: 'rgba(212,168,67,0.1)', borderRadius: '10px', border: '1.5px solid rgba(212,168,67,0.45)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '0.9rem', fontWeight: 800, color: 'var(--gold)', letterSpacing: '.01em' }}>Due Now</span>
+              <span style={{ fontSize: '1.5rem', fontWeight: 900, color: 'var(--gold)', lineHeight: 1.1 }}>
+                ₱{amountDue.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </span>
+            </div>
             {designFeeOnly && (
-              <span style={{ display: 'block', width: '100%', fontSize: '0.72rem', color: 'var(--gray)', marginTop: 4, lineHeight: 1.5 }}>
-                Design fee only, and it is non-refundable - it pays for the designer&apos;s time. The remaining ₱{remainingBalance.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (goods + delivery) is paid from My Orders once you approve the proof, so you see the artwork before you pay for the order.
+              <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--gray-light)', marginTop: 8, lineHeight: 1.6 }}>
+                <strong style={{ color: 'var(--white)', fontWeight: 700 }}>
+                  The remaining ₱{remainingBalance.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (goods + delivery) is paid from My Orders once you approve the proof.
+                </strong>
+                {' '}Today you are paying the design fee only. It is non-refundable because it pays
+                for the designer&apos;s time, and you see the artwork before you pay for the order.
               </span>
             )}
           </div>
@@ -1556,7 +1685,7 @@ export default function CheckoutPage() {
         )}
       </div>
 
-      {/* SECTION 6 — Payment Method */}
+      {/* SECTION 6 - Payment Method */}
       <div className="checkout-card">
         <div className="checkout-section-label" style={{ marginBottom: '0.75rem' }}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -1565,7 +1694,7 @@ export default function CheckoutPage() {
           Payment Method
         </div>
 
-        {/* Payment method cards — COD → GCash → Maya → Card */}
+        {/* Payment method cards - COD → GCash → Maya → Card */}
         {([
           {
             id: 'cod',
@@ -1660,7 +1789,7 @@ export default function CheckoutPage() {
                     {opt.sub}
                     {opt.id !== 'cod' && grandTotal < 100 && (
                       <span style={{ color: 'var(--red)', display: 'block', marginTop: '0.2rem' }}>
-                        ⚠ Minimum ₱100.00 required.
+                        Minimum ₱100.00 required.
                       </span>
                     )}
                   </div>
@@ -1675,7 +1804,7 @@ export default function CheckoutPage() {
                 }} />
               </div>
 
-              {/* Inline e-wallet panel — appears directly below its own card */}
+              {/* Inline e-wallet panel - appears directly below its own card */}
               {showPanel && (
                 <div style={{
                   marginTop: '4px', marginBottom: '0.625rem',
@@ -1778,9 +1907,9 @@ export default function CheckoutPage() {
                   value={cardNumber}
                   onChange={e => setCardNumber(fmtCardNumber(e.target.value))}
                   style={{
-                    width: '100%', background: '#ffffff', border: '1px solid var(--border)',
+                    width: '100%', background: 'var(--dark)', border: '1px solid var(--border)',
                     borderRadius: '8px', padding: '0.72rem 2.75rem 0.72rem 0.875rem',
-                    color: '#111827', fontSize: '1rem', outline: 'none', boxSizing: 'border-box',
+                    color: 'var(--white)', fontSize: '1rem', outline: 'none', boxSizing: 'border-box',
                     fontFamily: 'monospace', letterSpacing: '0.08em',
                   }}
                   onFocus={e => { e.target.style.borderColor = '#9C7BE8'; }}
@@ -1809,9 +1938,9 @@ export default function CheckoutPage() {
                   value={cardExpiry}
                   onChange={e => setCardExpiry(fmtExpiry(e.target.value))}
                   style={{
-                    width: '100%', background: '#ffffff', border: '1px solid var(--border)',
+                    width: '100%', background: 'var(--dark)', border: '1px solid var(--border)',
                     borderRadius: '8px', padding: '0.72rem 0.875rem',
-                    color: '#111827', fontSize: '0.95rem', outline: 'none',
+                    color: 'var(--white)', fontSize: '0.95rem', outline: 'none',
                     fontFamily: 'monospace', boxSizing: 'border-box',
                   }}
                   onFocus={e => { e.target.style.borderColor = '#9C7BE8'; }}
@@ -1828,9 +1957,9 @@ export default function CheckoutPage() {
                     maxLength={4} value={cardCvc}
                     onChange={e => setCardCvc(e.target.value.replace(/\D/g, '').slice(0, 4))}
                     style={{
-                      width: '100%', background: '#ffffff', border: '1px solid var(--border)',
+                      width: '100%', background: 'var(--dark)', border: '1px solid var(--border)',
                       borderRadius: '8px', padding: '0.72rem 2.25rem 0.72rem 0.875rem',
-                      color: '#111827', fontSize: '0.95rem', outline: 'none',
+                      color: 'var(--white)', fontSize: '0.95rem', outline: 'none',
                       fontFamily: 'monospace', boxSizing: 'border-box',
                     }}
                     onFocus={e => { e.target.style.borderColor = '#9C7BE8'; }}
@@ -1844,31 +1973,13 @@ export default function CheckoutPage() {
               </div>
             </div>
 
-            {/* Cardholder name */}
-            <div style={{ marginBottom: '0.875rem' }}>
-              <label style={{ display: 'block', fontSize: '0.72rem', color: 'var(--gray)', fontWeight: 600, marginBottom: '0.35rem', letterSpacing: '0.03em' }}>
-                Name on card
-              </label>
-              <input
-                type="text" placeholder="Full name as on card"
-                value={cardName}
-                onChange={e => setCardName(e.target.value)}
-                style={{
-                  width: '100%', background: '#ffffff', border: '1px solid var(--border)',
-                  borderRadius: '8px', padding: '0.72rem 0.875rem',
-                  color: '#111827', fontSize: '0.95rem', outline: 'none', boxSizing: 'border-box',
-                }}
-                onFocus={e => { e.target.style.borderColor = '#9C7BE8'; }}
-                onBlur={e => { e.target.style.borderColor = 'var(--border)'; }}
-              />
-            </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="rgba(156,123,232,0.7)" strokeWidth="2">
                 <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
               </svg>
               <span style={{ fontSize: '0.7rem', color: 'var(--gray)' }}>
-                Card details encrypted and sent directly to PayMongo — never stored on our servers.
+                Card details encrypted and sent directly to PayMongo - never stored on our servers.
               </span>
             </div>
           </div>
@@ -1886,7 +1997,7 @@ export default function CheckoutPage() {
         </div>
       )}
 
-      {/* SECTION 7 — Place Order Button */}
+      {/* SECTION 7 - Place Order Button */}
       {error && (
         <div className="checkout-error">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -1895,6 +2006,33 @@ export default function CheckoutPage() {
           {error}
         </div>
       )}
+
+      {/* A disabled button with no reason beside it is the commonest way an order is abandoned. On a
+          phone the address section is several screens up, so someone who scrolled straight down sees
+          a dead button and no cause. Name the one thing missing, and offer the fix in place rather
+          than asking them to go looking for it. */}
+      {!placing && (() => {
+        const blocker =
+          items.length === 0
+            ? { text: 'Your cart is empty.', action: null }
+            : !selectedAddress
+              ? { text: 'Add a delivery address to place this order.', action: 'address' }
+              : (isOnlinePayment && grandTotal < 100)
+                ? { text: `GCash and Maya need at least ₱100.00. This order is ₱${grandTotal.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} - choose Cash on Delivery instead.`, action: null }
+                : null;
+        if (!blocker) return null;
+        return (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', gap: '0.5rem', padding: '0.7rem 0.9rem', marginBottom: '0.6rem', borderRadius: '10px', background: 'rgba(212,168,67,0.08)', border: '1px solid rgba(212,168,67,0.25)', fontSize: '0.82rem', color: 'var(--gray-light)', textAlign: 'center', lineHeight: 1.5 }}>
+            <span>{blocker.text}</span>
+            {blocker.action === 'address' && (
+              <button type="button" onClick={() => setShowAddressPicker(true)}
+                style={{ padding: '5px 12px', borderRadius: 8, border: '1px solid var(--gold)', background: 'transparent', color: 'var(--gold)', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                Choose address
+              </button>
+            )}
+          </div>
+        );
+      })()}
 
       <button
         onClick={handlePlaceOrder}
@@ -1916,7 +2054,7 @@ export default function CheckoutPage() {
       {/* Custom Order Terms modal (the exact clauses being agreed to + recorded). */}
       {showTerms && (
         <div onClick={() => setShowTerms(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 4000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
-          <div onClick={e => e.stopPropagation()} style={{ background: 'var(--dark2, #fff)', color: 'var(--white, #111)', borderRadius: '14px', maxWidth: 560, width: '100%', maxHeight: '80vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: 'var(--dark2, var(--dark))', color: 'var(--white, #111)', borderRadius: '14px', maxWidth: 560, width: '100%', maxHeight: '80vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem 1.25rem', borderBottom: '1px solid var(--border)' }}>
               <strong style={{ fontSize: '1rem' }}>Custom Order Terms</strong>
               <button onClick={() => setShowTerms(false)} style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', fontSize: '1.2rem' }}>&times;</button>
@@ -1949,6 +2087,9 @@ export default function CheckoutPage() {
             : paymentMethod === 'paymaya'
               ? 'By placing this order, you agree to our terms. You\'ll be redirected to Maya to complete payment.'
               : 'By placing this order, you agree to our terms. Your card details are processed securely by PayMongo.'}
+        {courierBooked && paymentMethod !== 'cod'
+          ? ' Delivery is not included - once your order is confirmed the seller prices it in the courier app and sends you the exact fee in chat, to add to your next payment or hand to the rider in cash.'
+          : ''}
       </p>
 
       {/* ADDRESS PICKER MODAL */}

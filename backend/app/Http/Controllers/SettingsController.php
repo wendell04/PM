@@ -22,12 +22,19 @@ class SettingsController extends Controller
                 'storeLat'             => $owner->storeLat              ?? null,
                 'storeLng'             => $owner->storeLng              ?? null,
                 'shippingMode'         => $owner->shippingMode          ?? 'courier_booked',
-                'shippingBaseRate'     => (float) ($owner->shippingBaseRate     ?? 50),
-                'shippingPerKmRate'    => (float) ($owner->shippingPerKmRate    ?? 15),
+                // Modelled on how motorcycle courier apps (Lalamove, Grab) actually price a ride in
+                // Metro Manila: a base fare, a per-km rate for a short first stretch, then a lower
+                // per-km rate beyond it. A single flat per-km rate across the whole trip was a shape
+                // no real courier prices with - short deliveries came out a little expensive relative
+                // to long ones, because nothing captured the tapering real pricing has.
+                'shippingBaseRate'     => (float) ($owner->shippingBaseRate     ?? 49),
+                'shippingPerKmRate'    => (float) ($owner->shippingPerKmRate    ?? 6),
+                'shippingPerKmRateFar' => (float) ($owner->shippingPerKmRateFar ?? 5),
+                'shippingTierKm'       => (float) ($owner->shippingTierKm       ?? 5),
                 'flatRateInsideMetro'  => (float) ($owner->flatRateInsideMetro  ?? 150),
                 'flatRateOutsideMetro' => (float) ($owner->flatRateOutsideMetro ?? 250),
                 // Delivery estimate + rush (storefront shows "Get by [range]" from these).
-                'productionLeadDays'   => (int)   ($owner->productionLeadDays   ?? 5),
+                'productionLeadDays'   => (int)   ($owner->productionLeadDays   ?? 3),
                 'depositDueDays'       => (int)   ($owner->depositDueDays       ?? 7),
                 'unpaidOrderDays'      => (int)   ($owner->unpaidOrderDays      ?? 3),
                 // How long a FINISHED order is held while the balance goes unpaid. Personalised goods
@@ -40,10 +47,18 @@ class SettingsController extends Controller
                 'freeRevisions'        => (int)   ($owner->freeRevisions        ?? 3),
                 'extraRevisionFee'     => (float) ($owner->extraRevisionFee     ?? 50),
                 'maxRevisions'         => (int)   ($owner->maxRevisions         ?? 5),
-                'shippingDaysMin'      => (int)   ($owner->shippingDaysMin      ?? 2),
-                'shippingDaysMax'      => (int)   ($owner->shippingDaysMax      ?? 4),
+                'shippingDaysMin'      => (int)   ($owner->shippingDaysMin      ?? 1),
+                'shippingDaysMax'      => (int)   ($owner->shippingDaysMax      ?? 2),
                 'rushEnabled'          => (bool)  ($owner->rushEnabled          ?? true),
-                'rushLeadDays'         => (int)   ($owner->rushLeadDays         ?? 2),
+                // The contact form can be switched off from Settings - a public write endpoint
+                // that cannot be closed is a liability if it is ever abused. Default open.
+                'contactFormEnabled'   => (bool)  ($owner->contactFormEnabled   ?? true),
+                // Off unless the owner turns it on: Google bills past its free allowance and has no
+                // spending cap of its own, and the address fields are accurate without it.
+                'googleMapsEnabled'    => (bool)  ($owner->googleMapsEnabled    ?? false),
+                'contactSuccessMessage'=> $owner->contactSuccessMessage ?: null,
+                'contactClosedMessage' => $owner->contactClosedMessage  ?: null,
+                'rushLeadDays'         => (int)   ($owner->rushLeadDays         ?? 1),
                 'rushFee'              => (float) ($owner->rushFee              ?? 150),
                 // Custom-order T&C the storefront gates ordering on (owner-editable; version is
                 // recorded on the order when the customer accepts).
@@ -59,6 +74,78 @@ class SettingsController extends Controller
         }
     }
 
+    /**
+     * POST /api/admin/settings/mail-test  {provider: brevo|resend}
+     *
+     * One email to the shop's own inbox through ONE named provider, with the provider's exact
+     * error text returned to the screen when it refuses. The failover setup hides that text: a
+     * refusal is logged (or not, depending on the host) and the next provider quietly carries the
+     * mail, so "is Resend working?" could only be answered by reading two dashboards and guessing.
+     */
+    public function mailTest(Request $request)
+    {
+        try {
+            if (!\App\Support\Rbac::isSuperAdmin($request->user()) && !\App\Support\Rbac::isOwner($request->user())) {
+                return $this->unauthorizedResponse();
+            }
+            $validated = $request->validate(['provider' => 'required|in:brevo,resend']);
+            $provider  = $validated['provider'];
+            $to        = (string) (config('mail.admin_recipient') ?: config('mail.from.address'));
+            $from      = $provider === 'resend'
+                ? (config('mail.security_from.address') ?: config('mail.from.address'))
+                : config('mail.from.address');
+
+            $started = microtime(true);
+            try {
+                \Illuminate\Support\Facades\Mail::mailer($provider)
+                    ->raw("Test email sent through {$provider} from the dashboard at " . now()->format('Y-m-d H:i:s') . '. Nothing to do.', function ($m) use ($to, $from, $provider) {
+                        $m->to($to)->from($from, config('mail.from.name', 'Personalize Me Prints'))->subject('Mail test - ' . $provider);
+                    });
+            } catch (\Throwable $e) {
+                return $this->successResponse('The provider refused.', [
+                    'ok'       => false,
+                    'provider' => $provider,
+                    'from'     => $from,
+                    'to'       => $to,
+                    'error'    => mb_substr($e->getMessage(), 0, 600),
+                    'ms'       => (int) round((microtime(true) - $started) * 1000),
+                ]);
+            }
+            return $this->successResponse('Sent.', [
+                'ok' => true, 'provider' => $provider, 'from' => $from, 'to' => $to,
+                'ms' => (int) round((microtime(true) - $started) * 1000),
+            ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return $this->validationErrorResponse($e);
+        } catch (\Exception $e) {
+            return $this->serverErrorResponse($e, 'Mail test failed.');
+        }
+    }
+
+    /**
+     * Which provider each kind of mail leaves by, in order, as the running app has it.
+     *
+     * The host's variables decide this, and the only way to check it was to send something and
+     * watch a provider's quota drop - which is how a lane spent a week on the wrong provider
+     * without anyone being able to say so.
+     */
+    private function mailLanes(): array
+    {
+        $chain = function (?string $name): array {
+            $name = (string) $name;
+            $cfg  = config("mail.mailers.{$name}");
+            if (($cfg['transport'] ?? null) === 'failover') {
+                return array_values(array_filter((array) ($cfg['mailers'] ?? [])));
+            }
+            return $name !== '' ? [$name] : [];
+        };
+
+        return [
+            'notifications' => $chain(config('mail.default')),
+            'security'      => $chain(config('mail.security_mailer')),
+        ];
+    }
+
     public function show(Request $request)
     {
         try {
@@ -69,6 +156,7 @@ class SettingsController extends Controller
             $owner = $this->getOwner() ?? $user;
 
             return $this->successResponse('Settings retrieved.', [
+                'mailLanes'            => $this->mailLanes(),
                 'storeName'            => $user->storeName             ?? '',
                 'storeDescription'     => $user->storeDescription      ?? '',
                 'storeEmail'           => $user->storeEmail            ?? '',
@@ -78,12 +166,14 @@ class SettingsController extends Controller
                 'storeLat'             => $owner->storeLat              ?? null,
                 'storeLng'             => $owner->storeLng              ?? null,
                 'shippingMode'         => $owner->shippingMode          ?? 'courier_booked',
-                'shippingBaseRate'     => (float) ($owner->shippingBaseRate     ?? 50),
-                'shippingPerKmRate'    => (float) ($owner->shippingPerKmRate    ?? 15),
+                'shippingBaseRate'     => (float) ($owner->shippingBaseRate     ?? 49),
+                'shippingPerKmRate'    => (float) ($owner->shippingPerKmRate    ?? 6),
+                'shippingPerKmRateFar' => (float) ($owner->shippingPerKmRateFar ?? 5),
+                'shippingTierKm'       => (float) ($owner->shippingTierKm       ?? 5),
                 'flatRateInsideMetro'  => (float) ($owner->flatRateInsideMetro  ?? 150),
                 'flatRateOutsideMetro' => (float) ($owner->flatRateOutsideMetro ?? 250),
                 'designRequestFee'     => (float) ($user->designRequestFee      ?? 100),
-                'productionLeadDays'   => (int)   ($owner->productionLeadDays   ?? 5),
+                'productionLeadDays'   => (int)   ($owner->productionLeadDays   ?? 3),
                 'depositDueDays'       => (int)   ($owner->depositDueDays       ?? 7),
                 'unpaidOrderDays'      => (int)   ($owner->unpaidOrderDays      ?? 3),
                 // How long a FINISHED order is held while the balance goes unpaid. Personalised goods
@@ -96,10 +186,18 @@ class SettingsController extends Controller
                 'freeRevisions'        => (int)   ($owner->freeRevisions        ?? 3),
                 'extraRevisionFee'     => (float) ($owner->extraRevisionFee     ?? 50),
                 'maxRevisions'         => (int)   ($owner->maxRevisions         ?? 5),
-                'shippingDaysMin'      => (int)   ($owner->shippingDaysMin      ?? 2),
-                'shippingDaysMax'      => (int)   ($owner->shippingDaysMax      ?? 4),
+                'shippingDaysMin'      => (int)   ($owner->shippingDaysMin      ?? 1),
+                'shippingDaysMax'      => (int)   ($owner->shippingDaysMax      ?? 2),
                 'rushEnabled'          => (bool)  ($owner->rushEnabled          ?? true),
-                'rushLeadDays'         => (int)   ($owner->rushLeadDays         ?? 2),
+                // The contact form can be switched off from Settings - a public write endpoint
+                // that cannot be closed is a liability if it is ever abused. Default open.
+                'contactFormEnabled'   => (bool)  ($owner->contactFormEnabled   ?? true),
+                // Off unless the owner turns it on: Google bills past its free allowance and has no
+                // spending cap of its own, and the address fields are accurate without it.
+                'googleMapsEnabled'    => (bool)  ($owner->googleMapsEnabled    ?? false),
+                'contactSuccessMessage'=> $owner->contactSuccessMessage ?: null,
+                'contactClosedMessage' => $owner->contactClosedMessage  ?: null,
+                'rushLeadDays'         => (int)   ($owner->rushLeadDays         ?? 1),
                 'rushFee'              => (float) ($owner->rushFee              ?? 150),
                 // Custom-order T&C the storefront gates ordering on (owner-editable; version is
                 // recorded on the order when the customer accepts).
@@ -133,6 +231,8 @@ class SettingsController extends Controller
                 'shippingMode'         => 'nullable|string|in:distance,flat,courier_booked',
                 'shippingBaseRate'     => 'nullable|numeric|min:0|max:9999',
                 'shippingPerKmRate'    => 'nullable|numeric|min:0|max:9999',
+                'shippingPerKmRateFar' => 'nullable|numeric|min:0|max:9999',
+                'shippingTierKm'       => 'nullable|numeric|min:0|max:200',
                 'flatRateInsideMetro'  => 'nullable|numeric|min:0|max:9999',
                 'flatRateOutsideMetro' => 'nullable|numeric|min:0|max:9999',
                 'productionLeadDays'   => 'nullable|integer|min:0|max:120',
@@ -146,6 +246,10 @@ class SettingsController extends Controller
                 'shippingDaysMin'      => 'nullable|integer|min:0|max:120',
                 'shippingDaysMax'      => 'nullable|integer|min:0|max:120',
                 'rushEnabled'          => 'nullable|boolean',
+                'contactFormEnabled'   => 'nullable|boolean',
+                'googleMapsEnabled'    => 'nullable|boolean',
+                'contactSuccessMessage'=> 'nullable|string|max:300',
+                'contactClosedMessage' => 'nullable|string|max:300',
                 'rushLeadDays'         => 'nullable|integer|min:0|max:120',
                 'rushFee'              => 'nullable|numeric|min:0|max:99999',
             ]);
@@ -158,6 +262,8 @@ class SettingsController extends Controller
             if ($request->has('shippingMode'))         $owner->shippingMode         = $request->shippingMode ?? 'courier_booked';
             if ($request->has('shippingBaseRate'))     $owner->shippingBaseRate     = (float) $request->shippingBaseRate;
             if ($request->has('shippingPerKmRate'))    $owner->shippingPerKmRate    = (float) $request->shippingPerKmRate;
+            if ($request->has('shippingPerKmRateFar')) $owner->shippingPerKmRateFar = (float) $request->shippingPerKmRateFar;
+            if ($request->has('shippingTierKm'))       $owner->shippingTierKm       = (float) $request->shippingTierKm;
             if ($request->has('flatRateInsideMetro'))  $owner->flatRateInsideMetro  = (float) $request->flatRateInsideMetro;
             if ($request->has('flatRateOutsideMetro')) $owner->flatRateOutsideMetro = (float) $request->flatRateOutsideMetro;
             if ($request->has('productionLeadDays'))   $owner->productionLeadDays   = (int) $request->productionLeadDays;
@@ -171,6 +277,10 @@ class SettingsController extends Controller
             if ($request->has('shippingDaysMin'))      $owner->shippingDaysMin      = (int) $request->shippingDaysMin;
             if ($request->has('shippingDaysMax'))      $owner->shippingDaysMax      = (int) $request->shippingDaysMax;
             if ($request->has('rushEnabled'))          $owner->rushEnabled          = (bool) $request->rushEnabled;
+            if ($request->has('contactFormEnabled'))   $owner->contactFormEnabled   = (bool) $request->contactFormEnabled;
+            if ($request->has('googleMapsEnabled'))    $owner->googleMapsEnabled    = (bool) $request->googleMapsEnabled;
+            if ($request->has('contactSuccessMessage'))$owner->contactSuccessMessage= trim((string) $request->contactSuccessMessage) ?: null;
+            if ($request->has('contactClosedMessage')) $owner->contactClosedMessage = trim((string) $request->contactClosedMessage) ?: null;
             if ($request->has('rushLeadDays'))         $owner->rushLeadDays         = (int) $request->rushLeadDays;
             if ($request->has('rushFee'))              $owner->rushFee              = (float) $request->rushFee;
             $owner->save();
@@ -185,7 +295,7 @@ class SettingsController extends Controller
                 'shippingPerKmRate'    => (float) ($owner->shippingPerKmRate    ?? 15),
                 'flatRateInsideMetro'  => (float) ($owner->flatRateInsideMetro  ?? 150),
                 'flatRateOutsideMetro' => (float) ($owner->flatRateOutsideMetro ?? 250),
-                'productionLeadDays'   => (int)   ($owner->productionLeadDays   ?? 5),
+                'productionLeadDays'   => (int)   ($owner->productionLeadDays   ?? 3),
                 'depositDueDays'       => (int)   ($owner->depositDueDays       ?? 7),
                 'unpaidOrderDays'      => (int)   ($owner->unpaidOrderDays      ?? 3),
                 // How long a FINISHED order is held while the balance goes unpaid. Personalised goods
@@ -198,10 +308,18 @@ class SettingsController extends Controller
                 'freeRevisions'        => (int)   ($owner->freeRevisions        ?? 3),
                 'extraRevisionFee'     => (float) ($owner->extraRevisionFee     ?? 50),
                 'maxRevisions'         => (int)   ($owner->maxRevisions         ?? 5),
-                'shippingDaysMin'      => (int)   ($owner->shippingDaysMin      ?? 2),
-                'shippingDaysMax'      => (int)   ($owner->shippingDaysMax      ?? 4),
+                'shippingDaysMin'      => (int)   ($owner->shippingDaysMin      ?? 1),
+                'shippingDaysMax'      => (int)   ($owner->shippingDaysMax      ?? 2),
                 'rushEnabled'          => (bool)  ($owner->rushEnabled          ?? true),
-                'rushLeadDays'         => (int)   ($owner->rushLeadDays         ?? 2),
+                // The contact form can be switched off from Settings - a public write endpoint
+                // that cannot be closed is a liability if it is ever abused. Default open.
+                'contactFormEnabled'   => (bool)  ($owner->contactFormEnabled   ?? true),
+                // Off unless the owner turns it on: Google bills past its free allowance and has no
+                // spending cap of its own, and the address fields are accurate without it.
+                'googleMapsEnabled'    => (bool)  ($owner->googleMapsEnabled    ?? false),
+                'contactSuccessMessage'=> $owner->contactSuccessMessage ?: null,
+                'contactClosedMessage' => $owner->contactClosedMessage  ?: null,
+                'rushLeadDays'         => (int)   ($owner->rushLeadDays         ?? 1),
                 'rushFee'              => (float) ($owner->rushFee              ?? 150),
             ]);
         } catch (\Illuminate\Validation\ValidationException $e) {
@@ -291,13 +409,13 @@ class SettingsController extends Controller
                 'customOrderTerms'          => 'present|array|max:30',
                 'customOrderTerms.*.title'  => 'required|string|max:120',
                 'customOrderTerms.*.body'   => 'required|string|max:2000',
-                'customOrderTerms.*.mode'   => 'nullable|string|in:both,upload,request',
+                'customOrderTerms.*.mode'   => 'nullable|string|in:both,upload,request,quote',
             ]);
 
             $clean = array_values(array_map(fn ($t) => [
                 'title' => trim(strip_tags($t['title'])),
                 'body'  => trim(strip_tags($t['body'])),
-                'mode'  => in_array($t['mode'] ?? 'both', ['both', 'upload', 'request'], true) ? ($t['mode'] ?? 'both') : 'both',
+                'mode'  => in_array($t['mode'] ?? 'both', ['both', 'upload', 'request', 'quote'], true) ? ($t['mode'] ?? 'both') : 'both',
             ], array_filter($validated['customOrderTerms'], fn ($t) => trim($t['title'] ?? '') !== '' && trim($t['body'] ?? '') !== '')));
 
             $owner->customOrderTerms = $clean;
