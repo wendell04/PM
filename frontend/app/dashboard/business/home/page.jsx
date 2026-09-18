@@ -505,7 +505,7 @@ export default function StaffHome() {
                 ) : (
                   <div>
                     {short.map(i => (
-                      <div key={`short_${i.inventoryId}`} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', borderTop: '1px solid var(--border)' }}>
+                      <div key={`short_${i.inventoryId}`} className="home-stock-row" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', borderTop: '1px solid var(--border)' }}>
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{i.name}</div>
                           <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 3 }}>
@@ -530,7 +530,7 @@ export default function StaffHome() {
                       // "how close to running out", and a shop has no fixed shelf size.
                       const pct = min > 0 ? Math.max(0, Math.min(100, (have / min) * 100)) : (isOut ? 0 : 100);
                       return (
-                        <div key={r.id ?? r.name} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', borderTop: '1px solid var(--border)' }}>
+                        <div key={r.id ?? r.name} className="home-stock-row" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', borderTop: '1px solid var(--border)' }}>
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.name}</div>
                             <div style={{ height: 4, borderRadius: 2, background: 'var(--dark2)', marginTop: 6, overflow: 'hidden' }}>

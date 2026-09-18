@@ -4256,6 +4256,13 @@ html.light .skeleton-table-header {
    anyway; hide the track so the bar runs edge to edge. */
 @media (max-width: 700px) {
   .admin-main-content { scrollbar-width: none; }
+
+  /* Home > Stock levels: name and reason on their own line, the figure under them - at 360px
+     the two side by side left the name a column of three letters. */
+  .home-stock-row { flex-wrap: wrap; row-gap: 4px; }
+  .home-stock-row > div:first-child { flex: 1 1 100% !important; }
+  .home-stock-row > div:first-child > div:first-child { white-space: normal !important; }
+  .home-stock-row > div:last-child { text-align: left !important; min-width: 0 !important; display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
   .admin-main-content::-webkit-scrollbar { display: none; }
 
   /* The notifications dropdown is 360px anchored to the bell - on a 360px screen it hangs
