@@ -64,6 +64,7 @@ export function KpiStrip({ items }) {
           <div style={{ fontSize: longest > 8 ? 17 : longest > 6 ? 19 : 22, fontWeight: 700, lineHeight: 1.1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'clip',
             color: it.active ? 'var(--gold)' : (it.color || 'var(--white)') }}>{it.value}</div>
           <div style={{ fontSize: 10.5, fontWeight: 600, color: 'var(--gray)', marginTop: 4, lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.label}</div>
+          {it.sub && <div style={{ fontSize: 10, fontWeight: 700, marginTop: 2, lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: it.subColor || 'var(--gray)' }}>{it.sub}</div>}
         </button>
       ))}
     </div>

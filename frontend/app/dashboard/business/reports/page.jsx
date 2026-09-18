@@ -1,1150 +1,486 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+// Reports - three questions a print shop asks, answered so the chart, the table under it and the
+// CSV never disagree.
+//
+//   Sales     what was sold in a period, against the period before it
+//   Inventory what the shelf is worth right now, what is short, what left it last month
+//   Demand    what the forecast expects (Wendell's SSA; empty until the service answers)
+//
+// The rules that make it readable, which the old page broke:
+//  - The date range is the one control, in one row, above everything. Every number below is
+//    the same slice, so they always agree.
+//  - Buckets follow the range. A week is shown by day, a quarter by week, a year by month, and
+//    a day with no sales is a zero on the chart, not a missing point.
+//  - One series is the point (this period, gold); the period before it is context (gray).
+//    One axis, one scale, no dual-axis tricks.
+//  - Under every chart, the table with the same rows the CSV exports. Print prints the tables.
+//  - Money in tiles drops centavos; the exact figure is in the table.
+
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import ErrorBoundary from '../../../../components/ErrorBoundary';
 import { useAuth } from '@/contexts/AuthContext';
+import { useTheme } from '@/contexts/ThemeContext';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
-import CustomDropdown from '@/app/components/CustomDropdown';
-import { ResponsiveContainer, LineChart, Line, BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
-import { S, PaginationBar, SummaryCard, TabBar } from '@/app/dashboard/business/inventory-v2/shared';
+import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
+import { S, TabBar } from '@/app/dashboard/business/inventory-v2/shared';
+import { useIsPhone, KpiStrip, BottomSheet, pesoShort } from '@/components/dashboard/phone';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
+const SSA_API_URL = process.env.NEXT_PUBLIC_SSA_API_URL || 'http://localhost:8001';
 
-async function safeJson(res) {
-  const text = await res.text();
-  if (!text || !text.trim()) return null;
-  try { return JSON.parse(text); } catch { return null; }
-}
-
-const authHeaders = (token) => ({
-  Authorization: `Bearer ${token}`,
-  Accept: 'application/json',
-  'ngrok-skip-browser-warning': '1',
-});
+const peso = (n) => '₱' + Number(n || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const num  = (n) => Number(n || 0).toLocaleString('en-PH');
+const pct  = (now, before) => {
+  if (!before) return now ? 'new' : null;
+  const d = ((now - before) / before) * 100;
+  return (d >= 0 ? '+' : '') + d.toFixed(d >= 100 ? 0 : 1) + '%';
+};
 
 function exportCSV(headers, rows, filename) {
-  const lines = [headers.join(',')];
-  rows.forEach((row) =>
-    lines.push(
-      row
-        .map((v) => {
-          if (v == null) return '';
-          const s = String(v);
-          if (s.includes(',') || s.includes('"') || s.includes('\n')) {
-            return `"${s.replace(/"/g, '""')}"`;
-          }
-          return s;
-        })
-        .join(',')
-    )
-  );
-  const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
+  const esc = (v) => {
+    if (v == null) return '';
+    const s = String(v);
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const text = [headers.map(esc).join(','), ...rows.map(r => r.map(esc).join(','))].join('\n');
+  const url = URL.createObjectURL(new Blob([text], { type: 'text/csv' }));
+  const a = document.createElement('a'); a.href = url; a.download = filename; a.click();
   URL.revokeObjectURL(url);
 }
 
-function fmtPeso(n) {
-  if (n == null || Number.isNaN(Number(n))) return '-';
-  return `₱${Number(n).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
+// ── Date range ────────────────────────────────────────────────────────────────
+// Presets as rows, custom behind them - nobody fights a calendar grid for "last 30 days".
+const manila = () => new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
+const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const PRESETS = [
+  { id: 'this-month',  label: 'This month',   range: () => { const n = manila(); return [iso(new Date(n.getFullYear(), n.getMonth(), 1)), iso(n)]; } },
+  { id: 'last-month',  label: 'Last month',   range: () => { const n = manila(); return [iso(new Date(n.getFullYear(), n.getMonth() - 1, 1)), iso(new Date(n.getFullYear(), n.getMonth(), 0))]; } },
+  { id: 'last-30',     label: 'Last 30 days', range: () => { const n = manila(); const f = new Date(n); f.setDate(f.getDate() - 29); return [iso(f), iso(n)]; } },
+  { id: 'last-90',     label: 'Last 90 days', range: () => { const n = manila(); const f = new Date(n); f.setDate(f.getDate() - 89); return [iso(f), iso(n)]; } },
+  { id: 'this-year',   label: 'This year',    range: () => { const n = manila(); return [iso(new Date(n.getFullYear(), 0, 1)), iso(n)]; } },
+  { id: 'last-year',   label: 'Last year',    range: () => { const n = manila(); return [`${n.getFullYear() - 1}-01-01`, `${n.getFullYear() - 1}-12-31`]; } },
+  { id: 'custom',      label: 'Custom' },
+];
 
-function fileDatePart(d) {
-  return d && String(d).trim() ? String(d).trim() : 'all';
-}
-
-// Kept as a named wrapper so the four call sites read the same, but drawn by the shared card the
-// rest of the dashboard uses. `accent` marks the headline figure, as Sales does with revenue.
-function StatCard({ label, value, sub, accent }) {
-  return <SummaryCard label={label} value={value} sub={sub} accent={accent} />;
-}
-
-function DateRangeFilter({ startDate, endDate, onStartChange, onEndChange, onApply, onClear, loading }) {
-  const inputStyle = { ...S.input, height: '36px', padding: '0 0.75rem' };
-  // A bare row of controls floating on the page background. Sales and Orders put their filters
-  // in a card of their own above the table, which is what makes them read as a toolbar rather
-  // than as three inputs somebody left there.
-  return (
-    <div style={{ ...S.card, ...S.row, gap: '10px', padding: '12px 16px', marginBottom: '14px' }}>
-      <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '.5px' }}>
-        From
-      </span>
-      <input type="date" value={startDate} onChange={(e) => onStartChange(e.target.value)}
-        style={{ ...inputStyle, width: 'auto' }} />
-      <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '.5px' }}>
-        To
-      </span>
-      <input type="date" value={endDate} onChange={(e) => onEndChange(e.target.value)}
-        style={{ ...inputStyle, width: 'auto' }} />
-      <button type="button" onClick={onApply} disabled={loading}
-        style={{ ...S.btnPrimary, opacity: loading ? 0.5 : 1, cursor: loading ? 'not-allowed' : 'pointer' }}>
-        Apply
-      </button>
-      <button type="button" onClick={onClear} style={S.btnGhost}>Clear</button>
-    </div>
-  );
-}
-
-function SectionHeader({ title, onExport, exporting, collapsed, onToggle }) {
-  return (
-    <div
-      style={{
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: '1rem',
-        flexWrap: 'wrap',
-        gap: '0.75rem',
-      }}
-    >
-      <div
-        onClick={onToggle}
-        style={{
-          display: 'flex', alignItems: 'center', gap: '0.4rem',
-          cursor: onToggle ? 'pointer' : 'default',
-          userSelect: 'none',
-        }}
-      >
-        {onToggle && (
-          <svg
-            width="16" height="16" viewBox="0 0 24 24" fill="none"
-            stroke="var(--gray)" strokeWidth="2.5"
-            style={{ transform: collapsed ? 'rotate(-90deg)' : 'rotate(0deg)', transition: 'transform 0.2s', flexShrink: 0 }}
-          >
-            <path d="M6 9l6 6 6-6" />
-          </svg>
-        )}
-        <span style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--white)' }}>{title}</span>
-      </div>
-      <button
-        type="button"
-        onClick={onExport}
-        disabled={exporting}
-        style={{
-          background: 'transparent',
-          border: '1px solid var(--gold)',
-          color: 'var(--gold)',
-          height: '32px',
-          padding: '0 0.875rem',
-          borderRadius: '8px',
-          fontSize: '0.8rem',
-          fontWeight: 600,
-          cursor: exporting ? 'not-allowed' : 'pointer',
-          opacity: exporting ? 0.5 : 1,
-        }}
-      >
-        Export CSV
-      </button>
-    </div>
-  );
-}
-
-function ErrorMessage({ message, onRetry }) {
-  return (
-    <div style={{ color: 'var(--red)', fontSize: '0.85rem', marginBottom: '1rem' }}>
-      {message}
-      <button
-        type="button"
-        onClick={onRetry}
-        style={{
-          marginLeft: '0.5rem',
-          background: 'none',
-          border: 'none',
-          color: 'var(--gold)',
-          textDecoration: 'underline',
-          cursor: 'pointer',
-          fontSize: '0.85rem',
-        }}
-      >
-        Retry
-      </button>
-    </div>
-  );
-}
-
-function LoadingRows({ count = 3 }) {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-      {Array.from({ length: count }).map((_, i) => (
-        <div
-          key={i}
-          style={{
-            height: '48px',
-            background: 'var(--dark2)',
-            borderRadius: '8px',
-            animation: 'reportsSkeletonPulse 1.5s ease-in-out infinite',
-          }}
-        />
+function RangePicker({ preset, from, to, onChange }) {
+  const isPhone = useIsPhone();
+  const [open, setOpen] = useState(false);
+  const label = preset === 'custom' ? `${from} to ${to}` : (PRESETS.find(p => p.id === preset)?.label ?? preset);
+  const pick = (id) => {
+    if (id === 'custom') { onChange({ preset: 'custom', from, to }); return; }
+    const [f, t] = PRESETS.find(p => p.id === id).range();
+    onChange({ preset: id, from: f, to: t });
+    setOpen(false);
+  };
+  const rows = (
+    <>
+      {PRESETS.map(p => (
+        <button key={p.id} type="button" onClick={() => pick(p.id)}
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', minHeight: 40, padding: '0 12px', border: 'none', borderRadius: 8, cursor: 'pointer', textAlign: 'left',
+            background: preset === p.id ? 'rgba(212,168,67,0.12)' : 'transparent', color: preset === p.id ? 'var(--gold)' : 'var(--white)', fontSize: 14, fontWeight: preset === p.id ? 700 : 500 }}>
+          {p.label}{preset === p.id && <span aria-hidden>&#10003;</span>}
+        </button>
       ))}
+      {preset === 'custom' && (
+        <div style={{ display: 'flex', gap: 8, padding: '8px 4px 4px', borderTop: '1px solid var(--border)', marginTop: 4 }}>
+          <input type="date" value={from} max={to} onChange={e => onChange({ preset: 'custom', from: e.target.value, to })} style={{ ...S.input, minHeight: 40 }} aria-label="From" />
+          <input type="date" value={to} min={from} onChange={e => onChange({ preset: 'custom', from, to: e.target.value })} style={{ ...S.input, minHeight: 40 }} aria-label="To" />
+        </div>
+      )}
+    </>
+  );
+  return (
+    <div style={{ position: 'relative' }}>
+      <button type="button" onClick={() => setOpen(v => !v)}
+        style={{ ...S.btnGhost, minHeight: 40, color: 'var(--white)', gap: 8 }}>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></svg>
+        {label}
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="6 9 12 15 18 9" /></svg>
+      </button>
+      {isPhone ? (
+        <BottomSheet open={open} onClose={() => setOpen(false)} title="Date range">{rows}</BottomSheet>
+      ) : open && (
+        <>
+          <div onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 400 }} />
+          <div style={{ position: 'absolute', top: 'calc(100% + 6px)', left: 0, zIndex: 401, width: 300, padding: 6, background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: 10, boxShadow: '0 10px 30px rgba(0,0,0,0.25)' }}>
+            {rows}
+          </div>
+        </>
+      )}
     </div>
   );
 }
 
+// ── Chart chrome ──────────────────────────────────────────────────────────────
+// Colors validated with the dataviz palette checker in both modes: the gold carries this
+// period, the gray is the period before it (de-emphasis, not a second category).
+const useChartColors = () => {
+  const { theme } = useTheme();
+  const light = theme === 'light';
+  return {
+    now:  light ? '#b5861c' : '#d4a843',
+    prev: light ? '#c2c2c2' : '#5c5c5c',
+    grid: light ? 'rgba(0,0,0,0.07)' : 'rgba(255,255,255,0.08)',
+    text: light ? '#6b6b6b' : '#9a9a9a',
+  };
+};
+
+function ChartTip({ active, payload, label, prevLabel }) {
+  if (!active || !payload?.length) return null;
+  const now = payload.find(p => p.dataKey === 'revenue');
+  const prev = payload.find(p => p.dataKey === 'prev');
+  return (
+    <div style={{ background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 10px', fontSize: 12, color: 'var(--white)', boxShadow: '0 6px 20px rgba(0,0,0,0.25)' }}>
+      <div style={{ fontWeight: 700, marginBottom: 4 }}>{label}</div>
+      {now && <div>This period: <b>{peso(now.value)}</b>{now.payload.orders != null && <span style={{ color: 'var(--gray)' }}> - {now.payload.orders} order{now.payload.orders === 1 ? '' : 's'}</span>}</div>}
+      {prev && <div style={{ color: 'var(--gray)' }}>{prevLabel || 'Before'}: {peso(prev.value)}{prev.payload.prevLabel && ` (${prev.payload.prevLabel})`}</div>}
+    </div>
+  );
+}
+
+function Card({ title, sub, right, children, print = true }) {
+  return (
+    <section className={print ? 'rpt-card' : 'rpt-card rpt-noprint'} style={{ ...S.card, padding: 0, overflow: 'hidden', marginBottom: 14 }}>
+      {(title || right) && (
+        <div style={{ ...S.rowBetween, padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
+          <div>
+            <div style={{ fontSize: 13.5, fontWeight: 700 }}>{title}</div>
+            {sub && <div style={{ fontSize: 11.5, color: 'var(--gray)', marginTop: 2 }}>{sub}</div>}
+          </div>
+          <div className="rpt-noprint" style={{ display: 'flex', gap: 8 }}>{right}</div>
+        </div>
+      )}
+      {children}
+    </section>
+  );
+}
+
+const cell = { padding: '9px 14px', fontSize: 13, borderBottom: '1px solid var(--border)', verticalAlign: 'middle' };
+const th = { ...S.th, fontSize: 10.5 };
+const right = { textAlign: 'right', fontVariantNumeric: 'tabular-nums' };
+
+function Table({ cols: allCols, rows, empty = 'Nothing in this period.' }) {
+  // A six-column table scrolls sideways on a phone; the columns marked wide: true (cost, the
+  // comparison) are for the desktop and the CSV, and drop off below 700px.
+  const isPhone = useIsPhone();
+  const cols = isPhone ? allCols.filter(c => !c.wide) : allCols;
+  return (
+    <div style={{ overflowX: 'auto' }}>
+      <table className="rpt-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <thead><tr>{cols.map(c => <th key={c.key} style={{ ...th, ...(c.right ? right : {}) }}>{c.label}</th>)}</tr></thead>
+        <tbody>
+          {rows.length === 0 ? (
+            <tr><td colSpan={cols.length} style={{ ...cell, color: 'var(--gray)', textAlign: 'center', padding: 24 }}>{empty}</td></tr>
+          ) : rows.map((r, i) => (
+            <tr key={r.key ?? i}>
+              {cols.map(c => <td key={c.key} style={{ ...cell, ...(c.right ? right : {}), ...(c.strong ? { fontWeight: 600 } : {}), ...(c.muted ? { color: 'var(--gray)' } : {}) }}>{c.render ? c.render(r) : r[c.key]}</td>)}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// ── Sales ─────────────────────────────────────────────────────────────────────
+function SalesReport({ token }) {
+  const isPhone = useIsPhone();
+  const colors = useChartColors();
+  const [range, setRange] = useState(() => { const [from, to] = PRESETS[0].range(); return { preset: 'this-month', from, to }; });
+  const [bucket, setBucket] = useState('auto');
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  const load = useCallback(async () => {
+    if (!token || !range.from || !range.to) return;
+    setLoading(true); setError('');
+    try {
+      const qs = new URLSearchParams({ from: range.from, to: range.to, bucket });
+      const res = await fetchWithTimeout(`${API_URL}/api/admin/reports/sales?${qs}`, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } }, 30000);
+      const j = await res.json();
+      if (!res.ok) throw new Error(j.message || `Request failed (${res.status})`);
+      setData(j.data ?? j);
+    } catch (e) { setError(e.message); }
+    finally { setLoading(false); }
+  }, [token, range.from, range.to, bucket]);
+  useEffect(() => { load(); }, [load]);
+
+  const t = data?.totals, p = data?.previous;
+  const chart = useMemo(() => (data?.series ?? []).map((b, i) => ({
+    label: b.label, revenue: b.revenue, orders: b.orders, cost: b.cost, profit: b.profit,
+    prev: data.prevSeries?.[i]?.revenue ?? 0, prevLabel: data.prevSeries?.[i]?.label,
+  })), [data]);
+
+  const bucketWord = { day: 'day', week: 'week', month: 'month' }[data?.range?.bucket] ?? 'period';
+  const exportRows = () => exportCSV(
+    ['Period', 'Orders', 'Revenue', 'Cost', 'Gross profit', `Revenue ${data.previousRange.label}`],
+    chart.map(r => [r.label, r.orders, r.revenue.toFixed(2), r.cost.toFixed(2), r.profit.toFixed(2), r.prev.toFixed(2)]),
+    `sales-${range.from}-to-${range.to}.csv`
+  );
+
+  const kpis = t ? [
+    { key: 'rev',    label: 'Revenue',      value: isPhone ? pesoShort(t.revenue) : peso(t.revenue), title: peso(t.revenue), delta: pct(t.revenue, p?.revenue) },
+    { key: 'orders', label: 'Orders',       value: num(t.orders), delta: pct(t.orders, p?.orders) },
+    { key: 'avg',    label: 'Avg order',    value: isPhone ? pesoShort(t.avgOrder) : peso(t.avgOrder), title: peso(t.avgOrder) },
+    { key: 'profit', label: 'Gross profit', value: isPhone ? pesoShort(t.profit) : peso(t.profit), title: peso(t.profit), delta: pct(t.profit, p?.profit) },
+  ] : [];
+
+  return (
+    <>
+      {/* The one control row. Everything below is this slice. */}
+      <div className="rpt-noprint" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 14 }}>
+        <RangePicker preset={range.preset} from={range.from} to={range.to} onChange={setRange} />
+        <div style={{ display: 'flex', gap: 2, background: 'var(--dark2)', borderRadius: 8, padding: 3 }}>
+          {[['auto', 'Auto'], ['day', 'Day'], ['week', 'Week'], ['month', 'Month']].map(([id, l]) => (
+            <button key={id} type="button" onClick={() => setBucket(id)}
+              style={{ minHeight: 34, padding: '0 12px', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12.5, fontWeight: 600,
+                background: bucket === id ? 'var(--dark)' : 'transparent', color: bucket === id ? 'var(--gold)' : 'var(--gray)' }}>{l}</button>
+          ))}
+        </div>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+          <button type="button" onClick={exportRows} disabled={!data} style={{ ...S.btnGhost, minHeight: 40 }}>Export CSV</button>
+          <button type="button" onClick={() => window.print()} disabled={!data} style={{ ...S.btnGhost, minHeight: 40 }}>Print</button>
+        </div>
+      </div>
+
+      {error && <div style={{ ...S.note, background: 'var(--st-red-bg)', borderColor: 'rgba(239,68,68,0.35)', color: 'var(--st-red-fg)', marginBottom: 12 }}>{error}</div>}
+
+      <div style={{ opacity: loading && data ? 0.55 : 1, transition: 'opacity .15s' }}>
+        {data && (
+          <>
+            <div className="rpt-print-title" style={{ fontSize: 12.5, color: 'var(--gray)', marginBottom: 10 }}>
+              <b style={{ color: 'var(--white)' }}>{data.range.label}</b> compared with {data.previousRange.label}, by {bucketWord}. Sales are what was sold, by sale date - a cancelled order is never counted. Cash actually received is on Home.
+            </div>
+
+            {isPhone ? (
+              <KpiStrip items={kpis.map(k => ({ ...k, sub: k.delta ? `${k.delta} vs before` : undefined, subColor: k.delta?.startsWith('-') ? 'var(--st-red-fg)' : 'var(--st-green-fg)' }))} />
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 10, marginBottom: 14 }}>
+                {kpis.map(k => (
+                  <div key={k.key} style={{ ...S.cardSm }} title={k.title}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '.4px' }}>{k.label}</div>
+                    <div style={{ fontSize: 24, fontWeight: 700, marginTop: 4, fontVariantNumeric: 'tabular-nums' }}>{k.value}</div>
+                    {k.delta && <div style={{ fontSize: 11.5, marginTop: 2, color: k.delta.startsWith('-') ? 'var(--st-red-fg)' : 'var(--st-green-fg)' }}>{k.delta} vs {data.previousRange.label}</div>}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <Card title={`Revenue by ${bucketWord}`} sub={`Gold is ${data.range.label}; gray is the same length of time before it (${data.previousRange.label}), lined up ${bucketWord} for ${bucketWord}.`}>
+              <div style={{ padding: '12px 8px 4px', height: isPhone ? 220 : 300 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={chart} barGap={2} barCategoryGap={chart.length > 20 ? '20%' : '30%'} margin={{ top: 8, right: 12, left: 4, bottom: 0 }}>
+                    <CartesianGrid vertical={false} stroke={colors.grid} />
+                    <XAxis dataKey="label" tick={{ fill: colors.text, fontSize: 11 }} tickLine={false} axisLine={{ stroke: colors.grid }} interval={chart.length > 14 ? Math.ceil(chart.length / 7) - 1 : 0} />
+                    <YAxis tick={{ fill: colors.text, fontSize: 11 }} tickLine={false} axisLine={false} width={isPhone ? 44 : 60} tickFormatter={v => pesoShort(v)} />
+                    <Tooltip content={<ChartTip prevLabel={data.previousRange.label} />} cursor={{ fill: colors.grid }} />
+                    <Legend wrapperStyle={{ fontSize: 12, color: colors.text }} formatter={(v) => v === 'revenue' ? data.range.label : data.previousRange.label} />
+                    <Bar dataKey="prev" fill={colors.prev} radius={[4, 4, 0, 0]} maxBarSize={38} isAnimationActive={false} />
+                    <Bar dataKey="revenue" fill={colors.now} radius={[4, 4, 0, 0]} maxBarSize={38} isAnimationActive={false} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+              <Table
+                cols={[
+                  { key: 'label', label: 'Period', strong: true },
+                  { key: 'orders', label: 'Orders', right: true },
+                  { key: 'revenue', label: 'Revenue', right: true, render: r => peso(r.revenue) },
+                  { key: 'cost', label: 'Cost', right: true, muted: true, wide: true, render: r => peso(r.cost) },
+                  { key: 'profit', label: 'Gross profit', right: true, wide: true, render: r => peso(r.profit) },
+                  { key: 'prev', label: data.previousRange.label, right: true, muted: true, wide: true, render: r => peso(r.prev) },
+                ]}
+                rows={chart} />
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '10px 14px', fontSize: 13, fontWeight: 700, flexWrap: 'wrap' }}>
+                <span>Total</span>
+                <span style={{ display: 'flex', gap: 18, flexWrap: 'wrap' }}>
+                  <span>{t.orders} orders</span><span>{peso(t.revenue)}</span><span style={{ color: 'var(--gray)' }}>cost {peso(t.cost)}</span><span>profit {peso(t.profit)}</span>
+                </span>
+              </div>
+              {t.costMissing > 0 && (
+                <div style={{ padding: '0 14px 12px', fontSize: 11.5, color: 'var(--gray)' }}>
+                  {t.costMissing} of {t.lines} lines have no cost recorded (the imported history), so gross profit is overstated by their cost.
+                </div>
+              )}
+            </Card>
+
+            <div style={{ display: 'grid', gridTemplateColumns: isPhone ? '1fr' : '1fr 1fr', gap: 14 }}>
+              <Card title="Where it came from" sub="Online is the storefront; counter is an order the staff entered.">
+                <Table cols={[
+                  { key: 'k', label: 'Channel', strong: true },
+                  { key: 'orders', label: 'Orders', right: true },
+                  { key: 'revenue', label: 'Revenue', right: true, render: r => peso(r.revenue) },
+                  { key: 'share', label: 'Share', right: true, muted: true, wide: true, render: r => t.revenue ? `${((r.revenue / t.revenue) * 100).toFixed(0)}%` : '-' },
+                ]} rows={[
+                  { key: 'Online', ...data.bySource.online },
+                  { key: 'Counter', ...data.bySource.manual },
+                ]} />
+              </Card>
+              <Card title="By category">
+                <Table cols={[
+                  { key: 'category', label: 'Category', strong: true },
+                  { key: 'lines', label: 'Lines', right: true },
+                  { key: 'revenue', label: 'Revenue', right: true, render: r => peso(r.revenue) },
+                ]} rows={data.byCategory} />
+              </Card>
+            </div>
+
+            <Card title="Top products" sub="By revenue in this period.">
+              <Table cols={[
+                { key: 'name', label: 'Product', strong: true },
+                { key: 'qty', label: 'Pieces', right: true },
+                { key: 'revenue', label: 'Revenue', right: true, render: r => peso(r.revenue) },
+                { key: 'share', label: 'Share', right: true, muted: true, wide: true, render: r => t.revenue ? `${((r.revenue / t.revenue) * 100).toFixed(0)}%` : '-' },
+              ]} rows={data.topProducts} />
+            </Card>
+          </>
+        )}
+        {!data && loading && <div style={{ ...S.card, padding: 28, color: 'var(--gray)', fontSize: 13, textAlign: 'center' }}>Building the report</div>}
+      </div>
+    </>
+  );
+}
+
+// ── Inventory ─────────────────────────────────────────────────────────────────
+function InventoryReport({ token }) {
+  const isPhone = useIsPhone();
+  const [data, setData] = useState(null);
+  const [error, setError] = useState('');
+  useEffect(() => {
+    if (!token) return;
+    (async () => {
+      try {
+        const res = await fetchWithTimeout(`${API_URL}/api/admin/reports/inventory`, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } }, 30000);
+        const j = await res.json();
+        if (!res.ok) throw new Error(j.message || `Request failed (${res.status})`);
+        setData(j.data ?? j);
+      } catch (e) { setError(e.message); }
+    })();
+  }, [token]);
+
+  if (error) return <div style={{ ...S.note, background: 'var(--st-red-bg)', borderColor: 'rgba(239,68,68,0.35)', color: 'var(--st-red-fg)' }}>{error}</div>;
+  if (!data) return <div style={{ ...S.card, padding: 28, color: 'var(--gray)', fontSize: 13, textAlign: 'center' }}>Reading the shelf</div>;
+  const t = data.totals;
+  const maxCat = Math.max(1, ...data.byCategory.map(c => c.value));
+  const kpis = [
+    { key: 'val', label: 'Stock value', value: isPhone ? pesoShort(t.stockValue) : peso(t.stockValue), title: peso(t.stockValue) },
+    { key: 'mat', label: 'Materials', value: num(t.materials) },
+    { key: 'low', label: 'Below minimum', value: num(t.belowMin), color: t.belowMin > 0 ? '#b45309' : undefined },
+    { key: 'out', label: 'Out of stock', value: num(t.out), color: t.out > 0 ? '#c62828' : undefined },
+  ];
+  const exportRows = () => exportCSV(
+    ['Category', 'Items', 'Units', 'Stock value'],
+    data.byCategory.map(c => [c.category, c.items, c.units, c.value.toFixed(2)]),
+    `inventory-${data.asOf.slice(0, 10)}.csv`
+  );
+  return (
+    <>
+      <div className="rpt-noprint" style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 14, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 12.5, color: 'var(--gray)' }}>As of {data.asOf} (Manila). Stock is a snapshot; movement is the last 30 days.</span>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+          <button type="button" onClick={exportRows} style={{ ...S.btnGhost, minHeight: 40 }}>Export CSV</button>
+          <button type="button" onClick={() => window.print()} style={{ ...S.btnGhost, minHeight: 40 }}>Print</button>
+        </div>
+      </div>
+      {isPhone ? <KpiStrip items={kpis} /> : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 10, marginBottom: 14 }}>
+          {kpis.map(k => (
+            <div key={k.key} style={S.cardSm} title={k.title}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '.4px' }}>{k.label}</div>
+              <div style={{ fontSize: 24, fontWeight: 700, marginTop: 4, color: k.color, fontVariantNumeric: 'tabular-nums' }}>{k.value}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <Card title="Stock value by category" sub={`${peso(t.stockValue)} on the shelf across ${t.materials} materials (${t.onDemand} bought per order).`}>
+        <div style={{ padding: '8px 14px 4px' }}>
+          {data.byCategory.map(c => (
+            <div key={c.category} style={{ display: 'grid', gridTemplateColumns: isPhone ? '1fr' : '180px 1fr 120px', gap: isPhone ? 2 : 12, alignItems: 'center', padding: '6px 0' }}>
+              <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.category}</div>
+              <div style={{ height: 10, borderRadius: 4, background: 'var(--dark2)', overflow: 'hidden' }}>
+                <div style={{ width: `${Math.max(2, (c.value / maxCat) * 100)}%`, height: '100%', background: 'var(--gold)', borderRadius: 4 }} />
+              </div>
+              <div style={{ fontSize: 12.5, textAlign: isPhone ? 'left' : 'right', fontVariantNumeric: 'tabular-nums' }}>{peso(c.value)} <span style={{ color: 'var(--gray)' }}>- {c.items} item{c.items === 1 ? '' : 's'}</span></div>
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      <div style={{ display: 'grid', gridTemplateColumns: isPhone ? '1fr' : '1fr 1fr', gap: 14 }}>
+        <Card title="Needs attention" sub="Below its minimum, or out. Packaging bought per order is on To Buy instead.">
+          <Table cols={[
+            { key: 'name', label: 'Material', strong: true },
+            { key: 'onHand', label: 'On hand', right: true, render: r => `${num(r.onHand)} ${r.uom ?? ''}` },
+            { key: 'minimum', label: 'Minimum', right: true, muted: true, wide: true, render: r => num(r.minimum) },
+            { key: 'status', label: 'Status', render: r => <span style={{ fontSize: 11, fontWeight: 700, color: r.status === 'out' ? '#c62828' : '#b45309' }}>{r.status === 'out' ? 'Out of stock' : 'Low'}</span> },
+          ]} rows={data.attention} empty="Every stocked material is above its minimum." />
+        </Card>
+        <Card title="Left the shelf in the last 30 days" sub="Production, sales, quotes and scrap, from the stock ledger.">
+          <Table cols={[
+            { key: 'name', label: 'Material', strong: true },
+            { key: 'qty', label: 'Used', right: true, render: r => `${num(r.qty)} ${r.uom ?? ''}` },
+            { key: 'cost', label: 'At cost', right: true, muted: true, wide: true, render: r => peso(r.cost) },
+          ]} rows={data.consumption} empty="Nothing left the shelf in the last 30 days." />
+        </Card>
+      </div>
+    </>
+  );
+}
+
+// ── Demand ────────────────────────────────────────────────────────────────────
+function DemandReport() {
+  const [state, setState] = useState('checking');   // checking | up | down
+  useEffect(() => {
+    (async () => {
+      // The service has no health route; an empty forecast request answers 200/422 when it is
+      // up and fails to connect when it is not. Anything that is an HTTP answer counts as up.
+      try {
+        const res = await fetchWithTimeout(`${SSA_API_URL}/api/forecast`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rows: [], forecast_periods: 1, forecast_type: 'weekly', data_type: 'sales' }) }, 6000);
+        setState(res.status < 500 ? 'up' : 'down');
+      } catch { setState('down'); }
+    })();
+  }, []);
+  return (
+    <Card title="Demand - SSA forecast" sub="What the forecast expects the coming weeks to bring, from the sales ledger.">
+      <div style={{ padding: '28px 16px', textAlign: 'center', color: 'var(--gray)', fontSize: 13, lineHeight: 1.6 }}>
+        {state === 'checking' ? 'Checking the forecast service' : state === 'up'
+          ? <>The forecast service is running. Its full output lives in <a href="/dashboard/business/ssa-forecast" style={{ color: 'var(--gold)', fontWeight: 700 }}>Forecast</a>; this tab will carry the summary once the next version of the model is in.</>
+          : <>The forecast service is not answering right now. Nothing is wrong with your sales - the Demand tab fills in when it is back. Open <a href="/dashboard/business/ssa-forecast" style={{ color: 'var(--gold)', fontWeight: 700 }}>Forecast</a> to check it.</>}
+      </div>
+    </Card>
+  );
+}
+
+// ── Page ──────────────────────────────────────────────────────────────────────
 const TABS = [
   { id: 'sales', label: 'Sales' },
-  { id: 'orders', label: 'Orders' },
   { id: 'inventory', label: 'Inventory' },
-  { id: 'topProducts', label: 'Top Products' },
-  { id: 'orderRequests', label: 'Order Requests' },
+  { id: 'demand', label: 'Demand' },
 ];
 
 export default function ReportsPage() {
   const { token } = useAuth();
-  const [activeTab, setActiveTab] = useState('sales');
-  const [salesPage, setSalesPage] = useState(1);
-  const [salesPerPage, setSalesPerPage] = useState(10);
-  const [invPage, setInvPage] = useState(1);
-  const [invPerPage, setInvPerPage] = useState(10);
-  const [inventoryCollapsed, setInventoryCollapsed] = useState(false);
-
-  const stateRef = useRef({});
-
-  const [salesData, setSalesData] = useState(null);
-  const [salesLoading, setSalesLoading] = useState(false);
-  const [salesError, setSalesError] = useState(null);
-  const [salesStart, setSalesStart] = useState('');
-  const [salesEnd, setSalesEnd] = useState('');
-  const [salesGroupBy, setSalesGroupBy] = useState('monthly');
-  const [salesExporting, setSalesExporting] = useState(false);
-
-  const [ordersData, setOrdersData] = useState(null);
-  const [ordersLoading, setOrdersLoading] = useState(false);
-  const [ordersError, setOrdersError] = useState(null);
-  const [ordersStart, setOrdersStart] = useState('');
-  const [ordersEnd, setOrdersEnd] = useState('');
-  const [ordersExporting, setOrdersExporting] = useState(false);
-
-  const [inventoryRaw, setInventoryRaw] = useState([]);
-  const [inventoryLoading, setInventoryLoading] = useState(false);
-  const [inventoryError, setInventoryError] = useState(null);
-  const [statusFilter, setStatusFilter] = useState('all');
-  const [inventoryExporting, setInventoryExporting] = useState(false);
-
-  const [tpData, setTpData] = useState(null);
-  const [tpLoading, setTpLoading] = useState(false);
-  const [tpError, setTpError] = useState(null);
-  const [tpStart, setTpStart] = useState('');
-  const [tpEnd, setTpEnd] = useState('');
-  const [tpLimit, setTpLimit] = useState(10);
-  const [tpExporting, setTpExporting] = useState(false);
-
-  const [orData, setOrData] = useState(null);
-  const [orLoading, setOrLoading] = useState(false);
-  const [orError, setOrError] = useState(null);
-  const [orStart, setOrStart] = useState('');
-  const [orEnd, setOrEnd] = useState('');
-  const [orExporting, setOrExporting] = useState(false);
-
-  stateRef.current = {
-    salesStart,
-    salesEnd,
-    salesGroupBy,
-    ordersStart,
-    ordersEnd,
-    tpStart,
-    tpEnd,
-    tpLimit,
-    orStart,
-    orEnd,
-  };
-
-  const fetchSales = useCallback(async () => {
-    if (!token) return;
-    const { salesStart: s, salesEnd: e, salesGroupBy: g } = stateRef.current;
-    setSalesLoading(true);
-    setSalesError(null);
-    try {
-      const params = new URLSearchParams();
-      if (s) params.set('startDate', s);
-      if (e) params.set('endDate', e);
-      if (g) params.set('groupBy', g);
-      const res = await fetchWithTimeout(`${API_URL}/api/admin/sales/summary?${params}`, {
-        headers: authHeaders(token),
-      }, 15000);
-      const json = await safeJson(res);
-      if (!json) throw new Error('Server returned an empty response. Please retry.');
-      if (!res.ok) throw new Error(json.message || 'Failed to load sales summary.');
-      setSalesData(json.data ?? null);
-    } catch (err) {
-      setSalesError(err.message || 'Failed to load.');
-      setSalesData(null);
-    } finally {
-      setSalesLoading(false);
-    }
-  }, [token]);
-
-  const fetchOrders = useCallback(async () => {
-    if (!token) return;
-    const { ordersStart: s, ordersEnd: e } = stateRef.current;
-    setOrdersLoading(true);
-    setOrdersError(null);
-    try {
-      const params = new URLSearchParams();
-      if (s) params.set('startDate', s);
-      if (e) params.set('endDate', e);
-      const q = params.toString();
-      const res = await fetchWithTimeout(`${API_URL}/api/admin/orders/stats${q ? `?${q}` : ''}`, {
-        headers: authHeaders(token),
-      }, 15000);
-      const json = await safeJson(res);
-      if (!json) throw new Error('Server returned an empty response. Please retry.');
-      if (!res.ok) throw new Error(json.message || 'Failed to load order stats.');
-      setOrdersData(json.data ?? null);
-    } catch (err) {
-      setOrdersError(err.message || 'Failed to load.');
-      setOrdersData(null);
-    } finally {
-      setOrdersLoading(false);
-    }
-  }, [token]);
-
-  const fetchInventory = useCallback(async () => {
-    if (!token) return;
-    setInventoryLoading(true);
-    setInventoryError(null);
-    try {
-      const res = await fetchWithTimeout(`${API_URL}/api/admin/inventory`, {
-        headers: authHeaders(token),
-      }, 15000);
-      const json = await safeJson(res);
-      if (!json) throw new Error('Server returned an empty response. Please retry.');
-      if (!res.ok) throw new Error(json.message || 'Failed to load inventory.');
-      const list = json.data ?? json;
-      setInventoryRaw(Array.isArray(list) ? list : []);
-    } catch (err) {
-      setInventoryError(err.message || 'Failed to load.');
-      setInventoryRaw([]);
-    } finally {
-      setInventoryLoading(false);
-    }
-  }, [token]);
-
-  const fetchTopProducts = useCallback(async () => {
-    if (!token) return;
-    const { tpStart: s, tpEnd: e, tpLimit: lim } = stateRef.current;
-    setTpLoading(true);
-    setTpError(null);
-    try {
-      const params = new URLSearchParams();
-      if (s) params.set('startDate', s);
-      if (e) params.set('endDate', e);
-      const n = Math.max(1, Math.min(20, Number(lim) || 10));
-      params.set('limit', String(n));
-      const res = await fetchWithTimeout(`${API_URL}/api/admin/sales/top-products?${params}`, {
-        headers: authHeaders(token),
-      }, 15000);
-      const json = await safeJson(res);
-      if (!json) throw new Error('Server returned an empty response. Please retry.');
-      if (!res.ok) throw new Error(json.message || 'Failed to load top products.');
-      setTpData(json.data ?? null);
-    } catch (err) {
-      setTpError(err.message || 'Failed to load.');
-      setTpData(null);
-    } finally {
-      setTpLoading(false);
-    }
-  }, [token]);
-
-  const fetchOrderRequests = useCallback(async () => {
-    if (!token) return;
-    const { orStart: s, orEnd: e } = stateRef.current;
-    setOrLoading(true);
-    setOrError(null);
-    try {
-      const params = new URLSearchParams();
-      if (s) params.set('startDate', s);
-      if (e) params.set('endDate', e);
-      const q = params.toString();
-      const res = await fetchWithTimeout(`${API_URL}/api/admin/order-requests/stats${q ? `?${q}` : ''}`, {
-        headers: authHeaders(token),
-      }, 15000);
-      const json = await safeJson(res);
-      if (!json) throw new Error('Server returned an empty response. Please retry.');
-      if (!res.ok) throw new Error(json.message || 'Failed to load order request stats.');
-      setOrData(json.data ?? null);
-    } catch (err) {
-      setOrError(err.message || 'Failed to load.');
-      setOrData(null);
-    } finally {
-      setOrLoading(false);
-    }
-  }, [token]);
-
-  useEffect(() => {
-    if (!token) return;
-    fetchSales();
-    fetchOrders();
-    fetchInventory();
-    fetchTopProducts();
-    fetchOrderRequests();
-  }, [token, fetchSales, fetchOrders, fetchInventory, fetchTopProducts, fetchOrderRequests]);
-
-  const clearSalesDates = () => {
-    stateRef.current.salesStart = '';
-    stateRef.current.salesEnd = '';
-    setSalesStart('');
-    setSalesEnd('');
-    fetchSales();
-  };
-  const clearOrdersDates = () => {
-    stateRef.current.ordersStart = '';
-    stateRef.current.ordersEnd = '';
-    setOrdersStart('');
-    setOrdersEnd('');
-    fetchOrders();
-  };
-  const clearTpDates = () => {
-    stateRef.current.tpStart = '';
-    stateRef.current.tpEnd = '';
-    setTpStart('');
-    setTpEnd('');
-    fetchTopProducts();
-  };
-  const clearOrDates = () => {
-    stateRef.current.orStart = '';
-    stateRef.current.orEnd = '';
-    setOrStart('');
-    setOrEnd('');
-    fetchOrderRequests();
-  };
-
-  const getInventoryStatus = (item) => {
-    if (item.isOnDemand) return { key: 'upon-order', label: 'Upon Order', bg: '#3b82f6', fg: 'var(--dark)' };
-    const q = Number(item.stockQty ?? 0);
-    const min = Number(item.minStockLevel ?? 0);
-    if (q === 0) return { key: 'out-of-stock', label: 'Out of Stock', bg: '#ef4444', fg: 'var(--dark)' };
-    if (q <= min) return { key: 'low-stock', label: 'Low Stock', bg: '#f97316', fg: 'var(--dark)' };
-    return { key: 'ok', label: 'OK', bg: '#10b981', fg: 'var(--dark)' };
-  };
-
-  const inventoryFiltered = inventoryRaw.filter((item) => {
-    const st = getInventoryStatus(item);
-    if (statusFilter === 'all') return true;
-    if (statusFilter === 'low-stock') return st.key === 'low-stock';
-    if (statusFilter === 'out-of-stock') return st.key === 'out-of-stock';
-    if (statusFilter === 'upon-order') return st.key === 'upon-order';
-    return true;
-  });
-
-  const invTotal = inventoryRaw.length;
-  const invLow = inventoryRaw.filter((i) => getInventoryStatus(i).key === 'low-stock').length;
-  const invOut = inventoryRaw.filter((i) => getInventoryStatus(i).key === 'out-of-stock').length;
-  const invPaged = inventoryFiltered.slice((invPage - 1) * invPerPage, invPage * invPerPage);
-
-  const exportSales = () => {
-    const g = salesData?.grouped;
-    if (!g || !Array.isArray(g) || g.length === 0) return;
-    setSalesExporting(true);
-    try {
-      const rows = g.map((r) => [r.period, r.revenue, r.cost, r.profit]);
-      exportCSV(
-        ['Period', 'Revenue', 'Cost', 'Profit'],
-        rows,
-        `sales-report-${fileDatePart(salesStart)}-${fileDatePart(salesEnd)}.csv`
-      );
-    } finally {
-      setSalesExporting(false);
-    }
-  };
-
-  const exportOrders = () => {
-    if (!ordersData) return;
-    setOrdersExporting(true);
-    try {
-      const d = ordersData;
-      const rows = [
-        ['totalOrders', d.totalOrders],
-        ['pendingOrders', d.pendingOrders],
-        ['completedOrders', d.completedOrders],
-        ['cancelledOrders', d.cancelledOrders],
-        ['totalRevenue', d.totalRevenue],
-        ['cancellationRate', d.cancellationRate],
-      ];
-      exportCSV(['Metric', 'Value'], rows, `orders-report-${fileDatePart(ordersStart)}-${fileDatePart(ordersEnd)}.csv`);
-    } finally {
-      setOrdersExporting(false);
-    }
-  };
-
-  const exportInventory = () => {
-    if (inventoryRaw.length === 0) return;
-    setInventoryExporting(true);
-    try {
-      const rows = inventoryRaw.map((item) => {
-        const st = getInventoryStatus(item);
-        return [item.name, item.category, item.stockQty, item.minStockLevel, st.label];
-      });
-      exportCSV(['Name', 'Category', 'StockQty', 'MinLevel', 'Status'], rows, 'inventory-report.csv');
-    } finally {
-      setInventoryExporting(false);
-    }
-  };
-
-  const exportTopProducts = () => {
-    const products = tpData?.products;
-    if (!products || !Array.isArray(products)) return;
-    setTpExporting(true);
-    try {
-      const rows = products.map((p, idx) => [
-        idx + 1,
-        p.productName,
-        p.category,
-        p.totalQty,
-        p.totalRevenue,
-      ]);
-      exportCSV(
-        ['Rank', 'Product', 'Category', 'Units Sold', 'Revenue'],
-        rows,
-        `top-products-${fileDatePart(tpStart)}-${fileDatePart(tpEnd)}.csv`
-      );
-    } finally {
-      setTpExporting(false);
-    }
-  };
-
-  const exportOrderRequests = () => {
-    if (!orData) return;
-    setOrExporting(true);
-    try {
-      const d = orData;
-      const rows = [
-        ['total', d.total],
-        ['pending', d.pending],
-        ['confirmed', d.confirmed],
-        ['processing', d.processing],
-        ['ready', d.ready],
-        ['delivered', d.delivered],
-        ['cancelled', d.cancelled],
-        ['conversionRate', d.conversionRate],
-      ];
-      exportCSV(
-        ['Metric', 'Value'],
-        rows,
-        `order-requests-report-${fileDatePart(orStart)}-${fileDatePart(orEnd)}.csv`
-      );
-    } finally {
-      setOrExporting(false);
-    }
-  };
-
-  const selectStyle = { ...S.select, height: '36px', padding: '0 0.75rem' };
-
-  const salesGrouped = salesData?.grouped;
-  const salesGroupedLen = salesGrouped?.length ?? 0;
-  const salesPaged = salesGrouped ? salesGrouped.slice((salesPage - 1) * salesPerPage, salesPage * salesPerPage) : [];
-  useEffect(() => { setSalesPage(1); }, [salesData, salesPerPage]);
-  useEffect(() => { setInvPage(1); }, [statusFilter, inventoryRaw, invPerPage]);
-  const tpProducts = tpData?.products;
-
+  const [tab, setTab] = useState('sales');
   return (
     <ErrorBoundary>
-      <style>{`
-        @keyframes reportsSkeletonPulse {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.4; }
-        }
-      `}</style>
-      {/* Was capped at 1280px while Orders and Inventory run full width off S.page. */}
-      <div style={{ ...S.page, padding: '24px' }}>
-        {!token && (
-          <p style={{ color: 'var(--gray)', fontSize: '0.9rem' }}>Sign in to load reports.</p>
-        )}
-
-        {token && (
-          <>
-            {/* A fourth underline-tab implementation. TabBar is the one every converted
-                module uses, and it carries counts when a tab has them. */}
-            <div style={{ marginBottom: '18px' }}>
-              <TabBar tabs={TABS.map(t => ({ id: t.id, label: t.label }))}
-                active={activeTab} onChange={setActiveTab} />
-            </div>
-
-            {activeTab === 'sales' && (
-              <div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem', alignItems: 'center', marginBottom: '1rem' }}>
-                  <DateRangeFilter
-                    startDate={salesStart}
-                    endDate={salesEnd}
-                    onStartChange={setSalesStart}
-                    onEndChange={setSalesEnd}
-                    onApply={() => fetchSales()}
-                    onClear={clearSalesDates}
-                    loading={salesLoading}
-                  />
-                  <CustomDropdown
-                    value={salesGroupBy}
-                    onChange={v => setSalesGroupBy(v)}
-                    options={[
-                      { value: 'daily', label: 'Daily' },
-                      { value: 'weekly', label: 'Weekly' },
-                      { value: 'monthly', label: 'Monthly' },
-                    ]}
-                    style={{ minWidth: '140px' }}
-                  />
-                </div>
-                {salesError && <ErrorMessage message={salesError} onRetry={fetchSales} />}
-                {salesLoading && <LoadingRows />}
-                {!salesLoading && salesData && (
-                  <>
-                    {/* The figures in one sentence, before the cards and the chart. Four boxes of
-                        pesos and a three-line graph are a report only to someone who already knows
-                        what they are looking for; the shop owner needs to know whether the month was
-                        good, and the margin is the number that answers that - not the revenue. */}
-                    {(() => {
-                      const rev    = Number(salesData.totalRevenue) || 0;
-                      const cost   = Number(salesData.totalCost) || 0;
-                      const profit = Number(salesData.totalProfit) || 0;
-                      const orders = Number(salesData.totalSales) || 0;
-                      const margin = rev > 0 ? (profit / rev) * 100 : 0;
-                      const avg    = orders > 0 ? rev / orders : 0;
-                      return (
-                        <div style={{ background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: 10, padding: '14px 16px', marginBottom: '12px' }}>
-                          <p style={{ margin: 0, fontSize: '0.92rem', lineHeight: 1.7, color: 'var(--white)' }}>
-                            {orders === 0 ? (
-                              <>No sales were recorded in this period.</>
-                            ) : (
-                              <>
-                                You made <strong style={{ color: 'var(--gold)' }}>{fmtPeso(rev)}</strong> from{' '}
-                                <strong>{orders}</strong> {orders === 1 ? 'sale' : 'sales'}.{' '}
-                                Materials and costs took <strong>{fmtPeso(cost)}</strong>, so you kept{' '}
-                                <strong style={{ color: profit >= 0 ? 'var(--green)' : '#e05252' }}>{fmtPeso(profit)}</strong>
-                                {rev > 0 && <> - that is <strong>{margin.toFixed(0)}%</strong> of what came in</>}.
-                                {avg > 0 && <> The average sale was {fmtPeso(avg)}.</>}
-                              </>
-                            )}
-                          </p>
-                        </div>
-                      );
-                    })()}
-
-                    <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '10px' }}>
-                      <StatCard label="Sales (count)"        value={String(salesData.totalSales ?? 0)} />
-                      <StatCard label="Money in"             value={fmtPeso(salesData.totalRevenue)} accent />
-                      <StatCard label="Cost of what you sold" value={fmtPeso(salesData.totalCost)} />
-                      <StatCard label="What you kept"        value={fmtPeso(salesData.totalProfit)} />
-                    </div>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '1.25rem' }}>
-                      <span
-                        style={{
-                          background: 'var(--dark2)',
-                          border: '1px solid var(--border)',
-                          borderRadius: '999px',
-                          padding: '0.25rem 0.75rem',
-                          fontSize: '0.78rem',
-                          color: 'var(--gray)',
-                        }}
-                      >
-                        Manual: {fmtPeso(salesData.manualSales)}
-                      </span>
-                      <span
-                        style={{
-                          background: 'var(--dark2)',
-                          border: '1px solid var(--border)',
-                          borderRadius: '999px',
-                          padding: '0.25rem 0.75rem',
-                          fontSize: '0.78rem',
-                          color: 'var(--gray)',
-                        }}
-                      >
-                        Online: {fmtPeso(salesData.onlineSales)}
-                      </span>
-                    </div>
-                    <SectionHeader title="Sales Trend" onExport={exportSales} exporting={salesExporting} />
-                    <p style={{ fontSize: '0.78rem', color: 'var(--gray)', lineHeight: 1.6, margin: '0 0 0.6rem' }}>
-                      Each point is one {salesGroupBy === 'daily' ? 'day' : salesGroupBy === 'weekly' ? 'week' : 'month'}.
-                      <span style={{ color: 'var(--gold)', fontWeight: 600 }}> Gold</span> is money in,
-                      <span style={{ color: 'var(--gray-light)', fontWeight: 600 }}> grey</span> is what it cost you, and
-                      <span style={{ color: 'var(--green)', fontWeight: 600 }}> green</span> is what you kept. The wider the
-                      gap between gold and green, the more of each sale is going out again.
-                    </p>
-                    {salesGrouped && salesGrouped.length > 0 && (
-                      <div style={{ width: '100%', height: 280, marginBottom: '1rem' }}>
-                        <ResponsiveContainer width="100%" height="100%">
-                          <LineChart
-                            data={salesGrouped.map((r) => ({
-                              period: r.period,
-                              Revenue: Number(r.revenue) || 0,
-                              Cost: Number(r.cost) || 0,
-                              Profit: Number(r.profit) || 0,
-                            }))}
-                            margin={{ top: 8, right: 16, bottom: 4, left: 8 }}
-                          >
-                            <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-                            <XAxis dataKey="period" tick={{ fill: 'var(--gray)', fontSize: 11 }} tickLine={false} axisLine={{ stroke: 'var(--border)' }} />
-                            <YAxis
-                              tick={{ fill: 'var(--gray)', fontSize: 11 }}
-                              tickLine={false}
-                              axisLine={false}
-                              width={58}
-                              tickFormatter={(v) => (Math.abs(v) >= 1000 ? `₱${(v / 1000).toFixed(0)}k` : `₱${v}`)}
-                            />
-                            <Tooltip
-                              contentStyle={{ background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }}
-                              labelStyle={{ color: 'var(--white)', fontWeight: 600 }}
-                              formatter={(v, n) => [fmtPeso(v), n]}
-                            />
-                            <Legend wrapperStyle={{ fontSize: 12 }} />
-                            <Line type="monotone" dataKey="Revenue" stroke="var(--gold)" strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
-                            <Line type="monotone" dataKey="Cost" stroke="var(--gray)" strokeWidth={2} dot={false} />
-                            <Line type="monotone" dataKey="Profit" stroke="var(--green)" strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
-                          </LineChart>
-                        </ResponsiveContainer>
-                      </div>
-                    )}
-                    {salesGrouped && salesGrouped.length > 0 && (
-                      <>
-                      <div style={{ border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden' }}>
-                        <style>{`.rpt-tr:hover td { background: var(--dark2); }`}</style>
-                        <div style={{ overflowX: 'auto' }}>
-                          <table className="pmp-rt" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-                            <thead>
-                              <tr style={{ background: 'var(--dark2)' }}>
-                                {[
-                                  { label: 'Period', align: 'left' },
-                                  { label: 'Revenue', align: 'right' },
-                                  { label: 'Cost', align: 'right' },
-                                  { label: 'Profit', align: 'right' },
-                                ].map((h) => (
-                                  <th
-                                    key={h.label}
-                                    style={{
-                                      textAlign: h.align,
-                                      padding: '0.85rem 1.25rem',
-                                      fontSize: '0.72rem',
-                                      fontWeight: 700,
-                                      letterSpacing: '0.05em',
-                                      textTransform: 'uppercase',
-                                      color: 'var(--gold)',
-                                      borderBottom: '1px solid var(--border)',
-                                      whiteSpace: 'nowrap',
-                                    }}
-                                  >
-                                    {h.label}
-                                  </th>
-                                ))}
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {salesPaged.map((row, idx) => {
-                                const prof = Number(row.profit ?? 0);
-                                const profitColor = prof >= 0 ? 'var(--green)' : 'var(--red)';
-                                const last = idx === salesPaged.length - 1;
-                                const cell = { padding: '0.8rem 1.25rem', borderBottom: last ? 'none' : '1px solid var(--border)', transition: 'background 0.12s' };
-                                const num = { ...cell, textAlign: 'right', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' };
-                                return (
-                                  <tr key={row.period} className="rpt-tr">
-                                    <td style={{ ...cell, color: 'var(--white)', fontWeight: 600 }}>{row.period}</td>
-                                    <td style={{ ...num, color: 'var(--gold)', fontWeight: 600 }}>{fmtPeso(row.revenue)}</td>
-                                    <td style={{ ...num, color: 'var(--gray)' }}>{fmtPeso(row.cost)}</td>
-                                    <td style={{ ...num, color: profitColor, fontWeight: 600 }}>{fmtPeso(row.profit)}</td>
-                                  </tr>
-                                );
-                              })}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-                      <PaginationBar total={salesGroupedLen} page={salesPage} perPage={salesPerPage} onPage={setSalesPage} onPerPage={setSalesPerPage} />
-                      </>
-                    )}
-                  </>
-                )}
-              </div>
-            )}
-
-            {activeTab === 'orders' && (
-              <div>
-                <div style={{ marginBottom: '1rem' }}>
-                  <DateRangeFilter
-                    startDate={ordersStart}
-                    endDate={ordersEnd}
-                    onStartChange={setOrdersStart}
-                    onEndChange={setOrdersEnd}
-                    onApply={() => fetchOrders()}
-                    onClear={clearOrdersDates}
-                    loading={ordersLoading}
-                  />
-                </div>
-                {ordersError && <ErrorMessage message={ordersError} onRetry={fetchOrders} />}
-                {ordersLoading && <LoadingRows />}
-                {!ordersLoading && ordersData && (
-                  <>
-                    <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '10px' }}>
-                      <StatCard label="Total Orders"  value={String(ordersData.totalOrders    ?? 0)} accent />
-                      <StatCard label="Completed"     value={String(ordersData.completedOrders ?? 0)} />
-                      <StatCard label="Pending"       value={String(ordersData.pendingOrders   ?? 0)} />
-                      <StatCard label="Cancelled"     value={String(ordersData.cancelledOrders ?? 0)} />
-                    </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem', marginBottom: '1.5rem' }}>
-                      <StatCard label="Revenue"           value={fmtPeso(ordersData.totalRevenue)} />
-                      <StatCard label="Cancellation Rate" value={ordersData.cancellationRate != null ? `${ordersData.cancellationRate}%` : '-'} />
-                    </div>
-                    <div style={{ marginBottom: '1.5rem' }}>
-                      <span style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--white)', display: 'block', marginBottom: '1rem' }}>Orders by Status</span>
-                      <div style={{ width: '100%', height: 260 }}>
-                        <ResponsiveContainer width="100%" height="100%">
-                          <BarChart
-                            data={[
-                              { status: 'Completed', value: Number(ordersData.completedOrders) || 0, fill: 'var(--green)' },
-                              { status: 'Pending',   value: Number(ordersData.pendingOrders)   || 0, fill: 'var(--gold)'  },
-                              { status: 'Cancelled', value: Number(ordersData.cancelledOrders) || 0, fill: 'var(--red)'   },
-                            ]}
-                            margin={{ top: 8, right: 16, bottom: 4, left: 8 }}
-                          >
-                            <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-                            <XAxis dataKey="status" tick={{ fill: 'var(--gray)', fontSize: 12 }} tickLine={false} axisLine={{ stroke: 'var(--border)' }} />
-                            <YAxis allowDecimals={false} tick={{ fill: 'var(--gray)', fontSize: 11 }} tickLine={false} axisLine={false} width={40} />
-                            <Tooltip
-                              cursor={{ fill: 'var(--dark2)' }}
-                              contentStyle={{ background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }}
-                              labelStyle={{ color: 'var(--white)', fontWeight: 600 }}
-                              formatter={(v) => [v, 'Orders']}
-                            />
-                            <Bar dataKey="value" radius={[6, 6, 0, 0]} maxBarSize={90}>
-                              {['var(--green)', 'var(--gold)', 'var(--red)'].map((c, i) => <Cell key={i} fill={c} />)}
-                            </Bar>
-                          </BarChart>
-                        </ResponsiveContainer>
-                      </div>
-                    </div>
-                    <SectionHeader title="Export" onExport={exportOrders} exporting={ordersExporting} />
-                  </>
-                )}
-              </div>
-            )}
-
-            {activeTab === 'inventory' && (
-              <div>
-                <div style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                  <label htmlFor="inv-filter" style={{ fontSize: '0.82rem', color: 'var(--gray)' }}>
-                    Filter
-                  </label>
-                  <CustomDropdown
-                    value={statusFilter}
-                    onChange={v => setStatusFilter(v)}
-                    options={[
-                      { value: 'all', label: 'All Stock' },
-                      { value: 'low-stock', label: 'Low Stock' },
-                      { value: 'out-of-stock', label: 'Out of Stock' },
-                      { value: 'upon-order', label: 'Upon Order' },
-                    ]}
-                    style={{ minWidth: '200px' }}
-                  />
-                </div>
-                {inventoryError && <ErrorMessage message={inventoryError} onRetry={fetchInventory} />}
-                {inventoryLoading && <LoadingRows />}
-                {!inventoryLoading && (
-                  <>
-                    <div
-                      style={{
-                        display: 'grid',
-                        gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))',
-                        gap: '1rem',
-                        marginBottom: '1rem',
-                      }}
-                    >
-                      <StatCard label="Total Items" value={String(invTotal)} accent />
-                      <StatCard label="Low Stock Items" value={String(invLow)} />
-                      <StatCard label="Out of Stock Items" value={String(invOut)} />
-                    </div>
-                    <SectionHeader title="Inventory Items" onExport={exportInventory} exporting={inventoryExporting} collapsed={inventoryCollapsed} onToggle={() => setInventoryCollapsed(p => !p)} />
-                    {!inventoryCollapsed && (
-                      inventoryFiltered.length === 0 ? (
-                      <p style={{ color: 'var(--gray)', fontSize: '0.9rem' }}>No items match this filter.</p>
-                    ) : (
-                      <>
-                      <div style={{ border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden' }}>
-                        <style>{`.rpt-tr:hover td { background: var(--dark2); }`}</style>
-                        <div style={{ overflowX: 'auto' }}>
-                          <table className="pmp-rt" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-                            <thead>
-                              <tr style={{ background: 'var(--dark2)' }}>
-                                {[
-                                  { label: 'Item Name', align: 'left' },
-                                  { label: 'Category', align: 'left' },
-                                  { label: 'Stock Qty', align: 'right' },
-                                  { label: 'Min Level', align: 'right' },
-                                  { label: 'Status', align: 'left' },
-                                ].map((h) => (
-                                  <th
-                                    key={h.label}
-                                    style={{
-                                      textAlign: h.align,
-                                      padding: '0.85rem 1.25rem',
-                                      fontSize: '0.72rem',
-                                      fontWeight: 700,
-                                      letterSpacing: '0.05em',
-                                      textTransform: 'uppercase',
-                                      color: 'var(--gold)',
-                                      borderBottom: '1px solid var(--border)',
-                                      whiteSpace: 'nowrap',
-                                    }}
-                                  >
-                                    {h.label}
-                                  </th>
-                                ))}
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {invPaged.map((item, idx) => {
-                                const st = getInventoryStatus(item);
-                                const last = idx === invPaged.length - 1;
-                                const cell = { padding: '0.8rem 1.25rem', borderBottom: last ? 'none' : '1px solid var(--border)', transition: 'background 0.12s' };
-                                const num = { ...cell, textAlign: 'right', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' };
-                                return (
-                                  <tr key={String(item._id ?? item.id ?? item.name)} className="rpt-tr">
-                                    <td style={{ ...cell, color: 'var(--white)', fontWeight: 600 }}>{item.name}</td>
-                                    <td style={{ ...cell, color: 'var(--gray)' }}>{item.category ?? '-'}</td>
-                                    <td style={{ ...num, color: 'var(--white)' }}>{item.stockQty ?? 0}</td>
-                                    <td style={{ ...num, color: 'var(--gray)' }}>{item.minStockLevel ?? 0}</td>
-                                    <td style={cell}>
-                                      <span style={{ display: 'inline-block', padding: '0.2rem 0.55rem', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 700, background: st.bg, color: st.fg }}>
-                                        {st.label}
-                                      </span>
-                                    </td>
-                                  </tr>
-                                );
-                              })}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-                      <PaginationBar total={inventoryFiltered.length} page={invPage} perPage={invPerPage} onPage={setInvPage} onPerPage={setInvPerPage} />
-                      </>
-                    ))}
-                  </>
-                )}
-              </div>
-            )}
-
-            {activeTab === 'topProducts' && (
-              <div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem', alignItems: 'center', marginBottom: '1rem' }}>
-                  <DateRangeFilter
-                    startDate={tpStart}
-                    endDate={tpEnd}
-                    onStartChange={setTpStart}
-                    onEndChange={setTpEnd}
-                    onApply={() => fetchTopProducts()}
-                    onClear={clearTpDates}
-                    loading={tpLoading}
-                  />
-                  <label style={{ fontSize: '0.82rem', color: 'var(--gray)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    Show top:
-                    <input
-                      type="number"
-                      min={1}
-                      max={20}
-                      value={tpLimit}
-                      onChange={(e) => setTpLimit(Number(e.target.value))}
-                      style={{ ...selectStyle, width: '72px' }}
-                    />
-                  </label>
-                </div>
-                {tpError && <ErrorMessage message={tpError} onRetry={fetchTopProducts} />}
-                <SectionHeader title="Top Products" onExport={exportTopProducts} exporting={tpExporting} />
-                {tpLoading && <LoadingRows />}
-                {!tpLoading && (
-                  <>
-                    {tpProducts && tpProducts.length > 0 && (
-                      <div style={{ width: '100%', height: Math.max(220, tpProducts.length * 38), marginBottom: '1.25rem' }}>
-                        <ResponsiveContainer width="100%" height="100%">
-                          <BarChart
-                            layout="vertical"
-                            data={tpProducts.map((p) => ({ name: p.productName, Revenue: Number(p.totalRevenue) || 0 }))}
-                            margin={{ top: 4, right: 24, bottom: 4, left: 8 }}
-                          >
-                            <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
-                            <XAxis type="number" tick={{ fill: 'var(--gray)', fontSize: 11 }} tickLine={false} axisLine={{ stroke: 'var(--border)' }} tickFormatter={(v) => (Math.abs(v) >= 1000 ? `₱${(v / 1000).toFixed(0)}k` : `₱${v}`)} />
-                            <YAxis type="category" dataKey="name" width={140} tick={{ fill: 'var(--gray)', fontSize: 11 }} tickLine={false} axisLine={false} />
-                            <Tooltip
-                              cursor={{ fill: 'var(--dark2)' }}
-                              contentStyle={{ background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }}
-                              labelStyle={{ color: 'var(--white)', fontWeight: 600 }}
-                              formatter={(v) => [fmtPeso(v), 'Revenue']}
-                            />
-                            <Bar dataKey="Revenue" fill="var(--gold)" radius={[0, 4, 4, 0]} maxBarSize={26} />
-                          </BarChart>
-                        </ResponsiveContainer>
-                      </div>
-                    )}
-                    {tpProducts && tpProducts.length > 0 ? (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                        {tpProducts.map((p, idx) => {
-                          const rank = idx + 1;
-                          let badgeBg = 'var(--dark2)';
-                          let badgeFg = 'var(--gray)';
-                          if (rank === 1) {
-                            badgeBg = '#D4A843';
-                            badgeFg = '#000';
-                          } else if (rank === 2) {
-                            badgeBg = 'var(--gray)';
-                            badgeFg = 'var(--dark)';
-                          } else if (rank === 3) {
-                            badgeBg = '#b45309';
-                            badgeFg = 'var(--dark)';
-                          }
-                          return (
-                            <div
-                              key={`${p.productName}-${idx}`}
-                              style={{
-                                display: 'flex',
-                                flexDirection: 'row',
-                                gap: '1rem',
-                                alignItems: 'center',
-                                padding: '1rem',
-                                background: 'var(--dark2)',
-                                border: '1px solid var(--border)',
-                                borderRadius: '12px',
-                              }}
-                            >
-                              <div
-                                style={{
-                                  width: '32px',
-                                  height: '32px',
-                                  borderRadius: '50%',
-                                  background: badgeBg,
-                                  color: badgeFg,
-                                  fontWeight: 700,
-                                  fontSize: '0.85rem',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  flexShrink: 0,
-                                }}
-                              >
-                                {rank}
-                              </div>
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ fontWeight: 700, color: 'var(--white)' }}>{p.productName}</div>
-                                <div style={{ fontSize: '0.8rem', color: 'var(--gray)' }}>{p.category || '-'}</div>
-                              </div>
-                              <div style={{ textAlign: 'right' }}>
-                                <div style={{ color: 'var(--white)', fontSize: '0.9rem' }}>
-                                  {p.totalQty ?? 0} units sold
-                                </div>
-                                <div style={{ color: 'var(--gold)', fontWeight: 600, fontSize: '0.9rem' }}>
-                                  {fmtPeso(p.totalRevenue)}
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    ) : (
-                      <p style={{ textAlign: 'center', color: 'var(--gray)', padding: '2rem' }}>
-                        No sales data in this period.
-                      </p>
-                    )}
-                  </>
-                )}
-              </div>
-            )}
-
-            {activeTab === 'orderRequests' && (
-              <div>
-                <div style={{ marginBottom: '1rem' }}>
-                  <DateRangeFilter
-                    startDate={orStart}
-                    endDate={orEnd}
-                    onStartChange={setOrStart}
-                    onEndChange={setOrEnd}
-                    onApply={() => fetchOrderRequests()}
-                    onClear={clearOrDates}
-                    loading={orLoading}
-                  />
-                </div>
-                {orError && <ErrorMessage message={orError} onRetry={fetchOrderRequests} />}
-                {orLoading && <LoadingRows />}
-                {!orLoading && orData && (
-                  <>
-                    <div
-                      style={{
-                        display: 'grid',
-                        gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))',
-                        gap: '1rem',
-                        marginBottom: '1.5rem',
-                      }}
-                    >
-                      <StatCard label="Total Requests" value={String(orData.total ?? 0)} accent />
-                      <StatCard label="Delivered" value={String(orData.delivered ?? 0)} />
-                      <StatCard label="Cancelled" value={String(orData.cancelled ?? 0)} />
-                      <StatCard
-                        label="Conversion Rate"
-                        value={orData.conversionRate != null ? `${orData.conversionRate}%` : '-'}
-                      />
-                    </div>
-                    <div style={{ marginBottom: '1rem', fontSize: '0.95rem', fontWeight: 700, color: 'var(--white)' }}>
-                      Status breakdown
-                    </div>
-                    {['pending', 'confirmed', 'processing', 'ready', 'delivered', 'cancelled'].map((key) => {
-                      const labelMap = {
-                        pending: 'Pending',
-                        confirmed: 'Confirmed',
-                        processing: 'Processing',
-                        ready: 'Ready',
-                        delivered: 'Delivered',
-                        cancelled: 'Cancelled',
-                      };
-                      const colorMap = {
-                        pending: 'var(--gray)',
-                        confirmed: '#3b82f6',
-                        processing: '#f97316',
-                        ready: '#10b981',
-                        delivered: '#D4A843',
-                        cancelled: '#ef4444',
-                      };
-                      const total = Number(orData.total) || 0;
-                      const count = Number(orData[key] ?? 0);
-                      const pct = total > 0 ? (count / total) * 100 : 0;
-                      return (
-                        <div
-                          key={key}
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '12px',
-                            marginBottom: '10px',
-                          }}
-                        >
-                          <div style={{ width: '100px', fontSize: '0.8rem', color: 'var(--gray)', flexShrink: 0 }}>
-                            {labelMap[key]}
-                          </div>
-                          <div
-                            style={{
-                              flex: 1,
-                              height: '10px',
-                              borderRadius: '999px',
-                              background: 'var(--dark2)',
-                              overflow: 'hidden',
-                            }}
-                          >
-                            <div
-                              style={{
-                                height: '100%',
-                                borderRadius: '999px',
-                                width: `${pct}%`,
-                                background: colorMap[key],
-                                transition: 'width 0.6s ease',
-                              }}
-                            />
-                          </div>
-                          <div style={{ width: '48px', textAlign: 'right', fontSize: '0.8rem', color: 'var(--white)' }}>
-                            {count}
-                          </div>
-                        </div>
-                      );
-                    })}
-                    <SectionHeader title="Export" onExport={exportOrderRequests} exporting={orExporting} />
-                  </>
-                )}
-              </div>
-            )}
-          </>
-        )}
+      <div style={S.page}>
+        <style>{`
+          @media print {
+            .admin-sidebar, .admin-top-bar, .phone-tabbar, .phone-section-strip, .rpt-noprint, .rpt-tabs { display: none !important; }
+            .admin-main-content { margin-left: 0 !important; height: auto !important; overflow: visible !important; }
+            .admin-page-content { padding: 0 !important; }
+            .rpt-card { break-inside: avoid; border: 1px solid #ccc !important; box-shadow: none !important; }
+            body { background: #fff !important; color: #000 !important; }
+          }
+        `}</style>
+        <div className="rpt-tabs" style={{ marginBottom: 14 }}>
+          <TabBar tabs={TABS} active={tab} onChange={setTab} />
+        </div>
+        {tab === 'sales' && <SalesReport token={token} />}
+        {tab === 'inventory' && <InventoryReport token={token} />}
+        {tab === 'demand' && <DemandReport />}
       </div>
     </ErrorBoundary>
   );
