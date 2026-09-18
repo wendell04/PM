@@ -187,14 +187,14 @@ export function PhoneList({ children }) {
  * One thing in a list, in two or three lines: a title with a status chip on the right, then a
  * line of what it is, then (optional) a small line of numbers. Tapping opens it.
  */
-export function PhoneRow({ title, chip, meta, sub, onClick, muted = false, first = false }) {
+export function PhoneRow({ title, chip, meta, sub, onClick, muted = false, first = false, mono = true }) {
   return (
     <button type="button" onClick={onClick}
       style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', minHeight: 60, padding: '10px 12px 10px 14px',
         background: 'transparent', color: 'var(--white)', border: 'none', borderTop: first ? 'none' : '1px solid var(--border)', cursor: 'pointer', opacity: muted ? 0.6 : 1 }}>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-          <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 13, color: 'var(--gold)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{title}</span>
+          <span style={{ fontFamily: mono ? 'monospace' : 'inherit', fontWeight: 700, fontSize: mono ? 13 : 14, color: mono ? 'var(--gold)' : 'var(--white)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{title}</span>
           <span style={{ flexShrink: 0 }}>{chip}</span>
         </div>
         {meta && <div style={{ fontSize: 13, marginTop: 3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{meta}</div>}
@@ -211,7 +211,7 @@ export function PhoneRow({ title, chip, meta, sub, onClick, muted = false, first
  * A thing opened full-screen with a back arrow, the way My Orders opens an order. Not an inline
  * expansion (no room) and not a modal (no room either). The body scrolls; the header stays.
  */
-export function PhoneSheet({ open, title, chip, subtitle, onClose, children, footer }) {
+export function PhoneSheet({ open, title, chip, subtitle, onClose, children, footer, mono = true }) {
   useLockBodyScroll(!!open);
   useEffect(() => {
     if (!open) return;
@@ -229,7 +229,7 @@ export function PhoneSheet({ open, title, chip, subtitle, onClose, children, foo
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6" /></svg>
         </button>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 14, color: 'var(--gold)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{title}</div>
+          <div style={{ fontFamily: mono ? 'monospace' : 'inherit', fontWeight: 700, fontSize: mono ? 14 : 15, color: mono ? 'var(--gold)' : 'var(--white)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{title}</div>
           {subtitle && <div style={{ fontSize: 12, color: 'var(--gray)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{subtitle}</div>}
         </div>
         {chip && <div style={{ flexShrink: 0, marginRight: 4 }}>{chip}</div>}

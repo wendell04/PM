@@ -452,7 +452,7 @@ export default function OrderRequestsPage() {
             isPhone ? (
               <PhoneList>
                 {filteredRequests.map((req, i) => (
-                  <PhoneRow key={req.id} first={i === 0} onClick={() => openReview(req)}
+                  <PhoneRow key={req.id} first={i === 0} mono={false} onClick={() => openReview(req)}
                     title={req.customerName || '-'}
                     chip={<StatusBadge status={req.status} />}
                     meta={[req.productName || '-', req.quantity != null ? `\u00d7${req.quantity}` : null].filter(Boolean).join(' ')}

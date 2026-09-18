@@ -1,4 +1,5 @@
 'use client';
+import { useIsPhone, KpiStrip, PhoneFilterBar, PhoneList, PhoneRow } from '@/components/dashboard/phone';
 import { useState, useMemo } from 'react';
 import { S, ICONS, Field, IntegerInput, DecimalInput, Modal, ConfirmModal, PaginationBar, SearchBar, StatusBadge, EmptyState, SummaryCard, usePagination, formatCurrency, uid, CustomSelect } from './shared';
 import { createMat, updateMat, deleteMat, createSupplier } from './api';
@@ -283,6 +284,7 @@ export default function MaterialsTab({ materials, setMaterials, vendors, setVend
   }, [materials, catFilter, search]);
 
   const { slice, page, perPage, total, setPage, setPerPage } = usePagination(filtered);
+  const isPhone = useIsPhone();
 
   const openAdd = () => {
     setForm({ name:'', category: categories[0]||'', unit: units[0]||'', vendorId:'', baseCost:'', minStock:'', leadTime:'7', isOnDemand:false });
@@ -379,6 +381,22 @@ export default function MaterialsTab({ materials, setMaterials, vendors, setVend
 
   return (
     <div style={S.col}>
+      {isPhone ? (
+        <>
+          <button onClick={openAdd} style={{ ...S.btnPrimary, minHeight:44, justifyContent:'center' }}>{ICONS.plus} Add Material</button>
+          <KpiStrip items={[
+            { key:'all', label:'Materials',    value: materials.length },
+            { key:'in',  label:'In stock',     value: inStock,  color:'#2e7d32' },
+            { key:'low', label:'Low stock',    value: lowStock, color:'#b45309' },
+            { key:'out', label:'Out of stock', value: outStock, color:'#c62828' },
+          ]} />
+          <PhoneFilterBar search={search} onSearch={setSearch} placeholder="Search name or SKU"
+            filters={[{ key:'cat', label:'Category', value:catFilter, defaultValue:'All', onChange:setCat,
+              options:[{ value:'All', label:'All' }, ...categories.map(c => ({ value:c, label:c }))] }]}
+            actions={<button onClick={() => setShowManage(true)} style={{ ...S.btnSmGhost, minHeight:36 }}>Manage lists</button>}
+            note={`${total} material${total !== 1 ? 's' : ''}`} />
+        </>
+      ) : (<>
       <div style={{ display:'flex', gap:'12px', flexWrap:'wrap' }}>
         <SummaryCard label="Total Materials" value={materials.length} accent />
         <SummaryCard label="In Stock"        value={inStock}          color="#2e7d32" />
@@ -399,6 +417,32 @@ export default function MaterialsTab({ materials, setMaterials, vendors, setVend
         </div>
       </div>
 
+      </>)}
+
+      {isPhone ? (
+        <>
+          {slice.length === 0 ? (
+            <div style={{ ...S.card, padding:0 }}><EmptyState message="No materials found" sub="Add a material or adjust filters." /></div>
+          ) : (
+            <PhoneList>
+              {slice.map((mat, i) => {
+                const qty    = stockMap[mat.id] || 0;
+                const status = qty === 0 ? 'out_of_stock' : qty <= mat.minStock ? 'low_stock' : 'in_stock';
+                const vendor = vendors.find(v => v.id === mat.vendorId);
+                return (
+                  <PhoneRow key={mat.id} first={i === 0} onClick={() => openEdit(mat)}
+                    title={mat.sku} chip={<StatusBadge status={status} />}
+                    meta={mat.name}
+                    sub={[`${qty} ${mat.unit}`, `min ${mat.minStock}`, formatCurrency(mat.baseCost), mat.category, vendor?.name].filter(Boolean).join(' \u00b7 ')} />
+                );
+              })}
+            </PhoneList>
+          )}
+          <div style={{ padding:'12px 0' }}>
+            <PaginationBar total={total} page={page} perPage={perPage} onPage={setPage} onPerPage={setPerPage} />
+          </div>
+        </>
+      ) : (
       <div style={{ ...S.card, padding:0, overflow:'hidden' }}>
         <div style={{ overflowX:'auto' }}>
           <table className="pmp-rt" style={{ width:'100%', borderCollapse:'collapse' }}>
@@ -443,6 +487,8 @@ export default function MaterialsTab({ materials, setMaterials, vendors, setVend
           <PaginationBar total={total} page={page} perPage={perPage} onPage={setPage} onPerPage={setPerPage} />
         </div>
       </div>
+
+      )}
 
       {/* Add / Edit modal */}
       <Modal

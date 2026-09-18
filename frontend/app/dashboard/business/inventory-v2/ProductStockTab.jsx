@@ -1,5 +1,6 @@
 'use client';
 import { useMemo, useState } from 'react';
+import { useIsPhone, KpiStrip, PhoneFilterBar, PhoneList, PhoneRow, PhoneSheet } from '@/components/dashboard/phone';
 import { S, SearchBar, EmptyState, SummaryCard, StatusBadge, PaginationBar, usePagination, CustomSelect } from './shared';
 
 // Availability is stock MINUS what open orders already hold. Counting raw stockQty made this screen
@@ -104,9 +105,27 @@ export default function ProductStockTab({ boms, materials, products }) {
   const lowCount = rows.filter(r => r.minProd > 0 && r.minProd <= 10).length;
 
   const { slice, page, perPage, total, setPage, setPerPage } = usePagination(filtered);
+  const isPhone = useIsPhone();
 
   return (
     <div style={S.col}>
+      {isPhone ? (
+        <>
+          <KpiStrip items={[
+            { key:'All', label:'Products',     value: rows.length, active: statFilter === 'All', onClick: () => { setStatFilter('All'); setExpanded(null); } },
+            { key:'out', label:'Out of stock', value: outCount, color:'#c62828', active: statFilter === 'out', onClick: () => { setStatFilter('out'); setExpanded(null); } },
+            { key:'low', label:'Low stock',    value: lowCount, color:'#b45309', active: statFilter === 'low', onClick: () => { setStatFilter('low'); setExpanded(null); } },
+          ]} />
+          <PhoneFilterBar search={search} onSearch={setSearch} placeholder="Search product"
+            filters={[
+              { key:'cat', label:'Category', value:catFilter, defaultValue:'All', onChange: v => { setCatFilter(v); setExpanded(null); },
+                options: categories.map(c => ({ value:c, label:c })) },
+              { key:'stat', label:'Stock', value:statFilter, defaultValue:'All', onChange: v => { setStatFilter(v); setExpanded(null); },
+                options: [{ value:'All', label:'All' }, { value:'ok', label:'In stock' }, { value:'low', label:'Low stock' }, { value:'out', label:'Out of stock' }] },
+            ]}
+            note={`${total} product${total !== 1 ? 's' : ''}`} />
+        </>
+      ) : (<>
       <div style={{ display:'flex', gap:'12px', flexWrap:'wrap' }}>
         <SummaryCard label="Total Products"  value={rows.length} accent />
         <SummaryCard label="Out of Stock"    value={outCount}    color="#c62828" />
@@ -128,6 +147,37 @@ export default function ProductStockTab({ boms, materials, products }) {
         <span style={{ fontSize:'12px', color:'var(--gray)' }}>{total} product{total !== 1 ? 's' : ''}</span>
       </div>
 
+      </>)}
+
+      {isPhone ? (
+        <>
+          {slice.length === 0 ? (
+            <div style={{ ...S.card, padding:0 }}><EmptyState message="No products found" sub="Link BOMs to products to see stock here." /></div>
+          ) : (
+            <PhoneList>
+              {slice.map((row, i) => (
+                <PhoneRow key={row.id} first={i === 0} mono={false} onClick={() => setExpanded(row.id)}
+                  title={row.name} chip={<StatusBadge status={stockStatus(row.minProd)} />}
+                  meta={row.standalone ? 'Standalone' : `${row.variants.length} variant${row.variants.length === 1 ? '' : 's'}`}
+                  sub={`${row.minProd} can build${row.category ? ' \u00b7 ' + row.category : ''}`} />
+              ))}
+            </PhoneList>
+          )}
+          <div style={{ padding:'12px 0' }}>
+            <PaginationBar total={total} page={page} perPage={perPage} onPage={setPage} onPerPage={setPerPage} />
+          </div>
+          {(() => {
+            const row = expanded ? rows.find(r => r.id === expanded) : null;
+            return (
+              <PhoneSheet open={!!row} onClose={() => setExpanded(null)} mono={false} title={row?.name ?? ''}
+                subtitle={row ? (row.standalone ? 'Standalone' : `${row.variants.length} variants`) : ''}
+                chip={row ? <StatusBadge status={stockStatus(row.minProd)} /> : null}>
+                {row && <DetailPanel variants={row.variants} matMap={matMap} />}
+              </PhoneSheet>
+            );
+          })()}
+        </>
+      ) : (
       <div style={{ ...S.card, padding:0, overflow:'hidden' }}>
         <div style={{ overflowX:'auto' }}>
           <table className="pmp-rt" style={{ width:'100%', borderCollapse:'collapse' }}>
@@ -181,6 +231,7 @@ export default function ProductStockTab({ boms, materials, products }) {
           <PaginationBar total={total} page={page} perPage={perPage} onPage={setPage} onPerPage={setPerPage} />
         </div>
       </div>
+      )}
     </div>
   );
 }
