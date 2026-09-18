@@ -106,12 +106,6 @@ const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=
   const [errors, setErrors]             = useState({});
   const [verificationModal, setVerificationModal] = useState(false);
 
-  // Every modal on this page left the landing page scrolling behind it. Declared here rather
-  // than beside `modal`, because the other two flags are defined further down and reading them
-  // earlier is a temporal-dead-zone ReferenceError, not a warning.
-  // The cart and notification sheets too: without the lock, a drag on the sheet scrolled the page
-  // underneath it on phones.
-  useLockBodyScroll(!!modal || !!verificationModal || !!tAndCModalOpen || lpCartOpen || lpNotifOpen);
   const [registeredEmail, setRegisteredEmail]     = useState('');
   const [verificationCode, setVerificationCode]   = useState('');
   const [verifyError, setVerifyError]             = useState('');
@@ -214,7 +208,15 @@ const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=
   const [forgotError, setForgotError]     = useState('');
   const [forgotSent, setForgotSent]       = useState(false);
   const [isSendingReset, setIsSendingReset] = useState(false);
+
+  // Every modal on this page left the landing page scrolling behind it, and the chat bubble floated
+  // over their buttons. This call sits BELOW every flag it reads: a state declared further down is
+  // in a temporal dead zone up here, which is a crash on render rather than a warning.
+  // The cart and notification sheets too: without the lock, a drag on the sheet scrolled the page
+  // underneath it on phones.
+  useLockBodyScroll(!!modal || !!verificationModal || forgotModal || !!tAndCModalOpen || lpCartOpen || lpNotifOpen);
   const [forgotStep, setForgotStep]                   = useState(1);
+
   const [forgotCode, setForgotCode]                   = useState('');
   const [forgotNewPassword, setForgotNewPassword]     = useState('');
   const [forgotConfirmPassword, setForgotConfirmPassword] = useState('');
