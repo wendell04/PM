@@ -16,6 +16,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { S, ICONS, SearchBar, SummaryCard } from '../inventory-v2/shared';
+import { useIsPhone, KpiStrip, PhoneRow } from '@/components/dashboard/phone';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
@@ -55,6 +56,7 @@ export default function ToBuyPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState('');
   const [search, setSearch]   = useState('');
+  const isPhone = useIsPhone();
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -137,11 +139,19 @@ export default function ToBuyPage() {
 
   return (
     <div style={{ ...S.page, padding: '24px' }}>
-      <div style={{ ...S.row, marginBottom: '18px' }}>
-        <SummaryCard label="Materials to buy" value={totals.totalItems} accent />
-        <SummaryCard label="Estimated cost" value={peso(totals.estimatedCost)} />
-        <SummaryCard label="Suppliers to contact" value={groups.length} />
-      </div>
+      {isPhone ? (
+        <KpiStrip items={[
+          { key: 'n', label: 'To buy',    value: totals.totalItems },
+          { key: 'c', label: 'Est. cost', value: peso(totals.estimatedCost) },
+          { key: 's', label: 'Suppliers', value: groups.length },
+        ]} />
+      ) : (
+        <div style={{ ...S.row, marginBottom: '18px' }}>
+          <SummaryCard label="Materials to buy" value={totals.totalItems} accent />
+          <SummaryCard label="Estimated cost" value={peso(totals.estimatedCost)} />
+          <SummaryCard label="Suppliers to contact" value={groups.length} />
+        </div>
+      )}
 
       {waitingQuotes.length > 0 && (
         <div style={{ ...S.card, padding: 0, overflow: 'hidden', marginBottom: '18px', borderColor: 'rgba(224,168,82,0.45)' }}>
@@ -304,15 +314,22 @@ export default function ToBuyPage() {
                 {g.leadTimeDays > 0 && ` · ${g.leadTimeDays}d lead time`}
               </div>
             </div>
-            <div style={{ ...S.row, gap: '10px' }}>
+            <div style={{ ...S.row, gap: '10px', ...(isPhone ? { width: '100%', justifyContent: 'space-between' } : {}) }}>
               <span style={{ fontSize: '14px', fontWeight: 700, color: 'var(--gold)' }}>{peso(g.cost)}</span>
-              <button type="button" onClick={() => copyList(g)} style={{ ...S.btnSm }} title="Copy this list to paste to the supplier">Copy</button>
+              <button type="button" onClick={() => copyList(g)} style={{ ...S.btnSm, ...(isPhone ? { minHeight: 40 } : {}) }} title="Copy this list to paste to the supplier">Copy</button>
               <a href="/dashboard/business/inventory-v2?tab=stockin"
-                style={{ ...S.btnSm, textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}
+                style={{ ...S.btnSm, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', ...(isPhone ? { minHeight: 40 } : {}) }}
                 title="Record the delivery once it arrives">Stock In</a>
             </div>
           </div>
 
+          {isPhone ? g.items.map((r, i) => (
+            <PhoneRow key={r.inventoryId} first={i === 0} mono={false}
+              title={r.name}
+              chip={<span style={{ fontSize: 12, fontWeight: 700, color: '#e0a852', whiteSpace: 'nowrap' }}>Buy {num(r.shortfall)} {r.uom}</span>}
+              meta={`need ${num(r.needed)} · have ${num(r.onHand)} ${r.uom} · ${peso(r.estimatedCost)}`}
+              sub={[r.sku, r.isOnDemand ? 'buy per order' : null, r.orders?.length > 0 ? `for ${r.orders.join(', ')}` : null, !Number(r.unitCost) ? 'no cost set' : null].filter(Boolean).join(' · ')} />
+          )) : (<>
           <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 90px 90px 90px 110px', gap: '8px',
             padding: '8px 16px', fontSize: '10px', fontWeight: 700, letterSpacing: '.05em',
             textTransform: 'uppercase', color: 'var(--gray)', borderBottom: '1px solid var(--border)' }}>
@@ -346,6 +363,7 @@ export default function ToBuyPage() {
               <span style={{ fontSize: '13px', textAlign: 'right', fontWeight: 700 }}>{peso(r.estimatedCost)}</span>
             </div>
           ))}
+          </>)}
         </div>
       ))}
     </div>
