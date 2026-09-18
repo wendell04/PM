@@ -122,6 +122,30 @@ class SettingsController extends Controller
         }
     }
 
+    /**
+     * Which provider each kind of mail leaves by, in order, as the running app has it.
+     *
+     * The host's variables decide this, and the only way to check it was to send something and
+     * watch a provider's quota drop - which is how a lane spent a week on the wrong provider
+     * without anyone being able to say so.
+     */
+    private function mailLanes(): array
+    {
+        $chain = function (?string $name): array {
+            $name = (string) $name;
+            $cfg  = config("mail.mailers.{$name}");
+            if (($cfg['transport'] ?? null) === 'failover') {
+                return array_values(array_filter((array) ($cfg['mailers'] ?? [])));
+            }
+            return $name !== '' ? [$name] : [];
+        };
+
+        return [
+            'notifications' => $chain(config('mail.default')),
+            'security'      => $chain(config('mail.security_mailer')),
+        ];
+    }
+
     public function show(Request $request)
     {
         try {
@@ -132,6 +156,7 @@ class SettingsController extends Controller
             $owner = $this->getOwner() ?? $user;
 
             return $this->successResponse('Settings retrieved.', [
+                'mailLanes'            => $this->mailLanes(),
                 'storeName'            => $user->storeName             ?? '',
                 'storeDescription'     => $user->storeDescription      ?? '',
                 'storeEmail'           => $user->storeEmail            ?? '',

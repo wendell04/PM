@@ -388,6 +388,7 @@ export default function SettingsPage() {
             rushFee:              d.data.rushFee               != null ? String(d.data.rushFee)              : '150',
             googleMapsEnabled:    d.data.googleMapsEnabled === true,
           });
+          setMailLanes(d.data.mailLanes ?? null);
           // Pre-fill the editor with the built-in defaults when nothing is saved, so the owner SEES
           // and can edit the exact clauses shown to customers (instead of them living only in code).
           // A saved set wins, but any NEW built-in clause the owner has never seen is appended
@@ -928,7 +929,8 @@ export default function SettingsPage() {
   const [chatSaving, setChatSaving]   = useState(false);
   const [chatNotice, setChatNotice]   = useState({ type: '', text: '' });
 
-  // Email delivery test: one email through one provider, the provider's own words on failure.
+  // Email delivery: which lane each kind of mail leaves by, plus a test through one named provider.
+  const [mailLanes, setMailLanes] = useState(null);
   const [mailTest, setMailTest] = useState({ busy: '', result: null });
   const runMailTest = async (provider) => {
     setMailTest({ busy: provider, result: null });
@@ -1797,9 +1799,31 @@ export default function SettingsPage() {
     <div style={{ padding: '0.875rem 1.25rem', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '0.625rem', flexWrap: 'wrap' }}>
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--gray-light)" strokeWidth="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
       <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--white)' }}>Email delivery</span>
-      <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>- Sends one test email to the shop inbox through the provider you pick and shows its answer.</span>
+      <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>- Which provider each kind of mail leaves by, and a test you can send through either one.</span>
     </div>
     <div style={{ padding: '1.25rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '0.9rem' }}>
+      {mailLanes && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
+          {[['Codes, resets and 2FA', mailLanes.security], ['Order updates and receipts', mailLanes.notifications]].map(([label, chain]) => (
+            <div key={label} style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'baseline', fontSize: '0.8rem' }}>
+              <span style={{ color: 'var(--gray)', minWidth: '11.5rem' }}>{label}</span>
+              <span style={{ color: 'var(--white)', fontWeight: 600 }}>
+                {(chain || []).length ? chain.map(p => (p === 'brevo' ? 'Brevo' : p === 'resend' ? 'Resend' : p)).join(', then ')
+                                      : 'not configured'}
+              </span>
+            </div>
+          ))}
+          {/* Both lanes starting on the same provider is the state that looks fine and is not: one
+              allowance carries everything, and the other provider's sits unused until it is gone. */}
+          {mailLanes.security?.[0] && mailLanes.security[0] === mailLanes.notifications?.[0] && (
+            <div style={{ fontSize: '0.76rem', color: '#f59e0b', lineHeight: 1.55 }}>
+              Both lanes start on the same provider, so its daily allowance is spent first and the other
+              one sits unused. Give the codes their own provider to keep a sign-up wave from using up the
+              sends that order updates need.
+            </div>
+          )}
+        </div>
+      )}
       <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
         {['brevo', 'resend'].map(p => (
           <button key={p} type="button" onClick={() => runMailTest(p)} disabled={!!mailTest.busy}
