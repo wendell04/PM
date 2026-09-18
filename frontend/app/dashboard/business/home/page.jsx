@@ -478,7 +478,7 @@ export default function StaffHome() {
             // for EVERY material, packaging included. A mug box bought per order has no minimum
             // and sat outside the check above, so the card said "nothing needs restocking" while
             // the tile beside it said one material to buy. Both are read here.
-            const short = (toBuy?.items ?? []).filter(i => Number(i.shortfall) > 0)
+            const short = (toBuy?.items ?? []).filter(i => Number(i.shortfall) > 0 && (i.reasons ?? ['orders']).includes('orders'))
               .sort((a, b) => Number(b.shortfall) * Number(b.unitCost ?? 0) - Number(a.shortfall) * Number(a.unitCost ?? 0))
               .slice(0, 6);
             const shortIds = new Set(short.map(i => String(i.inventoryId)));
@@ -513,7 +513,7 @@ export default function StaffHome() {
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{i.name}</div>
                           <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 3 }}>
-                            Orders already taken need {i.needed} {i.uom ?? ''}, you have {i.onHand}
+                            Orders already taken need {i.needed} {i.uom ?? ''}, you have {i.onHand}{i.minimum > 0 ? `, minimum ${i.minimum}` : ''}
                             {i.orders?.length > 0 && ` - ${i.orders.join(', ')}`}
                           </div>
                         </div>

@@ -145,18 +145,40 @@ class InventoryController extends Controller
                 }
             }
 
+            // One replenishment list, two reasons, one formula - the way Odoo's Replenishment and
+            // Zoho's Reorder work. A material is listed when the orders already taken need more
+            // than the shelf holds (short for orders), or when the shelf after those orders would
+            // sit below the owner's minimum (below minimum), or both. What to buy is the amount
+            // that covers the orders AND puts the shelf back at its minimum:
+            //
+            //     buy = needed by orders + minimum - on hand
+            //
+            // "Buy 10" for 20 needed on 10 in hand covered the orders and left the shelf empty;
+            // with a minimum of 30 the same row now says buy 40. A minimum of 0 keeps the old
+            // behaviour, so a material the owner has not set a line for still only shows up when
+            // an order actually needs it.
             $rows = [];
-            foreach ($demand as $invId => $need) {
-                $inv = Inventory::find($invId);
-                if (!$inv || ($inv->isActive === false)) continue;
+            $candidates = Inventory::where('isActive', '!=', false)->get()->keyBy(fn ($i) => (string) $i->_id);
+            $ids = array_unique(array_merge(array_keys($demand), $candidates->keys()->all()));
+            foreach ($ids as $invId) {
+                $inv = $candidates[$invId] ?? null;
+                if (!$inv) continue;
 
+                $need      = (float) ($demand[$invId] ?? 0);
                 $onHand    = (int) ($inv->stockQty ?? 0);
-                $shortfall = $need - $onHand;
-                if ($shortfall <= 0) continue;          // enough on hand - nothing to buy
+                $minimum   = (float) ($inv->minStockLevel ?? 0);
+                $reasons   = [];
+                if ($need > $onHand)                       $reasons[] = 'orders';
+                if ($minimum > 0 && ($onHand - $need) < $minimum) $reasons[] = 'minimum';
+                if (!$reasons) continue;                   // enough on hand - nothing to buy
+                $shortfall = $need + $minimum - $onHand;
+                if ($shortfall <= 0) continue;
 
                 $unitCost = (float) ($inv->lastUnitCost ?: $inv->averageCost ?: $inv->baseCost ?: 0);
 
                 $rows[] = [
+                    'reasons'       => $reasons,
+                    'minimum'       => $minimum,
                     'inventoryId'   => (string) $inv->_id,
                     'name'          => $inv->name,
                     'sku'           => $inv->sku,

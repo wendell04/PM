@@ -56,6 +56,7 @@ export default function ToBuyPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState('');
   const [search, setSearch]   = useState('');
+  const [reason, setReason]   = useState('all');   // all | orders | minimum
   const isPhone = useIsPhone();
 
   const load = useCallback(async () => {
@@ -83,12 +84,13 @@ export default function ToBuyPage() {
 
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return rows;
     return rows.filter(r =>
-      (r.name || '').toLowerCase().includes(q) ||
-      (r.sku || '').toLowerCase().includes(q) ||
-      (r.supplierName || '').toLowerCase().includes(q));
-  }, [rows, search]);
+      (reason === 'all' || (r.reasons ?? ['orders']).includes(reason)) &&
+      (!q || (r.name || '').toLowerCase().includes(q) ||
+        (r.sku || '').toLowerCase().includes(q) ||
+        (r.supplierName || '').toLowerCase().includes(q)));
+  }, [rows, search, reason]);
+  const countFor = (why) => rows.filter(r => (r.reasons ?? ['orders']).includes(why)).length;
 
   // One group per supplier - the unit of work is "message this supplier", not "buy this item".
   const groups = useMemo(() => {
@@ -218,6 +220,19 @@ export default function ToBuyPage() {
         </div>
       )}
 
+      {tab === 'materials' && rows.length > 0 && (
+        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '10px', alignItems: 'center' }}>
+          {[['all', `All (${rows.length})`], ['orders', `Short for orders (${countFor('orders')})`], ['minimum', `Below minimum (${countFor('minimum')})`]].map(([id, label]) => (
+            <button key={id} type="button" onClick={() => setReason(id)}
+              style={{ minHeight: 34, padding: '0 12px', borderRadius: 999, fontSize: 12.5, fontWeight: reason === id ? 700 : 500, cursor: 'pointer',
+                background: reason === id ? 'var(--gold)' : 'var(--dark2)', color: reason === id ? '#1a1a1a' : 'var(--white)', border: reason === id ? '1px solid var(--gold)' : '1px solid var(--border)' }}>
+              {label}
+            </button>
+          ))}
+          <span style={{ fontSize: 11.5, color: 'var(--gray)', marginLeft: 'auto' }}>Buy = needed by orders + minimum - on hand</span>
+        </div>
+      )}
+
       <div style={{ display: 'flex', gap: '6px', marginBottom: '14px' }}>
         {[['materials', `By material (${totals.totalItems})`], ['products', `No material plan (${productRows.length})`]].map(([id, label]) => (
           <button key={id} type="button" onClick={() => selectTab(id)}
@@ -327,25 +342,32 @@ export default function ToBuyPage() {
             <PhoneRow key={r.inventoryId} first={i === 0} mono={false}
               title={r.name}
               chip={<span style={{ fontSize: 12, fontWeight: 700, color: '#e0a852', whiteSpace: 'nowrap' }}>Buy {num(r.shortfall)} {r.uom}</span>}
-              meta={`need ${num(r.needed)} · have ${num(r.onHand)} ${r.uom} · ${peso(r.estimatedCost)}`}
-              sub={[r.for?.length > 0 ? `for ${r.for.map(f => `${f.pieces} × ${f.product}`).join(', ')}` : null, r.orders?.length > 0 ? r.orders.join(', ') : null, r.isOnDemand ? 'buy per order' : null, !Number(r.unitCost) ? 'no cost set' : null].filter(Boolean).join(' · ')} />
+              meta={[`orders need ${num(r.needed)}`, `have ${num(r.onHand)}`, r.minimum > 0 ? `min ${num(r.minimum)}` : null, `${r.uom} · ${peso(r.estimatedCost)}`].filter(Boolean).join(' · ')}
+              sub={[(r.reasons ?? ['orders']).map(w => w === 'orders' ? 'short for orders' : 'below minimum').join(' + '), r.for?.length > 0 ? `for ${r.for.map(f => `${f.pieces} × ${f.product}`).join(', ')}` : null, r.orders?.length > 0 ? r.orders.join(', ') : null, r.isOnDemand ? 'buy per order' : null, !Number(r.unitCost) ? 'no cost set' : null].filter(Boolean).join(' · ')} />
           )) : (<>
-          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 90px 90px 90px 110px', gap: '8px',
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 90px 90px 90px 90px 110px', gap: '8px',
             padding: '8px 16px', fontSize: '10px', fontWeight: 700, letterSpacing: '.05em',
             textTransform: 'uppercase', color: 'var(--gray)', borderBottom: '1px solid var(--border)' }}>
             <span>Material</span>
-            <span style={{ textAlign: 'right' }}>Needed</span>
+            <span style={{ textAlign: 'right' }}>For orders</span>
             <span style={{ textAlign: 'right' }}>On hand</span>
+            <span style={{ textAlign: 'right' }}>Minimum</span>
             <span style={{ textAlign: 'right' }}>Buy</span>
             <span style={{ textAlign: 'right' }}>Est. cost</span>
           </div>
 
           {g.items.map(r => (
-            <div key={r.inventoryId} style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 90px 90px 90px 110px',
+            <div key={r.inventoryId} style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 90px 90px 90px 90px 110px',
               gap: '8px', padding: '10px 16px', borderBottom: '1px solid var(--border)', alignItems: 'center' }}>
               <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: '13px', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <div style={{ fontSize: '13px', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 6 }}>
                   {r.name}
+                  {(r.reasons ?? ['orders']).map(w => (
+                    <span key={w} style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: '.3px', textTransform: 'uppercase', padding: '2px 6px', borderRadius: 4,
+                      background: w === 'orders' ? 'rgba(224,168,82,0.16)' : 'rgba(59,130,246,0.14)', color: w === 'orders' ? '#b45309' : '#1d4ed8' }}>
+                      {w === 'orders' ? 'short for orders' : 'below minimum'}
+                    </span>
+                  ))}
                 </div>
                 <div style={{ fontSize: '10.5px', color: 'var(--gray)', marginTop: '1px' }}>
                   {[r.sku, r.category, r.isOnDemand ? 'buy per order' : null].filter(Boolean).join(' · ')}
@@ -364,6 +386,7 @@ export default function ToBuyPage() {
               </div>
               <span style={{ fontSize: '12px', textAlign: 'right', color: 'var(--gray)' }}>{num(r.needed)} {r.uom}</span>
               <span style={{ fontSize: '12px', textAlign: 'right', color: 'var(--gray)' }}>{num(r.onHand)} {r.uom}</span>
+              <span style={{ fontSize: '12px', textAlign: 'right', color: 'var(--gray)' }}>{r.minimum > 0 ? `${num(r.minimum)} ${r.uom}` : '-'}</span>
               <span style={{ fontSize: '13px', textAlign: 'right', fontWeight: 700, color: '#e0a852' }}>{num(r.shortfall)} {r.uom}</span>
               <span style={{ fontSize: '13px', textAlign: 'right', fontWeight: 700 }}>{peso(r.estimatedCost)}</span>
             </div>
