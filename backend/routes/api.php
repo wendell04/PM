@@ -239,6 +239,7 @@ Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
     Route::get('/admin/inventory/to-buy',             [InventoryController::class, 'toBuy']);
     Route::get('/admin/inventory/recent-movements',   [InventoryController::class, 'recentMovements']);
     Route::get('/admin/inventory/stock-outs',         [InventoryController::class, 'stockOuts']);
+    Route::get('/admin/inventory/min-stock-suggestions', [InventoryController::class, 'minStockSuggestions']);
     Route::get('/admin/inventory',                    [InventoryController::class, 'index']);
     Route::post('/admin/inventory',                   [InventoryController::class, 'store']);
     Route::get('/admin/inventory/{id}',               [InventoryController::class, 'show']);

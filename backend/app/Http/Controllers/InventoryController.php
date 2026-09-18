@@ -875,6 +875,99 @@ class InventoryController extends Controller
         }
     }
 
+    /**
+     * GET /api/admin/inventory/min-stock-suggestions
+     *
+     * What each material's minimum SHOULD be, from how fast it actually leaves the shelf.
+     *
+     * Every material is born with a minimum of 10 (the model default), and most were never
+     * changed - so a mug that sells three a day and a sticker sheet that sells one a month both
+     * warn at the same number. The standard answer is lead time x average daily usage, plus a
+     * buffer: enough on the shelf to cover the wait for the next delivery, and a little more for
+     * a busy week. Usage is read from the stock ledger (every 'deduction' row: production, sales,
+     * quotes, scrap) over the last 90 days, or since the material's first movement if younger.
+     *
+     * This SUGGESTS. It writes nothing - the owner accepts each one, or all, from Master Data.
+     * A wrong minimum applied silently would flood To Buy and teach people to ignore it.
+     */
+    public function minStockSuggestions(Request $request)
+    {
+        try {
+            if (!$this->hasPermission($request, 'inventory')) {
+                return $this->unauthorizedResponse();
+            }
+
+            $since  = now()->subDays(90);
+            $window = 90;
+
+            // Usage and first-seen per material, one pass over the ledger.
+            $used  = [];   // inventoryId => qty out in the window
+            $first = [];   // inventoryId => earliest movement of any kind
+            $rows  = StockHistory::where('createdAt', '>=', now()->subDays(400))
+                ->get(['inventoryId', 'type', 'quantity', 'createdAt']);
+            foreach ($rows as $r) {
+                $id = (string) $r->inventoryId;
+                if ($id === '') continue;
+                $at = $r->createdAt;
+                if ($at && (!isset($first[$id]) || $at < $first[$id])) $first[$id] = $at;
+                if ($r->type === 'deduction' && $at && $at >= $since) {
+                    $used[$id] = ($used[$id] ?? 0) + abs((float) $r->quantity);
+                }
+            }
+
+            $out = [];
+            foreach (Inventory::where('isActive', '!=', false)->get() as $inv) {
+                $id = (string) $inv->_id;
+                if ($inv->isOnDemand) continue;   // bought per order; a minimum is not how it is managed
+
+                $seen = $first[$id] ?? null;
+                $days = $seen ? max(14, min($window, (int) ceil($seen->diffInDays(now())) ?: 1)) : $window;
+                $qty  = (float) ($used[$id] ?? 0);
+                $avg  = $qty > 0 ? $qty / $days : 0.0;
+
+                $lead        = (int) ($inv->leadTimeDays ?? 0);
+                $leadAssumed = $lead <= 0;
+                if ($leadAssumed) $lead = 7;
+
+                $suggested = null;
+                if ($avg > 0) {
+                    $cover  = $avg * $lead;                     // what leaves while the next order is in transit
+                    $buffer = max($avg * 2, $cover * 0.5);      // two days' worth, or half the lead-time demand
+                    $suggested = (int) max(1, ceil($cover + $buffer));
+                }
+
+                $out[] = [
+                    'inventoryId'  => $id,
+                    'name'         => $inv->name,
+                    'sku'          => $inv->sku,
+                    'uom'          => $inv->uom,
+                    'stockQty'     => (int) ($inv->stockQty ?? 0),
+                    'current'      => (int) ($inv->minStockLevel ?? 0),
+                    'usedInWindow' => round($qty, 2),
+                    'windowDays'   => $days,
+                    'avgDaily'     => round($avg, 3),
+                    'leadTimeDays' => $lead,
+                    'leadAssumed'  => $leadAssumed,
+                    'suggested'    => $suggested,
+                ];
+            }
+
+            // Biggest gaps first: where the current minimum is furthest from what usage says.
+            usort($out, function ($a, $b) {
+                $ga = $a['suggested'] === null ? -1 : abs($a['suggested'] - $a['current']);
+                $gb = $b['suggested'] === null ? -1 : abs($b['suggested'] - $b['current']);
+                return $gb <=> $ga;
+            });
+
+            return $this->successResponse('Minimum stock suggestions computed.', [
+                'windowDays' => $window,
+                'rows'       => $out,
+            ]);
+        } catch (\Exception $e) {
+            return $this->serverErrorResponse($e, 'Could not compute suggestions.');
+        }
+    }
+
     public function stockOuts(Request $request)
     {
         try {

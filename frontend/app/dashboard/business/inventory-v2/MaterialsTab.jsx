@@ -2,7 +2,7 @@
 import { useIsPhone, KpiStrip, PhoneFilterBar, PhoneList, PhoneRow } from '@/components/dashboard/phone';
 import { useState, useMemo } from 'react';
 import { S, ICONS, Field, IntegerInput, DecimalInput, Modal, ConfirmModal, PaginationBar, SearchBar, StatusBadge, EmptyState, SummaryCard, usePagination, formatCurrency, uid, CustomSelect } from './shared';
-import { createMat, updateMat, deleteMat, createSupplier } from './api';
+import { createMat, updateMat, deleteMat, createSupplier, loadMinStockSuggestions } from './api';
 
 function getSkuPrefix(category) {
   const KNOWN = { Garments:'GAR', 'Print Materials':'PRT', Drinkware:'DRW', Packaging:'PKG', Accessories:'ACC', Bags:'BAG', Office:'OFF', Other:'OTH' };
@@ -253,6 +253,26 @@ export default function MaterialsTab({ materials, setMaterials, vendors, setVend
   const [showForm,     setShowForm]   = useState(false);
   const [confirm,      setConfirm]    = useState(null);
   const [showManage,   setShowManage] = useState(false);
+  // The minimum-stock review: null = closed, 'loading', or the rows the server suggested.
+  const [sugg, setSugg] = useState(null);
+  const [applying, setApplying] = useState(null);   // inventoryId being written, or 'all'
+  const openSuggestions = async () => {
+    setSugg('loading');
+    try { setSugg(await loadMinStockSuggestions(token)); }
+    catch (err) { toast?.(err.message, 'error'); setSugg(null); }
+  };
+  const acceptSuggestion = async (rows) => {
+    setApplying(rows.length === 1 ? rows[0].inventoryId : 'all');
+    let done = 0;
+    for (const r of rows) {
+      try { await updateMat(token, r.inventoryId, { minStockLevel: r.suggested }); done++; }
+      catch (err) { toast?.(`${r.name}: ${err.message}`, 'error'); }
+    }
+    await onRefresh(['materials']);
+    setSugg(prev => (prev && prev !== 'loading') ? { ...prev, rows: prev.rows.map(x => rows.find(a => a.inventoryId === x.inventoryId) ? { ...x, current: x.suggested } : x) } : prev);
+    setApplying(null);
+    if (done) toast?.(`${done} minimum${done === 1 ? '' : 's'} updated.`, 'success');
+  };
   const [showQVendor,  setShowQVendor]= useState(false);
   const [saving,       setSaving]     = useState(false);
 
@@ -393,7 +413,7 @@ export default function MaterialsTab({ materials, setMaterials, vendors, setVend
           <PhoneFilterBar search={search} onSearch={setSearch} placeholder="Search name or SKU"
             filters={[{ key:'cat', label:'Category', value:catFilter, defaultValue:'All', onChange:setCat,
               options:[{ value:'All', label:'All' }, ...categories.map(c => ({ value:c, label:c }))] }]}
-            actions={<button onClick={() => setShowManage(true)} style={{ ...S.btnSmGhost, minHeight:36 }}>Manage lists</button>}
+            actions={<><button onClick={openSuggestions} style={{ ...S.btnSmGhost, minHeight:36 }}>Suggest minimums</button><button onClick={() => setShowManage(true)} style={{ ...S.btnSmGhost, minHeight:36 }}>Manage lists</button></>}
             note={`${total} material${total !== 1 ? 's' : ''}`} />
         </>
       ) : (<>
@@ -412,6 +432,7 @@ export default function MaterialsTab({ materials, setMaterials, vendors, setVend
             style={{ width:'160px' }} />
         </div>
         <div style={{ display:'flex', gap:'8px' }}>
+          <button onClick={openSuggestions} style={S.btnGhost} title="What each minimum should be, from how fast it actually leaves the shelf">Suggest minimums</button>
           <button onClick={() => setShowManage(true)} style={S.btnGhost}>Manage Lists</button>
           <button onClick={openAdd} style={S.btnPrimary}>{ICONS.plus} Add Material</button>
         </div>
@@ -627,6 +648,73 @@ export default function MaterialsTab({ materials, setMaterials, vendors, setVend
               : `Delete "${confirm?.name}"? This cannot be undone.`
         }
       />
+
+      {/* Minimum-stock review. The server suggests lead time x daily usage + a buffer, from the
+          stock ledger; nothing is written until the owner accepts a row or all of them. */}
+      <Modal open={sugg !== null} onClose={() => setSugg(null)} title="What should each minimum be?" width={760}>
+        {sugg === 'loading' ? (
+          <div style={{ padding:'24px 0', color:'var(--gray)', fontSize:13 }}>Reading the stock ledger</div>
+        ) : sugg && (() => {
+          const rows   = sugg.rows || [];
+          const change = rows.filter(r => r.suggested !== null && r.suggested !== r.current);
+          const same   = rows.filter(r => r.suggested !== null && r.suggested === r.current).length;
+          const quiet  = rows.filter(r => r.suggested === null);
+          return (
+            <div style={S.col}>
+              <div style={{ fontSize:12.5, color:'var(--gray)', lineHeight:1.55 }}>
+                A minimum is the stock that covers the wait for the next delivery, plus a cushion for a busy week:
+                <b style={{ color:'var(--gray-light)' }}> daily usage x lead time + buffer</b>. Usage comes from the last {sugg.windowDays} days of
+                the stock ledger (production, sales, quotes, scrap). A lead time marked * is not set on the material, so 7 days is assumed -
+                set the real one on the material and the suggestion tightens.
+                {same > 0 && ` ${same} already match.`}
+              </div>
+
+              {change.length === 0 ? (
+                <div style={{ padding:'18px 0', fontSize:13, color:'var(--gray)' }}>Every minimum with usage behind it already matches its suggestion.</div>
+              ) : (
+                <>
+                  <div style={{ ...S.rowBetween }}>
+                    <span style={{ fontSize:12, color:'var(--gray)' }}>{change.length} would change</span>
+                    <button onClick={() => acceptSuggestion(change)} disabled={!!applying} style={{ ...S.btnPrimary, opacity: applying ? .6 : 1 }}>
+                      {applying === 'all' ? 'Applying' : `Accept all ${change.length}`}
+                    </button>
+                  </div>
+                  <div style={{ border:'1px solid var(--border)', borderRadius:8, overflow:'hidden' }}>
+                    {change.map((r, i) => {
+                      const up = r.suggested > r.current;
+                      return (
+                        <div key={r.inventoryId} style={{ display:'flex', alignItems:'center', gap:12, padding:'10px 12px', borderTop: i ? '1px solid var(--border)' : 'none', flexWrap:'wrap' }}>
+                          <div style={{ flex:'1 1 200px', minWidth:0 }}>
+                            <div style={{ fontSize:13, fontWeight:600 }}>{r.name}</div>
+                            <div style={{ fontSize:11.5, color:'var(--gray)', marginTop:2 }}>
+                              {r.avgDaily} {r.uom}/day over {r.windowDays} days · lead {r.leadTimeDays}d{r.leadAssumed ? '*' : ''} · on hand {r.stockQty}
+                            </div>
+                          </div>
+                          <div style={{ textAlign:'right', minWidth:110 }}>
+                            <span style={{ fontSize:12, color:'var(--gray)', textDecoration:'line-through' }}>{r.current}</span>
+                            <span style={{ margin:'0 6px', color:'var(--gray)' }}>&rarr;</span>
+                            <b style={{ fontSize:15, color: up ? '#b45309' : '#2e7d32' }}>{r.suggested}</b>
+                            <span style={{ fontSize:11, color:'var(--gray)' }}> {r.uom}</span>
+                          </div>
+                          <button onClick={() => acceptSuggestion([r])} disabled={!!applying} style={{ ...S.btnSm, minHeight:36, opacity: applying ? .6 : 1 }}>
+                            {applying === r.inventoryId ? 'Saving' : 'Accept'}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+
+              {quiet.length > 0 && (
+                <div style={{ fontSize:12, color:'var(--gray)', lineHeight:1.5 }}>
+                  <b style={{ color:'var(--gray-light)' }}>No usage yet ({quiet.length}):</b> {quiet.map(r => r.name).join(', ')}. Their minimums stay as you set them - nothing to base a number on.
+                </div>
+              )}
+            </div>
+          );
+        })()}
+      </Modal>
 
       {/* Manage Lists modal */}
       <ManageListsModal
