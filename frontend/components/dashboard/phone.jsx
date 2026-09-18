@@ -44,24 +44,42 @@ const chevron = (
  * active, color, onClick }; tapping one filters, as clicking a card does on the desktop.
  */
 export function KpiStrip({ items }) {
-  const cols = Math.min(5, Math.max(2, items.length));
+  // Counts sit five across; money never does. Past four tiles, or when any value is long (a
+  // peso figure, a percentage), the row is three across and wraps - a second row is fine, a
+  // number squeezed into a column of five is not.
+  const longest = Math.max(0, ...items.map(it => String(it.value ?? '').length));
+  const perRow = longest > 6 ? 3 : longest > 4 ? 4 : 5;
+  const cols = Math.max(2, Math.min(perRow, items.length));
   return (
     <div style={{ display: 'grid', gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`, gap: 0, marginBottom: 12,
       background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
-      {items.slice(0, cols).map((it, i) => (
-        <button key={it.key} type="button" onClick={it.onClick} disabled={!it.onClick}
+      {items.map((it, i) => (
+        <button key={it.key} type="button" onClick={it.onClick} disabled={!it.onClick} title={it.title}
           style={{
             minHeight: 64, padding: '10px 4px 8px', textAlign: 'center', cursor: it.onClick ? 'pointer' : 'default',
             background: it.active ? 'rgba(212,168,67,0.10)' : 'transparent', color: 'var(--white)',
-            border: 'none', borderLeft: i === 0 ? 'none' : '1px solid var(--border)',
-            boxShadow: it.active ? 'inset 0 -3px 0 var(--gold)' : 'none',
+            border: 'none', borderLeft: i % cols === 0 ? 'none' : '1px solid var(--border)', borderTop: i >= cols ? '1px solid var(--border)' : 'none',
+            boxShadow: it.active ? 'inset 0 -3px 0 var(--gold)' : 'none', minWidth: 0,
           }}>
-          <div style={{ fontSize: 22, fontWeight: 700, lineHeight: 1.1, color: it.active ? 'var(--gold)' : (it.color || 'var(--white)') }}>{it.value}</div>
+          <div style={{ fontSize: longest > 8 ? 17 : longest > 6 ? 19 : 22, fontWeight: 700, lineHeight: 1.1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'clip',
+            color: it.active ? 'var(--gold)' : (it.color || 'var(--white)') }}>{it.value}</div>
           <div style={{ fontSize: 10.5, fontWeight: 600, color: 'var(--gray)', marginTop: 4, lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.label}</div>
         </button>
       ))}
     </div>
   );
+}
+
+/**
+ * Money for a tile: no centavos, and abbreviated from six digits. "P2,070" reads at a glance;
+ * "P2,070.00" is for the row and the table. Pass the exact figure as the tile's title.
+ */
+export function pesoShort(n) {
+  const v = Number(n || 0);
+  const abs = Math.abs(v);
+  if (abs >= 1000000) return '\u20b1' + (v / 1000000).toFixed(abs >= 10000000 ? 0 : 1).replace(/\.0$/, '') + 'M';
+  if (abs >= 100000)  return '\u20b1' + Math.round(v / 1000) + 'k';
+  return '\u20b1' + Math.round(v).toLocaleString('en-PH');
 }
 
 /* ── Search + Filter button + bottom sheet ────────────────────────────────── */

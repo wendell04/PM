@@ -9,7 +9,7 @@ import useLockBodyScroll from '@/lib/useLockBodyScroll';
 import { orderNo } from '@/lib/orderNumber';
 import { normalizeStatus } from '@/lib/orderStatus';
 import { S, ICONS, SearchBar, SummaryCard, PaginationBar, EmptyState, usePagination, CustomSelect } from '../inventory-v2/shared';
-import { useIsPhone, KpiStrip, PhoneFilterBar, PhoneList, PhoneRow } from '@/components/dashboard/phone';
+import { useIsPhone, KpiStrip, PhoneFilterBar, PhoneList, PhoneRow, pesoShort } from '@/components/dashboard/phone';
 
 // Accounts receivable. Sales answers "what did we sell"; this answers "what have we collected and
 // who still owes us". The two are deliberately separate reports over the same orders.
@@ -189,10 +189,9 @@ export default function PaymentsPage() {
 
         {isPhone ? (
           <KpiStrip items={[
-            { key: 'out',  label: 'Outstanding', value: fmt(outstanding), color: outstanding > 0 ? 'var(--st-red-fg)' : undefined, active: ageFilter === 'all', onClick: () => { setAgeFilter('all'); setPage(1); } },
-            ...bucketTotals.map(bk => ({ key: bk.key, label: bk.label, value: fmt(bk.amount), color: bk.amount > 0 ? bk.tone.fg : 'var(--gray)', active: ageFilter === bk.key, onClick: () => { setAgeFilter(ageFilter === bk.key ? 'all' : bk.key); setPage(1); } })),
-            { key: 'col',  label: 'Collected',   value: fmt(totalCollected), color: 'var(--st-green-fg)' },
-            { key: 'tot',  label: 'Order value', value: fmt(totalValue) },
+            { key: 'out',  label: 'Outstanding', value: pesoShort(outstanding), title: fmt(outstanding), color: outstanding > 0 ? 'var(--st-red-fg)' : undefined, active: ageFilter === 'all', onClick: () => { setAgeFilter('all'); setPage(1); } },
+            ...bucketTotals.map(bk => ({ key: bk.key, label: bk.label, value: pesoShort(bk.amount), title: fmt(bk.amount), color: bk.amount > 0 ? bk.tone.fg : 'var(--gray)', active: ageFilter === bk.key, onClick: () => { setAgeFilter(ageFilter === bk.key ? 'all' : bk.key); setPage(1); } })),
+            { key: 'col',  label: 'Collected',   value: pesoShort(totalCollected), title: fmt(totalCollected), color: 'var(--st-green-fg)' },
           ]} />
         ) : (<>
         <div className="pmp-stat-row" style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '16px' }}>

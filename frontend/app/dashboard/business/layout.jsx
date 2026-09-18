@@ -1463,6 +1463,37 @@ export default function BusinessDashboardLayout({ children }) {
           </div>
         </header>
 
+        {/* The section strip, phone only. A bottom tab stands for a SECTION - Inventory is Master
+            Data, Overview, To Buy and Bad Orders - so landing on one module must show its
+            siblings, or the rest are hidden behind More. The standard fix is a sub-navigation
+            row under the top bar (Shopify's Orders has All / Drafts / Abandoned the same way),
+            not a second menu. Built from the sidebar's own groups and gates, so it can never
+            show a module the sidebar would not. */}
+        {(() => {
+          const sections = [];
+          let cur = null;
+          for (const item of navItems) {
+            if (item.type === "divider") { cur = { label: item.label, items: [] }; sections.push(cur); continue; }
+            if (!cur) { cur = { label: "", items: [] }; sections.push(cur); }
+            if (item.adminOnly && !isAdminOwner) continue;
+            const ok = isAdminOwner || (item.marketingGroup ? (can("flashSales") || can("vouchers")) : can(item.permKey ?? "dashboard"));
+            if (ok && item.href) cur.items.push(item);
+          }
+          // The same test the sidebar uses: a plain path, or a path plus its ?tab= family.
+          const here = (it) => (it.matchTabs && currentTab && it.matchTabs.includes(currentTab))
+            || pathname === it.href
+            || (pathname + (currentTab ? `?tab=${currentTab}` : "")) === it.href;
+          const section = sections.find(sec => sec.items.some(here));
+          if (!section || section.items.length < 2) return null;
+          return (
+            <nav className="phone-section-strip" aria-label={section.label + " modules"}>
+              {section.items.map(it => (
+                <Link key={it.href} href={it.href} className={"phone-section-pill" + (here(it) ? " is-active" : "")}>{it.name}</Link>
+              ))}
+            </nav>
+          );
+        })()}
+
         {/* Page content */}
         <main className="admin-page-content" ref={pageContentRef}>{children}</main>
 
@@ -1475,9 +1506,14 @@ export default function BusinessDashboardLayout({ children }) {
             { name: "Home",       href: "/dashboard/business/home",               permKey: "dashboard", d: "M3 12l9-8 9 8M5 10v10h5v-6h4v6h5V10" },
             { name: "Orders",     href: "/dashboard/business/orders",             permKey: "orders",    d: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" },
             { name: "Production", href: "/dashboard/business/production-preview", permKey: "jobOrders", alt: "production", d: "M12 8v4l3 3M21 12a9 9 0 11-18 0 9 9 0 0118 0z" },
-            { name: "Inventory",  href: "/dashboard/business/inventory-v2",       permKey: "inventory", d: "M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" },
+            { name: "Inventory",  href: "/dashboard/business/inventory-v2?tab=materials", permKey: "inventory", d: "M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" },
           ].filter(t => isAdminOwner || can(t.permKey) || (t.alt && can(t.alt)));
-          const active = (t) => pathname === t.href || pathname.startsWith(t.href + "?") || (t.href.endsWith("orders") && pathname.startsWith("/dashboard/business/orders"));
+          // A tab is lit for its whole section, not only its landing module.
+          const tabSection = { "/dashboard/business/home": ["/dashboard/business/home", "/dashboard/business/dashboardoverview"],
+            "/dashboard/business/orders": ["/dashboard/business/orders", "/dashboard/business/pos", "/dashboard/business/job-orders", "/dashboard/business/order-requests"],
+            "/dashboard/business/production-preview": ["/dashboard/business/production-preview", "/dashboard/business/qc-preview"],
+            "/dashboard/business/inventory-v2?tab=materials": ["/dashboard/business/inventory-v2", "/dashboard/business/to-buy"] };
+          const active = (t) => (tabSection[t.href] ?? [t.href.split("?")[0]]).some(pth => pathname === pth || pathname.startsWith(pth + "/"));
           return (
             <nav className="phone-tabbar" aria-label="Main">
               {tabs.map(t => (

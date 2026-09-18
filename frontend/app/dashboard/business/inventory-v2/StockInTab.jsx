@@ -1,5 +1,5 @@
 'use client';
-import { useIsPhone, KpiStrip, PhoneFilterBar, PhoneList, PhoneRow } from '@/components/dashboard/phone';
+import { useIsPhone, KpiStrip, PhoneFilterBar, PhoneList, PhoneRow , pesoShort } from '@/components/dashboard/phone';
 import { useState, useMemo } from 'react';
 import { S, ICONS, Field, IntegerInput, DecimalInput, Modal, PaginationBar, SearchBar, StatusBadge, Note, EmptyState, SummaryCard, usePagination, formatCurrency, formatDate, uid, CustomSelect } from './shared';
 import { adjustStock, createReturn } from './api';
@@ -281,7 +281,7 @@ export default function StockInTab({ materials, vendors, batches, setBatches, ba
           <KpiStrip items={[
             { key:'b', label:'Batches',  value: batches.length },
             { key:'q', label:'Qty in',   value: totalReceived.toLocaleString() },
-            { key:'v', label:'Value in', value: formatCurrency(totalValue) },
+            { key:'v', label:'Value in', value: pesoShort(totalValue), title: formatCurrency(totalValue) },
           ]} />
           <PhoneFilterBar search={histSearch} onSearch={setHistSearch} placeholder="Search invoice, material, vendor"
             note={`${hTotal} record${hTotal !== 1 ? 's' : ''}`} />

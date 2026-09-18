@@ -1,5 +1,5 @@
 'use client';
-import { useIsPhone, KpiStrip, PhoneFilterBar, PhoneList, PhoneRow } from '@/components/dashboard/phone';
+import { useIsPhone, KpiStrip, PhoneFilterBar, PhoneList, PhoneRow , pesoShort } from '@/components/dashboard/phone';
 import { useState, useMemo } from 'react';
 import { S, ICONS, Field, IntegerInput, Modal, ConfirmModal, PaginationBar, SearchBar, StatusBadge, Note, EmptyState, SummaryCard, usePagination, formatCurrency, formatDate, uid, CustomSelect } from './shared';
 import { DateRangeFilter, inDateRange, performedByLabel } from './StockOutHistoryTab';
@@ -253,7 +253,7 @@ export default function ActualStockTab({ materials, batches, setBatches, badOrde
             { key:'In Stock',     label:'In stock', value: inStock,  color:'#2e7d32', active: statusFilter === 'In Stock',     onClick: () => setStatus(statusFilter === 'In Stock' ? 'All' : 'In Stock') },
             { key:'Low Stock',    label:'Low',      value: lowStock, color:'#b45309', active: statusFilter === 'Low Stock',    onClick: () => setStatus(statusFilter === 'Low Stock' ? 'All' : 'Low Stock') },
             { key:'Out of Stock', label:'Out',      value: outStock, color:'#c62828', active: statusFilter === 'Out of Stock', onClick: () => setStatus(statusFilter === 'Out of Stock' ? 'All' : 'Out of Stock') },
-            { key:'val',          label:'Value',    value: formatCurrency(totalVal) },
+            { key:'val',          label:'Value',    value: pesoShort(totalVal), title: formatCurrency(totalVal) },
           ]} />
           <PhoneFilterBar search={search} onSearch={setSearch} placeholder="Search name or SKU"
             filters={[

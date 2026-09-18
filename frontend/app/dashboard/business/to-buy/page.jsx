@@ -16,7 +16,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { S, ICONS, SearchBar, SummaryCard } from '../inventory-v2/shared';
-import { useIsPhone, KpiStrip, PhoneRow } from '@/components/dashboard/phone';
+import { useIsPhone, KpiStrip, PhoneRow , pesoShort } from '@/components/dashboard/phone';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
@@ -142,7 +142,7 @@ export default function ToBuyPage() {
       {isPhone ? (
         <KpiStrip items={[
           { key: 'n', label: 'To buy',    value: totals.totalItems },
-          { key: 'c', label: 'Est. cost', value: peso(totals.estimatedCost) },
+          { key: 'c', label: 'Est. cost', value: pesoShort(totals.estimatedCost), title: peso(totals.estimatedCost) },
           { key: 's', label: 'Suppliers', value: groups.length },
         ]} />
       ) : (
