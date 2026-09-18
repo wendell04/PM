@@ -1465,6 +1465,34 @@ export default function BusinessDashboardLayout({ children }) {
 
         {/* Page content */}
         <main className="admin-page-content" ref={pageContentRef}>{children}</main>
+
+        {/* The bottom tab bar, phone only (the stylesheet hides it above 700px). Shopify's admin
+            and the Shopee Seller app both put the four or five places a thumb goes at the bottom;
+            the hamburger drawer stays for everything else, behind More. Only tabs the person can
+            actually open are shown - the same gate the sidebar uses. */}
+        {(() => {
+          const tabs = [
+            { name: "Home",       href: "/dashboard/business/home",               permKey: "dashboard", d: "M3 12l9-8 9 8M5 10v10h5v-6h4v6h5V10" },
+            { name: "Orders",     href: "/dashboard/business/orders",             permKey: "orders",    d: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" },
+            { name: "Production", href: "/dashboard/business/production-preview", permKey: "jobOrders", alt: "production", d: "M12 8v4l3 3M21 12a9 9 0 11-18 0 9 9 0 0118 0z" },
+            { name: "Inventory",  href: "/dashboard/business/inventory-v2",       permKey: "inventory", d: "M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" },
+          ].filter(t => isAdminOwner || can(t.permKey) || (t.alt && can(t.alt)));
+          const active = (t) => pathname === t.href || pathname.startsWith(t.href + "?") || (t.href.endsWith("orders") && pathname.startsWith("/dashboard/business/orders"));
+          return (
+            <nav className="phone-tabbar" aria-label="Main">
+              {tabs.map(t => (
+                <Link key={t.href} href={t.href} className={"phone-tab" + (active(t) ? " is-active" : "")}>
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d={t.d} /></svg>
+                  <span>{t.name}</span>
+                </Link>
+              ))}
+              <button type="button" className={"phone-tab" + (sidebarOpen ? " is-active" : "")} onClick={() => setSidebarOpen(true)}>
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round"><line x1="4" y1="7" x2="20" y2="7" /><line x1="4" y1="12" x2="20" y2="12" /><line x1="4" y1="17" x2="20" y2="17" /></svg>
+                <span>More</span>
+              </button>
+            </nav>
+          );
+        })()}
       </div>
 
       {/* My Profile â€” read-only display card */}
