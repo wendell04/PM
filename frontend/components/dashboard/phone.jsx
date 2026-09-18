@@ -223,7 +223,7 @@ export function PhoneRow({ title, chip, meta, sub, onClick, muted = false, first
   return (
     <button type="button" onClick={onClick}
       style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', minHeight: 60, padding: '10px 12px 10px 14px',
-        background: 'transparent', color: 'var(--white)', border: 'none', borderTop: first ? 'none' : '1px solid var(--border)', cursor: 'pointer', opacity: muted ? 0.6 : 1 }}>
+        background: 'transparent', color: 'var(--white)', border: 'none', borderTop: first ? 'none' : '1px solid var(--border)', cursor: onClick ? 'pointer' : 'default', opacity: muted ? 0.6 : 1 }}>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
           <span style={{ fontFamily: mono ? 'monospace' : 'inherit', fontWeight: 700, fontSize: mono ? 13 : 14, color: mono ? 'var(--gold)' : 'var(--white)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{title}</span>
@@ -232,7 +232,7 @@ export function PhoneRow({ title, chip, meta, sub, onClick, muted = false, first
         {meta && <div style={{ fontSize: 13, marginTop: 3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{meta}</div>}
         {sub && <div style={{ fontSize: 11.5, color: 'var(--gray)', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sub}</div>}
       </div>
-      <span style={{ color: 'var(--gray)', display: 'flex', flexShrink: 0 }}>{chevron}</span>
+      {onClick && <span style={{ color: 'var(--gray)', display: 'flex', flexShrink: 0 }}>{chevron}</span>}
     </button>
   );
 }

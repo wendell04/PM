@@ -1,4 +1,5 @@
 'use client';
+import { useIsPhone, KpiStrip, PhoneFilterBar, PhoneList, PhoneRow } from '@/components/dashboard/phone';
 import { useState, useMemo } from 'react';
 import { S, ICONS, Field, IntegerInput, Modal, ConfirmModal, PaginationBar, SearchBar, StatusBadge, Note, EmptyState, SummaryCard, usePagination, formatCurrency, formatDate, uid, CustomSelect } from './shared';
 import { DateRangeFilter, inDateRange, performedByLabel } from './StockOutHistoryTab';
@@ -242,9 +243,26 @@ export default function ActualStockTab({ materials, batches, setBatches, badOrde
     );
   }, [sortedOuts, histSearch, histTypeFilter, histRange, histFrom, histTo]);
   const { slice: hSlice, page: hPage, perPage: hPerPage, total: hTotal, setPage: setHPage, setPerPage: setHPerPage } = usePagination(filteredOuts);
+  const isPhone = useIsPhone();
 
   return (
     <div style={S.col}>
+      {isPhone ? (
+        <>
+          <KpiStrip items={[
+            { key:'In Stock',     label:'In stock', value: inStock,  color:'#2e7d32', active: statusFilter === 'In Stock',     onClick: () => setStatus(statusFilter === 'In Stock' ? 'All' : 'In Stock') },
+            { key:'Low Stock',    label:'Low',      value: lowStock, color:'#b45309', active: statusFilter === 'Low Stock',    onClick: () => setStatus(statusFilter === 'Low Stock' ? 'All' : 'Low Stock') },
+            { key:'Out of Stock', label:'Out',      value: outStock, color:'#c62828', active: statusFilter === 'Out of Stock', onClick: () => setStatus(statusFilter === 'Out of Stock' ? 'All' : 'Out of Stock') },
+            { key:'val',          label:'Value',    value: formatCurrency(totalVal) },
+          ]} />
+          <PhoneFilterBar search={search} onSearch={setSearch} placeholder="Search name or SKU"
+            filters={[
+              { key:'cat', label:'Category', value:catFilter, defaultValue:'All', onChange:setCat, options: categories.map(c => ({ value:c, label:c })) },
+              { key:'st',  label:'Stock',    value:statusFilter, defaultValue:'All', onChange:setStatus, options: ['All','In Stock','Low Stock','Out of Stock'].map(v => ({ value:v, label:v })) },
+            ]}
+            note={`${total} material${total !== 1 ? 's' : ''}`} />
+        </>
+      ) : (<>
       {/* summary */}
       <div style={{ display:'flex', gap:'12px', flexWrap:'wrap' }}>
         <SummaryCard label="In Stock"     value={inStock}  color="#2e7d32" accent />
@@ -270,6 +288,31 @@ export default function ActualStockTab({ materials, batches, setBatches, badOrde
         </div>
       </div>
 
+      </>)}
+
+      {isPhone ? (
+        <>
+          {slice.length === 0 ? (
+            <div style={{ ...S.card, padding:0 }}><EmptyState message="No stock data" sub="Receive stock first." /></div>
+          ) : (
+            <PhoneList>
+              {slice.map((d, i) => (
+                <div key={d.mat.id} style={{ borderTop: i === 0 ? 'none' : '1px solid var(--border)' }}>
+                  <PhoneRow first title={d.mat.sku} chip={<StatusBadge status={d.status} />}
+                    meta={d.mat.name}
+                    sub={[`on hand ${d.actualQty}`, d.reservedQty > 0 ? `held ${d.reservedQty}` : null, d.pendingBOQty > 0 ? `bad ${d.pendingBOQty}` : null, `sellable ${d.availableQty} ${d.mat.unit}`, `value ${formatCurrency(d.stockValue)}`].filter(Boolean).join(' \u00b7 ')} />
+                  <div style={{ padding:'0 12px 10px 14px' }}>
+                    <button onClick={() => setReduceTarget(d.mat)} style={{ ...S.btnSmDanger, minHeight:40, width:'100%', justifyContent:'center' }}>{ICONS.warn} Record stock out</button>
+                  </div>
+                </div>
+              ))}
+            </PhoneList>
+          )}
+          <div style={{ padding:'12px 0' }}>
+            <PaginationBar total={total} page={page} perPage={perPage} onPage={setPage} onPerPage={setPerPage} />
+          </div>
+        </>
+      ) : (<>
       {/* actual stock table */}
       <div style={{ ...S.card, padding:0, overflow:'hidden' }}>
         <div style={{ overflowX:'auto' }}>
@@ -325,6 +368,8 @@ export default function ActualStockTab({ materials, batches, setBatches, badOrde
           <PaginationBar total={total} page={page} perPage={perPage} onPage={setPage} onPerPage={setPerPage} />
         </div>
       </div>
+
+      </>)}
 
       {/* Stock out history */}
       <div style={{ ...S.cardSm, fontWeight:700, fontSize:'14px', color:'var(--gray-light)' }}>Stock Out History</div>

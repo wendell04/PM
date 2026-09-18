@@ -1,4 +1,5 @@
 'use client';
+import { useIsPhone, KpiStrip, PhoneFilterBar, PhoneList, PhoneRow } from '@/components/dashboard/phone';
 import { useState, useMemo } from 'react';
 import { S, ICONS, Field, Modal, ConfirmModal, PaginationBar, SearchBar, StatusBadge, EmptyState, SummaryCard, usePagination, uid } from './shared';
 import { createSupplier, updateSupplier, deleteSupplier } from './api';
@@ -48,6 +49,7 @@ export default function VendorsTab({ vendors, setVendors, materials, categories,
   }, [vendors, search]);
 
   const { slice, page, perPage, total, setPage, setPerPage } = usePagination(filtered);
+  const isPhone = useIsPhone();
 
   const openAdd = () => { setForm(EMPTY_FORM); setErrors({}); setEditId(null); setShowForm(true); };
 
@@ -124,6 +126,16 @@ export default function VendorsTab({ vendors, setVendors, materials, categories,
 
   return (
     <div style={S.col}>
+      {isPhone ? (
+        <>
+          <button onClick={openAdd} style={{ ...S.btnPrimary, minHeight:44, justifyContent:'center' }}>{ICONS.plus} Add Vendor</button>
+          <KpiStrip items={[
+            { key:'v', label:'Vendors',        value: vendors.length },
+            { key:'m', label:'With materials', value: Object.keys(matCountMap).length },
+          ]} />
+          <PhoneFilterBar search={search} onSearch={setSearch} placeholder="Search vendor name, email" note={`${total} vendor${total !== 1 ? 's' : ''}`} />
+        </>
+      ) : (<>
       {/* summary */}
       <div style={{ display:'flex', gap:'12px', flexWrap:'wrap' }}>
         <SummaryCard label="Total Vendors" value={vendors.length} accent />
@@ -136,6 +148,28 @@ export default function VendorsTab({ vendors, setVendors, materials, categories,
         <button onClick={openAdd} style={S.btnPrimary}>{ICONS.plus} Add Vendor</button>
       </div>
 
+      </>)}
+
+      {isPhone ? (
+        <>
+          {slice.length === 0 ? (
+            <div style={{ ...S.card, padding:0 }}><EmptyState message="No vendors found" sub="Add a vendor to get started." /></div>
+          ) : (
+            <PhoneList>
+              {slice.map((v, i) => (
+                <PhoneRow key={v.id} first={i === 0} mono={false} onClick={() => openEdit(v)}
+                  title={v.name}
+                  chip={<span style={{ fontSize:12, color:'var(--gray)' }}>{matCountMap[v.id] || 0} materials</span>}
+                  meta={[v.contact, v.email].filter(Boolean).join(' \u00b7 ')}
+                  sub={[(v.itemsSupplied || []).join(', '), v.address].filter(Boolean).join(' \u00b7 ')} />
+              ))}
+            </PhoneList>
+          )}
+          <div style={{ padding:'12px 0' }}>
+            <PaginationBar total={total} page={page} perPage={perPage} onPage={setPage} onPerPage={setPerPage} />
+          </div>
+        </>
+      ) : (<>
       {/* table */}
       <div style={{ ...S.card, padding:0, overflow:'hidden' }}>
         <div style={{ overflowX:'auto' }}>
@@ -184,6 +218,8 @@ export default function VendorsTab({ vendors, setVendors, materials, categories,
       </div>
 
       {/* Add / Edit modal */}
+      </>)}
+
       <Modal
         open={showForm}
         onClose={closeForm}
