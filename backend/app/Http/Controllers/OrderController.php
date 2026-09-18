@@ -2899,8 +2899,15 @@ class OrderController extends Controller
         try {
             // A multi-item order has one job order per item - cancel ALL of them that are still
             // in-flight, not just the first, or the rest orphan in Production/QC.
+            //
+            // In-flight includes the QC queue. This list once stopped at In Progress, so a job
+            // waiting for inspection (or sent back by it) stayed in Quality Control after its order
+            // was cancelled, asking an inspector to pass goods nobody would ship. The materials for
+            // those stages are already settled by restoreStockOnCancel, which reads the stage
+            // BEFORE this runs; only the status was left behind. A QC_Passed or Completed job stays
+            // as it is: that is the record that the work was done.
             $jobOrders = \App\Models\JobOrder::where('orderId', (string) $order->_id)
-                ->whereIn('joStatus', ['Queued', 'In Progress'])
+                ->whereIn('joStatus', ['Queued', 'In Progress', 'QC_Pending', 'QC_Failed'])
                 ->get();
 
             foreach ($jobOrders as $jobOrder) {
