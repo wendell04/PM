@@ -38,6 +38,23 @@ class AppServiceProvider extends ServiceProvider
                 ));
         });
 
+        // Resend refusing a mail is silent: the failover logs it at debug, which production drops,
+        // and Brevo quietly carries the mail. Every security mail has gone to Brevo since 17 Sep
+        // and nothing said why. Same transport, one warning line with Resend's own reason.
+        Mail::extend('resend', function (array $config) {
+            return new class(app('resend'), $config['options'] ?? []) extends \Resend\Laravel\Transport\ResendTransportFactory {
+                protected function doSend(\Symfony\Component\Mailer\SentMessage $message): void
+                {
+                    try {
+                        parent::doSend($message);
+                    } catch (\Symfony\Component\Mailer\Exception\TransportExceptionInterface $e) {
+                        \Illuminate\Support\Facades\Log::warning('Resend refused a mail; the failover tries the next mailer', ['reason' => $e->getMessage()]);
+                        throw $e;
+                    }
+                }
+            };
+        });
+
         // Every mail replies to the shop's own inbox. The sender has to be the verified domain
         // - Resend refuses anything else and Railway blocks the SMTP that would let us send as
         // Gmail directly - so this is what actually carries a customer's reply to the owner.

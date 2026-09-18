@@ -2845,7 +2845,30 @@ const handleForgotResetPassword = async () => {
             <div className="auth-modal-body">
 
               {/* STEP 1 - Enter Email */}
-              {forgotStep === 1 && (
+              {forgotStep === 1 && forgotSent && (
+                <div style={{display:'flex',flexDirection:'column',gap:'1rem'}}>
+                  <div style={{textAlign:'center',padding:'0.5rem 0'}}>
+                    <div style={{display:'flex',alignItems:'center',justifyContent:'center',width:'64px',height:'64px',borderRadius:'50%',background:'rgba(212,168,67,0.1)',border:'1px solid rgba(212,168,67,0.25)',margin:'0 auto 1rem'}}>
+                      <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+                        <polyline points="22,6 12,13 2,6"/>
+                      </svg>
+                    </div>
+                    <p style={{color:'var(--gray)',fontSize:'0.88rem',lineHeight:'1.6',margin:0}}>
+                      We sent a reset link to <strong style={{color:'var(--white)'}}>{forgotEmail}</strong>. Open it to continue. Check your spam folder if it is not there in a minute.
+                    </p>
+                  </div>
+                  <button className="btn-auth-submit" disabled={isSendingReset} onClick={handleForgotSubmit}>
+                    {isSendingReset ? 'Sending...' : 'Send it again'}
+                  </button>
+                  <p style={{textAlign:'center',color:'var(--gray)',fontSize:'0.85rem',margin:0}}>
+                    Wrong email?{' '}
+                    <button type="button" onClick={() => { setForgotSent(false); setForgotError(''); }} style={{background:'none',border:'none',color:'var(--gold)',fontWeight:600,cursor:'pointer',padding:0}}>Change it</button>
+                  </p>
+                </div>
+              )}
+
+              {forgotStep === 1 && !forgotSent && (
                 <div style={{display:'flex',flexDirection:'column',gap:'1rem'}}>
                   <p style={{color:'var(--gray)',fontSize:'0.9rem',lineHeight:'1.6',margin:0}}>
                     Enter the email address associated with your account and we'll send you a password reset link.
@@ -2862,11 +2885,6 @@ const handleForgotResetPassword = async () => {
                     />
                     {forgotError && <span className="error-message">{forgotError}</span>}
                   </div>
-                  {forgotSent && (
-                    <div style={{padding:'0.75rem',borderRadius:'8px',background:'rgba(74,222,128,0.12)',border:'1px solid rgba(74,222,128,0.3)',color:'var(--green)',fontSize:'0.85rem'}}>
-                      ✓ A reset link has been sent to your email.
-                    </div>
-                  )}
                   <button className="btn-auth-submit" disabled={isSendingReset} onClick={handleForgotSubmit}>
                     {isSendingReset ? 'Sending...' : 'Send Reset Link'}
                   </button>

@@ -19,7 +19,7 @@
                 <p style="color: #444444; font-size: 14px; line-height: 1.7; margin: 0 0 16px;">Hi, <span style="color: #111111; font-weight: 600;">{{$firstName}}</span>!</p>
                 <p style="color: #444444; font-size: 14px; line-height: 1.7; margin: 0 0 16px;">We received a request to reset your password. Click the button below to continue. You'll be asked to verify a code on the website.</p>
                 <div style="text-align: center; margin: 24px 0;">
-                    <a href="{{$resetUrl}}" class="button" style="display: inline-block; background: #0f0f0f; color: #0f0f0f; text-decoration: none; padding: 14px 32px; border-radius: 8px; font-weight: 700; font-size: 14px; margin: 16px 0; text-align:left;">Reset My Password</a>
+                    <a href="{{$resetUrl}}" class="button" style="display: inline-block; background: #D4A843; color: #0f0f0f; text-decoration: none; padding: 14px 32px; border-radius: 8px; font-weight: 700; font-size: 14px; margin: 16px 0; text-align:center;">Reset My Password</a>
                 </div>
                 <p style="color: #444444; font-size: 14px; line-height: 1.7; margin: 0 0 16px;">If you did not request a password reset, you can safely ignore this email.</p>
                 <p style="color: #444444; font-size: 14px; line-height: 1.7; margin: 0;"><strong style="color: #111111;">For your security:</strong> This link will expire in 30 minutes.</p>
