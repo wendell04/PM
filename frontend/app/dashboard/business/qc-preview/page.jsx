@@ -142,7 +142,7 @@ export default function QualityControlPage() {
         {error && <div style={{ ...S.note, background: 'var(--st-red-bg)', borderColor: 'rgba(239,68,68,0.35)', color: 'var(--st-red-fg)', marginBottom: '10px' }}>{error}</div>}
 
         <div style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <table className="pmp-rt" style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead><tr>
               <th style={S.th}>JO</th><th style={S.th}>Approved Design</th><th style={S.th}>Product</th><th style={S.th}>Qty</th>
               <th style={S.th}>Order</th><th style={S.th}>Target</th><th style={S.th}>Status</th><th style={S.th}>Last Defect</th>

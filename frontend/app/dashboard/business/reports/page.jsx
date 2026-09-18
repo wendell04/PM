@@ -699,7 +699,7 @@ export default function ReportsPage() {
                       <div style={{ border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden' }}>
                         <style>{`.rpt-tr:hover td { background: var(--dark2); }`}</style>
                         <div style={{ overflowX: 'auto' }}>
-                          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                          <table className="pmp-rt" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
                             <thead>
                               <tr style={{ background: 'var(--dark2)' }}>
                                 {[
@@ -859,7 +859,7 @@ export default function ReportsPage() {
                       <div style={{ border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden' }}>
                         <style>{`.rpt-tr:hover td { background: var(--dark2); }`}</style>
                         <div style={{ overflowX: 'auto' }}>
-                          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                          <table className="pmp-rt" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
                             <thead>
                               <tr style={{ background: 'var(--dark2)' }}>
                                 {[

@@ -506,7 +506,7 @@ export function EmptyState({ icon, message, sub }) {
 // ── SummaryCard ───────────────────────────────────────────────────────────────
 export function SummaryCard({ label, value, sub, color = 'var(--white)', accent = false }) {
   return (
-    <div style={{ ...S.cardSm, flex:1, minWidth:'140px', borderTop: accent ? '3px solid var(--gold)' : undefined }}>
+    <div className="pmp-stat" style={{ ...S.cardSm, flex:1, minWidth:'140px', borderTop: accent ? '3px solid var(--gold)' : undefined }}>
       <div style={{ fontSize:'11px', fontWeight:600, color:'var(--gray)', textTransform:'uppercase', letterSpacing:'.5px', marginBottom:'6px' }}>{label}</div>
       <div style={{ fontSize:'22px', fontWeight:700, color }}>{value}</div>
       {sub && <div style={{ fontSize:'11px', color:'var(--gray)', marginTop:'3px' }}>{sub}</div>}

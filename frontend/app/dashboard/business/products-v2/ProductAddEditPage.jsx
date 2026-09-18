@@ -1354,7 +1354,7 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
 
                 {form.pricingMode === 'fixed' && form.type === 'multi-variant' && (
                   <div style={{ overflowX: 'auto' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                    <table className="pmp-rt" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
                       <thead>
                         <tr>
                           <th style={{ ...S.th, textAlign: 'left' }}>Variant</th>
@@ -1396,7 +1396,7 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                     {errors.tiers && <span style={S.errText}>{errors.tiers}</span>}
                     <div style={{ overflowX: 'auto' }}>
-                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                      <table className="pmp-rt" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
                         <thead>
                           <tr>
                             <th style={{ ...S.th, textAlign: 'left', minWidth: '80px' }}>Min Qty</th>

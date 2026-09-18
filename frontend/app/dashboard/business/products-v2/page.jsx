@@ -424,7 +424,7 @@ export default function ProductsV2() {
 
         {/* Table */}
         <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <table className="pmp-rt" style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr>
                 {['Product', 'Collections', 'Pricing', 'Flags', 'Status', ''].map(h => (
@@ -598,7 +598,7 @@ function StockBreakdown({ product, boms, materials }) {
               }
               <span style={{ fontSize:'12px', fontWeight:700, color:prodColor }}>{prod} can build</span>
             </div>
-            <table style={{ width:'100%', borderCollapse:'collapse' }}>
+            <table className="pmp-rt" style={{ width:'100%', borderCollapse:'collapse' }}>
               <thead>
                 <tr>
                   {['Material','Stock','Need / unit','Can make'].map(h => (

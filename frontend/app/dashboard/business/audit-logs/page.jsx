@@ -445,7 +445,7 @@ export default function AuditLogsPage() {
               />
             ) : (
               <div style={{ overflowX: 'auto' }}>
-                <table style={{
+                <table className="pmp-rt" style={{
                   width: '100%',
                   borderCollapse: 'collapse',
                   fontSize: '0.875rem',

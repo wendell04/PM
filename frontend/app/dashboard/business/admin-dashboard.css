@@ -4339,6 +4339,11 @@ html.light .skeleton-table-header {
     gap: 8px !important;
   }
   .pmp-stat-row > *, .pmp-stat-row > * > * { min-width: 0 !important; }
+  /* And the card itself, wherever it sits: two per row on a phone instead of a
+     140px minimum that squeezed three and clipped their labels. Covers every
+     SummaryCard row without tagging each wrapper. */
+  .pmp-stat { min-width: 0 !important; flex: 1 1 calc(50% - 8px) !important; }
+  .pmp-stat > :first-child { white-space: normal; letter-spacing: .3px; }
   .pmp-stat-row > * > * > :first-child { white-space: normal; letter-spacing: .3px; }
 
   table.pmp-rt > tbody > tr > td[data-rt="head"] {
@@ -4349,13 +4354,18 @@ html.light .skeleton-table-header {
     margin-bottom: 4px;
   }
   table.pmp-rt > tbody > tr > td[data-rt="head"]::before { content: none; }
+  /* A title wraps on a phone; a one-line title with an ellipsis was sized for a column. */
+  table.pmp-rt > tbody > tr > td[data-rt="head"] * { white-space: normal !important; min-width: 0; max-width: 100%; }
+  /* Two buttons in the corner (edit + delete) need more room than one arrow. */
+  table.pmp-rt > tbody > tr:has(> td[data-rt="chev"] button:nth-of-type(2)) > td[data-rt="head"] { padding-right: 118px !important; }
 
   table.pmp-rt > tbody > tr > td[data-rt="chev"] {
     display: flex !important;
     position: absolute;
     top: 8px;
     right: 6px;
-    width: 34px !important;
+    width: auto !important;
+    min-width: 34px;
     padding: 6px !important;
     align-items: center;
     justify-content: center;

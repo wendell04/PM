@@ -268,7 +268,7 @@ function Panel({ title, note, children }) {
 function DataTable({ rows, cols, empty = 'No data in this period' }) {
   return (
     <div style={{ overflowX: 'auto' }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+      <table className="pmp-rt" style={{ width: '100%', borderCollapse: 'collapse' }}>
         <thead><tr>{cols.map((c, i) => <th key={i} style={{ ...S.th, textAlign: i === 0 ? 'left' : 'right' }}>{c.label}</th>)}</tr></thead>
         <tbody>
           {rows.length === 0 ? (
@@ -885,7 +885,7 @@ export default function SalesListPage() {
         {/* Table */}
         <div style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '820px' }}>
+            <table className="pmp-rt" style={{ width: '100%', borderCollapse: 'collapse', minWidth: '820px' }}>
               <thead>
                 <tr>
                   {TH('', 0)}{TH('Order Ref', 1)}{TH('Customer', 2)}{TH('Items', 3, true)}
