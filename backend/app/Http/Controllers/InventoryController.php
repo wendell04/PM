@@ -60,6 +60,7 @@ class InventoryController extends Controller
 
             $demand   = [];   // inventoryId => qty needed
             $sources  = [];   // inventoryId => [order refs]
+            $uses     = [];   // inventoryId => productName => pieces ordered (what the material is FOR)
             $bomCache = [];
             // A finished good bought in and resold has no BOM, so the loop below resolved no
             // materials for it and it contributed nothing - the one list that says what to buy
@@ -115,6 +116,8 @@ class InventoryController extends Controller
                         }
                     }
 
+                    $lineName = trim(($item['productName'] ?? $lineProduct?->name ?? 'Item') . (!empty($item['variantName']) ? " ({$item['variantName']})" : ''));
+                    $linePcs  = max(1, (int) ($item['qty'] ?? 1));
                     foreach ($materials as $m) {
                         $invId = (string) ($m['inventoryId'] ?? '');
                         $need  = (float) ($m['qty'] ?? 0);
@@ -122,6 +125,10 @@ class InventoryController extends Controller
                         $demand[$invId] = ($demand[$invId] ?? 0) + $need;
                         $ref = '#' . strtoupper(substr((string) $order->_id, -8));
                         if (!in_array($ref, $sources[$invId] ?? [], true)) $sources[$invId][] = $ref;
+                        // Order refs say WHO; this says WHAT - the products (and how many pieces)
+                        // waiting on the material, so a shared box or pack reads as "10 Ceramic
+                        // mugs + 10 Inner Color mugs" and not as two anonymous order numbers.
+                        $uses[$invId][$lineName] = ($uses[$invId][$lineName] ?? 0) + $linePcs;
                     }
                 }
 
@@ -165,6 +172,7 @@ class InventoryController extends Controller
                     'unitCost'      => $unitCost,
                     'estimatedCost' => round($shortfall * $unitCost, 2),
                     'orders'        => array_slice($sources[$invId] ?? [], 0, 6),
+                    'for'           => array_slice(array_map(fn ($n, $q) => ['product' => $n, 'pieces' => $q], array_keys($uses[$invId] ?? []), array_values($uses[$invId] ?? [])), 0, 6),
                 ];
             }
 

@@ -463,7 +463,11 @@ export default function StaffHome() {
           {stock.length > 0 && (() => {
             const level = (r) => Number(r.stockQty ?? 0) - Number(r.reservedQty ?? 0);
             const floor = (r) => Number(r.minStockLevel ?? 0);
-            const live  = stock.filter(r => r.isActive !== false && !r.isOnDemand);
+            // "Bought per order" means the material never blocks a sale - not that it has no
+            // reorder point. A box with a 7-day lead and a 3-day production promise needs one, or
+            // every order waits a week for packaging. So an on-demand material with a minimum
+            // SET is checked like any other; one with no minimum stays with To Buy alone.
+            const live  = stock.filter(r => r.isActive !== false && (!r.isOnDemand || Number(r.minStockLevel ?? 0) > 0));
             const out   = live.filter(r => level(r) <= 0);
             const low   = live.filter(r => level(r) > 0 && floor(r) > 0 && level(r) <= floor(r));
             const worst = [...out, ...low]

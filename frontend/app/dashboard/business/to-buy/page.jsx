@@ -328,7 +328,7 @@ export default function ToBuyPage() {
               title={r.name}
               chip={<span style={{ fontSize: 12, fontWeight: 700, color: '#e0a852', whiteSpace: 'nowrap' }}>Buy {num(r.shortfall)} {r.uom}</span>}
               meta={`need ${num(r.needed)} · have ${num(r.onHand)} ${r.uom} · ${peso(r.estimatedCost)}`}
-              sub={[r.sku, r.isOnDemand ? 'buy per order' : null, r.orders?.length > 0 ? `for ${r.orders.join(', ')}` : null, !Number(r.unitCost) ? 'no cost set' : null].filter(Boolean).join(' · ')} />
+              sub={[r.for?.length > 0 ? `for ${r.for.map(f => `${f.pieces} × ${f.product}`).join(', ')}` : null, r.orders?.length > 0 ? r.orders.join(', ') : null, r.isOnDemand ? 'buy per order' : null, !Number(r.unitCost) ? 'no cost set' : null].filter(Boolean).join(' · ')} />
           )) : (<>
           <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 90px 90px 90px 110px', gap: '8px',
             padding: '8px 16px', fontSize: '10px', fontWeight: 700, letterSpacing: '.05em',
@@ -349,8 +349,13 @@ export default function ToBuyPage() {
                 </div>
                 <div style={{ fontSize: '10.5px', color: 'var(--gray)', marginTop: '1px' }}>
                   {[r.sku, r.category, r.isOnDemand ? 'buy per order' : null].filter(Boolean).join(' · ')}
-                  {r.orders?.length > 0 && ` · for ${r.orders.join(', ')}`}
+                  {r.orders?.length > 0 && ` · ${r.orders.join(', ')}`}
                 </div>
+                {r.for?.length > 0 && (
+                  <div style={{ fontSize: '11px', color: 'var(--gray-light)', marginTop: '2px' }}>
+                    For {r.for.map(f => `${f.pieces} × ${f.product}`).join(', ')}
+                  </div>
+                )}
                 {!Number(r.unitCost) && (
                   <div style={{ fontSize: '10.5px', color: '#e0a852', marginTop: '1px' }}>
                     No cost set - the estimate below is understated.
