@@ -5658,3 +5658,14 @@ html.light .shop-search-suggest-name { color: #111; }
 @media (max-width: 768px) {
   .shop-footer-legal-inline { display: none; }
 }
+
+/* ─── Banner carousel on a phone ────────────────────────────────────────────
+   Two 44px arrows sitting over a ~340px banner cover the artwork they are
+   meant to help you see, and a phone already has the gesture: swipe. The dots
+   stay, so it is still clear there is more than one and where you are. The
+   banner advances on its own anyway - each one holds for the time set on it in
+   the Banners module. */
+@media (max-width: 768px) {
+  .shop-carousel-nav { display: none !important; }
+  .shop-carousel-slide { cursor: zoom-in; }
+}

@@ -4,6 +4,7 @@ import NoImage from '@/components/NoImage';
 import { PLAIN_OR_CUSTOM_ENABLED } from '@/lib/featureFlags';
 
 import useLockBodyScroll from '@/lib/useLockBodyScroll';
+import BannerViewer from '@/components/BannerViewer';
 import useSheetDrag from '@/lib/useSheetDrag';
 import { useState, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -1046,6 +1047,10 @@ export default function ShopClient({
   };
 
   const carouselRef = useRef(null);
+  // Tapping a banner opens it full screen. On a phone the carousel is about 340px wide and anything
+  // written on the artwork is unreadable there.
+  const [bannerViewAt, setBannerViewAt] = useState(null);
+  const carouselSwipeRef = useRef(null);
   const autoplayRef = useRef(null);
   const sortDropdownRef = useRef(null);
 
@@ -1103,21 +1108,18 @@ export default function ShopClient({
     }
   }
 
-  // Auto-play carousel
+  // Auto-play. Each banner holds for the time the owner set on it (Settings > Banners); one fixed
+  // interval gave a three-word promo the same six seconds as a paragraph. A timeout per slide rather
+  // than one repeating interval, because the wait now changes from slide to slide.
   useEffect(() => {
-    if (banners.length === 0) return;
-    if (!isAutoPlaying || banners.length <= 1) return;
-
-    autoplayRef.current = setInterval(() => {
+    if (banners.length <= 1 || !isAutoPlaying) return;
+    const secs = Number(banners[currentSlide]?.durationSeconds) || 6;
+    const hold = Math.min(30, Math.max(3, secs)) * 1000;
+    autoplayRef.current = setTimeout(() => {
       setCurrentSlide(prev => (prev + 1) % banners.length);
-    }, 5000); // Change every 5 seconds
-
-    return () => {
-      if (autoplayRef.current) {
-        clearInterval(autoplayRef.current);
-      }
-    };
-  }, [isAutoPlaying, banners.length]);
+    }, hold);
+    return () => clearTimeout(autoplayRef.current);
+  }, [isAutoPlaying, banners, currentSlide]);
 
   // Navigate carousel
   const goToSlide = (index) => {
@@ -1330,13 +1332,29 @@ export default function ShopClient({
       <div>
         {/* Hero Carousel - Dynamic from Banner Management */}
         {banners.length > 0 && (
-          <div className="shop-carousel-container">
+          <div
+            className="shop-carousel-container"
+            onTouchStart={e => { carouselSwipeRef.current = e.changedTouches[0].clientX; }}
+            onTouchEnd={e => {
+              // The arrows are hidden at phone width, so this is how the carousel is driven there.
+              const from = carouselSwipeRef.current;
+              carouselSwipeRef.current = null;
+              if (from == null || banners.length < 2) return;
+              const dx = e.changedTouches[0].clientX - from;
+              if (Math.abs(dx) > 45) (dx < 0 ? nextSlide : prevSlide)();
+            }}
+          >
             <div className="shop-carousel-track">
               {banners.map((banner, index) => (
                 <div
                   key={banner.id}
                   className={`shop-carousel-slide ${index === currentSlide ? 'active' : ''}`}
                   style={{ opacity: index === currentSlide ? 1 : 0 }}
+                  onClick={e => {
+                    // Not when they meant the call-to-action or a control sitting on top of it.
+                    if (e.target.closest('a, button')) return;
+                    if (banner.image) setBannerViewAt(index);
+                  }}
                 >
                   {banner.image ? (
                     <Image
@@ -1390,6 +1408,15 @@ export default function ShopClient({
                 </svg>
               </button>
             </>
+          )}
+
+          {bannerViewAt !== null && (
+            <BannerViewer
+              banners={banners}
+              index={bannerViewAt}
+              onIndex={i => { setBannerViewAt(i); setCurrentSlide(i); }}
+              onClose={() => setBannerViewAt(null)}
+            />
           )}
 
           {/* Carousel Dots - Only show if multiple banners */}

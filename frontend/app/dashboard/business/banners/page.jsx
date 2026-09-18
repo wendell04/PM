@@ -39,6 +39,10 @@ const createDefaultBanner = () => ({
   scheduleStart: null,
   scheduleEnd: null,
   order: 0,
+  // Seconds this banner holds before the carousel moves on. Six is the readable default: long
+  // enough for a headline and a glance at the artwork, short enough that a three-slide carousel
+  // comes back round before anyone has scrolled past it.
+  durationSeconds: 6,
   // These banners are the /shop carousel. The landing page has its own hero in the
   // Homepage CMS, so a banner defaulting to "both" quietly took over a page it does
   // not own - and there is no longer a picker to correct it with.
@@ -1200,6 +1204,26 @@ export default function BannerManagementPage() {
                   <input type="text" className="banner-form-input" value={editedBanner?.ctaLink || ''} onChange={(e) => updateField('ctaLink', e.target.value)} placeholder="/shop or /contact..." disabled={isLive} />
                 </div>
               </div>
+              <div className="banner-form-row">
+                <div className="banner-form-group">
+                  <label className="banner-form-label">Time on screen</label>
+                  <select className="banner-form-input" disabled={isLive}
+                    value={String(editedBanner?.durationSeconds ?? 6)}
+                    onChange={(e) => updateField('durationSeconds', parseInt(e.target.value, 10))}>
+                    <option value="4">4 seconds - a picture with no words</option>
+                    <option value="6">6 seconds - recommended</option>
+                    <option value="8">8 seconds - a headline and a line of text</option>
+                    <option value="12">12 seconds - a lot to read</option>
+                    <option value="20">20 seconds - hold it there</option>
+                  </select>
+                  <p style={{ fontSize: '0.72rem', color: 'var(--gray)', margin: '0.35rem 0 0', lineHeight: 1.5 }}>
+                    How long this banner stays before the next one. Set it per banner - a photo does
+                    not need the time a paragraph does. Visitors can still swipe past it.
+                  </p>
+                </div>
+                <div className="banner-form-group" />
+              </div>
+
               {activePage === 'landing' && (
                 <div className="banner-form-row">
                   <div className="banner-form-group">

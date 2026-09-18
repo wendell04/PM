@@ -30,6 +30,7 @@ class Banner extends Model
         'imagePositionMobile',
         'imageScaleMobile',
         'imageFit',
+        'durationSeconds',
         'image',
         'isVisible',
         'status',
