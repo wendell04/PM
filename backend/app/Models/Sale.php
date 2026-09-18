@@ -12,6 +12,9 @@ class Sale extends Model
     protected $fillable = [
         'saleId',
         'inventoryId',
+        'productId',
+        'variantId',
+        'variantName',
         'productName',
         'category',
         'quantity',

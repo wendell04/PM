@@ -13,6 +13,7 @@ use App\Http\Controllers\MasterlistController;
 use App\Http\Controllers\JobOrderController;
 use App\Http\Controllers\AuditLogController;
 use App\Http\Controllers\SaleController;
+use App\Http\Controllers\ForecastTaxonomyController;
 use App\Http\Controllers\CartController;
 use App\Http\Controllers\SupplierController;
 use App\Http\Controllers\BannerController;
@@ -231,6 +232,9 @@ Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
     Route::put('/admin/inventory/{id}',               [InventoryController::class, 'update']);
     Route::post('/admin/inventory/{id}/adjust-stock', [InventoryController::class, 'adjustStock']);
     Route::delete('/admin/inventory/{id}',            [InventoryController::class, 'destroy']);
+
+    // Product -> variant -> material tree + legacy name resolution for the SSA forecast
+    Route::get('/admin/forecast/taxonomy',            [ForecastTaxonomyController::class, 'index']);
 
     // ─── Masterlist ──────────────────────────────────────────────────────────
     Route::get('/admin/masterlist',                   [MasterlistController::class, 'index']);

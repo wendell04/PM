@@ -1540,6 +1540,14 @@ class OrderController extends Controller
                 Sale::create([
                     'saleId'          => $newSaleId,
                     'inventoryId'     => $inventory ? (string) $inventory->_id : null,
+                    // Durable link to what was sold. inventoryId is null for
+                    // anything built from a BOM (a printed mug is not itself an
+                    // inventory item), which left the forecast with no way back
+                    // to the materials except by matching names. These two make
+                    // new rows resolvable without the legacy name map.
+                    'productId'       => (string) $product->_id,
+                    'variantId'       => $item['variantId'] ?? null,
+                    'variantName'     => $variantName !== '' ? $variantName : null,
                     'productName'     => $product->name . ($variantName ? " ({$variantName})" : ""),
                     'category'        => $product->category,
                     'quantity'        => $item['qty'],

@@ -114,6 +114,104 @@ const DATA_SOURCES = [
   { key: "inventory_stock", label: "Inventory Stock Level" },
 ];
 
+/**
+ * Turn sales of finished products into demand for one raw material.
+ *
+ * No sale in the collection carries an inventoryId, so the link runs
+ * sale -> product (+ variant) -> bill of materials -> material, with the
+ * per-unit quantity from the BOM applied on the way through.
+ *
+ * Three allocation rules, in order of how much they assume:
+ *
+ *   exact     the material is used by every variant at the same rate, so the
+ *             variant a legacy sale didn't record makes no difference
+ *   share     the sale names no variant and recent orders are numerous enough
+ *             to say how the family splits
+ *   even      same, but too few recent orders to trust a split - divided
+ *             evenly and labelled as an assumption rather than dropped, since
+ *             dropping it would throw away three years of history
+ */
+function buildMaterialDemand(inventoryId, taxonomy, sales) {
+  const entry = taxonomy?.materialIndex?.[inventoryId];
+  if (!entry) return { rows: [], linked: false, basis: null };
+
+  const variantCountFor = (productId) =>
+    (taxonomy.motherItems ?? []).find((m) => m.productId === productId)?.variants?.length ?? 0;
+
+  // Per product, how does this material relate to that product's variants?
+  const planByProduct = {};
+  entry.consumers.forEach((c) => {
+    (planByProduct[c.productId] ??= { covered: [], qty: c.qtyPerUnit, productName: c.productName }).covered.push(c);
+  });
+
+  const basis = { exact: 0, share: 0, even: 0, unmatched: 0, consumers: new Set() };
+
+  const byDay = {};
+  sales.forEach((s) => {
+    // Sales written since the productId/variantName fix resolve directly; older
+    // rows still go through the name map the taxonomy endpoint built.
+    const r = s.productId
+      ? { productId: String(s.productId), variant: s.variantName ?? null }
+      : taxonomy.saleResolution?.[s.productName];
+    if (!r) { basis.unmatched += 1; return; }
+
+    const plan = planByProduct[r.productId];
+    if (!plan) return;
+
+    const d = s.saleDate ? new Date(s.saleDate) : null;
+    if (!d || isNaN(d)) return;
+    const qty = s.quantity ?? 0;
+    if (qty <= 0) return;
+
+    const variantsOfProduct = variantCountFor(r.productId);
+    const coversEveryVariant =
+      variantsOfProduct === 0 ||
+      plan.covered.some((c) => c.variantName == null) ||
+      plan.covered.length >= variantsOfProduct;
+
+    let units = 0;
+    if (r.variant != null) {
+      // The sale names its variant - take only the matching BOM line.
+      const hit = plan.covered.find((c) => c.variantName == null || c.variantName === r.variant);
+      if (hit) { units = qty * hit.qtyPerUnit; basis.exact += 1; }
+    } else if (coversEveryVariant) {
+      // Variant-independent: every variant draws on this material equally.
+      units = qty * plan.covered[0].qtyPerUnit;
+      basis.exact += 1;
+    } else {
+      const vs = taxonomy.variantShares?.[r.productId];
+      if (vs?.sufficient) {
+        plan.covered.forEach((c) => {
+          units += qty * c.qtyPerUnit * (vs.shares?.[c.variantName] ?? 0);
+        });
+        basis.share += 1;
+      } else if (variantsOfProduct > 0) {
+        plan.covered.forEach((c) => {
+          units += (qty * c.qtyPerUnit) / variantsOfProduct;
+        });
+        basis.even += 1;
+      }
+    }
+
+    if (units <= 0) return;
+    plan.covered.forEach((c) =>
+      basis.consumers.add(c.variantName ? `${c.productName} · ${c.variantName}` : c.productName),
+    );
+    const ds = d.toISOString().split("T")[0];
+    byDay[ds] = (byDay[ds] ?? 0) + units;
+  });
+
+  const rows = Object.entries(byDay)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, value]) => ({ date, value: Math.round(value * 100) / 100 }));
+
+  return {
+    rows,
+    linked: true,
+    basis: { ...basis, consumers: Array.from(basis.consumers), shared: entry.shared === true },
+  };
+}
+
 const pageStyles = `
   @keyframes spin {
     from { transform: rotate(0deg); }
@@ -887,6 +985,12 @@ export default function SSAForecastPage() {
   );
   const [inventoryList, setInventoryList] = useState([]);
   const [selectedInventoryId, setSelectedInventoryId] = useState("");
+  // Mother item -> variant -> material tree, resolved server-side. Sales carry
+  // no inventoryId, so material demand has to be rebuilt through the BOM.
+  const [taxonomy, setTaxonomy] = useState(null);
+  const [selectedMotherId, setSelectedMotherId] = useState("");
+  const [selectedVariant, setSelectedVariant] = useState("");   // "" = all variants
+  const [demandBasis, setDemandBasis] = useState(null);
   const [showTrend, setShowTrend] = useState(false);
   const [showSeasonality, setShowSeasonality] = useState(false);
   const [showConfidence, setShowConfidence] = useState(true);
@@ -948,6 +1052,18 @@ export default function SSAForecastPage() {
       .catch(() => setInventoryList([]));
   }, [token]);
 
+  // Product -> variant -> material tree. Drives the mother-item picker and the
+  // BOM join that turns sales of a product into demand for its raw materials.
+  useEffect(() => {
+    if (!token) return;
+    fetchWithTimeout(`${API_URL}/api/admin/forecast/taxonomy`, {
+      headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+    })
+      .then((r) => r.json())
+      .then((d) => setTaxonomy(d.data ?? d ?? null))
+      .catch(() => setTaxonomy(null));
+  }, [token]);
+
   const handleSubmit = async (overrideCount = null) => {
     const count = overrideCount ?? parseInt(forecastCount, 10);
     if (!count || count < 1) {
@@ -972,6 +1088,7 @@ export default function SSAForecastPage() {
     setStockoutDate(null);
     setCurrentStockQty(null);
     setDepletionMethod(null);
+    setDemandBasis(null);
     setIsLoading(true);
 
     // Average-demand projection used whenever SSA can't run for an inventory
@@ -1079,21 +1196,34 @@ export default function SSAForecastPage() {
         const currentStock = selectedItem?.stockQty ?? 0;
         setCurrentStockQty(currentStock);
 
-        // Filter sales for this item by inventoryId or product name, aggregate by date
-        const productSales = allSales.filter(s =>
-          String(s.inventoryId ?? "") === String(selectedInventoryId) ||
-          (selectedItem?.name && s.productName === selectedItem.name)
-        );
-        const salesMap = {};
-        productSales.forEach(s => {
-          const d = s.saleDate ? new Date(s.saleDate) : null;
-          if (!d || isNaN(d)) return;
-          const ds = d.toISOString().split("T")[0];
-          salesMap[ds] = (salesMap[ds] ?? 0) + (s.quantity ?? 0);
-        });
-        rows = Object.entries(salesMap)
-          .sort(([a], [b]) => a.localeCompare(b))
-          .map(([date, value]) => ({ date, value }));
+        // Material demand via the bill of materials. The old filter matched a
+        // sale to a material by inventoryId or by an exact name match; neither
+        // is ever true (0 of 370 sales carry an inventoryId, and no product is
+        // named after the material it is made from), so every material read as
+        // zero demand. Walk the BOM instead.
+        const demand = buildMaterialDemand(selectedInventoryId, taxonomy, allSales);
+        rows = demand.rows;
+        setDemandBasis(demand.linked ? demand.basis : null);
+
+        if (!demand.linked) {
+          // Nothing consumes this material, so there is no demand to forecast.
+          // Say so rather than drawing a confident flat line.
+          setError("");
+          setDepletionMethod("unlinked");
+          applyInvFallback([]);
+          setIsLoading(false);
+          return;
+        }
+
+        // Linked to a BOM but never sold is a different answer from "too few
+        // records to run SSA" - the material has no demand rather than thin
+        // demand, and saying so is more useful than an average of nothing.
+        if (rows.length === 0) {
+          setDepletionMethod("nodemand");
+          applyInvFallback([]);
+          setIsLoading(false);
+          return;
+        }
 
         setDepletionMethod(rows.length >= 10 ? "ssa" : "none");
       }
@@ -1343,6 +1473,91 @@ export default function SSAForecastPage() {
     _autoRunTimer.current = setTimeout(() => { _submitRef.current?.(runCount); }, delay);
     return () => { if (_autoRunTimer.current) clearTimeout(_autoRunTimer.current); };
   }, [token, dataSource, forecastPeriod.type, forecastCount, selectedInventoryId]); // eslint-disable-line
+
+  // ── Mother item → variant → material selection ────────────────────────────
+  // The inventory list is 50 flat materials in which three separate mugs and
+  // six separate totebags look unrelated. Group them under the product that
+  // consumes them, so the picker reads the way the shop actually thinks.
+  const SHARED_KEY = "__shared__";
+  const UNLINKED_KEY = "__unlinked__";
+
+  const motherOptions = (() => {
+    if (!taxonomy) return [];
+    const byCategory = {};
+    (taxonomy.motherItems ?? [])
+      .filter((m) => m.materials?.length > 0)
+      .forEach((m) => {
+        const cat = m.category || "Uncategorised";
+        (byCategory[cat] ??= []).push({
+          id: m.productId,
+          label: `${m.name}${m.materials.length > 1 ? ` (${m.materials.length})` : ""}`,
+        });
+      });
+    const groups = Object.keys(byCategory)
+      .sort()
+      .map((category) => ({ category, items: byCategory[category].sort((a, b) => a.label.localeCompare(b.label)) }));
+
+    const shared = Object.entries(taxonomy.materialIndex ?? {}).filter(([, v]) => v.shared).length;
+    const extras = [];
+    if (shared > 0) extras.push({ id: SHARED_KEY, label: `Shared across products (${shared})` });
+    if ((taxonomy.unlinked ?? []).length > 0)
+      extras.push({ id: UNLINKED_KEY, label: `Not used by any product (${taxonomy.unlinked.length})` });
+    if (extras.length) groups.push({ category: "Other", items: extras });
+
+    return groups;
+  })();
+
+  const activeMother = (taxonomy?.motherItems ?? []).find((m) => m.productId === selectedMotherId) ?? null;
+
+  // Materials shown for the current mother item, narrowed by the variant filter.
+  const visibleMaterials = (() => {
+    const tracked = inventoryList.filter((i) => !i.isOnDemand);
+    if (!taxonomy || !selectedMotherId) return tracked;
+
+    if (selectedMotherId === UNLINKED_KEY) {
+      const ids = new Set((taxonomy.unlinked ?? []).map((u) => u.inventoryId));
+      return tracked.filter((i) => ids.has(String(i._id ?? i.id)));
+    }
+    if (selectedMotherId === SHARED_KEY) {
+      const ids = new Set(
+        Object.entries(taxonomy.materialIndex ?? {}).filter(([, v]) => v.shared).map(([k]) => k),
+      );
+      return tracked.filter((i) => ids.has(String(i._id ?? i.id)));
+    }
+    if (!activeMother) return tracked;
+
+    const wanted = activeMother.materials.filter(
+      (m) => !selectedVariant || m.variants.length === 0 || m.variants.includes(selectedVariant),
+    );
+    const ids = new Set(wanted.map((m) => m.inventoryId));
+    return tracked.filter((i) => ids.has(String(i._id ?? i.id)));
+  })();
+
+  // Share of the family this variant took in recent orders - shown in the
+  // filter itself so the split is visible before it is relied on.
+  const variantShareLabel = (variant) => {
+    const vs = taxonomy?.variantShares?.[selectedMotherId];
+    if (!vs?.sufficient) return "";
+    const share = vs.shares?.[variant];
+    return share == null ? "" : ` - ${(share * 100).toFixed(0)}%`;
+  };
+
+  // Default the picker to the first mother item, and keep the chosen material
+  // valid whenever the mother item or variant filter narrows the list.
+  useEffect(() => {
+    if (!taxonomy || motherOptions.length === 0) return;
+    if (!selectedMotherId) {
+      setSelectedMotherId(motherOptions[0].items[0]?.id ?? "");
+    }
+  }, [taxonomy]); // eslint-disable-line
+
+  useEffect(() => {
+    if (dataSource !== "inventory_stock" || visibleMaterials.length === 0) return;
+    const stillValid = visibleMaterials.some((i) => String(i._id ?? i.id) === String(selectedInventoryId));
+    if (!stillValid) {
+      setSelectedInventoryId(String(visibleMaterials[0]._id ?? visibleMaterials[0].id));
+    }
+  }, [selectedMotherId, selectedVariant, dataSource, inventoryList, taxonomy]); // eslint-disable-line
 
   const isInvMode = submittedConfig?.source === "inventory_stock";
 
@@ -1716,31 +1931,86 @@ export default function SSAForecastPage() {
               </div>
             </div>
 
-            {/* Inventory item picker (inventory mode only) */}
+            {/* Inventory item picker (inventory mode only) - nested mother item
+                → variant → material, so the 50 flat materials read as the ~24
+                products they actually belong to. */}
             {dataSource === "inventory_stock" && (
-              <div>
-                <p className="ssa-side-label">Inventory Item</p>
-                <select
-                  className="ssa-select"
-                  style={{ width: "100%", minWidth: 0 }}
-                  value={selectedInventoryId}
-                  onChange={(e) => {
-                    setSelectedInventoryId(e.target.value);
-                    setForecastCount("");   // reset look-ahead when item changes
-                    setResult(null);
-                    setSubmittedConfig(null);
-                  }}
-                >
-                  {inventoryList.filter((i) => !i.isOnDemand).map((item) => {
-                    const isLow = (item.stockQty ?? 0) <= (item.minStockLevel ?? 0);
-                    return (
-                      <option key={item._id ?? item.id} value={item._id ?? item.id}>
-                        {isLow ? "⚠ " : ""}{item.name}{isLow ? ` (${item.stockQty ?? 0} left)` : ""}
-                      </option>
-                    );
-                  })}
-                </select>
-              </div>
+              <>
+                <div>
+                  <p className="ssa-side-label">Mother Item</p>
+                  <select
+                    className="ssa-select"
+                    style={{ width: "100%", minWidth: 0 }}
+                    value={selectedMotherId}
+                    onChange={(e) => {
+                      setSelectedMotherId(e.target.value);
+                      setSelectedVariant("");
+                      setForecastCount("");
+                      setResult(null);
+                      setSubmittedConfig(null);
+                    }}
+                  >
+                    {motherOptions.map((g) => (
+                      <optgroup key={g.category} label={g.category}>
+                        {g.items.map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.label}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Variant filter - only where the mother item actually has variants */}
+                {activeMother?.variants?.length > 0 && (
+                  <div>
+                    <p className="ssa-side-label">Variant</p>
+                    <select
+                      className="ssa-select"
+                      style={{ width: "100%", minWidth: 0 }}
+                      value={selectedVariant}
+                      onChange={(e) => {
+                        setSelectedVariant(e.target.value);
+                        setForecastCount("");
+                        setResult(null);
+                        setSubmittedConfig(null);
+                      }}
+                    >
+                      <option value="">All variants ({activeMother.variants.length})</option>
+                      {activeMother.variants.map((v) => (
+                        <option key={v} value={v}>{v}{variantShareLabel(v)}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                <div>
+                  <p className="ssa-side-label">
+                    Material{visibleMaterials.length > 1 ? ` (${visibleMaterials.length})` : ""}
+                  </p>
+                  <select
+                    className="ssa-select"
+                    style={{ width: "100%", minWidth: 0 }}
+                    value={selectedInventoryId}
+                    onChange={(e) => {
+                      setSelectedInventoryId(e.target.value);
+                      setForecastCount("");   // reset look-ahead when item changes
+                      setResult(null);
+                      setSubmittedConfig(null);
+                    }}
+                  >
+                    {visibleMaterials.map((item) => {
+                      const isLow = (item.stockQty ?? 0) <= (item.minStockLevel ?? 0);
+                      return (
+                        <option key={item._id ?? item.id} value={item._id ?? item.id}>
+                          {item.name}{isLow ? ` (${item.stockQty ?? 0} left)` : ""}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
+              </>
             )}
 
             {/* Forecast Period + Look-ahead + Run */}
@@ -2227,7 +2497,11 @@ export default function SSAForecastPage() {
                 </span>
               </div>
             )}
-            {isInvMode && !stockoutDate && parseInt(forecastCount, 10) > 0 && (
+            {/* "Stock sufficient" is only true if demand was actually measured.
+                With no linked sales the depletion line is flat at zero, and a
+                green all-clear on top of that reads as a result rather than an
+                absence of one. */}
+            {isInvMode && !stockoutDate && dataPointCount > 0 && depletionMethod !== "unlinked" && depletionMethod !== "nodemand" && parseInt(forecastCount, 10) > 0 && (
               <div style={{ display: "flex", alignItems: "flex-start", gap: "0.75rem", background: "rgba(74,222,128,0.06)", border: "1px solid rgba(74,222,128,0.2)", borderRadius: "10px", padding: "0.875rem 1.25rem", fontSize: "0.85rem", color: "var(--gray)", lineHeight: 1.6, marginBottom: "1.5rem" }}>
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4ade80" strokeWidth="2" style={{ flexShrink: 0, marginTop: 2 }}>
                   <polyline points="20 6 9 17 4 12" />
@@ -2246,8 +2520,58 @@ export default function SSAForecastPage() {
                   <line x1="12" y1="16" x2="12.01" y2="16" />
                 </svg>
                 <span>
-                  <strong style={{ color: "#fbbf24" }}>Average-demand estimate —</strong>{" "}
-                  a full SSA forecast wasn't available for this item ({dataPointCount} sale record{dataPointCount !== 1 ? "s" : ""}), so the projection uses its average demand from past sales. Treat it as directional.
+                  {depletionMethod === "unlinked" ? (
+                    <>
+                      <strong style={{ color: "#fbbf24" }}>No linked demand -</strong>{" "}
+                      no product's bill of materials uses <strong style={{ color: "var(--white)" }}>{selectedItemName}</strong>,
+                      so there are no sales to forecast from. Add it to a product's BOM to see a depletion projection here.
+                    </>
+                  ) : depletionMethod === "nodemand" ? (
+                    <>
+                      <strong style={{ color: "#fbbf24" }}>No demand recorded -</strong>{" "}
+                      <strong style={{ color: "var(--white)" }}>{selectedItemName}</strong> is used by a product,
+                      but nothing that consumes it has sold yet. There is no history to forecast from.
+                    </>
+                  ) : (
+                    <>
+                      <strong style={{ color: "#fbbf24" }}>Average-demand estimate -</strong>{" "}
+                      a full SSA forecast wasn't available for this material ({dataPointCount} day{dataPointCount !== 1 ? "s" : ""} with demand), so the projection uses its average demand. Treat it as directional.
+                    </>
+                  )}
+                </span>
+              </div>
+            )}
+
+            {/* How this material's demand was derived. The BOM join is not
+                self-evident from a chart, and the even-split case is an
+                assumption the reader is entitled to see. */}
+            {isInvMode && demandBasis && depletionMethod !== "unlinked" && depletionMethod !== "nodemand" && parseInt(forecastCount, 10) > 0 && (
+              <div className="ssa-warning-banner" style={{ borderColor: "rgba(96,165,250,0.25)", background: "rgba(96,165,250,0.06)" }}>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" strokeWidth="2" style={{ flexShrink: 0, marginTop: 1 }}>
+                  <circle cx="12" cy="12" r="10" />
+                  <line x1="12" y1="16" x2="12" y2="12" />
+                  <line x1="12" y1="8" x2="12.01" y2="8" />
+                </svg>
+                <span>
+                  <strong style={{ color: "#60a5fa" }}>Demand via bill of materials -</strong>{" "}
+                  built from sales of {demandBasis.consumers.slice(0, 3).join(", ")}
+                  {demandBasis.consumers.length > 3 ? ` and ${demandBasis.consumers.length - 3} more` : ""}
+                  {demandBasis.shared ? ", a material shared across several products" : ""}.
+                  {demandBasis.even > 0 && (
+                    <>
+                      {" "}
+                      <strong style={{ color: "var(--white)" }}>{demandBasis.even}</strong> older sale
+                      {demandBasis.even !== 1 ? "s" : ""} recorded only the product family, and too few recent
+                      orders exist to split it by variant - those were divided evenly across variants.
+                    </>
+                  )}
+                  {demandBasis.share > 0 && (
+                    <>
+                      {" "}
+                      <strong style={{ color: "var(--white)" }}>{demandBasis.share}</strong> older sale
+                      {demandBasis.share !== 1 ? "s" : ""} named no variant and were split by recent variant share.
+                    </>
+                  )}
                 </span>
               </div>
             )}
