@@ -353,9 +353,10 @@ export default function SettingsPage() {
 
   // ── Load shipping settings ────────────────────────────────
   useEffect(() => {
-    // Both tabs read this payload: Shipping for the rates and fees, Terms for the clauses. Gating it
-    // on 'shipping' alone left the Terms tab with nothing to show.
-    if (!token || !['shipping', 'terms'].includes(activeTab)) return;
+    // Three tabs read this payload: Shipping for the rates and fees, Terms for the clauses, and
+    // Integrations for the mail lanes. Each one that was left out of this list rendered an empty
+    // section and looked like a broken deploy - which is exactly how the mail lanes were read.
+    if (!token || !['shipping', 'terms', 'integrations'].includes(activeTab)) return;
     fetchWithTimeout(`${API_URL}/api/admin/settings`, { headers: { Authorization: `Bearer ${token}` } }, 10000)
       .then(r => r.json())
       .then(d => {
