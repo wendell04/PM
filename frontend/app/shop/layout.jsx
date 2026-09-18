@@ -1083,6 +1083,15 @@ export default function ShopLayout({ children }) {
     }
   }, []);
 
+  // Pages inside this layout (My Profile) ask for a logout through this event rather than repeating
+  // the routine: the token has to be revoked on the server, four keys cleared, the other tabs told
+  // and the cart dropped. A second copy of that would drift from this one.
+  useEffect(() => {
+    const onLogoutRequest = () => handleLogout();
+    window.addEventListener('pmp:logout-request', onLogoutRequest);
+    return () => window.removeEventListener('pmp:logout-request', onLogoutRequest);
+  }, []);
+
   // ── Logout ─────────────────────────────────────────────────────────────────
   function handleLogout() {
     // The account menu stayed open behind the confirmation.

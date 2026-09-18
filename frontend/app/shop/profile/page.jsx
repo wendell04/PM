@@ -2216,6 +2216,27 @@ export default function CustomerProfilePage() {
                     </div>
                   </div>
 
+                  {/* Signing out lived only behind the avatar in the header, which on a phone is a
+                      small circle nobody thinks to press. The "You" tab is where a person goes to
+                      leave, so the way out is here too - full width, in the body of the tab rather
+                      than in Quick Actions, which is hidden on phones. The layout owns the actual
+                      logout (server-side token revoke, storage, other tabs, cart); this only asks. */}
+                  <button
+                    type="button"
+                    onClick={() => window.dispatchEvent(new Event('pmp:logout-request'))}
+                    style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem",
+                      width: "100%", marginTop: "1rem", padding: "0.8rem 1rem", background: "transparent",
+                      border: "1px solid rgba(239,68,68,0.35)", borderRadius: "10px", color: "#ef4444",
+                      fontWeight: 700, fontSize: "0.85rem", cursor: "pointer" }}>
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
+                    </svg>
+                    Log out
+                  </button>
+                  <p style={{ textAlign: "center", fontSize: "0.72rem", color: "var(--gray)", margin: "0.5rem 0 0" }}>
+                    Signs you out on this device only. Your orders and saved addresses stay.
+                  </p>
+
                 </div>
               );
             })()}
