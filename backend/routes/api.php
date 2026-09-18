@@ -170,6 +170,7 @@ Route::middleware(['auth:sanctum', 'isAdmin:owner,admin'])->group(function () {
     Route::get('/admin/settings',                   [SettingsController::class, 'show']);
     Route::put('/admin/settings',                   [SettingsController::class, 'update']);
     Route::put('/admin/settings/shipping',          [SettingsController::class, 'shippingUpdate']);
+    Route::post('/admin/settings/mail-test',        [SettingsController::class, 'mailTest'])->middleware('throttle:6,1');
     Route::put('/admin/settings/terms',             [SettingsController::class, 'termsUpdate']);
 
     Route::get('/admin/role-permissions',            [RolePermissionController::class, 'index']);

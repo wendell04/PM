@@ -927,6 +927,23 @@ export default function SettingsPage() {
   const [chatReplies, setChatReplies] = useState(null);
   const [chatSaving, setChatSaving]   = useState(false);
   const [chatNotice, setChatNotice]   = useState({ type: '', text: '' });
+
+  // Email delivery test: one email through one provider, the provider's own words on failure.
+  const [mailTest, setMailTest] = useState({ busy: '', result: null });
+  const runMailTest = async (provider) => {
+    setMailTest({ busy: provider, result: null });
+    try {
+      const res = await fetchWithTimeout(`${API_URL}/api/admin/settings/mail-test`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ provider }),
+      }, 30000);
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.message || 'The test could not run.');
+      setMailTest({ busy: '', result: d.data || d });
+    } catch (err) {
+      setMailTest({ busy: '', result: { ok: false, provider, error: err.message || 'The test could not run.' } });
+    }
+  };
   useEffect(() => {
     if (activeTab !== 'chat' || chatReplies) return;
     fetch(`${API_URL}/api/storefront/content/chat_auto_replies`)
@@ -1769,6 +1786,37 @@ export default function SettingsPage() {
       {mapsError && (
         <div style={{ padding: '0.7rem 1rem', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: '8px', color: '#f87171', fontSize: '0.85rem' }}>
           {mapsError}
+        </div>
+      )}
+    </div>
+  </div>
+)}
+
+          {activeTab === 'integrations' && (
+  <div style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden', marginTop: '1.25rem' }}>
+    <div style={{ padding: '0.875rem 1.25rem', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '0.625rem', flexWrap: 'wrap' }}>
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--gray-light)" strokeWidth="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+      <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--white)' }}>Email delivery</span>
+      <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>- Sends one test email to the shop inbox through the provider you pick and shows its answer.</span>
+    </div>
+    <div style={{ padding: '1.25rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '0.9rem' }}>
+      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+        {['brevo', 'resend'].map(p => (
+          <button key={p} type="button" onClick={() => runMailTest(p)} disabled={!!mailTest.busy}
+            style={{ padding: '8px 14px', borderRadius: '8px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--white)', fontWeight: 600, fontSize: '0.8rem', cursor: mailTest.busy ? 'not-allowed' : 'pointer', opacity: mailTest.busy && mailTest.busy !== p ? 0.5 : 1 }}>
+            {mailTest.busy === p ? 'Sending...' : `Send a test through ${p === 'brevo' ? 'Brevo' : 'Resend'}`}
+          </button>
+        ))}
+      </div>
+      {mailTest.result && (
+        <div style={{ padding: '10px 12px', borderRadius: '8px', fontSize: '0.8rem', lineHeight: 1.55,
+          background: mailTest.result.ok ? 'rgba(74,222,128,0.08)' : 'rgba(239,68,68,0.08)',
+          border: `1px solid ${mailTest.result.ok ? 'rgba(74,222,128,0.3)' : 'rgba(239,68,68,0.3)'}` }}>
+          <div style={{ fontWeight: 700, color: mailTest.result.ok ? 'var(--green)' : 'var(--red)' }}>
+            {mailTest.result.ok ? `Sent through ${mailTest.result.provider} in ${mailTest.result.ms} ms` : `${mailTest.result.provider} refused`}
+          </div>
+          {mailTest.result.from && <div style={{ color: 'var(--gray)' }}>From {mailTest.result.from} to {mailTest.result.to}</div>}
+          {!mailTest.result.ok && <div style={{ marginTop: 4, color: 'var(--white)', fontFamily: 'monospace', fontSize: '0.75rem', wordBreak: 'break-word' }}>{mailTest.result.error}</div>}
         </div>
       )}
     </div>

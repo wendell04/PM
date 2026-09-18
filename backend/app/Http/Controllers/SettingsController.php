@@ -74,6 +74,54 @@ class SettingsController extends Controller
         }
     }
 
+    /**
+     * POST /api/admin/settings/mail-test  {provider: brevo|resend}
+     *
+     * One email to the shop's own inbox through ONE named provider, with the provider's exact
+     * error text returned to the screen when it refuses. The failover setup hides that text: a
+     * refusal is logged (or not, depending on the host) and the next provider quietly carries the
+     * mail, so "is Resend working?" could only be answered by reading two dashboards and guessing.
+     */
+    public function mailTest(Request $request)
+    {
+        try {
+            if (!\App\Support\Rbac::isSuperAdmin($request->user()) && !\App\Support\Rbac::isOwner($request->user())) {
+                return $this->unauthorizedResponse();
+            }
+            $validated = $request->validate(['provider' => 'required|in:brevo,resend']);
+            $provider  = $validated['provider'];
+            $to        = (string) (config('mail.admin_recipient') ?: config('mail.from.address'));
+            $from      = $provider === 'resend'
+                ? (config('mail.security_from.address') ?: config('mail.from.address'))
+                : config('mail.from.address');
+
+            $started = microtime(true);
+            try {
+                \Illuminate\Support\Facades\Mail::mailer($provider)
+                    ->raw("Test email sent through {$provider} from the dashboard at " . now()->format('Y-m-d H:i:s') . '. Nothing to do.', function ($m) use ($to, $from, $provider) {
+                        $m->to($to)->from($from, config('mail.from.name', 'Personalize Me Prints'))->subject('Mail test - ' . $provider);
+                    });
+            } catch (\Throwable $e) {
+                return $this->successResponse('The provider refused.', [
+                    'ok'       => false,
+                    'provider' => $provider,
+                    'from'     => $from,
+                    'to'       => $to,
+                    'error'    => mb_substr($e->getMessage(), 0, 600),
+                    'ms'       => (int) round((microtime(true) - $started) * 1000),
+                ]);
+            }
+            return $this->successResponse('Sent.', [
+                'ok' => true, 'provider' => $provider, 'from' => $from, 'to' => $to,
+                'ms' => (int) round((microtime(true) - $started) * 1000),
+            ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return $this->validationErrorResponse($e);
+        } catch (\Exception $e) {
+            return $this->serverErrorResponse($e, 'Mail test failed.');
+        }
+    }
+
     public function show(Request $request)
     {
         try {
