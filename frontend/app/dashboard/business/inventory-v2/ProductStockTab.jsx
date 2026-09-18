@@ -185,9 +185,48 @@ export default function ProductStockTab({ boms, materials, products }) {
   );
 }
 
+// The second number, for the whole product rather than one variant at a time.
+//
+// "Can build" per variant counts the blank and deliberately ignores packaging, so three mug
+// variants can each say 109 / 180 / 190 - true, if you built only that one. What none of them
+// says is how many mugs can go out the door BOXED today, and that is one number for the whole
+// product because every variant draws on the same shelf of boxes. It is the most the shop can
+// ship complete before To Buy has to be acted on; it caps nothing and blocks nothing.
+function shipCompleteAcross(variants, matMap) {
+  const perUnit = {};   // cost-only material id -> the most any variant needs per unit
+  for (const v of variants) {
+    for (const item of v.bom?.items ?? []) {
+      const mat = matMap[item.matId];
+      if (!mat || counts(mat) || !(item.qty > 0)) continue;
+      perUnit[item.matId] = Math.max(perUnit[item.matId] ?? 0, item.qty);
+    }
+  }
+  let limit = null;
+  for (const [id, qty] of Object.entries(perUnit)) {
+    const can = Math.floor(freeStock(matMap[id]) / qty);
+    if (limit === null || can < limit.can) limit = { can, name: matMap[id].name };
+  }
+  return limit;
+}
+
 function DetailPanel({ variants, matMap }) {
+  const pooled = shipCompleteAcross(variants, matMap);
+  const buildable = variants.reduce((s, v) => s + (v.producible ?? 0), 0);
   return (
     <div style={{ padding:'14px 20px', display:'flex', flexDirection:'column', gap:'14px' }}>
+      {pooled && (
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', gap:12, flexWrap:'wrap',
+          padding:'9px 12px', borderRadius:8, border:'1px solid var(--border)',
+          background: pooled.can < buildable ? 'rgba(212,168,67,0.08)' : 'var(--dark)' }}>
+          <div style={{ fontSize:'12px', color:'var(--gray-light)' }}>
+            <b style={{ color: pooled.can === 0 ? '#c62828' : pooled.can < buildable ? '#b45309' : '#1a7f3c' }}>{pooled.can} can ship complete</b>
+            {' '}- boxed, with consumables, {variants.length > 1 ? `across all ${variants.length} variants together` : 'for this product'}
+          </div>
+          <div style={{ fontSize:'11px', color:'var(--gray)' }}>
+            Limited by <b style={{ color:'var(--gray-light)' }}>{pooled.name}</b>. Packaging never blocks a sale; it shows up in To Buy.
+          </div>
+        </div>
+      )}
       {variants.map((v, vi) => {
         const bom  = v.bom;
         const prod = v.producible;

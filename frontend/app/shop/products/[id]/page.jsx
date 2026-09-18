@@ -33,6 +33,11 @@ export default function ProductDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [activeImage, setActiveImage] = useState(0);
+  // Whether the main frame is showing the chosen option's picture or the gallery. Choosing an
+  // option with a picture puts it in the frame; tapping a thumbnail takes the frame back. Before
+  // this the option's picture won unconditionally, so once "Kisscut" was picked every thumbnail
+  // was dead - the gallery could not be looked at again without un-choosing the option.
+  const [frameOnOption, setFrameOnOption] = useState(false);
   const swipeRef = useRef(null);   // where a drag on the gallery started
   const [selectedVariants, setSelectedVariants] = useState({});
   const [selectedOptions, setSelectedOptions] = useState({});
@@ -552,6 +557,7 @@ export default function ProductDetailPage() {
   // one gesture on one target - a lightbox on the little thumbnail would put "choose this" and
   // "show me this" on the same click, and the reader would get whichever one they did not mean.
   const optionImage = chosenOptions.find(o => o.imageUrl)?.imageUrl ?? null;
+  useEffect(() => { if (optionImage) setFrameOnOption(true); }, [optionImage]);
 
   const baseTotalPrice = product
     ? computePrice(product, quantity, selectedVariants)
@@ -738,7 +744,7 @@ export default function ProductDetailPage() {
                     const isActive = activeImage === i || (i === 4 && activeImage >= 4);
                     return (
                       /* eslint-disable-next-line @next/next/no-img-element */
-                      <button key={i} onClick={() => setActiveImage(i)}
+                      <button key={i} onClick={() => { setActiveImage(i); setFrameOnOption(false); }}
                         style={{ position: 'relative', width: '64px', height: '64px', borderRadius: '8px', overflow: 'hidden', padding: 0, border: isActive ? '2px solid var(--gold)' : '2px solid var(--border)', cursor: 'pointer', background: 'var(--dark2)', flexShrink: 0, transition: 'border-color 0.15s' }}>
                         <img src={img} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                         {isOverflowSlot && (
@@ -755,14 +761,14 @@ export default function ProductDetailPage() {
               <div className="pdp-main-img" style={{ flex: 1, position: 'relative', aspectRatio: '1/1', background: 'var(--dark2)', borderRadius: '12px', border: '1px solid var(--border)', overflow: 'hidden' }}>
                 {/* Prev arrow */}
                 {activeImage > 0 && (
-                  <button onClick={() => setActiveImage(p => p - 1)}
+                  <button onClick={() => { setActiveImage(p => p - 1); setFrameOnOption(false); }}
                     style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', zIndex: 4, background: 'rgba(0,0,0,0.55)', border: 'none', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#fff' }}>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="15 18 9 12 15 6"/></svg>
                   </button>
                 )}
                 {/* Next arrow */}
                 {activeImage < displayImages.length - 1 && (
-                  <button onClick={() => setActiveImage(p => p + 1)}
+                  <button onClick={() => { setActiveImage(p => p + 1); setFrameOnOption(false); }}
                     style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', zIndex: 4, background: 'rgba(0,0,0,0.55)', border: 'none', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#fff' }}>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="9 18 15 12 9 6"/></svg>
                   </button>
@@ -781,6 +787,7 @@ export default function ProductDetailPage() {
                     const dy = e.clientY - start.y;
                     if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy)) {
                       setActiveImage(i => Math.max(0, Math.min(displayImages.length - 1, i + (dx < 0 ? 1 : -1))));
+                      setFrameOnOption(false);
                       return;
                     }
                     setLightboxIndex(activeImage);
@@ -798,7 +805,7 @@ export default function ProductDetailPage() {
                     Print to order
                   </div>
                 )}
-                {optionImage ? (
+                {optionImage && frameOnOption ? (
                   /* eslint-disable-next-line @next/next/no-img-element */
                   <img src={optionImage} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', background: 'var(--dark2)', display: 'block', zIndex: 0 }} />
                 ) : displayImages[activeImage] ? (
@@ -1242,10 +1249,14 @@ export default function ProductDetailPage() {
                   </div>
                 );
               }
+              // Plenty on the shelf: say so, without the number. "295 units available" reads as a
+              // promise, and for variants that share a material (three mug colours, one shelf of
+              // boxes) it is one the shop cannot keep three times over. A count is only printed
+              // when it is low, above, where it changes what the customer does.
               return (
                 <div style={{ display: 'flex' }}>
                   <span style={{ fontSize: '0.8rem', fontWeight: 700, ...BADGE_GOLD, borderRadius: '999px', padding: '0.25rem 0.75rem' }}>
-                    {displayQty != null && displayQty > 0 ? `${displayQty} units available` : (product.isMadeToOrder ? 'Made to Order' : 'In Stock')}
+                    {product.isMadeToOrder ? 'Made to Order' : 'In Stock'}
                   </span>
                 </div>
               );
@@ -1278,6 +1289,7 @@ export default function ProductDetailPage() {
                             const varImg = combo?.id ? (product?.variantImageUrls ?? {})[combo.id] : null;
                             const idx = varImg ? displayImages.indexOf(varImg) : -1;
                             setActiveImage(idx >= 0 ? idx : 0);
+                            setFrameOnOption(false);
                           }}
                           style={{
                             padding: '0.4rem 0.875rem',

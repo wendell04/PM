@@ -469,29 +469,60 @@ export default function StaffHome() {
             const worst = [...out, ...low]
               .sort((a, b) => (level(a) - floor(a)) - (level(b) - floor(b)))
               .slice(0, 6);
+            // The second question, which this card used to skip: is anything short for the orders
+            // already taken? That is what To Buy computes - committed demand against the shelf,
+            // for EVERY material, packaging included. A mug box bought per order has no minimum
+            // and sat outside the check above, so the card said "nothing needs restocking" while
+            // the tile beside it said one material to buy. Both are read here.
+            const short = (toBuy?.items ?? []).filter(i => Number(i.shortfall) > 0)
+              .sort((a, b) => Number(b.shortfall) * Number(b.unitCost ?? 0) - Number(a.shortfall) * Number(a.unitCost ?? 0))
+              .slice(0, 6);
+            const shortIds = new Set(short.map(i => String(i.inventoryId)));
+            const allClear = worst.length === 0 && short.length === 0;
             return (
               <div style={{ ...S.card, padding: 0, overflow: 'hidden', marginBottom: '18px' }}>
                 <div style={{ ...S.rowBetween, padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
                   <div>
                     <span style={{ fontSize: 13, fontWeight: 700 }}>Stock levels</span>
                     <span style={{ fontSize: 11.5, marginLeft: 8, color: 'var(--gray)' }}>
-                      {out.length === 0 && low.length === 0
-                        ? `All ${live.length} tracked materials are above their minimum`
-                        : `${out.length} out of stock, ${low.length} at or below minimum, of ${live.length} tracked`}
+                      {[
+                        out.length === 0 && low.length === 0
+                          ? `all ${live.length} stocked materials above their minimum`
+                          : `${out.length} out of stock, ${low.length} at or below minimum, of ${live.length} stocked`,
+                        short.length > 0 && `${short.length} short for orders already taken`,
+                      ].filter(Boolean).join(' - ')}
                     </span>
                   </div>
-                  <button type="button" onClick={() => router.push('/dashboard/business/inventory-v2')} style={S.btnSmGhost}>
-                    Open Inventory
+                  <button type="button" onClick={() => router.push(short.length > 0 ? '/dashboard/business/to-buy' : '/dashboard/business/inventory-v2')} style={S.btnSmGhost}>
+                    {short.length > 0 ? 'Open To Buy' : 'Open Inventory'}
                   </button>
                 </div>
 
-                {worst.length === 0 ? (
+                {allClear ? (
                   <div style={{ padding: '14px 16px', fontSize: 13, color: 'var(--gray)' }}>
                     Nothing needs restocking right now.
                   </div>
                 ) : (
                   <div>
-                    {worst.map(r => {
+                    {short.map(i => (
+                      <div key={`short_${i.inventoryId}`} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', borderTop: '1px solid var(--border)' }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{i.name}</div>
+                          <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 3 }}>
+                            Orders already taken need {i.needed} {i.uom ?? ''}, you have {i.onHand}
+                            {i.orders?.length > 0 && ` - ${i.orders.join(', ')}`}
+                          </div>
+                        </div>
+                        <div style={{ textAlign: 'right', minWidth: 96 }}>
+                          <div style={{ fontSize: 13, fontWeight: 700, color: '#e05252' }}>Buy {Math.ceil(Number(i.shortfall))} {i.uom ?? ''}</div>
+                          <div style={{ fontSize: 11, color: 'var(--gray)' }}>
+                            {i.leadTimeDays > 0 ? `${i.leadTimeDays}d lead` : 'no lead time set'}
+                            {i.supplierName && ` - ${i.supplierName}`}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                    {worst.filter(r => !shortIds.has(String(r.id ?? r._id))).map(r => {
                       const have = level(r);
                       const min  = floor(r);
                       const isOut = have <= 0;
