@@ -2,6 +2,7 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { S, ICONS, ConfirmModal, PaginationBar, SearchBar, SummaryCard, ToastContainer, useToast, usePagination } from '../inventory-v2/shared';
+import { useIsPhone, KpiStrip, PhoneFilterBar, PhoneList, PhoneRow } from '@/components/dashboard/phone';
 import { loadProductsAndCollections, createCollection, updateCollection, deleteCollection, toggleCollectionPublish, normCollection } from '../products-v2/api';
 import { uploadImage } from '@/lib/productApi';
 import ImageCropper from '@/components/ImageCropper';
@@ -471,6 +472,7 @@ export default function CollectionsPage() {
   }, [collections, tab, search]);
 
   const { slice, page, perPage, total, setPage, setPerPage } = usePagination(filtered);
+  const isPhone = useIsPhone();
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -485,6 +487,33 @@ export default function CollectionsPage() {
   return (
     <div style={S.page}>
 
+      {isPhone ? (
+        <>
+          <button onClick={openAdd} style={{ ...S.btnPrimary, minHeight:44, justifyContent:'center', width:'100%', marginBottom:12 }}>{ICONS.plus} New Collection</button>
+          <KpiStrip items={[
+            { key:'all',       label:'All',       value: counts.all },
+            { key:'published', label:'Published', value: counts.published, color:'#2e7d32' },
+            { key:'draft',     label:'Draft',     value: counts.draft, color:'var(--gray)' },
+          ].map(k => ({ ...k, active: tab === k.key, onClick: () => setTab(k.key) }))} />
+          <PhoneFilterBar search={search} onSearch={setSearch} placeholder="Search collections" note={`${total} collection${total !== 1 ? 's' : ''}`} />
+          {slice.length === 0 ? (
+            <div style={{ ...S.card, padding:'28px 16px', textAlign:'center', color:'var(--gray)', fontSize:13 }}>No collections found</div>
+          ) : (
+            <PhoneList>
+              {slice.map((col, i) => (
+                <PhoneRow key={col.id} first={i === 0} mono={false} onClick={() => openEdit(col)}
+                  title={col.title}
+                  chip={<button onClick={e => { e.stopPropagation(); togglePublish(col.id); }} style={{ fontSize:11, fontWeight:700, borderRadius:20, padding:'4px 10px', border:'none', cursor:'pointer', background: col.isPublished ? '#e9f5ea' : 'var(--dark2)', color: col.isPublished ? '#2e7d32' : 'var(--gray)' }}>{col.isPublished ? 'Published' : 'Draft'}</button>}
+                  meta={`${col.productIds?.length ?? 0} product${(col.productIds?.length ?? 0) === 1 ? '' : 's'} \u00b7 /${col.slug}`}
+                  sub={col.description || 'No description'} />
+              ))}
+            </PhoneList>
+          )}
+          <div style={{ padding:'12px 0' }}>
+            <PaginationBar total={total} page={page} perPage={perPage} onPage={setPage} onPerPage={setPerPage} />
+          </div>
+        </>
+      ) : (<>
       <div style={{ ...S.rowBetween, marginBottom: '20px' }}>
         <button onClick={openAdd} style={S.btnPrimary}>{ICONS.plus} New Collection</button>
       </div>
@@ -625,6 +654,8 @@ export default function CollectionsPage() {
           token={token}
         />
       )}
+
+      </>)}
 
       <ConfirmModal
         open={!!delTarget}

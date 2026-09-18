@@ -6,6 +6,7 @@ import { S, ICONS, ConfirmModal, PaginationBar, SearchBar, SummaryCard, ToastCon
 import { loadProductsAndCollections, createProduct, updateProduct, deleteProduct, toggleProductPublish, updateCollection } from './api';
 import { loadBoms, loadInventory } from '../inventory-v2/api';
 import ProductAddEditPage from './ProductAddEditPage';
+import { useIsPhone, KpiStrip, PhoneFilterBar, PhoneList, PhoneRow, PhoneSheet } from '@/components/dashboard/phone';
 
 
 export default function ProductsV2() {
@@ -250,6 +251,7 @@ export default function ProductsV2() {
   }, [products, tab, colFilter, search]);
 
   const { slice, page, perPage, total, setPage, setPerPage } = usePagination(filtered);
+  const isPhone = useIsPhone();
 
   const priceDisplay = (p) => {
     if (p.pricingMode === 'inquiry') return 'Inquiry';
@@ -379,6 +381,57 @@ export default function ProductsV2() {
   return (
     <div style={S.page}>
 
+      {isPhone ? (
+        <>
+          <button onClick={openAdd} style={{ ...S.btnPrimary, minHeight:44, justifyContent:'center', width:'100%', marginBottom:12 }}>{ICONS.plus} Add Product</button>
+          <KpiStrip items={[
+            { key:'all',       label:'All',       value: counts.all },
+            { key:'published', label:'Published', value: counts.published, color:'#2e7d32' },
+            { key:'draft',     label:'Draft',     value: counts.draft, color:'var(--gray)' },
+          ].map(k => ({ ...k, active: tab === k.key, onClick: () => setTab(k.key) }))} />
+          <PhoneFilterBar search={search} onSearch={setSearch} placeholder="Search products"
+            filters={[{ key:'col', label:'Collection', value:colFilter, defaultValue:'All', onChange:setColFilter,
+              options:[{ value:'All', label:'All' }, ...collections.map(c => ({ value:c.id, label:c.title }))] }]}
+            note={`${total} product${total !== 1 ? 's' : ''}`} />
+          {slice.length === 0 ? (
+            <div style={{ ...S.card, padding:'28px 16px', textAlign:'center', color:'var(--gray)', fontSize:13 }}>No products found</div>
+          ) : (
+            <PhoneList>
+              {slice.map((p, i) => (
+                <PhoneRow key={p.id} first={i === 0} mono={false} onClick={() => setExpandedStock(p.id)}
+                  title={p.name}
+                  chip={<span style={{ fontSize:11, fontWeight:700, borderRadius:20, padding:'3px 10px', background: p.isPublished ? '#e9f5ea' : 'var(--dark2)', color: p.isPublished ? '#2e7d32' : 'var(--gray)' }}>{p.isPublished ? 'Published' : 'Draft'}</span>}
+                  meta={[(p.type === 'multi-variant' || p.combinations?.length) ? `${(p.combinations || p.variants)?.length || 0} variants` : 'Standalone', priceDisplay(p)].join(' \u00b7 ')}
+                  sub={[p.isCustomizable ? 'custom' : null, p.isMadeToOrder ? 'made to order' : null, p.allowCOD ? 'COD' : 'no COD', p.downpaymentPct > 0 ? `${p.downpaymentPct}% DP` : null].filter(Boolean).join(' \u00b7 ')} />
+              ))}
+            </PhoneList>
+          )}
+          <div style={{ padding:'12px 0' }}>
+            <PaginationBar total={total} page={page} perPage={perPage} onPage={setPage} onPerPage={setPerPage} />
+          </div>
+          {(() => {
+            const p = expandedStock ? products.find(x => x.id === expandedStock) : null;
+            return (
+              <PhoneSheet open={!!p} onClose={() => setExpandedStock(null)} mono={false} title={p?.name ?? ''}
+                subtitle={p ? priceDisplay(p) : ''}
+                chip={p ? <span style={{ fontSize:11, fontWeight:700, borderRadius:20, padding:'3px 10px', background: p.isPublished ? '#e9f5ea' : 'var(--dark2)', color: p.isPublished ? '#2e7d32' : 'var(--gray)' }}>{p.isPublished ? 'Published' : 'Draft'}</span> : null}
+                footer={p && (
+                  <div style={{ display:'flex', gap:8 }}>
+                    <button onClick={() => togglePublish(p.id)} style={{ ...S.btnGhost, flex:1, minHeight:44, justifyContent:'center' }}>{p.isPublished ? 'Unpublish' : 'Publish'}</button>
+                    <button onClick={() => { setExpandedStock(null); openEdit(p); }} style={{ ...S.btnPrimary, flex:2, minHeight:44, justifyContent:'center' }}>{ICONS.edit} Edit product</button>
+                  </div>
+                )}>
+                {p && (
+                  <>
+                    <div style={{ padding:'12px 14px 0', display:'flex', flexWrap:'wrap', gap:6 }}>{collectionPills(p)}</div>
+                    <StockBreakdown product={p} boms={boms} materials={materials} />
+                  </>
+                )}
+              </PhoneSheet>
+            );
+          })()}
+        </>
+      ) : (<>
       <div style={{ ...S.rowBetween, marginBottom: '20px' }}>
         <button onClick={openAdd} style={S.btnPrimary}>{ICONS.plus} Add Product</button>
       </div>
@@ -523,6 +576,8 @@ export default function ProductsV2() {
           <PaginationBar total={total} page={page} perPage={perPage} onPage={setPage} onPerPage={setPerPage} />
         </div>
       </div>
+
+      </>)}
 
       <ConfirmModal
         open={!!delTarget}
