@@ -4242,3 +4242,137 @@ html.light .skeleton-table-header {
     padding-inline: 12px;
   }
 }
+
+/* ─── One table, two shapes ─────────────────────────────────────────────────
+   A table is a grid because a mouse-driven screen is wide. A phone is 360px,
+   and 10 columns squeezed into it is either unreadable or a sideways scroll
+   that hides the columns people came for.
+
+   The trap in "make tables responsive" is that a row stripped of its headers
+   is a list of unlabelled values: 20, 950, Sep 18. So the row does not lose
+   its labels here, it carries them - every cell names itself from the header
+   it sat under, and the row becomes a card of label/value pairs.
+
+   Done in CSS against the SAME markup rather than by rewriting each page into
+   cards, for one reason: sorting, filtering, pagination, row expansion and
+   bulk selection all keep working, because the DOM is still the table they
+   were written against. Nothing above 700px is touched.
+
+   Adopt it with className="pmp-rt" on the table, and data-label on each cell.
+   Four cells behave differently, by data-rt:
+     head   the card's title line - no label, larger, sits at the top
+     chev   a disclosure arrow, pinned to the card's top-right corner
+     panel  an expanded detail row; joins the card above it
+     full   loading and empty states that span every column          */
+@media (max-width: 700px) {
+  table.pmp-rt { border-collapse: separate !important; border-spacing: 0 !important; }
+  table.pmp-rt thead { display: none !important; }
+  table.pmp-rt, table.pmp-rt tbody, table.pmp-rt tr, table.pmp-rt td { display: block !important; width: 100% !important; }
+
+  table.pmp-rt tr {
+    position: relative;
+    border: 1px solid var(--border) !important;
+    border-radius: 10px;
+    margin-bottom: 10px;
+    padding: 4px 0;
+    overflow: hidden;
+  }
+
+  /* A label column and a value column. Grid rather than flex because a cell often holds
+     two stacked lines - a name over a phone number, a product over its category - and
+     flex would lay those side by side. Every child lands in the value column, in order. */
+  table.pmp-rt td {
+    display: grid !important;
+    grid-template-columns: 88px minmax(0, 1fr);
+    column-gap: 12px;
+    row-gap: 3px;
+    align-items: baseline;
+    text-align: left !important;
+    border: none !important;
+    padding: 7px 13px !important;
+    white-space: normal !important;
+    min-width: 0;
+  }
+  table.pmp-rt td > * { grid-column: 2; justify-self: start; }
+
+  /* The header the cell sat under, travelling with the value. */
+  table.pmp-rt td::before {
+    content: attr(data-label);
+    flex: 0 0 auto;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--gray);
+    text-transform: uppercase;
+    letter-spacing: .4px;
+    line-height: 1.5;
+  }
+  /* A cell with nothing in it should not leave a labelled blank behind. */
+  table.pmp-rt td:empty { display: none !important; }
+  table.pmp-rt td:not([data-label])::before,
+  table.pmp-rt td[data-label=""]::before { content: none; }
+
+  table.pmp-rt td > * { min-width: 0; }
+  table.pmp-rt td { text-wrap: pretty; }
+
+  /* The stat cards above most lists: a wrapping flex row of 140px-minimum cards is three
+     across on a desktop and, on a 360px phone, three squeezed cards with the labels cut
+     off. Two across, each free to shrink, and the label may wrap. */
+  .pmp-stat-row {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px !important;
+  }
+  .pmp-stat-row > *, .pmp-stat-row > * > * { min-width: 0 !important; }
+  .pmp-stat-row > * > * > :first-child { white-space: normal; letter-spacing: .3px; }
+
+  table.pmp-rt td[data-rt="head"] {
+    display: block !important;
+    font-size: 14px !important;
+    padding: 10px 44px 8px 13px !important;
+    border-bottom: 1px solid var(--border) !important;
+    margin-bottom: 4px;
+  }
+  table.pmp-rt td[data-rt="head"]::before { content: none; }
+
+  table.pmp-rt td[data-rt="chev"] {
+    display: flex !important;
+    position: absolute;
+    top: 8px;
+    right: 6px;
+    width: 34px !important;
+    padding: 6px !important;
+    align-items: center;
+    justify-content: center;
+  }
+  table.pmp-rt td[data-rt="chev"]::before { content: none; }
+  table.pmp-rt td[data-rt="chev"] > * { grid-column: auto; }
+
+  table.pmp-rt td[data-rt="full"],
+  table.pmp-rt td[data-rt="panel"] {
+    display: block !important;
+    padding: 0 !important;
+  }
+  table.pmp-rt td[data-rt="full"]::before,
+  table.pmp-rt td[data-rt="panel"]::before { content: none; }
+
+  /* An expanded detail belongs to the row it opened from, not beside it. */
+  table.pmp-rt tr:has(> td[data-rt="panel"]) {
+    margin-top: -11px;
+    border-top: none !important;
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+  }
+  table.pmp-rt tr:has(> td[data-rt="full"]) { border: none !important; }
+
+  /* Side-by-side columns inside a detail panel become one column, in order. The
+     class marks the grids that were laid out for a desktop; the inline template
+     stays for widths above this. */
+  .pmp-cols { grid-template-columns: minmax(0, 1fr) !important; }
+  .pmp-panel { padding: 12px 12px !important; }
+
+  /* Anything genuinely tabular - a ledger, a payment history - keeps its grid
+     and scrolls sideways instead, because turning a running balance into
+     cards loses the one thing it is read for: the column lining up. */
+  .pmp-rt-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .pmp-rt-scroll > table { min-width: 620px; }
+}

@@ -427,7 +427,7 @@ function JOQueueModal({ orders, token, onClose, onJOUpdated, onPrintJO }) {
               const busy     = busyId === jid;
 
               return (
-                <div key={jid} style={{ ...S.card, border:`2px solid ${border}`, padding:'14px 18px',
+                <div key={jid} className="pmp-cols" style={{ ...S.card, border:`2px solid ${border}`, padding:'14px 18px',
                   display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:'16px', alignItems:'center' }}>
                   <div style={{ display:'flex', gap:'10px', alignItems:'center' }}>
                     <DesignPreview path={j.product?.thumbnail || j.designFilePath} size={40} />
@@ -1621,8 +1621,8 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
   const statusLabel = (st) => st==='approved'?'Approved':st==='rejected'?'Rejected':st==='revision_requested'?'Revision Requested':st==='draft_ready'||st==='proof_sent'?'Awaiting Review':st==='pending_design'?'Designing':st==='pending_review'?'Under Review':'Pending';
 
   return (
-    <div style={{ padding:'16px 20px', background:'var(--dark2)', borderBottom:'1px solid var(--border)' }}>
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'16px' }}>
+    <div className="pmp-panel" style={{ padding:'16px 20px', background:'var(--dark2)', borderBottom:'1px solid var(--border)' }}>
+      <div className="pmp-cols" style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'16px' }}>
 
         {/* LEFT - customer + design (if custom) + status */}
         <div style={{ ...S.card, padding:'14px 16px', display:'flex', flexDirection:'column' }}>
@@ -3214,7 +3214,7 @@ export default function OrdersPage() {
       <div style={S.page}>
 
         {/* Summary cards - click to filter */}
-        <div style={{ display:'flex', gap:'10px', flexWrap:'wrap', marginBottom:'16px' }}>
+        <div className="pmp-stat-row" style={{ display:'flex', gap:'10px', flexWrap:'wrap', marginBottom:'16px' }}>
           {[
             { label:'Total Orders',   value:counts.all,          id:'all'           },
             { label:'Pending',        value:counts.pending,       id:'pending'       },
@@ -3318,7 +3318,7 @@ export default function OrdersPage() {
         {/* Table */}
         <div style={{ ...S.card, padding:0, overflow:'hidden' }}>
           <div style={{ overflowX:'auto' }}>
-            <table style={{ width:'100%', borderCollapse:'collapse' }}>
+            <table className="pmp-rt" style={{ width:'100%', borderCollapse:'collapse' }}>
               <thead>
                 <tr>
                   {['','Order Ref','Type','Customer','Product','Qty','Total','Status','Payment','Date'].map((h,i) => (
@@ -3328,9 +3328,9 @@ export default function OrdersPage() {
               </thead>
               <tbody>
                 {loading ? (
-                  <tr><td colSpan={10} style={{ padding:'40px', textAlign:'center', color:'var(--gray)', fontSize:'13px' }}>Loading orders…</td></tr>
+                  <tr><td colSpan={10} data-rt="full" style={{ padding:'40px', textAlign:'center', color:'var(--gray)', fontSize:'13px' }}>Loading orders…</td></tr>
                 ) : total === 0 ? (
-                  <tr><td colSpan={10}>
+                  <tr><td colSpan={10} data-rt="full">
                     <EmptyState message="No orders found" sub="Try adjusting your search or filter." />
                   </td></tr>
                 ) : slice.map(o => {
@@ -3346,13 +3346,13 @@ export default function OrdersPage() {
                         onMouseEnter={e => !isOpen && (e.currentTarget.style.background='var(--dark2)')}
                         onMouseLeave={e => !isOpen && (e.currentTarget.style.background= isArch ? 'var(--dark2)' : '')}>
 
-                        <td style={{ ...S.td, textAlign:'center', width:'36px' }}>
+                        <td data-rt="chev" style={{ ...S.td, textAlign:'center', width:'36px' }}>
                           <Chevron open={isOpen} />
                         </td>
-                        <td style={{ ...S.td, fontFamily:'monospace', fontWeight:700, fontSize:'12px', color:'var(--gold)', whiteSpace:'nowrap' }}>
+                        <td data-rt="head" style={{ ...S.td, fontFamily:'monospace', fontWeight:700, fontSize:'12px', color:'var(--gold)', whiteSpace:'nowrap' }}>
                           {orderNo(o)}
                         </td>
-                        <td style={{ ...S.td }}>
+                        <td data-label="Type" style={{ ...S.td }}>
                           <TypeBadge isCustom={o.isCustom} items={o.items} />
                           {/* Its prices were negotiated in chat, not taken from the catalogue.
                               Worth knowing before anyone questions a figure on it. */}
@@ -3362,19 +3362,19 @@ export default function OrdersPage() {
                             </span>
                           )}
                         </td>
-                        <td style={{ ...S.td }}>
+                        <td data-label="Customer" style={{ ...S.td }}>
                           <div style={{ fontWeight:600, fontSize:'13px' }}>{o.customerName}</div>
                           {o.customerContact && <div style={{ fontSize:'11px', color:'var(--gray)' }}>{o.customerContact}</div>}
                         </td>
-                        <td style={{ ...S.td }}>
+                        <td data-label="Product" style={{ ...S.td }}>
                           <div style={{ fontSize:'13px' }}>{o.productName}</div>
                           {o.category && <div style={{ fontSize:'11px', color:'var(--gray)' }}>{o.category}</div>}
                         </td>
-                        <td style={{ ...S.td, textAlign:'center', color:'var(--gray)', fontSize:'12px' }}>{o.quantity}</td>
-                        <td style={{ ...S.td, textAlign:'center', fontWeight:700, fontFamily:'monospace', fontSize:'12px', color:'var(--gold)', whiteSpace:'nowrap' }}>
+                        <td data-label="Qty" style={{ ...S.td, textAlign:'center', color:'var(--gray)', fontSize:'12px' }}>{o.quantity}</td>
+                        <td data-label="Total" style={{ ...S.td, textAlign:'center', fontWeight:700, fontFamily:'monospace', fontSize:'12px', color:'var(--gold)', whiteSpace:'nowrap' }}>
                           ₱{fmt(o.totalAmount ?? o.totalPrice)}
                         </td>
-                        <td style={{ ...S.td, textAlign:'center' }}>
+                        <td data-label="Status" style={{ ...S.td, textAlign:'center' }}>
                           <StatusBadge status={o.orderStatus} />
                           {isArch && <span style={{ ...S.badge, fontSize:'10px', background:'var(--st-gray-bg)', color:'var(--st-gray-fg)', border:'1px solid var(--border)', marginLeft:'4px' }}>Archived</span>}
                           {isExpired(o) && <span style={{ ...S.badge, fontSize:'10px', background:'var(--st-orange-bg)', color:'var(--st-orange-fg)', border:'1px solid rgba(251,146,60,0.35)', marginLeft:'4px' }}>Expired</span>}
@@ -3385,17 +3385,17 @@ export default function OrdersPage() {
                             return <span title={risk.reason} style={{ ...S.badge, ...RISK_STYLE[risk.color], fontSize:'10px', fontWeight:700, marginLeft:'4px' }}>{risk.label}</span>;
                           })()}
                         </td>
-                        <td style={{ ...S.td, textAlign:'center' }}>
+                        <td data-label="Payment" style={{ ...S.td, textAlign:'center' }}>
                           <PayBadge status={o.paymentStatus} method={o.paymentMethod} />
                         </td>
-                        <td style={{ ...S.td, fontSize:'11px', color:'var(--gray)', whiteSpace:'nowrap' }}>
+                        <td data-label="Date" style={{ ...S.td, fontSize:'11px', color:'var(--gray)', whiteSpace:'nowrap' }}>
                           {o.createdAt ? new Date(o.createdAt).toLocaleDateString('en-PH', { month:'short', day:'numeric', year:'numeric' }) : '-'}
                         </td>
                       </tr>
 
                       {isOpen && (
                         <tr key={`${o.id}_detail`}>
-                          <td colSpan={10} style={{ padding:0 }}>
+                          <td colSpan={10} data-rt="panel" style={{ padding:0 }}>
                             <OrderDetail
                               o={o}
                               token={token}
