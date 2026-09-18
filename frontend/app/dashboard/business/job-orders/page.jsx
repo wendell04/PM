@@ -21,6 +21,7 @@ import { orderNo } from '@/lib/orderNumber';
 import { joRisk, RISK_STYLE } from '@/lib/deliveryRisk';
 import { JO_BADGE, JO_STATUSES, JO_EDITABLE_STATUSES, JobOrderStatusBadge as StatusBadge, RushBadge, DesignPreview, designUrl, joDocId, fmtJODate, TableSkeleton } from '@/components/dashboard/JobOrderBits';
 import { S, ICONS, SearchBar, SummaryCard, PaginationBar, EmptyState, usePagination, CustomSelect, ConfirmModal } from '../inventory-v2/shared';
+import { useIsPhone, KpiStrip, PhoneFilterBar, PhoneList, PhoneRow } from '@/components/dashboard/phone';
 import { isCodMethod } from '@/lib/paymentMethod';
 import { needsJobOrder } from '@/lib/jobOrderEligibility';
 
@@ -453,6 +454,7 @@ export default function JobOrdersPage() {
   // Opens on the queue - the job orders waiting to be started - rather than every one ever made,
   // where finished work buries what is new. All Statuses is still one click away.
   const [statusFilter, setStatusFilter] = useState('Queued');
+  const isPhone = useIsPhone();
   const [rushFilter, setRushFilter] = useState('');
   const [search, setSearch] = useState('');
 
@@ -597,6 +599,15 @@ export default function JobOrdersPage() {
           <button onClick={openCreate} style={S.btnPrimary}>{ICONS.plus} Create Job Order</button>
         </div>
 
+        {isPhone ? (
+          <KpiStrip items={[
+            { key: '',            label: 'All',         value: counts.total },
+            { key: 'Queued',      label: 'Queued',      value: counts.queued },
+            { key: 'In Progress', label: 'In progress', value: counts.inProgress, color: 'var(--gold)' },
+            { key: 'QC_Pending',  label: 'For QC',      value: counts.forQc, color: 'var(--st-purple-fg)' },
+            { key: 'Completed',   label: 'Completed',   value: counts.completed, color: 'var(--st-green-fg)' },
+          ].map(k => ({ ...k, active: statusFilter === k.key, onClick: () => { setStatusFilter(k.key); setPage(1); } }))} />
+        ) : (
         <div className="pmp-stat-row" style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '16px' }}>
           <SummaryCard label="Total" value={counts.total} accent />
           <SummaryCard label="Queued" value={counts.queued} />
@@ -605,6 +616,19 @@ export default function JobOrdersPage() {
           <SummaryCard label="Completed" value={counts.completed} color="var(--st-green-fg)" />
         </div>
 
+        )}
+
+            {isPhone ? (
+              <PhoneFilterBar search={search} onSearch={v => { setSearch(v); setPage(1); }} placeholder="Search JO, product, order"
+                filters={[
+                  { key: 'status', label: 'Status', value: statusFilter, defaultValue: '', onChange: v => { setStatusFilter(v); setPage(1); },
+                    options: [{ value: '', label: 'All' }, ...JO_STATUSES.map(st => ({ value: st, label: JO_BADGE[st]?.label ?? st }))] },
+                  { key: 'rush', label: 'Type', value: rushFilter, defaultValue: '', onChange: setRushFilter,
+                    options: [{ value: '', label: 'All' }, { value: 'true', label: 'Rush only' }, { value: 'false', label: 'Standard only' }] },
+                ]}
+                actions={<button onClick={loadJobOrders} style={{ ...S.btnSmGhost, minHeight: 36 }}>{ICONS.reload} Refresh</button>}
+                note={`${total} job order${total === 1 ? '' : 's'}`} />
+            ) : (
             <div style={{ ...S.card, ...S.rowBetween, marginBottom: '10px', padding: '12px 16px' }}>
               <div className="pmp-filters" style={{ ...S.row, gap: '8px', flex: 1 }}>
                 <SearchBar value={search} onChange={v => { setSearch(v); setPage(1); }} placeholder="Search JO, product, order…" style={{ width: '240px' }} />
@@ -616,8 +640,40 @@ export default function JobOrdersPage() {
               <button onClick={loadJobOrders} style={S.btnGhost}>{ICONS.reload} Refresh</button>
             </div>
 
+            )}
+
             {error && <div style={{ ...S.note, background: 'var(--st-red-bg)', borderColor: 'rgba(239,68,68,0.35)', color: 'var(--st-red-fg)', marginBottom: '10px' }}>{error}</div>}
 
+            {isPhone ? (
+              <>
+                {isLoading ? (
+                  <div style={{ ...S.card, padding: '28px 16px', textAlign: 'center', color: 'var(--gray)', fontSize: 13 }}>Loading job orders</div>
+                ) : slice.length === 0 ? (
+                  <div style={{ ...S.card, padding: 0 }}><EmptyState message="No job orders found" sub="Create one from a paid, design-approved order." /></div>
+                ) : (
+                  <PhoneList>
+                    {slice.map((jo, i) => {
+                      const risk = joRisk(jo);
+                      return (
+                        <PhoneRow key={jo.id ?? jo._id} first={i === 0} onClick={() => openEdit(jo)}
+                          title={<>{jo.joId || (jo.id ?? jo._id)?.slice(-8).toUpperCase()} <RushBadge isRush={jo.isRush} /></>}
+                          chip={<StatusBadge status={jo.joStatus} />}
+                          meta={prodName(jo)}
+                          sub={[
+                            jo.product?.quantity != null ? `${jo.product.quantity} pcs` : null,
+                            jo.orderId ? orderNo(jo.orderId) : null,
+                            jo.targetCompletion ? `due ${fmtDate(jo.targetCompletion)}` : null,
+                            risk?.label ?? null,
+                          ].filter(Boolean).join(' \u00b7 ')} />
+                      );
+                    })}
+                  </PhoneList>
+                )}
+                <div style={{ padding: '12px 0' }}>
+                  <PaginationBar total={total} page={page} perPage={perPage} onPage={setPage} onPerPage={setPerPage} />
+                </div>
+              </>
+            ) : (<>
             <div style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
               <table className="pmp-rt" style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead><tr>
@@ -668,6 +724,7 @@ export default function JobOrdersPage() {
               </table>
             </div>
             <PaginationBar total={total} page={page} perPage={perPage} onPage={setPage} onPerPage={setPerPage} />
+            </>)}
       </div>
 
       {preview && (

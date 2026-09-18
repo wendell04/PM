@@ -6,6 +6,7 @@ import {
   fetchOrderRequests,
   updateOrderRequestStatus,
 } from '@/lib/orderRequestApi';
+import { useIsPhone, KpiStrip, PhoneFilterBar, PhoneList, PhoneRow } from '@/components/dashboard/phone';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import { loadInventory } from '../inventory-v2/api';
 import { S } from '../inventory-v2/shared';
@@ -116,6 +117,7 @@ export default function OrderRequestsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [activeFilter, setActiveFilter] = useState('all');
+  const isPhone = useIsPhone();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [modalLoading, setModalLoading] = useState(false);
@@ -330,6 +332,15 @@ export default function OrderRequestsPage() {
       {/* Page title is shown in the top bar; keep only the descriptive subtitle */}
       <p style={{ margin: '0 0 1.5rem', color: 'var(--gray)', fontSize: '0.9rem' }}>Review and manage customer print orders</p>
 
+      {isPhone ? (
+        <>
+          <KpiStrip items={FILTER_OPTIONS.map(opt => ({ key: opt.key, label: opt.label, value: cardCounts[opt.key] ?? 0, active: activeFilter === opt.key, onClick: () => setActiveFilter(opt.key) }))} />
+          <PhoneFilterBar search={searchQuery} onSearch={setSearchQuery} placeholder="Search customer or product"
+            filters={[{ key: 'status', label: 'Status', value: activeFilter, defaultValue: 'all', onChange: setActiveFilter,
+              options: FILTER_OPTIONS.map(o => ({ value: o.key, label: o.label })) }]}
+            note={`${filteredRequests.length} request${filteredRequests.length === 1 ? '' : 's'}`} />
+        </>
+      ) : (<>
       {/* Summary Cards */}
       <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '1.5rem' }}>
         {FILTER_OPTIONS.map(opt => {
@@ -385,6 +396,8 @@ export default function OrderRequestsPage() {
         </div>
       </div>
 
+      </>)}
+
       {/* Error State */}
       {error && (
         <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--red)' }}>
@@ -436,6 +449,20 @@ export default function OrderRequestsPage() {
               </p>
             </div>
           ) : (
+            isPhone ? (
+              <PhoneList>
+                {filteredRequests.map((req, i) => (
+                  <PhoneRow key={req.id} first={i === 0} onClick={() => openReview(req)}
+                    title={req.customerName || '-'}
+                    chip={<StatusBadge status={req.status} />}
+                    meta={[req.productName || '-', req.quantity != null ? `\u00d7${req.quantity}` : null].filter(Boolean).join(' ')}
+                    sub={[
+                      req.finalPrice != null ? `final ${formatPeso(req.finalPrice)}` : (req.suggestedPrice != null ? `suggested ${formatPeso(req.suggestedPrice)}` : 'no price yet'),
+                      formatDate(req.createdAt),
+                    ].filter(Boolean).join(' \u00b7 ')} />
+                ))}
+              </PhoneList>
+            ) : (
             <div style={{ overflowX: 'auto', borderRadius: '10px', border: '1px solid var(--border)' }}>
               <table className="pmp-rt" style={{ width: '100%', borderCollapse: 'collapse', minWidth: '900px' }}>
                 <thead>
@@ -489,6 +516,7 @@ export default function OrderRequestsPage() {
                 </tbody>
               </table>
             </div>
+            )
           )}
         </>
       )}

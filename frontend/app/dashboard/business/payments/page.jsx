@@ -9,6 +9,7 @@ import useLockBodyScroll from '@/lib/useLockBodyScroll';
 import { orderNo } from '@/lib/orderNumber';
 import { normalizeStatus } from '@/lib/orderStatus';
 import { S, ICONS, SearchBar, SummaryCard, PaginationBar, EmptyState, usePagination, CustomSelect } from '../inventory-v2/shared';
+import { useIsPhone, KpiStrip, PhoneFilterBar, PhoneList, PhoneRow } from '@/components/dashboard/phone';
 
 // Accounts receivable. Sales answers "what did we sell"; this answers "what have we collected and
 // who still owes us". The two are deliberately separate reports over the same orders.
@@ -83,6 +84,7 @@ export default function PaymentsPage() {
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('outstanding');
+  const isPhone = useIsPhone();
   const [ageFilter, setAgeFilter] = useState('all');
 
   const [modalOrder, setModalOrder] = useState(null);
@@ -185,6 +187,14 @@ export default function PaymentsPage() {
     <ErrorBoundary>
       <div style={S.page}>
 
+        {isPhone ? (
+          <KpiStrip items={[
+            { key: 'out',  label: 'Outstanding', value: fmt(outstanding), color: outstanding > 0 ? 'var(--st-red-fg)' : undefined, active: ageFilter === 'all', onClick: () => { setAgeFilter('all'); setPage(1); } },
+            ...bucketTotals.map(bk => ({ key: bk.key, label: bk.label, value: fmt(bk.amount), color: bk.amount > 0 ? bk.tone.fg : 'var(--gray)', active: ageFilter === bk.key, onClick: () => { setAgeFilter(ageFilter === bk.key ? 'all' : bk.key); setPage(1); } })),
+            { key: 'col',  label: 'Collected',   value: fmt(totalCollected), color: 'var(--st-green-fg)' },
+            { key: 'tot',  label: 'Order value', value: fmt(totalValue) },
+          ]} />
+        ) : (<>
         <div className="pmp-stat-row" style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '16px' }}>
           <SummaryCard label="Total Order Value" value={fmt(totalValue)} />
           <SummaryCard label="Collected" value={fmt(totalCollected)} color="var(--st-green-fg)" />
@@ -212,6 +222,19 @@ export default function PaymentsPage() {
           </div>
         </div>
 
+        </>)}
+
+        {isPhone ? (
+          <PhoneFilterBar search={search} onSearch={v => { setSearch(v); setPage(1); }} placeholder="Search order or customer"
+            filters={[
+              { key: 'status', label: 'Show', value: statusFilter, defaultValue: 'outstanding', onChange: v => { setStatusFilter(v); setPage(1); },
+                options: [{ value: 'outstanding', label: 'Outstanding only' }, { value: 'all', label: 'All orders' }, { value: 'unpaid', label: 'Unpaid' }, { value: 'partial', label: 'Partial' }, { value: 'paid', label: 'Paid' }] },
+              { key: 'age', label: 'Age', value: ageFilter, defaultValue: 'all', onChange: v => { setAgeFilter(v); setPage(1); },
+                options: [{ value: 'all', label: 'Any age' }, ...AGE_BUCKETS.map(b => ({ value: b.key, label: b.label }))] },
+            ]}
+            actions={<button onClick={fetchOrders} style={{ ...S.btnSmGhost, minHeight: 36 }}>{ICONS.reload} Refresh</button>}
+            note={`${total} order${total === 1 ? '' : 's'}`} />
+        ) : (
         <div style={{ ...S.card, ...S.rowBetween, marginBottom: '10px', padding: '12px 16px' }}>
           <div className="pmp-filters" style={{ ...S.row, gap: '8px', flex: 1 }}>
             <SearchBar value={search} onChange={v => { setSearch(v); setPage(1); }} placeholder="Search order or customer…" style={{ width: '240px' }} />
@@ -229,8 +252,36 @@ export default function PaymentsPage() {
           <button onClick={fetchOrders} style={S.btnGhost}>{ICONS.reload} Refresh</button>
         </div>
 
+        )}
+
         {error && <div style={{ ...S.note, background: 'var(--st-red-bg)', borderColor: 'rgba(239,68,68,0.35)', color: 'var(--st-red-fg)', marginBottom: '10px' }}>{error}</div>}
 
+        {isPhone ? (
+          <>
+            {loading ? (
+              <div style={{ ...S.card, padding: '28px 16px', textAlign: 'center', color: 'var(--gray)', fontSize: 13 }}>Loading</div>
+            ) : slice.length === 0 ? (
+              <div style={{ ...S.card, padding: 0 }}><EmptyState message="Nothing outstanding" sub="Orders with an unpaid balance appear here." /></div>
+            ) : (
+              <PhoneList>
+                {slice.map((o, i) => {
+                  const bal = balanceOf(o);
+                  return (
+                    <PhoneRow key={o._id || o.id} first={i === 0}
+                      onClick={() => bal > 0 ? openRecordPayment(o) : (o.paymentHistory?.length > 0 ? setHistoryOrder(o) : null)}
+                      title={orderNo(o)}
+                      chip={<StatusBadge status={o.paymentStatus || 'unpaid'} />}
+                      meta={customerOf(o)}
+                      sub={[`total ${fmt(o.totalAmount)}`, `paid ${fmt(paidSoFar(o))}`, bal > 0 ? `owes ${fmt(bal)} \u00b7 ${ageDays(o)}d` : 'settled'].join(' \u00b7 ')} />
+                  );
+                })}
+              </PhoneList>
+            )}
+            <div style={{ padding: '12px 0' }}>
+              <PaginationBar total={total} page={page} perPage={perPage} onPage={setPage} onPerPage={setPerPage} />
+            </div>
+          </>
+        ) : (<>
         <div style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
           <table className="pmp-rt" style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead><tr>
@@ -285,6 +336,8 @@ export default function PaymentsPage() {
           </table>
         </div>
         <PaginationBar total={total} page={page} perPage={perPage} onPage={setPage} onPerPage={setPerPage} />
+
+        </>)}
 
         {modalOrder && (
           <div onClick={() => !paying && setModalOrder(null)} style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, background: 'rgba(0,0,0,0.45)' }}>
