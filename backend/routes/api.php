@@ -433,6 +433,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/payment/create-link',              [PaymentController::class, 'createLink']);
     Route::post('/payment/initiate',                 [PaymentController::class, 'initiatePayment']);
     Route::post('/payment/verify-intent',            [PaymentController::class, 'verifyIntent']);
+    // The quotation half of the same job: a quote paid online is recorded by the webhook AND by the
+    // browser, so a webhook that never arrives no longer leaves a paid customer with nothing.
+    Route::post('/payment/verify-order-request',     [PaymentController::class, 'verifyOrderRequest']);
     Route::post('/payment/order-request-link',       [PaymentController::class, 'createOrderRequestLink']);
     Route::post('/payment/create-order-pay-link',    [PaymentController::class, 'createOrderPayLink']);
     // The CUSTOMER releases their own failed checkout on the way back from GCash; the controller
