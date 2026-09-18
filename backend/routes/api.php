@@ -13,6 +13,7 @@ use App\Http\Controllers\MasterlistController;
 use App\Http\Controllers\JobOrderController;
 use App\Http\Controllers\AuditLogController;
 use App\Http\Controllers\SaleController;
+use App\Http\Controllers\ReportController;
 use App\Http\Controllers\CartController;
 use App\Http\Controllers\SupplierController;
 use App\Http\Controllers\BannerController;
@@ -307,6 +308,8 @@ Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
     // ─── Sales ────────────────────────────────────────────────────────────────
     Route::get('/admin/sales',                   [SaleController::class, 'index']);
     Route::get('/admin/sales/summary',           [SaleController::class, 'summary']);
+    Route::get('/admin/reports/sales',           [ReportController::class, 'sales']);
+    Route::get('/admin/reports/inventory',       [ReportController::class, 'inventory']);
     Route::get('/admin/sales/top-products',      [SaleController::class, 'topProducts']);
     Route::get('/admin/sales/{id}',              [SaleController::class, 'show']);
     Route::post('/admin/sales',                  [SaleController::class, 'store']);
