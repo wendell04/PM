@@ -1826,14 +1826,36 @@ export default function SettingsPage() {
         </div>
       )}
       <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-        {['brevo', 'resend'].map(p => (
+        {[['security_lane', 'Test the way codes go'], ['brevo', 'Send a test through Brevo'], ['resend', 'Send a test through Resend']].map(([p, label]) => (
           <button key={p} type="button" onClick={() => runMailTest(p)} disabled={!!mailTest.busy}
-            style={{ padding: '8px 14px', borderRadius: '8px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--white)', fontWeight: 600, fontSize: '0.8rem', cursor: mailTest.busy ? 'not-allowed' : 'pointer', opacity: mailTest.busy && mailTest.busy !== p ? 0.5 : 1 }}>
-            {mailTest.busy === p ? 'Sending...' : `Send a test through ${p === 'brevo' ? 'Brevo' : 'Resend'}`}
+            style={{ padding: '8px 14px', borderRadius: '8px', border: `1px solid ${p === 'security_lane' ? 'var(--gold)' : 'var(--border)'}`, background: 'transparent', color: p === 'security_lane' ? 'var(--gold)' : 'var(--white)', fontWeight: p === 'security_lane' ? 700 : 600, fontSize: '0.8rem', cursor: mailTest.busy ? 'not-allowed' : 'pointer', opacity: mailTest.busy && mailTest.busy !== p ? 0.5 : 1 }}>
+            {mailTest.busy === p ? 'Sending...' : label}
           </button>
         ))}
       </div>
-      {mailTest.result && (
+      {/* The lane test walks the chain itself, so it can say what the failover never does: which
+          provider refused, in its own words, and which one ended up carrying the mail. */}
+      {mailTest.result?.attempts && (
+        <div style={{ padding: '10px 12px', borderRadius: '8px', fontSize: '0.8rem', lineHeight: 1.6,
+          background: mailTest.result.ok ? 'rgba(74,222,128,0.08)' : 'rgba(239,68,68,0.08)',
+          border: `1px solid ${mailTest.result.ok ? 'rgba(74,222,128,0.3)' : 'rgba(239,68,68,0.3)'}` }}>
+          <div style={{ fontWeight: 700, color: mailTest.result.ok ? 'var(--green)' : 'var(--red)' }}>
+            {mailTest.result.ok
+              ? `This lane is being carried by ${mailTest.result.carried === 'brevo' ? 'Brevo' : mailTest.result.carried}`
+              : 'Every provider in this lane refused'}
+          </div>
+          <div style={{ color: 'var(--gray)' }}>From {mailTest.result.from} to {mailTest.result.to}</div>
+          {mailTest.result.attempts.map((a, i) => (
+            <div key={i} style={{ marginTop: 6 }}>
+              <span style={{ color: a.ok ? 'var(--green)' : 'var(--red)', fontWeight: 600 }}>
+                {i + 1}. {a.provider === 'brevo' ? 'Brevo' : a.provider === 'resend' ? 'Resend' : a.provider} {a.ok ? `sent it in ${a.ms} ms` : 'refused'}
+              </span>
+              {!a.ok && <div style={{ color: 'var(--white)', fontFamily: 'monospace', fontSize: '0.74rem', wordBreak: 'break-word' }}>{a.error}</div>}
+            </div>
+          ))}
+        </div>
+      )}
+      {mailTest.result && !mailTest.result.attempts && (
         <div style={{ padding: '10px 12px', borderRadius: '8px', fontSize: '0.8rem', lineHeight: 1.55,
           background: mailTest.result.ok ? 'rgba(74,222,128,0.08)' : 'rgba(239,68,68,0.08)',
           border: `1px solid ${mailTest.result.ok ? 'rgba(74,222,128,0.3)' : 'rgba(239,68,68,0.3)'}` }}>
