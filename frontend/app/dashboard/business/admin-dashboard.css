@@ -4251,6 +4251,30 @@ html.light .skeleton-table-header {
   .top-bar-page-name { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .top-bar-right { flex-shrink: 0; }
 }
+/* On a phone the page scrolls inside .admin-main-content, and a visible scrollbar there
+   sits beside the top bar like a strip torn off its edge. Phones overlay their scrollbars
+   anyway; hide the track so the bar runs edge to edge. */
+@media (max-width: 700px) {
+  .admin-main-content { scrollbar-width: none; }
+  .admin-main-content::-webkit-scrollbar { display: none; }
+
+  /* The notifications dropdown is 360px anchored to the bell - on a 360px screen it hangs
+     off the left edge. It becomes a full-width panel under the top bar, like everything
+     else that opens on a phone. */
+  .notif-panel {
+    position: fixed !important;
+    top: 56px !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: auto !important;
+    max-height: none !important;
+    border-radius: 0 !important;
+    border-left: none !important;
+    border-right: none !important;
+  }
+}
+
 /* Below 480px the account button drops the name and keeps the avatar - the name
    cost 70px that the page title needed more. */
 @media (max-width: 480px) {

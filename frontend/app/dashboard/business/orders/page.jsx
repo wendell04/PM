@@ -19,7 +19,7 @@ import ImageLightbox from '@/components/shop/ImageLightbox';
 import ProofGallery from '@/components/shop/ProofGallery';
 import useLockBodyScroll from '@/lib/useLockBodyScroll';
 import { useIsPhone, KpiStrip, PhoneFilterBar, PhoneList, PhoneRow, PhoneSheet } from '@/components/dashboard/phone';
-import { normalizeStatus, statusLabel, ORDER_STATUS_ORDER } from '@/lib/orderStatus';
+import { normalizeStatus, statusLabel, ORDER_STATUS_ORDER, ORDER_STAGES, stageOf, isDone } from '@/lib/orderStatus';
 import { isCodMethod } from '@/lib/paymentMethod';
 
 const API_URL    = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
@@ -3062,6 +3062,9 @@ export default function OrdersPage() {
   // Below 700px the list, the filters and the opened order are the phone pieces; see
   // components/dashboard/phone.jsx. Same data, same state, another shape.
   const isPhone = useIsPhone();
+  // A phone list is for what is still moving. Delivered and cancelled orders stay reachable
+  // through a toggle and the Done filter, but do not bury today's work under last month's.
+  const [showDone, setShowDone] = useState(false);
   const [loading,      setLoading]      = useState(true);
   const [loadError,    setLoadError]    = useState('');
   const [refreshing,   setRefreshing]   = useState(false);
@@ -3186,21 +3189,29 @@ export default function OrdersPage() {
     return matchSearch && matchPay && matchType && matchDate;
   });
 
+  const wantsDone = statusFilter === 'stage:done' || ORDER_STAGES.find(st => st.key === 'done').statuses.includes(statusFilter);
   const filtered = scoped.filter(o =>
     // 'needs_attention' is not a stored status - it is the derived delivery-promise risk.
-    statusFilter === 'all' ? true
+    // 'stage:<key>' is a group of statuses (see ORDER_STAGES).
+    (statusFilter === 'all' ? true
       : statusFilter === 'needs_attention' ? !!deliveryRisk(o)
-      : normalizeStatus(o.orderStatus) === statusFilter
+      : statusFilter.startsWith('stage:') ? stageOf(o.orderStatus) === statusFilter.slice(6)
+      : normalizeStatus(o.orderStatus) === statusFilter)
+    && (!isPhone || showDone || wantsDone || !isDone(o.orderStatus))
   ).sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
 
   // ── Summary counts ──────────────────────────────────────────────────────────
 
   const countBy = (code) => scoped.filter(o => normalizeStatus(o.orderStatus) === code).length;
+  const countStage = (key) => scoped.filter(o => stageOf(o.orderStatus) === key).length;
   const counts = {
     all:          scoped.length,
-    pending:      countBy('pending'),
-    inProduction: countBy('in_production'),
-    forDelivery:  countBy('for_delivery'),
+    // Stages, not single statuses: "For Delivery: 0" beside three orders in Ready for Delivery
+    // was a card answering a question nobody asked.
+    todo:         countStage('todo'),
+    making:       countStage('making'),
+    toShip:       countStage('toship'),
+    done:         countStage('done'),
     delivered:    countBy('delivered'),
     cancelled:    countBy('cancelled'),
     // Orders whose delivery promise is late or about to be missed (derived, not stored).
@@ -3219,22 +3230,19 @@ export default function OrdersPage() {
 
         {isPhone ? (
           <KpiStrip items={[
-            { key:'all',             label:'Orders',      value:counts.all },
-            { key:'pending',         label:'Pending',     value:counts.pending },
-            { key:'in_production',   label:'In production', value:counts.inProduction },
-            { key:'for_delivery',    label:'For delivery', value:counts.forDelivery },
-            { key:'delivered',       label:'Delivered',   value:counts.delivered },
-            { key:'cancelled',       label:'Cancelled',   value:counts.cancelled },
-            { key:'needs_attention', label:'Needs attention', value:counts.needsAttention, color: counts.needsAttention > 0 ? 'var(--st-red-fg)' : undefined },
-          ].map(k => ({ ...k, active: statusFilter === k.key, onClick: () => { setStatusFilter(k.key); setPage(1); } }))} />
+            { key:'stage:todo',      label:'To do',     value:counts.todo },
+            { key:'stage:making',    label:'Making',    value:counts.making },
+            { key:'stage:toship',    label:'To ship',   value:counts.toShip },
+            { key:'needs_attention', label:'Attention', value:counts.needsAttention, color: counts.needsAttention > 0 ? 'var(--st-red-fg)' : undefined },
+          ].map(k => ({ ...k, active: statusFilter === k.key, onClick: () => { setStatusFilter(statusFilter === k.key ? 'all' : k.key); setPage(1); } }))} />
         ) : (<>
         {/* Summary cards - click to filter */}
         <div className="pmp-stat-row" style={{ display:'flex', gap:'10px', flexWrap:'wrap', marginBottom:'16px' }}>
           {[
             { label:'Total Orders',   value:counts.all,          id:'all'           },
-            { label:'Pending',        value:counts.pending,       id:'pending'       },
-            { label:'In Production',  value:counts.inProduction,  id:'in_production' },
-            { label:'For Delivery',   value:counts.forDelivery,   id:'for_delivery'  },
+            { label:'To Do',          value:counts.todo,          id:'stage:todo'    },
+            { label:'Making',         value:counts.making,        id:'stage:making'  },
+            { label:'To Ship',        value:counts.toShip,        id:'stage:toship'  },
             { label:'Delivered',      value:counts.delivered,     id:'delivered'     },
             { label:'Cancelled',      value:counts.cancelled,     id:'cancelled'     },
             { label:'Needs Attention',value:counts.needsAttention,id:'needs_attention', alert:true },
@@ -3271,7 +3279,12 @@ export default function OrdersPage() {
             search={search} onSearch={v => { setSearch(v); setPage(1); }} placeholder="Search order, customer, product"
             filters={[
               { key:'status', label:'Status', value:statusFilter, defaultValue:'all', onChange: v => { setStatusFilter(v); setPage(1); },
-                options: STATUS_TABS.map(st => ({ value: st, label: st === 'all' ? 'All' : statusLabel(st) })) },
+                options: [
+                  { value:'all', label:'All' },
+                  ...ORDER_STAGES.map(st => ({ value:'stage:' + st.key, label:st.label })),
+                  { value:'needs_attention', label:'Needs attention' },
+                  ...ORDER_STATUS_ORDER.map(st => ({ value: st, label: statusLabel(st) })),
+                ] },
               { key:'type', label:'Type', value:typeFilter, defaultValue:'all', onChange: v => { setTypeFilter(v); setPage(1); },
                 options: [
                   { value:'all', label:'All types' }, { value:'produced', label:'All custom' }, { value:'request', label:'Custom (request)' },
@@ -3293,6 +3306,10 @@ export default function OrdersPage() {
               <button onClick={() => setShowArchived(v => !v)}
                 style={{ ...S.btnSmGhost, minHeight:36, ...(showArchived ? { background:'#fff7ed', color:'#c2410c', borderColor:'#fdba74' } : {}) }}>
                 {showArchived ? 'Hide archived' : 'Archived'}
+              </button>
+              <button onClick={() => setShowDone(v => !v)}
+                style={{ ...S.btnSmGhost, minHeight:36, ...(showDone ? { background:'rgba(212,168,67,0.12)', color:'var(--gold)', borderColor:'rgba(212,168,67,0.35)' } : {}) }}>
+                {showDone ? 'Hide done' : 'Show done (' + counts.done + ')'}
               </button>
               <button onClick={() => fetchOrders()} aria-label="Refresh" style={{ ...S.btnSmGhost, minHeight:36, minWidth:36, justifyContent:'center' }}>{ICONS.reload}</button>
             </>}

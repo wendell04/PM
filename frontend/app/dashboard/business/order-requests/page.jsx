@@ -334,7 +334,13 @@ export default function OrderRequestsPage() {
 
       {isPhone ? (
         <>
-          <KpiStrip items={FILTER_OPTIONS.map(opt => ({ key: opt.key, label: opt.label, value: cardCounts[opt.key] ?? 0, active: activeFilter === opt.key, onClick: () => setActiveFilter(opt.key) }))} />
+          <KpiStrip items={[
+            { key: 'all',            label: 'All' },
+            { key: 'pending_review', label: 'To review' },
+            { key: 'confirmed',      label: 'Confirmed' },
+            { key: 'processing',     label: 'Processing' },
+            { key: 'ready',          label: 'Ready' },
+          ].map(k => ({ ...k, value: cardCounts[k.key] ?? 0, active: activeFilter === k.key, onClick: () => setActiveFilter(activeFilter === k.key ? 'all' : k.key) }))} />
           <PhoneFilterBar search={searchQuery} onSearch={setSearchQuery} placeholder="Search customer or product"
             filters={[{ key: 'status', label: 'Status', value: activeFilter, defaultValue: 'all', onChange: setActiveFilter,
               options: FILTER_OPTIONS.map(o => ({ value: o.key, label: o.label })) }]}

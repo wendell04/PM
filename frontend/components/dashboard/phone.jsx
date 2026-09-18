@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import useLockBodyScroll from '@/lib/useLockBodyScroll';
 
 /**
@@ -35,25 +35,29 @@ const chevron = (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6" /></svg>
 );
 
-/* ── KPI strip ────────────────────────────────────────────────────────────── */
+/* ── KPI row ──────────────────────────────────────────────────────────────── */
 
 /**
- * The stat cards as a strip you flick sideways. items: { key, label, value, active, color, onClick }.
- * Tapping one filters, as clicking a card does on the desktop.
+ * The numbers that matter, all visible at once - the Shopee seller app's "0 To Ship / 0
+ * Cancelled / 0 Return / 0 Review" row. Never a strip that scrolls: what is off-screen does not
+ * exist to the person holding the phone. Keep it to four or five. items: { key, label, value,
+ * active, color, onClick }; tapping one filters, as clicking a card does on the desktop.
  */
 export function KpiStrip({ items }) {
+  const cols = Math.min(5, Math.max(2, items.length));
   return (
-    <div style={{ display: 'flex', gap: 8, overflowX: 'auto', scrollSnapType: 'x proximity', margin: '0 -16px 12px', padding: '2px 16px 6px', WebkitOverflowScrolling: 'touch' }}>
-      {items.map(it => (
-        <button key={it.key} type="button" onClick={it.onClick}
+    <div style={{ display: 'grid', gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`, gap: 0, marginBottom: 12,
+      background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
+      {items.slice(0, cols).map((it, i) => (
+        <button key={it.key} type="button" onClick={it.onClick} disabled={!it.onClick}
           style={{
-            flex: '0 0 auto', scrollSnapAlign: 'start', minWidth: 96, minHeight: 56, textAlign: 'left',
-            padding: '8px 12px', borderRadius: 10, cursor: 'pointer',
-            background: 'var(--dark)', color: 'var(--white)',
-            border: it.active ? '1.5px solid var(--gold)' : '1px solid var(--border)',
+            minHeight: 64, padding: '10px 4px 8px', textAlign: 'center', cursor: it.onClick ? 'pointer' : 'default',
+            background: it.active ? 'rgba(212,168,67,0.10)' : 'transparent', color: 'var(--white)',
+            border: 'none', borderLeft: i === 0 ? 'none' : '1px solid var(--border)',
+            boxShadow: it.active ? 'inset 0 -3px 0 var(--gold)' : 'none',
           }}>
-          <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '.4px', whiteSpace: 'nowrap' }}>{it.label}</div>
-          <div style={{ fontSize: 20, fontWeight: 700, lineHeight: 1.2, marginTop: 2, color: it.active ? 'var(--gold)' : (it.color || 'var(--white)') }}>{it.value}</div>
+          <div style={{ fontSize: 22, fontWeight: 700, lineHeight: 1.1, color: it.active ? 'var(--gold)' : (it.color || 'var(--white)') }}>{it.value}</div>
+          <div style={{ fontSize: 10.5, fontWeight: 600, color: 'var(--gray)', marginTop: 4, lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.label}</div>
         </button>
       ))}
     </div>
@@ -153,21 +157,49 @@ export function PhoneFilterBar({ search, onSearch, placeholder = 'Search…', fi
 /** A sheet that rises from the bottom, for choices. Tap outside to close. */
 export function BottomSheet({ open, onClose, title, children }) {
   useLockBodyScroll(!!open);
+  // Dragging the sheet down closes it, the way every phone sheet does. The drag starts on the
+  // handle and the title, or anywhere while the content is scrolled to its top; past 90px on
+  // release it closes, otherwise it springs back.
+  const [dragY, setDragY] = useState(0);
+  const drag = useRef(null);
+  const bodyRef = useRef(null);
   useEffect(() => {
     if (!open) return;
     const onKey = (e) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [open, onClose]);
+  useEffect(() => { if (!open) setDragY(0); }, [open]);
   if (!open) return null;
+  const start = (e, fromHandle) => {
+    if (!fromHandle && (bodyRef.current?.scrollTop ?? 0) > 0) return;
+    drag.current = { y: e.clientY, handle: fromHandle };
+  };
+  const move = (e) => {
+    if (!drag.current) return;
+    const dy = e.clientY - drag.current.y;
+    if (dy > 0) { setDragY(dy); if (e.cancelable) e.preventDefault(); }
+  };
+  const end = () => {
+    if (!drag.current) return;
+    drag.current = null;
+    if (dragY > 90) onClose(); else setDragY(0);
+  };
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 1200, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'flex-end' }}>
       <div onClick={e => e.stopPropagation()} role="dialog" aria-label={title}
-        style={{ width: '100%', maxHeight: '82vh', overflowY: 'auto', background: 'var(--dark)', color: 'var(--white)', borderRadius: '16px 16px 0 0',
-          padding: '8px 16px calc(16px + env(safe-area-inset-bottom, 0px))', boxSizing: 'border-box', boxShadow: '0 -8px 30px rgba(0,0,0,0.35)' }}>
-        <div style={{ width: 36, height: 4, borderRadius: 2, background: 'var(--border)', margin: '4px auto 10px' }} />
-        {title && <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>{title}</div>}
-        {children}
+        onPointerMove={move} onPointerUp={end} onPointerCancel={end}
+        style={{ width: '100%', maxHeight: '82vh', display: 'flex', flexDirection: 'column', background: 'var(--dark)', color: 'var(--white)', borderRadius: '16px 16px 0 0',
+          boxSizing: 'border-box', boxShadow: '0 -8px 30px rgba(0,0,0,0.35)',
+          transform: `translateY(${dragY}px)`, transition: drag.current ? 'none' : 'transform .18s ease', touchAction: 'pan-y' }}>
+        <div onPointerDown={e => start(e, true)} style={{ padding: '10px 16px 6px', cursor: 'grab', touchAction: 'none', flexShrink: 0 }}>
+          <div style={{ width: 36, height: 4, borderRadius: 2, background: 'var(--border)', margin: '0 auto 10px' }} />
+          {title && <div style={{ fontSize: 15, fontWeight: 700 }}>{title}</div>}
+        </div>
+        <div ref={bodyRef} onPointerDown={e => start(e, false)}
+          style={{ overflowY: 'auto', WebkitOverflowScrolling: 'touch', padding: '0 16px calc(16px + env(safe-area-inset-bottom, 0px))', minHeight: 0 }}>
+          {children}
+        </div>
       </div>
     </div>
   );

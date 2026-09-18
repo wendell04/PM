@@ -1240,6 +1240,7 @@ export default function BusinessDashboardLayout({ children }) {
 
               {notifOpen && (
                 <div
+                  className="notif-panel"
                   style={{
                     position: "absolute",
                     top: "calc(100% + 8px)",
