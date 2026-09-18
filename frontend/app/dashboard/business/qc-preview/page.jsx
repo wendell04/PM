@@ -11,6 +11,7 @@ import useLockBodyScroll from '@/lib/useLockBodyScroll';
 import ImageLightbox from '@/components/shop/ImageLightbox';
 import { JobOrderStatusBadge, RushBadge, DesignPreview, joDocId, fmtJODate, TableSkeleton } from '@/components/dashboard/JobOrderBits';
 import { S, ICONS, SearchBar, SummaryCard, PaginationBar, EmptyState, usePagination } from '../inventory-v2/shared';
+import { useIsPhone, KpiStrip, PhoneFilterBar, PhoneList, PhoneRow } from '@/components/dashboard/phone';
 
 // QC staff worklist - Job Orders at the For QC stage. Inspect the finished piece against the approved
 // artwork, then Pass or Fail.
@@ -114,6 +115,7 @@ export default function QualityControlPage() {
   });
 
   const { slice, page, perPage, total, setPage, setPerPage } = usePagination(filtered);
+  const isPhone = useIsPhone();
 
   // How many job orders the same order still has open. Tells QC whether passing this one actually
   // releases the order or whether its sibling items are still being made.
@@ -126,6 +128,18 @@ export default function QualityControlPage() {
   return (
     <ErrorBoundary>
       <div style={S.page}>
+        {isPhone ? (
+          <>
+            <KpiStrip items={[
+              { key: 'pending', label: 'Pending QC',      value: counts.pending },
+              { key: 'rework',  label: 'Rework (failed)', value: counts.rework, color: 'var(--st-red-fg)' },
+              { key: 'passed',  label: 'Passed',          value: counts.passed, color: 'var(--st-green-fg)' },
+            ]} />
+            <PhoneFilterBar search={search} onSearch={v => { setSearch(v); setPage(1); }} placeholder="Search JO, product, order"
+              actions={<button onClick={load} style={{ ...S.btnSmGhost, minHeight: 36 }}>{ICONS.reload} Refresh</button>}
+              note={`${total} to inspect`} />
+          </>
+        ) : (<>
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '16px' }}>
           <SummaryCard label="Pending QC" value={counts.pending} accent />
           <SummaryCard label="Rework (Failed)" value={counts.rework} color="var(--st-red-fg)" />
@@ -139,8 +153,55 @@ export default function QualityControlPage() {
           <button onClick={load} style={S.btnGhost}>{ICONS.reload} Refresh</button>
         </div>
 
+        </>)}
+
         {error && <div style={{ ...S.note, background: 'var(--st-red-bg)', borderColor: 'rgba(239,68,68,0.35)', color: 'var(--st-red-fg)', marginBottom: '10px' }}>{error}</div>}
 
+        {isPhone ? (
+          <>
+            {loading ? (
+              <div style={{ ...S.card, padding: '28px 16px', textAlign: 'center', color: 'var(--gray)', fontSize: 13 }}>Loading</div>
+            ) : slice.length === 0 ? (
+              <div style={{ ...S.card, padding: 0 }}><EmptyState message="Nothing to inspect" sub="Job orders appear here once production sends them." /></div>
+            ) : (
+              <PhoneList>
+                {slice.map((j, i) => {
+                  const id = idOf(j); const busy = busyId === id;
+                  const risk = joRisk(j);
+                  const startInspect = () => {
+                    const left = Math.max(0, (j.product?.quantity ?? 1) - (j.acceptedQty ?? 0));
+                    setInspect(j); setAccepted(String(left)); setRejected('0'); setDisposition('rework'); setDefects('');
+                    setScrapped(bomOf(j).map(c => String(c.inventoryId)));
+                  };
+                  return (
+                    <div key={id} style={{ borderTop: i === 0 ? 'none' : '1px solid var(--border)' }}>
+                      <PhoneRow first onClick={startInspect}
+                        title={<>{j.joId || '-'} <RushBadge isRush={j.isRush} /></>}
+                        chip={<JobOrderStatusBadge status={j.joStatus} />}
+                        meta={prodName(j)}
+                        sub={[
+                          j.product?.quantity != null ? `${j.product.quantity} pcs` : null,
+                          j.orderId ? orderNo(j.orderId) : null,
+                          j.targetCompletion ? `target ${fmtJODate(j.targetCompletion)}` : null,
+                          risk?.label ?? null,
+                          j.qcResult?.defects ? `last defect: ${j.qcResult.defects}` : null,
+                        ].filter(Boolean).join(' \u00b7 ')} />
+                      <div style={{ padding: '0 12px 10px 14px' }}>
+                        <button disabled={busy} onClick={startInspect}
+                          style={{ ...S.btnPrimary, width: '100%', minHeight: 44, justifyContent: 'center', opacity: busy ? .6 : 1 }}>
+                          {busy ? 'Saving' : 'Inspect'}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </PhoneList>
+            )}
+            <div style={{ padding: '12px 0' }}>
+              <PaginationBar total={total} page={page} perPage={perPage} onPage={setPage} onPerPage={setPerPage} />
+            </div>
+          </>
+        ) : (<>
         <div style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
           <table className="pmp-rt" style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead><tr>
@@ -195,6 +256,8 @@ export default function QualityControlPage() {
           </table>
         </div>
         <PaginationBar total={total} page={page} perPage={perPage} onPage={setPage} onPerPage={setPerPage} />
+
+        </>)}
 
         {inspect && (() => {
           const ordered = inspect.product?.quantity ?? 1;
