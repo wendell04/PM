@@ -401,7 +401,7 @@ export default function MaterialsTab({ materials, setMaterials, vendors, setVend
 
       <div style={{ ...S.card, padding:0, overflow:'hidden' }}>
         <div style={{ overflowX:'auto' }}>
-          <table style={{ width:'100%', borderCollapse:'collapse' }}>
+          <table className="pmp-rt" style={{ width:'100%', borderCollapse:'collapse' }}>
             <thead>
               <tr>
                 {['SKU','Material Name','Category','Unit','Vendor','Base Cost','Min Stock','Stock','Status',''].map((h, i) => (

@@ -447,7 +447,7 @@ export function PaginationBar({ total, page, perPage, onPage, onPerPage }) {
       <span style={{ fontSize:'12px', color:'var(--gray)' }}>
         {total === 0 ? 'No items' : `Showing ${from}-${to} of ${total}`}
       </span>
-      <div style={{ display:'flex', alignItems:'center', gap:'6px' }}>
+      <div className="pmp-pager" style={{ display:'flex', alignItems:'center', gap:'6px' }}>
         <span style={{ fontSize:'12px', color:'var(--gray)', marginRight:'4px' }}>Rows per page:</span>
         {[10, 25, 50].map(n => (
           <button key={n} onClick={() => { onPerPage(n); onPage(1); }}

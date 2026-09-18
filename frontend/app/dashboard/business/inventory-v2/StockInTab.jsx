@@ -287,7 +287,7 @@ export default function StockInTab({ materials, vendors, batches, setBatches, ba
       {/* History table */}
       <div style={{ ...S.card, padding:0, overflow:'hidden' }}>
         <div style={{ overflowX:'auto' }}>
-          <table style={{ width:'100%', borderCollapse:'collapse' }}>
+          <table className="pmp-rt" style={{ width:'100%', borderCollapse:'collapse' }}>
             <thead>
               <tr>
                 {[
@@ -505,7 +505,7 @@ export default function StockInTab({ materials, vendors, batches, setBatches, ba
               </div>
             </div>
 
-            <table style={{ width:'100%', borderCollapse:'collapse', border:'1px solid var(--border)', borderRadius:'8px', overflow:'hidden' }}>
+            <table className="pmp-rt" style={{ width:'100%', borderCollapse:'collapse', border:'1px solid var(--border)', borderRadius:'8px', overflow:'hidden' }}>
               <thead>
                 <tr>
                   {[{l:'Material'},{l:'Qty',r:true},{l:'Unit Cost',r:true},{l:'Total',r:true},{l:'Bad Orders'}].map(h => (

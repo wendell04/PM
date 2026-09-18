@@ -9,6 +9,12 @@ use Illuminate\Support\Facades\Log;
 
 class BillOfMaterialController extends Controller
 {
+    // Gated by the INVENTORY permission, like the rest of the inventory module. These six
+    // checked the role name instead (isAdmin = super admin or owner), so any staff role that
+    // had been granted inventory - the live "administrator" template included - got 403 here,
+    // and their BOM and Product Stock tabs were simply empty. Same class of bug as the
+    // quotation gate fixed on 2026-09-18: a role-name check where a permission check belongs.
+
     /**
      * GET /api/admin/bom
      * Returns all active BOMs, optionally filtered by productGroupName.
@@ -16,7 +22,7 @@ class BillOfMaterialController extends Controller
     public function index(Request $request)
     {
         try {
-            if (!$this->isAdmin($request)) {
+            if (!$this->hasPermission($request, 'inventory')) {
                 return $this->unauthorizedResponse();
             }
 
@@ -43,7 +49,7 @@ class BillOfMaterialController extends Controller
     public function byProduct(Request $request, string $name)
     {
         try {
-            if (!$this->isAdmin($request)) {
+            if (!$this->hasPermission($request, 'inventory')) {
                 return $this->unauthorizedResponse();
             }
 
@@ -65,7 +71,7 @@ class BillOfMaterialController extends Controller
     public function show(Request $request, string $id)
     {
         try {
-            if (!$this->isAdmin($request)) {
+            if (!$this->hasPermission($request, 'inventory')) {
                 return $this->unauthorizedResponse();
             }
 
@@ -89,7 +95,7 @@ class BillOfMaterialController extends Controller
     public function store(Request $request)
     {
         try {
-            if (!$this->isAdmin($request)) {
+            if (!$this->hasPermission($request, 'inventory.create')) {
                 return $this->unauthorizedResponse();
             }
 
@@ -149,7 +155,7 @@ class BillOfMaterialController extends Controller
     public function update(Request $request, string $id)
     {
         try {
-            if (!$this->isAdmin($request)) {
+            if (!$this->hasPermission($request, 'inventory.edit')) {
                 return $this->unauthorizedResponse();
             }
 
@@ -200,7 +206,7 @@ class BillOfMaterialController extends Controller
     public function destroy(Request $request, string $id)
     {
         try {
-            if (!$this->isAdmin($request)) {
+            if (!$this->hasPermission($request, 'inventory.delete')) {
                 return $this->unauthorizedResponse();
             }
 

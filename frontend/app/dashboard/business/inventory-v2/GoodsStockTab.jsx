@@ -78,7 +78,7 @@ export default function GoodsStockTab({ materials, batches, badOrders }) {
       {/* table */}
       <div style={{ ...S.card, padding:0, overflow:'hidden' }}>
         <div style={{ overflowX:'auto' }}>
-          <table style={{ width:'100%', borderCollapse:'collapse' }}>
+          <table className="pmp-rt" style={{ width:'100%', borderCollapse:'collapse' }}>
             <thead>
               <tr>
                 <th style={{ ...S.th, width:'30px' }}></th>

@@ -4281,11 +4281,11 @@ html.light .skeleton-table-header {
      full   loading and empty states that span every column          */
 @media (max-width: 700px) {
   table.pmp-rt { border-collapse: separate !important; border-spacing: 0 !important; }
-  table.pmp-rt thead { display: none !important; }
-  table.pmp-rt, table.pmp-rt tbody, table.pmp-rt tr, table.pmp-rt td { display: block !important; width: 100% !important; }
+  table.pmp-rt > thead { display: none !important; }
+  table.pmp-rt, table.pmp-rt > tbody, table.pmp-rt > tbody > tr, table.pmp-rt > tbody > tr > td { display: block !important; width: 100% !important; }
   table.pmp-rt { min-width: 0 !important; }
 
-  table.pmp-rt tr {
+  table.pmp-rt > tbody > tr {
     position: relative;
     border: 1px solid var(--border) !important;
     border-radius: 10px;
@@ -4297,7 +4297,7 @@ html.light .skeleton-table-header {
   /* A label column and a value column. Grid rather than flex because a cell often holds
      two stacked lines - a name over a phone number, a product over its category - and
      flex would lay those side by side. Every child lands in the value column, in order. */
-  table.pmp-rt td {
+  table.pmp-rt > tbody > tr > td {
     display: grid !important;
     grid-template-columns: 88px minmax(0, 1fr);
     column-gap: 12px;
@@ -4309,10 +4309,10 @@ html.light .skeleton-table-header {
     white-space: normal !important;
     min-width: 0;
   }
-  table.pmp-rt td > * { grid-column: 2; justify-self: start; }
+  table.pmp-rt > tbody > tr > td > * { grid-column: 2; justify-self: start; }
 
   /* The header the cell sat under, travelling with the value. */
-  table.pmp-rt td::before {
+  table.pmp-rt > tbody > tr > td::before {
     content: attr(data-label);
     flex: 0 0 auto;
     font-size: 11px;
@@ -4323,12 +4323,12 @@ html.light .skeleton-table-header {
     line-height: 1.5;
   }
   /* A cell with nothing in it should not leave a labelled blank behind. */
-  table.pmp-rt td:empty { display: none !important; }
-  table.pmp-rt td:not([data-label])::before,
-  table.pmp-rt td[data-label=""]::before { content: none; }
+  table.pmp-rt > tbody > tr > td:empty { display: none !important; }
+  table.pmp-rt > tbody > tr > td:not([data-label])::before,
+  table.pmp-rt > tbody > tr > td[data-label=""]::before { content: none; }
 
-  table.pmp-rt td > * { min-width: 0; }
-  table.pmp-rt td { text-wrap: pretty; }
+  table.pmp-rt > tbody > tr > td > * { min-width: 0; }
+  table.pmp-rt > tbody > tr > td { text-wrap: pretty; }
 
   /* The stat cards above most lists: a wrapping flex row of 140px-minimum cards is three
      across on a desktop and, on a 360px phone, three squeezed cards with the labels cut
@@ -4341,16 +4341,16 @@ html.light .skeleton-table-header {
   .pmp-stat-row > *, .pmp-stat-row > * > * { min-width: 0 !important; }
   .pmp-stat-row > * > * > :first-child { white-space: normal; letter-spacing: .3px; }
 
-  table.pmp-rt td[data-rt="head"] {
+  table.pmp-rt > tbody > tr > td[data-rt="head"] {
     display: block !important;
     font-size: 14px !important;
     padding: 10px 44px 8px 13px !important;
     border-bottom: 1px solid var(--border) !important;
     margin-bottom: 4px;
   }
-  table.pmp-rt td[data-rt="head"]::before { content: none; }
+  table.pmp-rt > tbody > tr > td[data-rt="head"]::before { content: none; }
 
-  table.pmp-rt td[data-rt="chev"] {
+  table.pmp-rt > tbody > tr > td[data-rt="chev"] {
     display: flex !important;
     position: absolute;
     top: 8px;
@@ -4360,28 +4360,28 @@ html.light .skeleton-table-header {
     align-items: center;
     justify-content: center;
   }
-  table.pmp-rt td[data-rt="chev"]::before { content: none; }
-  table.pmp-rt td[data-rt="chev"] > * { grid-column: auto; }
+  table.pmp-rt > tbody > tr > td[data-rt="chev"]::before { content: none; }
+  table.pmp-rt > tbody > tr > td[data-rt="chev"] > * { grid-column: auto; }
 
-  table.pmp-rt td[data-rt="full"],
-  table.pmp-rt td[data-rt="panel"] {
+  table.pmp-rt > tbody > tr > td[data-rt="full"],
+  table.pmp-rt > tbody > tr > td[data-rt="panel"] {
     display: block !important;
     padding: 0 !important;
   }
-  table.pmp-rt td[data-rt="full"]::before,
-  table.pmp-rt td[data-rt="panel"]::before { content: none; }
+  table.pmp-rt > tbody > tr > td[data-rt="full"]::before,
+  table.pmp-rt > tbody > tr > td[data-rt="panel"]::before { content: none; }
 
   /* A row number or a checkbox column says nothing on a card. */
-  table.pmp-rt td[data-rt="hide"] { display: none !important; }
+  table.pmp-rt > tbody > tr > td[data-rt="hide"] { display: none !important; }
 
   /* The row's buttons, side by side and thumb-sized, with no label. */
-  table.pmp-rt td[data-rt="actions"] {
+  table.pmp-rt > tbody > tr > td[data-rt="actions"] {
     display: flex !important;
     gap: 8px;
     padding: 8px 13px 10px !important;
   }
-  table.pmp-rt td[data-rt="actions"]::before { content: none; }
-  table.pmp-rt td[data-rt="actions"] > * {
+  table.pmp-rt > tbody > tr > td[data-rt="actions"]::before { content: none; }
+  table.pmp-rt > tbody > tr > td[data-rt="actions"] > * {
     grid-column: auto;
     flex: 1 1 0;
     justify-content: center;
@@ -4394,14 +4394,29 @@ html.light .skeleton-table-header {
   .pmp-filters { flex-direction: column; align-items: stretch !important; }
   .pmp-filters > * { width: 100% !important; flex: 1 1 100% !important; }
 
+  /* The pager: "Rows per page 10 25 50" plus one button per page. Four pages made
+     nine buttons in a row that could not wrap, so the last three sat off-screen.
+     Now it wraps, and each button is big enough for a thumb. */
+  .pmp-pager, .pmp-pager > div { flex-wrap: wrap; }
+  .pmp-pager button { min-width: 36px; min-height: 36px; }
+
+  /* A table INSIDE a card - a batch ledger, a receipt - is genuinely tabular, and a
+     ledger turned into cards loses the one thing it is read for: the columns lining
+     up. It stays a table and scrolls sideways inside the card, header intact. A nested
+     table that opts in with its own pmp-rt class is treated on its own terms. */
+  table.pmp-rt > tbody > tr > td[data-rt="full"],
+  table.pmp-rt > tbody > tr > td[data-rt="panel"] { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  table.pmp-rt > tbody > tr > td[data-rt="full"] table:not(.pmp-rt),
+  table.pmp-rt > tbody > tr > td[data-rt="panel"] table:not(.pmp-rt) { min-width: 520px; }
+
   /* An expanded detail belongs to the row it opened from, not beside it. */
-  table.pmp-rt tr:has(> td[data-rt="panel"]) {
+  table.pmp-rt > tbody > tr:has(> td[data-rt="panel"]) {
     margin-top: -11px;
     border-top: none !important;
     border-top-left-radius: 0;
     border-top-right-radius: 0;
   }
-  table.pmp-rt tr:has(> td[data-rt="full"]) { border: none !important; }
+  table.pmp-rt > tbody > tr:has(> td[data-rt="full"]) { border: none !important; }
 
   /* Side-by-side columns inside a detail panel become one column, in order. The
      class marks the grids that were laid out for a desktop; the inline template

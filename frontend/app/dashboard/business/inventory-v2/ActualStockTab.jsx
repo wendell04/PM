@@ -273,7 +273,7 @@ export default function ActualStockTab({ materials, batches, setBatches, badOrde
       {/* actual stock table */}
       <div style={{ ...S.card, padding:0, overflow:'hidden' }}>
         <div style={{ overflowX:'auto' }}>
-          <table style={{ width:'100%', borderCollapse:'collapse' }}>
+          <table className="pmp-rt" style={{ width:'100%', borderCollapse:'collapse' }}>
             <thead>
               <tr>
                 {[
@@ -339,7 +339,7 @@ export default function ActualStockTab({ materials, batches, setBatches, badOrde
       </div>
       <div style={{ ...S.card, padding:0, overflow:'hidden' }}>
         <div style={{ overflowX:'auto' }}>
-          <table style={{ width:'100%', borderCollapse:'collapse' }}>
+          <table className="pmp-rt" style={{ width:'100%', borderCollapse:'collapse' }}>
             <thead>
               <tr>
                 {[

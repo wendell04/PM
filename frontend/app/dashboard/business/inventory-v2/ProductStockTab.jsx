@@ -130,7 +130,7 @@ export default function ProductStockTab({ boms, materials, products }) {
 
       <div style={{ ...S.card, padding:0, overflow:'hidden' }}>
         <div style={{ overflowX:'auto' }}>
-          <table style={{ width:'100%', borderCollapse:'collapse' }}>
+          <table className="pmp-rt" style={{ width:'100%', borderCollapse:'collapse' }}>
             <thead>
               <tr>
                 {['Product','Category','Variants','Status',''].map((h, i) => (
@@ -212,7 +212,7 @@ function DetailPanel({ variants, matMap }) {
                 <span style={{ fontSize:'12px', fontWeight:700, color: prod===0?'#c62828':prod<=10?'#b45309':'#1a7f3c' }}>{prod} can build</span>
               </div>
             )}
-            <table style={{ width:'100%', borderCollapse:'collapse' }}>
+            <table className="pmp-rt" style={{ width:'100%', borderCollapse:'collapse' }}>
               <thead>
                 <tr>
                   {['Material','Stock','Need / unit','Can make'].map(h => (

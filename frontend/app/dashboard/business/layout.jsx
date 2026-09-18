@@ -14,6 +14,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "../../../contexts/AuthContext";
+import { watchTableLabels } from "@/lib/tableCards";
 import { useTheme } from "../../../contexts/ThemeContext";
 import useLockBodyScroll from "@/lib/useLockBodyScroll";
 import "./admin-dashboard.css";
@@ -39,6 +40,14 @@ export default function BusinessDashboardLayout({ children }) {
   const currentTab = searchParams.get('tab');
   const { logout, currentUser, updateUser, token } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  // Every `table.pmp-rt` under the page gets its phone-card labels from its own headers, and
+  // keeps them through re-renders. A callback ref, not an effect: this layout renders null until
+  // the session is known, so <main> does not exist on the first commit.
+  const stopTableWatch = useRef(null);
+  const pageContentRef = useCallback((node) => {
+    stopTableWatch.current?.();
+    stopTableWatch.current = node ? watchTableLabels(node) : null;
+  }, []);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [permissions, setPermissions] = useState(null);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -1454,7 +1463,7 @@ export default function BusinessDashboardLayout({ children }) {
         </header>
 
         {/* Page content */}
-        <main className="admin-page-content">{children}</main>
+        <main className="admin-page-content" ref={pageContentRef}>{children}</main>
       </div>
 
       {/* My Profile â€” read-only display card */}
