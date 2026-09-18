@@ -102,6 +102,27 @@ class AppServiceProvider extends ServiceProvider
             return Limit::perMinute($perMin)->by($request->ip())->response(fn () => $msg);
         });
 
+        // How many codes one ADDRESS may be sent, whatever the IP: sign-up codes, reset links and
+        // codes, 2FA codes. The per-IP limits above stop floods; this stops one inbox being
+        // hammered - and, since every code is an email, it is what keeps the day's mail quota
+        // from being spent on one person pressing Resend. Four in fifteen minutes covers a full
+        // password reset (link + code) with a retry of each; twelve a day is generous for anyone
+        // who is not stuck. The message says when to try again rather than "too many requests".
+        RateLimiter::for('code-address', function (Request $request) {
+            $address = strtolower(trim((string) ($request->input('email') ?: ($request->user()->email ?? '') ?: $request->ip())));
+            $key = 'code:' . sha1($address);
+            return [
+                Limit::perMinutes(15, 4)->by($key)->response(fn () => response()->json(
+                    ['message' => 'We have already sent 4 codes to this address in the last 15 minutes. Check your inbox and spam folder - the latest code still works - or try again in 15 minutes.'],
+                    429
+                )),
+                Limit::perDay(12)->by('day:' . $key)->response(fn () => response()->json(
+                    ['message' => 'This address has reached today\'s limit for codes. Please try again tomorrow, or message us in the chat.'],
+                    429
+                )),
+            ];
+        });
+
         // Email/code verification limiter - per IP, env-tunable (default 10/min). Covers verify-email
         // and resend-code (the burst right after sign-up). Same test-override behavior via VERIFY_THROTTLE.
         RateLimiter::for('verify', function (Request $request) {

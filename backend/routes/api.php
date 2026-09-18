@@ -54,10 +54,10 @@ Route::get('/auth/me', function (Request $request) {
     return response()->json($request->user());
 })->middleware('auth:sanctum');
 Route::post('/verify-email',    [AuthController::class, 'verify'])->middleware('throttle:verify');
-Route::post('/resend-code',     [AuthController::class, 'resend'])->middleware('throttle:verify');
-Route::post('/forgot-password', [AuthController::class, 'forgotPassword'])->middleware('throttle:5,1');
+Route::post('/resend-code',     [AuthController::class, 'resend'])->middleware(['throttle:verify', 'throttle:code-address']);
+Route::post('/forgot-password', [AuthController::class, 'forgotPassword'])->middleware(['throttle:5,1', 'throttle:code-address']);
 Route::post('/verify-reset-token', [AuthController::class, 'verifyResetToken'])->middleware('throttle:10,1');
-Route::post('/send-reset-code', [AuthController::class, 'sendResetCode'])->middleware('throttle:5,1');
+Route::post('/send-reset-code', [AuthController::class, 'sendResetCode'])->middleware(['throttle:5,1', 'throttle:code-address']);
 Route::post('/verify-reset-code', [AuthController::class, 'verifyResetCode'])->middleware('throttle:10,1');
 Route::post('/reset-password',  [AuthController::class, 'resetPassword'])->middleware('throttle:5,1');
 Route::post('/contact',         [AuthController::class, 'contact'])->middleware(['throttle:5,1', 'throttle:20,60', \App\Http\Middleware\VerifyTurnstile::class]);
@@ -416,7 +416,7 @@ Route::get('/storefront/flash-sales',            [FlashSaleController::class, 's
 
 // ─── 2FA (Protected - auth:sanctum) ─────────────────────────────────────────
 Route::middleware('auth:sanctum')->group(function () {
-    Route::post('/2fa/send',          [TwoFactorController::class, 'sendOtp']);
+    Route::post('/2fa/send',          [TwoFactorController::class, 'sendOtp'])->middleware('throttle:code-address');
     Route::post('/2fa/verify',        [TwoFactorController::class, 'verifyOtp']);
     Route::post('/2fa/remember-device', [TwoFactorController::class, 'rememberDevice']);
     Route::post('/2fa/check-device',  [TwoFactorController::class, 'checkDevice']);
@@ -441,7 +441,7 @@ Route::middleware('auth:sanctum')->group(function () {
 });
 
 Route::middleware('auth:sanctum')->group(function () {
-    Route::post('/2fa/send',            [TwoFactorController::class, 'sendOtp']);
+    Route::post('/2fa/send',            [TwoFactorController::class, 'sendOtp'])->middleware('throttle:code-address');
     Route::post('/2fa/verify',          [TwoFactorController::class, 'verifyOtp']);
     Route::post('/2fa/remember-device', [TwoFactorController::class, 'rememberDevice']);
     Route::post('/2fa/check-device',    [TwoFactorController::class, 'checkDevice']);
