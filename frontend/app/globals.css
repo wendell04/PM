@@ -132,3 +132,26 @@
   background: var(--gray, #8a9099);
   background-clip: content-box;
 }
+
+/* ─── Phones ────────────────────────────────────────────────────────────────
+   iOS Safari zooms the whole page in when a focused field has text under 16px,
+   and it does not zoom back out afterwards. The page then sits wider than the
+   screen with its left edge off-screen - which is why a tester's screenshots of
+   the order page looked "shifted and cut off" after tapping a field. Nothing was
+   wrong with the layout; the browser had zoomed. 16px is the threshold, so every
+   control that accepts typing gets at least that much at phone width. Desktop
+   keeps its own sizes - this only applies where the zoom happens. */
+@media (max-width: 640px) {
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
+
+/* A control has to be catchable with a fingertip. Anything you are meant to press
+   holds a 40px box even when its text is small - achieved with padding so the
+   design keeps its proportions rather than growing bigger type. */
+@media (max-width: 640px) {
+  .shop-footer-social-btn { width: 40px; height: 40px; }
+}

@@ -1127,7 +1127,7 @@ function CustomOrderInner() {
             if (cameFromPdp && typeof window !== 'undefined' && window.history.length > 1) router.back();
             else router.replace(`/shop/products/${id}`);
           }}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: 'var(--gray)', fontSize: '0.85rem', background: 'none', border: 'none', padding: 0, cursor: 'pointer', marginBottom: '1.5rem', fontFamily: 'inherit' }}>
+          style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: 'var(--gray)', fontSize: '0.85rem', background: 'none', border: 'none', padding: '9px 10px 9px 0', cursor: 'pointer', marginBottom: '1.1rem', fontFamily: 'inherit', minHeight: '40px' }}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="15 18 9 12 15 6"/></svg>
           Back to Product
         </button>
@@ -1176,7 +1176,7 @@ function CustomOrderInner() {
                   ))}
                   <Link
                     href={`/shop/products/${id}`}
-                    style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--gold)', textDecoration: 'none' }}
+                    style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--gold)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', minHeight: '40px', padding: '0 4px' }}
                   >
                     Change variant
                   </Link>
