@@ -14,6 +14,7 @@ import { uploadDesignFile } from '@/lib/orderRequestApi';
 import { useCart } from '@/context/CartContext';
 import useLockBodyScroll from '@/lib/useLockBodyScroll';
 import { compressImage } from '@/lib/compressImage';
+import { makeThumbnail } from '@/lib/thumbnail';
 import { DEFAULT_CUSTOM_ORDER_TERMS, renderTermsBody } from '@/lib/customOrderTerms';
 
 const METRO_CITIES = ['Manila', 'Quezon City', 'Caloocan', 'Las Piñas', 'Makati', 'Malabon', 'Mandaluyong', 'Marikina', 'Muntinlupa', 'Navotas', 'Parañaque', 'Pasay', 'Pasig', 'Pateros', 'San Juan', 'Taguig', 'Valenzuela'];
@@ -116,6 +117,12 @@ function CustomOrderInner() {
   const { id } = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
+  // The query is only ever read to SEED this page (quantity, variant and options picked on the
+  // product page). Keeping the live object in the fetch effect's dependency list means any change of
+  // its identity re-runs the effect, which sets loading back to true - the whole page drops to the
+  // loading skeleton and re-seeds itself from the URL, discarding what the customer had entered.
+  // A ref freezes the first value, which is the only one that matters.
+  const initialParamsRef = useRef(searchParams);
   const { token, currentUser: authUser } = useAuth();
   const { addToCart } = useCart();
 
@@ -247,6 +254,7 @@ function CustomOrderInner() {
 
   useEffect(() => {
     if (!id) return;
+    const seedParams = initialParamsRef.current;
     setLoading(true);
     fetchWithTimeout(`${API_URL}/api/products/${id}`, {}, 30000)
       .then(r => r.json())
@@ -258,7 +266,7 @@ function CustomOrderInner() {
         // Carry over what was already chosen on the product page; fall back to
         // the first option / MOQ when the page is opened directly.
         const moq = p.minOrderQty || 1;
-        const qtyParam = parseInt(searchParams.get('qty'), 10);
+        const qtyParam = parseInt(seedParams.get('qty'), 10);
         const startQty = Number.isFinite(qtyParam) && qtyParam >= moq ? qtyParam : moq;
         setQuantity(startQty);
         setQuantityInput(String(startQty));
@@ -267,7 +275,7 @@ function CustomOrderInner() {
           const initial = {};
           p.variantGroups.forEach(g => {
             if (!g.options?.length) return;
-            const fromUrl = searchParams.get(`v_${g.id}`);
+            const fromUrl = seedParams.get(`v_${g.id}`);
             const valid = g.options.map(optValue);
             initial[g.id] = fromUrl && valid.includes(fromUrl) ? fromUrl : valid[0];
           });
@@ -280,7 +288,7 @@ function CustomOrderInner() {
         const optInit = {};
         optionGroupsOf(p).forEach((g, gi) => {
           const gk = groupKey(g, gi);
-          const fromUrl = searchParams.get(`o_${gk}`);
+          const fromUrl = seedParams.get(`o_${gk}`);
           const valid = g.options.map((o, oi) => optionKey(o, oi));
           if (fromUrl && valid.includes(fromUrl)) optInit[gk] = fromUrl;
         });
@@ -288,7 +296,7 @@ function CustomOrderInner() {
       })
       .catch(() => setLoadError('Product not found.'))
       .finally(() => setLoading(false));
-  }, [id, router, searchParams]);
+  }, [id, router]);
 
   useEffect(() => {
     fetch(`${API_URL}/api/public/settings`)
@@ -528,12 +536,25 @@ function CustomOrderInner() {
       key: `f_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
       name: file.name,
       size: file.size,
-      preview: file.type?.startsWith('image/') ? URL.createObjectURL(file) : null,
+      // Filled in below, once a SMALL copy exists. Pointing this at the original file would make the
+      // tile decode the whole photo - see lib/thumbnail.js for why that ends the session on a phone.
+      preview: null,
       url: null,
       uploading: true,
       file,
     }));
     setDesignFiles(prev => [...prev, ...entries]);
+
+    // Thumbnails first and in parallel with nothing else: a tile with no preview shows the file icon
+    // meanwhile, so the customer sees the file land immediately either way.
+    entries.forEach(entry => {
+      makeThumbnail(entry.file).then(preview => {
+        if (!preview) return;
+        setDesignFiles(prev => prev.some(f => f.key === entry.key)
+          ? prev.map(f => (f.key === entry.key ? { ...f, preview } : f))
+          : (URL.revokeObjectURL(preview), prev));
+      });
+    });
 
     for (const entry of entries) {
       try {
