@@ -424,7 +424,35 @@ class AuthController extends Controller
                 ]);
             }
 
-            return $this->successResponse('Email verified successfully! You can now log in.');
+            // The code proves they own the address, which is all a login would prove again. Sending
+            // a person who just typed six digits back to a sign-in form is where new accounts were
+            // being lost - and one page stored a token that did not exist and then reported the
+            // session as expired. Same session as login mints, minus 2FA (a new account has none).
+            $deviceName   = $this->parseDeviceName($request->userAgent() ?? 'Unknown Device');
+            $expiresAt    = $user->sessionExpiresAt($request->boolean('rememberMe'));
+            $sanctumToken = $user->createToken($deviceName, ['*'], $expiresAt)->plainTextToken;
+            $user->lastLogin     = now()->toDateTimeString();
+            $user->last_login_at = now();
+            $user->save();
+
+            return $this->successResponse('Email verified - you are signed in.', [
+                'token'      => $sanctumToken,
+                'expires_at' => $expiresAt->toIso8601String(),
+                'user'       => [
+                    'id'                 => (string) $user->_id,
+                    'firstName'          => $user->firstName,
+                    'lastName'           => $user->lastName,
+                    'email'              => $user->email,
+                    'phoneNumber'        => $user->phoneNumber,
+                    'address'            => $user->address,
+                    'role'               => $user->role,
+                    'lastLogin'          => $user->lastLogin,
+                    'avatar'             => $user->avatar,
+                    'two_factor_enabled' => false,
+                    'two_factor_method'  => $user->two_factor_method ?? 'email',
+                    'totp_confirmed'     => false,
+                ],
+            ]);
         } catch (\Exception $e) {
             return $this->serverErrorResponse($e, 'An unexpected error occurred during email verification.');
         }

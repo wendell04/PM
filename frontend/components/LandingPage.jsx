@@ -807,18 +807,28 @@ const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=
       });
       const data = await response.json();
       if (!response.ok) { setVerifyError(data.message || 'Verification failed.'); return; }
-      if (pendingAuth) {
-        localStorage.setItem('auth_token', pendingAuth.token);
-        localStorage.setItem('auth_user', JSON.stringify(pendingAuth.user));
-        try {
-          const bc = new BroadcastChannel('pmp_auth');
-          bc.postMessage({ type: 'AUTH_UPDATE', token: pendingAuth.token, user: pendingAuth.user });
-          bc.close();
-        } catch {}
-        setPendingAuth(null);
-      }
+      setPendingAuth(null);
       setVerificationModal(false);
       setVerificationCode('');
+      // Verifying signs the person in: the server returns the same session a login would. (This
+      // used to store the token registration never issued - the word "undefined" - and the next
+      // check of it reported the brand-new session as expired.)
+      const session = data?.data;
+      if (session?.token && session?.user) {
+        localStorage.setItem('auth_token', session.token);
+        localStorage.setItem('auth_user', JSON.stringify(session.user));
+        if (session.expires_at) localStorage.setItem('auth_expires_at', session.expires_at);
+        try {
+          const bc = new BroadcastChannel('pmp_auth');
+          bc.postMessage({ type: 'AUTH_UPDATE', token: session.token, user: session.user });
+          bc.close();
+        } catch {}
+        const redirectPath = sessionStorage.getItem('redirectAfterLogin');
+        sessionStorage.removeItem('redirectAfterLogin');
+        router.push(redirectPath || '/shop');
+        return;
+      }
+      setSessionMessage('Email verified. Sign in to continue.');
       openModal('login');
     } catch (err) {
       setVerifyError('Network error. Make sure backend is running.');

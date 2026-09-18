@@ -8,6 +8,7 @@ import { socialsFrom } from '@/lib/socialLinks';
 import TwoFactorModal from '@/components/auth/TwoFactorModal';
 // Shared with the landing page so the sign-up form (fields, CAPTCHA, password rules, T&C) is identical.
 import RegisterForm from '@/components/auth/RegisterForm';
+import OtpInput from '@/components/auth/OtpInput';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
@@ -676,48 +677,60 @@ export default function ShopLayout({ children }) {
     }
   };
 
-  // Handle successful registration
-  const handleRegisterSuccess = async (userData, token, rememberMe = false) => {
-    localStorage.setItem('auth_token', token);
-    localStorage.setItem('auth_user', JSON.stringify(userData));
-    try {
-      const bc = new BroadcastChannel('pmp_auth');
-      bc.postMessage({ type: 'AUTH_UPDATE', token, user: userData });
-      bc.close();
-    } catch {}
+  // Sign-up from the shop: registration does not issue a session (the address is not proven
+  // yet), so the code step comes first. This used to store the token registration never issued,
+  // show the person as signed in, and a minute later report the session as expired - with no way
+  // to ever enter the code from this page.
+  const [verifyEmailFor, setVerifyEmailFor] = useState(null);
+  const [verifyCode, setVerifyCode] = useState('');
+  const [verifyErr, setVerifyErr] = useState('');
+  const [verifyBusy, setVerifyBusy] = useState(false);
+  const [verifyResent, setVerifyResent] = useState('');
+  useLockBodyScroll(!!verifyEmailFor);
 
-    // Redirect admin/owner to dashboard
-    const dashboardRolesReg = ['admin', 'owner', 'salesRep', 'productionOperator', 'qualityControl', 'cashier', 'inventoryManager'];
-    if (dashboardRolesReg.includes(userData.role)) {
-      setAuthModalOpen(false);
-      window.location.href = '/dashboard/business/dashboardoverview';
-      return;
-    }
-
-    setUser(userData);
+  const handleRegisterSuccess = async (userData) => {
     setAuthModalOpen(false);
-    setAuthModalInstanceKey(k => k + 1);
+    setVerifyCode(''); setVerifyErr(''); setVerifyResent('');
+    setVerifyEmailFor(userData?.email || '');
+  };
 
-    // Merge guest cart with user cart after registration
-    // This must happen AFTER token is saved so cartApi can use it
+  const handleVerifySubmit = async () => {
+    if (verifyCode.length !== 6) { setVerifyErr('Enter the 6-digit code from the email.'); return; }
+    setVerifyBusy(true); setVerifyErr('');
     try {
-      const guestCart = localStorage.getItem('pmp_guest_cart');
-      if (guestCart) {
-        const guestItems = (JSON.parse(guestCart) || []).map(normaliseStoredItem);
-        if (guestItems && guestItems.length > 0) {
-          const mergedCart = await mergeCart(guestItems, getToken());
-          // Update both cart systems
-          const mongoItems = (mergedCart?.data ?? mergedCart)?.items || [];
-          const layoutItems = mongoItems.map(toLayoutItem);
-          setCart(layoutItems);        // local display
-          setCartItems(mongoItems);    // cart badge
-          localStorage.removeItem('pmp_guest_cart');
-        }
+      const res = await fetchWithTimeout(`${API_URL}/api/verify-email`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: verifyEmailFor, code: verifyCode }),
+      }, 15000);
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) { setVerifyErr(d.message || 'That code did not work.'); return; }
+      const session = d?.data;
+      setVerifyEmailFor(null);
+      if (session?.token && session?.user) {
+        if (session.expires_at) localStorage.setItem('auth_expires_at', session.expires_at);
+        await handleLoginSuccess(session.user, session.token, false, false);
+      } else {
+        setAuthModalType('login');
+        setAuthModalSubtitle('Email verified. Sign in to continue.');
+        setAuthModalOpen(true);
+        setAuthModalInstanceKey(k => k + 1);
       }
-    } catch (err) {
-      console.warn('Cart merge failed:', err);
-      // Don't block registration if merge fails
-    }
+    } catch { setVerifyErr('Network error. Please try again.'); }
+    finally { setVerifyBusy(false); }
+  };
+
+  const handleVerifyResend = async () => {
+    setVerifyBusy(true); setVerifyErr(''); setVerifyResent('');
+    try {
+      const res = await fetchWithTimeout(`${API_URL}/api/resend-code`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: verifyEmailFor }),
+      }, 15000);
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) { setVerifyErr(d.message || 'Could not resend the code.'); return; }
+      setVerifyResent('A new code is on its way.');
+    } catch { setVerifyErr('Network error. Please try again.'); }
+    finally { setVerifyBusy(false); }
   };
 
   // Persist cart changes
@@ -1751,6 +1764,46 @@ export default function ShopLayout({ children }) {
                    another .auth-modal-body double-padded it and inset the stepper (landing does not). */
                 <RegisterForm key={`register-${authModalInstanceKey}`} onSuccess={handleRegisterSuccess} onSwitchToLogin={() => setAuthModalType('login')} theme={theme} />
               )}
+
+      {/* Email verification after sign-up. Same screen the landing page shows; no backdrop close,
+          because a stray tap would drop the code being typed. */}
+      {verifyEmailFor && (
+        <div className="auth-overlay" style={{ zIndex: 10050 }}>
+          <div className="verify-modal" onClick={e => e.stopPropagation()}>
+            <div className="verify-icon-wrap">
+              <div className="verify-icon" style={{ color: 'var(--gold)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+                  <polyline points="22,6 12,13 2,6"/>
+                </svg>
+              </div>
+              <div className="verify-pulse"/>
+            </div>
+            <h2 className="verify-title">Account Created!</h2>
+            <p className="verify-subtitle">We sent a 6-digit verification code to {verifyEmailFor}. Enter it below to activate your account.</p>
+            <div className="verify-code-wrap">
+              <OtpInput value={verifyCode} onChange={setVerifyCode} autoFocus />
+              {verifyErr && <span className="error-message" style={{ display: 'block', marginTop: '0.4rem', textAlign: 'center' }}>{verifyErr}</span>}
+              {verifyResent && <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--green)', marginTop: '0.4rem', textAlign: 'center' }}>{verifyResent}</span>}
+            </div>
+            <p className="verify-hint">Not in your inbox? Check the spam folder.</p>
+            <div className="verify-actions">
+              <button className="btn-primary verify-login-btn" onClick={handleVerifySubmit} disabled={verifyBusy}
+                style={{ opacity: verifyBusy ? 0.6 : 1, cursor: verifyBusy ? 'not-allowed' : 'pointer' }}>
+                {verifyBusy ? 'Verifying...' : 'Verify & Sign in'}
+              </button>
+              <button className="btn-secondary" onClick={() => setVerifyEmailFor(null)}>Close</button>
+            </div>
+            <p className="verify-send">
+              Didn't receive the code?{' '}
+              <button className="auth-link" disabled={verifyBusy} onClick={handleVerifyResend}
+                style={{ opacity: verifyBusy ? 0.5 : 1, cursor: verifyBusy ? 'not-allowed' : 'pointer' }}>
+                Resend code
+              </button>
+            </p>
+          </div>
+        </div>
+      )}
             </div>
           </div>
         )}

@@ -49,6 +49,9 @@ class AppServiceProvider extends ServiceProvider
                         parent::doSend($message);
                     } catch (\Symfony\Component\Mailer\Exception\TransportExceptionInterface $e) {
                         \Illuminate\Support\Facades\Log::warning('Resend refused a mail; the failover tries the next mailer', ['reason' => $e->getMessage()]);
+                        // Straight to the container's error output too: the log channel on the
+                        // host may write to a file nobody can read.
+                        error_log('[mail] Resend refused a mail: ' . $e->getMessage());
                         throw $e;
                     }
                 }
