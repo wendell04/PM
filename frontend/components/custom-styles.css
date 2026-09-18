@@ -5030,3 +5030,16 @@ html.light .lp-pinnacle-prod-img { border-color: #e5e5e3; }
   .lp-m2 .feature-card-stack .fcard:nth-child(2) .fcard-value { font-size: 1.6rem; }
   .lp-m2 .feature-card-stack .fcard-note { font-size: .7rem; }
 }
+
+/* Work gallery. auto-fill with a 180px floor collapses to ONE square per row on a phone, so the
+   page becomes a stack of giant tiles and the range of work stops being visible. Two columns keeps
+   the grid reading as a gallery; the viewer is where a photo gets to be big. */
+.lp-gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 12px;
+  margin-top: 8px;
+}
+@media (max-width: 640px) {
+  .lp-gallery-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+}

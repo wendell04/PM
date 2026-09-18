@@ -1259,20 +1259,6 @@ function CustomOrderInner() {
                 </button>
               </div>
 
-              <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginBottom: '1.1rem',
-                padding: '9px 11px', borderRadius: 8, background: 'rgba(212,168,67,0.06)',
-                border: '1px solid rgba(212,168,67,0.2)' }}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#D4A843" strokeWidth="2"
-                  style={{ flexShrink: 0, marginTop: 2 }}>
-                  <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
-                </svg>
-                <span style={{ fontSize: '0.75rem', color: 'var(--gray)', lineHeight: 1.55 }}>
-                  <strong style={{ color: 'var(--white)' }}>Not sure?</strong> Choose{' '}
-                  <strong style={{ color: 'var(--white)' }}>I have a design</strong> and message us -
-                  we will look at your file and tell you if it needs work.{' '}
-                  <strong style={{ color: 'var(--white)' }}>The design fee is only charged if you agree to it.</strong>
-                </span>
-              </div>
 
               {/* One picker, both modes: the artwork on an upload, the references on a request. */}
               <input ref={fileInputRef} type="file" multiple accept=".jpg,.jpeg,.png,.webp,.pdf,.ai,.psd,.svg"
@@ -1365,8 +1351,14 @@ function CustomOrderInner() {
                   <p style={{ fontSize: '0.73rem', color: 'var(--gray)', lineHeight: 1.6, marginTop: '0.6rem', marginBottom: 0 }}>
                     <strong style={{ color: 'var(--white)' }}>For a sharp print:</strong> send it at 300 dpi or higher,
                     already sized for this item, with text and logos unstretched. Screen colours (RGB) always shift a
-                    little in print (CMYK). We print your file as it is - we do not redraw or resize it unless you ask
-                    for a design request.
+                    little in print (CMYK).
+                  </p>
+                  {/* The customer pays before anyone has looked at the file, so the one thing they need to know
+                      here is that a file which cannot be printed is not a lost payment. Without this, a rejection
+                      after payment reads as the shop keeping the money. */}
+                  <p style={{ fontSize: '0.73rem', color: 'var(--gray)', lineHeight: 1.6, marginTop: '0.5rem', marginBottom: 0 }}>
+                    We check your file before we print it. If it will not come out well, we message you and you can
+                    send a better one - your payment stays on the order and nothing is printed until it is right.
                   </p>
 
                   {product.designFormats?.length > 0 && (

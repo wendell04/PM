@@ -81,6 +81,27 @@ const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [lpCartOpen, setLpCartOpen] = useState(false);
   const [lpNotifOpen, setLpNotifOpen] = useState(false);
+  // Work gallery viewer. On a phone the grid squares are small and there is no hover, so a photo of
+  // real work is unreadable without a full-size look - and once it is open, moving to the next one
+  // has to be possible without closing and aiming at another thumbnail.
+  const [galleryAt, setGalleryAt] = useState(null);
+  const swipeFromRef = useRef(null);
+  // Arrow keys and Escape while the viewer is open - a desktop visitor reaches for those before the
+  // on-screen arrows, and Escape is how every other overlay on this page closes.
+  useEffect(() => {
+    if (galleryAt === null) return;
+    const onKey = (e) => {
+      if (e.key === 'Escape')     setGalleryAt(null);
+      const n = cmsGallery.length;
+      if (!n) return;
+      // Wrapped, not clamped: an index past either end would leave the viewer holding nothing and
+      // it would vanish with no way back.
+      if (e.key === 'ArrowRight') setGalleryAt(i => (i === null ? i : (i + 1) % n));
+      if (e.key === 'ArrowLeft')  setGalleryAt(i => (i === null ? i : (i - 1 + n) % n));
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [galleryAt]);
   const [lpNotifications, setLpNotifications] = useState([]);
   const [lpNotifLoading, setLpNotifLoading] = useState(false);
   const [lpUnreadCount, setLpUnreadCount] = useState(0);
@@ -214,7 +235,7 @@ const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=
   // in a temporal dead zone up here, which is a crash on render rather than a warning.
   // The cart and notification sheets too: without the lock, a drag on the sheet scrolled the page
   // underneath it on phones.
-  useLockBodyScroll(!!modal || !!verificationModal || forgotModal || !!tAndCModalOpen || lpCartOpen || lpNotifOpen);
+  useLockBodyScroll(!!modal || !!verificationModal || forgotModal || !!tAndCModalOpen || lpCartOpen || lpNotifOpen || galleryAt !== null);
   const [forgotStep, setForgotStep]                   = useState(1);
 
   const [forgotCode, setForgotCode]                   = useState('');
@@ -2309,21 +2330,72 @@ const handleForgotResetPassword = async () => {
         <section className="lp-sec" id="our-work">
           <div className="container">
             <div className="section-header center">
-              <span className="section-tag">Our Work</span>
-              <h2 className="section-title">Recent <span className="gold-text">Prints</span></h2>
-              <p className="section-subtitle">A peek at real orders we&apos;ve printed and delivered.</p>
+              <span className="section-tag">Gallery</span>
+              {/* Not "Recent Prints": the good work stays up for years, and a heading that claims
+                  recency ages badly the moment it is not true any more. */}
+              <h2 className="section-title">Our <span className="gold-text">Work</span></h2>
+              <p className="section-subtitle">Real orders we have printed and delivered.</p>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '12px', marginTop: '8px' }}>
+            <div className="lp-gallery-grid">
               {cmsGallery.map((g, i) => (
-                <div key={g._id || g.id || i} style={{ aspectRatio: '1 / 1', borderRadius: '12px', overflow: 'hidden', background: 'var(--dark2)', border: '1px solid var(--border)' }}>
+                <button key={g._id || g.id || i} type="button" onClick={() => setGalleryAt(i)}
+                  aria-label={`Open ${g.name || 'gallery photo'} ${i + 1} of ${cmsGallery.length}`}
+                  style={{ aspectRatio: '1 / 1', borderRadius: '12px', overflow: 'hidden', background: 'var(--dark2)', border: '1px solid var(--border)', padding: 0, cursor: 'pointer', display: 'block', width: '100%' }}>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={cloudinaryThumb(g.image, 500)} alt={g.name || 'Our work'} loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-                </div>
+                  <img src={cloudinaryThumb(g.image, 500)} alt={g.name || 'Our work'} loading="lazy" decoding="async" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                </button>
               ))}
             </div>
           </div>
         </section>
       )}
+
+      {/* Gallery viewer. A phone shows these squares at about 160px with no hover, so the work is
+          unreadable until it fills the screen - and once it does, the next photo has to be one tap
+          or one swipe away. Arrow keys on a desktop, swipe on a phone, counter so it is clear how
+          much more there is. */}
+      {galleryAt !== null && cmsGallery[galleryAt] && (() => {
+        const total = cmsGallery.length;
+        const go = (step) => setGalleryAt(i => (i + step + total) % total);
+        return (
+          <div
+            onClick={() => setGalleryAt(null)}
+            onTouchStart={e => { swipeFromRef.current = e.changedTouches[0].clientX; }}
+            onTouchEnd={e => {
+              const dx = e.changedTouches[0].clientX - (swipeFromRef.current ?? 0);
+              if (Math.abs(dx) > 45) go(dx < 0 ? 1 : -1);
+            }}
+            style={{ position: 'fixed', inset: 0, zIndex: 2000, background: 'rgba(0,0,0,0.92)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px',
+              paddingTop: 'calc(16px + env(safe-area-inset-top, 0px))',
+              paddingBottom: 'calc(16px + env(safe-area-inset-bottom, 0px))' }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={cloudinaryThumb(cmsGallery[galleryAt].image, 1200)}
+              alt={cmsGallery[galleryAt].name || 'Our work'}
+              onClick={e => e.stopPropagation()}
+              style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: '10px', display: 'block' }} />
+
+            <button type="button" aria-label="Close" onClick={() => setGalleryAt(null)}
+              style={{ position: 'absolute', top: 'calc(12px + env(safe-area-inset-top, 0px))', right: '12px', width: 40, height: 40, borderRadius: '50%', border: 'none', background: 'rgba(255,255,255,0.14)', color: '#fff', cursor: 'pointer', fontSize: '20px', lineHeight: 1 }}>&times;</button>
+
+            {total > 1 && (
+              <>
+                <button type="button" aria-label="Previous" onClick={e => { e.stopPropagation(); go(-1); }}
+                  style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', width: 44, height: 44, borderRadius: '50%', border: 'none', background: 'rgba(255,255,255,0.14)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="15 18 9 12 15 6" /></svg>
+                </button>
+                <button type="button" aria-label="Next" onClick={e => { e.stopPropagation(); go(1); }}
+                  style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', width: 44, height: 44, borderRadius: '50%', border: 'none', background: 'rgba(255,255,255,0.14)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="9 18 15 12 9 6" /></svg>
+                </button>
+                <div style={{ position: 'absolute', bottom: 'calc(14px + env(safe-area-inset-bottom, 0px))', left: 0, right: 0, textAlign: 'center', color: 'rgba(255,255,255,0.75)', fontSize: '0.8rem' }}>
+                  {galleryAt + 1} of {total}
+                </div>
+              </>
+            )}
+          </div>
+        );
+      })()}
 
       {/* PRICING */}
       <section id="pricing" className="pricing-bg">
