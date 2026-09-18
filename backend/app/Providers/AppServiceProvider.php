@@ -47,6 +47,13 @@ class AppServiceProvider extends ServiceProvider
                 {
                     try {
                         parent::doSend($message);
+                        // Also on success: a failover hides WHICH provider carried the mail, and the
+                        // only way to tell was to watch a provider's quota move - one line here and
+                        // the answer is in the host's log. No line for a mail means Brevo carried it.
+                        error_log('[mail] Resend accepted a mail for ' . implode(', ', array_map(
+                            static fn ($a) => $a->getAddress(),
+                            $message->getEnvelope()->getRecipients()
+                        )));
                     } catch (\Symfony\Component\Mailer\Exception\TransportExceptionInterface $e) {
                         \Illuminate\Support\Facades\Log::warning('Resend refused a mail; the failover tries the next mailer', ['reason' => $e->getMessage()]);
                         // Straight to the container's error output too: the log channel on the
