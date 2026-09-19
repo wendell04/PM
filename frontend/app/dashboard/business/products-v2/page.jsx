@@ -761,10 +761,16 @@ function StockBreakdown({ product, boms, materials }) {
                                 <span style={{ color:tone, fontWeight:700, fontSize:'11.5px' }}>{covers}/{prod}</span>
                               </div>
                               <div style={{ fontSize:'10px', marginTop:2, color: pct >= 100 ? '#1a7f3c' : '#b45309', fontWeight:700 }}>
-                                {pct >= 100 ? 'Enough' : 'Short'}
+                                {pct >= 100
+                                  ? 'Enough'
+                                  : `Short by ${Math.max(0, prod - covers)} ${mat.unit ?? ''}`}
                                 {!counted && <span style={{ color:'var(--gray)', fontWeight:400 }}>{' \u00b7 cost only'}</span>}
-                                {pct < 100 && <span style={{ color:'var(--gray)', fontWeight:400 }}>{' \u00b7 on To Buy'}</span>}
                               </div>
+                              {pct < 100 && (
+                                <div style={{ fontSize:'9.5px', color:'var(--gray)', marginTop:1 }}>
+                                  would cover all {prod} \u00b7 on To Buy
+                                </div>
+                              )}
                             </div>
                           );
                         })()}
@@ -783,7 +789,8 @@ function StockBreakdown({ product, boms, materials }) {
               {shortMat && shipComplete < prod && (
                 <div style={{ marginTop:5, display:'flex', alignItems:'center', gap:10, flexWrap:'wrap' }}>
                   <b style={{ color:'#b45309' }}>
-                    {shortMat.name} runs out first: enough for {shipComplete} of the {prod} you can build.
+                    {shortMat.name} runs out first: enough for {shipComplete} of the {prod} you can
+                    build - short by {prod - shipComplete}.
                   </b>
                   <a href="/dashboard/business/to-buy" style={{ fontSize:'11px', fontWeight:700, color:'var(--gold)', textDecoration:'none' }}>
                     Open To Buy

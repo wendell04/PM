@@ -343,9 +343,10 @@ function DetailPanel({ variants, matMap }) {
             {' '}- boxed, with consumables, {variants.length > 1 ? `across all ${variants.length} variants together` : 'for this product'}
           </div>
           <div style={{ fontSize:'11px', color:'var(--gray)' }}>
-            Limited by <b style={{ color:'var(--gray-light)' }}>{pooled.name}</b>.
-            {' '}Packaging never blocks a sale - what to buy is on To Buy, and it is sized to the
-            orders you have taken plus your minimum, not to every blank on the shelf.
+            Limited by <b style={{ color:'var(--gray-light)' }}>{pooled.name}</b>
+            {pooled.toCoverAll > 0 && <> - <b style={{ color:'var(--gray-light)' }}>{pooled.toCoverAll} {pooled.uom}</b> more would box all {buildable} the blanks can make</>}.
+            {' '}That is the gap, not a shopping list: what to buy now is sized to the orders you
+            have taken plus your minimum.
             {' '}<a href="/dashboard/business/to-buy" style={{ color:'var(--gold)', fontWeight:700, textDecoration:'none' }}>Open To Buy</a>
           </div>
         </div>
@@ -415,8 +416,16 @@ function DetailPanel({ variants, matMap }) {
                               <div style={{ width: `${Math.max(3, cov.ratio * 100)}%`, height: '100%', background: cov.ratio >= 1 ? '#2e7d32' : cov.ratio < 0.25 ? '#c62828' : '#b45309' }} />
                             </div>
                             <div style={{ fontSize: 10.5, marginTop: 2, fontWeight: 700, color: cov.ratio >= 1 ? '#1a7f3c' : '#b45309' }}>
-                              {cov.ratio >= 1 ? 'Enough' : `Short \u00b7 enough for ${Math.min(cov.have, prod)} of ${prod} \u00b7 on To Buy`}
+                              {cov.ratio >= 1
+                                ? 'Enough'
+                                : <>Short by {cov.restock} {cov.uom ?? ''} - enough for {Math.min(cov.have, prod)} of {prod}</>}
                             </div>
+                            {cov.ratio < 1 && (
+                              <div style={{ fontSize: 10, color: 'var(--gray)', marginTop: 1 }}>
+                                {cov.restock} more would cover all {prod}. What to buy now is on{' '}
+                                <a href="/dashboard/business/to-buy" style={{ color: 'var(--gold)', fontWeight: 700, textDecoration: 'none' }}>To Buy</a>.
+                              </div>
+                            )}
                           </div>
                         )}
                       </td>
