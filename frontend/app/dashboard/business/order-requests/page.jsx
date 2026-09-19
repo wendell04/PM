@@ -10,6 +10,11 @@ import { useIsPhone, KpiStrip, PhoneFilterBar, PhoneList, PhoneRow } from '@/com
 import ErrorBoundary from '@/components/ErrorBoundary';
 import { loadInventory } from '../inventory-v2/api';
 import { S } from '../inventory-v2/shared';
+import QuotationModal from '@/components/chat/QuotationModal';
+
+// Same base the request helpers use - the picker calls one endpoint directly.
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
+import { createAdminQuotation } from '@/lib/orderRequestApi';
 
 const STATUS_LABELS = {
   pending_review: 'Pending Review',
@@ -119,6 +124,27 @@ export default function OrderRequestsPage() {
   const [activeFilter, setActiveFilter] = useState('all');
   const isPhone = useIsPhone();
   const [searchQuery, setSearchQuery] = useState('');
+  // Raising a quotation from its own module rather than only from inside a chat thread.
+  const [pickCustomer, setPickCustomer] = useState(false);
+  const [quoteFor,     setQuoteFor]     = useState(null);
+  const [quoteSending, setQuoteSending] = useState(false);
+
+  const openNewQuote = () => setPickCustomer(true);
+
+  const sendQuotation = async (payload) => {
+    setQuoteSending(true);
+    try {
+      await createAdminQuotation(token, { recipientId: quoteFor.id, ...payload });
+      setQuoteFor(null);
+      const result = await fetchOrderRequests(token);
+      setRequests(result.data);
+    } catch (err) {
+      // The modal shows nothing of its own on failure, so this has to reach the page.
+      setError(err.message || 'Could not send the quotation.');
+    } finally {
+      setQuoteSending(false);
+    }
+  };
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [modalLoading, setModalLoading] = useState(false);
   const [modalError, setModalError] = useState(null);
@@ -329,8 +355,30 @@ export default function OrderRequestsPage() {
   return (
     <ErrorBoundary>
     <div style={{ ...S.page, padding: '24px' }}>
+      {pickCustomer && (
+        <CustomerPicker
+          token={token}
+          onClose={() => setPickCustomer(false)}
+          onPick={(c) => { setQuoteFor(c); setPickCustomer(false); }} />
+      )}
+      {quoteFor && (
+        <QuotationModal
+          onClose={() => setQuoteFor(null)}
+          onSubmit={sendQuotation}
+          isSending={quoteSending}
+          token={token}
+          customerId={quoteFor.id}
+          customerName={quoteFor.name} />
+      )}
       {/* Page title is shown in the top bar; keep only the descriptive subtitle */}
-      <p style={{ margin: '0 0 1.5rem', color: 'var(--gray)', fontSize: '0.9rem' }}>Review and manage customer print orders</p>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', margin: '0 0 1.5rem' }}>
+        <p style={{ margin: 0, color: 'var(--gray)', fontSize: '0.9rem' }}>
+          Quotations you have sent and requests customers have raised. A quotation sets a price for
+          work that is not in the catalogue - printing on the customer's own shirt, a bulk job, a
+          service.
+        </p>
+        <button onClick={openNewQuote} style={{ ...S.btnPrimary, whiteSpace: 'nowrap' }}>+ New quotation</button>
+      </div>
 
       {isPhone ? (
         <>
@@ -960,5 +1008,89 @@ export default function OrderRequestsPage() {
       )}
     </div>
     </ErrorBoundary>
+  );
+}
+
+
+/**
+ * Who is this quotation for?
+ *
+ * Raising one from a chat thread already knows the customer. Raising one from the module does
+ * not, so this is the one extra step - and it is a search box, not a form, because the shop
+ * already knows the name before they open this.
+ */
+function CustomerPicker({ token, onClose, onPick }) {
+  const [q, setQ] = useState('');
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState('');
+
+  useEffect(() => {
+    let dead = false;
+    (async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/admin/customers`, {
+          headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+        });
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(d.message || 'Could not load customers.');
+        if (!dead) setRows(Array.isArray(d.data) ? d.data : (d.data?.customers ?? []));
+      } catch (e) {
+        if (!dead) setErr(e.message);
+      } finally {
+        if (!dead) setLoading(false);
+      }
+    })();
+    return () => { dead = true; };
+  }, [token]);
+
+  const shown = rows.filter(r => {
+    const t = `${r.firstName ?? ''} ${r.lastName ?? ''} ${r.email ?? ''} ${r.phoneNumber ?? ''}`.toLowerCase();
+    return !q.trim() || t.includes(q.trim().toLowerCase());
+  }).slice(0, 40);
+
+  return (
+    <div onClick={onClose}
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 1200,
+        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+      <div onClick={e => e.stopPropagation()}
+        style={{ background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: 10,
+          width: '100%', maxWidth: 520, maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ padding: '16px 18px 10px', borderBottom: '1px solid var(--border)' }}>
+          <div style={{ fontWeight: 700, fontSize: 15 }}>Who is this quotation for?</div>
+          <div style={{ fontSize: 12, color: 'var(--gray)', marginTop: 3 }}>
+            They get it in their chat with you, and can pay it from there.
+          </div>
+          <input autoFocus value={q} onChange={e => setQ(e.target.value)}
+            placeholder="Search name, email or phone"
+            style={{ ...S.input, marginTop: 10, width: '100%' }} />
+        </div>
+        <div style={{ overflowY: 'auto', padding: '6px 0' }}>
+          {loading ? (
+            <div style={{ padding: 20, fontSize: 13, color: 'var(--gray)' }}>Loading...</div>
+          ) : err ? (
+            <div style={{ padding: 20, fontSize: 13, color: 'var(--st-red-fg)' }}>{err}</div>
+          ) : shown.length === 0 ? (
+            <div style={{ padding: 20, fontSize: 13, color: 'var(--gray)' }}>
+              {q ? 'Nobody matches that.' : 'No customers yet.'}
+            </div>
+          ) : shown.map(c => {
+            const id = String(c._id ?? c.id ?? '');
+            const name = `${c.firstName ?? ''} ${c.lastName ?? ''}`.trim() || c.email;
+            return (
+              <button key={id} onClick={() => onPick({ id, name })}
+                style={{ display: 'block', width: '100%', textAlign: 'left', background: 'transparent',
+                  border: 'none', borderBottom: '1px solid var(--border)', padding: '10px 18px', cursor: 'pointer' }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--white)' }}>{name}</div>
+                <div style={{ fontSize: 11.5, color: 'var(--gray)' }}>{c.email}{c.phoneNumber ? ` · ${c.phoneNumber}` : ''}</div>
+              </button>
+            );
+          })}
+        </div>
+        <div style={{ padding: '10px 18px', borderTop: '1px solid var(--border)', textAlign: 'right' }}>
+          <button onClick={onClose} style={S.btnGhost}>Cancel</button>
+        </div>
+      </div>
+    </div>
   );
 }

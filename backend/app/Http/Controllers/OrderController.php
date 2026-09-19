@@ -3769,7 +3769,10 @@ class OrderController extends Controller
     {
         try {
             $user = $request->user();
-            if (!$this->hasPermission($request, 'orders.edit')) {
+            // Design work no longer requires the right to run the whole order. A designer needed
+            // orders.edit, which also grants cancelling orders and touching refunds.
+            // orders.edit stays accepted so nobody who can do this today loses it.
+            if (!$this->hasAnyPermission($request, ['design.approve', 'orders.edit'])) {
                 return $this->unauthorizedResponse();
             }
 
@@ -3868,7 +3871,10 @@ class OrderController extends Controller
     {
         try {
             $user = $request->user();
-            if (!$this->hasPermission($request, 'orders.edit')) {
+            // Design work no longer requires the right to run the whole order. A designer needed
+            // orders.edit, which also grants cancelling orders and touching refunds.
+            // orders.edit stays accepted so nobody who can do this today loses it.
+            if (!$this->hasAnyPermission($request, ['design.approve', 'orders.edit'])) {
                 return $this->unauthorizedResponse();
             }
 
@@ -3941,7 +3947,10 @@ class OrderController extends Controller
     {
         try {
             $user = $request->user();
-            if (!$this->hasPermission($request, 'orders.edit')) {
+            // Design work no longer requires the right to run the whole order. A designer needed
+            // orders.edit, which also grants cancelling orders and touching refunds.
+            // orders.edit stays accepted so nobody who can do this today loses it.
+            if (!$this->hasAnyPermission($request, ['design.approve', 'orders.edit'])) {
                 return $this->unauthorizedResponse();
             }
 
