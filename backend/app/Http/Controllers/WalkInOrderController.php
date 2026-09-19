@@ -320,25 +320,56 @@ class WalkInOrderController extends Controller
         try {
             foreach ($order->items as $item) {
                 $product = Product::find($item['productId']);
-                if (!$product || !$product->inventoryId) continue;
+                if (!$product) continue;
 
-                $inventory = Inventory::find($product->inventoryId);
-                if (!$inventory) {
-                    Log::warning('WalkInOrderController@recordSales: inventory not found', [
-                        'orderId'   => (string) $order->_id,
-                        'productId' => $item['productId'],
-                    ]);
-                    continue;
+                // `inventoryId` is a resold finished good - something bought in and sold as itself.
+                // NOTHING in this catalogue is that: all 24 products are made here, so they carry a
+                // recipe and no inventory row. Requiring one meant every counter sale fell through
+                // this loop and wrote no Sale record and deducted no material - the money never
+                // reached Sales or Reports, and the shelf never moved.
+                //
+                // Three shapes, in the order they take precedence:
+                //   1. hand-picked materials on the line  (a service priced at the counter)
+                //   2. the product's recipe               (everything made here)
+                //   3. its own inventory row              (a resold finished good)
+                $inventory = $product->inventoryId ? Inventory::find($product->inventoryId) : null;
+
+                $consume = [];   // [inventoryId => qty for the whole line]
+                if (!empty($item['materials']) && is_array($item['materials'])) {
+                    foreach ($item['materials'] as $m) {
+                        $id = (string) ($m['inventoryId'] ?? '');
+                        if ($id !== '') $consume[$id] = ($consume[$id] ?? 0) + (float) ($m['qty'] ?? 0);
+                    }
+                } elseif ($inventory) {
+                    $consume[(string) $inventory->_id] = (int) $item['qty'];
+                } else {
+                    $bom = $product->resolveBom($item['variantId'] ?? null);
+                    foreach ($bom->components ?? [] as $c) {
+                        $id = (string) ($c['inventoryId'] ?? '');
+                        if ($id !== '') $consume[$id] = ($consume[$id] ?? 0) + ((float) ($c['qty'] ?? 0)) * (int) ($item['qty'] ?? 1);
+                    }
                 }
 
                 $newSaleId   = 'SALE-' . strtoupper(substr(str_replace('-', '', Str::uuid()->toString()), 0, 8));
-                $cost        = (float) ($inventory->averageCost ?? 0) * (int) $item['qty'];
+                // Cost is what the line actually consumes. Reading averageCost off a single
+                // inventory row only works for a resold good; a made item costs the sum of its
+                // materials, and a service costs whatever was picked for it.
+                $cost = 0.0;
+                foreach ($consume as $invId => $qty) {
+                    $ci = Inventory::find($invId);
+                    if ($ci) $cost += (float) ($ci->averageCost ?? $ci->lastUnitCost ?? 0) * (float) $qty;
+                }
                 $profit      = (float) $item['lineTotal'] - $cost;
                 $variantName = $item['variantName'] ?? '';
 
                 Sale::create([
                     'saleId'          => $newSaleId,
-                    'inventoryId'     => (string) $inventory->_id,
+                    'inventoryId'     => $inventory ? (string) $inventory->_id : null,
+                    // Written so the forecast can resolve a counter sale without a name map, the
+                    // same way OrderController@completeOrder does for online ones.
+                    'productId'       => (string) $product->_id,
+                    'variantId'       => $item['variantId'] ?? null,
+                    'variantName'     => $variantName !== '' ? $variantName : null,
                     'productName'     => $product->name . ($variantName ? " ({$variantName})" : ''),
                     'category'        => $product->category,
                     'quantity'        => (int) $item['qty'],
@@ -356,11 +387,18 @@ class WalkInOrderController extends Controller
                     'createdAt'       => now(),
                 ]);
 
-                // Deduct inventory batches FIFO + write StockHistory for traceability (only if not on-demand)
-                if (!$inventory->isOnDemand) {
+                // Deduct what the line consumes, FIFO, with a ledger row each so Stock Out History
+                // shows a counter sale the same way it shows a production job.
+                foreach ($consume as $invId => $qty) {
+                    $ci = Inventory::find($invId);
+                    $take = (int) round((float) $qty);
+                    if (!$ci || $take <= 0) continue;
+                    // On-demand material is bought for the job, not held - it never had a shelf
+                    // figure to reduce.
+                    if ($ci->isOnDemand) continue;
                     $this->deductInventoryFIFO(
-                        inventory: $inventory,
-                        qty: (int) $item['qty'],
+                        inventory: $ci,
+                        qty: $take,
                         reason: 'sales-outside',
                         sellingPrice: (float) ($item['unitPrice'] ?? 0),
                         customerName: $customerName,
