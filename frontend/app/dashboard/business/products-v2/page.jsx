@@ -751,22 +751,20 @@ function StockBreakdown({ product, boms, materials }) {
                           // row that is actually holding things up.
                           const covers = Math.min(can, prod);
                           const short  = Math.max(0, prod - covers);
+                          const pct    = prod > 0 ? Math.min(100, Math.round((covers / prod) * 100)) : 100;
+                          const tone   = short <= 0 ? '#2e7d32' : pct < 25 ? '#c62828' : '#b45309';
                           const title  = `${freeStock(mat)} ${mat.unit} on hand, ${item.qty} per unit - enough for ${covers} of ${prod}.`;
-                          if (short <= 0) {
-                            return <span title={title} style={{ color:'#1a7f3c', fontWeight:700, fontSize:'12px' }}>Enough</span>;
-                          }
-                          const pct  = prod > 0 ? Math.min(100, Math.round((covers / prod) * 100)) : 100;
-                          const tone = pct < 25 ? '#c62828' : '#b45309';
                           return (
                             <div title={title}>
                               <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-                                <span style={{ width:60, height:5, borderRadius:3, background:'var(--dark2)', overflow:'hidden', flexShrink:0 }}>
+                                <span style={{ width:70, height:5, borderRadius:3, background:'var(--dark2)', overflow:'hidden', flexShrink:0 }}>
                                   <span style={{ display:'block', width:`${Math.max(2, pct)}%`, height:'100%', background:tone }} />
                                 </span>
                                 <span style={{ color:tone, fontWeight:700, fontSize:'11.5px' }}>{covers} of {prod}</span>
                               </div>
                               <div style={{ fontSize:'10.5px', marginTop:2, color:tone, fontWeight:700 }}>
-                                Short by {short} {mat.unit ?? ''}
+                                {short <= 0 ? 'Enough' : `Short by ${short} ${mat.unit ?? ''}`}
+                                {!counted && <span style={{ color:'var(--gray)', fontWeight:400 }}>{' - cost only'}</span>}
                               </div>
                             </div>
                           );

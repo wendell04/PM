@@ -337,14 +337,18 @@ function shipCompleteAcross(variants, matMap) {
 function DetailPanel({ variants, matMap }) {
   const pooled = shipCompleteAcross(variants, matMap);
   const buildable = variants.reduce((s, v) => s + (v.producible ?? 0), 0);
+  // Never more than the blanks allow: a shelf of 344 sheets does not make 344 mugs, it covers
+  // the 100 the blanks can make. Clamping is what stops the banner claiming the impossible.
+  const readyToShip = pooled ? Math.min(pooled.can, buildable) : buildable;
+  const isShort = pooled ? readyToShip < buildable : false;
   return (
     <div style={{ padding:'14px 20px', display:'flex', flexDirection:'column', gap:'14px' }}>
-      {pooled && (
+      {isShort && (
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', gap:12, flexWrap:'wrap',
           padding:'9px 12px', borderRadius:8, border:'1px solid var(--border)',
           background: pooled.can < buildable ? 'rgba(212,168,67,0.08)' : 'var(--dark)' }}>
           <div style={{ fontSize:'12px', color:'var(--gray-light)' }}>
-            <b style={{ color: pooled.can === 0 ? '#c62828' : pooled.can < buildable ? '#b45309' : '#1a7f3c' }}>{pooled.can} ready to ship</b>
+            <b style={{ color: readyToShip === 0 ? '#c62828' : '#b45309' }}>{readyToShip} ready to ship</b>
             {' '}of {buildable} you can sell {variants.length > 1 ? `- all ${variants.length} variants share the same packaging` : ''}
           </div>
           <div style={{ fontSize:'11px', color:'var(--gray)' }}>
@@ -413,20 +417,21 @@ function DetailPanel({ variants, matMap }) {
                       <td style={{ padding:'4px 8px', fontSize:'12px', fontWeight:600, color: !counted ? 'var(--gray)' : can===0?'#c62828':can<=10?'#b45309':'#1a7f3c' }}>
                         {counted ? can : '-'}
                         {!counted && <span style={{ marginLeft:6, fontSize:'10px', color:'var(--gray)' }}>cost only</span>}
-                        {cov && (cov.ratio >= 1
-                          ? <span title={`${cov.have} of ${cov.need} ${cov.uom ?? ''} needed to make all ${prod}`}
-                              style={{ marginLeft: 8, color: '#1a7f3c', fontWeight: 700, fontSize: 12 }}>Enough</span>
-                          : (
-                            <div style={{ marginTop: 4, minWidth: 110 }} title={`${cov.have} of ${cov.need} ${cov.uom ?? ''} needed to make all ${prod}. What to buy now is on To Buy.`}>
-                              <div style={{ height: 4, borderRadius: 2, background: 'var(--dark2)', overflow: 'hidden' }}>
-                                <div style={{ width: `${Math.max(3, cov.ratio * 100)}%`, height: '100%', background: cov.ratio < 0.25 ? '#c62828' : '#b45309' }} />
+                        {cov && (() => {
+                          const ok = cov.ratio >= 1;
+                          const tone = ok ? '#2e7d32' : cov.ratio < 0.25 ? '#c62828' : '#b45309';
+                          return (
+                            <div style={{ marginTop: 4, minWidth: 120 }}
+                              title={`${cov.have} of ${cov.need} ${cov.uom ?? ''} needed to make all ${prod}.${ok ? '' : ' What to buy now is on To Buy.'}`}>
+                              <div style={{ height: 5, borderRadius: 3, background: 'var(--dark2)', overflow: 'hidden' }}>
+                                <div style={{ width: `${Math.max(3, cov.ratio * 100)}%`, height: '100%', background: tone }} />
                               </div>
-                              <div style={{ fontSize: 10.5, marginTop: 2, fontWeight: 700, color: '#b45309' }}>
-                                Short by {cov.restock} {cov.uom ?? ''}
+                              <div style={{ fontSize: 10.5, marginTop: 2, fontWeight: 700, color: tone }}>
+                                {ok ? 'Enough' : `Short by ${cov.restock} ${cov.uom ?? ''}`}
                               </div>
                             </div>
-                          )
-                        )}
+                          );
+                        })()}
                       </td>
                     </tr>
                   );
