@@ -121,7 +121,12 @@ const DATA_SOURCES = [
  * sale -> product (+ variant) -> bill of materials -> material, with the
  * per-unit quantity from the BOM applied on the way through.
  *
- * Three allocation rules, in order of how much they assume:
+ * Where the stock ledger reaches, it wins: it records the actual deduction
+ * per material with the recipe already applied. The sales route is what
+ * covers the years before the ledger existed, and afterwards it serves as a
+ * cross-check rather than as the input.
+ *
+ * Three allocation rules for the sales route, in order of how much they assume:
  *
  *   exact     the material is used by every variant at the same rate, so the
  *             variant a legacy sale didn't record makes no difference
@@ -131,7 +136,7 @@ const DATA_SOURCES = [
  *             evenly and labelled as an assumption rather than dropped, since
  *             dropping it would throw away three years of history
  */
-function buildMaterialDemand(inventoryId, taxonomy, sales) {
+function buildMaterialDemand(inventoryId, taxonomy, sales, ledger = []) {
   const entry = taxonomy?.materialIndex?.[inventoryId];
   if (!entry) return { rows: [], linked: false, basis: null };
 
@@ -201,14 +206,72 @@ function buildMaterialDemand(inventoryId, taxonomy, sales) {
     byDay[ds] = (byDay[ds] ?? 0) + units;
   });
 
-  const rows = Object.entries(byDay)
+  const salesRows = Object.entries(byDay)
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([date, value]) => ({ date, value: Math.round(value * 100) / 100 }));
+
+  // ── Prefer the stock ledger where it reaches ──────────────────────────────
+  // The ledger records what was actually taken off the shelf, per material,
+  // with the recipe quantity already applied. It only starts in Aug 2026, but
+  // over the weeks it covers it is exact, and it is the current trading
+  // regime. The sales series reaches back three years to a shop that sold a
+  // twentieth of today's volume; averaging the two together reports a rate an
+  // order of magnitude below what the shelf is actually losing.
+  const ledgerRows = buildLedgerDemand(ledger);
+  const useLedger = ledgerRows.length > 0;
+  const rows = useLedger ? ledgerRows : salesRows;
 
   return {
     rows,
     linked: true,
-    basis: { ...basis, consumers: Array.from(basis.consumers), shared: entry.shared === true },
+    basis: {
+      ...basis,
+      consumers: Array.from(basis.consumers),
+      shared: entry.shared === true,
+      source: useLedger ? "ledger" : "sales",
+      ledgerFrom: useLedger ? ledgerRows[0].date : null,
+      // Sales x BOM over the same weeks should land near the ledger. When it
+      // does not, something happened with no sale behind it - scrap, an
+      // adjustment, or a recipe that no longer matches what is consumed.
+      crossCheck: useLedger ? compareRates(ledgerRows, salesRows) : null,
+      salesSpanRows: salesRows.length,
+    },
+  };
+}
+
+/** Daily material demand straight from stock-ledger deductions. */
+function buildLedgerDemand(ledger) {
+  if (!Array.isArray(ledger) || ledger.length === 0) return [];
+  const byDay = {};
+  ledger.forEach((h) => {
+    if ((h?.type ?? "") !== "deduction") return;
+    const d = h.createdAt ? new Date(h.createdAt) : null;
+    if (!d || isNaN(d)) return;
+    const qty = Math.abs(Number(h.quantity ?? 0));
+    if (!(qty > 0)) return;
+    const ds = d.toISOString().split("T")[0];
+    byDay[ds] = (byDay[ds] ?? 0) + qty;
+  });
+  return Object.entries(byDay)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, value]) => ({ date, value: Math.round(value * 100) / 100 }));
+}
+
+/** Weekly rate from each source over the window the ledger covers. */
+function compareRates(ledgerRows, salesRows) {
+  if (ledgerRows.length === 0) return null;
+  const from = ledgerRows[0].date;
+  const to = ledgerRows[ledgerRows.length - 1].date;
+  const weeks = Math.max(1, (new Date(to) - new Date(from)) / 604800000 + 1 / 7);
+  const sum = (rs) => rs.filter((r) => r.date >= from && r.date <= to).reduce((s, r) => s + r.value, 0);
+  const ledgerRate = sum(ledgerRows) / weeks;
+  const salesRate = sum(salesRows) / weeks;
+  const denom = Math.max(ledgerRate, salesRate);
+  return {
+    ledgerRate: Math.round(ledgerRate * 100) / 100,
+    salesRate: Math.round(salesRate * 100) / 100,
+    // Flag only a material difference, not rounding noise.
+    diverges: denom > 0 && Math.abs(ledgerRate - salesRate) / denom > 0.25,
   };
 }
 
@@ -879,13 +942,34 @@ function computeInventoryPolicy({ rawRows, currentStock, leadTimeDays, periodTyp
   };
 }
 
+// Plain descriptions of the sales pattern. These say what the shop would
+// observe, not which algorithm ran - naming Croston/SBA here was misleading,
+// because it described what the classifier implies rather than what actually
+// produced the number on screen.
 const DEMAND_CLASS = {
-  steady:       { label: "Steady",       color: "#4ade80", note: "regular demand - time-series forecast is reliable" },
-  variable:     { label: "Variable",     color: "#fbbf24", note: "regular but uneven sizes - treat the rate as approximate" },
-  intermittent: { label: "Intermittent", color: "#fbbf24", note: "sparse demand - estimated with Croston's/SBA (a flat demand rate)" },
-  lumpy:        { label: "Lumpy",        color: "#f87171", note: "sparse and uneven demand - Croston's/SBA rate; treat as a guide" },
-  new:          { label: "New / sparse", color: "#9ca3af", note: "too little history to model - using a simple average" },
+  steady:       { label: "Steady",       color: "#4ade80", note: "sells regularly, in similar amounts" },
+  variable:     { label: "Variable",     color: "#fbbf24", note: "sells regularly, but amounts jump around" },
+  intermittent: { label: "Intermittent", color: "#fbbf24", note: "sells rarely, in similar amounts" },
+  lumpy:        { label: "Lumpy",        color: "#f87171", note: "sells rarely, and amounts jump around" },
+  new:          { label: "New / sparse", color: "#9ca3af", note: "too little history to judge a pattern" },
 };
+
+// How the number on screen was actually produced, in the reader's terms.
+function estimatePhrase(result) {
+  if (result?.is_fallback) return "averaged from past sales";
+  if (result?.method === "sba") return "a flat rate - sales are too sparse for a trend";
+  return "a trend model fitted to past sales";
+}
+
+// "99+ weeks" of cover is true but unreadable. Say it the way a person would.
+function coveragePhrase(periods, unitSingular, daysPerPeriod = 7) {
+  if (periods == null) return "no demand to run down";
+  const days = periods * daysPerPeriod;
+  if (days >= 730) return "over 2 years";
+  if (days >= 365) return "over a year";
+  if (days >= 60)  return `about ${Math.round(days / 30.44)} months`;
+  return `about ${Math.round(periods)} ${unitSingular}${Math.round(periods) === 1 ? "" : "s"}`;
+}
 
 // Adaptive precision for demand figures: slow sellers have sub-unit demand
 // (e.g. ~0.2/week) that must not round to 0, while fast movers stay whole.
@@ -1201,7 +1285,7 @@ export default function SSAForecastPage() {
         // is ever true (0 of 370 sales carry an inventoryId, and no product is
         // named after the material it is made from), so every material read as
         // zero demand. Walk the BOM instead.
-        const demand = buildMaterialDemand(selectedInventoryId, taxonomy, allSales);
+        const demand = buildMaterialDemand(selectedInventoryId, taxonomy, allSales, history);
         rows = demand.rows;
         setDemandBasis(demand.linked ? demand.basis : null);
 
@@ -1441,10 +1525,15 @@ export default function SSAForecastPage() {
     const todayStr = new Date().toISOString().split("T")[0];
     const fcDates  = result.forecast?.dates  || [];
     const fcValues = result.forecast?.values || [];
+    // Keep remaining as a float, the way the depletion chart does. Rounding
+    // each period on its own erases every material whose demand is under half
+    // a unit per period - a sticker sheet at 0.26/week rounds to 0 forever and
+    // reports "never runs out", which is the flat line this page is meant to
+    // have stopped drawing.
     let remaining = currentStockQty;
     for (let i = 0; i < fcDates.length; i++) {
       if (fcDates[i] <= todayStr) continue;
-      remaining -= Math.max(0, Math.round(fcValues[i] ?? 0));
+      remaining -= Math.max(0, fcValues[i] ?? 0);
       if (remaining <= 0) { setStockoutDate(fcDates[i]); return; }
     }
     setStockoutDate(null);
@@ -2249,10 +2338,11 @@ export default function SSAForecastPage() {
             if (isInvCard && result && currentStockQty != null) {
               const fcD = result.forecast?.dates || [];
               const todayStr = new Date().toISOString().split("T")[0];
+              // Float, not per-period rounding - see the stockout effect above.
               let rem = currentStockQty, n = 0;
               for (let i = 0; i < fcD.length; i++) {
                 if (fcD[i] <= todayStr) continue;
-                rem -= Math.max(0, Math.round(fcVals[i] ?? 0));
+                rem -= Math.max(0, fcVals[i] ?? 0);
                 n++;
                 if (rem <= 0) { invStockoutDate = fcD[i]; invPeriodsToOut = n; break; }
               }
@@ -2339,7 +2429,7 @@ export default function SSAForecastPage() {
                 <>
                 <p className="ssa-side-label" style={{ margin: "0.25rem 0 0.5rem" }}>Demand Profile</p>
                 <div className="ssa-units-summary" style={{ alignItems: "flex-start", gap: "1.75rem" }}>
-                  <div>
+                  <div style={{ flex: "0 1 200px" }}>
                     <span className="k">Demand Pattern</span>
                     <span
                       className="ssa-rfm-badge"
@@ -2347,26 +2437,53 @@ export default function SSAForecastPage() {
                     >
                       {clsInfo.label}
                     </span>
+                    <span style={{ fontSize: "0.72rem", color: "var(--gray)", lineHeight: 1.4, marginTop: "0.25rem" }}>
+                      {clsInfo.note}
+                    </span>
                   </div>
                   <div>
-                    <span className="k">Demand Rate</span>
+                    <span className="k">Sells about</span>
                     <span className="v">
                       {fmtDemand(policy.d)}
-                      <span style={{ fontWeight: 400, color: "var(--gray)", fontSize: "0.8rem" }}> ± {fmtDemand(policy.sigma)} /{unitSingular}</span>
+                      <span style={{ fontWeight: 400, color: "var(--gray)", fontSize: "0.8rem" }}> /{unitSingular}</span>
+                    </span>
+                    <span style={{ fontSize: "0.72rem", color: "var(--gray)", lineHeight: 1.4 }}>
+                      {estimatePhrase(result)}
                     </span>
                   </div>
                   <div>
-                    <span className="k">Coverage</span>
-                    <span className="v">{policy.coverage == null ? "-" : `${policy.coverage > 99 ? "99+" : policy.coverage.toFixed(1)} ${unitSingular}s`}</span>
-                  </div>
-                  <div style={{ flex: "1 1 220px", minWidth: 180 }}>
-                    <span className="k">Method</span>
-                    <span className="v" style={{ fontSize: "0.76rem", fontWeight: 500, color: "var(--gray)", lineHeight: 1.4 }}>
-                      {clsInfo.note}
-                      {result?.method ? ` · ${result.method === "sba" ? "Croston/SBA" : "SSA"}` : (result?.is_fallback ? " · average" : "")}
-                      {policy.usingDefaultLead ? ` · default ${policy.leadDays}d lead time` : ""}
+                    <span className="k">Stock lasts</span>
+                    <span className="v">{coveragePhrase(policy.coverage, unitSingular, policy.daysPerPeriod)}</span>
+                    <span style={{ fontSize: "0.72rem", color: "var(--gray)", lineHeight: 1.4 }}>
+                      at this rate, with no restock
                     </span>
                   </div>
+                  {isInvCard && demandBasis && (
+                    <div style={{ flex: "1 1 240px", minWidth: 200 }}>
+                      <span className="k">Counted from</span>
+                      <span className="v" style={{ fontSize: "0.8rem", fontWeight: 500, lineHeight: 1.4 }}>
+                        {demandBasis.source === "ledger"
+                          ? "Stock taken off the shelf"
+                          : demandBasis.consumers.length === 0
+                            ? "no sales yet"
+                            : `Sales of ${demandBasis.consumers.slice(0, 2).join(", ")}${demandBasis.consumers.length > 2 ? ` +${demandBasis.consumers.length - 2} more` : ""}`}
+                      </span>
+                      {demandBasis.source === "ledger" ? (
+                        <span style={{ fontSize: "0.72rem", color: "var(--gray)", lineHeight: 1.4 }}>
+                          recorded from {formatDateLabel(demandBasis.ledgerFrom, "daily")} onward
+                          {demandBasis.crossCheck?.diverges
+                            ? `; sales over the same weeks suggest ${fmtDemand(demandBasis.crossCheck.salesRate)}/week, so some was used without a sale`
+                            : ""}
+                        </span>
+                      ) : (demandBasis.even > 0 || demandBasis.share > 0) ? (
+                        <span style={{ fontSize: "0.72rem", color: "var(--gray)", lineHeight: 1.4 }}>
+                          {demandBasis.even + demandBasis.share} older sale
+                          {demandBasis.even + demandBasis.share === 1 ? "" : "s"} recorded no variant
+                          {demandBasis.even > 0 ? "; shared out evenly" : "; split by recent mix"}
+                        </span>
+                      ) : null}
+                    </div>
+                  )}
                 </div>
                 </>
               )}
@@ -2497,22 +2614,11 @@ export default function SSAForecastPage() {
                 </span>
               </div>
             )}
-            {/* "Stock sufficient" is only true if demand was actually measured.
-                With no linked sales the depletion line is flat at zero, and a
-                green all-clear on top of that reads as a result rather than an
-                absence of one. */}
-            {isInvMode && !stockoutDate && dataPointCount > 0 && depletionMethod !== "unlinked" && depletionMethod !== "nodemand" && parseInt(forecastCount, 10) > 0 && (
-              <div style={{ display: "flex", alignItems: "flex-start", gap: "0.75rem", background: "rgba(74,222,128,0.06)", border: "1px solid rgba(74,222,128,0.2)", borderRadius: "10px", padding: "0.875rem 1.25rem", fontSize: "0.85rem", color: "var(--gray)", lineHeight: 1.6, marginBottom: "1.5rem" }}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4ade80" strokeWidth="2" style={{ flexShrink: 0, marginTop: 2 }}>
-                  <polyline points="20 6 9 17 4 12" />
-                </svg>
-                <span>
-                  <strong style={{ color: "#4ade80" }}>Stock sufficient</strong>{" "}
-                  - No stockout predicted within the {submittedConfig.count} {submittedConfig.period.unit} forecast window.
-                </span>
-              </div>
-            )}
-            {isInvMode && result?.is_fallback && parseInt(forecastCount, 10) > 0 && (
+            {/* Only the two states with nothing to forecast get a banner. The
+                ordinary case - how fast it sells, how it was estimated, and
+                which sales it was counted from - is read off the Demand
+                Profile instead of being stacked in notices above the chart. */}
+            {isInvMode && (depletionMethod === "unlinked" || depletionMethod === "nodemand") && parseInt(forecastCount, 10) > 0 && (
               <div className="ssa-warning-banner">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" strokeWidth="2" style={{ flexShrink: 0, marginTop: 1 }}>
                   <circle cx="12" cy="12" r="10" />
@@ -2522,54 +2628,15 @@ export default function SSAForecastPage() {
                 <span>
                   {depletionMethod === "unlinked" ? (
                     <>
-                      <strong style={{ color: "#fbbf24" }}>No linked demand -</strong>{" "}
-                      no product's bill of materials uses <strong style={{ color: "var(--white)" }}>{selectedItemName}</strong>,
-                      so there are no sales to forecast from. Add it to a product's BOM to see a depletion projection here.
-                    </>
-                  ) : depletionMethod === "nodemand" ? (
-                    <>
-                      <strong style={{ color: "#fbbf24" }}>No demand recorded -</strong>{" "}
-                      <strong style={{ color: "var(--white)" }}>{selectedItemName}</strong> is used by a product,
-                      but nothing that consumes it has sold yet. There is no history to forecast from.
+                      <strong style={{ color: "#fbbf24" }}>Nothing uses this material -</strong>{" "}
+                      no product recipe includes <strong style={{ color: "var(--white)" }}>{selectedItemName}</strong>,
+                      so there are no sales to work from. Add it to a product's recipe to see when it will run out.
                     </>
                   ) : (
                     <>
-                      <strong style={{ color: "#fbbf24" }}>Average-demand estimate -</strong>{" "}
-                      a full SSA forecast wasn't available for this material ({dataPointCount} day{dataPointCount !== 1 ? "s" : ""} with demand), so the projection uses its average demand. Treat it as directional.
-                    </>
-                  )}
-                </span>
-              </div>
-            )}
-
-            {/* How this material's demand was derived. The BOM join is not
-                self-evident from a chart, and the even-split case is an
-                assumption the reader is entitled to see. */}
-            {isInvMode && demandBasis && depletionMethod !== "unlinked" && depletionMethod !== "nodemand" && parseInt(forecastCount, 10) > 0 && (
-              <div className="ssa-warning-banner" style={{ borderColor: "rgba(96,165,250,0.25)", background: "rgba(96,165,250,0.06)" }}>
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" strokeWidth="2" style={{ flexShrink: 0, marginTop: 1 }}>
-                  <circle cx="12" cy="12" r="10" />
-                  <line x1="12" y1="16" x2="12" y2="12" />
-                  <line x1="12" y1="8" x2="12.01" y2="8" />
-                </svg>
-                <span>
-                  <strong style={{ color: "#60a5fa" }}>Demand via bill of materials -</strong>{" "}
-                  built from sales of {demandBasis.consumers.slice(0, 3).join(", ")}
-                  {demandBasis.consumers.length > 3 ? ` and ${demandBasis.consumers.length - 3} more` : ""}
-                  {demandBasis.shared ? ", a material shared across several products" : ""}.
-                  {demandBasis.even > 0 && (
-                    <>
-                      {" "}
-                      <strong style={{ color: "var(--white)" }}>{demandBasis.even}</strong> older sale
-                      {demandBasis.even !== 1 ? "s" : ""} recorded only the product family, and too few recent
-                      orders exist to split it by variant - those were divided evenly across variants.
-                    </>
-                  )}
-                  {demandBasis.share > 0 && (
-                    <>
-                      {" "}
-                      <strong style={{ color: "var(--white)" }}>{demandBasis.share}</strong> older sale
-                      {demandBasis.share !== 1 ? "s" : ""} named no variant and were split by recent variant share.
+                      <strong style={{ color: "#fbbf24" }}>Not sold yet -</strong>{" "}
+                      <strong style={{ color: "var(--white)" }}>{selectedItemName}</strong> is part of a product,
+                      but none of those products have sold, so there is nothing to project from.
                     </>
                   )}
                 </span>
