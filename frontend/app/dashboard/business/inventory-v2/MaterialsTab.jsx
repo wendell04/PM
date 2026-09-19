@@ -2,7 +2,7 @@
 import { useIsPhone, KpiStrip, PhoneFilterBar, PhoneList, PhoneRow } from '@/components/dashboard/phone';
 import { useState, useMemo } from 'react';
 import { S, ICONS, Field, IntegerInput, DecimalInput, Modal, ConfirmModal, PaginationBar, SearchBar, StatusBadge, EmptyState, SummaryCard, usePagination, formatCurrency, uid, CustomSelect } from './shared';
-import { createMat, updateMat, deleteMat, createSupplier, loadMinStockSuggestions } from './api';
+import { createMat, updateMat, deleteMat, createSupplier, loadMinStockSuggestions, loadArchivedMats, restoreMat } from './api';
 
 function getSkuPrefix(category) {
   const KNOWN = { Garments:'GAR', 'Print Materials':'PRT', Drinkware:'DRW', Packaging:'PKG', Accessories:'ACC', Bags:'BAG', Office:'OFF', Other:'OTH' };
@@ -415,6 +415,36 @@ export default function MaterialsTab({ materials, setMaterials, vendors, setVend
     setConfirm(null);
   };
 
+  // Archiving was reversible in the database and irreversible from the screen - nothing could
+  // see an archived material, so nothing could put one back. This is the missing half.
+  const [showArchived, setShowArchived] = useState(false);
+  const [archived,     setArchived]     = useState(null);   // null = not loaded yet
+  const [archBusy,     setArchBusy]     = useState('');
+
+  const openArchived = async () => {
+    setShowArchived(true);
+    try {
+      setArchived(await loadArchivedMats(token));
+    } catch (err) {
+      toast?.(err.message, 'error');
+      setArchived([]);
+    }
+  };
+
+  const doRestore = async (row) => {
+    const id = String(row._id ?? row.id ?? '');
+    setArchBusy(id);
+    try {
+      await restoreMat(token, id);
+      setArchived(a => (a ?? []).filter(r => String(r._id ?? r.id) !== id));
+      await onRefresh(['materials']);
+      toast?.(`"${row.name}" is back in Master Data.`, 'success');
+    } catch (err) {
+      toast?.(err.message, 'error');
+    }
+    setArchBusy('');
+  };
+
   const catVendors = useMemo(() =>
     vendors.filter(v => !form.category || (v.itemsSupplied || []).includes(form.category)),
   [vendors, form.category]);
@@ -461,7 +491,7 @@ export default function MaterialsTab({ materials, setMaterials, vendors, setVend
           <PhoneFilterBar search={search} onSearch={setSearch} placeholder="Search name or SKU"
             filters={[{ key:'cat', label:'Category', value:catFilter, defaultValue:'All', onChange:setCat,
               options:[{ value:'All', label:'All' }, ...categories.map(c => ({ value:c, label:c }))] }]}
-            actions={<><button onClick={openSuggestions} style={{ ...S.btnSmGhost, minHeight:36 }}>Suggest minimums</button><button onClick={() => setShowManage(true)} style={{ ...S.btnSmGhost, minHeight:36 }}>Manage lists</button></>}
+            actions={<><button onClick={openSuggestions} style={{ ...S.btnSmGhost, minHeight:36 }}>Suggest minimums</button><button onClick={openArchived} style={{ ...S.btnSmGhost, minHeight:36 }}>Archived</button><button onClick={() => setShowManage(true)} style={{ ...S.btnSmGhost, minHeight:36 }}>Manage lists</button></>}
             note={`${total} material${total !== 1 ? 's' : ''}`} />
         </>
       ) : (<>
@@ -481,6 +511,7 @@ export default function MaterialsTab({ materials, setMaterials, vendors, setVend
         </div>
         <div style={{ display:'flex', gap:'8px' }}>
           <button onClick={openSuggestions} style={S.btnGhost} title="What each minimum should be, from how fast it actually leaves the shelf">Suggest minimums</button>
+          <button onClick={openArchived} style={S.btnGhost} title="Materials taken out of circulation. Their stock and history are kept, and any of them can be put back.">Archived</button>
           <button onClick={() => setShowManage(true)} style={S.btnGhost}>Manage Lists</button>
           <button onClick={openAdd} style={S.btnPrimary}>{ICONS.plus} Add Material</button>
         </div>
@@ -774,6 +805,62 @@ export default function MaterialsTab({ materials, setMaterials, vendors, setVend
         units={units} setUnits={setUnits}
         materials={materials}
       />
+
+      {showArchived && (
+        <Modal onClose={() => setShowArchived(false)} maxWidth={720}>
+          <div style={{ padding:'18px 20px 8px' }}>
+            <div style={{ fontSize:'16px', fontWeight:700 }}>Archived materials</div>
+            <div style={{ fontSize:'12px', color:'var(--gray)', marginTop:4, lineHeight:1.5 }}>
+              Taken out of circulation: hidden from Master Data, from recipes and from To Buy.
+              Nothing was deleted - the stock figure and the whole movement history are kept, and
+              Restore puts the material back exactly as it was.
+            </div>
+          </div>
+          <div style={{ padding:'0 20px 18px', maxHeight:'60vh', overflowY:'auto' }}>
+            {archived === null ? (
+              <div style={{ padding:'24px 0', fontSize:'13px', color:'var(--gray)' }}>Loading...</div>
+            ) : archived.length === 0 ? (
+              <EmptyState message="Nothing is archived" sub="Every material you have created is still in circulation." />
+            ) : (
+              <table style={{ width:'100%', borderCollapse:'collapse' }}>
+                <thead>
+                  <tr>
+                    {['Material','Category','Stock held','Archived', ''].map((h, i) => (
+                      <th key={i} style={{ ...S.th, fontSize:'10px' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {archived.map(row => {
+                    const id = String(row._id ?? row.id ?? '');
+                    return (
+                      <tr key={id} style={S.tr}>
+                        <td style={{ ...S.td, fontWeight:500 }}>
+                          {row.name}
+                          <div style={{ fontFamily:'monospace', fontSize:'11px', color:'var(--gray)' }}>{row.sku}</div>
+                        </td>
+                        <td style={{ ...S.td, fontSize:'12px', color:'var(--gray)' }}>{row.category}</td>
+                        <td style={{ ...S.td, fontSize:'12px' }}>
+                          {row.heldStock ?? row.stockQty ?? 0} {row.uom}
+                          <div style={{ fontSize:'10.5px', color:'var(--gray)' }}>not counted while archived</div>
+                        </td>
+                        <td style={{ ...S.td, fontSize:'12px', color:'var(--gray)' }}>
+                          {row.deletedAt ? new Date(row.deletedAt).toLocaleDateString('en-PH', { month:'short', day:'numeric', year:'numeric' }) : '-'}
+                        </td>
+                        <td style={{ ...S.td, textAlign:'right' }}>
+                          <button onClick={() => doRestore(row)} disabled={archBusy === id} style={S.btnSmGhost}>
+                            {archBusy === id ? 'Restoring...' : 'Restore'}
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </Modal>
+      )}
 
       {/* Quick-add vendor - conditional render so state resets with current category on each open */}
       {showQVendor && (

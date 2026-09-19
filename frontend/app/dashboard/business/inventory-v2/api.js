@@ -184,6 +184,8 @@ export const createMat    = (token, data)     => req('/admin/inventory',        
 export const updateMat    = (token, id, data) => req(`/admin/inventory/${id}`,      token, { method:'PUT',    body:JSON.stringify(data) });
 export const loadMinStockSuggestions = (token) => req('/admin/inventory/min-stock-suggestions', token);
 export const deleteMat    = (token, id)       => req(`/admin/inventory/${id}`,      token, { method:'DELETE' });
+export const loadArchivedMats = (token)      => req('/admin/inventory/archived', token);
+export const restoreMat   = (token, id)      => req(`/admin/inventory/${id}/restore`, token, { method:'POST' });
 export const adjustStock  = (token, id, data) => req(`/admin/inventory/${id}/adjust-stock`, token, { method:'POST', body:JSON.stringify(data) });
 
 export const createSupplier = (token, data)     => req('/admin/suppliers',           token, { method:'POST',   body:JSON.stringify(data) });

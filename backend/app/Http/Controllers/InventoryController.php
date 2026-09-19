@@ -1155,4 +1155,73 @@ class InventoryController extends Controller
             return $this->serverErrorResponse($e, 'An unexpected error occurred while deleting the inventory item.');
         }
     }
+
+    /**
+     * GET /api/admin/inventory/archived
+     *
+     * Archiving has always been reversible in the database - the row and its batches are kept and
+     * only a flag changes - but nothing in the UI could see an archived material, let alone put
+     * one back. That is what made a reversible action feel permanent, and it is why the dialog
+     * used to say "cannot be undone" about something that could.
+     */
+    public function archived(Request $request)
+    {
+        try {
+            if (!$this->hasPermission($request, 'inventory')) {
+                return $this->unauthorizedResponse();
+            }
+
+            $rows = Inventory::where('isActive', false)
+                ->orderBy('deletedAt', 'desc')
+                ->get(['_id', 'name', 'sku', 'uom', 'category', 'stockQty', 'minStockLevel',
+                       'supplierName', 'baseCost', 'lastUnitCost', 'deletedAt'])
+                ->map(function ($i) {
+                    $raw = $i->toArray();
+                    // Its stock is still recorded; it simply stopped counting. Say so, because
+                    // that is the figure that comes back if it is restored.
+                    $raw['heldStock'] = (int) ($i->stockQty ?? 0);
+                    return $raw;
+                });
+
+            return $this->successResponse('Archived materials fetched.', $rows);
+        } catch (\Exception $e) {
+            return $this->serverErrorResponse($e, 'An unexpected error occurred while fetching archived materials.');
+        }
+    }
+
+    /**
+     * POST /api/admin/inventory/{id}/restore
+     *
+     * Back on the shelf with the stock it was archived holding. Nothing is recomputed: the units
+     * were never removed, they were only hidden.
+     */
+    public function restore(Request $request, $id)
+    {
+        try {
+            if (!$this->hasPermission($request, 'inventory')) {
+                return $this->unauthorizedResponse();
+            }
+
+            $inventory = Inventory::find($id);
+            if (!$inventory) {
+                return $this->notFoundResponse('Inventory item');
+            }
+            if ($inventory->isActive !== false) {
+                return $this->errorResponse('That material is not archived.', 422);
+            }
+
+            $inventory->isActive  = true;
+            $inventory->deletedAt = null;
+            $inventory->save();
+
+            $this->bustInventoryListCache();
+
+            return $this->successResponse(
+                '"' . $inventory->name . '" is back in Master Data with ' . (int) ($inventory->stockQty ?? 0) . ' ' . ($inventory->uom ?? 'units') . ' on hand.',
+                $inventory
+            );
+        } catch (\Exception $e) {
+            return $this->serverErrorResponse($e, 'An unexpected error occurred while restoring the material.');
+        }
+    }
 }

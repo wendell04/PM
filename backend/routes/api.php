@@ -242,6 +242,8 @@ Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
     Route::get('/admin/inventory/recent-movements',   [InventoryController::class, 'recentMovements']);
     Route::get('/admin/inventory/stock-outs',         [InventoryController::class, 'stockOuts']);
     Route::get('/admin/inventory/min-stock-suggestions', [InventoryController::class, 'minStockSuggestions']);
+    // Above the /{id} route on purpose - otherwise "archived" is read as an id.
+    Route::get('/admin/inventory/archived',           [InventoryController::class, 'archived']);
     Route::get('/admin/inventory',                    [InventoryController::class, 'index']);
     Route::post('/admin/inventory',                   [InventoryController::class, 'store']);
     Route::get('/admin/inventory/{id}',               [InventoryController::class, 'show']);
@@ -249,6 +251,7 @@ Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
     Route::put('/admin/inventory/{id}',               [InventoryController::class, 'update']);
     Route::post('/admin/inventory/{id}/adjust-stock', [InventoryController::class, 'adjustStock']);
     Route::delete('/admin/inventory/{id}',            [InventoryController::class, 'destroy']);
+    Route::post('/admin/inventory/{id}/restore',      [InventoryController::class, 'restore']);
 
     // Product -> variant -> material tree + legacy name resolution for the SSA forecast
     Route::get('/admin/forecast/taxonomy',            [ForecastTaxonomyController::class, 'index']);
