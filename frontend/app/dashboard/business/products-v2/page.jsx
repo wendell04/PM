@@ -706,10 +706,10 @@ function StockBreakdown({ product, boms, materials }) {
                 : <span style={{ fontSize:'12px', color:'var(--gray)' }}>Standalone</span>
               }
               <span style={{ fontSize:'12px', fontWeight:700, color:prodColor }}>
-                {prod} can build
+                {prod} can sell
                 {shipComplete < prod && (
                   <span style={{ color:'#b45309', fontWeight:700 }}>
-                    {' \u00b7 '}{shipComplete} can ship complete
+                    {' · '}{shipComplete} ready to ship
                   </span>
                 )}
               </span>
@@ -746,31 +746,28 @@ function StockBreakdown({ product, boms, materials }) {
                       <td style={{ padding:'4px 8px', fontSize:'12px', color:'var(--gray)' }}>{item.qty} {mat.unit}</td>
                       <td style={{ padding:'4px 8px', fontSize:'12px', fontWeight:600, color:c, minWidth:150 }}>
                         {(() => {
-                          // Held against the build the blank allows, so every row answers the same
-                          // question in the same units: of the 114 this can make, how many does
-                          // THIS material cover?
+                          // A material that covers the whole build needs one character, not four
+                          // facts. The bar, the fraction and the shortfall are spent only on the
+                          // row that is actually holding things up.
                           const covers = Math.min(can, prod);
-                          const pct    = prod > 0 ? Math.min(100, Math.round((covers / prod) * 100)) : 100;
-                          const tone   = pct >= 100 ? '#1a7f3c' : pct < 25 ? '#c62828' : '#b45309';
+                          const short  = Math.max(0, prod - covers);
+                          const title  = `${freeStock(mat)} ${mat.unit} on hand, ${item.qty} per unit - enough for ${covers} of ${prod}.`;
+                          if (short <= 0) {
+                            return <span title={title} style={{ color:'#1a7f3c', fontWeight:700, fontSize:'12px' }}>Enough</span>;
+                          }
+                          const pct  = prod > 0 ? Math.min(100, Math.round((covers / prod) * 100)) : 100;
+                          const tone = pct < 25 ? '#c62828' : '#b45309';
                           return (
-                            <div title={`${freeStock(mat)} ${mat.unit} on hand, ${item.qty} needed per unit - enough for ${covers} of the ${prod} this variant can build.`}>
+                            <div title={title}>
                               <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-                                <span style={{ width:76, height:5, borderRadius:3, background:'var(--dark2)', overflow:'hidden', flexShrink:0 }}>
+                                <span style={{ width:60, height:5, borderRadius:3, background:'var(--dark2)', overflow:'hidden', flexShrink:0 }}>
                                   <span style={{ display:'block', width:`${Math.max(2, pct)}%`, height:'100%', background:tone }} />
                                 </span>
-                                <span style={{ color:tone, fontWeight:700, fontSize:'11.5px' }}>{covers}/{prod}</span>
+                                <span style={{ color:tone, fontWeight:700, fontSize:'11.5px' }}>{covers} of {prod}</span>
                               </div>
-                              <div style={{ fontSize:'10px', marginTop:2, color: pct >= 100 ? '#1a7f3c' : '#b45309', fontWeight:700 }}>
-                                {pct >= 100
-                                  ? 'Enough'
-                                  : `Short by ${Math.max(0, prod - covers)} ${mat.unit ?? ''}`}
-                                {!counted && <span style={{ color:'var(--gray)', fontWeight:400 }}>{' \u00b7 cost only'}</span>}
+                              <div style={{ fontSize:'10.5px', marginTop:2, color:tone, fontWeight:700 }}>
+                                Short by {short} {mat.unit ?? ''}
                               </div>
-                              {pct < 100 && (
-                                <div style={{ fontSize:'9.5px', color:'var(--gray)', marginTop:1 }}>
-                                  would cover all {prod} \u00b7 on To Buy
-                                </div>
-                              )}
                             </div>
                           );
                         })()}
@@ -780,12 +777,12 @@ function StockBreakdown({ product, boms, materials }) {
                 })}
               </tbody>
             </table>
-            <div style={{ padding:'6px 8px 0', fontSize:'11px', color:'var(--gray)', lineHeight:1.5 }}>
-              {countedNames.length
-                ? <>Counted: <b style={{ color:'var(--gray-light)' }}>{countedNames.join(', ')}</b>.</>
-                : <b style={{ color:'#b45309' }}>Nothing is counted - every material here is cost only, so this cannot say when it runs out.</b>}
-              {hasCostOnly && countedNames.length > 0 &&
-                ' Packaging and consumables are costed and appear in To Buy, but do not cap what you can sell.'}
+            <div style={{ padding:'6px 8px 0', fontSize:'11px', color:'var(--gray)', lineHeight:1.5 }}
+              title={countedNames.length
+                ? `What caps a sale: ${countedNames.join(', ')}. Packaging and consumables are costed and appear in To Buy, but do not cap what you can sell.`
+                : undefined}>
+              {countedNames.length === 0 &&
+                <b style={{ color:'#b45309' }}>Nothing is counted - every material here is cost only, so this cannot say when it runs out.</b>}
               {shortMat && shipComplete < prod && (
                 <div style={{ marginTop:5, display:'flex', alignItems:'center', gap:10, flexWrap:'wrap' }}>
                   <b style={{ color:'#b45309' }}>

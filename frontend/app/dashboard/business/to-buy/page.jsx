@@ -483,27 +483,26 @@ export default function ToBuyPage() {
                   ))}
                   <CoverBadge row={r} />
                 </div>
-                <div style={{ fontSize: '10.5px', color: 'var(--gray)', marginTop: '1px' }}>
-                  {[r.sku, r.category, r.isOnDemand ? 'buy per order' : null,
-                    r.usagePerDay > 0 ? `${r.usagePerDay}/day` : null].filter(Boolean).join(' · ')}
-                  {r.orders?.length > 0 && ` · ${r.orders.join(', ')}`}
-                </div>
-                {r.for?.length > 0 && (
-                  <div style={{ fontSize: '11px', color: 'var(--gray-light)', marginTop: '2px' }}>
-                    For {r.for.map(f => `${f.pieces} × ${f.product}`).join(', ')}
-                  </div>
-                )}
-                {/* Orders taken are only half the picture. The mug box also caps Inner Color and
-                    Magic Mug, which nobody has ordered yet - and not seeing that is exactly how a
-                    shelf of 484 blanks feels healthy while ten boxes hold all three back. */}
-                {r.blocks?.length > 0 && (
-                  <div style={{ fontSize: '11px', color: '#b45309', marginTop: '2px' }}>
-                    Holding back {r.blocks.map(b => `${b.product} (${b.canShip} of ${b.canBuild} can ship)`).join(', ')}
-                  </div>
-                )}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: '3px', flexWrap: 'wrap' }}>
+                {/* One sentence. Orders taken and products held back are the same story. */}
+                {(() => {
+                  const who = [];
+                  if (r.for?.length) who.push(r.for.map(f => `${f.pieces} × ${f.product}`).join(', '));
+                  const extra = (r.blocks ?? []).filter(b => !(r.for ?? []).some(f => String(f.product).startsWith(b.product)));
+                  if (extra.length) who.push(extra.map(b => b.product).join(', '));
+                  if (!who.length) return null;
+                  const first = r.blocks?.[0];
+                  return (
+                    <div style={{ fontSize: '11px', color: 'var(--gray-light)', marginTop: '2px' }}>
+                      For {who.join(', ')}
+                      {first && <span style={{ color: '#b45309' }}>{` — only ${first.canShip} of ${first.canBuild} can ship`}</span>}
+                    </div>
+                  );
+                })()}
+                <div style={{ marginTop: '4px' }}
+                  title={[r.sku, r.category, r.isOnDemand ? 'bought per order' : null,
+                          r.usagePerDay > 0 ? `${Math.round(r.usagePerDay * 10) / 10} ${r.uom ?? ''} used per day` : null,
+                          r.orders?.length ? r.orders.join(', ') : null].filter(Boolean).join(' · ')}>
                   <LevelBar have={r.onHand} min={r.minimum} uom={r.uom} />
-                  <span style={{ fontSize: '11px', color: '#b45309' }}>Buy {num(r.shortfall)} = {breakdown(r)}</span>
                 </div>
                 {minEdit[r.inventoryId] !== undefined && (
                   <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--gray)' }}>
@@ -522,7 +521,8 @@ export default function ToBuyPage() {
                 <span>{r.minimum > 0 ? `${num(r.minimum)} ${r.uom}` : '-'}</span>
                 {minEdit[r.inventoryId] === undefined && <MinEditor r={r} />}
               </span>
-              <span style={{ fontSize: '13px', textAlign: 'right', fontWeight: 700, color: '#e0a852' }} title={breakdown(r)}>{num(r.shortfall)} {r.uom}</span>
+              <span style={{ fontSize: '13px', textAlign: 'right', fontWeight: 700, color: '#e0a852' }}
+                title={`Buy ${num(r.shortfall)} = ${breakdown(r)}`}>{num(r.shortfall)} {r.uom}</span>
               <span style={{ fontSize: '13px', textAlign: 'right', fontWeight: 700 }}>{peso(r.estimatedCost)}</span>
             </div>
           ))}
