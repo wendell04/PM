@@ -1798,7 +1798,8 @@ export default function ShopClient({
                 </svg>
               </div>
               <h3 className="shop-empty-title">No products found</h3>
-              <p className="shop-empty-description">Try adjusting your filters to find what you&apos;re looking for.</p>
+              <p className="shop-empty-description">Try adjusting your filters - or tell us what you need and we will price it.</p>
+              <a href="/shop/request-a-quote" className="shop-empty-cta">Ask for a price</a>
               <button
                 onClick={() => { setAvailability('all'); setSelectedSlugs(new Set()); setPriceMin(0); setPriceMax(Infinity); setProductType(''); setSortBy('featured'); }}
                 className="shop-clear-filters-btn"

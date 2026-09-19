@@ -608,6 +608,23 @@ export default function OrderRequestsPage() {
                     {selectedRequest.category && (
                       <span style={{ fontSize: '0.7rem', background: 'rgba(255,255,255,0.08)', color: 'var(--gray)', padding: '0.125rem 0.5rem', borderRadius: '999px' }}>{selectedRequest.category}</span>
                     )}
+                    {selectedRequest.isOpenRequest && (
+                      <div style={{ marginTop: '0.4rem' }}>
+                        <span style={{ fontSize: '0.68rem', fontWeight: 700, letterSpacing: '.3px', textTransform: 'uppercase',
+                          background: 'rgba(212,168,67,0.14)', color: 'var(--gold)', border: '1px solid rgba(212,168,67,0.35)',
+                          padding: '2px 7px', borderRadius: 4 }}>Not in the catalogue</span>
+                        <div style={{ fontSize: '0.72rem', color: 'var(--gray)', marginTop: '0.3rem', maxWidth: 280 }}>
+                          Asked for through the quote form. The title above is the customer&apos;s own words,
+                          not a product - price it from scratch.
+                        </div>
+                      </div>
+                    )}
+                    {(selectedRequest.neededBy || selectedRequest.budget) && (
+                      <div style={{ marginTop: '0.5rem', fontSize: '0.78rem', color: 'var(--gray-light)' }}>
+                        {selectedRequest.neededBy && <div>Needed by <b>{new Date(selectedRequest.neededBy).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}</b></div>}
+                        {selectedRequest.budget > 0 && <div>Their budget <b>{'₱'}{Number(selectedRequest.budget).toLocaleString('en-PH')}</b></div>}
+                      </div>
+                    )}
                   </div>
                 </div>
 

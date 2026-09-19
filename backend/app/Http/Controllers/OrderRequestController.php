@@ -27,6 +27,83 @@ class OrderRequestController extends Controller
     /**
      * POST /order-requests
      */
+    /**
+     * POST /api/order-requests/open
+     *
+     * A quote request for something that is NOT in the catalogue.
+     *
+     * Every existing path into a quotation starts from a product page, so a customer wanting
+     * something the shop does not list - a run of shirts they are supplying, an event giveaway,
+     * a service - had nowhere to ask but the chat box. This is the standalone form: it describes
+     * the job in the customer's own words and lands in the same Quotations list as everything
+     * else, so the shop has one queue rather than a queue plus a conversation to remember.
+     *
+     * Deliberately NOT a loosening of store(): that method reads the product for pricing tiers,
+     * variants and a thumbnail, and every consumer downstream assumes a product is there. An open
+     * request carries `isOpenRequest` so both the list and the quotation editor can tell that
+     * there is nothing to look up.
+     */
+    public function storeOpen(Request $request)
+    {
+        $user = $request->user();
+        if (!$user) {
+            return $this->unauthorizedResponse();
+        }
+
+        $validated = Validator::make($request->all(), [
+            'summary'   => 'required|string|max:120',
+            'details'   => 'required|string|max:2000',
+            'quantity'  => 'nullable|integer|min:1|max:100000',
+            'neededBy'  => 'nullable|date',
+            'budget'    => 'nullable|numeric|min:0',
+            'designUrl' => 'nullable|string|url',
+        ])->validate();
+
+        $clean = fn ($v) => $v === null ? null
+            : htmlspecialchars(strip_tags(trim((string) $v)), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+
+        $summary = $clean($validated['summary']);
+
+        $orderRequest = OrderRequest::create([
+            'customerId'       => (string) $user->id,
+            'customerName'     => trim(($user->firstName ?? '') . ' ' . ($user->lastName ?? '')),
+            'customerEmail'    => $user->email ?? '',
+            // No product exists. The name is what the customer called the job, so every screen
+            // that prints productName keeps working without a special case.
+            'productId'        => null,
+            'productName'      => $summary,
+            'productThumbnail' => null,
+            'category'         => 'Custom request',
+            'priceType'        => 'inquiry',
+            'isOpenRequest'    => true,
+            'selectedVariants' => [],
+            'quantity'         => (int) ($validated['quantity'] ?? 1),
+            'neededBy'         => $validated['neededBy'] ?? null,
+            'budget'           => isset($validated['budget']) ? (float) $validated['budget'] : null,
+            'designUrl'        => $validated['designUrl'] ?? null,
+            'designNotes'      => $clean($validated['details']),
+            'designType'       => !empty($validated['designUrl']) ? 'upload' : 'request',
+            'designFee'        => 0,
+            'isCustom'         => true,
+            'suggestedPrice'   => null,
+            'finalPrice'       => null,
+            'downPayment'      => null,
+            'paymentStatus'    => 'unpaid',
+            'status'           => 'pending_review',
+            'statusHistory'    => [[
+                'status'    => 'pending_review',
+                'at'        => now()->toISOString(),
+                'by'        => 'customer',
+                'note'      => 'Quote requested for something not in the catalogue.',
+            ]],
+        ]);
+
+        return $this->successResponse(
+            'Thanks - we have your request. We will come back to you with a price, and you will see it in your chat with us.',
+            $orderRequest
+        );
+    }
+
     public function store(Request $request)
     {
         $user = $request->user();

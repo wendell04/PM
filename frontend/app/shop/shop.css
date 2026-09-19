@@ -1397,7 +1397,20 @@
           justify-content: center;
         }
 
-        .shop-empty-title {
+        .shop-empty-cta {
+  display: inline-block;
+  margin-top: 1rem;
+  padding: 0.7rem 1.4rem;
+  border-radius: 8px;
+  background: #D4A843;
+  color: #1a1a1a;
+  font-weight: 700;
+  font-size: 0.9rem;
+  text-decoration: none;
+}
+.shop-empty-cta:hover { filter: brightness(1.06); }
+
+.shop-empty-title {
           margin: 0 0 0.5rem;
           font-size: 1.25rem;
           font-weight: 600;

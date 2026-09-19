@@ -417,6 +417,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/vouchers/apply',                [VoucherController::class, 'apply']);
 
     Route::post('/order-requests',                [OrderRequestController::class, 'store']);
+    // Something the shop does not list at all - the standalone quote form.
+    Route::post('/order-requests/open',           [OrderRequestController::class, 'storeOpen']);
     Route::get('/my/order-requests',              [OrderRequestController::class, 'myRequests']);
     // Uploads are the only unauthenticated-cost endpoint the shop has: every accepted file is
 // Cloudinary storage and bandwidth the shop pays for, and nothing else here caps how fast a
