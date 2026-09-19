@@ -254,6 +254,25 @@ const COVER_TONE = {
   ok:       { bg: 'rgba(46,125,50,0.12)',  fg: '#2e7d32', label: null },
 };
 
+// The same gauge To Buy draws: how full against the line the owner set. It answers "konti na
+// ba?" without asking anyone to compare two numbers in their head.
+function LevelBar({ have, min, uom, width = 96 }) {
+  const m = Number(min) || 0;
+  const h = Math.max(0, Number(have) || 0);
+  if (m <= 0) return <span style={{ fontSize: 10.5, color: 'var(--gray)' }} title="No minimum set for this material.">no level set</span>;
+  const pct  = Math.min(100, Math.round((h / m) * 100));
+  const tone = pct === 0 ? '#c62828' : pct < 50 ? '#c62828' : pct < 100 ? '#b45309' : '#2e7d32';
+  return (
+    <span title={`${h} ${uom ?? ''} on hand against a minimum of ${m}`}
+      style={{ display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}>
+      <span style={{ width, height: 6, borderRadius: 3, background: 'var(--dark2)', overflow: 'hidden', flexShrink: 0 }}>
+        <span style={{ display: 'block', width: `${Math.max(2, pct)}%`, height: '100%', background: tone }} />
+      </span>
+      <span style={{ fontSize: 10.5, fontWeight: 700, color: tone }}>{h}/{m}</span>
+    </span>
+  );
+}
+
 function CoverCell({ mat }) {
   if (mat?.daysOfCover == null) {
     return <span title="Nothing has left the shelf yet, so there is no usage to measure against."
@@ -518,7 +537,10 @@ export default function MaterialsTab({ materials, setMaterials, vendors, setVend
                     <td style={{ ...S.td, fontSize:'12px', color:'var(--gray)' }}>{vendor?.name}</td>
                     <td style={S.td}>{formatCurrency(mat.baseCost)}</td>
                     <td style={S.td}>{mat.minStock} {mat.unit}</td>
-                    <td style={{ ...S.td, fontWeight:600 }}>{qty} {mat.unit}</td>
+                    <td style={S.td}>
+                      <div style={{ fontWeight:600, marginBottom:3 }}>{qty} {mat.unit}</div>
+                      <LevelBar have={qty} min={mat.minStock} uom={mat.unit} />
+                    </td>
                     <td style={S.td}><CoverCell mat={mat} /></td>
                     <td style={S.td}><StatusBadge status={status} /></td>
                     <td style={{ ...S.td, textAlign:'right' }}>

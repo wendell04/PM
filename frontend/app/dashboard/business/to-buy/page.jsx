@@ -36,6 +36,30 @@ const COVER_TONE = {
   ok:       { bg: 'rgba(46,125,50,0.12)',  fg: '#2e7d32', label: null },
 };
 
+// The simplest possible read: how full is this material against the line the owner drew for it.
+// No rate, no days, no forecast - a fuel gauge. Below the line is the whole message, and the
+// number beside it says by how much.
+function LevelBar({ have, min, uom, width = 120 }) {
+  const m = Number(min) || 0;
+  const h = Math.max(0, Number(have) || 0);
+  if (m <= 0) {
+    // No minimum set means no line to be under, so there is no gauge to draw - saying "0%" about
+    // a material nobody set a level for would be an alarm the owner never asked for.
+    return <span style={{ fontSize: 10.5, color: 'var(--gray)' }} title="No minimum set for this material.">no level set</span>;
+  }
+  const pct  = Math.min(100, Math.round((h / m) * 100));
+  const tone = pct === 0 ? '#c62828' : pct < 50 ? '#c62828' : pct < 100 ? '#b45309' : '#2e7d32';
+  return (
+    <span title={`${h} ${uom ?? ''} on hand against a minimum of ${m}`}
+      style={{ display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}>
+      <span style={{ width, height: 6, borderRadius: 3, background: 'var(--dark2)', overflow: 'hidden', flexShrink: 0 }}>
+        <span style={{ display: 'block', width: `${Math.max(2, pct)}%`, height: '100%', background: tone }} />
+      </span>
+      <span style={{ fontSize: 10.5, fontWeight: 700, color: tone }}>{h}/{m}</span>
+    </span>
+  );
+}
+
 function CoverBadge({ row }) {
   // null cover means "nothing has been used yet, so we cannot say" - which is not the same as
   // "it will last forever" and must never be drawn as a comfortable green number.
@@ -311,7 +335,7 @@ export default function ToBuyPage() {
       )}
 
       <div style={{ display: 'flex', gap: '6px', marginBottom: '14px' }}>
-        {[['materials', `By material (${totals.totalItems})`], ['products', `No material plan (${productRows.length})`]].map(([id, label]) => (
+        {[['materials', `Materials to buy (${totals.totalItems})`], ['products', `No recipe - buy the item (${productRows.length})`]].map(([id, label]) => (
           <button key={id} type="button" onClick={() => selectTab(id)}
             style={{ ...S.btnSm, background: tab === id ? 'var(--gold)' : 'transparent',
               color: tab === id ? '#111' : 'var(--gray)', fontWeight: tab === id ? 700 : 600,
@@ -342,19 +366,21 @@ export default function ToBuyPage() {
       {!error && !loading && tab === 'products' && (
         productRows.length === 0 ? (
           <div style={{ ...S.card, textAlign: 'center', padding: '36px 20px' }}>
-            <div style={{ fontSize: '15px', fontWeight: 700, marginBottom: '4px' }}>Every job has a material plan</div>
+            <div style={{ fontSize: '15px', fontWeight: 700, marginBottom: '4px' }}>Everything ordered has a recipe</div>
             <div style={{ fontSize: '13px', color: 'var(--gray)' }}>
-              Nothing committed is being made from materials we are not tracking.
+              Every order on the books is built from materials this shop tracks, so the list on the
+              left is the whole shopping list.
             </div>
           </div>
         ) : (
           <div style={{ ...S.card, padding: 0, overflow: 'hidden', marginBottom: '14px' }}>
             <div style={{ ...S.rowBetween, padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
               <div>
-                <div style={{ fontSize: '14px', fontWeight: 700 }}>Jobs with no material plan</div>
+                <div style={{ fontSize: '14px', fontWeight: 700 }}>Ordered, but we do not know what it is made of</div>
                 <div style={{ fontSize: '11px', color: 'var(--gray)', marginTop: '2px' }}>
-                  Committed work whose product has no BOM - usually a quoted service. Attach its
-                  materials on the quotation and it moves to By material.
+                  These products have no recipe, so there is no material list to shop from - you buy
+                  the finished item itself. Usually something resold as-is, or a quoted service whose
+                  materials were never attached. Give it a recipe and it moves to Materials to buy.
                 </div>
               </div>
               <span style={{ fontSize: '14px', fontWeight: 700, color: 'var(--gold)' }}>
@@ -423,7 +449,10 @@ export default function ToBuyPage() {
                 <span style={{ fontSize: 12, fontWeight: 700, color: '#e0a852', whiteSpace: 'nowrap' }}>Buy {num(r.shortfall)} {r.uom}</span>
                 <CoverBadge row={r} />
               </span>}
-              meta={`Buy ${num(r.shortfall)} = ${breakdown(r)}`}
+              meta={<span style={{ display:'flex', flexDirection:'column', gap:3 }}>
+                <LevelBar have={r.onHand} min={r.minimum} uom={r.uom} width={90} />
+                <span>{`Buy ${num(r.shortfall)} = ${breakdown(r)}`}</span>
+              </span>}
               sub={[`have ${num(r.onHand)}${r.minimum > 0 ? ` · min ${num(r.minimum)}` : ''} ${r.uom} · ${peso(r.estimatedCost)}`, r.for?.length > 0 ? `for ${r.for.map(f => `${f.pieces} × ${f.product}`).join(', ')}` : null, r.orders?.length > 0 ? r.orders.join(', ') : null, r.isOnDemand ? 'buy per order' : null, !Number(r.unitCost) ? 'no cost set' : null].filter(Boolean).join(' · ')} />
             <div style={{ padding: '0 14px 10px' }}><MinEditor r={r} compact /></div>
             </div>
@@ -463,7 +492,10 @@ export default function ToBuyPage() {
                     For {r.for.map(f => `${f.pieces} × ${f.product}`).join(', ')}
                   </div>
                 )}
-                <div style={{ fontSize: '11px', color: '#b45309', marginTop: '2px' }}>Buy {num(r.shortfall)} = {breakdown(r)}</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: '3px', flexWrap: 'wrap' }}>
+                  <LevelBar have={r.onHand} min={r.minimum} uom={r.uom} />
+                  <span style={{ fontSize: '11px', color: '#b45309' }}>Buy {num(r.shortfall)} = {breakdown(r)}</span>
+                </div>
                 {minEdit[r.inventoryId] !== undefined && (
                   <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--gray)' }}>
                     Minimum for this material: <MinEditor r={r} />
