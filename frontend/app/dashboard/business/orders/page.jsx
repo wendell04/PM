@@ -6,6 +6,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { fetchAllOrdersNew, deleteOrder as deleteOrderApi } from '@/lib/ordersApi';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
+import { isNetworkError, settleAfterTimeout } from '@/lib/afterTimeout';
 import { remainingDue, depositDue, paidSoFar, orderTotal } from '@/lib/orderBalance';
 import { S, ICONS, SearchBar, SummaryCard, PaginationBar, EmptyState, usePagination, CustomSelect, ConfirmModal } from '../inventory-v2/shared';
 import { DEFAULT_CUSTOM_ORDER_TERMS } from '@/lib/customOrderTerms';
@@ -220,7 +221,28 @@ function PaymentModal({ order, onClose, onSuccess }) {
       const data = await res.json();
       onSuccess(data.order ?? data.data ?? null);
       onClose();
-    } catch { setError('Network error. Please try again.'); }
+    } catch (err) {
+      // "Try again" is the wrong advice for money. The server may have recorded it and answered
+      // into a closed socket; a second attempt would record it twice. Read the order back and say
+      // what is actually on it.
+      if (isNetworkError(err)) {
+        const out = await settleAfterTimeout(
+          async () => {
+            const r = await fetchWithTimeout(`${API_URL}/api/admin/orders/${order.id}`, { headers: { Authorization:`Bearer ${token}` } }, 15000);
+            if (!r.ok) return null;
+            const j = await r.json();
+            return j?.data ?? j?.order ?? null;
+          },
+          (rec) => (rec?.paymentHistory ?? []).length > (order?.paymentHistory ?? []).length
+                  && paidSoFar(rec) >= paidSoFar(order) + amt - 0.01,
+          'The payment',
+        );
+        if (out.landed) { onSuccess(out.record); onClose(); return; }
+        setError(out.message);
+      } else {
+        setError('Network error. Please try again.');
+      }
+    }
     finally  { setSubmitting(false); }
   };
 
@@ -1328,7 +1350,31 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
       setLo(updated);
       setConfirmSt(false);
       if (onStatusUpdated) onStatusUpdated(lo.id, updated);
-    } catch (err) { setUpdateErr(err.message || 'Update failed'); }
+    } catch (err) {
+      // Same rule as the approval: a status change that timed out may already have run on the
+      // server (Delivered takes the rider's cash, Cancelled writes a refund and returns stock).
+      // Re-read before telling anyone it failed.
+      if (isNetworkError(err)) {
+        const want = String(selStatus).toLowerCase();
+        const out = await settleAfterTimeout(
+          refetchOrder,
+          (rec) => (want === 'paid'
+            ? String(rec?.paymentStatus ?? '').toLowerCase() === 'paid'
+            : String(rec?.orderStatus ?? '').toLowerCase() === want),
+          'The status change',
+        );
+        if (out.landed) {
+          setLo({ ...lo, ...out.record, id: lo.id });
+          setConfirmSt(false);
+          if (onStatusUpdated) onStatusUpdated(lo.id, { ...lo, ...out.record, id: lo.id });
+          setUpdateErr('');
+        } else {
+          setUpdateErr(out.message);
+        }
+      } else {
+        setUpdateErr(err.message || 'Update failed');
+      }
+    }
     finally { setIsUpdating(false); }
   };
 
@@ -1340,17 +1386,44 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
     setLo(p => ({ ...p, ...u, id: p.id }));
   };
 
+  // Approve is not idempotent from the shop's side: the customer is told, and the order moves to
+  // awaiting production. So a timeout may NOT be reported as "failed" - the server may well have
+  // done it and answered into a socket the browser had already closed. That is exactly what
+  // happened on ORD-F10B98B1: the screen said "Request timed out" and "Under Review" while the
+  // customer's My Orders already read "Approved". Re-read the order and let the server decide.
+  const approvedOnServer = (rec) => {
+    if (!rec) return false;
+    const idx = activeItemIdx;
+    const item = Array.isArray(rec.items) && idx != null ? rec.items[idx] : null;
+    if (item?.designStatus) return item.designStatus === 'approved';
+    return rec.designStatus === 'approved';
+  };
+
   const handleApproveDesign = async () => {
     setDesignAct('approving'); setDesignErr('');
     try {
       const res = await fetchWithTimeout(`${API_URL}/api/admin/orders/${lo.id}/approve-design`,
-        { method:'POST', headers:{ 'Content-Type':'application/json', Authorization:`Bearer ${token}` }, body: JSON.stringify({ itemIndex: activeItemIdx }) }, 15000);
+        { method:'POST', headers:{ 'Content-Type':'application/json', Authorization:`Bearer ${token}` }, body: JSON.stringify({ itemIndex: activeItemIdx }) }, 25000);
       const data = await res.json().catch(()=>({}));
       if (!res.ok) throw new Error(data.message || 'Failed');
       mergeLo(data);
       setConfirmApprove(false);
       if (onStatusUpdated) onStatusUpdated(lo.id, data?.data ?? data?.order ?? data);
-    } catch (err) { setDesignErr(err.message); }
+    } catch (err) {
+      if (isNetworkError(err)) {
+        const out = await settleAfterTimeout(refetchOrder, approvedOnServer, 'The approval');
+        if (out.landed) {
+          mergeLo(out.record);
+          setConfirmApprove(false);
+          if (onStatusUpdated) onStatusUpdated(lo.id, out.record);
+          setDesignErr('');
+        } else {
+          setDesignErr(out.message);
+        }
+      } else {
+        setDesignErr(err.message);
+      }
+    }
     finally { setDesignAct(null); }
   };
 
