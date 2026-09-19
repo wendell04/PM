@@ -97,9 +97,19 @@ function formatTimestamp(dateStr) {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
-function StatusBadge({ status, size = 'sm' }) {
-  const colors = STATUS_COLORS[status] || { bg: 'var(--gray)', color: 'var(--black)' };
-  const label = STATUS_LABELS[status] || status;
+function isExpiredQuote(req) {
+  if (!req?.expiresAt) return false;
+  if (req.paymentStatus === 'paid' || req.convertedOrderId) return false;
+  if (!['confirmed', 'pending_review'].includes(req.status)) return false;
+  const t = new Date(req.expiresAt);
+  return !isNaN(t) && t < new Date();
+}
+
+function StatusBadge({ status, size = 'sm', expired = false }) {
+  const colors = expired
+    ? { bg: 'rgba(120,120,120,0.22)', color: 'var(--gray-light)' }
+    : (STATUS_COLORS[status] || { bg: 'var(--gray)', color: 'var(--black)' });
+  const label = expired ? 'Expired' : (STATUS_LABELS[status] || status);
   return (
     <span style={{
       display: 'inline-block',
@@ -508,7 +518,7 @@ export default function OrderRequestsPage() {
                 {filteredRequests.map((req, i) => (
                   <PhoneRow key={req.id} first={i === 0} mono={false} onClick={() => openReview(req)}
                     title={req.customerName || '-'}
-                    chip={<StatusBadge status={req.status} />}
+                    chip={<StatusBadge status={req.status} expired={isExpiredQuote(req)} />}
                     meta={[req.productName || '-', req.quantity != null ? `\u00d7${req.quantity}` : null].filter(Boolean).join(' ')}
                     sub={[
                       req.finalPrice != null ? `final ${formatPeso(req.finalPrice)}` : (req.suggestedPrice != null ? `suggested ${formatPeso(req.suggestedPrice)}` : 'no price yet'),
@@ -555,7 +565,7 @@ export default function OrderRequestsPage() {
                       <td data-label="Qty" style={{ padding: '0.75rem 1rem', fontSize: '0.85rem', color: 'var(--white)', fontWeight: 600 }}>{req.quantity}</td>
                       <td data-label="Suggested" style={{ padding: '0.75rem 1rem', fontSize: '0.85rem', color: 'var(--gray)' }}>{formatPeso(req.suggestedPrice)}</td>
                       <td data-label="Final price" style={{ padding: '0.75rem 1rem', fontSize: '0.85rem', fontWeight: 600, color: req.finalPrice != null ? 'var(--gold)' : 'var(--gray)' }}>{formatPeso(req.finalPrice)}</td>
-                      <td data-label="Status" style={{ padding: '0.75rem 1rem' }}><StatusBadge status={req.status} /></td>
+                      <td data-label="Status" style={{ padding: '0.75rem 1rem' }}><StatusBadge status={req.status} expired={isExpiredQuote(req)} /></td>
                       <td data-label="Date" style={{ padding: '0.75rem 1rem', fontSize: '0.8rem', color: 'var(--gray)', whiteSpace: 'nowrap' }}>{formatDate(req.createdAt)}</td>
                       <td data-rt="actions" style={{ padding: '0.75rem 1rem' }}>
                         <button
@@ -774,7 +784,18 @@ export default function OrderRequestsPage() {
                 {/* Current Status */}
                 <div style={{ marginBottom: '1.25rem' }}>
                   <div style={{ fontSize: '0.75rem', color: 'var(--gray)', marginBottom: '0.375rem' }}>Current Status</div>
-                  <StatusBadge status={selectedRequest.status} size="lg" />
+                  <StatusBadge status={selectedRequest.status} size="lg" expired={isExpiredQuote(selectedRequest)} />
+                  {isExpiredQuote(selectedRequest) && (
+                    <div style={{ marginTop: '0.5rem', padding: '0.6rem 0.75rem', borderRadius: 8,
+                      background: 'rgba(224,168,82,0.1)', border: '1px solid rgba(224,168,82,0.3)',
+                      fontSize: '0.78rem', color: 'var(--gray-light)', lineHeight: 1.55, maxWidth: 420 }}>
+                      This quote ran out on{' '}
+                      <b>{new Date(selectedRequest.expiresAt).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}</b>.
+                      The customer can no longer pay it, so waiting will not bring anything in -
+                      send a fresh quotation if they are still interested. Prices and material costs
+                      may have moved since it was written.
+                    </div>
+                  )}
                 </div>
 
                 {/* Status History */}

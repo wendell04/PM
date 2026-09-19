@@ -189,6 +189,43 @@ class OrderRequestController extends Controller
             'note'      => 'Order request submitted by customer.',
         ];
 
+        // The Inquire button fires this on every click, and the product page fires it again on
+        // arrival. Thirteen of the fifteen requests on live are pending_review and most are the
+        // same customer asking about the same product four times - Heat Press Subcon appears four
+        // times, Silkscreen four, DTF twice. Each one is a row somebody has to read and dismiss.
+        //
+        // A second ask about the same thing is not a second job. While an earlier request is still
+        // waiting to be priced, update it instead of stacking another beside it; once it has been
+        // quoted or turned down, a fresh ask is a genuinely new one and gets its own row.
+        $open = OrderRequest::where('customerId', (string) $user->id)
+            ->where('productId', $validated['productId'])
+            ->where('status', 'pending_review')
+            ->orderBy('createdAt', 'desc')
+            ->first();
+
+        if ($open) {
+            $open->quantity         = $validated['quantity'];
+            $open->selectedVariants = $selectedVariants;
+            if (!empty($validated['designUrl']))   $open->designUrl   = $validated['designUrl'];
+            if (!empty($validated['designNotes'])) $open->designNotes = htmlspecialchars(strip_tags(trim($validated['designNotes'])), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+            $open->suggestedPrice = $suggestedPrice;
+            $open->updatedAt      = now();
+            $history              = $open->statusHistory ?? [];
+            $history[]            = [
+                'status' => 'pending_review',
+                'at'     => now()->toISOString(),
+                'by'     => 'customer',
+                'note'   => 'Asked again about the same product - this request was updated rather than duplicated.',
+            ];
+            $open->statusHistory = $history;
+            $open->save();
+
+            return $this->successResponse(
+                'You already have a request in for this - we have updated it. We will come back to you with a price.',
+                $open
+            );
+        }
+
         $orderRequest = OrderRequest::create([
             'customerId'       => (string) $user->id,
             'customerName'     => trim(($user->firstName ?? '') . ' ' . ($user->lastName ?? '')),
