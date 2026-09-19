@@ -4,7 +4,7 @@ import { cloudinaryThumb } from '@/lib/cloudinaryImage';
 import ErrorBoundary from '../../../../components/ErrorBoundary';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { fetchAllOrdersNew, deleteOrder as deleteOrderApi } from '@/lib/ordersApi';
+import { fetchAllOrdersNew, deleteOrder as deleteOrderApi, unarchiveOrder } from '@/lib/ordersApi';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import { isNetworkError, settleAfterTimeout } from '@/lib/afterTimeout';
 import { remainingDue, depositDue, paidSoFar, orderTotal } from '@/lib/orderBalance';
@@ -1141,7 +1141,9 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
     finally { setSavingFee(false); }
   };
 
-  const canDelete  = ['cancelled','delivered','returned'].includes(normalizeStatus(lo.orderStatus));
+  const [restoring, setRestoring] = useState(false);
+  const midProduction = jobOrders.some(j => j.joStatus === 'In Progress');
+  const canDelete  = !lo.isArchived && !midProduction;
   const canExpire  = String(lo.orderStatus).toLowerCase() === 'pending' && lo.paymentStatus !== 'paid' && isExpired(lo);
 
   const handleExpire = async () => {
@@ -3054,6 +3056,19 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
         )}
         {canDelete && (
           <button onClick={onDelete} style={S.btnSmDanger}>{ICONS.trash} Archive</button>
+        )}
+        {lo.isArchived && (
+          <button onClick={async () => {
+            setRestoring(true);
+            try {
+              await unarchiveOrder(lo.id, token);
+              setLo(p => ({ ...p, isArchived: false, archivedAt: null }));
+              if (onStatusUpdated) onStatusUpdated(lo.id, { ...lo, isArchived: false, archivedAt: null });
+            } catch (e) { setUpdateErr(e.message || 'Could not restore it.'); }
+            finally { setRestoring(false); }
+          }} disabled={restoring} style={S.btnSm}>
+            {restoring ? 'Restoring...' : 'Restore from archive'}
+          </button>
         )}
         {expireErr && <span style={{ fontSize:'11px', color:'#991b1b' }}>{expireErr}</span>}
       </div>

@@ -191,6 +191,13 @@
           display: flex;
           align-items: center;
           gap: 1rem;
+          flex-shrink: 0;
+        }
+
+        /* Each control is wrapped in a positioning div for its dropdown, and that wrapper - not
+           the button - is the flex item. Without this the wrapper shrinks and the control with it. */
+        .shop-navbar-right > * {
+          flex-shrink: 0;
         }
 
         .shop-navbar-shop-btn {

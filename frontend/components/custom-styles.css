@@ -412,6 +412,11 @@
     display: flex;
     align-items: center;
     gap: .6rem;
+    flex-shrink: 0;
+  }
+
+  .nav-auth > * {
+    flex-shrink: 0;
   }
 
   .nav-user-greeting {

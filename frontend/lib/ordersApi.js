@@ -542,6 +542,22 @@ export { fetchAllOrdersNew as fetchAllOrders };
  * Soft-delete (archive) an order (admin/owner only)
  * Maps to DELETE /api/admin/orders/{id}
  */
+/**
+ * The inverse of deleteOrder. The Archive dialog has always promised "you can restore it later"
+ * and there was nothing on either side that could - the flag went one way only.
+ */
+export async function unarchiveOrder(orderId, token) {
+  const res = await fetchWithTimeout(`${API_URL}/api/admin/orders/${orderId}/unarchive`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+  }, 15000);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || err.message || 'Failed to restore order');
+  }
+  return res.json();
+}
+
 export async function deleteOrder(orderId, token) {
   const res = await fetchWithTimeout(`${API_URL}/api/admin/orders/${orderId}`, {
     method: 'DELETE',
