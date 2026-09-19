@@ -146,6 +146,7 @@ function normalizeOrder(apiOrder) {
   return {
     id: apiOrder._id || apiOrder.id,
     isArchived: !!(apiOrder.isArchived),
+    archivedAt: apiOrder.archivedAt ?? null,
     orderNumber: apiOrder.order_number || apiOrder.orderId,
     customer: {
       name:  apiOrder.userSnapshot?.name  || apiOrder.customer?.name  || apiOrder.customerName  || 'Unknown',

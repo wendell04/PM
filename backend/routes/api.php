@@ -183,6 +183,7 @@ Route::middleware(['auth:sanctum', 'isAdmin:owner,admin'])->group(function () {
 // ─── Access (new) ── staff + per-person permissions; replaces Staff + Permissions ──
     Route::get('/admin/access/catalog',                   [AccessController::class, 'catalog']);
     Route::get('/admin/access/staff',                     [AccessController::class, 'staff']);
+    Route::post('/admin/access/staff',                    [AccessController::class, 'createStaff']);
     Route::put('/admin/access/staff/{id}',                [AccessController::class, 'updateStaff']);
 
     Route::get('/admin/staff',                            [StaffController::class, 'index']);

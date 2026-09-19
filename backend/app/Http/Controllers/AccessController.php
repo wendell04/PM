@@ -71,6 +71,55 @@ class AccessController extends Controller
         return $this->successResponse('Staff fetched.', $rows);
     }
 
+    /**
+     * POST /api/admin/access/staff - add a person and set what they can do, in one step.
+     *
+     * Adding someone used to mean the Staff page to create the account and this page to say what
+     * they may touch, which is the two-step the owner objected to. Creation delegates to
+     * StaffController so the escalation guard, the email rules and the welcome mail stay in one
+     * place; the only thing added here is saving the ticks at the same moment.
+     */
+    public function createStaff(Request $request, StaffController $staff)
+    {
+        if (!$this->hasPermission($request, 'userManagement.create')) {
+            return $this->unauthorizedResponse();
+        }
+
+        $grid = PermissionCatalog::sanitize((array) $request->input('permissions', []));
+
+        // Same rule as editing: nobody hands out what they do not hold.
+        $editor = $request->user();
+        if (!Rbac::isOwner($editor) && !Rbac::isSuperAdmin($editor)) {
+            foreach (array_keys($grid) as $key) {
+                if (!Rbac::allows($editor, $key)) {
+                    return $this->errorResponse("You cannot grant \"{$key}\" because you do not have it yourself.", 422);
+                }
+            }
+        }
+
+        $created = $staff->store($request);
+        $body    = json_decode($created->getContent(), true);
+        if ($created->getStatusCode() >= 300) {
+            return $created;   // the escalation guard or a duplicate email - pass it through as-is
+        }
+
+        $id = $body['data']['id'] ?? $body['data']['_id'] ?? null;
+        if ($id && $grid !== []) {
+            $user = User::find($id);
+            if ($user) {
+                $user->permissions = $grid;
+                $user->save();
+            }
+        }
+
+        return $this->successResponse(
+            $grid === []
+                ? 'Added. They follow their role template until you tick something for them.'
+                : 'Added, with the permissions you ticked.',
+            ['id' => $id, 'permissions' => $grid]
+        );
+    }
+
     /** PUT /api/admin/access/staff/{id} - save this person's own grid. */
     public function updateStaff(Request $request, $id)
     {

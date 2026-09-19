@@ -1151,6 +1151,11 @@ class OrderController extends Controller
         return [
             '_id',
             'orderId',
+            // Filtered on by every list query and, until now, never selected - so the rows came
+            // back with the flag missing and nothing downstream could tell an archived order from
+            // a live one.
+            'isArchived',
+            'archivedAt',
             'userId',
             'orderStatus',
             'paymentStatus',

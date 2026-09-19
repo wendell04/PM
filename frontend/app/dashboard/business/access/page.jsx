@@ -32,6 +32,8 @@ export default function AccessPage() {
   const [editing,   setEditing]   = useState(null);   // the staff row open in the editor
   const [draft,     setDraft]     = useState({});     // key -> true
   const [saving,    setSaving]    = useState(false);
+  const [isNew,     setIsNew]     = useState(false);
+  const [newFields, setNewFields] = useState({ firstName: '', lastName: '', email: '', role: '' });
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -57,6 +59,14 @@ export default function AccessPage() {
   const openEditor = (row) => {
     setEditing(row);
     setDraft({ ...(row.permissions ?? {}) });
+    setIsNew(false);
+  };
+
+  const openNew = () => {
+    setEditing({ id: null, firstName: '', lastName: '', email: '', role: '', permissions: {} });
+    setDraft({});
+    setNewFields({ firstName: '', lastName: '', email: '', role: '' });
+    setIsNew(true);
   };
 
   const applyTemplate = (role) => {
@@ -68,17 +78,28 @@ export default function AccessPage() {
 
   const save = async () => {
     if (!editing) return;
+    if (isNew) {
+      const { firstName, lastName, email, role } = newFields;
+      if (!firstName.trim() || !lastName.trim() || !email.trim() || !role) {
+        toast?.('Name, email and a starting role are needed before saving.', 'error');
+        return;
+      }
+    }
     setSaving(true);
     try {
-      const res = await fetchWithTimeout(`${API_URL}/api/admin/access/staff/${editing.id}`, {
-        method: 'PUT',
+      const res = await fetchWithTimeout(
+        isNew ? `${API_URL}/api/admin/access/staff` : `${API_URL}/api/admin/access/staff/${editing.id}`, {
+        method: isNew ? 'POST' : 'PUT',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ permissions: draft }),
+        body: JSON.stringify(isNew ? { ...newFields, permissions: draft } : { permissions: draft }),
       }, 20000);
       const d = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(d.message || d.error || 'Could not save.');
-      toast?.(`Saved. ${editing.firstName} can now do exactly what is ticked.`, 'success');
+      toast?.(isNew
+        ? `${newFields.firstName} was added. They get an email to set their password.`
+        : `Saved. ${editing.firstName} can now do exactly what is ticked.`, 'success');
       setEditing(null);
+      setIsNew(false);
       await load();
     } catch (e) {
       toast?.(e.message, 'error');
@@ -118,13 +139,33 @@ export default function AccessPage() {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         <div style={{ ...S.card, padding: '12px 14px' }}>
-          <div style={{ fontWeight: 700, fontSize: 15 }}>{editing.firstName} {editing.lastName}</div>
-          <div style={{ fontSize: 12, color: 'var(--gray)' }}>{editing.email}</div>
+          {isNew ? (
+            <>
+              <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 10 }}>Add someone to the team</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <input placeholder="First name" value={newFields.firstName}
+                  onChange={e => setNewFields(p => ({ ...p, firstName: e.target.value }))} style={S.input} />
+                <input placeholder="Last name" value={newFields.lastName}
+                  onChange={e => setNewFields(p => ({ ...p, lastName: e.target.value }))} style={S.input} />
+              </div>
+              <input placeholder="Work email" type="email" value={newFields.email}
+                onChange={e => setNewFields(p => ({ ...p, email: e.target.value }))}
+                style={{ ...S.input, marginTop: 10, width: '100%' }} />
+              <div style={{ fontSize: 11.5, color: 'var(--gray)', marginTop: 6 }}>
+                They get an email to set their own password. You never type it.
+              </div>
+            </>
+          ) : (
+            <>
+              <div style={{ fontWeight: 700, fontSize: 15 }}>{editing.firstName} {editing.lastName}</div>
+              <div style={{ fontSize: 12, color: 'var(--gray)' }}>{editing.email}</div>
+            </>
+          )}
           <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             <span style={{ fontSize: 12, color: 'var(--gray)' }}>Start from a template</span>
             <CustomSelect
-              value=""
-              onChange={applyTemplate}
+              value={isNew ? newFields.role : ''}
+              onChange={(v) => { if (isNew) setNewFields(p => ({ ...p, role: v })); applyTemplate(v); }}
               options={[{ value: '', label: 'Choose one...' },
                 ...templates.map(t => ({ value: t.role, label: t.label }))]}
               style={{ width: 190 }} />
@@ -174,8 +215,10 @@ export default function AccessPage() {
         </div>
 
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-          <button onClick={() => setEditing(null)} disabled={saving} style={S.btnGhost}>Cancel</button>
-          <button onClick={save} disabled={saving} style={S.btnPrimary}>{saving ? 'Saving...' : 'Save permissions'}</button>
+          <button onClick={() => { setEditing(null); setIsNew(false); }} disabled={saving} style={S.btnGhost}>Cancel</button>
+          <button onClick={save} disabled={saving} style={S.btnPrimary}>
+            {saving ? 'Saving...' : isNew ? 'Add and save access' : 'Save permissions'}
+          </button>
         </div>
       </div>
     );
@@ -194,8 +237,11 @@ export default function AccessPage() {
             <div style={{ flex: 1, minWidth: 120 }}><SummaryCard label="Unlimited" value={counts.unlimited} sub="owner and super admin" /></div>
           </div>
 
-          <div style={{ marginBottom: 12 }}>
-            <SearchBar value={search} onChange={setSearch} placeholder="Search name, email or role" />
+          <div style={{ marginBottom: 12, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+            <div style={{ flex: 1, minWidth: 220 }}>
+              <SearchBar value={search} onChange={setSearch} placeholder="Search name, email or role" />
+            </div>
+            <button onClick={openNew} style={{ ...S.btnPrimary, whiteSpace: 'nowrap' }}>+ Add staff</button>
           </div>
 
           {error && <div style={{ ...S.note, background: 'var(--st-red-bg)', color: 'var(--st-red-fg)', marginBottom: 12 }}>{error}</div>}
