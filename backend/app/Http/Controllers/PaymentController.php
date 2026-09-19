@@ -2075,7 +2075,7 @@ class PaymentController extends Controller
 
             if ($isOrderRequest) {
                 $orderRequestId = $orMatches[1];
-                $paymentType    = strtolower($orMatches[2]); // 'down' or 'bal'
+                $paymentType    = strtolower($orMatches[2]); // 'down', 'full' or 'bal'
 
                 $orderRequest = OrderRequest::find($orderRequestId);
                 if (!$orderRequest) {
@@ -2085,83 +2085,12 @@ class PaymentController extends Controller
                     return response()->json(['received' => true]);
                 }
 
-                $paymentAttrs  = $data['attributes'] ?? [];
-                $paymentMethod = $paymentAttrs['source']['type']
-                    ?? $paymentAttrs['payment_method_type']
-                    ?? null;
-
-                $convertMeta = [
-                    'method'    => $paymentMethod,
+                $paymentAttrs = $data['attributes'] ?? [];
+                $this->settleOrderRequestPayment($orderRequest, $paymentType, [
+                    'method'    => $paymentAttrs['source']['type'] ?? $paymentAttrs['payment_method_type'] ?? null,
                     'paymentId' => $data['id'] ?? null,
                     'ref'       => $remarks,
-                ];
-
-                if ($paymentType === 'down' && $orderRequest->paymentStatus === 'unpaid') {
-                    $orderRequest->paymentStatus = 'downpayment_paid';
-                    // Keep the downpayment the admin set on the quote - do NOT overwrite with 50%.
-                    if ($orderRequest->downPayment === null || (float) $orderRequest->downPayment <= 0) {
-                        $orderRequest->downPayment = round((float) $orderRequest->finalPrice * 0.5, 2);
-                    }
-                    $orderRequest->updatedAt     = now();
-                    $orderRequest->save();
-
-                    // Convert the quote into a real Order → enters the JO/Production/QC pipeline.
-                    $this->convertOrderRequestToOrder($orderRequest, 'down', $convertMeta);
-
-                    Log::info('OrderRequest downpayment received', [
-                        'orderRequestId' => $orderRequestId,
-                        'paymentMethod'  => $paymentMethod,
-                    ]);
-                } elseif ($paymentType === 'full' && $orderRequest->paymentStatus === 'unpaid') {
-                    // Customer chose to pay the whole amount upfront.
-                    $orderRequest->paymentStatus = 'paid';
-                    $orderRequest->downPayment   = round((float) $orderRequest->finalPrice, 2);
-                    $orderRequest->updatedAt     = now();
-                    $orderRequest->save();
-
-                    // Convert to a fully-paid Order (balance = 0) → straight into production.
-                    $this->convertOrderRequestToOrder($orderRequest, 'full', $convertMeta);
-
-                    Log::info('OrderRequest paid in full upfront', [
-                        'orderRequestId' => $orderRequestId,
-                        'paymentMethod'  => $paymentMethod,
-                    ]);
-                } elseif ($paymentType === 'bal' && $orderRequest->paymentStatus === 'downpayment_paid') {
-                    $orderRequest->paymentStatus = 'paid';
-                    $orderRequest->updatedAt     = now();
-                    $orderRequest->save();
-
-                    // If already converted, settle the balance on the linked Order too.
-                    if (!empty($orderRequest->convertedOrderId)) {
-                        $linked = Order::find($orderRequest->convertedOrderId);
-                        if ($linked && $linked->paymentStatus !== 'paid') {
-                            $paidNow = round((float) ($linked->balance ?? 0), 2);
-                            $history = $linked->paymentHistory ?? [];
-                            $history[] = [
-                                'amount' => $paidNow,
-                                'method' => $paymentMethod ?? 'online',
-                                'note'   => 'Balance via PayMongo' . ($remarks ? " ({$remarks})" : ''),
-                                'paidAt' => now()->toDateTimeString(),
-                            ];
-                            $linked->paymentStatus  = 'paid';
-                            $linked->downPayment    = round((float) ($linked->totalAmount ?? 0), 2);
-                            $linked->balance        = 0;
-                            $linked->paymentHistory = $history;
-                            $linked->updatedAt      = now();
-                            $linked->save();
-                        }
-                    }
-
-                    Log::info('OrderRequest balance paid in full', [
-                        'orderRequestId' => $orderRequestId,
-                        'paymentMethod'  => $paymentMethod,
-                    ]);
-                } else {
-                    Log::warning('PayMongo webhook: order request payment already processed or wrong sequence', [
-                        'reference_number' => $remarks,
-                        'paymentStatus'    => $orderRequest->paymentStatus,
-                    ]);
-                }
+                ]);
 
                 return response()->json(['received' => true]);
             }
@@ -2361,6 +2290,167 @@ class PaymentController extends Controller
             ->update(['paymentRefProcessed' => $ref]);
 
         return (bool) $claimed;
+    }
+
+    /**
+     * Record a paid quotation: mark it, and convert it into a real Order.
+     *
+     * Lifted out of the webhook so a second caller can use it. A cart order is recorded by the
+     * webhook AND by the success page calling verify-intent, and it is that second path that saves
+     * the order when a webhook is delayed, blocked or silently dropped. A quotation had only the
+     * webhook - so a customer could authorise a payment and be left with an unpaid quote, no order,
+     * and no way to fix it from the browser. Proven against live before this was written.
+     *
+     * Safe to call twice: each branch only fires from the payment status that precedes it.
+     */
+    private function settleOrderRequestPayment(OrderRequest $orderRequest, string $paymentType, array $meta): void
+    {
+        $method = $meta['method'] ?? null;
+        $ref    = $meta['ref'] ?? null;
+        if ($paymentType === 'down' && $orderRequest->paymentStatus === 'unpaid') {
+            $orderRequest->paymentStatus = 'downpayment_paid';
+            // Keep the downpayment the admin set on the quote - do NOT overwrite with 50%.
+            if ($orderRequest->downPayment === null || (float) $orderRequest->downPayment <= 0) {
+                $orderRequest->downPayment = round((float) $orderRequest->finalPrice * 0.5, 2);
+            }
+            $orderRequest->updatedAt     = now();
+            $orderRequest->save();
+
+            // Convert the quote into a real Order → enters the JO/Production/QC pipeline.
+            $this->convertOrderRequestToOrder($orderRequest, 'down', $meta);
+
+            Log::info('OrderRequest downpayment received', [
+                'orderRequestId' => (string) $orderRequest->_id,
+                'paymentMethod'  => $method,
+            ]);
+        } elseif ($paymentType === 'full' && $orderRequest->paymentStatus === 'unpaid') {
+            // Customer chose to pay the whole amount upfront.
+            $orderRequest->paymentStatus = 'paid';
+            $orderRequest->downPayment   = round((float) $orderRequest->finalPrice, 2);
+            $orderRequest->updatedAt     = now();
+            $orderRequest->save();
+
+            // Convert to a fully-paid Order (balance = 0) → straight into production.
+            $this->convertOrderRequestToOrder($orderRequest, 'full', $meta);
+
+            Log::info('OrderRequest paid in full upfront', [
+                'orderRequestId' => (string) $orderRequest->_id,
+                'paymentMethod'  => $method,
+            ]);
+        } elseif ($paymentType === 'bal' && $orderRequest->paymentStatus === 'downpayment_paid') {
+            $orderRequest->paymentStatus = 'paid';
+            $orderRequest->updatedAt     = now();
+            $orderRequest->save();
+
+            // If already converted, settle the balance on the linked Order too.
+            if (!empty($orderRequest->convertedOrderId)) {
+                $linked = Order::find($orderRequest->convertedOrderId);
+                if ($linked && $linked->paymentStatus !== 'paid') {
+                    $paidNow = round((float) ($linked->balance ?? 0), 2);
+                    $history = $linked->paymentHistory ?? [];
+                    $history[] = [
+                        'amount' => $paidNow,
+                        'method' => $method ?? 'online',
+                        'note'   => 'Balance via PayMongo' . ($ref ? " ({$ref})" : ''),
+                        'paidAt' => now()->toDateTimeString(),
+                    ];
+                    $linked->paymentStatus  = 'paid';
+                    $linked->downPayment    = round((float) ($linked->totalAmount ?? 0), 2);
+                    $linked->balance        = 0;
+                    $linked->paymentHistory = $history;
+                    $linked->updatedAt      = now();
+                    $linked->save();
+                }
+            }
+
+            Log::info('OrderRequest balance paid in full', [
+                'orderRequestId' => (string) $orderRequest->_id,
+                'paymentMethod'  => $method,
+            ]);
+        } else {
+            Log::warning('PayMongo webhook: order request payment already processed or wrong sequence', [
+                'reference_number' => $ref,
+                'paymentStatus'    => $orderRequest->paymentStatus,
+            ]);
+        }
+    }
+
+    /**
+     * POST /api/payment/verify-order-request  {orderRequestId, intentId?}
+     *
+     * The quotation half of verify-intent: asks PayMongo what happened to this intent and settles
+     * the quote when it succeeded. The success page calls it for quotes exactly as it calls
+     * verify-intent for orders.
+     */
+    public function verifyOrderRequest(Request $request)
+    {
+        try {
+            $user = $request->user();
+            if (!$user) return $this->unauthorizedResponse();
+
+            $validated = $request->validate([
+                'orderRequestId' => 'required|string|regex:/^[a-f0-9]{24}$/i',
+                'intentId'       => 'nullable|string|max:120',
+            ]);
+
+            $orderRequest = OrderRequest::where('_id', $validated['orderRequestId'])
+                ->where('customerId', (string) $user->_id)
+                ->first();
+            if (!$orderRequest) return $this->notFoundResponse('Quotation');
+
+            if (!empty($orderRequest->convertedOrderId) && $orderRequest->paymentStatus !== 'unpaid') {
+                return $this->successResponse('Already recorded.', [
+                    'paymentStatus'    => $orderRequest->paymentStatus,
+                    'convertedOrderId' => (string) $orderRequest->convertedOrderId,
+                ]);
+            }
+
+            $intentId = $validated['intentId'] ?? ($orderRequest->paymongoIntentId ?? null);
+            if (!$intentId) {
+                return $this->errorResponse('No payment reference on this quotation.', 422);
+            }
+
+            $res = Http::withBasicAuth($this->secretKey, '')
+                ->get("{$this->baseUrl}/payment_intents/{$intentId}");
+            if (!$res->successful()) {
+                Log::warning('verifyOrderRequest: intent fetch failed', [
+                    'orderRequestId' => $validated['orderRequestId'],
+                    'status'         => $res->status(),
+                ]);
+                return $this->errorResponse('Could not reach payment gateway.', 502);
+            }
+
+            $attrs  = $res->json()['data']['attributes'] ?? [];
+            $status = $attrs['status'] ?? null;
+            if ($status !== 'succeeded') {
+                return $this->successResponse('Not paid yet.', [
+                    'paymentStatus' => $orderRequest->paymentStatus,
+                    'intentStatus'  => $status,
+                ]);
+            }
+
+            // Which payment this was is written on the quote when the link is made
+            // (OR-{id}-down | -full | -bal); the reference is the only place it is recorded.
+            $ref  = (string) ($orderRequest->paymongoReference ?? '');
+            $type = preg_match('/-(down|full|bal)$/i', $ref, $m) ? strtolower($m[1]) : 'down';
+
+            $payment = $attrs['payments'][0]['attributes'] ?? [];
+            $this->settleOrderRequestPayment($orderRequest, $type, [
+                'method'    => $payment['source']['type'] ?? ($attrs['payment_method_used'] ?? null),
+                'paymentId' => $attrs['payments'][0]['id'] ?? null,
+                'ref'       => $ref,
+            ]);
+
+            $fresh = OrderRequest::find((string) $orderRequest->_id);
+            return $this->successResponse('Payment recorded.', [
+                'paymentStatus'    => $fresh->paymentStatus ?? null,
+                'convertedOrderId' => $fresh->convertedOrderId ?? null,
+            ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return $this->validationErrorResponse($e);
+        } catch (\Exception $e) {
+            return $this->serverErrorResponse($e, 'Could not verify this payment.');
+        }
     }
 
     public function verifyIntent(Request $request)

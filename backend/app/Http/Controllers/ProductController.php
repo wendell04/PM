@@ -821,6 +821,10 @@ class ProductController extends Controller
                 'storeStockCap'       => 'nullable|integer|min:0',
                 'allowCOD'            => 'nullable|boolean',
                 'hideWhenOutOfStock'  => 'nullable|boolean',
+                // What the storefront badge says regardless of the count: auto (from stock),
+                // always "Pre-order", or always "Made to Order". A count is never shown with the
+                // forced ones - the owner's call for items he produces after payment.
+                'availabilityBadge'   => 'nullable|string|in:auto,preorder,made_to_order',
                 'isFeatured'          => 'nullable|boolean',
             ]);
 
@@ -1021,6 +1025,10 @@ class ProductController extends Controller
                 'storeStockCap'       => 'nullable|integer|min:0',
                 'allowCOD'            => 'nullable|boolean',
                 'hideWhenOutOfStock'  => 'nullable|boolean',
+                // What the storefront badge says regardless of the count: auto (from stock),
+                // always "Pre-order", or always "Made to Order". A count is never shown with the
+                // forced ones - the owner's call for items he produces after payment.
+                'availabilityBadge'   => 'nullable|string|in:auto,preorder,made_to_order',
                 'isFeatured'          => 'nullable|boolean',
             ]);
 

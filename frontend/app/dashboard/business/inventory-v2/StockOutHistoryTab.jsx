@@ -216,7 +216,7 @@ function ByOrderTab({ stockOuts, materials }) {
 
       <div style={{ ...S.card, padding:0, overflow:'hidden' }}>
         <div style={{ overflowX:'auto' }}>
-          <table style={{ width:'100%', borderCollapse:'collapse' }}>
+          <table className="pmp-rt" style={{ width:'100%', borderCollapse:'collapse' }}>
             <thead>
               <tr>
                 {['Date','Order Ref','Customer','Items','Cost of Goods',''].map((h, i) => (
@@ -338,7 +338,7 @@ function ByOrderTab({ stockOuts, materials }) {
           <div style={{ ...S.th, padding:'12px 16px', fontSize:'12px', letterSpacing:'.5px' }}>
             Manual / Adjustments - {manualCount} record{manualCount !== 1 ? 's' : ''}
           </div>
-          <table style={{ width:'100%', borderCollapse:'collapse' }}>
+          <table className="pmp-rt" style={{ width:'100%', borderCollapse:'collapse' }}>
             <thead>
               <tr>
                 {['Date','Material','Qty','Unit Cost','Type','Remarks'].map((h, i) => (
@@ -433,7 +433,7 @@ function ByMaterialTab({ stockOuts, materials }) {
 
       <div style={{ ...S.card, padding:0, overflow:'hidden' }}>
         <div style={{ overflowX:'auto' }}>
-          <table style={{ width:'100%', borderCollapse:'collapse' }}>
+          <table className="pmp-rt" style={{ width:'100%', borderCollapse:'collapse' }}>
             <thead>
               <tr>
                 {['Material','Current Stock','Total Deducted','Total Cost','Transactions',''].map((h, i) => (

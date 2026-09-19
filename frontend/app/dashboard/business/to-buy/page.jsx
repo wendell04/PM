@@ -16,6 +16,8 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { S, ICONS, SearchBar, SummaryCard } from '../inventory-v2/shared';
+import { updateMat } from '../inventory-v2/api';
+import { useIsPhone, KpiStrip, PhoneRow , pesoShort } from '@/components/dashboard/phone';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
@@ -55,6 +57,47 @@ export default function ToBuyPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState('');
   const [search, setSearch]   = useState('');
+  const [reason, setReason]   = useState('all');   // all | orders | minimum
+  // Set the minimum where the shortage is seen. inventoryId -> the value being typed.
+  const [minEdit, setMinEdit] = useState({});
+  const [minSaving, setMinSaving] = useState(null);
+  const closeMin = (id) => setMinEdit(prev => { const n = { ...prev }; delete n[id]; return n; });
+  const saveMin = async (r) => {
+    const v = Number(minEdit[r.inventoryId]);
+    if (!Number.isFinite(v) || v < 0) return;
+    setMinSaving(r.inventoryId);
+    try {
+      await updateMat(token, r.inventoryId, { minStockLevel: Math.round(v) });
+      closeMin(r.inventoryId);
+      await load();
+    } catch (e) { setError(e.message); }
+    finally { setMinSaving(null); }
+  };
+  // "Buy 30" is two decisions at once; say which is which.
+  const breakdown = (r) => {
+    const forOrders = Math.max(0, Number(r.needed) - Number(r.onHand));
+    const toMin = Math.max(0, Number(r.shortfall) - forOrders);
+    if (forOrders > 0 && toMin > 0) return `${num(forOrders)} for orders + ${num(toMin)} to reach minimum`;
+    if (forOrders > 0) return `${num(forOrders)} short for orders`;
+    return `${num(toMin)} to reach minimum ${num(r.minimum)}`;
+  };
+  const MinEditor = ({ r, compact }) => (
+    minEdit[r.inventoryId] === undefined ? (
+      <button type="button" onClick={() => setMinEdit(prev => ({ ...prev, [r.inventoryId]: String(r.minimum || '') }))}
+        style={{ background: 'none', border: 'none', padding: 0, color: 'var(--gold)', fontSize: compact ? 12 : 11, fontWeight: 600, cursor: 'pointer', minHeight: compact ? 36 : undefined }}>
+        {r.minimum > 0 ? 'Change minimum' : 'Set minimum'}
+      </button>
+    ) : (
+      <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+        <input type="number" min="0" value={minEdit[r.inventoryId]} onChange={e => setMinEdit(prev => ({ ...prev, [r.inventoryId]: e.target.value }))}
+          onKeyDown={e => { if (e.key === 'Enter') saveMin(r); if (e.key === 'Escape') closeMin(r.inventoryId); }}
+          style={{ ...S.input, width: 84, minHeight: 36, padding: '4px 8px', fontSize: 16 }} aria-label="Minimum stock" autoFocus />
+        <button type="button" onClick={() => saveMin(r)} disabled={minSaving === r.inventoryId} style={{ ...S.btnSm, minHeight: 36 }}>{minSaving === r.inventoryId ? 'Saving' : 'Save'}</button>
+        <button type="button" onClick={() => closeMin(r.inventoryId)} style={{ ...S.btnSmGhost, minHeight: 36 }}>Cancel</button>
+      </span>
+    )
+  );
+  const isPhone = useIsPhone();
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -81,12 +124,13 @@ export default function ToBuyPage() {
 
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return rows;
     return rows.filter(r =>
-      (r.name || '').toLowerCase().includes(q) ||
-      (r.sku || '').toLowerCase().includes(q) ||
-      (r.supplierName || '').toLowerCase().includes(q));
-  }, [rows, search]);
+      (reason === 'all' || (r.reasons ?? ['orders']).includes(reason)) &&
+      (!q || (r.name || '').toLowerCase().includes(q) ||
+        (r.sku || '').toLowerCase().includes(q) ||
+        (r.supplierName || '').toLowerCase().includes(q)));
+  }, [rows, search, reason]);
+  const countFor = (why) => rows.filter(r => (r.reasons ?? ['orders']).includes(why)).length;
 
   // One group per supplier - the unit of work is "message this supplier", not "buy this item".
   const groups = useMemo(() => {
@@ -137,11 +181,19 @@ export default function ToBuyPage() {
 
   return (
     <div style={{ ...S.page, padding: '24px' }}>
-      <div style={{ ...S.row, marginBottom: '18px' }}>
-        <SummaryCard label="Materials to buy" value={totals.totalItems} accent />
-        <SummaryCard label="Estimated cost" value={peso(totals.estimatedCost)} />
-        <SummaryCard label="Suppliers to contact" value={groups.length} />
-      </div>
+      {isPhone ? (
+        <KpiStrip items={[
+          { key: 'n', label: 'To buy',    value: totals.totalItems },
+          { key: 'c', label: 'Est. cost', value: pesoShort(totals.estimatedCost), title: peso(totals.estimatedCost) },
+          { key: 's', label: 'Suppliers', value: groups.length },
+        ]} />
+      ) : (
+        <div style={{ ...S.row, marginBottom: '18px' }}>
+          <SummaryCard label="Materials to buy" value={totals.totalItems} accent />
+          <SummaryCard label="Estimated cost" value={peso(totals.estimatedCost)} />
+          <SummaryCard label="Suppliers to contact" value={groups.length} />
+        </div>
+      )}
 
       {waitingQuotes.length > 0 && (
         <div style={{ ...S.card, padding: 0, overflow: 'hidden', marginBottom: '18px', borderColor: 'rgba(224,168,82,0.45)' }}>
@@ -205,6 +257,19 @@ export default function ToBuyPage() {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {tab === 'materials' && rows.length > 0 && (
+        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '10px', alignItems: 'center' }}>
+          {[['all', `All (${rows.length})`], ['orders', `Short for orders (${countFor('orders')})`], ['minimum', `Below minimum (${countFor('minimum')})`]].map(([id, label]) => (
+            <button key={id} type="button" onClick={() => setReason(id)}
+              style={{ minHeight: 34, padding: '0 12px', borderRadius: 999, fontSize: 12.5, fontWeight: reason === id ? 700 : 500, cursor: 'pointer',
+                background: reason === id ? 'var(--gold)' : 'var(--dark2)', color: reason === id ? '#1a1a1a' : 'var(--white)', border: reason === id ? '1px solid var(--gold)' : '1px solid var(--border)' }}>
+              {label}
+            </button>
+          ))}
+          <span style={{ fontSize: 11.5, color: 'var(--gray)', marginLeft: 'auto' }}>Buy = needed by orders + minimum - on hand</span>
         </div>
       )}
 
@@ -304,36 +369,64 @@ export default function ToBuyPage() {
                 {g.leadTimeDays > 0 && ` · ${g.leadTimeDays}d lead time`}
               </div>
             </div>
-            <div style={{ ...S.row, gap: '10px' }}>
+            <div style={{ ...S.row, gap: '10px', ...(isPhone ? { width: '100%', justifyContent: 'space-between' } : {}) }}>
               <span style={{ fontSize: '14px', fontWeight: 700, color: 'var(--gold)' }}>{peso(g.cost)}</span>
-              <button type="button" onClick={() => copyList(g)} style={{ ...S.btnSm }} title="Copy this list to paste to the supplier">Copy</button>
+              <button type="button" onClick={() => copyList(g)} style={{ ...S.btnSm, ...(isPhone ? { minHeight: 40 } : {}) }} title="Copy this list to paste to the supplier">Copy</button>
               <a href="/dashboard/business/inventory-v2?tab=stockin"
-                style={{ ...S.btnSm, textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}
+                style={{ ...S.btnSm, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', ...(isPhone ? { minHeight: 40 } : {}) }}
                 title="Record the delivery once it arrives">Stock In</a>
             </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 90px 90px 90px 110px', gap: '8px',
+          {isPhone ? g.items.map((r, i) => (
+            <div key={r.inventoryId}>
+            <PhoneRow first={i === 0} mono={false}
+              title={r.name}
+              chip={<span style={{ fontSize: 12, fontWeight: 700, color: '#e0a852', whiteSpace: 'nowrap' }}>Buy {num(r.shortfall)} {r.uom}</span>}
+              meta={`Buy ${num(r.shortfall)} = ${breakdown(r)}`}
+              sub={[`have ${num(r.onHand)}${r.minimum > 0 ? ` · min ${num(r.minimum)}` : ''} ${r.uom} · ${peso(r.estimatedCost)}`, r.for?.length > 0 ? `for ${r.for.map(f => `${f.pieces} × ${f.product}`).join(', ')}` : null, r.orders?.length > 0 ? r.orders.join(', ') : null, r.isOnDemand ? 'buy per order' : null, !Number(r.unitCost) ? 'no cost set' : null].filter(Boolean).join(' · ')} />
+            <div style={{ padding: '0 14px 10px' }}><MinEditor r={r} compact /></div>
+            </div>
+          )) : (<>
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 90px 90px 90px 90px 110px', gap: '8px',
             padding: '8px 16px', fontSize: '10px', fontWeight: 700, letterSpacing: '.05em',
             textTransform: 'uppercase', color: 'var(--gray)', borderBottom: '1px solid var(--border)' }}>
             <span>Material</span>
-            <span style={{ textAlign: 'right' }}>Needed</span>
+            <span style={{ textAlign: 'right' }}>For orders</span>
             <span style={{ textAlign: 'right' }}>On hand</span>
+            <span style={{ textAlign: 'right' }}>Minimum</span>
             <span style={{ textAlign: 'right' }}>Buy</span>
             <span style={{ textAlign: 'right' }}>Est. cost</span>
           </div>
 
           {g.items.map(r => (
-            <div key={r.inventoryId} style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 90px 90px 90px 110px',
+            <div key={r.inventoryId} style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 90px 90px 90px 90px 110px',
               gap: '8px', padding: '10px 16px', borderBottom: '1px solid var(--border)', alignItems: 'center' }}>
               <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: '13px', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <div style={{ fontSize: '13px', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 6 }}>
                   {r.name}
+                  {(r.reasons ?? ['orders']).map(w => (
+                    <span key={w} style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: '.3px', textTransform: 'uppercase', padding: '2px 6px', borderRadius: 4,
+                      background: w === 'orders' ? 'rgba(224,168,82,0.16)' : 'rgba(59,130,246,0.14)', color: w === 'orders' ? '#b45309' : '#1d4ed8' }}>
+                      {w === 'orders' ? 'short for orders' : 'below minimum'}
+                    </span>
+                  ))}
                 </div>
                 <div style={{ fontSize: '10.5px', color: 'var(--gray)', marginTop: '1px' }}>
                   {[r.sku, r.category, r.isOnDemand ? 'buy per order' : null].filter(Boolean).join(' · ')}
-                  {r.orders?.length > 0 && ` · for ${r.orders.join(', ')}`}
+                  {r.orders?.length > 0 && ` · ${r.orders.join(', ')}`}
                 </div>
+                {r.for?.length > 0 && (
+                  <div style={{ fontSize: '11px', color: 'var(--gray-light)', marginTop: '2px' }}>
+                    For {r.for.map(f => `${f.pieces} × ${f.product}`).join(', ')}
+                  </div>
+                )}
+                <div style={{ fontSize: '11px', color: '#b45309', marginTop: '2px' }}>Buy {num(r.shortfall)} = {breakdown(r)}</div>
+                {minEdit[r.inventoryId] !== undefined && (
+                  <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--gray)' }}>
+                    Minimum for this material: <MinEditor r={r} />
+                  </div>
+                )}
                 {!Number(r.unitCost) && (
                   <div style={{ fontSize: '10.5px', color: '#e0a852', marginTop: '1px' }}>
                     No cost set - the estimate below is understated.
@@ -342,10 +435,15 @@ export default function ToBuyPage() {
               </div>
               <span style={{ fontSize: '12px', textAlign: 'right', color: 'var(--gray)' }}>{num(r.needed)} {r.uom}</span>
               <span style={{ fontSize: '12px', textAlign: 'right', color: 'var(--gray)' }}>{num(r.onHand)} {r.uom}</span>
-              <span style={{ fontSize: '13px', textAlign: 'right', fontWeight: 700, color: '#e0a852' }}>{num(r.shortfall)} {r.uom}</span>
+              <span style={{ fontSize: '12px', textAlign: 'right', color: 'var(--gray)', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
+                <span>{r.minimum > 0 ? `${num(r.minimum)} ${r.uom}` : '-'}</span>
+                {minEdit[r.inventoryId] === undefined && <MinEditor r={r} />}
+              </span>
+              <span style={{ fontSize: '13px', textAlign: 'right', fontWeight: 700, color: '#e0a852' }} title={breakdown(r)}>{num(r.shortfall)} {r.uom}</span>
               <span style={{ fontSize: '13px', textAlign: 'right', fontWeight: 700 }}>{peso(r.estimatedCost)}</span>
             </div>
           ))}
+          </>)}
         </div>
       ))}
     </div>

@@ -367,7 +367,7 @@ function VouchersTab({ token }) {
             {catFilter === 'all' ? 'No vouchers yet. Create one to get started.' : `No ${catFilter} vouchers yet.`}
           </div>
         ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <table className="pmp-rt" style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ borderBottom: '1px solid var(--border)' }}>
                 {['Code', 'Category', 'Benefit / Discount', 'Min Order', 'Uses', 'Expires', 'Status', 'Actions'].map(h => (
@@ -774,7 +774,7 @@ function FlashSalesTab({ token }) {
       {!error && sales.length > 0 && (
         <div style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
          <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '800px' }}>
+          <table className="pmp-rt" style={{ width: '100%', borderCollapse: 'collapse', minWidth: '800px' }}>
             <thead>
               <tr style={{ borderBottom: '1px solid var(--border)', background: 'var(--dark2)' }}>
                 {['Product', 'Discount', 'Original', 'Sale Price', 'Quantity', 'Start', 'End', 'Status', 'Actions'].map(col => (

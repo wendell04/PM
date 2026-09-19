@@ -7,8 +7,9 @@ import { fetchJobOrders, updateJobOrder, reportSpoilage } from '@/lib/jobOrderAp
 import { orderNo } from '@/lib/orderNumber';
 import ImageLightbox from '@/components/shop/ImageLightbox';
 import { joRisk, RISK_STYLE } from '@/lib/deliveryRisk';
-import { JobOrderStatusBadge, RushBadge, DesignPreview, designUrl, joDocId, fmtJODate, TableSkeleton } from '@/components/dashboard/JobOrderBits';
+import { JobOrderStatusBadge, RushBadge, DesignPreview, designUrl, joDocId, fmtJODate, TableSkeleton, WaitingBadge } from '@/components/dashboard/JobOrderBits';
 import { S, ICONS, SearchBar, SummaryCard, PaginationBar, EmptyState, usePagination, CustomSelect, ConfirmModal } from '../inventory-v2/shared';
+import { useIsPhone, KpiStrip, PhoneFilterBar, PhoneList, PhoneRow } from '@/components/dashboard/phone';
 
 // Production staff worklist - the Queued / In Progress / For QC stages of a Job Order.
 // One Job Order moves: Queued -> In Progress -> For QC (then QC staff inspect it).
@@ -108,10 +109,26 @@ export default function ProductionPage() {
   });
 
   const { slice, page, perPage, total, setPage, setPerPage } = usePagination(filtered);
+  const isPhone = useIsPhone();
 
   return (
     <ErrorBoundary>
       <div style={S.page}>
+        {isPhone ? (
+          <>
+            <KpiStrip items={[
+              { key: 'Queued',      label: 'Queued',      value: counts.queued },
+              { key: 'In Progress', label: 'In progress', value: counts.inProgress, color: 'var(--gold)' },
+              { key: 'QC_Pending',  label: 'For QC',      value: counts.forQc, color: 'var(--st-purple-fg)' },
+              { key: 'QC_Failed',   label: 'Rework',      value: counts.rework, color: 'var(--st-red-fg)' },
+              { key: 'late',        label: 'Past due',    value: counts.late, color: counts.late > 0 ? 'var(--st-red-fg)' : undefined },
+            ].map(k => ({ ...k, active: statusFilter === k.key, onClick: k.key === 'late' ? undefined : () => { setStatusFilter(statusFilter === k.key ? 'all' : k.key); setPage(1); } }))} />
+            <PhoneFilterBar search={search} onSearch={v => { setSearch(v); setPage(1); }} placeholder="Search JO, product, order"
+              filters={[{ key: 'status', label: 'Status', value: statusFilter, defaultValue: 'all', onChange: v => { setStatusFilter(v); setPage(1); }, options: STATUS_TABS }]}
+              actions={<button onClick={load} style={{ ...S.btnSmGhost, minHeight: 36 }}>{ICONS.reload} Refresh</button>}
+              note={`${total} job${total === 1 ? '' : 's'}`} />
+          </>
+        ) : (<>
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '16px' }}>
           <SummaryCard label="Queued" value={counts.queued} accent />
           <SummaryCard label="In Progress" value={counts.inProgress} color="var(--gold)" />
@@ -128,10 +145,62 @@ export default function ProductionPage() {
           <button onClick={load} style={S.btnGhost}>{ICONS.reload} Refresh</button>
         </div>
 
+        </>)}
+
         {error && <div style={{ ...S.note, background: 'var(--st-red-bg)', borderColor: 'rgba(239,68,68,0.35)', color: 'var(--st-red-fg)', marginBottom: '10px' }}>{error}</div>}
 
+        {isPhone ? (
+          <>
+            {loading ? (
+              <div style={{ ...S.card, padding: '28px 16px', textAlign: 'center', color: 'var(--gray)', fontSize: 13 }}>Loading</div>
+            ) : slice.length === 0 ? (
+              <div style={{ ...S.card, padding: 0 }}><EmptyState message="No active job orders" sub="Create one from a paid, design-approved order." /></div>
+            ) : (
+              <PhoneList>
+                {slice.map((j, i) => {
+                  const id = idOf(j); const busy = busyId === id;
+                  const risk = joRisk(j);
+                  const ordered = Number(j.product?.quantity ?? 0);
+                  const done = Number(j.acceptedQty ?? 0);
+                  const left = Math.max(0, ordered - done);
+                  // The one thing to do next, on the row itself: start, send to QC, or redo.
+                  const act = j.joStatus === 'Queued' ? { to: 'In Progress', label: 'Start' }
+                    : j.joStatus === 'In Progress' ? { to: 'QC_Pending', label: 'Send to QC' }
+                    : j.joStatus === 'QC_Failed' ? { to: 'In Progress', label: 'Redo' } : null;
+                  return (
+                    <div key={id} style={{ borderTop: i === 0 ? 'none' : '1px solid var(--border)' }}>
+                      <PhoneRow first onClick={() => setDetail(j)}
+                        title={<>{j.joId || '-'} <RushBadge isRush={j.isRush} /></>}
+                        chip={<JobOrderStatusBadge status={j.joStatus} />}
+                        meta={prodName(j)}
+                        sub={[
+                          ordered ? `${left} to make${done > 0 ? ` (${done} of ${ordered} passed)` : ''}` : null,
+                          j.orderId ? orderNo(j.orderId) : null,
+                          j.targetCompletion ? `target ${fmtJODate(j.targetCompletion)}` : null,
+                          risk?.label ?? null,
+                          j.materialShort?.length ? `waiting on ${j.materialShort.map(r => `${r.name} (short ${r.short})`).join(', ')}` : null,
+                          j.qcResult?.defects && done > 0 ? `back from QC: ${j.qcResult.defects}` : null,
+                        ].filter(Boolean).join(' \u00b7 ')} />
+                      {act && (
+                        <div style={{ padding: '0 12px 10px 14px' }}>
+                          <button disabled={busy} onClick={() => setConfirmAct({ jo: j, to: act.to })}
+                            style={{ ...S.btnPrimary, width: '100%', minHeight: 44, justifyContent: 'center', opacity: busy ? .6 : 1 }}>
+                            {busy ? 'Saving' : act.label}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </PhoneList>
+            )}
+            <div style={{ padding: '12px 0' }}>
+              <PaginationBar total={total} page={page} perPage={perPage} onPage={setPage} onPerPage={setPerPage} />
+            </div>
+          </>
+        ) : (<>
         <div style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <table className="pmp-rt" style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead><tr>
               <th style={S.th}>JO</th><th style={S.th}>Design</th><th style={S.th}>Product</th><th style={S.th}>To make</th>
               <th style={S.th}>Order</th><th style={S.th}>Target</th><th style={S.th}>Status</th>
@@ -200,7 +269,7 @@ export default function ProductionPage() {
                       {fmtJODate(j.targetCompletion)}
                       {risk && <div style={{ marginTop: 3 }}><span style={{ ...S.badge, ...RISK_STYLE[risk.color], fontSize: 9, fontWeight: 700 }}>{risk.label}</span></div>}
                     </td>
-                    <td style={S.td}><JobOrderStatusBadge status={j.joStatus} /></td>
+                    <td style={S.td}><JobOrderStatusBadge status={j.joStatus} /><WaitingBadge jo={j} block /></td>
                     <td style={{ ...S.td, textAlign: 'right' }} onClick={e => e.stopPropagation()}>
                       {j.joStatus === 'Queued' && <button disabled={busy} onClick={e => { e.stopPropagation(); setConfirmAct({ jo: j, to: 'In Progress' }); }} style={S.btnSm}>{busy ? 'Saving…' : 'Start'}</button>}
                       {j.joStatus === 'In Progress' && <button disabled={busy} onClick={e => { e.stopPropagation(); setConfirmAct({ jo: j, to: 'QC_Pending' }); }} style={S.btnSm}>{busy ? 'Saving…' : 'Send to QC'}</button>}
@@ -214,6 +283,7 @@ export default function ProductionPage() {
           </table>
         </div>
         <PaginationBar total={total} page={page} perPage={perPage} onPage={setPage} onPerPage={setPerPage} />
+        </>)}
       </div>
 
       {detail && (

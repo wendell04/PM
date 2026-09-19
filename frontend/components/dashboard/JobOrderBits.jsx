@@ -163,3 +163,23 @@ export function TableSkeleton({ cols = 7, rows = 4 }) {
     </>
   );
 }
+
+
+/**
+ * "Waiting on materials" - a job that cannot start yet, with what it is short of. Read from
+ * the `materialShort` the list endpoint attaches to queued jobs, so the shop sees it here
+ * before pressing Start and being refused. The shortage itself is already on To Buy.
+ */
+export function WaitingBadge({ jo, block = false }) {
+  const rows = jo?.materialShort;
+  if (!Array.isArray(rows) || rows.length === 0) return null;
+  const text = rows.map(r => `${r.name} short ${r.short}${r.uom ? ' ' + r.uom : ''}`).join(', ');
+  return (
+    <span title={`Cannot start until received: ${text}. It is on To Buy.`}
+      style={{ display: block ? 'block' : 'inline-flex', marginTop: block ? 3 : 0, marginLeft: block ? 0 : 6, fontSize: 10, fontWeight: 700,
+        letterSpacing: '.3px', textTransform: 'uppercase', padding: '2px 7px', borderRadius: 4, whiteSpace: 'nowrap',
+        background: 'rgba(224,168,82,0.16)', color: '#b45309', border: '1px solid rgba(224,168,82,0.35)' }}>
+      Waiting on materials
+    </span>
+  );
+}

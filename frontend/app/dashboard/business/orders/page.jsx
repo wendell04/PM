@@ -18,7 +18,8 @@ import { getStatusBadge } from '@/lib/utils/orderHelpers';
 import ImageLightbox from '@/components/shop/ImageLightbox';
 import ProofGallery from '@/components/shop/ProofGallery';
 import useLockBodyScroll from '@/lib/useLockBodyScroll';
-import { normalizeStatus, statusLabel, ORDER_STATUS_ORDER } from '@/lib/orderStatus';
+import { useIsPhone, KpiStrip, PhoneFilterBar, PhoneList, PhoneRow, PhoneSheet } from '@/components/dashboard/phone';
+import { normalizeStatus, statusLabel, ORDER_STATUS_ORDER, ORDER_STAGES, stageOf, isDone } from '@/lib/orderStatus';
 import { isCodMethod } from '@/lib/paymentMethod';
 
 const API_URL    = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
@@ -427,7 +428,7 @@ function JOQueueModal({ orders, token, onClose, onJOUpdated, onPrintJO }) {
               const busy     = busyId === jid;
 
               return (
-                <div key={jid} style={{ ...S.card, border:`2px solid ${border}`, padding:'14px 18px',
+                <div key={jid} className="pmp-cols" style={{ ...S.card, border:`2px solid ${border}`, padding:'14px 18px',
                   display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:'16px', alignItems:'center' }}>
                   <div style={{ display:'flex', gap:'10px', alignItems:'center' }}>
                     <DesignPreview path={j.product?.thumbnail || j.designFilePath} size={40} />
@@ -1621,8 +1622,8 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
   const statusLabel = (st) => st==='approved'?'Approved':st==='rejected'?'Rejected':st==='revision_requested'?'Revision Requested':st==='draft_ready'||st==='proof_sent'?'Awaiting Review':st==='pending_design'?'Designing':st==='pending_review'?'Under Review':'Pending';
 
   return (
-    <div style={{ padding:'16px 20px', background:'var(--dark2)', borderBottom:'1px solid var(--border)' }}>
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'16px' }}>
+    <div className="pmp-panel" style={{ padding:'16px 20px', background:'var(--dark2)', borderBottom:'1px solid var(--border)' }}>
+      <div className="pmp-cols" style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'16px' }}>
 
         {/* LEFT - customer + design (if custom) + status */}
         <div style={{ ...S.card, padding:'14px 16px', display:'flex', flexDirection:'column' }}>
@@ -2146,6 +2147,23 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                   </button>
                 </div>
               )}
+
+              {/* The record of what was sent. Without it the shop had nothing on its own screen
+                  after sending a mockup - the owner sent one, saw no change, and assumed it had
+                  not gone. The customer's copy is in My Orders under "Mockup from the shop". */}
+              {lo.mockups?.length > 0 && (() => {
+                const last = lo.mockups[lo.mockups.length - 1];
+                const when = last?.sentAt ? new Date(last.sentAt).toLocaleDateString('en-PH', { month:'short', day:'numeric' }) : '';
+                return (
+                  <div style={{ marginBottom:'10px', padding:'8px 10px', background:'rgba(212,168,67,0.06)', border:'1px solid rgba(212,168,67,0.2)', borderRadius:'8px' }}>
+                    <div style={{ fontSize:'11px', color:'var(--gray)', marginBottom:'6px' }}>
+                      <b style={{ color:'var(--gold)' }}>{lo.mockups.length > 1 ? `${lo.mockups.length} mockups sent` : 'Mockup sent'}</b>
+                      {when && ` - ${when}`}{last?.sentBy && ` by ${last.sentBy}`}. The customer sees these in My Orders; nothing for them to approve.
+                    </div>
+                    <ProofGallery urls={lo.mockups.map(m => designUrl(m.url)).filter(Boolean)} tiles compact />
+                  </div>
+                );
+              })()}
 
               {/* Undo an accidental approval - allowed only while no Job Order exists yet. */}
               {aiStatus === 'approved' && !hasAnyJobOrder && (
@@ -3041,6 +3059,12 @@ export default function OrdersPage() {
   const [customFrom,   setCustomFrom]   = useState('');
   const [customTo,     setCustomTo]     = useState('');
   const [expandedId,   setExpandedId]   = useState(null);
+  // Below 700px the list, the filters and the opened order are the phone pieces; see
+  // components/dashboard/phone.jsx. Same data, same state, another shape.
+  const isPhone = useIsPhone();
+  // A phone list is for what is still moving. Delivered and cancelled orders stay reachable
+  // through a toggle and the Done filter, but do not bury today's work under last month's.
+  const [showDone, setShowDone] = useState(false);
   const [loading,      setLoading]      = useState(true);
   const [loadError,    setLoadError]    = useState('');
   const [refreshing,   setRefreshing]   = useState(false);
@@ -3165,21 +3189,29 @@ export default function OrdersPage() {
     return matchSearch && matchPay && matchType && matchDate;
   });
 
+  const wantsDone = statusFilter === 'stage:done' || ORDER_STAGES.find(st => st.key === 'done').statuses.includes(statusFilter);
   const filtered = scoped.filter(o =>
     // 'needs_attention' is not a stored status - it is the derived delivery-promise risk.
-    statusFilter === 'all' ? true
+    // 'stage:<key>' is a group of statuses (see ORDER_STAGES).
+    (statusFilter === 'all' ? true
       : statusFilter === 'needs_attention' ? !!deliveryRisk(o)
-      : normalizeStatus(o.orderStatus) === statusFilter
+      : statusFilter.startsWith('stage:') ? stageOf(o.orderStatus) === statusFilter.slice(6)
+      : normalizeStatus(o.orderStatus) === statusFilter)
+    && (!isPhone || showDone || wantsDone || !isDone(o.orderStatus))
   ).sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
 
   // ── Summary counts ──────────────────────────────────────────────────────────
 
   const countBy = (code) => scoped.filter(o => normalizeStatus(o.orderStatus) === code).length;
+  const countStage = (key) => scoped.filter(o => stageOf(o.orderStatus) === key).length;
   const counts = {
     all:          scoped.length,
-    pending:      countBy('pending'),
-    inProduction: countBy('in_production'),
-    forDelivery:  countBy('for_delivery'),
+    // Stages, not single statuses: "For Delivery: 0" beside three orders in Ready for Delivery
+    // was a card answering a question nobody asked.
+    todo:         countStage('todo'),
+    making:       countStage('making'),
+    toShip:       countStage('toship'),
+    done:         countStage('done'),
     delivered:    countBy('delivered'),
     cancelled:    countBy('cancelled'),
     // Orders whose delivery promise is late or about to be missed (derived, not stored).
@@ -3196,13 +3228,21 @@ export default function OrdersPage() {
     <ErrorBoundary>
       <div style={S.page}>
 
+        {isPhone ? (
+          <KpiStrip items={[
+            { key:'stage:todo',      label:'To do',     value:counts.todo },
+            { key:'stage:making',    label:'Making',    value:counts.making },
+            { key:'stage:toship',    label:'To ship',   value:counts.toShip },
+            { key:'needs_attention', label:'Attention', value:counts.needsAttention, color: counts.needsAttention > 0 ? 'var(--st-red-fg)' : undefined },
+          ].map(k => ({ ...k, active: statusFilter === k.key, onClick: () => { setStatusFilter(statusFilter === k.key ? 'all' : k.key); setPage(1); } }))} />
+        ) : (<>
         {/* Summary cards - click to filter */}
-        <div style={{ display:'flex', gap:'10px', flexWrap:'wrap', marginBottom:'16px' }}>
+        <div className="pmp-stat-row" style={{ display:'flex', gap:'10px', flexWrap:'wrap', marginBottom:'16px' }}>
           {[
             { label:'Total Orders',   value:counts.all,          id:'all'           },
-            { label:'Pending',        value:counts.pending,       id:'pending'       },
-            { label:'In Production',  value:counts.inProduction,  id:'in_production' },
-            { label:'For Delivery',   value:counts.forDelivery,   id:'for_delivery'  },
+            { label:'To Do',          value:counts.todo,          id:'stage:todo'    },
+            { label:'Making',         value:counts.making,        id:'stage:making'  },
+            { label:'To Ship',        value:counts.toShip,        id:'stage:toship'  },
             { label:'Delivered',      value:counts.delivered,     id:'delivered'     },
             { label:'Cancelled',      value:counts.cancelled,     id:'cancelled'     },
             { label:'Needs Attention',value:counts.needsAttention,id:'needs_attention', alert:true },
@@ -3215,7 +3255,9 @@ export default function OrdersPage() {
             </div>
           ))}
         </div>
+        </>)}
 
+        {!isPhone && (<>
         {/* Status pill tabs */}
         <div style={{ display:'flex', gap:'4px', background:'var(--dark2)', borderRadius:'8px', padding:'3px', alignSelf:'flex-start', marginBottom:'14px', flexWrap:'wrap' }}>
           {STATUS_TABS.map(s => (
@@ -3230,6 +3272,50 @@ export default function OrdersPage() {
           ))}
         </div>
 
+        </>)}
+
+        {isPhone ? (
+          <PhoneFilterBar
+            search={search} onSearch={v => { setSearch(v); setPage(1); }} placeholder="Search order, customer, product"
+            filters={[
+              { key:'status', label:'Status', value:statusFilter, defaultValue:'all', onChange: v => { setStatusFilter(v); setPage(1); },
+                options: [
+                  { value:'all', label:'All' },
+                  ...ORDER_STAGES.map(st => ({ value:'stage:' + st.key, label:st.label })),
+                  { value:'needs_attention', label:'Needs attention' },
+                  ...ORDER_STATUS_ORDER.map(st => ({ value: st, label: statusLabel(st) })),
+                ] },
+              { key:'type', label:'Type', value:typeFilter, defaultValue:'all', onChange: v => { setTypeFilter(v); setPage(1); },
+                options: [
+                  { value:'all', label:'All types' }, { value:'produced', label:'All custom' }, { value:'request', label:'Custom (request)' },
+                  { value:'upload', label:'Custom (upload)' }, { value:'mixed', label:'Mixed cart' }, { value:'ready', label:'Ready made' },
+                ] },
+              { key:'pay', label:'Payment', value:payFilter, defaultValue:'all', onChange: v => { setPayFilter(v); setPage(1); },
+                options: [{ value:'all', label:'All' }, { value:'paid', label:'Paid' }, { value:'partial', label:'Partial' }, { value:'unpaid', label:'Unpaid' }] },
+              { key:'time', label:'Time', value:dateFilter, defaultValue:'all-time', onChange: setDateFilter,
+                options: [{ value:'all-time', label:'All time' }, { value:'today', label:'Today' }, { value:'this-week', label:'This week' }, { value:'this-month', label:'This month' }, { value:'custom', label:'Custom range' }],
+                extra: dateFilter === 'custom' && (
+                  <div style={{ display:'flex', gap:8, marginTop:10 }}>
+                    <input type="date" value={customFrom} onChange={e => setCustomFrom(e.target.value)} style={{ ...S.input, minHeight:44 }} aria-label="From" />
+                    <input type="date" value={customTo}   onChange={e => setCustomTo(e.target.value)}   style={{ ...S.input, minHeight:44 }} aria-label="To" />
+                  </div>
+                ) },
+            ]}
+            actions={<>
+              <button onClick={() => setShowJOQueue(true)} style={{ ...S.btnSmGhost, minHeight:36 }}>{ICONS.pkg} JO Queue</button>
+              <button onClick={() => setShowArchived(v => !v)}
+                style={{ ...S.btnSmGhost, minHeight:36, ...(showArchived ? { background:'#fff7ed', color:'#c2410c', borderColor:'#fdba74' } : {}) }}>
+                {showArchived ? 'Hide archived' : 'Archived'}
+              </button>
+              <button onClick={() => setShowDone(v => !v)}
+                style={{ ...S.btnSmGhost, minHeight:36, ...(showDone ? { background:'rgba(212,168,67,0.12)', color:'var(--gold)', borderColor:'rgba(212,168,67,0.35)' } : {}) }}>
+                {showDone ? 'Hide done' : 'Show done (' + counts.done + ')'}
+              </button>
+              <button onClick={() => fetchOrders()} aria-label="Refresh" style={{ ...S.btnSmGhost, minHeight:36, minWidth:36, justifyContent:'center' }}>{ICONS.reload}</button>
+            </>}
+            note={refreshing ? 'Refreshing' : `${total} order${total !== 1 ? 's' : ''}`}
+          />
+        ) : (<>
         {/* Toolbar */}
         <div style={{ ...S.card, ...S.rowBetween, marginBottom:'10px', padding:'12px 16px' }}>
           <div style={{ ...S.row, gap:'8px', flex:1 }}>
@@ -3296,12 +3382,70 @@ export default function OrdersPage() {
           </div>
         </div>
 
+        </>)}
+
         {loadError && <div style={{ ...S.note, background:'#fef2f2', border:'1px solid #fecaca', color:'#991b1b', marginBottom:'10px' }}>{loadError}</div>}
 
+        {isPhone ? (
+          <>
+            {loading ? (
+              <div style={{ ...S.card, padding:'28px 16px', textAlign:'center', color:'var(--gray)', fontSize:13 }}>Loading orders</div>
+            ) : total === 0 ? (
+              <div style={{ ...S.card, padding:0 }}><EmptyState message="No orders found" sub="Try another search or filter." /></div>
+            ) : (
+              <PhoneList>
+                {slice.map((o, i) => (
+                  <PhoneRow key={o.id} first={i === 0} muted={!!o.isArchived}
+                    onClick={() => setExpandedId(o.id)}
+                    title={orderNo(o)}
+                    chip={<StatusBadge status={o.orderStatus} />}
+                    meta={[o.customerName, o.productName].filter(Boolean).join(' - ')}
+                    sub={[
+                      `${o.quantity} pc${o.quantity === 1 ? '' : 's'}`,
+                      `₱${fmt(o.totalAmount ?? o.totalPrice)}`,
+                      o.paymentStatus ? String(o.paymentStatus).replace(/_/g, ' ') : null,
+                      o.createdAt ? new Date(o.createdAt).toLocaleDateString('en-PH', { month:'short', day:'numeric' }) : null,
+                      o.isArchived ? 'archived' : null,
+                      isExpired(o) ? 'expired' : null,
+                      deliveryRisk(o)?.label ?? null,
+                    ].filter(Boolean).join(' · ')}
+                  />
+                ))}
+              </PhoneList>
+            )}
+            {total > 0 && (
+              <div style={{ padding:'12px 0' }}>
+                <PaginationBar total={total} page={page} perPage={perPage} onPage={setPage} onPerPage={setPerPage} />
+              </div>
+            )}
+
+            {(() => {
+              const o = expandedId ? orders.find(x => x.id === expandedId) : null;
+              return (
+                <PhoneSheet open={!!o} onClose={() => setExpandedId(null)}
+                  title={o ? orderNo(o) : ''} subtitle={o ? [o.customerName, o.productName].filter(Boolean).join(' - ') : ''}
+                  chip={o ? <StatusBadge status={o.orderStatus} /> : null}>
+                  {o && (
+                    <OrderDetail
+                      o={o}
+                      token={token}
+                      onStatusUpdated={(id, updated) => {
+                        if (updated) setOrders(prev => prev.map(x => x.id === id ? { ...x, ...updated } : x));
+                        else fetchOrders(true);
+                      }}
+                      onPayment={() => setPayTarget(o)}
+                      onDelete={()  => setArchiveId(o.id)}
+                    />
+                  )}
+                </PhoneSheet>
+              );
+            })()}
+          </>
+        ) : (<>
         {/* Table */}
         <div style={{ ...S.card, padding:0, overflow:'hidden' }}>
           <div style={{ overflowX:'auto' }}>
-            <table style={{ width:'100%', borderCollapse:'collapse' }}>
+            <table className="pmp-rt" style={{ width:'100%', borderCollapse:'collapse' }}>
               <thead>
                 <tr>
                   {['','Order Ref','Type','Customer','Product','Qty','Total','Status','Payment','Date'].map((h,i) => (
@@ -3311,9 +3455,9 @@ export default function OrdersPage() {
               </thead>
               <tbody>
                 {loading ? (
-                  <tr><td colSpan={10} style={{ padding:'40px', textAlign:'center', color:'var(--gray)', fontSize:'13px' }}>Loading orders…</td></tr>
+                  <tr><td colSpan={10} data-rt="full" style={{ padding:'40px', textAlign:'center', color:'var(--gray)', fontSize:'13px' }}>Loading orders…</td></tr>
                 ) : total === 0 ? (
-                  <tr><td colSpan={10}>
+                  <tr><td colSpan={10} data-rt="full">
                     <EmptyState message="No orders found" sub="Try adjusting your search or filter." />
                   </td></tr>
                 ) : slice.map(o => {
@@ -3329,13 +3473,13 @@ export default function OrdersPage() {
                         onMouseEnter={e => !isOpen && (e.currentTarget.style.background='var(--dark2)')}
                         onMouseLeave={e => !isOpen && (e.currentTarget.style.background= isArch ? 'var(--dark2)' : '')}>
 
-                        <td style={{ ...S.td, textAlign:'center', width:'36px' }}>
+                        <td data-rt="chev" style={{ ...S.td, textAlign:'center', width:'36px' }}>
                           <Chevron open={isOpen} />
                         </td>
-                        <td style={{ ...S.td, fontFamily:'monospace', fontWeight:700, fontSize:'12px', color:'var(--gold)', whiteSpace:'nowrap' }}>
+                        <td data-rt="head" style={{ ...S.td, fontFamily:'monospace', fontWeight:700, fontSize:'12px', color:'var(--gold)', whiteSpace:'nowrap' }}>
                           {orderNo(o)}
                         </td>
-                        <td style={{ ...S.td }}>
+                        <td data-label="Type" style={{ ...S.td }}>
                           <TypeBadge isCustom={o.isCustom} items={o.items} />
                           {/* Its prices were negotiated in chat, not taken from the catalogue.
                               Worth knowing before anyone questions a figure on it. */}
@@ -3345,19 +3489,19 @@ export default function OrdersPage() {
                             </span>
                           )}
                         </td>
-                        <td style={{ ...S.td }}>
+                        <td data-label="Customer" style={{ ...S.td }}>
                           <div style={{ fontWeight:600, fontSize:'13px' }}>{o.customerName}</div>
                           {o.customerContact && <div style={{ fontSize:'11px', color:'var(--gray)' }}>{o.customerContact}</div>}
                         </td>
-                        <td style={{ ...S.td }}>
+                        <td data-label="Product" style={{ ...S.td }}>
                           <div style={{ fontSize:'13px' }}>{o.productName}</div>
                           {o.category && <div style={{ fontSize:'11px', color:'var(--gray)' }}>{o.category}</div>}
                         </td>
-                        <td style={{ ...S.td, textAlign:'center', color:'var(--gray)', fontSize:'12px' }}>{o.quantity}</td>
-                        <td style={{ ...S.td, textAlign:'center', fontWeight:700, fontFamily:'monospace', fontSize:'12px', color:'var(--gold)', whiteSpace:'nowrap' }}>
+                        <td data-label="Qty" style={{ ...S.td, textAlign:'center', color:'var(--gray)', fontSize:'12px' }}>{o.quantity}</td>
+                        <td data-label="Total" style={{ ...S.td, textAlign:'center', fontWeight:700, fontFamily:'monospace', fontSize:'12px', color:'var(--gold)', whiteSpace:'nowrap' }}>
                           ₱{fmt(o.totalAmount ?? o.totalPrice)}
                         </td>
-                        <td style={{ ...S.td, textAlign:'center' }}>
+                        <td data-label="Status" style={{ ...S.td, textAlign:'center' }}>
                           <StatusBadge status={o.orderStatus} />
                           {isArch && <span style={{ ...S.badge, fontSize:'10px', background:'var(--st-gray-bg)', color:'var(--st-gray-fg)', border:'1px solid var(--border)', marginLeft:'4px' }}>Archived</span>}
                           {isExpired(o) && <span style={{ ...S.badge, fontSize:'10px', background:'var(--st-orange-bg)', color:'var(--st-orange-fg)', border:'1px solid rgba(251,146,60,0.35)', marginLeft:'4px' }}>Expired</span>}
@@ -3368,17 +3512,17 @@ export default function OrdersPage() {
                             return <span title={risk.reason} style={{ ...S.badge, ...RISK_STYLE[risk.color], fontSize:'10px', fontWeight:700, marginLeft:'4px' }}>{risk.label}</span>;
                           })()}
                         </td>
-                        <td style={{ ...S.td, textAlign:'center' }}>
+                        <td data-label="Payment" style={{ ...S.td, textAlign:'center' }}>
                           <PayBadge status={o.paymentStatus} method={o.paymentMethod} />
                         </td>
-                        <td style={{ ...S.td, fontSize:'11px', color:'var(--gray)', whiteSpace:'nowrap' }}>
+                        <td data-label="Date" style={{ ...S.td, fontSize:'11px', color:'var(--gray)', whiteSpace:'nowrap' }}>
                           {o.createdAt ? new Date(o.createdAt).toLocaleDateString('en-PH', { month:'short', day:'numeric', year:'numeric' }) : '-'}
                         </td>
                       </tr>
 
                       {isOpen && (
                         <tr key={`${o.id}_detail`}>
-                          <td colSpan={10} style={{ padding:0 }}>
+                          <td colSpan={10} data-rt="panel" style={{ padding:0 }}>
                             <OrderDetail
                               o={o}
                               token={token}
@@ -3405,6 +3549,8 @@ export default function OrdersPage() {
             </div>
           )}
         </div>
+
+        </>)}
 
         {/* Modals */}
         {payTarget && (

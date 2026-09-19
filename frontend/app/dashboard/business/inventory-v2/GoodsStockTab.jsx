@@ -1,5 +1,6 @@
 'use client';
 import { useState, useMemo } from 'react';
+import { useIsPhone, KpiStrip, PhoneFilterBar, PhoneList, PhoneRow, PhoneSheet , pesoShort } from '@/components/dashboard/phone';
 import { S, ICONS, PaginationBar, SearchBar, StatusBadge, EmptyState, SummaryCard, usePagination, formatCurrency, formatDate, CustomSelect } from './shared';
 
 export default function GoodsStockTab({ materials, batches, badOrders }) {
@@ -40,6 +41,8 @@ export default function GoodsStockTab({ materials, batches, badOrders }) {
   }, [stockData, catFilter, statusFilter, search]);
 
   const { slice, page, perPage, total, setPage, setPerPage } = usePagination(filtered);
+  const isPhone = useIsPhone();
+  const [sheetId, setSheetId] = useState(null);
 
   const inStock  = stockData.filter(d => d.status === 'in_stock').length;
   const lowStock = stockData.filter(d => d.status === 'low_stock').length;
@@ -54,6 +57,22 @@ export default function GoodsStockTab({ materials, batches, badOrders }) {
 
   return (
     <div style={S.col}>
+      {isPhone ? (
+        <>
+          <KpiStrip items={[
+            { key:'In Stock',     label:'In stock',     value: inStock,  color:'#2e7d32', active: statusFilter === 'In Stock',     onClick: () => setStatus(statusFilter === 'In Stock' ? 'All' : 'In Stock') },
+            { key:'Low Stock',    label:'Low',          value: lowStock, color:'#b45309', active: statusFilter === 'Low Stock',    onClick: () => setStatus(statusFilter === 'Low Stock' ? 'All' : 'Low Stock') },
+            { key:'Out of Stock', label:'Out',          value: outStock, color:'#c62828', active: statusFilter === 'Out of Stock', onClick: () => setStatus(statusFilter === 'Out of Stock' ? 'All' : 'Out of Stock') },
+            { key:'val',          label:'Value',        value: pesoShort(totalVal), title: formatCurrency(totalVal) },
+          ]} />
+          <PhoneFilterBar search={search} onSearch={setSearch} placeholder="Search name or SKU"
+            filters={[
+              { key:'cat', label:'Category', value:catFilter, defaultValue:'All', onChange:setCat, options: categories.map(c => ({ value:c, label:c })) },
+              { key:'st',  label:'Stock',    value:statusFilter, defaultValue:'All', onChange:setStatus, options: ['All','In Stock','Low Stock','Out of Stock'].map(v => ({ value:v, label:v })) },
+            ]}
+            note={`${total} material${total !== 1 ? 's' : ''}`} />
+        </>
+      ) : (<>
       {/* summary */}
       <div style={{ display:'flex', gap:'12px', flexWrap:'wrap' }}>
         <SummaryCard label="In Stock"      value={inStock}  color="#2e7d32" accent />
@@ -75,10 +94,64 @@ export default function GoodsStockTab({ materials, batches, badOrders }) {
         </div>
       </div>
 
+      </>)}
+
+      {isPhone ? (
+        <>
+          {slice.length === 0 ? (
+            <div style={{ ...S.card, padding:0 }}><EmptyState message="No stock data" sub="Receive stock first." /></div>
+          ) : (
+            <PhoneList>
+              {slice.map((d, i) => (
+                <PhoneRow key={d.mat.id} first={i === 0} onClick={() => setSheetId(d.mat.id)}
+                  title={d.mat.sku} chip={<StatusBadge status={d.status} />}
+                  meta={d.mat.name}
+                  sub={[`${d.goodsStock} ${d.mat.unit}`, `min ${d.mat.minStock}`, `FIFO ${formatCurrency(d.unitCost)}`, `value ${formatCurrency(d.stockValue)}`, `${d.batches.length} batch${d.batches.length === 1 ? '' : 'es'}`].join(' \u00b7 ')} />
+              ))}
+            </PhoneList>
+          )}
+          <div style={{ padding:'12px 0' }}>
+            <PaginationBar total={total} page={page} perPage={perPage} onPage={setPage} onPerPage={setPerPage} />
+          </div>
+          {(() => {
+            const d = sheetId ? filtered.find(x => x.mat.id === sheetId) : null;
+            return (
+              <PhoneSheet open={!!d} onClose={() => setSheetId(null)} title={d?.mat.sku ?? ''} subtitle={d?.mat.name ?? ''} chip={d ? <StatusBadge status={d.status} /> : null}>
+                {d && (
+                  <div style={{ padding: 14 }}>
+                    <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:14 }}>
+                      {[['Goods stock', `${d.goodsStock} ${d.mat.unit}`], ['Minimum', `${d.mat.minStock} ${d.mat.unit}`], ['FIFO cost', formatCurrency(d.unitCost)], ['Stock value', formatCurrency(d.stockValue)]].map(([l, v]) => (
+                        <div key={l} style={{ ...S.cardSm, padding:'10px 12px' }}>
+                          <div style={{ fontSize:10.5, fontWeight:700, color:'var(--gray)', textTransform:'uppercase', letterSpacing:'.4px' }}>{l}</div>
+                          <div style={{ fontSize:16, fontWeight:700, marginTop:2 }}>{v}</div>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ fontSize:'12px', fontWeight:600, color:'var(--gray)', marginBottom:'8px', textTransform:'uppercase', letterSpacing:'.4px' }}>Batch history (FIFO order)</div>
+                    {d.batches.length === 0 ? (
+                      <div style={{ fontSize:13, color:'var(--gray)' }}>No batches received yet.</div>
+                    ) : (
+                      <PhoneList>
+                        {d.batches.map((b, i) => (
+                          <PhoneRow key={b.id} first={i === 0} mono={false}
+                            title={formatDate(b.date)}
+                            chip={<span style={{ fontSize:12, fontWeight:700, color: b.remainingQty < b.qtyReceived ? '#b45309' : '#2e7d32' }}>{b.remainingQty}/{b.qtyReceived} left</span>}
+                            meta={[b.invoiceNo, b.vendorName].filter(Boolean).join(' \u00b7 ')}
+                            sub={[`${b.qtyReceived} ${d.mat.unit} at ${formatCurrency(b.unitCost)}`, b.notes].filter(Boolean).join(' \u00b7 ')} />
+                        ))}
+                      </PhoneList>
+                    )}
+                  </div>
+                )}
+              </PhoneSheet>
+            );
+          })()}
+        </>
+      ) : (<>
       {/* table */}
       <div style={{ ...S.card, padding:0, overflow:'hidden' }}>
         <div style={{ overflowX:'auto' }}>
-          <table style={{ width:'100%', borderCollapse:'collapse' }}>
+          <table className="pmp-rt" style={{ width:'100%', borderCollapse:'collapse' }}>
             <thead>
               <tr>
                 <th style={{ ...S.th, width:'30px' }}></th>
@@ -159,6 +232,7 @@ export default function GoodsStockTab({ materials, batches, badOrders }) {
           <PaginationBar total={total} page={page} perPage={perPage} onPage={setPage} onPerPage={setPerPage} />
         </div>
       </div>
+      </>)}
     </div>
   );
 }

@@ -206,6 +206,9 @@ function normalizeOrder(apiOrder) {
     designRejectionReason: apiOrder.designRejectionReason || null,
     adminDesignUrl:        apiOrder.adminDesignUrl || null,
     adminDesignUrls:       apiOrder.adminDesignUrls || null,
+    // Informational mockups sent after approval. The API sends them; dropping them here left
+    // the admin panel with no record of a mockup it had just sent.
+    mockups:               Array.isArray(apiOrder.mockups) ? apiOrder.mockups : [],
     revisionNotes:         apiOrder.revisionNotes || null,
     requiresDownpayment:   !!apiOrder.requiresDownpayment,
     downpaymentPercent:    apiOrder.downpaymentPercent ?? null,

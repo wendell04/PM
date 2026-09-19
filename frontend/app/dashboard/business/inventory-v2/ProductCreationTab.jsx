@@ -158,7 +158,7 @@ export default function ProductCreationTab({ boms, setBoms, materials, batches, 
       {/* table */}
       <div style={{ ...S.card, padding:0, overflow:'hidden' }}>
         <div style={{ overflowX:'auto' }}>
-          <table style={{ width:'100%', borderCollapse:'collapse' }}>
+          <table className="pmp-rt" style={{ width:'100%', borderCollapse:'collapse' }}>
             <thead>
               <tr>
                 {[{l:'Product Name'},{l:'Materials (BOM)'},{l:'Est. Cost',r:true},{l:'',r:true}].map(h => (

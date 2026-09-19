@@ -487,7 +487,11 @@ class OrderRequestController extends Controller
     public function adminQuote(Request $request)
     {
         $user = $request->user();
-        if (!$user || !in_array($user->role ?? null, ['admin', 'owner'])) {
+        // Checked against the permission grid, not against role NAMES. The hard-coded list refused
+        // every staff role - including Administrator, whose own role template grants Order Requests
+        // in full - so a shop that had set someone up to handle quotations could not send one, and
+        // the reply was a bare "Forbidden".
+        if (!$this->hasPermission($request, 'orderRequests.create')) {
             return $this->unauthorizedResponse();
         }
 
@@ -725,7 +729,7 @@ class OrderRequestController extends Controller
     private function actionableQuote(Request $request, string $id)
     {
         $user = $request->user();
-        if (!$user || !in_array($user->role ?? null, ['admin', 'owner'])) {
+        if (!$this->hasPermission($request, 'orderRequests.edit')) {
             return [null, $this->unauthorizedResponse()];
         }
         $req = OrderRequest::find($id);

@@ -447,7 +447,7 @@ export function PaginationBar({ total, page, perPage, onPage, onPerPage }) {
       <span style={{ fontSize:'12px', color:'var(--gray)' }}>
         {total === 0 ? 'No items' : `Showing ${from}-${to} of ${total}`}
       </span>
-      <div style={{ display:'flex', alignItems:'center', gap:'6px' }}>
+      <div className="pmp-pager" style={{ display:'flex', alignItems:'center', gap:'6px' }}>
         <span style={{ fontSize:'12px', color:'var(--gray)', marginRight:'4px' }}>Rows per page:</span>
         {[10, 25, 50].map(n => (
           <button key={n} onClick={() => { onPerPage(n); onPage(1); }}
@@ -506,7 +506,7 @@ export function EmptyState({ icon, message, sub }) {
 // ── SummaryCard ───────────────────────────────────────────────────────────────
 export function SummaryCard({ label, value, sub, color = 'var(--white)', accent = false }) {
   return (
-    <div style={{ ...S.cardSm, flex:1, minWidth:'140px', borderTop: accent ? '3px solid var(--gold)' : undefined }}>
+    <div className="pmp-stat" style={{ ...S.cardSm, flex:1, minWidth:'140px', borderTop: accent ? '3px solid var(--gold)' : undefined }}>
       <div style={{ fontSize:'11px', fontWeight:600, color:'var(--gray)', textTransform:'uppercase', letterSpacing:'.5px', marginBottom:'6px' }}>{label}</div>
       <div style={{ fontSize:'22px', fontWeight:700, color }}>{value}</div>
       {sub && <div style={{ fontSize:'11px', color:'var(--gray)', marginTop:'3px' }}>{sub}</div>}

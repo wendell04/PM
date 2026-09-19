@@ -14,6 +14,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "../../../contexts/AuthContext";
+import { watchTableLabels } from "@/lib/tableCards";
 import { useTheme } from "../../../contexts/ThemeContext";
 import useLockBodyScroll from "@/lib/useLockBodyScroll";
 import "./admin-dashboard.css";
@@ -39,6 +40,14 @@ export default function BusinessDashboardLayout({ children }) {
   const currentTab = searchParams.get('tab');
   const { logout, currentUser, updateUser, token } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  // Every `table.pmp-rt` under the page gets its phone-card labels from its own headers, and
+  // keeps them through re-renders. A callback ref, not an effect: this layout renders null until
+  // the session is known, so <main> does not exist on the first commit.
+  const stopTableWatch = useRef(null);
+  const pageContentRef = useCallback((node) => {
+    stopTableWatch.current?.();
+    stopTableWatch.current = node ? watchTableLabels(node) : null;
+  }, []);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [permissions, setPermissions] = useState(null);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -730,6 +739,7 @@ export default function BusinessDashboardLayout({ children }) {
       "/dashboard/business/dashboardoverview": "Dashboard",
       "/dashboard/business/home": "Home",
       "/dashboard/business/orders": "Orders",
+      "/dashboard/business/order-requests": "Order Requests",
       "/dashboard/business/job-orders": "Job Orders",
       "/dashboard/business/pos": "Point of Sale",
       "/dashboard/business/inventory-v2": "Inventory",
@@ -1230,6 +1240,7 @@ export default function BusinessDashboardLayout({ children }) {
 
               {notifOpen && (
                 <div
+                  className="notif-panel"
                   style={{
                     position: "absolute",
                     top: "calc(100% + 8px)",
@@ -1452,8 +1463,72 @@ export default function BusinessDashboardLayout({ children }) {
           </div>
         </header>
 
+        {/* The section strip, phone only. A bottom tab stands for a SECTION - Inventory is Master
+            Data, Overview, To Buy and Bad Orders - so landing on one module must show its
+            siblings, or the rest are hidden behind More. The standard fix is a sub-navigation
+            row under the top bar (Shopify's Orders has All / Drafts / Abandoned the same way),
+            not a second menu. Built from the sidebar's own groups and gates, so it can never
+            show a module the sidebar would not. */}
+        {(() => {
+          const sections = [];
+          let cur = null;
+          for (const item of navItems) {
+            if (item.type === "divider") { cur = { label: item.label, items: [] }; sections.push(cur); continue; }
+            if (!cur) { cur = { label: "", items: [] }; sections.push(cur); }
+            if (item.adminOnly && !isAdminOwner) continue;
+            const ok = isAdminOwner || (item.marketingGroup ? (can("flashSales") || can("vouchers")) : can(item.permKey ?? "dashboard"));
+            if (ok && item.href) cur.items.push(item);
+          }
+          // The same test the sidebar uses: a plain path, or a path plus its ?tab= family.
+          const here = (it) => (it.matchTabs && currentTab && it.matchTabs.includes(currentTab))
+            || pathname === it.href
+            || (pathname + (currentTab ? `?tab=${currentTab}` : "")) === it.href;
+          const section = sections.find(sec => sec.items.some(here));
+          if (!section || section.items.length < 2) return null;
+          return (
+            <nav className="phone-section-strip" aria-label={section.label + " modules"}>
+              {section.items.map(it => (
+                <Link key={it.href} href={it.href} className={"phone-section-pill" + (here(it) ? " is-active" : "")}>{it.name}</Link>
+              ))}
+            </nav>
+          );
+        })()}
+
         {/* Page content */}
-        <main className="admin-page-content">{children}</main>
+        <main className="admin-page-content" ref={pageContentRef}>{children}</main>
+
+        {/* The bottom tab bar, phone only (the stylesheet hides it above 700px). Shopify's admin
+            and the Shopee Seller app both put the four or five places a thumb goes at the bottom;
+            the hamburger drawer stays for everything else, behind More. Only tabs the person can
+            actually open are shown - the same gate the sidebar uses. */}
+        {(() => {
+          const tabs = [
+            { name: "Home",       href: "/dashboard/business/home",               permKey: "dashboard", d: "M3 12l9-8 9 8M5 10v10h5v-6h4v6h5V10" },
+            { name: "Orders",     href: "/dashboard/business/orders",             permKey: "orders",    d: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" },
+            { name: "Production", href: "/dashboard/business/production-preview", permKey: "jobOrders", alt: "production", d: "M12 8v4l3 3M21 12a9 9 0 11-18 0 9 9 0 0118 0z" },
+            { name: "Inventory",  href: "/dashboard/business/inventory-v2?tab=materials", permKey: "inventory", d: "M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" },
+          ].filter(t => isAdminOwner || can(t.permKey) || (t.alt && can(t.alt)));
+          // A tab is lit for its whole section, not only its landing module.
+          const tabSection = { "/dashboard/business/home": ["/dashboard/business/home", "/dashboard/business/dashboardoverview"],
+            "/dashboard/business/orders": ["/dashboard/business/orders", "/dashboard/business/pos", "/dashboard/business/job-orders", "/dashboard/business/order-requests"],
+            "/dashboard/business/production-preview": ["/dashboard/business/production-preview", "/dashboard/business/qc-preview"],
+            "/dashboard/business/inventory-v2?tab=materials": ["/dashboard/business/inventory-v2", "/dashboard/business/to-buy"] };
+          const active = (t) => (tabSection[t.href] ?? [t.href.split("?")[0]]).some(pth => pathname === pth || pathname.startsWith(pth + "/"));
+          return (
+            <nav className="phone-tabbar" aria-label="Main">
+              {tabs.map(t => (
+                <Link key={t.href} href={t.href} className={"phone-tab" + (active(t) ? " is-active" : "")}>
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d={t.d} /></svg>
+                  <span>{t.name}</span>
+                </Link>
+              ))}
+              <button type="button" className={"phone-tab" + (sidebarOpen ? " is-active" : "")} onClick={() => setSidebarOpen(true)}>
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round"><line x1="4" y1="7" x2="20" y2="7" /><line x1="4" y1="12" x2="20" y2="12" /><line x1="4" y1="17" x2="20" y2="17" /></svg>
+                <span>More</span>
+              </button>
+            </nav>
+          );
+        })()}
       </div>
 
       {/* My Profile â€” read-only display card */}

@@ -1148,8 +1148,9 @@ export default function SettingsPage() {
     <ErrorBoundary>
       <div className="page-content-wrapper">
 
-        <div style={{ display: 'flex', gap: '2rem', alignItems: 'flex-start' }}>
+        <div className="settings-shell" style={{ display: 'flex', gap: '2rem', alignItems: 'flex-start' }}>
           <nav
+            className="settings-tabs"
             aria-label="Settings sections"
             style={{
               width: 200,
@@ -1208,7 +1209,7 @@ export default function SettingsPage() {
           <div style={{ flex: 1, minWidth: 0 }}>
 
           {activeTab === 'profile' && (
-          <div style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: '1.5rem', alignItems: 'start' }}>
+          <div className="pmp-cols" style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: '1.5rem', alignItems: 'start' }}>
 
             {/* ── Left: Avatar sidebar card ──────────────────── */}
             <div style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden' }}>
@@ -1290,7 +1291,7 @@ export default function SettingsPage() {
                   <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--white)' }}>Identity</span>
                   <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>- Your name as it appears on your account.</span>
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
+                <div className="pmp-cols" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
                   {[{ label: 'First Name', value: profileForm.firstName }, { label: 'Last Name', value: profileForm.lastName }].map(({ label, value }, i) => (
                     <div key={label} style={{ padding: '1rem 1.25rem', borderRight: i === 0 ? '1px solid var(--border)' : 'none' }}>
                       <div style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.35rem' }}>{label}</div>
@@ -1314,7 +1315,7 @@ export default function SettingsPage() {
                   </div>
                   <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '2px 8px', borderRadius: '4px', border: '1px solid var(--border)', color: 'var(--gray)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>Locked</span>
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
+                <div className="pmp-cols" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
                   {[{ label: 'Phone Number', value: profileForm.phoneNumber }, { label: 'Address', value: profileForm.address }].map(({ label, value }, i) => (
                     <div key={label} style={{ padding: '1rem 1.25rem', borderRight: i === 0 ? '1px solid var(--border)' : 'none' }}>
                       <div style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.35rem' }}>{label}</div>
@@ -1826,14 +1827,36 @@ export default function SettingsPage() {
         </div>
       )}
       <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-        {['brevo', 'resend'].map(p => (
+        {[['security_lane', 'Test the way codes go'], ['brevo', 'Send a test through Brevo'], ['resend', 'Send a test through Resend']].map(([p, label]) => (
           <button key={p} type="button" onClick={() => runMailTest(p)} disabled={!!mailTest.busy}
-            style={{ padding: '8px 14px', borderRadius: '8px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--white)', fontWeight: 600, fontSize: '0.8rem', cursor: mailTest.busy ? 'not-allowed' : 'pointer', opacity: mailTest.busy && mailTest.busy !== p ? 0.5 : 1 }}>
-            {mailTest.busy === p ? 'Sending...' : `Send a test through ${p === 'brevo' ? 'Brevo' : 'Resend'}`}
+            style={{ padding: '8px 14px', borderRadius: '8px', border: `1px solid ${p === 'security_lane' ? 'var(--gold)' : 'var(--border)'}`, background: 'transparent', color: p === 'security_lane' ? 'var(--gold)' : 'var(--white)', fontWeight: p === 'security_lane' ? 700 : 600, fontSize: '0.8rem', cursor: mailTest.busy ? 'not-allowed' : 'pointer', opacity: mailTest.busy && mailTest.busy !== p ? 0.5 : 1 }}>
+            {mailTest.busy === p ? 'Sending...' : label}
           </button>
         ))}
       </div>
-      {mailTest.result && (
+      {/* The lane test walks the chain itself, so it can say what the failover never does: which
+          provider refused, in its own words, and which one ended up carrying the mail. */}
+      {mailTest.result?.attempts && (
+        <div style={{ padding: '10px 12px', borderRadius: '8px', fontSize: '0.8rem', lineHeight: 1.6,
+          background: mailTest.result.ok ? 'rgba(74,222,128,0.08)' : 'rgba(239,68,68,0.08)',
+          border: `1px solid ${mailTest.result.ok ? 'rgba(74,222,128,0.3)' : 'rgba(239,68,68,0.3)'}` }}>
+          <div style={{ fontWeight: 700, color: mailTest.result.ok ? 'var(--green)' : 'var(--red)' }}>
+            {mailTest.result.ok
+              ? `This lane is being carried by ${mailTest.result.carried === 'brevo' ? 'Brevo' : mailTest.result.carried}`
+              : 'Every provider in this lane refused'}
+          </div>
+          <div style={{ color: 'var(--gray)' }}>From {mailTest.result.from} to {mailTest.result.to}</div>
+          {mailTest.result.attempts.map((a, i) => (
+            <div key={i} style={{ marginTop: 6 }}>
+              <span style={{ color: a.ok ? 'var(--green)' : 'var(--red)', fontWeight: 600 }}>
+                {i + 1}. {a.provider === 'brevo' ? 'Brevo' : a.provider === 'resend' ? 'Resend' : a.provider} {a.ok ? `sent it in ${a.ms} ms` : 'refused'}
+              </span>
+              {!a.ok && <div style={{ color: 'var(--white)', fontFamily: 'monospace', fontSize: '0.74rem', wordBreak: 'break-word' }}>{a.error}</div>}
+            </div>
+          ))}
+        </div>
+      )}
+      {mailTest.result && !mailTest.result.attempts && (
         <div style={{ padding: '10px 12px', borderRadius: '8px', fontSize: '0.8rem', lineHeight: 1.55,
           background: mailTest.result.ok ? 'rgba(74,222,128,0.08)' : 'rgba(239,68,68,0.08)',
           border: `1px solid ${mailTest.result.ok ? 'rgba(74,222,128,0.3)' : 'rgba(239,68,68,0.3)'}` }}>
@@ -1949,7 +1972,7 @@ export default function SettingsPage() {
                   </label>
                   {/* The same Philippine Standard Geographic Code lists customers choose from, so the
                       shop's address is as exact as theirs without needing a map. */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                  <div className="pmp-cols" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
                     <div className="profile-form-field">
                       <label>Region</label>
                       <CustomSelect
@@ -2119,13 +2142,13 @@ export default function SettingsPage() {
                   return (
                     // Two columns rather than one 480px-capped grid with empty space beside it: the
                     // live example earns the room a fixed-width field grid was leaving blank.
-                    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(220px, 320px)', gap: '1.5rem', alignItems: 'start' }}>
+                    <div className="pmp-cols" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(220px, 320px)', gap: '1.5rem', alignItems: 'start' }}>
                       {/* Shaped after how motorcycle courier apps (Lalamove, Grab) actually price a trip in
                           Metro Manila: a base fare, a steeper per-km rate for a short first stretch, then a
                           lower per-km rate beyond it. Lalamove's own published Metro Manila motorcycle rate
                           is ₱49 base + ₱6/km for the first 5 km + ₱5/km after - the defaults here. A single
                           flat per-km rate the whole trip was a shape no real courier prices with. */}
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                      <div className="pmp-cols" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                         <div className="profile-form-field">
                           <label>Base Rate (₱) <span className="required">*</span></label>
                           <input
@@ -2251,7 +2274,7 @@ export default function SettingsPage() {
                     mug rather than a totebag - so this is charged ONCE per order however
                     many customised products share the same artwork. A product can still
                     override it for genuinely harder work. */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 320px) minmax(0, 1fr)', gap: '1rem 1.5rem', alignItems: 'start', marginBottom: '1.25rem' }}>
+                <div className="pmp-cols" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 320px) minmax(0, 1fr)', gap: '1rem 1.5rem', alignItems: 'start', marginBottom: '1.25rem' }}>
                   <div>
                   <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: 'var(--gray-light)', marginBottom: '0.35rem' }}>
                     Design fee (₱)
@@ -2294,7 +2317,7 @@ export default function SettingsPage() {
                   ))}
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 320px) minmax(0, 1fr)', gap: '1rem 1.5rem', alignItems: 'start', marginBottom: '1.25rem' }}>
+                <div className="pmp-cols" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 320px) minmax(0, 1fr)', gap: '1rem 1.5rem', alignItems: 'start', marginBottom: '1.25rem' }}>
                   <div>
                   <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: 'var(--gray-light)', marginBottom: '0.35rem' }}>
                     Days to pay the deposit
@@ -2316,7 +2339,7 @@ export default function SettingsPage() {
                     for at all. They hold stock just as hard as an approved order does, and nothing else
                     in the system ever lets go of it. Orders whose design fee HAS cleared are exempt -
                     the designer is working and the customer has already paid. */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 320px) minmax(0, 1fr)', gap: '1rem 1.5rem', alignItems: 'start', marginBottom: '1.25rem' }}>
+                <div className="pmp-cols" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 320px) minmax(0, 1fr)', gap: '1rem 1.5rem', alignItems: 'start', marginBottom: '1.25rem' }}>
                   <div>
                   <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: 'var(--gray-light)', marginBottom: '0.35rem' }}>
                     Days before an unpaid order lapses

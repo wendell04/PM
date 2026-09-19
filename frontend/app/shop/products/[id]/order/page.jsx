@@ -14,6 +14,7 @@ import { uploadDesignFile } from '@/lib/orderRequestApi';
 import { useCart } from '@/context/CartContext';
 import useLockBodyScroll from '@/lib/useLockBodyScroll';
 import { compressImage } from '@/lib/compressImage';
+import { makeThumbnail } from '@/lib/thumbnail';
 import { DEFAULT_CUSTOM_ORDER_TERMS, renderTermsBody } from '@/lib/customOrderTerms';
 
 const METRO_CITIES = ['Manila', 'Quezon City', 'Caloocan', 'Las Piñas', 'Makati', 'Malabon', 'Mandaluyong', 'Marikina', 'Muntinlupa', 'Navotas', 'Parañaque', 'Pasay', 'Pasig', 'Pateros', 'San Juan', 'Taguig', 'Valenzuela'];
@@ -116,6 +117,12 @@ function CustomOrderInner() {
   const { id } = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
+  // The query is only ever read to SEED this page (quantity, variant and options picked on the
+  // product page). Keeping the live object in the fetch effect's dependency list means any change of
+  // its identity re-runs the effect, which sets loading back to true - the whole page drops to the
+  // loading skeleton and re-seeds itself from the URL, discarding what the customer had entered.
+  // A ref freezes the first value, which is the only one that matters.
+  const initialParamsRef = useRef(searchParams);
   const { token, currentUser: authUser } = useAuth();
   const { addToCart } = useCart();
 
@@ -247,6 +254,7 @@ function CustomOrderInner() {
 
   useEffect(() => {
     if (!id) return;
+    const seedParams = initialParamsRef.current;
     setLoading(true);
     fetchWithTimeout(`${API_URL}/api/products/${id}`, {}, 30000)
       .then(r => r.json())
@@ -258,7 +266,7 @@ function CustomOrderInner() {
         // Carry over what was already chosen on the product page; fall back to
         // the first option / MOQ when the page is opened directly.
         const moq = p.minOrderQty || 1;
-        const qtyParam = parseInt(searchParams.get('qty'), 10);
+        const qtyParam = parseInt(seedParams.get('qty'), 10);
         const startQty = Number.isFinite(qtyParam) && qtyParam >= moq ? qtyParam : moq;
         setQuantity(startQty);
         setQuantityInput(String(startQty));
@@ -267,7 +275,7 @@ function CustomOrderInner() {
           const initial = {};
           p.variantGroups.forEach(g => {
             if (!g.options?.length) return;
-            const fromUrl = searchParams.get(`v_${g.id}`);
+            const fromUrl = seedParams.get(`v_${g.id}`);
             const valid = g.options.map(optValue);
             initial[g.id] = fromUrl && valid.includes(fromUrl) ? fromUrl : valid[0];
           });
@@ -280,7 +288,7 @@ function CustomOrderInner() {
         const optInit = {};
         optionGroupsOf(p).forEach((g, gi) => {
           const gk = groupKey(g, gi);
-          const fromUrl = searchParams.get(`o_${gk}`);
+          const fromUrl = seedParams.get(`o_${gk}`);
           const valid = g.options.map((o, oi) => optionKey(o, oi));
           if (fromUrl && valid.includes(fromUrl)) optInit[gk] = fromUrl;
         });
@@ -288,7 +296,7 @@ function CustomOrderInner() {
       })
       .catch(() => setLoadError('Product not found.'))
       .finally(() => setLoading(false));
-  }, [id, router, searchParams]);
+  }, [id, router]);
 
   useEffect(() => {
     fetch(`${API_URL}/api/public/settings`)
@@ -528,12 +536,25 @@ function CustomOrderInner() {
       key: `f_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
       name: file.name,
       size: file.size,
-      preview: file.type?.startsWith('image/') ? URL.createObjectURL(file) : null,
+      // Filled in below, once a SMALL copy exists. Pointing this at the original file would make the
+      // tile decode the whole photo - see lib/thumbnail.js for why that ends the session on a phone.
+      preview: null,
       url: null,
       uploading: true,
       file,
     }));
     setDesignFiles(prev => [...prev, ...entries]);
+
+    // Thumbnails first and in parallel with nothing else: a tile with no preview shows the file icon
+    // meanwhile, so the customer sees the file land immediately either way.
+    entries.forEach(entry => {
+      makeThumbnail(entry.file).then(preview => {
+        if (!preview) return;
+        setDesignFiles(prev => prev.some(f => f.key === entry.key)
+          ? prev.map(f => (f.key === entry.key ? { ...f, preview } : f))
+          : (URL.revokeObjectURL(preview), prev));
+      });
+    });
 
     for (const entry of entries) {
       try {
@@ -1106,7 +1127,7 @@ function CustomOrderInner() {
             if (cameFromPdp && typeof window !== 'undefined' && window.history.length > 1) router.back();
             else router.replace(`/shop/products/${id}`);
           }}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: 'var(--gray)', fontSize: '0.85rem', background: 'none', border: 'none', padding: 0, cursor: 'pointer', marginBottom: '1.5rem', fontFamily: 'inherit' }}>
+          style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: 'var(--gray)', fontSize: '0.85rem', background: 'none', border: 'none', padding: '9px 10px 9px 0', cursor: 'pointer', marginBottom: '1.1rem', fontFamily: 'inherit', minHeight: '40px' }}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="15 18 9 12 15 6"/></svg>
           Back to Product
         </button>
@@ -1155,7 +1176,7 @@ function CustomOrderInner() {
                   ))}
                   <Link
                     href={`/shop/products/${id}`}
-                    style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--gold)', textDecoration: 'none' }}
+                    style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--gold)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', minHeight: '40px', padding: '0 4px' }}
                   >
                     Change variant
                   </Link>
@@ -1238,20 +1259,6 @@ function CustomOrderInner() {
                 </button>
               </div>
 
-              <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginBottom: '1.1rem',
-                padding: '9px 11px', borderRadius: 8, background: 'rgba(212,168,67,0.06)',
-                border: '1px solid rgba(212,168,67,0.2)' }}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#D4A843" strokeWidth="2"
-                  style={{ flexShrink: 0, marginTop: 2 }}>
-                  <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
-                </svg>
-                <span style={{ fontSize: '0.75rem', color: 'var(--gray)', lineHeight: 1.55 }}>
-                  <strong style={{ color: 'var(--white)' }}>Not sure?</strong> Choose{' '}
-                  <strong style={{ color: 'var(--white)' }}>I have a design</strong> and message us -
-                  we will look at your file and tell you if it needs work.{' '}
-                  <strong style={{ color: 'var(--white)' }}>The design fee is only charged if you agree to it.</strong>
-                </span>
-              </div>
 
               {/* One picker, both modes: the artwork on an upload, the references on a request. */}
               <input ref={fileInputRef} type="file" multiple accept=".jpg,.jpeg,.png,.webp,.pdf,.ai,.psd,.svg"
@@ -1344,8 +1351,14 @@ function CustomOrderInner() {
                   <p style={{ fontSize: '0.73rem', color: 'var(--gray)', lineHeight: 1.6, marginTop: '0.6rem', marginBottom: 0 }}>
                     <strong style={{ color: 'var(--white)' }}>For a sharp print:</strong> send it at 300 dpi or higher,
                     already sized for this item, with text and logos unstretched. Screen colours (RGB) always shift a
-                    little in print (CMYK). We print your file as it is - we do not redraw or resize it unless you ask
-                    for a design request.
+                    little in print (CMYK).
+                  </p>
+                  {/* The customer pays before anyone has looked at the file, so the one thing they need to know
+                      here is that a file which cannot be printed is not a lost payment. Without this, a rejection
+                      after payment reads as the shop keeping the money. */}
+                  <p style={{ fontSize: '0.73rem', color: 'var(--gray)', lineHeight: 1.6, marginTop: '0.5rem', marginBottom: 0 }}>
+                    We check your file before we print it. If it will not come out well, we message you and you can
+                    send a better one - your payment stays on the order and nothing is printed until it is right.
                   </p>
 
                   {product.designFormats?.length > 0 && (

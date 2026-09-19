@@ -82,14 +82,74 @@ class SettingsController extends Controller
      * refusal is logged (or not, depending on the host) and the next provider quietly carries the
      * mail, so "is Resend working?" could only be answered by reading two dashboards and guessing.
      */
+    /**
+     * Shop-level settings - shipping rates, terms, the store's own details - belong to the owner
+     * (and the super admin who administers the system). The settings screen already hid those
+     * tabs from staff; the endpoints behind them did not check, and each wrote onto the OWNER's
+     * record for whoever called. A screen that hides a tab is not a permission.
+     */
+    private function ownsShop(Request $request): bool
+    {
+        $u = $request->user();
+        return $u && (\App\Support\Rbac::isSuperAdmin($u) || \App\Support\Rbac::isOwner($u));
+    }
+
     public function mailTest(Request $request)
     {
         try {
             if (!\App\Support\Rbac::isSuperAdmin($request->user()) && !\App\Support\Rbac::isOwner($request->user())) {
                 return $this->unauthorizedResponse();
             }
-            $validated = $request->validate(['provider' => 'required|in:brevo,resend']);
+            $validated = $request->validate(['provider' => 'required|in:brevo,resend,security_lane,notification_lane']);
             $provider  = $validated['provider'];
+
+            // The lane tests walk the configured chain BY HAND instead of handing the message to the
+            // failover transport. The failover's whole job is to hide which provider carried a mail -
+            // it catches the refusal, moves on, and reports success either way - so with it there is
+            // no answer to "who actually sent my code?" short of reading two dashboards and a clock.
+            // Here each provider in the chain is tried in order and its own answer recorded, so one
+            // click shows the refusal text AND which provider ended up carrying it.
+            if (in_array($provider, ['security_lane', 'notification_lane'], true)) {
+                $lanes = $this->mailLanes();
+                $chain = $provider === 'security_lane' ? $lanes['security'] : $lanes['notifications'];
+                $to    = (string) (config('mail.admin_recipient') ?: config('mail.from.address'));
+                $from  = $provider === 'security_lane'
+                    ? (config('mail.security_from.address') ?: config('mail.from.address'))
+                    : config('mail.from.address');
+
+                $attempts = [];
+                $carried  = null;
+                foreach ($chain as $one) {
+                    $t0 = microtime(true);
+                    try {
+                        \Illuminate\Support\Facades\Mail::mailer($one)
+                            ->raw('Lane test from the dashboard at ' . now()->format('Y-m-d H:i:s') . '. Nothing to do.', function ($m) use ($to, $from, $provider) {
+                                $m->to($to)->from($from, config('mail.from.name', 'Personalize Me Prints'))
+                                  ->subject('Lane test - ' . str_replace('_', ' ', $provider));
+                            });
+                        $attempts[] = ['provider' => $one, 'ok' => true, 'ms' => (int) round((microtime(true) - $t0) * 1000)];
+                        $carried    = $one;
+                        break;
+                    } catch (\Throwable $e) {
+                        $attempts[] = [
+                            'provider' => $one,
+                            'ok'       => false,
+                            'ms'       => (int) round((microtime(true) - $t0) * 1000),
+                            'error'    => mb_substr($e->getMessage(), 0, 600),
+                        ];
+                    }
+                }
+
+                return $this->successResponse($carried ? 'Sent.' : 'Every provider in this lane refused.', [
+                    'ok'       => $carried !== null,
+                    'lane'     => $provider,
+                    'chain'    => $chain,
+                    'carried'  => $carried,
+                    'attempts' => $attempts,
+                    'from'     => $from,
+                    'to'       => $to,
+                ]);
+            }
             $to        = (string) (config('mail.admin_recipient') ?: config('mail.from.address'));
             $from      = $provider === 'resend'
                 ? (config('mail.security_from.address') ?: config('mail.from.address'))
@@ -216,7 +276,7 @@ class SettingsController extends Controller
     public function shippingUpdate(Request $request)
     {
         try {
-            if (!$request->user()) return $this->unauthorizedResponse();
+            if (!$this->ownsShop($request)) return $this->unauthorizedResponse();
 
             $owner = $this->getOwner();
             if (!$owner) return $this->serverErrorResponse(new \Exception('No owner'), 'Store owner not found.');
@@ -342,7 +402,7 @@ class SettingsController extends Controller
     public function registrationTermsUpdate(Request $request)
     {
         try {
-            if (!$request->user()) return $this->unauthorizedResponse();
+            if (!$this->ownsShop($request)) return $this->unauthorizedResponse();
             $owner = $this->getOwner();
             if (!$owner) return $this->serverErrorResponse(new \Exception('No owner'), 'Store owner not found.');
 
@@ -401,7 +461,7 @@ class SettingsController extends Controller
     public function termsUpdate(Request $request)
     {
         try {
-            if (!$request->user()) return $this->unauthorizedResponse();
+            if (!$this->ownsShop($request)) return $this->unauthorizedResponse();
             $owner = $this->getOwner();
             if (!$owner) return $this->serverErrorResponse(new \Exception('No owner'), 'Store owner not found.');
 
@@ -438,7 +498,7 @@ class SettingsController extends Controller
     {
         try {
             $user = $request->user();
-            if (!$user) return $this->unauthorizedResponse();
+            if (!$user || !$this->ownsShop($request)) return $this->unauthorizedResponse();
 
             $request->validate([
                 'storeName'         => 'required|string|min:2|max:100',

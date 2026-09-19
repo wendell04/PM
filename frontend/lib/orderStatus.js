@@ -91,6 +91,27 @@ export function isTerminal(v) {
 }
 
 // Tab/filter order for admin lists (prepend 'all' in the UI).
+// The nine statuses grouped the way a shop actually thinks about its day - the way the Shopee
+// seller app shows To Ship / Shipping / Completed. Nine cards of one status each put "For
+// Delivery: 0" next to three orders sitting in Ready for Delivery; a stage answers the
+// question the number was for.
+export const ORDER_STAGES = [
+  { key: 'todo',   label: 'To do',   statuses: ['pending', 'processing'] },
+  { key: 'making', label: 'Making',  statuses: ['in_production', 'for_qc'] },
+  { key: 'toship', label: 'To ship', statuses: ['ready_for_delivery', 'for_delivery'] },
+  { key: 'done',   label: 'Done',    statuses: ['delivered', 'returned', 'cancelled'] },
+];
+
+export function stageOf(v) {
+  const code = normalizeStatus(v);
+  return ORDER_STAGES.find(st => st.statuses.includes(code))?.key ?? 'todo';
+}
+
+/** Delivered, returned or cancelled - nothing left for the shop to do. */
+export function isDone(v) {
+  return stageOf(v) === 'done';
+}
+
 export const ORDER_STATUS_ORDER = [
   'pending', 'processing', 'in_production', 'for_qc',
   'ready_for_delivery', 'for_delivery', 'delivered', 'returned', 'cancelled',

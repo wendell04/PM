@@ -69,6 +69,7 @@ export default function StaffHome() {
   const [ssaRev, setSsaRev] = useState(null);
   const [ssaQty, setSsaQty] = useState(null);
   const [months, setMonths]   = useState(6);
+  const [stock, setStock] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState('');
 
@@ -79,13 +80,16 @@ export default function StaffHome() {
     const headers = { Authorization: `Bearer ${token}`, Accept: 'application/json' };
     // Settled, not all-or-nothing: a reader who cannot see inventory must still get their orders,
     // and the old page rendered zeros when a single call failed.
-    const [o, b, p, c, sl] = await Promise.allSettled([
+    const [o, b, p, c, sl, inv] = await Promise.allSettled([
       fetchWithTimeout(`${API_URL}/api/admin/orders?limit=300`, { headers }, 20000),
       fetchWithTimeout(`${API_URL}/api/admin/inventory/to-buy`, { headers }, 20000),
       fetchWithTimeout(`${API_URL}/api/my/permissions`, { headers }, 15000),
       fetchWithTimeout(`${API_URL}/api/chat/conversations`, { headers }, 15000),
       // The whole trading history, counter sales included. Orders alone are the online store.
       fetchWithTimeout(`${API_URL}/api/admin/sales?limit=10000&status=completed`, { headers }, 25000),
+      // What is on the shelf. "To Buy" answers what a committed order still needs; this answers the
+      // question before that one - what is running out, whether or not anything has been ordered.
+      fetchWithTimeout(`${API_URL}/api/admin/inventory?limit=500`, { headers }, 20000),
     ]);
     try {
       if (o.status === 'fulfilled' && o.value.ok) {
@@ -107,6 +111,11 @@ export default function StaffHome() {
       if (sl.status === 'fulfilled' && sl.value.ok) {
         const j = await sl.value.json();
         setSales(Array.isArray(j?.data ?? j) ? (j.data ?? j) : []);
+      }
+      if (inv.status === 'fulfilled' && inv.value.ok) {
+        const j = await inv.value.json();
+        const rows = Array.isArray(j?.data) ? j.data : (j?.data?.data ?? []);
+        setStock(Array.isArray(rows) ? rows : []);
       }
       if (c.status === 'fulfilled' && c.value.ok) {
         const j = await c.value.json();
@@ -446,6 +455,110 @@ export default function StaffHome() {
             )}
           </div>
 
+          {/* What is running out. "Materials to buy" above answers what committed orders still
+              need; this answers the question before it - what is low or gone regardless of whether
+              anyone has ordered it yet. Reads the same numbers the Inventory module does:
+              stockQty is what is on the shelf, reservedQty is already promised to an order, and
+              minStockLevel is the line the owner set. */}
+          {stock.length > 0 && (() => {
+            const level = (r) => Number(r.stockQty ?? 0) - Number(r.reservedQty ?? 0);
+            const floor = (r) => Number(r.minStockLevel ?? 0);
+            // "Bought per order" means the material never blocks a sale - not that it has no
+            // reorder point. A box with a 7-day lead and a 3-day production promise needs one, or
+            // every order waits a week for packaging. So an on-demand material with a minimum
+            // SET is checked like any other; one with no minimum stays with To Buy alone.
+            const live  = stock.filter(r => r.isActive !== false && (!r.isOnDemand || Number(r.minStockLevel ?? 0) > 0));
+            const out   = live.filter(r => level(r) <= 0);
+            const low   = live.filter(r => level(r) > 0 && floor(r) > 0 && level(r) <= floor(r));
+            const worst = [...out, ...low]
+              .sort((a, b) => (level(a) - floor(a)) - (level(b) - floor(b)))
+              .slice(0, 6);
+            // The second question, which this card used to skip: is anything short for the orders
+            // already taken? That is what To Buy computes - committed demand against the shelf,
+            // for EVERY material, packaging included. A mug box bought per order has no minimum
+            // and sat outside the check above, so the card said "nothing needs restocking" while
+            // the tile beside it said one material to buy. Both are read here.
+            const short = (toBuy?.items ?? []).filter(i => Number(i.shortfall) > 0 && (i.reasons ?? ['orders']).includes('orders'))
+              .sort((a, b) => Number(b.shortfall) * Number(b.unitCost ?? 0) - Number(a.shortfall) * Number(a.unitCost ?? 0))
+              .slice(0, 6);
+            const shortIds = new Set(short.map(i => String(i.inventoryId)));
+            const allClear = worst.length === 0 && short.length === 0;
+            return (
+              <div style={{ ...S.card, padding: 0, overflow: 'hidden', marginBottom: '18px' }}>
+                <div style={{ ...S.rowBetween, padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
+                  <div>
+                    <span style={{ fontSize: 13, fontWeight: 700 }}>Stock levels</span>
+                    <span style={{ fontSize: 11.5, marginLeft: 8, color: 'var(--gray)' }}>
+                      {[
+                        out.length === 0 && low.length === 0
+                          ? `all ${live.length} stocked materials above their minimum`
+                          : `${out.length} out of stock, ${low.length} at or below minimum, of ${live.length} stocked`,
+                        short.length > 0 && `${short.length} short for orders already taken`,
+                      ].filter(Boolean).join(' - ')}
+                    </span>
+                  </div>
+                  <button type="button" onClick={() => router.push(short.length > 0 ? '/dashboard/business/to-buy' : '/dashboard/business/inventory-v2')} style={S.btnSmGhost}>
+                    {short.length > 0 ? 'Open To Buy' : 'Open Inventory'}
+                  </button>
+                </div>
+
+                {allClear ? (
+                  <div style={{ padding: '14px 16px', fontSize: 13, color: 'var(--gray)' }}>
+                    Nothing needs restocking right now.
+                  </div>
+                ) : (
+                  <div>
+                    {short.map(i => (
+                      <div key={`short_${i.inventoryId}`} className="home-stock-row" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', borderTop: '1px solid var(--border)' }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{i.name}</div>
+                          <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 3 }}>
+                            Orders already taken need {i.needed} {i.uom ?? ''}, you have {i.onHand}{i.minimum > 0 ? `, minimum ${i.minimum}` : ''}
+                            {i.orders?.length > 0 && ` - ${i.orders.join(', ')}`}
+                          </div>
+                        </div>
+                        <div style={{ textAlign: 'right', minWidth: 96 }}>
+                          <div style={{ fontSize: 13, fontWeight: 700, color: '#e05252' }}>Buy {Math.ceil(Number(i.shortfall))} {i.uom ?? ''}</div>
+                          <div style={{ fontSize: 11, color: 'var(--gray)' }}>
+                            {i.leadTimeDays > 0 ? `${i.leadTimeDays}d lead` : 'no lead time set'}
+                            {i.supplierName && ` - ${i.supplierName}`}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                    {worst.filter(r => !shortIds.has(String(r.id ?? r._id))).map(r => {
+                      const have = level(r);
+                      const min  = floor(r);
+                      const isOut = have <= 0;
+                      // A bar against the minimum, not against capacity: the question is always
+                      // "how close to running out", and a shop has no fixed shelf size.
+                      const pct = min > 0 ? Math.max(0, Math.min(100, (have / min) * 100)) : (isOut ? 0 : 100);
+                      return (
+                        <div key={r.id ?? r.name} className="home-stock-row" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', borderTop: '1px solid var(--border)' }}>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.name}</div>
+                            <div style={{ height: 4, borderRadius: 2, background: 'var(--dark2)', marginTop: 6, overflow: 'hidden' }}>
+                              <div style={{ width: `${pct}%`, height: '100%', background: isOut ? '#e05252' : 'var(--gold)' }} />
+                            </div>
+                          </div>
+                          <div style={{ textAlign: 'right', minWidth: 96 }}>
+                            <div style={{ fontSize: 13, fontWeight: 700, color: isOut ? '#e05252' : 'var(--gold)' }}>
+                              {isOut ? 'Out of stock' : `${have} ${r.uom ?? ''}`.trim()}
+                            </div>
+                            <div style={{ fontSize: 11, color: 'var(--gray)' }}>
+                              {min > 0 ? `minimum ${min}` : 'no minimum set'}
+                              {Number(r.reservedQty ?? 0) > 0 && ` - ${r.reservedQty} promised`}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
           {/* ── Owner view: where the money has been, and where it is heading. Staff never
                  see this block - a production hand cannot act on revenue, and it is not
                  theirs to read. ── */}
@@ -466,6 +579,7 @@ export default function StaffHome() {
                 <div style={{ display: 'flex', gap: 4 }}>
                   {[3, 6, 12].map(m => (
                     <button key={m} type="button" onClick={() => setMonths(m)}
+                      className="home-range-btn"
                       style={{ border: '1px solid var(--border)', borderRadius: 6, padding: '4px 10px', fontSize: 12,
                         cursor: 'pointer', fontWeight: months === m ? 600 : 400,
                         background: months === m ? 'var(--gold)' : 'var(--dark)',

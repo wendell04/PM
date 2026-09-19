@@ -7,7 +7,9 @@ import { remainingDue, paidSoFar } from '@/lib/orderBalance';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import useLockBodyScroll from '@/lib/useLockBodyScroll';
 import { orderNo } from '@/lib/orderNumber';
+import { normalizeStatus } from '@/lib/orderStatus';
 import { S, ICONS, SearchBar, SummaryCard, PaginationBar, EmptyState, usePagination, CustomSelect } from '../inventory-v2/shared';
+import { useIsPhone, KpiStrip, PhoneFilterBar, PhoneList, PhoneRow, pesoShort } from '@/components/dashboard/phone';
 
 // Accounts receivable. Sales answers "what did we sell"; this answers "what have we collected and
 // who still owes us". The two are deliberately separate reports over the same orders.
@@ -82,6 +84,7 @@ export default function PaymentsPage() {
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('outstanding');
+  const isPhone = useIsPhone();
   const [ageFilter, setAgeFilter] = useState('all');
 
   const [modalOrder, setModalOrder] = useState(null);
@@ -100,7 +103,12 @@ export default function PaymentsPage() {
       const res = await fetchWithTimeout(`${API_URL}/api/admin/orders`, { headers: HEADERS(token) }, 20000);
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || data.error || `Request failed (${res.status})`);
-      setOrders(Array.isArray(data.data) ? data.data : (Array.isArray(data) ? data : []));
+      const list = Array.isArray(data.data) ? data.data : (Array.isArray(data) ? data : []);
+      // A cancelled or returned order owes nothing, whatever its deposit arithmetic says - the
+      // list came back with every live order and this page showed a cancelled one as a red
+      // balance with a Record button. Delivered stays: an unpaid balance on a delivered order
+      // is exactly what this page exists to chase.
+      setOrders(list.filter(o => !['cancelled', 'returned'].includes(normalizeStatus(o.orderStatus))));
     } catch (err) {
       setError(err.message || 'Failed to load orders.');
     } finally { setLoading(false); }
@@ -179,7 +187,14 @@ export default function PaymentsPage() {
     <ErrorBoundary>
       <div style={S.page}>
 
-        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '16px' }}>
+        {isPhone ? (
+          <KpiStrip items={[
+            { key: 'out',  label: 'Outstanding', value: pesoShort(outstanding), title: fmt(outstanding), color: outstanding > 0 ? 'var(--st-red-fg)' : undefined, active: ageFilter === 'all', onClick: () => { setAgeFilter('all'); setPage(1); } },
+            ...bucketTotals.map(bk => ({ key: bk.key, label: bk.label, value: pesoShort(bk.amount), title: fmt(bk.amount), color: bk.amount > 0 ? bk.tone.fg : 'var(--gray)', active: ageFilter === bk.key, onClick: () => { setAgeFilter(ageFilter === bk.key ? 'all' : bk.key); setPage(1); } })),
+            { key: 'col',  label: 'Collected',   value: pesoShort(totalCollected), title: fmt(totalCollected), color: 'var(--st-green-fg)' },
+          ]} />
+        ) : (<>
+        <div className="pmp-stat-row" style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '16px' }}>
           <SummaryCard label="Total Order Value" value={fmt(totalValue)} />
           <SummaryCard label="Collected" value={fmt(totalCollected)} color="var(--st-green-fg)" />
           <SummaryCard label="Outstanding" value={fmt(outstanding)} sub={`${owing.length} order${owing.length === 1 ? '' : 's'}`} color={outstanding > 0 ? 'var(--st-red-fg)' : undefined} />
@@ -206,8 +221,21 @@ export default function PaymentsPage() {
           </div>
         </div>
 
+        </>)}
+
+        {isPhone ? (
+          <PhoneFilterBar search={search} onSearch={v => { setSearch(v); setPage(1); }} placeholder="Search order or customer"
+            filters={[
+              { key: 'status', label: 'Show', value: statusFilter, defaultValue: 'outstanding', onChange: v => { setStatusFilter(v); setPage(1); },
+                options: [{ value: 'outstanding', label: 'Outstanding only' }, { value: 'all', label: 'All orders' }, { value: 'unpaid', label: 'Unpaid' }, { value: 'partial', label: 'Partial' }, { value: 'paid', label: 'Paid' }] },
+              { key: 'age', label: 'Age', value: ageFilter, defaultValue: 'all', onChange: v => { setAgeFilter(v); setPage(1); },
+                options: [{ value: 'all', label: 'Any age' }, ...AGE_BUCKETS.map(b => ({ value: b.key, label: b.label }))] },
+            ]}
+            actions={<button onClick={fetchOrders} style={{ ...S.btnSmGhost, minHeight: 36 }}>{ICONS.reload} Refresh</button>}
+            note={`${total} order${total === 1 ? '' : 's'}`} />
+        ) : (
         <div style={{ ...S.card, ...S.rowBetween, marginBottom: '10px', padding: '12px 16px' }}>
-          <div style={{ ...S.row, gap: '8px', flex: 1 }}>
+          <div className="pmp-filters" style={{ ...S.row, gap: '8px', flex: 1 }}>
             <SearchBar value={search} onChange={v => { setSearch(v); setPage(1); }} placeholder="Search order or customer…" style={{ width: '240px' }} />
             <CustomSelect value={statusFilter} onChange={v => { setStatusFilter(v); setPage(1); }} style={{ width: '170px' }}
               options={[
@@ -223,10 +251,38 @@ export default function PaymentsPage() {
           <button onClick={fetchOrders} style={S.btnGhost}>{ICONS.reload} Refresh</button>
         </div>
 
+        )}
+
         {error && <div style={{ ...S.note, background: 'var(--st-red-bg)', borderColor: 'rgba(239,68,68,0.35)', color: 'var(--st-red-fg)', marginBottom: '10px' }}>{error}</div>}
 
+        {isPhone ? (
+          <>
+            {loading ? (
+              <div style={{ ...S.card, padding: '28px 16px', textAlign: 'center', color: 'var(--gray)', fontSize: 13 }}>Loading</div>
+            ) : slice.length === 0 ? (
+              <div style={{ ...S.card, padding: 0 }}><EmptyState message="Nothing outstanding" sub="Orders with an unpaid balance appear here." /></div>
+            ) : (
+              <PhoneList>
+                {slice.map((o, i) => {
+                  const bal = balanceOf(o);
+                  return (
+                    <PhoneRow key={o._id || o.id} first={i === 0}
+                      onClick={() => bal > 0 ? openRecordPayment(o) : (o.paymentHistory?.length > 0 ? setHistoryOrder(o) : null)}
+                      title={orderNo(o)}
+                      chip={<StatusBadge status={o.paymentStatus || 'unpaid'} />}
+                      meta={customerOf(o)}
+                      sub={[`total ${fmt(o.totalAmount)}`, `paid ${fmt(paidSoFar(o))}`, bal > 0 ? `owes ${fmt(bal)} \u00b7 ${ageDays(o)}d` : 'settled'].join(' \u00b7 ')} />
+                  );
+                })}
+              </PhoneList>
+            )}
+            <div style={{ padding: '12px 0' }}>
+              <PaginationBar total={total} page={page} perPage={perPage} onPage={setPage} onPerPage={setPerPage} />
+            </div>
+          </>
+        ) : (<>
         <div style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <table className="pmp-rt" style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead><tr>
               <th style={S.th}>Order</th><th style={S.th}>Customer</th>
               <th style={{ ...S.th, textAlign: 'right' }}>Total</th>
@@ -246,25 +302,25 @@ export default function PaymentsPage() {
                   ))}
                 </>
               ) : slice.length === 0 ? (
-                <tr><td colSpan={8} style={{ padding: 0 }}><EmptyState message="Nothing outstanding" sub="Orders with an unpaid balance appear here." /></td></tr>
+                <tr><td colSpan={8} data-rt="full" style={{ padding: 0 }}><EmptyState message="Nothing outstanding" sub="Orders with an unpaid balance appear here." /></td></tr>
               ) : slice.map(o => {
                 const bal = balanceOf(o);
                 const bk = bucketOf(o);
                 const days = ageDays(o);
                 return (
                   <tr key={o._id || o.id} style={S.tr}>
-                    <td style={{ ...S.td, fontFamily: 'monospace', fontWeight: 600, fontSize: 12, color: 'var(--gold)' }}>{orderNo(o)}</td>
-                    <td style={S.td}>{customerOf(o)}</td>
-                    <td style={{ ...S.td, textAlign: 'right', fontFamily: 'monospace' }}>{fmt(o.totalAmount)}</td>
-                    <td style={{ ...S.td, textAlign: 'right', fontFamily: 'monospace', color: 'var(--st-green-fg)' }}>{fmt(paidSoFar(o))}</td>
-                    <td style={{ ...S.td, textAlign: 'right', fontFamily: 'monospace', fontWeight: 700, color: bal > 0 ? 'var(--st-red-fg)' : 'var(--gray)' }}>{fmt(bal)}</td>
-                    <td style={S.td}>
+                    <td data-rt="head" style={{ ...S.td, fontFamily: 'monospace', fontWeight: 600, fontSize: 12, color: 'var(--gold)' }}>{orderNo(o)}</td>
+                    <td data-label="Customer" style={S.td}>{customerOf(o)}</td>
+                    <td data-label="Total" style={{ ...S.td, textAlign: 'right', fontFamily: 'monospace' }}>{fmt(o.totalAmount)}</td>
+                    <td data-label="Paid" style={{ ...S.td, textAlign: 'right', fontFamily: 'monospace', color: 'var(--st-green-fg)' }}>{fmt(paidSoFar(o))}</td>
+                    <td data-label="Balance" style={{ ...S.td, textAlign: 'right', fontFamily: 'monospace', fontWeight: 700, color: bal > 0 ? 'var(--st-red-fg)' : 'var(--gray)' }}>{fmt(bal)}</td>
+                    <td data-label="Age" style={S.td}>
                       {bal > 0
                         ? <span style={{ ...S.badge, background: bk.tone.bg, color: bk.tone.fg, border: 'none', fontSize: 10, fontWeight: 700 }}>{days}d</span>
                         : <span style={{ color: 'var(--gray)' }}>-</span>}
                     </td>
-                    <td style={S.td}><StatusBadge status={o.paymentStatus || 'unpaid'} /></td>
-                    <td style={{ ...S.td, textAlign: 'right', whiteSpace: 'nowrap' }}>
+                    <td data-label="Status" style={S.td}><StatusBadge status={o.paymentStatus || 'unpaid'} /></td>
+                    <td data-rt="actions" style={{ ...S.td, textAlign: 'right', whiteSpace: 'nowrap' }}>
                       {(o.paymentHistory?.length > 0) && (
                         <button onClick={() => setHistoryOrder(o)} style={S.btnSmGhost}>History</button>
                       )}
@@ -279,6 +335,8 @@ export default function PaymentsPage() {
           </table>
         </div>
         <PaginationBar total={total} page={page} perPage={perPage} onPage={setPage} onPerPage={setPerPage} />
+
+        </>)}
 
         {modalOrder && (
           <div onClick={() => !paying && setModalOrder(null)} style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, background: 'rgba(0,0,0,0.45)' }}>

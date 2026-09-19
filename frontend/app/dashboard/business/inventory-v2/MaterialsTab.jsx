@@ -1,7 +1,8 @@
 'use client';
+import { useIsPhone, KpiStrip, PhoneFilterBar, PhoneList, PhoneRow } from '@/components/dashboard/phone';
 import { useState, useMemo } from 'react';
 import { S, ICONS, Field, IntegerInput, DecimalInput, Modal, ConfirmModal, PaginationBar, SearchBar, StatusBadge, EmptyState, SummaryCard, usePagination, formatCurrency, uid, CustomSelect } from './shared';
-import { createMat, updateMat, deleteMat, createSupplier } from './api';
+import { createMat, updateMat, deleteMat, createSupplier, loadMinStockSuggestions } from './api';
 
 function getSkuPrefix(category) {
   const KNOWN = { Garments:'GAR', 'Print Materials':'PRT', Drinkware:'DRW', Packaging:'PKG', Accessories:'ACC', Bags:'BAG', Office:'OFF', Other:'OTH' };
@@ -252,6 +253,26 @@ export default function MaterialsTab({ materials, setMaterials, vendors, setVend
   const [showForm,     setShowForm]   = useState(false);
   const [confirm,      setConfirm]    = useState(null);
   const [showManage,   setShowManage] = useState(false);
+  // The minimum-stock review: null = closed, 'loading', or the rows the server suggested.
+  const [sugg, setSugg] = useState(null);
+  const [applying, setApplying] = useState(null);   // inventoryId being written, or 'all'
+  const openSuggestions = async () => {
+    setSugg('loading');
+    try { setSugg(await loadMinStockSuggestions(token)); }
+    catch (err) { toast?.(err.message, 'error'); setSugg(null); }
+  };
+  const acceptSuggestion = async (rows) => {
+    setApplying(rows.length === 1 ? rows[0].inventoryId : 'all');
+    let done = 0;
+    for (const r of rows) {
+      try { await updateMat(token, r.inventoryId, { minStockLevel: r.suggested }); done++; }
+      catch (err) { toast?.(`${r.name}: ${err.message}`, 'error'); }
+    }
+    await onRefresh(['materials']);
+    setSugg(prev => (prev && prev !== 'loading') ? { ...prev, rows: prev.rows.map(x => rows.find(a => a.inventoryId === x.inventoryId) ? { ...x, current: x.suggested } : x) } : prev);
+    setApplying(null);
+    if (done) toast?.(`${done} minimum${done === 1 ? '' : 's'} updated.`, 'success');
+  };
   const [showQVendor,  setShowQVendor]= useState(false);
   const [saving,       setSaving]     = useState(false);
 
@@ -283,6 +304,7 @@ export default function MaterialsTab({ materials, setMaterials, vendors, setVend
   }, [materials, catFilter, search]);
 
   const { slice, page, perPage, total, setPage, setPerPage } = usePagination(filtered);
+  const isPhone = useIsPhone();
 
   const openAdd = () => {
     setForm({ name:'', category: categories[0]||'', unit: units[0]||'', vendorId:'', baseCost:'', minStock:'', leadTime:'7', isOnDemand:false });
@@ -379,6 +401,22 @@ export default function MaterialsTab({ materials, setMaterials, vendors, setVend
 
   return (
     <div style={S.col}>
+      {isPhone ? (
+        <>
+          <button onClick={openAdd} style={{ ...S.btnPrimary, minHeight:44, justifyContent:'center' }}>{ICONS.plus} Add Material</button>
+          <KpiStrip items={[
+            { key:'all', label:'Materials',    value: materials.length },
+            { key:'in',  label:'In stock',     value: inStock,  color:'#2e7d32' },
+            { key:'low', label:'Low stock',    value: lowStock, color:'#b45309' },
+            { key:'out', label:'Out of stock', value: outStock, color:'#c62828' },
+          ]} />
+          <PhoneFilterBar search={search} onSearch={setSearch} placeholder="Search name or SKU"
+            filters={[{ key:'cat', label:'Category', value:catFilter, defaultValue:'All', onChange:setCat,
+              options:[{ value:'All', label:'All' }, ...categories.map(c => ({ value:c, label:c }))] }]}
+            actions={<><button onClick={openSuggestions} style={{ ...S.btnSmGhost, minHeight:36 }}>Suggest minimums</button><button onClick={() => setShowManage(true)} style={{ ...S.btnSmGhost, minHeight:36 }}>Manage lists</button></>}
+            note={`${total} material${total !== 1 ? 's' : ''}`} />
+        </>
+      ) : (<>
       <div style={{ display:'flex', gap:'12px', flexWrap:'wrap' }}>
         <SummaryCard label="Total Materials" value={materials.length} accent />
         <SummaryCard label="In Stock"        value={inStock}          color="#2e7d32" />
@@ -394,14 +432,41 @@ export default function MaterialsTab({ materials, setMaterials, vendors, setVend
             style={{ width:'160px' }} />
         </div>
         <div style={{ display:'flex', gap:'8px' }}>
+          <button onClick={openSuggestions} style={S.btnGhost} title="What each minimum should be, from how fast it actually leaves the shelf">Suggest minimums</button>
           <button onClick={() => setShowManage(true)} style={S.btnGhost}>Manage Lists</button>
           <button onClick={openAdd} style={S.btnPrimary}>{ICONS.plus} Add Material</button>
         </div>
       </div>
 
+      </>)}
+
+      {isPhone ? (
+        <>
+          {slice.length === 0 ? (
+            <div style={{ ...S.card, padding:0 }}><EmptyState message="No materials found" sub="Add a material or adjust filters." /></div>
+          ) : (
+            <PhoneList>
+              {slice.map((mat, i) => {
+                const qty    = stockMap[mat.id] || 0;
+                const status = qty === 0 ? 'out_of_stock' : qty <= mat.minStock ? 'low_stock' : 'in_stock';
+                const vendor = vendors.find(v => v.id === mat.vendorId);
+                return (
+                  <PhoneRow key={mat.id} first={i === 0} onClick={() => openEdit(mat)}
+                    title={mat.sku} chip={<StatusBadge status={status} />}
+                    meta={mat.name}
+                    sub={[`${qty} ${mat.unit}`, `min ${mat.minStock}`, formatCurrency(mat.baseCost), mat.category, vendor?.name].filter(Boolean).join(' \u00b7 ')} />
+                );
+              })}
+            </PhoneList>
+          )}
+          <div style={{ padding:'12px 0' }}>
+            <PaginationBar total={total} page={page} perPage={perPage} onPage={setPage} onPerPage={setPerPage} />
+          </div>
+        </>
+      ) : (
       <div style={{ ...S.card, padding:0, overflow:'hidden' }}>
         <div style={{ overflowX:'auto' }}>
-          <table style={{ width:'100%', borderCollapse:'collapse' }}>
+          <table className="pmp-rt" style={{ width:'100%', borderCollapse:'collapse' }}>
             <thead>
               <tr>
                 {['SKU','Material Name','Category','Unit','Vendor','Base Cost','Min Stock','Stock','Status',''].map((h, i) => (
@@ -443,6 +508,8 @@ export default function MaterialsTab({ materials, setMaterials, vendors, setVend
           <PaginationBar total={total} page={page} perPage={perPage} onPage={setPage} onPerPage={setPerPage} />
         </div>
       </div>
+
+      )}
 
       {/* Add / Edit modal */}
       <Modal
@@ -581,6 +648,73 @@ export default function MaterialsTab({ materials, setMaterials, vendors, setVend
               : `Delete "${confirm?.name}"? This cannot be undone.`
         }
       />
+
+      {/* Minimum-stock review. The server suggests lead time x daily usage + a buffer, from the
+          stock ledger; nothing is written until the owner accepts a row or all of them. */}
+      <Modal open={sugg !== null} onClose={() => setSugg(null)} title="What should each minimum be?" width={760}>
+        {sugg === 'loading' ? (
+          <div style={{ padding:'24px 0', color:'var(--gray)', fontSize:13 }}>Reading the stock ledger</div>
+        ) : sugg && (() => {
+          const rows   = sugg.rows || [];
+          const change = rows.filter(r => r.suggested !== null && r.suggested !== r.current);
+          const same   = rows.filter(r => r.suggested !== null && r.suggested === r.current).length;
+          const quiet  = rows.filter(r => r.suggested === null);
+          return (
+            <div style={S.col}>
+              <div style={{ fontSize:12.5, color:'var(--gray)', lineHeight:1.55 }}>
+                A minimum is the stock that covers the wait for the next delivery, plus a cushion for a busy week:
+                <b style={{ color:'var(--gray-light)' }}> daily usage x lead time + buffer</b>. Usage comes from the last {sugg.windowDays} days of
+                the stock ledger (production, sales, quotes, scrap). A lead time marked * is not set on the material, so 7 days is assumed -
+                set the real one on the material and the suggestion tightens.
+                {same > 0 && ` ${same} already match.`}
+              </div>
+
+              {change.length === 0 ? (
+                <div style={{ padding:'18px 0', fontSize:13, color:'var(--gray)' }}>Every minimum with usage behind it already matches its suggestion.</div>
+              ) : (
+                <>
+                  <div style={{ ...S.rowBetween }}>
+                    <span style={{ fontSize:12, color:'var(--gray)' }}>{change.length} would change</span>
+                    <button onClick={() => acceptSuggestion(change)} disabled={!!applying} style={{ ...S.btnPrimary, opacity: applying ? .6 : 1 }}>
+                      {applying === 'all' ? 'Applying' : `Accept all ${change.length}`}
+                    </button>
+                  </div>
+                  <div style={{ border:'1px solid var(--border)', borderRadius:8, overflow:'hidden' }}>
+                    {change.map((r, i) => {
+                      const up = r.suggested > r.current;
+                      return (
+                        <div key={r.inventoryId} style={{ display:'flex', alignItems:'center', gap:12, padding:'10px 12px', borderTop: i ? '1px solid var(--border)' : 'none', flexWrap:'wrap' }}>
+                          <div style={{ flex:'1 1 200px', minWidth:0 }}>
+                            <div style={{ fontSize:13, fontWeight:600 }}>{r.name}</div>
+                            <div style={{ fontSize:11.5, color:'var(--gray)', marginTop:2 }}>
+                              {r.avgDaily} {r.uom}/day over {r.windowDays} days · lead {r.leadTimeDays}d{r.leadAssumed ? '*' : ''} · on hand {r.stockQty}
+                            </div>
+                          </div>
+                          <div style={{ textAlign:'right', minWidth:110 }}>
+                            <span style={{ fontSize:12, color:'var(--gray)', textDecoration:'line-through' }}>{r.current}</span>
+                            <span style={{ margin:'0 6px', color:'var(--gray)' }}>&rarr;</span>
+                            <b style={{ fontSize:15, color: up ? '#b45309' : '#2e7d32' }}>{r.suggested}</b>
+                            <span style={{ fontSize:11, color:'var(--gray)' }}> {r.uom}</span>
+                          </div>
+                          <button onClick={() => acceptSuggestion([r])} disabled={!!applying} style={{ ...S.btnSm, minHeight:36, opacity: applying ? .6 : 1 }}>
+                            {applying === r.inventoryId ? 'Saving' : 'Accept'}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+
+              {quiet.length > 0 && (
+                <div style={{ fontSize:12, color:'var(--gray)', lineHeight:1.5 }}>
+                  <b style={{ color:'var(--gray-light)' }}>No usage yet ({quiet.length}):</b> {quiet.map(r => r.name).join(', ')}. Their minimums stay as you set them - nothing to base a number on.
+                </div>
+              )}
+            </div>
+          );
+        })()}
+      </Modal>
 
       {/* Manage Lists modal */}
       <ManageListsModal

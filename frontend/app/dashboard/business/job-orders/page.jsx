@@ -19,8 +19,9 @@ import { fetchAllOrders } from '@/lib/ordersApi';
 import { normalizeStatus } from '@/lib/orderStatus';
 import { orderNo } from '@/lib/orderNumber';
 import { joRisk, RISK_STYLE } from '@/lib/deliveryRisk';
-import { JO_BADGE, JO_STATUSES, JO_EDITABLE_STATUSES, JobOrderStatusBadge as StatusBadge, RushBadge, DesignPreview, designUrl, joDocId, fmtJODate, TableSkeleton } from '@/components/dashboard/JobOrderBits';
+import { JO_BADGE, JO_STATUSES, JO_EDITABLE_STATUSES, JobOrderStatusBadge as StatusBadge, RushBadge, DesignPreview, designUrl, joDocId, fmtJODate, TableSkeleton, WaitingBadge } from '@/components/dashboard/JobOrderBits';
 import { S, ICONS, SearchBar, SummaryCard, PaginationBar, EmptyState, usePagination, CustomSelect, ConfirmModal } from '../inventory-v2/shared';
+import { useIsPhone, KpiStrip, PhoneFilterBar, PhoneList, PhoneRow } from '@/components/dashboard/phone';
 import { isCodMethod } from '@/lib/paymentMethod';
 import { needsJobOrder } from '@/lib/jobOrderEligibility';
 
@@ -453,6 +454,7 @@ export default function JobOrdersPage() {
   // Opens on the queue - the job orders waiting to be started - rather than every one ever made,
   // where finished work buries what is new. All Statuses is still one click away.
   const [statusFilter, setStatusFilter] = useState('Queued');
+  const isPhone = useIsPhone();
   const [rushFilter, setRushFilter] = useState('');
   const [search, setSearch] = useState('');
 
@@ -460,6 +462,7 @@ export default function JobOrdersPage() {
   const [selected, setSelected] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
+  const [notice, setNotice] = useState('');   // after a create: what the new job is waiting on
   // A job refused for want of material. Without this the page was a dead end: the message arrived
   // but the decision - do I have it in hand or not - could only be taken on the Production floor.
   const [joShortage, setJoShortage] = useState(null);
@@ -532,6 +535,10 @@ export default function JobOrdersPage() {
         return;
       }
       closeModal();
+      const waiting = list.flatMap(j => j.materialShort ?? []);
+      if (waiting.length) {
+        setNotice(`Created - waiting on materials: ${[...new Set(waiting.map(r => `${r.name} (short ${r.short} ${r.uom ?? ''})`))].join(', ')}. It cannot start until they are received; they are on To Buy.`);
+      }
     }
     catch (err) { setSubmitError(err.message || 'Failed to create job orders.'); }
     finally { setIsSubmitting(false); }
@@ -597,7 +604,16 @@ export default function JobOrdersPage() {
           <button onClick={openCreate} style={S.btnPrimary}>{ICONS.plus} Create Job Order</button>
         </div>
 
-        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '16px' }}>
+        {isPhone ? (
+          <KpiStrip items={[
+            { key: '',            label: 'All',         value: counts.total },
+            { key: 'Queued',      label: 'Queued',      value: counts.queued },
+            { key: 'In Progress', label: 'In progress', value: counts.inProgress, color: 'var(--gold)' },
+            { key: 'QC_Pending',  label: 'For QC',      value: counts.forQc, color: 'var(--st-purple-fg)' },
+            { key: 'Completed',   label: 'Completed',   value: counts.completed, color: 'var(--st-green-fg)' },
+          ].map(k => ({ ...k, active: statusFilter === k.key, onClick: () => { setStatusFilter(k.key); setPage(1); } }))} />
+        ) : (
+        <div className="pmp-stat-row" style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '16px' }}>
           <SummaryCard label="Total" value={counts.total} accent />
           <SummaryCard label="Queued" value={counts.queued} />
           <SummaryCard label="In Progress" value={counts.inProgress} color="var(--gold)" />
@@ -605,8 +621,21 @@ export default function JobOrdersPage() {
           <SummaryCard label="Completed" value={counts.completed} color="var(--st-green-fg)" />
         </div>
 
+        )}
+
+            {isPhone ? (
+              <PhoneFilterBar search={search} onSearch={v => { setSearch(v); setPage(1); }} placeholder="Search JO, product, order"
+                filters={[
+                  { key: 'status', label: 'Status', value: statusFilter, defaultValue: '', onChange: v => { setStatusFilter(v); setPage(1); },
+                    options: [{ value: '', label: 'All' }, ...JO_STATUSES.map(st => ({ value: st, label: JO_BADGE[st]?.label ?? st }))] },
+                  { key: 'rush', label: 'Type', value: rushFilter, defaultValue: '', onChange: setRushFilter,
+                    options: [{ value: '', label: 'All' }, { value: 'true', label: 'Rush only' }, { value: 'false', label: 'Standard only' }] },
+                ]}
+                actions={<button onClick={loadJobOrders} style={{ ...S.btnSmGhost, minHeight: 36 }}>{ICONS.reload} Refresh</button>}
+                note={`${total} job order${total === 1 ? '' : 's'}`} />
+            ) : (
             <div style={{ ...S.card, ...S.rowBetween, marginBottom: '10px', padding: '12px 16px' }}>
-              <div style={{ ...S.row, gap: '8px', flex: 1 }}>
+              <div className="pmp-filters" style={{ ...S.row, gap: '8px', flex: 1 }}>
                 <SearchBar value={search} onChange={v => { setSearch(v); setPage(1); }} placeholder="Search JO, product, order…" style={{ width: '240px' }} />
                 <CustomSelect value={statusFilter} onChange={setStatusFilter} style={{ width: '150px' }}
                   options={[{ value: '', label: 'All Statuses' }, ...JO_STATUSES.map(s => ({ value: s, label: JO_BADGE[s]?.label ?? s }))]} />
@@ -616,10 +645,50 @@ export default function JobOrdersPage() {
               <button onClick={loadJobOrders} style={S.btnGhost}>{ICONS.reload} Refresh</button>
             </div>
 
-            {error && <div style={{ ...S.note, background: 'var(--st-red-bg)', borderColor: 'rgba(239,68,68,0.35)', color: 'var(--st-red-fg)', marginBottom: '10px' }}>{error}</div>}
+            )}
 
+            {error && <div style={{ ...S.note, background: 'var(--st-red-bg)', borderColor: 'rgba(239,68,68,0.35)', color: 'var(--st-red-fg)', marginBottom: '10px' }}>{error}</div>}
+            {notice && (
+              <div style={{ ...S.note, marginBottom: '10px', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                <span style={{ flex: 1 }}>{notice}</span>
+                <a href="/dashboard/business/to-buy" style={{ ...S.btnSm, textDecoration: 'none', whiteSpace: 'nowrap' }}>Open To Buy</a>
+                <button type="button" onClick={() => setNotice('')} style={{ ...S.btnSmGhost }}>Dismiss</button>
+              </div>
+            )}
+
+            {isPhone ? (
+              <>
+                {isLoading ? (
+                  <div style={{ ...S.card, padding: '28px 16px', textAlign: 'center', color: 'var(--gray)', fontSize: 13 }}>Loading job orders</div>
+                ) : slice.length === 0 ? (
+                  <div style={{ ...S.card, padding: 0 }}><EmptyState message="No job orders found" sub="Create one from a paid, design-approved order." /></div>
+                ) : (
+                  <PhoneList>
+                    {slice.map((jo, i) => {
+                      const risk = joRisk(jo);
+                      return (
+                        <PhoneRow key={jo.id ?? jo._id} first={i === 0} onClick={() => openEdit(jo)}
+                          title={<>{jo.joId || (jo.id ?? jo._id)?.slice(-8).toUpperCase()} <RushBadge isRush={jo.isRush} /></>}
+                          chip={<StatusBadge status={jo.joStatus} />}
+                          meta={prodName(jo)}
+                          sub={[
+                            jo.product?.quantity != null ? `${jo.product.quantity} pcs` : null,
+                            jo.orderId ? orderNo(jo.orderId) : null,
+                            jo.targetCompletion ? `due ${fmtDate(jo.targetCompletion)}` : null,
+                            risk?.label ?? null,
+                            jo.materialShort?.length ? `waiting on ${jo.materialShort.map(r => `${r.name} (short ${r.short})`).join(', ')}` : null,
+                          ].filter(Boolean).join(' \u00b7 ')} />
+                      );
+                    })}
+                  </PhoneList>
+                )}
+                <div style={{ padding: '12px 0' }}>
+                  <PaginationBar total={total} page={page} perPage={perPage} onPage={setPage} onPerPage={setPerPage} />
+                </div>
+              </>
+            ) : (<>
             <div style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <table className="pmp-rt" style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead><tr>
                   {/* Whoever works the JO is whoever opens Production or QC - naming a
                       staff member here just created a field nobody kept current. */}
@@ -631,14 +700,14 @@ export default function JobOrdersPage() {
                   {isLoading ? (
                     <TableSkeleton cols={7} rows={4} />
                   ) : slice.length === 0 ? (
-                    <tr><td colSpan={8} style={{ padding: 0 }}><EmptyState message="No job orders found" sub="Create one from a paid, design-approved order." /></td></tr>
+                    <tr><td colSpan={8} data-rt="full" style={{ padding: 0 }}><EmptyState message="No job orders found" sub="Create one from a paid, design-approved order." /></td></tr>
                   ) : slice.map(jo => (
                     <tr key={jo.id ?? jo._id} style={S.tr}>
-                      <td style={{ ...S.td, fontFamily: 'monospace', fontWeight: 600 }}>
+                      <td data-rt="head" style={{ ...S.td, fontFamily: 'monospace', fontWeight: 600 }}>
                         {jo.joId || (jo.id ?? jo._id)?.slice(-8).toUpperCase()}
                         <RushBadge isRush={jo.isRush} />
                       </td>
-                      <td style={S.td}>
+                      <td data-label="Product" style={S.td}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                           {/* The product, not the proof: a grouped request puts the same proof on every
                               job order, so this column drew the same picture for a mug and a totebag. */}
@@ -647,9 +716,9 @@ export default function JobOrdersPage() {
                         </div>
                         {jo.bomSnapshot?.length > 0 && <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 2 }}>Materials: {jo.bomSnapshot.map(m => `${m.name} ×${m.totalQty}${m.unit ? ' ' + m.unit : ''}`).join(', ')}</div>}
                       </td>
-                      <td style={S.td}>{jo.product?.quantity ?? '-'}</td>
-                      <td style={{ ...S.td, fontFamily: 'monospace' }}>{jo.orderId ? orderNo(jo.orderId) : '-'}</td>
-                      <td style={S.td}>
+                      <td data-label="Qty" style={S.td}>{jo.product?.quantity ?? '-'}</td>
+                      <td data-label="Order" style={{ ...S.td, fontFamily: 'monospace' }}>{jo.orderId ? orderNo(jo.orderId) : '-'}</td>
+                      <td data-label="Due" style={S.td}>
                         {fmtDate(jo.targetCompletion)}
                         {(() => {
                           const risk = joRisk(jo);
@@ -657,8 +726,8 @@ export default function JobOrdersPage() {
                           return <div style={{ marginTop: 3 }}><span style={{ ...S.badge, ...RISK_STYLE[risk.color], fontSize: 9, fontWeight: 700 }}>{risk.label}</span></div>;
                         })()}
                       </td>
-                      <td style={S.td}><StatusBadge status={jo.joStatus} /></td>
-                      <td style={{ ...S.td, textAlign: 'right' }}>
+                      <td data-label="Status" style={S.td}><StatusBadge status={jo.joStatus} /><WaitingBadge jo={jo} block /></td>
+                      <td data-rt="actions" style={{ ...S.td, textAlign: 'right' }}>
                         <button onClick={() => openEdit(jo)} style={S.btnSmGhost}>{ICONS.edit} Edit</button>
                         {canDelete(jo) && <button onClick={() => { setDeleteErr(''); setDeleting(jo); }} style={{ ...S.btnSmGhost, marginLeft: 6, color: 'var(--st-red-fg)' }} title="Delete (test/junk only)">Delete</button>}
                       </td>
@@ -668,6 +737,7 @@ export default function JobOrdersPage() {
               </table>
             </div>
             <PaginationBar total={total} page={page} perPage={perPage} onPage={setPage} onPerPage={setPerPage} />
+            </>)}
       </div>
 
       {preview && (

@@ -174,6 +174,7 @@ export async function loadStockOuts(token) {
 
 export const createMat    = (token, data)     => req('/admin/inventory',            token, { method:'POST',   body:JSON.stringify(data) });
 export const updateMat    = (token, id, data) => req(`/admin/inventory/${id}`,      token, { method:'PUT',    body:JSON.stringify(data) });
+export const loadMinStockSuggestions = (token) => req('/admin/inventory/min-stock-suggestions', token);
 export const deleteMat    = (token, id)       => req(`/admin/inventory/${id}`,      token, { method:'DELETE' });
 export const adjustStock  = (token, id, data) => req(`/admin/inventory/${id}/adjust-stock`, token, { method:'POST', body:JSON.stringify(data) });
 

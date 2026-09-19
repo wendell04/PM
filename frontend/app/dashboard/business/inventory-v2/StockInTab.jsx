@@ -1,4 +1,5 @@
 'use client';
+import { useIsPhone, KpiStrip, PhoneFilterBar, PhoneList, PhoneRow , pesoShort } from '@/components/dashboard/phone';
 import { useState, useMemo } from 'react';
 import { S, ICONS, Field, IntegerInput, DecimalInput, Modal, PaginationBar, SearchBar, StatusBadge, Note, EmptyState, SummaryCard, usePagination, formatCurrency, formatDate, uid, CustomSelect } from './shared';
 import { adjustStock, createReturn } from './api';
@@ -267,12 +268,25 @@ export default function StockInTab({ materials, vendors, batches, setBatches, ba
   }, [sortedBatches, histSearch, materials]);
 
   const { slice: hSlice, page: hPage, perPage: hPerPage, total: hTotal, setPage: setHPage, setPerPage: setHPerPage } = usePagination(histFiltered);
+  const isPhone = useIsPhone();
 
   const totalReceived = batches.reduce((s, b) => s + b.qtyReceived, 0);
   const totalValue    = batches.reduce((s, b) => s + b.qtyReceived * b.unitCost, 0);
 
   return (
     <div style={S.col}>
+      {isPhone ? (
+        <>
+          <button onClick={openModal} style={{ ...S.btnPrimary, minHeight:44, justifyContent:'center' }}>{ICONS.truck} Receive Stock</button>
+          <KpiStrip items={[
+            { key:'b', label:'Batches',  value: batches.length },
+            { key:'q', label:'Qty in',   value: totalReceived.toLocaleString() },
+            { key:'v', label:'Value in', value: pesoShort(totalValue), title: formatCurrency(totalValue) },
+          ]} />
+          <PhoneFilterBar search={histSearch} onSearch={setHistSearch} placeholder="Search invoice, material, vendor"
+            note={`${hTotal} record${hTotal !== 1 ? 's' : ''}`} />
+        </>
+      ) : (<>
       <div style={{ display:'flex', gap:'12px', flexWrap:'wrap' }}>
         <SummaryCard label="Total Batches"  value={batches.length}                accent />
         <SummaryCard label="Total Qty In"   value={totalReceived.toLocaleString()} />
@@ -284,10 +298,35 @@ export default function StockInTab({ materials, vendors, batches, setBatches, ba
         <button onClick={openModal} style={S.btnPrimary}>{ICONS.truck} Receive Stock</button>
       </div>
 
+      </>)}
+
+      {isPhone ? (
+        <>
+          {hSlice.length === 0 ? (
+            <div style={{ ...S.card, padding:0 }}><EmptyState message="No stock-in records" sub="Receive stock to see records here." /></div>
+          ) : (
+            <PhoneList>
+              {hSlice.map((b, i) => {
+                const mat = materials.find(m => m.id === b.matId);
+                return (
+                  <PhoneRow key={b.id} first={i === 0} mono={false}
+                    title={mat?.name || b.matId}
+                    chip={<span style={{ fontSize:12, fontWeight:700, color: b.remainingQty < b.qtyReceived ? '#b45309' : '#2e7d32' }}>{b.remainingQty}/{b.qtyReceived} {mat?.unit} left</span>}
+                    meta={[formatDate(b.date), b.invoiceNo, b.vendorName].filter(Boolean).join(' \u00b7 ')}
+                    sub={[`${b.qtyReceived} ${mat?.unit ?? ''} at ${formatCurrency(b.unitCost)}`, formatCurrency(b.qtyReceived * b.unitCost), b.notes].filter(Boolean).join(' \u00b7 ')} />
+                );
+              })}
+            </PhoneList>
+          )}
+          <div style={{ padding:'12px 0' }}>
+            <PaginationBar total={hTotal} page={hPage} perPage={hPerPage} onPage={setHPage} onPerPage={setHPerPage} />
+          </div>
+        </>
+      ) : (<>
       {/* History table */}
       <div style={{ ...S.card, padding:0, overflow:'hidden' }}>
         <div style={{ overflowX:'auto' }}>
-          <table style={{ width:'100%', borderCollapse:'collapse' }}>
+          <table className="pmp-rt" style={{ width:'100%', borderCollapse:'collapse' }}>
             <thead>
               <tr>
                 {[
@@ -327,6 +366,8 @@ export default function StockInTab({ materials, vendors, batches, setBatches, ba
       </div>
 
       {/* Wizard modal */}
+      </>)}
+
       <Modal
         open={open}
         onClose={closeModal}
@@ -505,7 +546,7 @@ export default function StockInTab({ materials, vendors, batches, setBatches, ba
               </div>
             </div>
 
-            <table style={{ width:'100%', borderCollapse:'collapse', border:'1px solid var(--border)', borderRadius:'8px', overflow:'hidden' }}>
+            <table className="pmp-rt" style={{ width:'100%', borderCollapse:'collapse', border:'1px solid var(--border)', borderRadius:'8px', overflow:'hidden' }}>
               <thead>
                 <tr>
                   {[{l:'Material'},{l:'Qty',r:true},{l:'Unit Cost',r:true},{l:'Total',r:true},{l:'Bad Orders'}].map(h => (

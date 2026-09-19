@@ -158,6 +158,12 @@ class JobOrderController extends Controller
                     $row['_id'] = (string) $docId;
                     $row['id']  = (string) $docId;
                 }
+                // What a job that has not started yet is waiting on, so the list says "waiting on
+                // materials" before anyone presses Start and is refused - the way a manufacturing
+                // order carries its component availability. Started jobs are past this question.
+                if (in_array($jo->joStatus, ['Queued', 'QC_Failed'], true)) {
+                    $row['materialShort'] = $this->materialShortages($jo);
+                }
                 $jobOrders[] = $row;
             }
 
@@ -280,7 +286,14 @@ class JobOrderController extends Controller
             ]);
             $this->syncOrderProductionStage($validated['orderId']);
 
-            return $this->successResponse('Job order created successfully.', $jobOrder, 201);
+            // Created either way - the job is the plan, and the plan is how the shortage becomes a
+            // purchase (To Buy) - but say so now, not when Start is refused.
+            $short = $this->materialShortages($jobOrder);
+            $jobOrder->setAttribute('materialShort', $short);
+            $msg = $short
+                ? 'Job order created - waiting on materials: ' . implode(', ', array_map(fn ($r) => "{$r['name']} (short {$r['short']} {$r['uom']})", $short)) . '. It cannot start until they are received; they are on To Buy.'
+                : 'Job order created successfully.';
+            return $this->successResponse($msg, $jobOrder, 201);
         } catch (\Illuminate\Validation\ValidationException $e) {
             return $this->validationErrorResponse($e);
         } catch (\Exception $e) {
@@ -439,7 +452,17 @@ class JobOrderController extends Controller
                 OrderNotifier::statusChanged($moved);
             }
 
-            return $this->successResponse(count($created) . ' job order(s) created successfully.', $created, 201);
+            // Say now what each job is waiting on, not when Start is refused.
+            $waiting = [];
+            foreach ($created as $jo) {
+                $short = $this->materialShortages($jo);
+                $jo->setAttribute('materialShort', $short);
+                foreach ($short as $r) $waiting[] = "{$r['name']} (short {$r['short']} {$r['uom']})";
+            }
+            $waiting = array_values(array_unique($waiting));
+            $msg = count($created) . ' job order(s) created'
+                . ($waiting ? ' - waiting on materials: ' . implode(', ', $waiting) . '. They cannot start until received; they are on To Buy.' : ' successfully.');
+            return $this->successResponse($msg, $created, 201);
         } catch (\Illuminate\Validation\ValidationException $e) {
             return $this->validationErrorResponse($e);
         } catch (\Exception $e) {

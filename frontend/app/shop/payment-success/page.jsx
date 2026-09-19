@@ -42,7 +42,7 @@ export default function PaymentSuccessPage() {
   useEffect(() => { setMounted(true); }, []);
   const [loading,      setLoading]      = useState(true);
   const [error,        setError]        = useState(null);
-  const [verifying,    setVerifying]    = useState(!isCod && !isOrderRequest && !viewOnly);
+  const [verifying,    setVerifying]    = useState(!isCod && !viewOnly);
   // Confirmation is taking longer than the poll window. The money may well be through - we simply
   // cannot say yet, and saying the wrong thing here is worse than saying nothing.
   const [unconfirmed,  setUnconfirmed]  = useState(false);
@@ -63,12 +63,16 @@ export default function PaymentSuccessPage() {
     // failed polls, and a slow confirmation was indistinguishable from a real failure.
     let lastVerify = null;
 
+    // A quotation is a different record with its own recorder; everything else is an order.
+    const verifyUrl  = isOrderRequest ? `${API_URL}/api/payment/verify-order-request` : `${API_URL}/api/payment/verify-intent`;
+    const verifyBody = isOrderRequest ? { orderRequestId: orderId } : { orderId };
+
     const pushVerify = async () => {
       try {
-        const r = await fetchWithTimeout(`${API_URL}/api/payment/verify-intent`, {
+        const r = await fetchWithTimeout(verifyUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ orderId, ...(intentId ? { intentId } : {}) }),
+          body: JSON.stringify({ ...verifyBody, ...(intentId ? { intentId } : {}) }),
         }, 10000);
         lastVerify = await r.json().catch(() => null);
       } catch {}
@@ -76,9 +80,11 @@ export default function PaymentSuccessPage() {
 
     const fetchOrder = async (attempt = 0) => {
       try {
-        // On online payment flows, push a verify-intent call before the first two polls
-        // so the order gets marked paid in the DB even without a webhook (local dev).
-        if (!isCod && !isOrderRequest && !viewOnly && attempt <= 1) {
+        // Push a verify call before the first two polls so the payment is recorded even when the
+        // webhook never arrives. Quotations were excluded here and had no second recorder at all:
+        // an authorised payment left the quote unpaid with no order and nothing the customer could
+        // do about it - reproduced on live before this line changed.
+        if (!isCod && !viewOnly && attempt <= 1) {
           await pushVerify();
         }
 
@@ -110,12 +116,17 @@ export default function PaymentSuccessPage() {
         const landed = intentId
           ? (fetched.paymentHistory ?? []).some(pmt => String(pmt?.note ?? '').includes(intentId))
           : true;
-        const isSettled = !stillPending && landed && (
-          fetched.paymentStatus === 'paid' || fetched.paymentStatus === 'partial' || fetched.designFeePaid === true
-        );
-        if (!isCod && !isOrderRequest && !isSettled && attempt < 6) {
+        // A quotation records its own states: unpaid -> downpayment_paid -> paid, and it carries the
+        // id of the order it became. Judging it by an order's vocabulary left every paid quote
+        // looking unsettled.
+        const isSettled = isOrderRequest
+          ? (['downpayment_paid', 'paid'].includes(String(fetched.paymentStatus ?? '')) || !!fetched.convertedOrderId)
+          : (!stillPending && landed && (
+              fetched.paymentStatus === 'paid' || fetched.paymentStatus === 'partial' || fetched.designFeePaid === true
+            ));
+        if (!isCod && !isSettled && attempt < 6) {
           setTimeout(() => fetchOrder(attempt + 1), 2000);
-        } else if (!isCod && !isOrderRequest && !isSettled) {
+        } else if (!isCod && !isSettled) {
           // Only call it failed when the GATEWAY says so. Running out of polls means we could not
           // confirm in time, which is not the same thing - and telling someone their payment failed
           // when the money has actually left their account is the worst thing this page can do.

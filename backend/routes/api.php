@@ -14,6 +14,7 @@ use App\Http\Controllers\JobOrderController;
 use App\Http\Controllers\AuditLogController;
 use App\Http\Controllers\SaleController;
 use App\Http\Controllers\ForecastTaxonomyController;
+use App\Http\Controllers\ReportController;
 use App\Http\Controllers\CartController;
 use App\Http\Controllers\SupplierController;
 use App\Http\Controllers\BannerController;
@@ -240,6 +241,7 @@ Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
     Route::get('/admin/inventory/to-buy',             [InventoryController::class, 'toBuy']);
     Route::get('/admin/inventory/recent-movements',   [InventoryController::class, 'recentMovements']);
     Route::get('/admin/inventory/stock-outs',         [InventoryController::class, 'stockOuts']);
+    Route::get('/admin/inventory/min-stock-suggestions', [InventoryController::class, 'minStockSuggestions']);
     Route::get('/admin/inventory',                    [InventoryController::class, 'index']);
     Route::post('/admin/inventory',                   [InventoryController::class, 'store']);
     Route::get('/admin/inventory/{id}',               [InventoryController::class, 'show']);
@@ -310,6 +312,8 @@ Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
     // ─── Sales ────────────────────────────────────────────────────────────────
     Route::get('/admin/sales',                   [SaleController::class, 'index']);
     Route::get('/admin/sales/summary',           [SaleController::class, 'summary']);
+    Route::get('/admin/reports/sales',           [ReportController::class, 'sales']);
+    Route::get('/admin/reports/inventory',       [ReportController::class, 'inventory']);
     Route::get('/admin/sales/top-products',      [SaleController::class, 'topProducts']);
     Route::get('/admin/sales/{id}',              [SaleController::class, 'show']);
     Route::post('/admin/sales',                  [SaleController::class, 'store']);
@@ -437,6 +441,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/payment/create-link',              [PaymentController::class, 'createLink']);
     Route::post('/payment/initiate',                 [PaymentController::class, 'initiatePayment']);
     Route::post('/payment/verify-intent',            [PaymentController::class, 'verifyIntent']);
+    // The quotation half of the same job: a quote paid online is recorded by the webhook AND by the
+    // browser, so a webhook that never arrives no longer leaves a paid customer with nothing.
+    Route::post('/payment/verify-order-request',     [PaymentController::class, 'verifyOrderRequest']);
     Route::post('/payment/order-request-link',       [PaymentController::class, 'createOrderRequestLink']);
     Route::post('/payment/create-order-pay-link',    [PaymentController::class, 'createOrderPayLink']);
     // The CUSTOMER releases their own failed checkout on the way back from GCash; the controller

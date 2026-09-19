@@ -11,6 +11,7 @@ import '@/app/shop/shop.css';
 import { applyVoucher } from '@/lib/voucherApi';
 import { useTheme } from '@/contexts/ThemeContext';
 import { DEFAULT_CUSTOM_ORDER_TERMS } from '@/lib/customOrderTerms';
+import { makeThumbnail } from '@/lib/thumbnail';
 import useLockBodyScroll from '@/lib/useLockBodyScroll';
 
 const AddressBook = dynamic(() => import('@/components/profile/AddressBook'), { ssr: false });
@@ -521,10 +522,11 @@ export default function CheckoutPage() {
     }
     setError(null);
     setDesignFile(file);
+    // A small copy, not the file itself: an <img> pointed at a 10 MB artwork decodes all of it and
+    // holds it there, which is enough to get the tab discarded on a phone mid-checkout.
+    setDesignFilePreviewUrl(null);
     if (file.type.startsWith('image/')) {
-      setDesignFilePreviewUrl(URL.createObjectURL(file));
-    } else {
-      setDesignFilePreviewUrl(null);
+      makeThumbnail(file).then(url => { if (url) setDesignFilePreviewUrl(url); });
     }
   }
 

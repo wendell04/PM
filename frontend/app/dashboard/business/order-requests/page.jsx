@@ -6,6 +6,7 @@ import {
   fetchOrderRequests,
   updateOrderRequestStatus,
 } from '@/lib/orderRequestApi';
+import { useIsPhone, KpiStrip, PhoneFilterBar, PhoneList, PhoneRow } from '@/components/dashboard/phone';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import { loadInventory } from '../inventory-v2/api';
 import { S } from '../inventory-v2/shared';
@@ -116,6 +117,7 @@ export default function OrderRequestsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [activeFilter, setActiveFilter] = useState('all');
+  const isPhone = useIsPhone();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [modalLoading, setModalLoading] = useState(false);
@@ -330,6 +332,21 @@ export default function OrderRequestsPage() {
       {/* Page title is shown in the top bar; keep only the descriptive subtitle */}
       <p style={{ margin: '0 0 1.5rem', color: 'var(--gray)', fontSize: '0.9rem' }}>Review and manage customer print orders</p>
 
+      {isPhone ? (
+        <>
+          <KpiStrip items={[
+            { key: 'all',            label: 'All' },
+            { key: 'pending_review', label: 'To review' },
+            { key: 'confirmed',      label: 'Confirmed' },
+            { key: 'processing',     label: 'Processing' },
+            { key: 'ready',          label: 'Ready' },
+          ].map(k => ({ ...k, value: cardCounts[k.key] ?? 0, active: activeFilter === k.key, onClick: () => setActiveFilter(activeFilter === k.key ? 'all' : k.key) }))} />
+          <PhoneFilterBar search={searchQuery} onSearch={setSearchQuery} placeholder="Search customer or product"
+            filters={[{ key: 'status', label: 'Status', value: activeFilter, defaultValue: 'all', onChange: setActiveFilter,
+              options: FILTER_OPTIONS.map(o => ({ value: o.key, label: o.label })) }]}
+            note={`${filteredRequests.length} request${filteredRequests.length === 1 ? '' : 's'}`} />
+        </>
+      ) : (<>
       {/* Summary Cards */}
       <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '1.5rem' }}>
         {FILTER_OPTIONS.map(opt => {
@@ -385,6 +402,8 @@ export default function OrderRequestsPage() {
         </div>
       </div>
 
+      </>)}
+
       {/* Error State */}
       {error && (
         <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--red)' }}>
@@ -436,8 +455,22 @@ export default function OrderRequestsPage() {
               </p>
             </div>
           ) : (
+            isPhone ? (
+              <PhoneList>
+                {filteredRequests.map((req, i) => (
+                  <PhoneRow key={req.id} first={i === 0} mono={false} onClick={() => openReview(req)}
+                    title={req.customerName || '-'}
+                    chip={<StatusBadge status={req.status} />}
+                    meta={[req.productName || '-', req.quantity != null ? `\u00d7${req.quantity}` : null].filter(Boolean).join(' ')}
+                    sub={[
+                      req.finalPrice != null ? `final ${formatPeso(req.finalPrice)}` : (req.suggestedPrice != null ? `suggested ${formatPeso(req.suggestedPrice)}` : 'no price yet'),
+                      formatDate(req.createdAt),
+                    ].filter(Boolean).join(' \u00b7 ')} />
+                ))}
+              </PhoneList>
+            ) : (
             <div style={{ overflowX: 'auto', borderRadius: '10px', border: '1px solid var(--border)' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '900px' }}>
+              <table className="pmp-rt" style={{ width: '100%', borderCollapse: 'collapse', minWidth: '900px' }}>
                 <thead>
                   <tr style={{ background: 'var(--dark2)', borderBottom: '1px solid var(--border)' }}>
                     {['#', 'Customer', 'Product', 'Qty', 'Suggested', 'Final Price', 'Status', 'Date', 'Actions'].map(h => (
@@ -448,12 +481,12 @@ export default function OrderRequestsPage() {
                 <tbody>
                   {filteredRequests.map((req, idx) => (
                     <tr key={req.id} style={{ borderBottom: '1px solid var(--border)', background: 'var(--dark)' }}>
-                      <td style={{ padding: '0.75rem 1rem', fontSize: '0.85rem', color: 'var(--gray)' }}>{idx + 1}</td>
-                      <td style={{ padding: '0.75rem 1rem' }}>
+                      <td data-rt="hide" style={{ padding: '0.75rem 1rem', fontSize: '0.85rem', color: 'var(--gray)' }}>{idx + 1}</td>
+                      <td data-rt="head" style={{ padding: '0.75rem 1rem' }}>
                         <div style={{ fontSize: '0.875rem', color: 'var(--white)', fontWeight: 600 }}>{req.customerName || '-'}</div>
                         <div style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>{req.customerEmail || '-'}</div>
                       </td>
-                      <td style={{ padding: '0.75rem 1rem' }}>
+                      <td data-label="Product" style={{ padding: '0.75rem 1rem' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                           {req.productThumbnail ? (
                             /* eslint-disable-next-line @next/next/no-img-element */
@@ -471,12 +504,12 @@ export default function OrderRequestsPage() {
                           </div>
                         </div>
                       </td>
-                      <td style={{ padding: '0.75rem 1rem', fontSize: '0.85rem', color: 'var(--white)', fontWeight: 600 }}>{req.quantity}</td>
-                      <td style={{ padding: '0.75rem 1rem', fontSize: '0.85rem', color: 'var(--gray)' }}>{formatPeso(req.suggestedPrice)}</td>
-                      <td style={{ padding: '0.75rem 1rem', fontSize: '0.85rem', fontWeight: 600, color: req.finalPrice != null ? 'var(--gold)' : 'var(--gray)' }}>{formatPeso(req.finalPrice)}</td>
-                      <td style={{ padding: '0.75rem 1rem' }}><StatusBadge status={req.status} /></td>
-                      <td style={{ padding: '0.75rem 1rem', fontSize: '0.8rem', color: 'var(--gray)', whiteSpace: 'nowrap' }}>{formatDate(req.createdAt)}</td>
-                      <td style={{ padding: '0.75rem 1rem' }}>
+                      <td data-label="Qty" style={{ padding: '0.75rem 1rem', fontSize: '0.85rem', color: 'var(--white)', fontWeight: 600 }}>{req.quantity}</td>
+                      <td data-label="Suggested" style={{ padding: '0.75rem 1rem', fontSize: '0.85rem', color: 'var(--gray)' }}>{formatPeso(req.suggestedPrice)}</td>
+                      <td data-label="Final price" style={{ padding: '0.75rem 1rem', fontSize: '0.85rem', fontWeight: 600, color: req.finalPrice != null ? 'var(--gold)' : 'var(--gray)' }}>{formatPeso(req.finalPrice)}</td>
+                      <td data-label="Status" style={{ padding: '0.75rem 1rem' }}><StatusBadge status={req.status} /></td>
+                      <td data-label="Date" style={{ padding: '0.75rem 1rem', fontSize: '0.8rem', color: 'var(--gray)', whiteSpace: 'nowrap' }}>{formatDate(req.createdAt)}</td>
+                      <td data-rt="actions" style={{ padding: '0.75rem 1rem' }}>
                         <button
                           onClick={() => openReview(req)}
                           style={{ background: 'var(--gold)', color: 'var(--black)', border: 'none', borderRadius: '6px', padding: '0.375rem 0.75rem', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer' }}
@@ -489,6 +522,7 @@ export default function OrderRequestsPage() {
                 </tbody>
               </table>
             </div>
+            )
           )}
         </>
       )}
