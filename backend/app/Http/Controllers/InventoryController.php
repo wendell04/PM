@@ -1001,13 +1001,16 @@ class InventoryController extends Controller
             $first = [];   // inventoryId => earliest movement of any kind
             $rows  = StockHistory::where('createdAt', '>=', now()->subDays(400))
                 ->get(['inventoryId', 'type', 'quantity', 'createdAt']);
+            $maxOut = [];  // inventoryId => the largest single deduction ever seen
             foreach ($rows as $r) {
                 $id = (string) $r->inventoryId;
                 if ($id === '') continue;
                 $at = $r->createdAt;
                 if ($at && (!isset($first[$id]) || $at < $first[$id])) $first[$id] = $at;
                 if ($r->type === 'deduction' && $at && $at >= $since) {
-                    $used[$id] = ($used[$id] ?? 0) + abs((float) $r->quantity);
+                    $q = abs((float) $r->quantity);
+                    $used[$id]   = ($used[$id] ?? 0) + $q;
+                    $maxOut[$id] = max($maxOut[$id] ?? 0, $q);
                 }
             }
 
@@ -1025,11 +1028,31 @@ class InventoryController extends Controller
                 $leadAssumed = $lead <= 0;
                 if ($leadAssumed) $lead = 7;
 
+                // A shop sells in BATCHES, not in a daily trickle. Rate x lead time is the
+                // textbook reorder point and it is honest about the average, but 0.105 sheets a
+                // day over seven days says "keep 2 on the shelf" about a material a single
+                // customer orders fifty of. The first order after that wipes the shelf before
+                // To Buy has said anything.
+                //
+                // So the suggestion is held against the largest single draw the ledger has
+                // actually seen for this material: whatever a real order took once, it can take
+                // again while the next delivery is still in transit.
+                $biggestDraw = (float) ($maxOut[$id] ?? 0);
+
                 $suggested = null;
                 if ($avg > 0) {
                     $cover  = $avg * $lead;                     // what leaves while the next order is in transit
                     $buffer = max($avg * 2, $cover * 0.5);      // two days' worth, or half the lead-time demand
-                    $suggested = (int) max(1, ceil($cover + $buffer));
+                    $suggested = (int) max(1, ceil(max($cover + $buffer, $biggestDraw)));
+                }
+
+                // NEVER LOWER. A minimum the owner typed is a decision made while looking at the
+                // shelf, and three weeks of thin trading is not evidence against it. Lowering it
+                // silences To Buy on exactly the material that was being watched - and "Accept
+                // all" makes that one click. Suggestions may only ever raise.
+                $current = (int) ($inv->minStockLevel ?? 0);
+                if ($suggested !== null && $suggested <= $current) {
+                    $suggested = null;
                 }
 
                 $out[] = [
