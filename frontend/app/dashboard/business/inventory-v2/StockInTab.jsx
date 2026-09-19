@@ -151,7 +151,7 @@ export default function StockInTab({ materials, vendors, batches, setBatches, ba
 
   const goStep2 = () => {
     if (!selectedIds.length) return;
-    setRows(selectedIds.map(id => ({ matId:id, qty:'', unitCost:'', bos:[] })));
+    setRows(selectedIds.map(id => ({ matId:id, qty:'', unitCost:'', totalCost:'', costMode:'unit', bos:[] })));
 
     // Auto-detect preferred vendor: if all selected materials share exactly one vendor
     const selectedMats = materials.filter(m => selectedIds.includes(m.id));
@@ -171,7 +171,8 @@ export default function StockInTab({ materials, vendors, batches, setBatches, ba
     if (!vendorId)         e.vendorId  = 'Select a vendor.';
     rows.forEach((r, i) => {
       if (!r.qty || Number(r.qty) < 1)                     e[`qty_${i}`]      = 'Qty ≥ 1 required.';
-      if (r.unitCost === '' || Number(r.unitCost) <= 0)    e[`cost_${i}`]     = 'Unit cost > 0 required.';
+      if (r.unitCost === '' || Number(r.unitCost) <= 0)
+        e[`cost_${i}`] = (r.costMode === 'total') ? 'Enter the total paid (and a quantity above).' : 'Unit cost > 0 required.';
       const totalBO = r.bos.reduce((s, b) => s + (Number(b.qty) || 0), 0);
       if (totalBO > Number(r.qty))                         e[`boTotal_${i}`]  = 'Total BO qty cannot exceed received qty.';
       r.bos.forEach((b, j) => {
@@ -481,9 +482,51 @@ export default function StockInTab({ materials, vendors, batches, setBatches, ba
                     <Field label={`Qty Received (${mat?.unit})`} required error={errors2[`qty_${i}`]}>
                       <IntegerInput value={r.qty} onChange={v => setRow(i,'qty',v)} style={errors2[`qty_${i}`] ? S.inputErr : undefined} />
                     </Field>
-                    <Field label="Unit Cost (₱)" required error={errors2[`cost_${i}`]}>
-                      <DecimalInput value={r.unitCost} onChange={v => setRow(i,'unitCost',v)} style={errors2[`cost_${i}`] ? S.inputErr : undefined} />
-                    </Field>
+                    <div>
+                      <div style={{ display:'flex', gap:6, marginBottom:6 }}>
+                        {[['unit', 'Price per ' + (mat?.unit ?? 'unit')], ['total', 'Total paid']].map(([mode, label]) => (
+                          <button key={mode} type="button"
+                            onClick={() => { setRow(i, 'costMode', mode); }}
+                            style={{ flex:1, padding:'4px 0', fontSize:'11px', fontWeight:700, borderRadius:6, cursor:'pointer',
+                              background: (r.costMode ?? 'unit') === mode ? 'var(--gold)' : 'transparent',
+                              color: (r.costMode ?? 'unit') === mode ? '#1a1a1a' : 'var(--gray)',
+                              border: `1px solid ${(r.costMode ?? 'unit') === mode ? 'var(--gold)' : 'var(--border)'}` }}>
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                      {(r.costMode ?? 'unit') === 'unit' ? (
+                        <Field label="Unit Cost (₱)" required error={errors2[`cost_${i}`]}>
+                          <DecimalInput value={r.unitCost} onChange={v => setRow(i,'unitCost',v)} style={errors2[`cost_${i}`] ? S.inputErr : undefined} />
+                        </Field>
+                      ) : (
+                        <Field label="Total paid for this material (₱)" required error={errors2[`cost_${i}`]}>
+                          <DecimalInput value={r.totalCost}
+                            onChange={v => {
+                              // The unit cost is what everything downstream reads, so it is derived
+                              // here and kept to four decimals: 600 over 7 boxes is 85.7142, and
+                              // rounding it to 85.71 quietly loses money on every batch.
+                              const n = Number(r.qty) || 0;
+                              setRows(rows => rows.map((row, idx) => idx === i
+                                ? { ...row, totalCost: v, unitCost: n > 0 && Number(v) > 0 ? String(Math.round((Number(v) / n) * 10000) / 10000) : '' }
+                                : row));
+                            }}
+                            style={errors2[`cost_${i}`] ? S.inputErr : undefined} />
+                        </Field>
+                      )}
+                      {(r.costMode ?? 'unit') === 'total' && (
+                        <div style={{ fontSize:'11px', color: r.unitCost ? 'var(--gold)' : 'var(--gray)', marginTop:4 }}>
+                          {r.unitCost
+                            ? `= ₱${r.unitCost} per ${mat?.unit ?? 'unit'}`
+                            : `Enter the quantity first, then what you paid in total.`}
+                        </div>
+                      )}
+                      {(r.costMode ?? 'unit') === 'unit' && Number(r.qty) > 0 && Number(r.unitCost) > 0 && (
+                        <div style={{ fontSize:'11px', color:'var(--gray)', marginTop:4 }}>
+                          = {formatCurrency(Number(r.qty) * Number(r.unitCost))} total
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   {r.qty && totalBO > Number(r.qty) && (

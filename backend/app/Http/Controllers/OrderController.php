@@ -2045,6 +2045,39 @@ class OrderController extends Controller
     }
 
     /**
+     * POST /api/admin/orders/{id}/unarchive
+     *
+     * Archiving was one-way. The case it exists for is the abandoned order - half paid, goods
+     * made, customer gone quiet - and that is exactly the customer who turns up two months later
+     * ready to settle. Putting it back has to be one click, not a database edit.
+     */
+    public function unarchive(Request $request, $id)
+    {
+        try {
+            if (!$this->hasPermission($request, 'orders.edit')) {
+                return response()->json(['error' => 'Forbidden'], 403);
+            }
+
+            $order = Order::find($id);
+            if (!$order) {
+                return response()->json(['error' => 'Order not found'], 404);
+            }
+            if (!($order->isArchived ?? false)) {
+                return response()->json(['error' => 'That order is not archived.'], 422);
+            }
+
+            $order->isArchived = false;
+            $order->archivedAt = null;
+            $order->updatedAt  = now();
+            $order->save();
+
+            return response()->json(['message' => 'Order restored', 'data' => $order]);
+        } catch (\Exception $e) {
+            return $this->serverErrorResponse($e, 'Failed to restore order.');
+        }
+    }
+
+    /**
      * GET /api/orders
      * Returns all orders for admin dashboard (new schema).
      */

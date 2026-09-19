@@ -291,6 +291,7 @@ Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
     Route::get('/admin/activity-logs',           [ActivityLogController::class, 'index']);
     // ─── Design Approval ──────────────────────────────────────────────────────
     Route::post('/admin/orders/{id}/approve-design', [OrderController::class, 'approveDesign']);
+    Route::post('/admin/orders/{id}/unarchive',       [OrderController::class, 'unarchive']);
     Route::post('/admin/orders/{id}/revert-design',  [OrderController::class, 'revertDesignApproval']);
     Route::post('/admin/orders/{id}/rush-decision',   [OrderController::class, 'rushDecision']);
     // Turn an uploaded file into a design job the shop will draw, billing the design fee onto

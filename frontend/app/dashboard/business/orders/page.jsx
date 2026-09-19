@@ -3345,22 +3345,25 @@ export default function OrdersPage() {
         </div>
         </>)}
 
-        {!isPhone && (<>
-        {/* Status pill tabs */}
-        <div style={{ display:'flex', gap:'4px', background:'var(--dark2)', borderRadius:'8px', padding:'3px', alignSelf:'flex-start', marginBottom:'14px', flexWrap:'wrap' }}>
-          {STATUS_TABS.map(s => (
-            <button key={s} onClick={() => { setStatusFilter(s); setPage(1); }}
-              style={{ padding:'6px 14px', borderRadius:'6px', border:'none', cursor:'pointer',
-                fontWeight:600, fontSize:'12px',
-                background: statusFilter === s ? 'var(--dark)' : 'transparent',
-                color:      statusFilter === s ? 'var(--white)' : 'var(--gray)',
-                boxShadow:  statusFilter === s ? '0 1px 3px rgba(0,0,0,.1)' : 'none',
-                transition:'all .15s', whiteSpace:'nowrap',
-              }}>{s === 'all' ? 'All' : statusLabel(s)}</button>
-          ))}
-        </div>
-
-        </>)}
+        {!isPhone && (
+          <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:'14px' }}>
+            <span style={{ fontSize:'12px', color:'var(--gray)' }}>Status</span>
+            <CustomSelect
+              value={statusFilter}
+              onChange={v => { setStatusFilter(v); setPage(1); }}
+              options={[
+                { value:'all',    label:`All (${counts.all})` },
+                { value:'open',   label:`Open - not yet delivered (${counts.open})` },
+                { value:'unpaid', label:`Open and still owes (${counts.unpaid})` },
+                { value:'needs_attention', label:`Needs attention (${counts.needsAttention})` },
+                ...STATUS_TABS.filter(t => t !== 'all').map(t => ({ value:t, label:statusLabel(t) })),
+              ]}
+              style={{ width:'270px' }} />
+            {statusFilter !== 'all' && (
+              <button onClick={() => { setStatusFilter('all'); setPage(1); }} style={S.btnSmGhost}>Clear</button>
+            )}
+          </div>
+        )}
 
         {isPhone ? (
           <PhoneFilterBar
@@ -3568,6 +3571,14 @@ export default function OrdersPage() {
                         </td>
                         <td data-rt="head" style={{ ...S.td, fontFamily:'monospace', fontWeight:700, fontSize:'12px', color:'var(--gold)', whiteSpace:'nowrap' }}>
                           {orderNo(o)}
+                          {isArch && (
+                            <div title={o.archivedAt ? `Archived ${new Date(o.archivedAt).toLocaleDateString('en-PH', { month:'short', day:'numeric', year:'numeric' })}` : 'Archived'}
+                              style={{ marginTop:3, fontSize:9, fontWeight:700, letterSpacing:'.3px', textTransform:'uppercase',
+                                padding:'1px 6px', borderRadius:4, background:'var(--dark2)', color:'var(--gray)',
+                                border:'1px solid var(--border)', fontFamily:'inherit', display:'inline-block' }}>
+                              Archived
+                            </div>
+                          )}
                         </td>
                         <td data-label="Type" style={{ ...S.td }}>
                           <TypeBadge isCustom={o.isCustom} items={o.items} />
