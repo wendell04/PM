@@ -244,6 +244,34 @@ function ManageListsModal({ open, onClose, categories, setCategories, units, set
 }
 
 // ── Main tab ──────────────────────────────────────────────────────────────────
+// Days of cover: free stock divided by how fast the material has actually been leaving. Measured
+// against the supplier's wait, because three days is fine from a same-day supplier and already
+// late from a week-long one.
+const COVER_TONE = {
+  out:      { bg: 'rgba(198,40,40,0.16)',  fg: '#c62828', label: 'out' },
+  critical: { bg: 'rgba(198,40,40,0.14)',  fg: '#c62828', label: null },
+  soon:     { bg: 'rgba(224,168,82,0.16)', fg: '#b45309', label: null },
+  ok:       { bg: 'rgba(46,125,50,0.12)',  fg: '#2e7d32', label: null },
+};
+
+function CoverCell({ mat }) {
+  if (mat?.daysOfCover == null) {
+    return <span title="Nothing has left the shelf yet, so there is no usage to measure against."
+      style={{ fontSize: 11, color: 'var(--gray)' }}>-</span>;
+  }
+  const tone = COVER_TONE[mat.urgency] ?? COVER_TONE.ok;
+  const d = mat.daysOfCover;
+  const text = tone.label ?? (d === 0 ? 'today' : d === 1 ? '1 day' : `${d} days`);
+  const lead = mat.leadTime > 0 ? `${mat.leadTime}-day` : 'assumed 7-day';
+  return (
+    <span title={`${mat.usagePerDay} ${mat.unit}/day over the last ${mat.coverBasisDays} days. Supplier wait: ${lead}.${mat.runsOutOn ? ` Runs out about ${mat.runsOutOn}.` : ''}`}
+      style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.3px', textTransform: 'uppercase',
+        padding: '2px 7px', borderRadius: 4, background: tone.bg, color: tone.fg, whiteSpace: 'nowrap' }}>
+      {text}
+    </span>
+  );
+}
+
 export default function MaterialsTab({ materials, setMaterials, vendors, setVendors, batches, boms, categories, setCategories, units, setUnits, token, onRefresh, toast }) {
   const [search,       setSearch]     = useState('');
   const [catFilter,    setCat]        = useState('All');
@@ -454,7 +482,7 @@ export default function MaterialsTab({ materials, setMaterials, vendors, setVend
                   <PhoneRow key={mat.id} first={i === 0} onClick={() => openEdit(mat)}
                     title={mat.sku} chip={<StatusBadge status={status} />}
                     meta={mat.name}
-                    sub={[`${qty} ${mat.unit}`, `min ${mat.minStock}`, formatCurrency(mat.baseCost), mat.category, vendor?.name].filter(Boolean).join(' \u00b7 ')} />
+                    sub={[`${qty} ${mat.unit}`, mat.daysOfCover != null ? `lasts ${mat.daysOfCover}d` : null, `min ${mat.minStock}`, formatCurrency(mat.baseCost), mat.category, vendor?.name].filter(Boolean).join(' \u00b7 ')} />
                 );
               })}
             </PhoneList>
@@ -469,14 +497,14 @@ export default function MaterialsTab({ materials, setMaterials, vendors, setVend
           <table className="pmp-rt" style={{ width:'100%', borderCollapse:'collapse' }}>
             <thead>
               <tr>
-                {['SKU','Material Name','Category','Unit','Vendor','Base Cost','Min Stock','Stock','Status',''].map((h, i) => (
+                {['SKU','Material Name','Category','Unit','Vendor','Base Cost','Min Stock','Stock','Lasts','Status',''].map((h, i) => (
                   <th key={i} style={S.th}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {slice.length === 0 ? (
-                <tr><td colSpan={10}><EmptyState message="No materials found" sub="Add a material or adjust filters." /></td></tr>
+                <tr><td colSpan={11}><EmptyState message="No materials found" sub="Add a material or adjust filters." /></td></tr>
               ) : slice.map(mat => {
                 const qty    = stockMap[mat.id] || 0;
                 const status = qty === 0 ? 'out_of_stock' : qty <= mat.minStock ? 'low_stock' : 'in_stock';
@@ -491,6 +519,7 @@ export default function MaterialsTab({ materials, setMaterials, vendors, setVend
                     <td style={S.td}>{formatCurrency(mat.baseCost)}</td>
                     <td style={S.td}>{mat.minStock} {mat.unit}</td>
                     <td style={{ ...S.td, fontWeight:600 }}>{qty} {mat.unit}</td>
+                    <td style={S.td}><CoverCell mat={mat} /></td>
                     <td style={S.td}><StatusBadge status={status} /></td>
                     <td style={{ ...S.td, textAlign:'right' }}>
                       <div style={{ display:'flex', gap:'6px', justifyContent:'flex-end' }}>

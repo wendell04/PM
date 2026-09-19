@@ -24,6 +24,43 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 const peso = (n) => `₱${(Number(n) || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const num  = (n) => Number(n) % 1 === 0 ? String(Number(n)) : String(Math.round(Number(n) * 100) / 100);
 
+// How long what is on the shelf lasts at the rate it has actually been leaving. The one figure
+// that answers "konti na lang ba?" - every other number on this page is present-tense.
+//
+// Urgency is set against the supplier's lead time, not a round number of days: three days of
+// cover is fine for a same-day supplier and already late for a week-long one.
+const COVER_TONE = {
+  out:      { bg: 'rgba(198,40,40,0.16)',  fg: '#c62828', label: 'out of stock' },
+  critical: { bg: 'rgba(198,40,40,0.14)',  fg: '#c62828', label: null },
+  soon:     { bg: 'rgba(224,168,82,0.16)', fg: '#b45309', label: null },
+  ok:       { bg: 'rgba(46,125,50,0.12)',  fg: '#2e7d32', label: null },
+};
+
+function CoverBadge({ row }) {
+  // null cover means "nothing has been used yet, so we cannot say" - which is not the same as
+  // "it will last forever" and must never be drawn as a comfortable green number.
+  if (row?.daysOfCover == null) {
+    return (
+      <span title="Nothing has left the shelf yet, so there is no usage to measure against."
+        style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: '.3px', textTransform: 'uppercase',
+          padding: '2px 6px', borderRadius: 4, background: 'var(--dark2)', color: 'var(--gray)', whiteSpace: 'nowrap' }}>
+        no usage yet
+      </span>
+    );
+  }
+  const tone = COVER_TONE[row.urgency] ?? COVER_TONE.ok;
+  const d = row.daysOfCover;
+  const text = tone.label ?? (d === 0 ? 'runs out today' : d === 1 ? '1 day left' : `${d} days left`);
+  const lead = row.leadTimeDays > 0 ? `${row.leadTimeDays}-day` : 'assumed 7-day';
+  return (
+    <span title={`${row.usagePerDay} ${row.uom ?? ''}/day over the last ${row.coverBasisDays} days. Supplier wait: ${lead}.${row.runsOutOn ? ` Runs out about ${row.runsOutOn}.` : ''}`}
+      style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: '.3px', textTransform: 'uppercase',
+        padding: '2px 6px', borderRadius: 4, background: tone.bg, color: tone.fg, whiteSpace: 'nowrap' }}>
+      {text}
+    </span>
+  );
+}
+
 export default function ToBuyPage() {
   const { token } = useAuth();
   const [rows, setRows]       = useState([]);
@@ -382,7 +419,10 @@ export default function ToBuyPage() {
             <div key={r.inventoryId}>
             <PhoneRow first={i === 0} mono={false}
               title={r.name}
-              chip={<span style={{ fontSize: 12, fontWeight: 700, color: '#e0a852', whiteSpace: 'nowrap' }}>Buy {num(r.shortfall)} {r.uom}</span>}
+              chip={<span style={{ display:'flex', flexDirection:'column', alignItems:'flex-end', gap:3 }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: '#e0a852', whiteSpace: 'nowrap' }}>Buy {num(r.shortfall)} {r.uom}</span>
+                <CoverBadge row={r} />
+              </span>}
               meta={`Buy ${num(r.shortfall)} = ${breakdown(r)}`}
               sub={[`have ${num(r.onHand)}${r.minimum > 0 ? ` · min ${num(r.minimum)}` : ''} ${r.uom} · ${peso(r.estimatedCost)}`, r.for?.length > 0 ? `for ${r.for.map(f => `${f.pieces} × ${f.product}`).join(', ')}` : null, r.orders?.length > 0 ? r.orders.join(', ') : null, r.isOnDemand ? 'buy per order' : null, !Number(r.unitCost) ? 'no cost set' : null].filter(Boolean).join(' · ')} />
             <div style={{ padding: '0 14px 10px' }}><MinEditor r={r} compact /></div>
@@ -411,9 +451,11 @@ export default function ToBuyPage() {
                       {w === 'orders' ? 'short for orders' : 'below minimum'}
                     </span>
                   ))}
+                  <CoverBadge row={r} />
                 </div>
                 <div style={{ fontSize: '10.5px', color: 'var(--gray)', marginTop: '1px' }}>
-                  {[r.sku, r.category, r.isOnDemand ? 'buy per order' : null].filter(Boolean).join(' · ')}
+                  {[r.sku, r.category, r.isOnDemand ? 'buy per order' : null,
+                    r.usagePerDay > 0 ? `${r.usagePerDay}/day` : null].filter(Boolean).join(' · ')}
                   {r.orders?.length > 0 && ` · ${r.orders.join(', ')}`}
                 </div>
                 {r.for?.length > 0 && (

@@ -158,6 +158,7 @@ class InventoryController extends Controller
             // behaviour, so a material the owner has not set a line for still only shows up when
             // an order actually needs it.
             $rows = [];
+            $usage = \App\Support\MaterialUsage::perDay();
             $candidates = Inventory::where('isActive', '!=', false)->get()->keyBy(fn ($i) => (string) $i->_id);
             $ids = array_unique(array_merge(array_keys($demand), $candidates->keys()->all()));
             foreach ($ids as $invId) {
@@ -176,7 +177,13 @@ class InventoryController extends Controller
 
                 $unitCost = (float) ($inv->lastUnitCost ?: $inv->averageCost ?: $inv->baseCost ?: 0);
 
-                $rows[] = [
+                $cover = \App\Support\MaterialUsage::coverFor(
+                    max(0, $onHand - (int) ($inv->reservedQty ?? 0)),
+                    $usage[$invId] ?? null,
+                    (int) ($inv->leadTimeDays ?? 0) ?: null,
+                );
+
+                $rows[] = $cover + [
                     'reasons'       => $reasons,
                     'minimum'       => $minimum,
                     'inventoryId'   => (string) $inv->_id,
@@ -198,8 +205,15 @@ class InventoryController extends Controller
                 ];
             }
 
-            // Biggest money first - that is the order the owner should work in.
-            usort($rows, fn ($a, $b) => $b['estimatedCost'] <=> $a['estimatedCost']);
+            // Soonest to run out first. The old order was biggest-money-first, which buried a
+            // P200 material with three days left under a P9,000 one with two months of cover -
+            // and it is the three-day one that stops production. A row with no usage history has
+            // no cover figure; those sit at the end, ordered by money as before.
+            usort($rows, function ($a, $b) {
+                $ac = $a['daysOfCover'] ?? PHP_INT_MAX;
+                $bc = $b['daysOfCover'] ?? PHP_INT_MAX;
+                return $ac <=> $bc ?: $b['estimatedCost'] <=> $a['estimatedCost'];
+            });
 
             // Finished goods with no BOM: what was ordered against what is on the shelf.
             $productRows = [];
@@ -286,6 +300,9 @@ class InventoryController extends Controller
             $cacheKey = 'inventory_list_'.auth()->id().'_'.$ver.'_'.$filterSig;
 
             $inventory = Cache::remember($cacheKey, 60, function () use ($request) {
+                // One ledger pass for the whole list, so every row's "days of cover" is the same
+                // number the To Buy screen shows rather than a second opinion computed elsewhere.
+                $usage = \App\Support\MaterialUsage::perDay();
                 $query = Inventory::where('isActive', true);
 
                 if ($request->filled('category')) {
@@ -322,13 +339,22 @@ class InventoryController extends Controller
                                    'variantTypes', 'variantCombo', 'allowBackorder',
                                    'createdAt', 'updatedAt',
                                ])
-                               ->map(function ($item) {
+                               ->map(function ($item) use ($usage) {
                                    $raw = $item->toArray();
                                    $raw['batches'] = array_values(
                                        array_map(
                                            fn($b) => is_array($b) ? $b : (array) $b,
                                            is_iterable($item->batches ?? null) ? (array) $item->batches : []
                                        )
+                                   );
+                                   // Cover is measured on FREE stock: material already promised to
+                                   // an open order is not available to the next one, and counting
+                                   // it says the shelf lasts longer than it does.
+                                   $free = max(0, (int) ($item->stockQty ?? 0) - (int) ($item->reservedQty ?? 0));
+                                   $raw += \App\Support\MaterialUsage::coverFor(
+                                       $free,
+                                       $usage[(string) $item->_id] ?? null,
+                                       (int) ($item->leadTimeDays ?? 0) ?: null,
                                    );
                                    return $raw;
                                });

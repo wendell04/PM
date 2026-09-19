@@ -62,6 +62,14 @@ export function normInventory(item) {
     reservedQty: Number(item.reservedQty ?? 0),
     consumedQty: Number(item.consumedQty ?? 0),
     badOrderQty: Number(item.badOrderQty ?? 0),
+    // How long the free stock lasts at the rate it has actually been leaving, from the server's
+    // one reading of the ledger. null means nothing has been used yet, which is "cannot say" -
+    // never render it as a comfortable number.
+    usagePerDay:    item.usagePerDay ?? null,
+    daysOfCover:    item.daysOfCover ?? null,
+    coverBasisDays: item.coverBasisDays ?? null,
+    runsOutOn:      item.runsOutOn ?? null,
+    urgency:        item.urgency ?? 'unknown',
   };
   return { mat, batches };
 }
