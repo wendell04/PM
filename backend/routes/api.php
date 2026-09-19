@@ -3,6 +3,7 @@
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\AccessController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\ProfileController;
@@ -179,7 +180,12 @@ Route::middleware(['auth:sanctum', 'isAdmin:owner,admin'])->group(function () {
     Route::post('/admin/role-permissions',           [RolePermissionController::class, 'store']);
     Route::put('/admin/role-permissions/{role}',     [RolePermissionController::class, 'update']);
     Route::delete('/admin/role-permissions/{role}',  [RolePermissionController::class, 'destroy']);
-Route::get('/admin/staff',                            [StaffController::class, 'index']);
+// ─── Access (new) ── staff + per-person permissions; replaces Staff + Permissions ──
+    Route::get('/admin/access/catalog',                   [AccessController::class, 'catalog']);
+    Route::get('/admin/access/staff',                     [AccessController::class, 'staff']);
+    Route::put('/admin/access/staff/{id}',                [AccessController::class, 'updateStaff']);
+
+    Route::get('/admin/staff',                            [StaffController::class, 'index']);
     Route::post('/admin/staff',                           [StaffController::class, 'store']);
     Route::put('/admin/staff/{id}',                       [StaffController::class, 'update']);
     Route::delete('/admin/staff/{id}',                    [StaffController::class, 'destroy']);

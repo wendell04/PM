@@ -699,6 +699,12 @@ export default function BusinessDashboardLayout({ children }) {
       icon: "M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75M9 7a4 4 0 100 8 4 4 0 000-8z",
     },
     {
+      name: "Access (new)",
+      href: "/dashboard/business/access",
+      permKey: "userManagement",
+      icon: "M12 11c0-1.1.9-2 2-2h1V7a3 3 0 10-6 0v2h1a2 2 0 012 2zM5 11h14a1 1 0 011 1v8a1 1 0 01-1 1H5a1 1 0 01-1-1v-8a1 1 0 011-1z",
+    },
+    {
       name: "Permissions",
       href: "/dashboard/business/role-permissions",
       adminOnly: true,
@@ -746,6 +752,7 @@ export default function BusinessDashboardLayout({ children }) {
       "/dashboard/business/home": "Home",
       "/dashboard/business/orders": "Orders",
       "/dashboard/business/order-requests": "Order Requests",
+      "/dashboard/business/access": "Access",
       "/dashboard/business/job-orders": "Job Orders",
       "/dashboard/business/pos": "Point of Sale",
       "/dashboard/business/inventory-v2": "Inventory",

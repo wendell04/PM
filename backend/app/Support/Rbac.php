@@ -59,7 +59,23 @@ class Rbac
             return true;
         }
 
-        // ── Staff - resolved from their role's permission grid ──
+        // ── Staff ──────────────────────────────────────────────────────────
+        // The person's OWN grid first, their role's template second.
+        //
+        // Every shop of this size has the same problem: two people share a job title and one of
+        // them is also the person who does the banking. A model where access can only be set on
+        // the role forces a new role for every such pairing, and the role list becomes a list of
+        // individuals with extra steps. Shopify, Square and Lightspeed all put the permissions on
+        // the STAFF MEMBER and demote roles to a template that fills the ticks in.
+        //
+        // `permissions` on the user has existed and been empty since it was added, so nothing
+        // changes for anyone until a grid is actually saved against them: an empty grid falls
+        // through to exactly today's behaviour.
+        $own = $user->permissions ?? null;
+        if (is_array($own) && $own !== []) {
+            return self::gridAllows($own, $permKey);
+        }
+
         return self::roleGrants($user->role, $permKey);
     }
 
