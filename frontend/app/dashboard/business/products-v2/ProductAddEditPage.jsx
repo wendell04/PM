@@ -46,7 +46,7 @@ const EMPTY_FORM = {
   collectionIds: [],
   isCustomizable: false, allowPlain: true, allowCOD: true, isMadeToOrder: false, allowPreorder: false,
   optionGroups: [],
-  downpaymentPct: '0', hideWhenOutOfStock: false, isPublished: false,
+  downpaymentPct: '0', hideWhenOutOfStock: false, availabilityBadge: 'auto', isPublished: false,
   isFeatured: false,
   designFee: '', minOrderQty: '1', quoteAboveQty: '',
   designTemplates: [],
@@ -423,6 +423,7 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
       allowPreorder:      product.allowPreorder ?? false,
       downpaymentPct:     product.downpaymentPct != null ? String(product.downpaymentPct) : '0',
       hideWhenOutOfStock: product.hideWhenOutOfStock ?? false,
+      availabilityBadge:  product.availabilityBadge ?? 'auto',
       isPublished:        product.isPublished ?? false,
       isFeatured:         product.isFeatured ?? false,
       designFee:          product.designFee != null ? String(product.designFee) : '',
@@ -770,7 +771,7 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
         .filter(g => g.name && g.options.length),
       allowPlainPurchase: f.allowPlain,
       downpaymentPct: (!f.isCustomizable && !f.isMadeToOrder) ? 0 : Number(f.downpaymentPct),
-      hideWhenOutOfStock: f.hideWhenOutOfStock, isPublished: f.isPublished,
+      hideWhenOutOfStock: f.hideWhenOutOfStock, availabilityBadge: f.availabilityBadge || 'auto', isPublished: f.isPublished,
       isFeatured: f.isFeatured,
       designFee: f.isCustomizable && f.designFee ? Number(f.designFee) : 0,
       designTemplates: f.isCustomizable
@@ -1515,6 +1516,22 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
                     recipes - Mug Box White 11oz is in all three mug BOMs - so a promise made there
                     would silently promise products nobody considered. Applies to ready-made and
                     customizable alike. */}
+                {/* What the storefront badge SAYS is a separate decision from whether it sells
+                    past zero. A shop that produces after payment may want every card to read
+                    Pre-order or Made to Order whatever the shelf holds - and never a count. */}
+                <div style={{ marginBottom: 12 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--white)', marginBottom: 4 }}>Storefront badge</div>
+                  <div style={{ fontSize: 12, color: 'var(--gray)', marginBottom: 8, lineHeight: 1.5 }}>
+                    Auto follows the stock: In Stock, Only N left, Pre-order (when allowed) or Out of Stock. The other two show that word always and never a count.
+                  </div>
+                  <CustomSelect value={form.availabilityBadge || 'auto'} onChange={v => setF('availabilityBadge', v)} style={{ maxWidth: 320 }}
+                    options={[
+                      { value: 'auto',          label: 'Auto - from stock' },
+                      { value: 'preorder',      label: 'Always "Pre-order"' },
+                      { value: 'made_to_order', label: 'Always "Made to Order"' },
+                    ]} />
+                </div>
+
                 <ToggleRow
                   label="Allow pre-order"
                   hint="Customers can keep ordering after the stock runs out, and the card shows Pre-order instead of Out of Stock. Only for what you can genuinely restock in time - the delivery date is already on the order."

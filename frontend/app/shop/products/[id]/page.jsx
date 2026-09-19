@@ -1213,6 +1213,17 @@ export default function ProductDetailPage() {
               // Sold out on the shelf but still orderable, because the shop said it can restock.
               // This is what pre-order actually changes: the badge and whether the order is
               // accepted - not the count above it.
+              // The owner can pin the badge: a product made after payment reads Pre-order or Made
+              // to Order whatever the shelf holds, and shows no count. Ordering rules are unchanged.
+              if (product.availabilityBadge === 'preorder' || product.availabilityBadge === 'made_to_order') {
+                return (
+                  <div style={{ display: 'flex' }}>
+                    <span style={{ fontSize: '0.8rem', fontWeight: 700, ...BADGE_GOLD, borderRadius: '999px', padding: '0.25rem 0.75rem' }}>
+                      {product.availabilityBadge === 'preorder' ? 'Pre-order' : 'Made to Order'}
+                    </span>
+                  </div>
+                );
+              }
               if (product.allowPreorder && displayQty != null && displayQty <= 0) {
                 return (
                   <div style={{ display: 'flex' }}>

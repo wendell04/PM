@@ -29,6 +29,36 @@ function calcProducible(bom, matMap) {
   return min === Infinity ? 0 : min;
 }
 
+// How much of a variant's build every material covers, the blank included. The blank sets the
+// target (it is what "can build" counts); each material is then held against that target:
+// 109 mugs need 109 boxes, and 10 boxes cover 9% of them. Anything under 100% is what the
+// owner has to restock before that build is fully fulfillable - the "seek bar" he asked for.
+function coverageOf(bom, producible, matMap) {
+  const rows = [];
+  for (const item of bom?.items ?? []) {
+    const mat = matMap[item.matId];
+    if (!mat || !(item.qty > 0)) continue;
+    const need = producible * item.qty;
+    const have = freeStock(mat);
+    const ratio = need > 0 ? Math.min(1, have / need) : 1;
+    rows.push({ matId: item.matId, name: mat.name, uom: mat.unit, need, have, ratio, restock: Math.max(0, Math.ceil(need - have)), counted: counts(mat) });
+  }
+  return rows;
+}
+
+// The worst-covered material across a product's variants, and which materials fall short.
+function coverageSummary(variants) {
+  let coverage = 1;
+  const short = new Map();
+  for (const v of variants) {
+    for (const c of v.coverage ?? []) {
+      if (c.ratio < coverage) coverage = c.ratio;
+      if (c.ratio < 1) short.set(c.matId, c.name);
+    }
+  }
+  return { coverage, shortNames: [...short.values()] };
+}
+
 function stockStatus(n) {
   if (n === 0)  return 'out_of_stock';
   if (n <= 10)  return 'low_stock';
@@ -63,25 +93,28 @@ export default function ProductStockTab({ boms, materials, products }) {
           .map(c => {
             usedBomIds.add(c.bomId);
             const bom = bomMap[c.bomId];
-            return { label: c.name, bom, producible: calcProducible(bom, matMap) };
+            const producible = calcProducible(bom, matMap);
+            return { label: c.name, bom, producible, coverage: coverageOf(bom, producible, matMap) };
           });
       } else if (p.bomId && bomMap[p.bomId]) {
         usedBomIds.add(p.bomId);
         const bom = bomMap[p.bomId];
-        variants = [{ label: null, bom, producible: calcProducible(bom, matMap) }];
+        const producible = calcProducible(bom, matMap);
+        variants = [{ label: null, bom, producible, coverage: coverageOf(bom, producible, matMap) }];
       }
       if (!variants.length) return [];
       const minProd = Math.min(...variants.map(v => v.producible));
-      return [{ id: p.id, name: p.name, category: p.category, variants, minProd, standalone: false }];
+      const cov = coverageSummary(variants);
+      return [{ id: p.id, name: p.name, category: p.category, variants, minProd, standalone: false, ...cov }];
     });
 
     const standalone = (boms || [])
       .filter(b => !usedBomIds.has(b.id))
-      .map(b => ({
-        id: b.id, name: b.productName, category: '-',
-        variants: [{ label: null, bom: b, producible: calcProducible(b, matMap) }],
-        minProd: calcProducible(b, matMap), standalone: true,
-      }));
+      .map(b => {
+        const producible = calcProducible(b, matMap);
+        const variants = [{ label: null, bom: b, producible, coverage: coverageOf(b, producible, matMap) }];
+        return { id: b.id, name: b.productName, category: '-', variants, minProd: producible, standalone: true, ...coverageSummary(variants) };
+      });
 
     return { rows: [...rows, ...standalone], usedBomIds };
   }, [products, boms, bomMap, matMap]);
@@ -97,12 +130,16 @@ export default function ProductStockTab({ boms, materials, products }) {
       if (statFilter === 'out'  && n !== 0)            return false;
       if (statFilter === 'low'  && !(n > 0 && n <= 10)) return false;
       if (statFilter === 'ok'   && n <= 10)             return false;
+      if (statFilter === 'restock' && !(r.coverage < 1)) return false;
     }
     return true;
-  });
+  }).sort((a, b) => (a.coverage - b.coverage) || (a.minProd - b.minProd) || a.name.localeCompare(b.name));
+  // Least covered first: the product whose build the shelf can least fulfil - the mugs with ten
+  // boxes for 484 blanks - is the one to see before anything else.
 
   const outCount = rows.filter(r => r.minProd === 0).length;
   const lowCount = rows.filter(r => r.minProd > 0 && r.minProd <= 10).length;
+  const restockCount = rows.filter(r => r.coverage < 1).length;
 
   const { slice, page, perPage, total, setPage, setPerPage } = usePagination(filtered);
   const isPhone = useIsPhone();
@@ -115,13 +152,14 @@ export default function ProductStockTab({ boms, materials, products }) {
             { key:'All', label:'Products',     value: rows.length, active: statFilter === 'All', onClick: () => { setStatFilter('All'); setExpanded(null); } },
             { key:'out', label:'Out of stock', value: outCount, color:'#c62828', active: statFilter === 'out', onClick: () => { setStatFilter('out'); setExpanded(null); } },
             { key:'low', label:'Low stock',    value: lowCount, color:'#b45309', active: statFilter === 'low', onClick: () => { setStatFilter('low'); setExpanded(null); } },
+            { key:'restock', label:'To fulfil', value: restockCount, color: restockCount > 0 ? '#b45309' : undefined, active: statFilter === 'restock', onClick: () => { setStatFilter('restock'); setExpanded(null); } },
           ]} />
           <PhoneFilterBar search={search} onSearch={setSearch} placeholder="Search product"
             filters={[
               { key:'cat', label:'Category', value:catFilter, defaultValue:'All', onChange: v => { setCatFilter(v); setExpanded(null); },
                 options: categories.map(c => ({ value:c, label:c })) },
               { key:'stat', label:'Stock', value:statFilter, defaultValue:'All', onChange: v => { setStatFilter(v); setExpanded(null); },
-                options: [{ value:'All', label:'All' }, { value:'ok', label:'In stock' }, { value:'low', label:'Low stock' }, { value:'out', label:'Out of stock' }] },
+                options: [{ value:'All', label:'All' }, { value:'ok', label:'In stock' }, { value:'low', label:'Low stock' }, { value:'out', label:'Out of stock' }, { value:'restock', label:'Needs restocking to fulfil' }] },
             ]}
             note={`${total} product${total !== 1 ? 's' : ''}`} />
         </>
@@ -130,6 +168,7 @@ export default function ProductStockTab({ boms, materials, products }) {
         <SummaryCard label="Total Products"  value={rows.length} accent />
         <SummaryCard label="Out of Stock"    value={outCount}    color="#c62828" />
         <SummaryCard label="Low Stock"       value={lowCount}    color="#b45309" />
+        <SummaryCard label="Needs restocking to fulfil" value={restockCount} color={restockCount > 0 ? '#b45309' : undefined} sub="a material covers less than the blanks" />
       </div>
 
       <div style={{ ...S.card, ...S.rowBetween }}>
@@ -141,8 +180,8 @@ export default function ProductStockTab({ boms, materials, products }) {
             style={{ width:'150px' }} />
           <CustomSelect value={statFilter}
             onChange={v => { setStatFilter(v); setExpanded(null); }}
-            options={[{ value:'All', label:'All Status' },{ value:'ok', label:'In Stock' },{ value:'low', label:'Low Stock' },{ value:'out', label:'Out of Stock' }]}
-            style={{ width:'140px' }} />
+            options={[{ value:'All', label:'All Status' },{ value:'ok', label:'In Stock' },{ value:'low', label:'Low Stock' },{ value:'out', label:'Out of Stock' },{ value:'restock', label:'Needs restocking to fulfil' }]}
+            style={{ width:'190px' }} />
         </div>
         <span style={{ fontSize:'12px', color:'var(--gray)' }}>{total} product{total !== 1 ? 's' : ''}</span>
       </div>
@@ -159,7 +198,7 @@ export default function ProductStockTab({ boms, materials, products }) {
                 <PhoneRow key={row.id} first={i === 0} mono={false} onClick={() => setExpanded(row.id)}
                   title={row.name} chip={<StatusBadge status={stockStatus(row.minProd)} />}
                   meta={row.standalone ? 'Standalone' : `${row.variants.length} variant${row.variants.length === 1 ? '' : 's'}`}
-                  sub={`${row.minProd} can build${row.category ? ' \u00b7 ' + row.category : ''}`} />
+                  sub={[`${row.minProd} can build`, row.coverage < 1 ? `restock to fulfil: ${row.shortNames.join(', ')}` : null, row.category].filter(Boolean).join(' · ')} />
               ))}
             </PhoneList>
           )}
@@ -204,6 +243,14 @@ export default function ProductStockTab({ boms, materials, products }) {
                     <td style={{ ...S.td, fontSize:'12px', color:'var(--gray)' }}>{row.standalone ? <span style={{ color:'var(--gray)', fontStyle:'italic' }}>BOM only</span> : row.category}</td>
                     <td style={{ ...S.td, textAlign:'center', fontSize:'12px', color:'var(--gray)' }}>
                       {row.variants.length > 1 ? `${row.variants.length} variants` : '-'}
+                      {row.coverage < 1 && (
+                        <div title={`Restock to fulfil: ${row.shortNames.join(', ')}`} style={{ marginTop: 4 }}>
+                          <div style={{ height: 4, borderRadius: 2, background: 'var(--dark2)', overflow: 'hidden', maxWidth: 140, margin: '0 auto' }}>
+                            <div style={{ width: `${Math.max(3, row.coverage * 100)}%`, height: '100%', background: row.coverage < 0.25 ? '#c62828' : '#b45309' }} />
+                          </div>
+                          <div style={{ fontSize: 10.5, color: '#b45309', marginTop: 2 }}>{Math.round(row.coverage * 100)}% fulfillable - {row.shortNames.join(', ')}</div>
+                        </div>
+                      )}
                     </td>
                     <td style={{ ...S.td, textAlign:'center' }}>
                       <StatusBadge status={stockStatus(row.minProd)} />
@@ -329,6 +376,7 @@ function DetailPanel({ variants, matMap }) {
                   const counted      = counts(mat);
                   const can          = item.qty > 0 ? Math.floor(freeStock(mat) / item.qty) : Infinity;
                   const isBottleneck = counted && item.matId === bottleneckId;
+                  const cov          = (v.coverage ?? []).find(c => c.matId === item.matId);
                   return (
                     <tr key={ii} style={{ opacity: counted ? 1 : 0.62 }}>
                       <td style={{ padding:'4px 8px', fontSize:'12px', color:'var(--gray-light)', fontWeight: isBottleneck ? 600 : 400 }}>
@@ -348,6 +396,14 @@ function DetailPanel({ variants, matMap }) {
                       <td style={{ padding:'4px 8px', fontSize:'12px', fontWeight:600, color: !counted ? 'var(--gray)' : can===0?'#c62828':can<=10?'#b45309':'#1a7f3c' }}>
                         {counted ? can : '-'}
                         {!counted && <span style={{ marginLeft:6, fontSize:'10px', color:'var(--gray)' }}>cost only</span>}
+                        {cov && (
+                          <div style={{ marginTop: 4, minWidth: 120 }} title={`${cov.have} of ${cov.need} ${cov.uom ?? ''} needed to make all ${prod}`}>
+                            <div style={{ height: 4, borderRadius: 2, background: 'var(--dark2)', overflow: 'hidden' }}>
+                              <div style={{ width: `${Math.max(3, cov.ratio * 100)}%`, height: '100%', background: cov.ratio >= 1 ? '#2e7d32' : cov.ratio < 0.25 ? '#c62828' : '#b45309' }} />
+                            </div>
+                            {cov.ratio < 1 && <div style={{ fontSize: 10.5, color: '#b45309', marginTop: 2, fontWeight: 600 }}>restock {cov.restock} {cov.uom ?? ''} to fulfil all {prod}</div>}
+                          </div>
+                        )}
                       </td>
                     </tr>
                   );

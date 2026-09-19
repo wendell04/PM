@@ -71,6 +71,7 @@ class Product extends Model
         'updatedAt',
         'allowCOD',
         'hideWhenOutOfStock',
+        'availabilityBadge',
         'isFeatured',
     ];
 
