@@ -723,11 +723,11 @@ function StockBreakdown({ product, boms, materials }) {
                                 </span>
                                 <span style={{ color:tone, fontWeight:700, fontSize:'11.5px' }}>{covers}/{prod}</span>
                               </div>
-                              {!counted && (
-                                <div style={{ fontSize:'10px', color: pct >= 100 ? 'var(--gray)' : '#b45309', marginTop:2 }}>
-                                  {pct >= 100 ? 'cost only' : `enough for ${covers} \u00b7 on To Buy`}
-                                </div>
-                              )}
+                              <div style={{ fontSize:'10px', marginTop:2, color: pct >= 100 ? '#1a7f3c' : '#b45309', fontWeight:700 }}>
+                                {pct >= 100 ? 'Enough' : 'Short'}
+                                {!counted && <span style={{ color:'var(--gray)', fontWeight:400 }}>{' \u00b7 cost only'}</span>}
+                                {pct < 100 && <span style={{ color:'var(--gray)', fontWeight:400 }}>{' \u00b7 on To Buy'}</span>}
+                              </div>
                             </div>
                           );
                         })()}
