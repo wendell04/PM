@@ -7,7 +7,7 @@ import { fetchJobOrders, updateJobOrder, reportSpoilage } from '@/lib/jobOrderAp
 import { orderNo } from '@/lib/orderNumber';
 import ImageLightbox from '@/components/shop/ImageLightbox';
 import { joRisk, RISK_STYLE } from '@/lib/deliveryRisk';
-import { JobOrderStatusBadge, RushBadge, DesignPreview, designUrl, joDocId, fmtJODate, TableSkeleton } from '@/components/dashboard/JobOrderBits';
+import { JobOrderStatusBadge, RushBadge, DesignPreview, designUrl, joDocId, fmtJODate, TableSkeleton, WaitingBadge } from '@/components/dashboard/JobOrderBits';
 import { S, ICONS, SearchBar, SummaryCard, PaginationBar, EmptyState, usePagination, CustomSelect, ConfirmModal } from '../inventory-v2/shared';
 import { useIsPhone, KpiStrip, PhoneFilterBar, PhoneList, PhoneRow } from '@/components/dashboard/phone';
 
@@ -178,6 +178,7 @@ export default function ProductionPage() {
                           j.orderId ? orderNo(j.orderId) : null,
                           j.targetCompletion ? `target ${fmtJODate(j.targetCompletion)}` : null,
                           risk?.label ?? null,
+                          j.materialShort?.length ? `waiting on ${j.materialShort.map(r => `${r.name} (short ${r.short})`).join(', ')}` : null,
                           j.qcResult?.defects && done > 0 ? `back from QC: ${j.qcResult.defects}` : null,
                         ].filter(Boolean).join(' \u00b7 ')} />
                       {act && (
@@ -268,7 +269,7 @@ export default function ProductionPage() {
                       {fmtJODate(j.targetCompletion)}
                       {risk && <div style={{ marginTop: 3 }}><span style={{ ...S.badge, ...RISK_STYLE[risk.color], fontSize: 9, fontWeight: 700 }}>{risk.label}</span></div>}
                     </td>
-                    <td style={S.td}><JobOrderStatusBadge status={j.joStatus} /></td>
+                    <td style={S.td}><JobOrderStatusBadge status={j.joStatus} /><WaitingBadge jo={j} block /></td>
                     <td style={{ ...S.td, textAlign: 'right' }} onClick={e => e.stopPropagation()}>
                       {j.joStatus === 'Queued' && <button disabled={busy} onClick={e => { e.stopPropagation(); setConfirmAct({ jo: j, to: 'In Progress' }); }} style={S.btnSm}>{busy ? 'Saving…' : 'Start'}</button>}
                       {j.joStatus === 'In Progress' && <button disabled={busy} onClick={e => { e.stopPropagation(); setConfirmAct({ jo: j, to: 'QC_Pending' }); }} style={S.btnSm}>{busy ? 'Saving…' : 'Send to QC'}</button>}

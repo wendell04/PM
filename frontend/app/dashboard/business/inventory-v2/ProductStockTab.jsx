@@ -255,8 +255,18 @@ function shipCompleteAcross(variants, matMap) {
   let limit = null;
   for (const [id, qty] of Object.entries(perUnit)) {
     const can = Math.floor(freeStock(matMap[id]) / qty);
-    if (limit === null || can < limit.can) limit = { can, name: matMap[id].name };
+    if (limit === null || can < limit.can) limit = { can, name: matMap[id].name, id, uom: matMap[id].unit };
   }
+  if (!limit) return null;
+  // The owner's other question: to box EVERYTHING the blanks can make, how many more of the
+  // limiting material would it take? A planning number, not a purchase - To Buy only buys for
+  // orders taken and for the minimum. This tells him what minimum to set.
+  let needAll = 0;
+  for (const v of variants) {
+    const item = (v.bom?.items ?? []).find(i => i.matId === limit.id);
+    if (item) needAll += (v.producible ?? 0) * item.qty;
+  }
+  limit.toCoverAll = Math.max(0, Math.ceil(needAll - freeStock(matMap[limit.id])));
   return limit;
 }
 
@@ -274,7 +284,9 @@ function DetailPanel({ variants, matMap }) {
             {' '}- boxed, with consumables, {variants.length > 1 ? `across all ${variants.length} variants together` : 'for this product'}
           </div>
           <div style={{ fontSize:'11px', color:'var(--gray)' }}>
-            Limited by <b style={{ color:'var(--gray-light)' }}>{pooled.name}</b>. Packaging never blocks a sale; it shows up in To Buy.
+            Limited by <b style={{ color:'var(--gray-light)' }}>{pooled.name}</b>
+            {pooled.toCoverAll > 0 && <> - <b style={{ color:'var(--gray-light)' }}>{pooled.toCoverAll} {pooled.uom}</b> more would box all {buildable} the blanks can make</>}.
+            {' '}Packaging never blocks a sale; orders that need it show up in To Buy.
           </div>
         </div>
       )}

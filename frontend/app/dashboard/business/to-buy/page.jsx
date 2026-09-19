@@ -16,6 +16,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { S, ICONS, SearchBar, SummaryCard } from '../inventory-v2/shared';
+import { updateMat } from '../inventory-v2/api';
 import { useIsPhone, KpiStrip, PhoneRow , pesoShort } from '@/components/dashboard/phone';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
@@ -57,6 +58,45 @@ export default function ToBuyPage() {
   const [error, setError]     = useState('');
   const [search, setSearch]   = useState('');
   const [reason, setReason]   = useState('all');   // all | orders | minimum
+  // Set the minimum where the shortage is seen. inventoryId -> the value being typed.
+  const [minEdit, setMinEdit] = useState({});
+  const [minSaving, setMinSaving] = useState(null);
+  const closeMin = (id) => setMinEdit(prev => { const n = { ...prev }; delete n[id]; return n; });
+  const saveMin = async (r) => {
+    const v = Number(minEdit[r.inventoryId]);
+    if (!Number.isFinite(v) || v < 0) return;
+    setMinSaving(r.inventoryId);
+    try {
+      await updateMat(token, r.inventoryId, { minStockLevel: Math.round(v) });
+      closeMin(r.inventoryId);
+      await load();
+    } catch (e) { setError(e.message); }
+    finally { setMinSaving(null); }
+  };
+  // "Buy 30" is two decisions at once; say which is which.
+  const breakdown = (r) => {
+    const forOrders = Math.max(0, Number(r.needed) - Number(r.onHand));
+    const toMin = Math.max(0, Number(r.shortfall) - forOrders);
+    if (forOrders > 0 && toMin > 0) return `${num(forOrders)} for orders + ${num(toMin)} to reach minimum`;
+    if (forOrders > 0) return `${num(forOrders)} short for orders`;
+    return `${num(toMin)} to reach minimum ${num(r.minimum)}`;
+  };
+  const MinEditor = ({ r, compact }) => (
+    minEdit[r.inventoryId] === undefined ? (
+      <button type="button" onClick={() => setMinEdit(prev => ({ ...prev, [r.inventoryId]: String(r.minimum || '') }))}
+        style={{ background: 'none', border: 'none', padding: 0, color: 'var(--gold)', fontSize: compact ? 12 : 11, fontWeight: 600, cursor: 'pointer', minHeight: compact ? 36 : undefined }}>
+        {r.minimum > 0 ? 'Change minimum' : 'Set minimum'}
+      </button>
+    ) : (
+      <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+        <input type="number" min="0" value={minEdit[r.inventoryId]} onChange={e => setMinEdit(prev => ({ ...prev, [r.inventoryId]: e.target.value }))}
+          onKeyDown={e => { if (e.key === 'Enter') saveMin(r); if (e.key === 'Escape') closeMin(r.inventoryId); }}
+          style={{ ...S.input, width: 84, minHeight: 36, padding: '4px 8px', fontSize: 16 }} aria-label="Minimum stock" autoFocus />
+        <button type="button" onClick={() => saveMin(r)} disabled={minSaving === r.inventoryId} style={{ ...S.btnSm, minHeight: 36 }}>{minSaving === r.inventoryId ? 'Saving' : 'Save'}</button>
+        <button type="button" onClick={() => closeMin(r.inventoryId)} style={{ ...S.btnSmGhost, minHeight: 36 }}>Cancel</button>
+      </span>
+    )
+  );
   const isPhone = useIsPhone();
 
   const load = useCallback(async () => {
@@ -339,11 +379,14 @@ export default function ToBuyPage() {
           </div>
 
           {isPhone ? g.items.map((r, i) => (
-            <PhoneRow key={r.inventoryId} first={i === 0} mono={false}
+            <div key={r.inventoryId}>
+            <PhoneRow first={i === 0} mono={false}
               title={r.name}
               chip={<span style={{ fontSize: 12, fontWeight: 700, color: '#e0a852', whiteSpace: 'nowrap' }}>Buy {num(r.shortfall)} {r.uom}</span>}
-              meta={[`orders need ${num(r.needed)}`, `have ${num(r.onHand)}`, r.minimum > 0 ? `min ${num(r.minimum)}` : null, `${r.uom} · ${peso(r.estimatedCost)}`].filter(Boolean).join(' · ')}
-              sub={[(r.reasons ?? ['orders']).map(w => w === 'orders' ? 'short for orders' : 'below minimum').join(' + '), r.for?.length > 0 ? `for ${r.for.map(f => `${f.pieces} × ${f.product}`).join(', ')}` : null, r.orders?.length > 0 ? r.orders.join(', ') : null, r.isOnDemand ? 'buy per order' : null, !Number(r.unitCost) ? 'no cost set' : null].filter(Boolean).join(' · ')} />
+              meta={`Buy ${num(r.shortfall)} = ${breakdown(r)}`}
+              sub={[`have ${num(r.onHand)}${r.minimum > 0 ? ` · min ${num(r.minimum)}` : ''} ${r.uom} · ${peso(r.estimatedCost)}`, r.for?.length > 0 ? `for ${r.for.map(f => `${f.pieces} × ${f.product}`).join(', ')}` : null, r.orders?.length > 0 ? r.orders.join(', ') : null, r.isOnDemand ? 'buy per order' : null, !Number(r.unitCost) ? 'no cost set' : null].filter(Boolean).join(' · ')} />
+            <div style={{ padding: '0 14px 10px' }}><MinEditor r={r} compact /></div>
+            </div>
           )) : (<>
           <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 90px 90px 90px 90px 110px', gap: '8px',
             padding: '8px 16px', fontSize: '10px', fontWeight: 700, letterSpacing: '.05em',
@@ -378,6 +421,12 @@ export default function ToBuyPage() {
                     For {r.for.map(f => `${f.pieces} × ${f.product}`).join(', ')}
                   </div>
                 )}
+                <div style={{ fontSize: '11px', color: '#b45309', marginTop: '2px' }}>Buy {num(r.shortfall)} = {breakdown(r)}</div>
+                {minEdit[r.inventoryId] !== undefined && (
+                  <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--gray)' }}>
+                    Minimum for this material: <MinEditor r={r} />
+                  </div>
+                )}
                 {!Number(r.unitCost) && (
                   <div style={{ fontSize: '10.5px', color: '#e0a852', marginTop: '1px' }}>
                     No cost set - the estimate below is understated.
@@ -386,8 +435,11 @@ export default function ToBuyPage() {
               </div>
               <span style={{ fontSize: '12px', textAlign: 'right', color: 'var(--gray)' }}>{num(r.needed)} {r.uom}</span>
               <span style={{ fontSize: '12px', textAlign: 'right', color: 'var(--gray)' }}>{num(r.onHand)} {r.uom}</span>
-              <span style={{ fontSize: '12px', textAlign: 'right', color: 'var(--gray)' }}>{r.minimum > 0 ? `${num(r.minimum)} ${r.uom}` : '-'}</span>
-              <span style={{ fontSize: '13px', textAlign: 'right', fontWeight: 700, color: '#e0a852' }}>{num(r.shortfall)} {r.uom}</span>
+              <span style={{ fontSize: '12px', textAlign: 'right', color: 'var(--gray)', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
+                <span>{r.minimum > 0 ? `${num(r.minimum)} ${r.uom}` : '-'}</span>
+                {minEdit[r.inventoryId] === undefined && <MinEditor r={r} />}
+              </span>
+              <span style={{ fontSize: '13px', textAlign: 'right', fontWeight: 700, color: '#e0a852' }} title={breakdown(r)}>{num(r.shortfall)} {r.uom}</span>
               <span style={{ fontSize: '13px', textAlign: 'right', fontWeight: 700 }}>{peso(r.estimatedCost)}</span>
             </div>
           ))}

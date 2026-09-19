@@ -19,7 +19,7 @@ import { fetchAllOrders } from '@/lib/ordersApi';
 import { normalizeStatus } from '@/lib/orderStatus';
 import { orderNo } from '@/lib/orderNumber';
 import { joRisk, RISK_STYLE } from '@/lib/deliveryRisk';
-import { JO_BADGE, JO_STATUSES, JO_EDITABLE_STATUSES, JobOrderStatusBadge as StatusBadge, RushBadge, DesignPreview, designUrl, joDocId, fmtJODate, TableSkeleton } from '@/components/dashboard/JobOrderBits';
+import { JO_BADGE, JO_STATUSES, JO_EDITABLE_STATUSES, JobOrderStatusBadge as StatusBadge, RushBadge, DesignPreview, designUrl, joDocId, fmtJODate, TableSkeleton, WaitingBadge } from '@/components/dashboard/JobOrderBits';
 import { S, ICONS, SearchBar, SummaryCard, PaginationBar, EmptyState, usePagination, CustomSelect, ConfirmModal } from '../inventory-v2/shared';
 import { useIsPhone, KpiStrip, PhoneFilterBar, PhoneList, PhoneRow } from '@/components/dashboard/phone';
 import { isCodMethod } from '@/lib/paymentMethod';
@@ -462,6 +462,7 @@ export default function JobOrdersPage() {
   const [selected, setSelected] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
+  const [notice, setNotice] = useState('');   // after a create: what the new job is waiting on
   // A job refused for want of material. Without this the page was a dead end: the message arrived
   // but the decision - do I have it in hand or not - could only be taken on the Production floor.
   const [joShortage, setJoShortage] = useState(null);
@@ -534,6 +535,10 @@ export default function JobOrdersPage() {
         return;
       }
       closeModal();
+      const waiting = list.flatMap(j => j.materialShort ?? []);
+      if (waiting.length) {
+        setNotice(`Created - waiting on materials: ${[...new Set(waiting.map(r => `${r.name} (short ${r.short} ${r.uom ?? ''})`))].join(', ')}. It cannot start until they are received; they are on To Buy.`);
+      }
     }
     catch (err) { setSubmitError(err.message || 'Failed to create job orders.'); }
     finally { setIsSubmitting(false); }
@@ -643,6 +648,13 @@ export default function JobOrdersPage() {
             )}
 
             {error && <div style={{ ...S.note, background: 'var(--st-red-bg)', borderColor: 'rgba(239,68,68,0.35)', color: 'var(--st-red-fg)', marginBottom: '10px' }}>{error}</div>}
+            {notice && (
+              <div style={{ ...S.note, marginBottom: '10px', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                <span style={{ flex: 1 }}>{notice}</span>
+                <a href="/dashboard/business/to-buy" style={{ ...S.btnSm, textDecoration: 'none', whiteSpace: 'nowrap' }}>Open To Buy</a>
+                <button type="button" onClick={() => setNotice('')} style={{ ...S.btnSmGhost }}>Dismiss</button>
+              </div>
+            )}
 
             {isPhone ? (
               <>
@@ -664,6 +676,7 @@ export default function JobOrdersPage() {
                             jo.orderId ? orderNo(jo.orderId) : null,
                             jo.targetCompletion ? `due ${fmtDate(jo.targetCompletion)}` : null,
                             risk?.label ?? null,
+                            jo.materialShort?.length ? `waiting on ${jo.materialShort.map(r => `${r.name} (short ${r.short})`).join(', ')}` : null,
                           ].filter(Boolean).join(' \u00b7 ')} />
                       );
                     })}
@@ -713,7 +726,7 @@ export default function JobOrdersPage() {
                           return <div style={{ marginTop: 3 }}><span style={{ ...S.badge, ...RISK_STYLE[risk.color], fontSize: 9, fontWeight: 700 }}>{risk.label}</span></div>;
                         })()}
                       </td>
-                      <td data-label="Status" style={S.td}><StatusBadge status={jo.joStatus} /></td>
+                      <td data-label="Status" style={S.td}><StatusBadge status={jo.joStatus} /><WaitingBadge jo={jo} block /></td>
                       <td data-rt="actions" style={{ ...S.td, textAlign: 'right' }}>
                         <button onClick={() => openEdit(jo)} style={S.btnSmGhost}>{ICONS.edit} Edit</button>
                         {canDelete(jo) && <button onClick={() => { setDeleteErr(''); setDeleting(jo); }} style={{ ...S.btnSmGhost, marginLeft: 6, color: 'var(--st-red-fg)' }} title="Delete (test/junk only)">Delete</button>}
