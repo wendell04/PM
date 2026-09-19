@@ -824,6 +824,11 @@ function calcProducible(bom, matMap) {
   let min = Infinity;
   for (const item of bom.items) {
     const mat = matMap[item.matId];
+    // A line whose material no longer exists is a hole in the recipe, not a material that
+    // happens not to cap the build. Skipping it the way we skip a cost-only line makes the
+    // product claim it can make MORE than it can - which is the one direction a stock figure
+    // must never be wrong in. Nothing can be built from a recipe we cannot read.
+    if (!mat) return 0;
     if (!counts(mat)) continue;
     const can = item.qty > 0 ? Math.floor(freeStock(mat) / item.qty) : Infinity;
     if (can < min) min = can;

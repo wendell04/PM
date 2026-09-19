@@ -404,6 +404,7 @@ export default function MaterialsTab({ materials, setMaterials, vendors, setVend
   };
 
   const doDelete = async () => {
+    if (confirm?.inBom) { setConfirm(null); return; }
     try {
       await deleteMat(token, confirm.id);
       await onRefresh(['materials']);
@@ -688,15 +689,13 @@ export default function MaterialsTab({ materials, setMaterials, vendors, setVend
         open={!!confirm}
         onClose={() => setConfirm(null)}
         onConfirm={doDelete}
-        title="Delete Material"
-        confirmLabel="Delete"
-        confirmStyle="danger"
+        title={confirm?.inBom ? 'This material is still in use' : 'Archive material'}
+        confirmLabel={confirm?.inBom ? 'Understood' : 'Archive'}
+        confirmStyle={confirm?.inBom ? 'primary' : 'danger'}
         message={
           confirm?.inBom
-            ? `"${confirm?.name}" is used in one or more BOMs. Deleting it will break those BOMs.${confirm?.hasStock ? ` It also has ${confirm.qty} units in stock.` : ''} This cannot be undone.`
-            : confirm?.hasStock
-              ? `"${confirm?.name}" still has ${confirm?.qty} units in stock. Deleting will remove it from all associated records. This cannot be undone.`
-              : `Delete "${confirm?.name}"? This cannot be undone.`
+            ? `"${confirm?.name}" is part of a recipe, so it cannot be archived yet. Take it out of that recipe first - a product built from a recipe with a missing material cannot report an honest stock figure. Open Master Data > BOM to edit it.`
+            : `"${confirm?.name}" will be archived: hidden from every list and from To Buy.${confirm?.hasStock ? ` Its ${confirm?.qty} units stop counting as stock.` : ''} The record is kept, so nothing in past orders or history changes.`
         }
       />
 

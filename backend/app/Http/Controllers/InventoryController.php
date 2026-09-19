@@ -1123,6 +1123,27 @@ class InventoryController extends Controller
                 return $this->errorResponse('Cannot delete: Item is linked to ' . $linkedProducts . ' product(s).', 422);
             }
 
+            // A recipe that still names this material is a harder block than a linked product,
+            // because nothing downstream notices. The BOM keeps a pointer to a row that is no
+            // longer active, every "can build" silently SKIPS that line, and the product starts
+            // claiming it can make MORE than it can - a number that reaches the storefront.
+            // So: fix the recipes first, then archive.
+            $usedBy = \App\Models\BillOfMaterial::where('isActive', true)->get()
+                ->filter(fn ($b) => collect($b->components ?? [])
+                    ->contains(fn ($c) => (string) ($c['inventoryId'] ?? '') === (string) $id))
+                ->pluck('productName')
+                ->values();
+            if ($usedBy->isNotEmpty()) {
+                return $this->errorResponse(
+                    'Cannot archive: ' . $usedBy->count() . ' recipe(s) still use this material - '
+                    . $usedBy->take(4)->implode(', ') . ($usedBy->count() > 4 ? ', ...' : '')
+                    . '. Remove it from those recipes first, or the products they build will report '
+                    . 'a stock figure they cannot deliver.',
+                    422,
+                    ['usedBy' => $usedBy->all()]
+                );
+            }
+
             $inventory->isActive = false;
             $inventory->deletedAt = now();
             $inventory->save();
