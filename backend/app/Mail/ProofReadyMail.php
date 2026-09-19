@@ -39,8 +39,15 @@ class ProofReadyMail extends Mailable implements ShouldQueue
     /** The watermarked clips themselves, kept before the still-frame swap so they can be attached. */
     public array  $videoUrls = [];
 
-    public function __construct(string $firstName, string $orderRef, array $proofs = [], float $balanceAfter = 0.0, string $orderUrl = '')
+    /**
+     * The no-login approval page. A customer who has to sign in before they can answer is a
+     * customer who answers tomorrow, and the order waits that long.
+     */
+    public string $approveUrl;
+
+    public function __construct(string $firstName, string $orderRef, array $proofs = [], float $balanceAfter = 0.0, string $orderUrl = '', string $approveUrl = '')
     {
+        $this->approveUrl = $approveUrl;
         $this->firstName    = $firstName !== '' ? $firstName : 'there';
         $this->orderRef     = $orderRef;
         $this->orderUrl     = $orderUrl;

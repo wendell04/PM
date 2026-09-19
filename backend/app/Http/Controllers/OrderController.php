@@ -4953,7 +4953,9 @@ class OrderController extends Controller
                         // The thumbnail opens the order, where a video proof actually plays.
                         rtrim((string) config('app.frontend_url', ''), '/') !== ''
                             ? rtrim((string) config('app.frontend_url'), '/') . '/shop/orders-history?order=' . (string) $order->_id
-                            : ''
+                            : '',
+                        // Answer without signing in. The token is signed and lasts two weeks.
+                        \App\Support\ProofLink::url($order)
                     ));
                 }
             } catch (\Throwable $mailErr) {

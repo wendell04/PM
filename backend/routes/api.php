@@ -4,6 +4,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AccessController;
+use App\Http\Controllers\ProofLinkController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\ProfileController;
@@ -48,6 +49,14 @@ Route::get('/health', [HealthController::class, 'check']);
 // ─── Auth (Public) ────────────────────────────────────────────────────────────
 Route::post('/register',        [AuthController::class, 'register'])->middleware(['throttle:register', \App\Http\Middleware\VerifyTurnstile::class]);
 Route::post('/login',           [AuthController::class, 'login'])->middleware('throttle:login');
+// ─── Proof approval by link (PUBLIC) ────────────────────────────────────────
+// The signed token in the URL is the identification - there is no session and there is nothing
+// else these two can reach. GET only shows the proof; answering is a POST, because every mail
+// scanner and link-preview bot fetches the URLs in a message and a GET that approved would
+// approve artwork nobody had looked at.
+Route::get('/proof/{token}',          [ProofLinkController::class, 'show'])->middleware('throttle:60,1');
+Route::post('/proof/{token}/respond', [ProofLinkController::class, 'respond'])->middleware('throttle:20,1');
+
 Route::post('/logout',          [AuthController::class, 'logout'])->middleware('auth:sanctum');
 // Aliases (tooling / documentation compatibility)
 Route::post('/auth/login',      [AuthController::class, 'login'])->middleware('throttle:login');
@@ -420,6 +429,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/order-requests',                [OrderRequestController::class, 'store']);
     // Something the shop does not list at all - the standalone quote form.
     Route::post('/order-requests/open',           [OrderRequestController::class, 'storeOpen']);
+
     Route::get('/my/order-requests',              [OrderRequestController::class, 'myRequests']);
     // Uploads are the only unauthenticated-cost endpoint the shop has: every accepted file is
 // Cloudinary storage and bandwidth the shop pays for, and nothing else here caps how fast a

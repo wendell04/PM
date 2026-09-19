@@ -57,28 +57,48 @@
                 </p>
               @endif
 
-              {{-- No button. The one that was here rendered black text on a black cell, so it
-                   read as an empty bar. Approval happens on the site, and saying where - and what
-                   comes after - is what the customer actually needs from this mail. --}}
+              {{-- The button is back, and this time it is readable: gold cell, dark text, stated
+                   in inline styles because every colour in an email has to be. It opens a page
+                   that identifies the customer by a signed token, so there is no sign-in between
+                   them and the answer - that gap is where proofs used to sit for days.
+
+                   The older black-on-black button is why this was removed once; the fix is the
+                   contrast, not dropping the button. --}}
+              @if (!empty($approveUrl))
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 16px;">
+                  <tr>
+                    <td align="center" style="border-radius:8px;background:#D4A843;">
+                      <a href="{{ $approveUrl }}"
+                        style="display:block;padding:15px 20px;font-size:15px;font-weight:700;color:#1a1a1a;text-decoration:none;border-radius:8px;">
+                        Review and approve this proof
+                      </a>
+                    </td>
+                  </tr>
+                </table>
+                <p style="margin:0 0 20px;font-size:12px;color:#6b6b6b;line-height:1.6;text-align:center;">
+                  No sign-in needed. The link works for order {{ $orderRef }} only, for 14 days.
+                </p>
+              @endif
+
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
                 style="margin:0 0 20px;background:#f7f7f5;border-radius:8px;border:1px solid rgba(0,0,0,0.07);">
                 <tr>
                   <td style="padding:14px 16px;text-align:justify;" align="justify">
                     <p style="margin:0 0 6px;font-size:11px;font-weight:700;color:#6b6b6b;text-transform:uppercase;letter-spacing:1px;text-align:left;">
-                      How to approve
+                      What happens next
                     </p>
                     <p style="margin:0;font-size:13px;color:#444444;line-height:1.7;text-align:justify;">
-                      Sign in at <strong style="color:#111111;">personalizemeprints.com</strong>, open
-                      <strong style="color:#111111;">My Orders</strong>, and choose order
-                      <strong style="color:#111111;">{{ $orderRef }}</strong>. You can approve the
-                      proof there or in your order chat.
                       @if ($balanceAfter > 0)
                         <strong style="color:#111111;">Once you approve, the remaining
-                        &#8369;{{ number_format($balanceAfter, 2) }} is paid from the same page</strong>,
-                        and production starts as soon as it clears.
+                        &#8369;{{ number_format($balanceAfter, 2) }} becomes payable</strong> in
+                        <strong style="color:#111111;">My Orders</strong>, and production starts as
+                        soon as it clears.
                       @else
                         <strong style="color:#111111;">Once you approve, we start production.</strong>
                       @endif
+                      You can also sign in at <strong style="color:#111111;">personalizemeprints.com</strong>
+                      and approve order <strong style="color:#111111;">{{ $orderRef }}</strong> from
+                      My Orders if you prefer.
                     </p>
                   </td>
                 </tr>
