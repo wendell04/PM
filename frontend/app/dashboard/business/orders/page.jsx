@@ -3275,6 +3275,10 @@ export default function OrdersPage() {
     // 'stage:<key>' is a group of statuses (see ORDER_STAGES).
     (statusFilter === 'all' ? true
       : statusFilter === 'needs_attention' ? !!deliveryRisk(o)
+      // Open: anything not finished - not delivered, not cancelled, not returned.
+      : statusFilter === 'open' ? !isDone(o.orderStatus)
+      // Still owes money, whatever stage it is at.
+      : statusFilter === 'unpaid' ? remainingDue(o) > 0 && !isDone(o.orderStatus)
       : statusFilter.startsWith('stage:') ? stageOf(o.orderStatus) === statusFilter.slice(6)
       : normalizeStatus(o.orderStatus) === statusFilter)
     && (!isPhone || showDone || wantsDone || !isDone(o.orderStatus))
@@ -3292,6 +3296,8 @@ export default function OrdersPage() {
     making:       countStage('making'),
     toShip:       countStage('toship'),
     done:         countStage('done'),
+    open:         scoped.filter(o => !isDone(o.orderStatus)).length,
+    unpaid:       scoped.filter(o => remainingDue(o) > 0 && !isDone(o.orderStatus)).length,
     delivered:    countBy('delivered'),
     cancelled:    countBy('cancelled'),
     // Orders whose delivery promise is late or about to be missed (derived, not stored).
@@ -3310,6 +3316,7 @@ export default function OrdersPage() {
 
         {isPhone ? (
           <KpiStrip items={[
+            { key:'open',            label:'Open',      value:counts.open },
             { key:'stage:todo',      label:'To do',     value:counts.todo },
             { key:'stage:making',    label:'Making',    value:counts.making },
             { key:'stage:toship',    label:'To ship',   value:counts.toShip },
@@ -3320,6 +3327,7 @@ export default function OrdersPage() {
         <div className="pmp-stat-row" style={{ display:'flex', gap:'10px', flexWrap:'wrap', marginBottom:'16px' }}>
           {[
             { label:'Total Orders',   value:counts.all,          id:'all'           },
+            { label:'Open',           value:counts.open,          id:'open'          },
             { label:'To Do',          value:counts.todo,          id:'stage:todo'    },
             { label:'Making',         value:counts.making,        id:'stage:making'  },
             { label:'To Ship',        value:counts.toShip,        id:'stage:toship'  },
@@ -3361,6 +3369,8 @@ export default function OrdersPage() {
               { key:'status', label:'Status', value:statusFilter, defaultValue:'all', onChange: v => { setStatusFilter(v); setPage(1); },
                 options: [
                   { value:'all', label:'All' },
+                  { value:'open',   label:`Open - not yet delivered (${counts.open})` },
+                  { value:'unpaid', label:`Open and still owes (${counts.unpaid})` },
                   ...ORDER_STAGES.map(st => ({ value:'stage:' + st.key, label:st.label })),
                   { value:'needs_attention', label:'Needs attention' },
                   ...ORDER_STATUS_ORDER.map(st => ({ value: st, label: statusLabel(st) })),

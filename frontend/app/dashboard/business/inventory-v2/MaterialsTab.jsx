@@ -491,7 +491,7 @@ export default function MaterialsTab({ materials, setMaterials, vendors, setVend
           <PhoneFilterBar search={search} onSearch={setSearch} placeholder="Search name or SKU"
             filters={[{ key:'cat', label:'Category', value:catFilter, defaultValue:'All', onChange:setCat,
               options:[{ value:'All', label:'All' }, ...categories.map(c => ({ value:c, label:c }))] }]}
-            actions={<><button onClick={openSuggestions} style={{ ...S.btnSmGhost, minHeight:36 }}>Suggest minimums</button><button onClick={openArchived} style={{ ...S.btnSmGhost, minHeight:36 }}>Archived</button><button onClick={() => setShowManage(true)} style={{ ...S.btnSmGhost, minHeight:36 }}>Manage lists</button></>}
+            actions={<><button onClick={openArchived} style={{ ...S.btnSmGhost, minHeight:36 }}>Archived</button><button onClick={() => setShowManage(true)} style={{ ...S.btnSmGhost, minHeight:36 }}>Manage lists</button></>}
             note={`${total} material${total !== 1 ? 's' : ''}`} />
         </>
       ) : (<>
@@ -510,7 +510,6 @@ export default function MaterialsTab({ materials, setMaterials, vendors, setVend
             style={{ width:'160px' }} />
         </div>
         <div style={{ display:'flex', gap:'8px' }}>
-          <button onClick={openSuggestions} style={S.btnGhost} title="What each minimum should be, from how fast it actually leaves the shelf">Suggest minimums</button>
           <button onClick={openArchived} style={S.btnGhost} title="Materials taken out of circulation. Their stock and history are kept, and any of them can be put back.">Archived</button>
           <button onClick={() => setShowManage(true)} style={S.btnGhost}>Manage Lists</button>
           <button onClick={openAdd} style={S.btnPrimary}>{ICONS.plus} Add Material</button>
@@ -533,7 +532,7 @@ export default function MaterialsTab({ materials, setMaterials, vendors, setVend
                   <PhoneRow key={mat.id} first={i === 0} onClick={() => openEdit(mat)}
                     title={mat.sku} chip={<StatusBadge status={status} />}
                     meta={mat.name}
-                    sub={[`${qty} ${mat.unit}`, mat.daysOfCover != null ? `lasts ${mat.daysOfCover}d` : null, `min ${mat.minStock}`, formatCurrency(mat.baseCost), mat.category, vendor?.name].filter(Boolean).join(' \u00b7 ')} />
+                    sub={[`${qty} ${mat.unit}`, `min ${mat.minStock}`, formatCurrency(mat.baseCost), mat.category, vendor?.name].filter(Boolean).join(' \u00b7 ')} />
                 );
               })}
             </PhoneList>
@@ -548,14 +547,14 @@ export default function MaterialsTab({ materials, setMaterials, vendors, setVend
           <table className="pmp-rt" style={{ width:'100%', borderCollapse:'collapse' }}>
             <thead>
               <tr>
-                {['SKU','Material Name','Category','Unit','Vendor','Base Cost','Min Stock','Stock','Lasts','Status',''].map((h, i) => (
+                {['SKU','Material Name','Category','Unit','Vendor','Base Cost','Min Stock','Stock','Status',''].map((h, i) => (
                   <th key={i} style={S.th}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {slice.length === 0 ? (
-                <tr><td colSpan={11}><EmptyState message="No materials found" sub="Add a material or adjust filters." /></td></tr>
+                <tr><td colSpan={10}><EmptyState message="No materials found" sub="Add a material or adjust filters." /></td></tr>
               ) : slice.map(mat => {
                 const qty    = stockMap[mat.id] || 0;
                 const status = qty === 0 ? 'out_of_stock' : qty <= mat.minStock ? 'low_stock' : 'in_stock';
@@ -573,7 +572,6 @@ export default function MaterialsTab({ materials, setMaterials, vendors, setVend
                       <div style={{ fontWeight:600, marginBottom:3 }}>{qty} {mat.unit}</div>
                       <LevelBar have={qty} min={mat.minStock} uom={mat.unit} />
                     </td>
-                    <td style={S.td}><CoverCell mat={mat} /></td>
                     <td style={S.td}><StatusBadge status={status} /></td>
                     <td style={{ ...S.td, textAlign:'right' }}>
                       <div style={{ display:'flex', gap:'6px', justifyContent:'flex-end' }}>
@@ -807,16 +805,15 @@ export default function MaterialsTab({ materials, setMaterials, vendors, setVend
       />
 
       {showArchived && (
-        <Modal onClose={() => setShowArchived(false)} maxWidth={720}>
-          <div style={{ padding:'18px 20px 8px' }}>
-            <div style={{ fontSize:'16px', fontWeight:700 }}>Archived materials</div>
+        <Modal open onClose={() => setShowArchived(false)} title="Archived materials" width={760}>
+          <div style={{ padding:'0 0 8px' }}>
             <div style={{ fontSize:'12px', color:'var(--gray)', marginTop:4, lineHeight:1.5 }}>
               Taken out of circulation: hidden from Master Data, from recipes and from To Buy.
               Nothing was deleted - the stock figure and the whole movement history are kept, and
               Restore puts the material back exactly as it was.
             </div>
           </div>
-          <div style={{ padding:'0 20px 18px', maxHeight:'60vh', overflowY:'auto' }}>
+          <div style={{ padding:'0 0 6px' }}>
             {archived === null ? (
               <div style={{ padding:'24px 0', fontSize:'13px', color:'var(--gray)' }}>Loading...</div>
             ) : archived.length === 0 ? (
