@@ -304,6 +304,30 @@ export default function ProductsV2() {
     return m;
   }, [materials]);
 
+  // What actually limits SHIPPING, across every variant: the smallest number any material in any
+  // recipe allows, packaging and consumables included. `calcProducible` deliberately ignores
+  // cost-only materials because they do not cap a SALE - but ten boxes do cap what can leave the
+  // shop, and that is what this figure is for.
+  const shipLimit = (p) => {
+    const bomsOf = (p.type === 'standalone' && p.bomId)
+      ? [boms.find(b => b.id === p.bomId)]
+      : (p.combinations || p.variants || []).map(v => boms.find(b => b.id === v.bomId));
+    let build = Infinity, ship = Infinity, who = null;
+    for (const bom of bomsOf) {
+      if (!bom?.items?.length) continue;
+      const canBuild = calcProducible(bom, matMap);
+      if (canBuild < build) build = canBuild;
+      for (const item of bom.items) {
+        const mat = matMap[item.matId];
+        if (!mat || !(item.qty > 0)) continue;
+        const can = Math.floor(freeStock(mat) / item.qty);
+        if (can < ship) { ship = can; who = mat.name; }
+      }
+    }
+    if (!isFinite(build) || !isFinite(ship) || ship >= build) return null;
+    return { build, ship, who };
+  };
+
   const stockDisplay = (p) => {
     if (p.isMadeToOrder) {
       return <span style={{ fontSize: '11px', background: '#f5f3ff', color: '#7c3aed', borderRadius: '4px', padding: '2px 7px', fontWeight: 600 }}>MTO</span>;
@@ -401,7 +425,8 @@ export default function ProductsV2() {
                 <PhoneRow key={p.id} first={i === 0} mono={false} onClick={() => setExpandedStock(p.id)}
                   title={p.name}
                   chip={<span style={{ fontSize:11, fontWeight:700, borderRadius:20, padding:'3px 10px', background: p.isPublished ? '#e9f5ea' : 'var(--dark2)', color: p.isPublished ? '#2e7d32' : 'var(--gray)' }}>{p.isPublished ? 'Published' : 'Draft'}</span>}
-                  meta={[(p.type === 'multi-variant' || p.combinations?.length) ? `${(p.combinations || p.variants)?.length || 0} variants` : 'Standalone', priceDisplay(p)].join(' \u00b7 ')}
+                  meta={[(p.type === 'multi-variant' || p.combinations?.length) ? `${(p.combinations || p.variants)?.length || 0} variants` : 'Standalone', priceDisplay(p),
+                    (() => { const l = shipLimit(p); return l ? `only ${l.ship} can ship - ${l.who} short` : null; })()].filter(Boolean).join(' \u00b7 ')}
                   sub={[p.isCustomizable ? 'custom' : null, p.isMadeToOrder ? 'made to order' : null, p.allowCOD ? 'COD' : 'no COD', p.downpaymentPct > 0 ? `${p.downpaymentPct}% DP` : null].filter(Boolean).join(' \u00b7 ')} />
               ))}
             </PhoneList>
@@ -505,6 +530,18 @@ export default function ProductsV2() {
                         <div style={{ fontSize: '11px', color: 'var(--gray)' }}>
                           {(p.type === 'multi-variant' || p.combinations?.length) ? `${(p.combinations || p.variants)?.length || 0} variants` : 'Standalone'}
                         </div>
+                        {(() => {
+                          const lim = shipLimit(p);
+                          if (!lim) return null;
+                          return (
+                            <div title={`${lim.who} runs out first: enough for ${lim.ship} of the ${lim.build} this product can build. Expand the row to see every material.`}
+                              style={{ marginTop: 3, fontSize: '10px', fontWeight: 700, letterSpacing: '.2px',
+                                color: '#b45309', background: 'rgba(224,168,82,0.14)', border: '1px solid rgba(224,168,82,0.35)',
+                                borderRadius: 4, padding: '1px 6px', display: 'inline-block' }}>
+                              only {lim.ship} can ship - {lim.who} short
+                            </div>
+                          );
+                        })()}
                       </div>
                     </div>
                   </td>
