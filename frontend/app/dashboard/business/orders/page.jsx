@@ -3077,6 +3077,13 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                 && remainingDue(lo) > 0
                   ? ` This is a Cash on Delivery order, so it will also be marked PAID and ₱${fmt(remainingDue(lo))} recorded as collected by the rider.`
                   : '')
+            /* Cancelling an order somebody has already paid into is a money decision, and the
+               generic line about "the cancellation terms they accepted" does not read as one. */
+            + (normalizeStatus(selStatus) === 'cancelled' && paidSoFar(lo) > 0
+                ? ` This customer has already paid ₱${fmt(paidSoFar(lo))}, so cancelling decides what happens to it - set a refund below, or leave it blank to return everything.`
+                  + (hasAnyJobOrder ? ' The goods are already made, so the material does not come back either.' : '')
+                  + ' If you only want it off your working list while you wait for the balance, Archive it instead - the order, the balance and the record all stay, and it comes back the moment they pay.'
+                : '')
             /* Sending it out closes the customer's online payment for the delivery fee. Who
                collects it from here is a money question, and it is answered before, not after. */
             + (isForDelivery(selStatus) && Number(lo.courierFee ?? 0) > 0 && !lo.courierFeePaid

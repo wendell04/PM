@@ -1119,6 +1119,14 @@ class OrderController extends Controller
                         'isRush',
                     ]);
                 }])
+                // Not orders: a checkout still being paid, and one the sweep voided because the
+                // payment was never authorised. Thirteen of these existed, and they were counted
+                // as cancelled SALES - a customer who pressed Checkout three times before the
+                // payment went through appeared to have cancelled twice. Nothing was cancelled;
+                // nothing was ever ordered. The sibling query has always excluded them; this one,
+                // which Sales and the dashboards read, never did.
+                ->where('checkoutPending', '!=', true)
+                ->where('voidedCheckout', '!=', true)
                 ->where('isArchived', '!=', true)
                 ->orderBy('createdAt', 'desc');
 
