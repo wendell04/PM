@@ -638,6 +638,23 @@ function StockBreakdown({ product, boms, materials }) {
           const can = item.qty > 0 ? Math.floor(freeStock(mat) / item.qty) : Infinity;
           if (can < bottleneckMin) { bottleneckMin = can; bottleneckId = item.matId; }
         }
+
+        // "Can build" counts only the materials that cap a sale - the blank. The box and the
+        // paper are cost-only, so they never lower it, and the panel showed them as "- cost only":
+        // a dead end on the exact row the owner was looking at. They do not stop you SELLING, but
+        // they absolutely stop you SHIPPING, and 10 boxes against 114 mugs is worth one glance.
+        //
+        // So every material now says how far it carries the build, and the header says how many
+        // can leave the shop complete.
+        let shipComplete = prod;
+        let shortestId = null;
+        for (const item of bom.items || []) {
+          const mat = matMap[item.matId];
+          if (!mat || !(item.qty > 0)) continue;
+          const can = Math.floor(freeStock(mat) / item.qty);
+          if (can < shipComplete) { shipComplete = can; shortestId = item.matId; }
+        }
+        const shortMat = shortestId ? matMap[shortestId] : null;
         const countedNames = (bom.items || [])
           .map(i => matMap[i.matId]).filter(counts).map(m => m.name);
         const hasCostOnly = (bom.items || []).some(i => matMap[i.matId] && matMap[i.matId].isOnDemand);
@@ -651,12 +668,19 @@ function StockBreakdown({ product, boms, materials }) {
                 ? <span style={{ fontSize:'12px', fontWeight:700, color:'var(--gray-light)' }}>{v.label}</span>
                 : <span style={{ fontSize:'12px', color:'var(--gray)' }}>Standalone</span>
               }
-              <span style={{ fontSize:'12px', fontWeight:700, color:prodColor }}>{prod} can build</span>
+              <span style={{ fontSize:'12px', fontWeight:700, color:prodColor }}>
+                {prod} can build
+                {shipComplete < prod && (
+                  <span style={{ color:'#b45309', fontWeight:700 }}>
+                    {' \u00b7 '}{shipComplete} can ship complete
+                  </span>
+                )}
+              </span>
             </div>
             <table className="pmp-rt" style={{ width:'100%', borderCollapse:'collapse' }}>
               <thead>
                 <tr>
-                  {['Material','Stock','Need / unit','Can make'].map(h => (
+                  {['Material','Stock','Need / unit','Covers the build'].map(h => (
                     <th key={h} style={{ fontSize:'10px', fontWeight:700, color:'var(--gray)', textTransform:'uppercase', letterSpacing:'.4px', padding:'3px 8px', textAlign:'left' }}>{h}</th>
                   ))}
                 </tr>
@@ -683,9 +707,30 @@ function StockBreakdown({ product, boms, materials }) {
                         )}
                       </td>
                       <td style={{ padding:'4px 8px', fontSize:'12px', color:'var(--gray)' }}>{item.qty} {mat.unit}</td>
-                      <td style={{ padding:'4px 8px', fontSize:'12px', fontWeight:600, color:c }}>
-                        {counted ? can : '-'}
-                        {!counted && <span style={{ marginLeft:'6px', fontSize:'10px', color:'var(--gray)' }}>cost only</span>}
+                      <td style={{ padding:'4px 8px', fontSize:'12px', fontWeight:600, color:c, minWidth:150 }}>
+                        {(() => {
+                          // Held against the build the blank allows, so every row answers the same
+                          // question in the same units: of the 114 this can make, how many does
+                          // THIS material cover?
+                          const covers = Math.min(can, prod);
+                          const pct    = prod > 0 ? Math.min(100, Math.round((covers / prod) * 100)) : 100;
+                          const tone   = pct >= 100 ? '#1a7f3c' : pct < 25 ? '#c62828' : '#b45309';
+                          return (
+                            <div title={`${freeStock(mat)} ${mat.unit} on hand, ${item.qty} needed per unit - enough for ${covers} of the ${prod} this variant can build.`}>
+                              <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                                <span style={{ width:76, height:5, borderRadius:3, background:'var(--dark2)', overflow:'hidden', flexShrink:0 }}>
+                                  <span style={{ display:'block', width:`${Math.max(2, pct)}%`, height:'100%', background:tone }} />
+                                </span>
+                                <span style={{ color:tone, fontWeight:700, fontSize:'11.5px' }}>{covers}/{prod}</span>
+                              </div>
+                              {!counted && (
+                                <div style={{ fontSize:'10px', color: pct >= 100 ? 'var(--gray)' : '#b45309', marginTop:2 }}>
+                                  {pct >= 100 ? 'cost only' : `enough for ${covers} \u00b7 on To Buy`}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </td>
                     </tr>
                   );
@@ -698,6 +743,16 @@ function StockBreakdown({ product, boms, materials }) {
                 : <b style={{ color:'#b45309' }}>Nothing is counted - every material here is cost only, so this cannot say when it runs out.</b>}
               {hasCostOnly && countedNames.length > 0 &&
                 ' Packaging and consumables are costed and appear in To Buy, but do not cap what you can sell.'}
+              {shortMat && shipComplete < prod && (
+                <div style={{ marginTop:5, display:'flex', alignItems:'center', gap:10, flexWrap:'wrap' }}>
+                  <b style={{ color:'#b45309' }}>
+                    {shortMat.name} runs out first: enough for {shipComplete} of the {prod} you can build.
+                  </b>
+                  <a href="/dashboard/business/to-buy" style={{ fontSize:'11px', fontWeight:700, color:'var(--gold)', textDecoration:'none' }}>
+                    Open To Buy
+                  </a>
+                </div>
+              )}
             </div>
             {vi < variants.filter(x => x.bom).length - 1 && (
               <div style={{ borderTop:'1px solid var(--border)', marginTop:'10px' }} />
