@@ -79,6 +79,19 @@ class MaterialUsage
     {
         $perDay = $usage['perDay'] ?? 0.0;
 
+        // An empty shelf is urgent whether or not the ledger has ever seen this material move.
+        // Without this, a material sitting at 0 with no usage history read "no usage yet" and
+        // sorted BELOW everything with a number - the emptiest row, last on the list.
+        if ($free <= 0) {
+            return [
+                'usagePerDay'    => $perDay > 0 ? $perDay : ($usage ? 0.0 : null),
+                'daysOfCover'    => 0,
+                'coverBasisDays' => $usage['days'] ?? null,
+                'runsOutOn'      => now()->toDateString(),
+                'urgency'        => 'out',
+            ];
+        }
+
         if ($perDay <= 0) {
             return [
                 'usagePerDay'    => $usage ? 0.0 : null,
