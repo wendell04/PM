@@ -65,6 +65,14 @@ function stockStatus(n) {
   return 'in_stock';
 }
 
+// What the chip should say. `minProd` is what the blanks allow; `ship` is what can actually leave
+// the shop boxed. A product that can print 484 and ship 10 is not "In Stock" - that reading is
+// what let the shelf look healthy while the packaging was three days from empty.
+function shipStatus(minProd, ship) {
+  if (ship != null && ship < minProd) return stockStatus(ship);
+  return stockStatus(minProd);
+}
+
 export default function ProductStockTab({ boms, materials, products }) {
   const [search,    setSearch]    = useState('');
   const [catFilter, setCatFilter] = useState('All');
@@ -105,7 +113,9 @@ export default function ProductStockTab({ boms, materials, products }) {
       if (!variants.length) return [];
       const minProd = Math.min(...variants.map(v => v.producible));
       const cov = coverageSummary(variants);
-      return [{ id: p.id, name: p.name, category: p.category, variants, minProd, standalone: false, ...cov }];
+      const pooled = shipCompleteAcross(variants, matMap);
+      return [{ id: p.id, name: p.name, category: p.category, variants, minProd, standalone: false,
+                shipComplete: pooled ? Math.min(pooled.can, minProd) : minProd, ...cov }];
     });
 
     const standalone = (boms || [])
@@ -113,7 +123,9 @@ export default function ProductStockTab({ boms, materials, products }) {
       .map(b => {
         const producible = calcProducible(b, matMap);
         const variants = [{ label: null, bom: b, producible, coverage: coverageOf(b, producible, matMap) }];
-        return { id: b.id, name: b.productName, category: '-', variants, minProd: producible, standalone: true, ...coverageSummary(variants) };
+        const pooled = shipCompleteAcross(variants, matMap);
+        return { id: b.id, name: b.productName, category: '-', variants, minProd: producible, standalone: true,
+                 shipComplete: pooled ? Math.min(pooled.can, producible) : producible, ...coverageSummary(variants) };
       });
 
     return { rows: [...rows, ...standalone], usedBomIds };
@@ -196,7 +208,7 @@ export default function ProductStockTab({ boms, materials, products }) {
             <PhoneList>
               {slice.map((row, i) => (
                 <PhoneRow key={row.id} first={i === 0} mono={false} onClick={() => setExpanded(row.id)}
-                  title={row.name} chip={<StatusBadge status={stockStatus(row.minProd)} />}
+                  title={row.name} chip={<StatusBadge status={shipStatus(row.minProd, row.shipComplete)} />}
                   meta={row.standalone ? 'Standalone' : `${row.variants.length} variant${row.variants.length === 1 ? '' : 's'}`}
                   sub={[`${row.minProd} can build`, row.coverage < 1 ? `restock to fulfil: ${row.shortNames.join(', ')}` : null, row.category].filter(Boolean).join(' · ')} />
               ))}
@@ -210,7 +222,7 @@ export default function ProductStockTab({ boms, materials, products }) {
             return (
               <PhoneSheet open={!!row} onClose={() => setExpanded(null)} mono={false} title={row?.name ?? ''}
                 subtitle={row ? (row.standalone ? 'Standalone' : `${row.variants.length} variants`) : ''}
-                chip={row ? <StatusBadge status={stockStatus(row.minProd)} /> : null}>
+                chip={row ? <StatusBadge status={shipStatus(row.minProd, row.shipComplete)} /> : null}>
                 {row && <DetailPanel variants={row.variants} matMap={matMap} />}
               </PhoneSheet>
             );
@@ -253,7 +265,7 @@ export default function ProductStockTab({ boms, materials, products }) {
                       )}
                     </td>
                     <td style={{ ...S.td, textAlign:'center' }}>
-                      <StatusBadge status={stockStatus(row.minProd)} />
+                      <StatusBadge status={shipStatus(row.minProd, row.shipComplete)} />
                     </td>
                     <td style={{ ...S.td, textAlign:'center' }}>
                       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--gray)" strokeWidth="2.5"
@@ -331,9 +343,10 @@ function DetailPanel({ variants, matMap }) {
             {' '}- boxed, with consumables, {variants.length > 1 ? `across all ${variants.length} variants together` : 'for this product'}
           </div>
           <div style={{ fontSize:'11px', color:'var(--gray)' }}>
-            Limited by <b style={{ color:'var(--gray-light)' }}>{pooled.name}</b>
-            {pooled.toCoverAll > 0 && <> - <b style={{ color:'var(--gray-light)' }}>{pooled.toCoverAll} {pooled.uom}</b> more would box all {buildable} the blanks can make</>}.
-            {' '}Packaging never blocks a sale; orders that need it show up in To Buy.
+            Limited by <b style={{ color:'var(--gray-light)' }}>{pooled.name}</b>.
+            {' '}Packaging never blocks a sale - what to buy is on To Buy, and it is sized to the
+            orders you have taken plus your minimum, not to every blank on the shelf.
+            {' '}<a href="/dashboard/business/to-buy" style={{ color:'var(--gold)', fontWeight:700, textDecoration:'none' }}>Open To Buy</a>
           </div>
         </div>
       )}
@@ -401,7 +414,9 @@ function DetailPanel({ variants, matMap }) {
                             <div style={{ height: 4, borderRadius: 2, background: 'var(--dark2)', overflow: 'hidden' }}>
                               <div style={{ width: `${Math.max(3, cov.ratio * 100)}%`, height: '100%', background: cov.ratio >= 1 ? '#2e7d32' : cov.ratio < 0.25 ? '#c62828' : '#b45309' }} />
                             </div>
-                            {cov.ratio < 1 && <div style={{ fontSize: 10.5, color: '#b45309', marginTop: 2, fontWeight: 600 }}>restock {cov.restock} {cov.uom ?? ''} to fulfil all {prod}</div>}
+                            <div style={{ fontSize: 10.5, marginTop: 2, fontWeight: 700, color: cov.ratio >= 1 ? '#1a7f3c' : '#b45309' }}>
+                              {cov.ratio >= 1 ? 'Enough' : `Short \u00b7 enough for ${Math.min(cov.have, prod)} of ${prod} \u00b7 on To Buy`}
+                            </div>
                           </div>
                         )}
                       </td>

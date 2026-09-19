@@ -157,6 +157,44 @@ class InventoryController extends Controller
             // with a minimum of 30 the same row now says buy 40. A minimum of 0 keeps the old
             // behaviour, so a material the owner has not set a line for still only shows up when
             // an order actually needs it.
+            // Every product whose recipe uses a material, with what that material lets it ship.
+            // Built once here rather than per row, and only over published, active recipes.
+            $blocking = [];   // inventoryId => [ ['product' => name, 'canShip' => n, 'canBuild' => n] ]
+            try {
+                $bomById = \App\Models\BillOfMaterial::where('isActive', true)->get()->keyBy(fn ($b) => (string) $b->_id);
+                $invById = Inventory::where('isActive', '!=', false)->get()->keyBy(fn ($i) => (string) $i->_id);
+                foreach (\App\Models\Product::all() as $prod) {
+                    $combos = !empty($prod->combinations) ? $prod->combinations : [['name' => null, 'bomId' => $prod->bomId]];
+                    // Pooled across variants: three mug variants drawing on one box are limited
+                    // together, not each to themselves.
+                    $build = null; $shipOf = [];
+                    foreach ($combos as $combo) {
+                        $bom = $bomById[(string) ($combo['bomId'] ?? '')] ?? null;
+                        if (!$bom) continue;
+                        $variantBuild = null;
+                        foreach ($bom->components ?? [] as $cm) {
+                            $m = $invById[(string) ($cm['inventoryId'] ?? '')] ?? null;
+                            $per = (float) ($cm['qty'] ?? 0);
+                            if (!$m || $per <= 0) continue;
+                            $free = max(0, (int) ($m->stockQty ?? 0) - (int) ($m->reservedQty ?? 0));
+                            $can  = (int) floor($free / $per);
+                            if (!($m->isOnDemand ?? false)) {
+                                $variantBuild = $variantBuild === null ? $can : min($variantBuild, $can);
+                            }
+                            $shipOf[(string) $m->_id] = isset($shipOf[(string) $m->_id]) ? min($shipOf[(string) $m->_id], $can) : $can;
+                        }
+                        if ($variantBuild !== null) $build = $build === null ? $variantBuild : min($build, $variantBuild);
+                    }
+                    if ($build === null) continue;
+                    foreach ($shipOf as $invId => $can) {
+                        if ($can >= $build) continue;   // this material is not what holds the product back
+                        $blocking[$invId][] = ['product' => $prod->name, 'canShip' => $can, 'canBuild' => $build];
+                    }
+                }
+            } catch (\Throwable $e) {
+                Log::warning('toBuy: blocking-products scan failed', ['error' => $e->getMessage()]);
+            }
+
             $rows = [];
             $usage = \App\Support\MaterialUsage::perDay();
             $candidates = Inventory::where('isActive', '!=', false)->get()->keyBy(fn ($i) => (string) $i->_id);
@@ -202,6 +240,8 @@ class InventoryController extends Controller
                     'estimatedCost' => round($shortfall * $unitCost, 2),
                     'orders'        => array_slice($sources[$invId] ?? [], 0, 6),
                     'for'           => array_slice(array_map(fn ($n, $q) => ['product' => $n, 'pieces' => $q], array_keys($uses[$invId] ?? []), array_values($uses[$invId] ?? [])), 0, 6),
+                    // Products this material holds back right now, orders or no orders.
+                    'blocks'        => array_slice($blocking[$invId] ?? [], 0, 6),
                 ];
             }
 

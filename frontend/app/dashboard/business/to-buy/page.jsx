@@ -453,7 +453,8 @@ export default function ToBuyPage() {
                 <LevelBar have={r.onHand} min={r.minimum} uom={r.uom} width={90} />
                 <span>{`Buy ${num(r.shortfall)} = ${breakdown(r)}`}</span>
               </span>}
-              sub={[`have ${num(r.onHand)}${r.minimum > 0 ? ` · min ${num(r.minimum)}` : ''} ${r.uom} · ${peso(r.estimatedCost)}`, r.for?.length > 0 ? `for ${r.for.map(f => `${f.pieces} × ${f.product}`).join(', ')}` : null, r.orders?.length > 0 ? r.orders.join(', ') : null, r.isOnDemand ? 'buy per order' : null, !Number(r.unitCost) ? 'no cost set' : null].filter(Boolean).join(' · ')} />
+              sub={[`have ${num(r.onHand)}${r.minimum > 0 ? ` · min ${num(r.minimum)}` : ''} ${r.uom} · ${peso(r.estimatedCost)}`, r.for?.length > 0 ? `for ${r.for.map(f => `${f.pieces} × ${f.product}`).join(', ')}` : null,
+                r.blocks?.length > 0 ? `holding back ${r.blocks.map(b => `${b.product} (${b.canShip}/${b.canBuild})`).join(', ')}` : null, r.orders?.length > 0 ? r.orders.join(', ') : null, r.isOnDemand ? 'buy per order' : null, !Number(r.unitCost) ? 'no cost set' : null].filter(Boolean).join(' · ')} />
             <div style={{ padding: '0 14px 10px' }}><MinEditor r={r} compact /></div>
             </div>
           )) : (<>
@@ -490,6 +491,14 @@ export default function ToBuyPage() {
                 {r.for?.length > 0 && (
                   <div style={{ fontSize: '11px', color: 'var(--gray-light)', marginTop: '2px' }}>
                     For {r.for.map(f => `${f.pieces} × ${f.product}`).join(', ')}
+                  </div>
+                )}
+                {/* Orders taken are only half the picture. The mug box also caps Inner Color and
+                    Magic Mug, which nobody has ordered yet - and not seeing that is exactly how a
+                    shelf of 484 blanks feels healthy while ten boxes hold all three back. */}
+                {r.blocks?.length > 0 && (
+                  <div style={{ fontSize: '11px', color: '#b45309', marginTop: '2px' }}>
+                    Holding back {r.blocks.map(b => `${b.product} (${b.canShip} of ${b.canBuild} can ship)`).join(', ')}
                   </div>
                 )}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: '3px', flexWrap: 'wrap' }}>
