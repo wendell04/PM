@@ -7,6 +7,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { billingName } from '@/lib/billingName';
 import { useCart } from '@/context/CartContext';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
+import { isNetworkError } from '@/lib/afterTimeout';
 import '@/app/shop/shop.css';
 import { applyVoucher } from '@/lib/voucherApi';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -83,6 +84,9 @@ export default function CheckoutPage() {
   // UI state
   const [addressLoading, setAddressLoading] = useState(true);
   const [placing, setPlacing] = useState(false);
+  // Set when a place-order attempt timed out: the outcome is unknown, so the button stays shut
+  // rather than letting an anxious second tap create a duplicate order.
+  const [placeUnknown, setPlaceUnknown] = useState(false);
   const [fromCart, setFromCart] = useState(false);
   const [error, setError] = useState(null);
   const [payloadError, setPayloadError] = useState(false);
@@ -805,7 +809,16 @@ export default function CheckoutPage() {
       }
 
     } catch (err) {
-      setError(err.message);
+      // A timeout on the order or the payment intent is an UNKNOWN, not a refusal. The server may
+      // have created the order and started the payment and simply answered too late. Telling the
+      // customer "please try again" here is how one checkout becomes two orders and two charges,
+      // so this path deliberately does not invite a retry - it sends them to My Orders to look.
+      if (isNetworkError(err)) {
+        setPlaceUnknown(true);
+        setError('This took longer than expected, so we cannot tell yet whether your order went through. Do NOT place it again - open My Orders in a moment and check. If it is not there, come back and try once more.');
+      } else {
+        setError(err.message);
+      }
     } finally {
       setPlacing(false);
     }
@@ -2038,7 +2051,7 @@ export default function CheckoutPage() {
 
       <button
         onClick={handlePlaceOrder}
-        disabled={placing || !selectedAddress || items.length === 0 || (isOnlinePayment && grandTotal < 100)}
+        disabled={placing || placeUnknown || !selectedAddress || items.length === 0 || (isOnlinePayment && grandTotal < 100)}
         className="checkout-place-btn"
       >
         {placing ? (

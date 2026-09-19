@@ -1230,7 +1230,9 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
         const seed = {};
         (plan?.items ?? []).forEach(row => {
           if (row.action !== 'consume') return;
-          (row.materials ?? []).forEach(m => { seed[m.inventoryId] = 0; });
+          // Keyed by LINE and material. The same material can sit on two lines of one order, and
+          // one shared key meant a figure typed for one line was silently applied to the other.
+          (row.materials ?? []).forEach(m => { seed[`${row.itemIndex}:${m.inventoryId}`] = 0; });
         });
         setKeepBack(seed);
       } catch (err) {
@@ -1246,7 +1248,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
   const settlementSummary = (() => {
     let back = 0, off = 0, offValue = 0;
     consumeRows.forEach(r => (r.materials ?? []).forEach(m => {
-      const survived = Math.min(Math.max(0, Number(keepBack[m.inventoryId] ?? 0)), m.qty);
+      const survived = Math.min(Math.max(0, Number(keepBack[`${r.itemIndex}:${m.inventoryId}`] ?? 0)), m.qty);
       const spoiled  = m.qty - survived;
       back += survived;
       off  += spoiled;
@@ -1326,9 +1328,14 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
         if (refundAmt !== '') payload.refundAmount = Number(refundAmt);
         // Sent only when something actually survived. Absent, the backend writes off the whole held
         // amount exactly as it did before this modal existed.
+        // Sent as { lineIndex: { materialId: qty } } so each line settles its own material.
         const survived = Object.entries(keepBack)
           .filter(([, n]) => Number(n) > 0)
-          .reduce((acc, [id, n]) => { acc[id] = Number(n); return acc; }, {});
+          .reduce((acc, [key, n]) => {
+            const [idx, id] = key.split(':');
+            (acc[idx] ??= {})[id] = Number(n);
+            return acc;
+          }, {});
         if (Object.keys(survived).length) payload.stockSettlement = survived;
       }
       const res = await fetchWithTimeout(`${API_URL}/api/admin/orders/${lo.id}`, {
@@ -2607,19 +2614,19 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                                   held {m.qty}{m.uom ? ` ${m.uom}` : ''}
                                 </div>
                                 <input
-                                  value={keepBack[m.inventoryId] ?? 0}
+                                  value={keepBack[`${row.itemIndex}:${m.inventoryId}`] ?? 0}
                                   onChange={e => {
                                     const raw = e.target.value.replace(/[^0-9]/g, '');
                                     // Capped at what this line actually held, so a mistyped figure
                                     // cannot invent stock the shop never had.
                                     const n = raw === '' ? '' : Math.min(Number(raw), m.qty);
-                                    setKeepBack(p => ({ ...p, [m.inventoryId]: n }));
+                                    setKeepBack(p => ({ ...p, [`${row.itemIndex}:${m.inventoryId}`]: n }));
                                   }}
                                   inputMode="numeric" maxLength={6}
                                   style={{ ...S.input, width:'72px', textAlign:'center', padding:'5px 6px' }} />
-                                <button type="button" onClick={() => setKeepBack(p => ({ ...p, [m.inventoryId]: m.qty }))}
+                                <button type="button" onClick={() => setKeepBack(p => ({ ...p, [`${row.itemIndex}:${m.inventoryId}`]: m.qty }))}
                                   style={{ ...S.btnSmGhost, padding:'4px 9px', fontSize:'11px' }}>All</button>
-                                <button type="button" onClick={() => setKeepBack(p => ({ ...p, [m.inventoryId]: 0 }))}
+                                <button type="button" onClick={() => setKeepBack(p => ({ ...p, [`${row.itemIndex}:${m.inventoryId}`]: 0 }))}
                                   style={{ ...S.btnSmGhost, padding:'4px 9px', fontSize:'11px' }}>None</button>
                               </div>
                             ))}

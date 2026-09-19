@@ -2801,7 +2801,17 @@ class OrderController extends Controller
                                 // Whatever survived stays on the shelf; only the rest is written
                                 // off. Clamped to what this line actually held, so a mistyped
                                 // figure cannot invent stock.
-                                $saved  = max(0, min($qty, (int) ($keepBack[(string) $rawInv->_id] ?? 0)));
+                                // Per LINE, then per material. A flat material=>qty map (what older
+                                // clients send) is still honoured, but it cannot tell two lines of
+                                // the same order apart: one figure typed for the mug's transfer
+                                // paper was applied again to the totebag's, putting back twice what
+                                // survived. The nested form is authoritative when present.
+                                $lineMap = $keepBack[(string) $itemIdx] ?? $keepBack[$itemIdx] ?? null;
+                                $flat    = $keepBack[(string) $rawInv->_id] ?? null;
+                                $claimed = is_array($lineMap)
+                                    ? (int) ($lineMap[(string) $rawInv->_id] ?? 0)
+                                    : (is_array($flat) ? 0 : (int) ($flat ?? 0));
+                                $saved  = max(0, min($qty, $claimed));
                                 $spoiled = $qty - $saved;
 
                                 $rawInv->stockQty    = max(0, (int) ($rawInv->stockQty ?? 0) - $spoiled);
