@@ -783,7 +783,7 @@ export default function JobOrdersPage() {
             {deleteErr && <div style={{ ...S.note, background: 'var(--st-red-bg)', borderColor: 'rgba(239,68,68,0.35)', color: 'var(--st-red-fg)', marginBottom: 12 }}>{deleteErr}</div>}
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
               <button onClick={() => setDeleting(null)} disabled={isSubmitting} style={S.btnGhost}>Cancel</button>
-              <button onClick={confirmDelete} disabled={isSubmitting} style={{ ...S.btnPrimary, background: 'var(--st-red-fg)', borderColor: 'var(--st-red-fg)' }}>{isSubmitting ? 'Deleting…' : 'Delete'}</button>
+              <button onClick={confirmDelete} disabled={isSubmitting} style={{ ...S.btnPrimary, background: 'var(--st-red-fg)', color:'#fff', borderColor: 'var(--st-red-fg)' }}>{isSubmitting ? 'Deleting…' : 'Delete'}</button>
             </div>
           </div>
         </div>

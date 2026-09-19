@@ -392,7 +392,7 @@ export default function StockInTab({ materials, vendors, batches, setBatches, ba
             <>
               <button onClick={() => setStep(2)} style={S.btnGhost}>{ICONS.chevL} Back</button>
               <button onClick={closeModal} style={S.btnGhost}>Cancel</button>
-              <button onClick={confirmReceive} disabled={submitting} style={{ ...S.btnPrimary, background:'#2e7d32', opacity: submitting ? .6 : 1 }}>{ICONS.check} {submitting ? 'Saving…' : 'Confirm Receive'}</button>
+              <button onClick={confirmReceive} disabled={submitting} style={{ ...S.btnPrimary, background:'#2e7d32', color:'#fff', opacity: submitting ? .6 : 1 }}>{ICONS.check} {submitting ? 'Saving…' : 'Confirm Receive'}</button>
             </>
           )
         }

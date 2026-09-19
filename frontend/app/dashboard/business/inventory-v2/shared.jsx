@@ -359,7 +359,7 @@ export function WarnModal({ open, onClose, onProceed, title, message, proceedLab
       footer={
         <>
           <button onClick={onClose} style={S.btnGhost}>Cancel</button>
-          <button onClick={onProceed} style={{ ...S.btnPrimary, background:'#b45309' }}>{proceedLabel}</button>
+          <button onClick={onProceed} style={{ ...S.btnPrimary, background:'#b45309', color:'#fff' }}>{proceedLabel}</button>
         </>
       }
     >

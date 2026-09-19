@@ -152,7 +152,7 @@ function ReceiveReplacementModal({ open, onClose, returnRecord, material, onConf
       footer={
         <>
           <button onClick={handleClose} style={S.btnGhost}>Cancel</button>
-          <button onClick={submit} style={{ ...S.btnPrimary, background:'#2e7d32' }}>{ICONS.check} Add to Stock</button>
+          <button onClick={submit} style={{ ...S.btnPrimary, background:'#2e7d32', color:'#fff' }}>{ICONS.check} Add to Stock</button>
         </>
       }
     >
