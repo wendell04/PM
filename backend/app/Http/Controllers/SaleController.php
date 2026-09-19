@@ -50,7 +50,23 @@ class SaleController extends Controller
 
             $sales = $query->limit($limit)->get();
 
-            return $this->successResponse('Sales fetched successfully.', $sales);
+            // The cap is silent, and because the sort is saleDate desc the rows
+            // it drops are the OLDEST ones - which is exactly the history the
+            // forecast trains on. Say so rather than letting a caller believe
+            // it received everything.
+            $truncated = $sales->count() >= $limit;
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Sales fetched successfully.',
+                'data'    => $sales,
+                'meta'    => [
+                    'limit'     => $limit,
+                    'returned'  => $sales->count(),
+                    'truncated' => $truncated,
+                    'dropped'   => $truncated ? 'oldest rows, sorted by saleDate desc' : null,
+                ],
+            ]);
         } catch (\Exception $e) {
             return $this->serverErrorResponse($e, 'An unexpected error occurred while fetching sales.');
         }

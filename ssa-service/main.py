@@ -1,3 +1,5 @@
+import os
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -7,12 +9,30 @@ import numpy as np
 from ssa import SSA, dominant_period
 
 app = FastAPI()
+
+# The dashboard calls this service directly from the browser, so it needs CORS -
+# but only from the dashboard. Set SSA_ALLOWED_ORIGINS to a comma-separated list
+# in deployment; the default covers local development.
+#
+# "*" was also paired with allow_credentials=True, which no browser accepts: a
+# wildcard origin is rejected outright on a credentialed request. Naming the
+# origins makes credentialed calls work if they are ever needed.
+_origins_env = os.getenv("SSA_ALLOWED_ORIGINS", "").strip()
+ALLOWED_ORIGINS = (
+    [o.strip() for o in _origins_env.split(",") if o.strip()]
+    if _origins_env
+    else [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ]
+)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization"],
 )
 
 class DataRow(BaseModel):
@@ -23,7 +43,7 @@ class ForecastRequest(BaseModel):
     rows: List[DataRow]
     forecast_periods: int
     forecast_type: str
-    data_type: str = "sales"  # "sales" | "stock"
+    data_type: str = "sales"  # "sales" | "stock" | "demand"
 
 
 class SaleRow(BaseModel):
@@ -159,7 +179,23 @@ async def forecast(req: ForecastRequest):
     try:
         forecast_type    = req.forecast_type
         forecast_periods = req.forecast_periods
+        # Three shapes of series, two independent behaviours.
+        #
+        #   sales   dense money/units per day; trailing zeros trimmed, zero days
+        #           floored so SSA has signal, dampening applied
+        #   stock   a level that holds until the next movement; forward-filled
+        #           for display, and the headline figure is the latest level
+        #   demand  units consumed per period. Sparse like stock - zeros are
+        #           real and must not be floored away - but it is a flow, not a
+        #           level, so it sums for display and its headline figure is the
+        #           last complete period, exactly like sales.
+        #
+        # Before this, the page sent a demand series as "stock", so the history
+        # line was forward-filled and the headline figure was the last raw row:
+        # level semantics on a flow.
         is_stock         = (req.data_type == "stock")
+        is_demand        = (req.data_type == "demand")
+        is_sparse        = is_stock or is_demand   # zeros are real; route intermittent to SBA
         if forecast_type not in ("weekly", "monthly", "annually"):
             raise HTTPException(status_code=400, detail="Invalid forecast_type.")
 
@@ -182,13 +218,13 @@ async def forecast(req: ForecastRequest):
         # ── Resample to the SAME granularity as the display level ──────────────
         if forecast_type == "weekly":
             agg_rule = "W-MON"
-            min_data  = 4 if is_stock else 10
+            min_data  = 4 if is_sparse else 10
         elif forecast_type == "monthly":
             agg_rule = "MS"
-            min_data  = 3 if is_stock else 10
+            min_data  = 3 if is_sparse else 10
         else:   # annually — train on monthly, aggregate to years
             agg_rule = "MS"
-            min_data  = 12 if is_stock else 24   # 1 year of monthly for stock
+            min_data  = 12 if is_sparse else 24   # 1 year of monthly for stock
 
         if forecast_type == "annually":
             df = df_raw.set_index("Date").resample("MS").sum().reset_index()
@@ -212,7 +248,7 @@ async def forecast(req: ForecastRequest):
 
         # Trim trailing zeros — sales only. For inventory, zero stock IS valid data.
         trim_warning = None
-        if not is_stock and len(df) > 0:
+        if not is_sparse and len(df) > 0:
             vals   = df["Value"].values
             nz_pos = np.where(vals > 0)[0]
             if len(nz_pos) > 0:
@@ -226,7 +262,7 @@ async def forecast(req: ForecastRequest):
         # (which is too close to zero to matter). peak/4 keeps the series
         # readable and gives SSA enough signal without inflating the trend.
         original_values = df["Value"].values.copy()
-        if not is_stock:
+        if not is_sparse:
             _nz_pre = original_values[original_values > 0]
             if len(_nz_pre) > 0:
                 _peak      = float(np.max(_nz_pre))
@@ -243,7 +279,7 @@ async def forecast(req: ForecastRequest):
                 detail=(
                     f"Not enough complete {forecast_type} periods ({n}). "
                     f"SSA requires at least {min_data}."
-                    + (" Try switching to Monthly period." if is_stock and forecast_type == "weekly" else "")
+                    + (" Try switching to Monthly period." if is_sparse and forecast_type == "weekly" else "")
                 )
             )
 
@@ -545,14 +581,14 @@ async def forecast(req: ForecastRequest):
         # Restricted to weekly/monthly so the rate granularity matches the output.
         forecast_method = "ssa"
         demand_cls, demand_adi, demand_cv2 = demand_profile(original_values)
-        if is_stock and forecast_type in ("weekly", "monthly") and demand_cls in ("intermittent", "lumpy", "new"):
+        if is_sparse and forecast_type in ("weekly", "monthly") and demand_cls in ("intermittent", "lumpy", "new"):
             _rate = croston_sba(original_values, alpha=0.1, sba=True)
             out_vals = np.clip(np.full(len(out_vals), _rate, dtype=float), 0.0, cap)
             forecast_method = "sba"
 
         # ── Dampening + floor: sales-only (skip for inventory stock) ────────────
         is_dampened = False
-        if not is_stock:
+        if not is_sparse:
             # FIX C-1: dampening — cap SSA overshot vs recent actuals at 1.5×
             if forecast_type == "annually":
                 # Use COMPLETE calendar years only (>= 12 months of data). Partial
@@ -648,7 +684,7 @@ async def forecast(req: ForecastRequest):
         daily_rev.columns = ["Date", "Value"]
 
         # Floor zero-sale days (sales only — inventory already forward-filled)
-        if not is_stock:
+        if not is_sparse:
             _daily_nz = daily_rev["Value"].values[daily_rev["Value"].values > 0]
             if len(_daily_nz) > 0:
                 _daily_peak  = float(np.max(_daily_nz))

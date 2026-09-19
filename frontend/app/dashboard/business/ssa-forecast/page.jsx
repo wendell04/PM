@@ -866,6 +866,50 @@ function genFuturePeriods(count, periodType) {
 const PERIOD_DAYS = { weekly: 7, monthly: 30.44, annually: 365.25 };
 const SERVICE_Z = 1.65;        // 95% service level (z-score)
 const DEFAULT_LEAD_DAYS = 7;   // fallback until per-item lead time exists (Phase B)
+const REVIEW_DAYS = 7;         // the shop buys weekly - the gap between buying trips
+// Mirrors min_data in ssa-service/main.py for sparse series (stock/demand).
+// Kept in step with the service so the page never withholds a series the
+// service would happily forecast.
+const SERVICE_MIN_PERIODS = { weekly: 4, monthly: 3, annually: 12 };
+
+/**
+ * How many periods the SSA service will actually see.
+ *
+ * bucketDemand extends its series to today on purpose - the policy needs the
+ * recent zero periods to measure how intermittent demand is. The service does
+ * not: it resamples between the first and last row it was given. Counting with
+ * bucketDemand therefore over-states eligibility, and the page can offer a
+ * series the service then rejects for having too few complete periods.
+ */
+function countServicePeriods(rows, periodType) {
+  if (!rows || rows.length === 0) return 0;
+  const key = (dateStr) => {
+    const dt = new Date(dateStr + "T00:00:00Z");
+    if (periodType === "weekly") {
+      const day = dt.getUTCDay();
+      dt.setUTCDate(dt.getUTCDate() + (day === 0 ? -6 : 1 - day));
+    } else if (periodType === "monthly") {
+      dt.setUTCDate(1);
+    } else {
+      dt.setUTCMonth(0, 1);
+    }
+    return dt.toISOString().slice(0, 10);
+  };
+  const first = key(rows[0].date);
+  const last = key(rows[rows.length - 1].date);
+  let n = 0;
+  const cur = new Date(first + "T00:00:00Z");
+  const end = new Date(last + "T00:00:00Z");
+  let guard = 0;
+  while (cur <= end && guard < 1200) {
+    n++;
+    if (periodType === "weekly") cur.setUTCDate(cur.getUTCDate() + 7);
+    else if (periodType === "monthly") cur.setUTCMonth(cur.getUTCMonth() + 1);
+    else cur.setUTCFullYear(cur.getUTCFullYear() + 1);
+    guard++;
+  }
+  return n;
+}
 
 // Aggregate daily demand rows into a continuous per-period series (first sale →
 // current period, zero-filled) so intermittency/variability are measured honestly.
@@ -901,12 +945,23 @@ function bucketDemand(rows, periodType) {
   return series;
 }
 
-function computeInventoryPolicy({ rawRows, currentStock, leadTimeDays, periodType }) {
+function computeInventoryPolicy({ rawRows, currentStock, leadTimeDays, periodType, forecastValues }) {
   const series = bucketDemand(rawRows, periodType);
   const n = series.length;
   const nz = series.filter((v) => v > 0);
-  const mean = n ? series.reduce((a, b) => a + b, 0) / n : 0;
-  const variance = n > 1 ? series.reduce((a, b) => a + (b - mean) ** 2, 0) / (n - 1) : 0;
+  const histMean = n ? series.reduce((a, b) => a + b, 0) / n : 0;
+
+  // The rate the policy plans against must be the same rate the chart depletes
+  // with. This used to be the mean of past periods while the depletion line and
+  // the stockout date on the same screen subtracted the forecast - so a rising
+  // forecast never moved the reorder point. Take the forward rate from the
+  // forecast when there is one; keep the historical mean as the fallback.
+  const fc = Array.isArray(forecastValues) ? forecastValues.filter((v) => Number.isFinite(v)) : [];
+  const mean = fc.length > 0 ? fc.reduce((a, b) => a + b, 0) / fc.length : histMean;
+  // Spread stays measured around the historical mean. Variability is an
+  // observed property of past demand; centring it on a forward rate would
+  // inflate it by however far the forecast has moved.
+  const variance = n > 1 ? series.reduce((a, b) => a + (b - histMean) ** 2, 0) / (n - 1) : 0;
   const sigma = Math.sqrt(variance);
 
   // Intermittency (Syntetos-Boylan): ADI = avg gap between demands, CV² of sizes.
@@ -926,18 +981,26 @@ function computeInventoryPolicy({ rawRows, currentStock, leadTimeDays, periodTyp
   const hasLead = leadTimeDays != null && leadTimeDays > 0;
   const leadDays = hasLead ? leadTimeDays : DEFAULT_LEAD_DAYS;
   const L = leadDays / daysPerPeriod;            // lead time in periods
+  const R = REVIEW_DAYS / daysPerPeriod;         // buying cycle in periods
   const d = mean;                                 // demand rate (units/period)
   const SS = Math.max(0, SERVICE_Z * sigma * Math.sqrt(L));
   const ROP = d * L + SS;
-  const orderUpTo = d * (L + L) + SS;             // cover lead time + one review cycle
+  // Order-up-to must cover the wait for delivery AND the gap until the next
+  // buying trip, and its safety margin scales with that whole window. The old
+  // form used d*(L+L) with the lead-time safety stock, which silently assumed
+  // the shop reorders exactly as often as the supplier takes to deliver, and
+  // under-protected the review gap.
+  const orderUpTo = d * (L + R) + Math.max(0, SERVICE_Z * sigma * Math.sqrt(L + R));
   const orderQty = Math.max(0, orderUpTo - (currentStock ?? 0));
   const cov = currentStock ?? 0;
   const coverage = d > 0 ? cov / d : null;        // periods of cover (null ≈ unlimited)
   const periodsToROP = d > 0 && cov > ROP ? (cov - ROP) / d : 0;
 
   return {
-    d, sigma, adi, cv2, cls, L, leadDays, daysPerPeriod, usingDefaultLead: !hasLead,
-    SS: Math.round(SS), ROP: Math.round(ROP), orderQty: Math.round(orderQty),
+    d, sigma, adi, cv2, cls, L, R, leadDays, reviewDays: REVIEW_DAYS, daysPerPeriod,
+    usingDefaultLead: !hasLead,
+    SS: Math.round(SS), ROP: Math.round(ROP), orderUpTo: Math.round(orderUpTo),
+    orderQty: Math.round(orderQty),
     coverage, periodsToROP, nPeriods: n, nzCount: nz.length,
   };
 }
@@ -946,12 +1009,15 @@ function computeInventoryPolicy({ rawRows, currentStock, leadTimeDays, periodTyp
 // observe, not which algorithm ran - naming Croston/SBA here was misleading,
 // because it described what the classifier implies rather than what actually
 // produced the number on screen.
+// "Intermittent" and "Lumpy" are forecasting terms, not shop terms. The owner
+// reading this wants to know how the thing sells, so the label says that and
+// the note underneath says what it means for planning.
 const DEMAND_CLASS = {
-  steady:       { label: "Steady",       color: "#4ade80", note: "sells regularly, in similar amounts" },
-  variable:     { label: "Variable",     color: "#fbbf24", note: "sells regularly, but amounts jump around" },
-  intermittent: { label: "Intermittent", color: "#fbbf24", note: "sells rarely, in similar amounts" },
-  lumpy:        { label: "Lumpy",        color: "#f87171", note: "sells rarely, and amounts jump around" },
-  new:          { label: "New / sparse", color: "#9ca3af", note: "too little history to judge a pattern" },
+  steady:       { label: "Sells steadily",   color: "#4ade80", note: "regular orders, similar sizes - easiest to plan for" },
+  variable:     { label: "Uneven sizes",     color: "#fbbf24", note: "orders come regularly, but the amounts jump around" },
+  intermittent: { label: "Sells now and then", color: "#fbbf24", note: "quiet stretches, then an order of a fairly usual size" },
+  lumpy:        { label: "Hard to predict",  color: "#f87171", note: "long quiet stretches, then an order of any size - keep a bigger buffer" },
+  new:          { label: "Too new to tell",  color: "#9ca3af", note: "not enough history yet to see a pattern" },
 };
 
 // How the number on screen was actually produced, in the reader's terms.
@@ -1094,7 +1160,15 @@ export default function SSAForecastPage() {
   const [pickerDate, setPickerDate] = useState("");
   const [stockHistoryRows, setStockHistoryRows] = useState([]);
   const [stockoutDate, setStockoutDate] = useState(null);
+  // Two different numbers, deliberately kept apart. currentStockQty is what is
+  // physically on the shelf - it anchors the chart, which is drawn from
+  // remainingQty events, and it is what "Current Stock" means to a reader.
+  // availableQty is what is free to plan with, and drives the reorder point,
+  // the stockout date and the restock quantity.
   const [currentStockQty, setCurrentStockQty] = useState(null);
+  const [reservedQty, setReservedQty] = useState(0);
+  const availableQty = currentStockQty === null ? null : Math.max(0, currentStockQty - reservedQty);
+  const [salesTruncated, setSalesTruncated] = useState(false);
   const [depletionMethod, setDepletionMethod] = useState(null);
 
   const [activeTab, setActiveTab] = useState("forecast");
@@ -1171,6 +1245,7 @@ export default function SSAForecastPage() {
     setStockHistoryRows([]);
     setStockoutDate(null);
     setCurrentStockQty(null);
+    setReservedQty(0);
     setDepletionMethod(null);
     setDemandBasis(null);
     setIsLoading(true);
@@ -1191,6 +1266,22 @@ export default function SSAForecastPage() {
       }
       const fcDates  = genFuturePeriods(count, periodType);
       const fcValues = fcDates.map(() => avgDemand);
+
+      // Confidence band from the observed spread of past periods, not from a
+      // fixed multiple. The old band was value x 1.5 and x 0.5, which looked
+      // like the SSA band but carried no information: it was the same shape
+      // whether demand was rock steady or wildly lumpy. Using the sample
+      // standard deviation of the bucketed history makes the band mean
+      // something, and a material with no variation gets no band at all.
+      const buckets = bucketDemand(rows, periodType);
+      let sigma = 0;
+      if (buckets.length > 1) {
+        const mean = buckets.reduce((s, v) => s + v, 0) / buckets.length;
+        const variance = buckets.reduce((s, v) => s + (v - mean) ** 2, 0) / (buckets.length - 1);
+        sigma = Math.sqrt(Math.max(0, variance));
+      }
+      const Z = 1.65;   // ~90% - the same service level the reorder point uses
+      const halfBand = Z * sigma;
       setSubmittedConfig({
         count,
         period: forecastPeriod,
@@ -1201,13 +1292,14 @@ export default function SSAForecastPage() {
         forecast: {
           dates: fcDates,
           values: fcValues,
-          confidence_high: fcValues.map((v) => v * 1.5),
-          confidence_low:  fcValues.map((v) => v * 0.5),
+          confidence_high: fcValues.map((v) => v + halfBand),
+          confidence_low:  fcValues.map((v) => Math.max(0, v - halfBand)),
         },
         accuracy: null,
         training_n: rows.length,
         training_unit: forecastPeriod.unit,
         is_fallback: true,
+        fallback_sigma: Math.round(sigma * 100) / 100,
       });
       setRawRows(rows);
       setLastRunAt(new Date());
@@ -1218,6 +1310,7 @@ export default function SSAForecastPage() {
     };
 
     let rows = [];
+    let invPeriods = 0;
     try {
       if (dataSource === "sales_revenue" || dataSource === "sales_qty") {
         const res = await fetchWithTimeout(
@@ -1231,6 +1324,9 @@ export default function SSAForecastPage() {
         );
         const d = await res.json();
         const sales = Array.isArray(d.data ?? d) ? (d.data ?? d) : [];
+        // The API caps at 10,000 rows sorted newest first, so an overflow costs
+        // the oldest history - the part the forecast trains on.
+        setSalesTruncated(d.meta?.truncated === true);
         const map = {};
         sales.forEach((s) => {
           const date = s.saleDate
@@ -1261,6 +1357,7 @@ export default function SSAForecastPage() {
         ]);
         const histData  = await histResponse.json();
         const salesData = await salesResponse.json();
+        setSalesTruncated(salesData.meta?.truncated === true);
         const history  = Array.isArray(histData.data  ?? histData)  ? (histData.data  ?? histData)  : [];
         const allSales = Array.isArray(salesData.data ?? salesData) ? (salesData.data ?? salesData) : [];
 
@@ -1275,10 +1372,14 @@ export default function SSAForecastPage() {
 
         setStockHistoryRows(sortedHistory);
 
-        // Current stock qty from the inventory list (live value for depletion start)
+        // Depletion starts from what is actually free to use, not from the
+        // shelf count. Stock already reserved against open orders is spoken
+        // for - counting it as available delays every stockout warning by
+        // however much is promised (20 of the 134 mugs, at the time of
+        // writing).
         const selectedItem = inventoryList.find(i => (i._id ?? i.id) === selectedInventoryId);
-        const currentStock = selectedItem?.stockQty ?? 0;
-        setCurrentStockQty(currentStock);
+        setCurrentStockQty(selectedItem?.stockQty ?? 0);
+        setReservedQty(selectedItem?.reservedQty ?? 0);
 
         // Material demand via the bill of materials. The old filter matched a
         // sale to a material by inventoryId or by an exact name match; neither
@@ -1309,18 +1410,34 @@ export default function SSAForecastPage() {
           return;
         }
 
-        setDepletionMethod(rows.length >= 10 ? "ssa" : "none");
+        // Eligibility is counted in PERIODS, not raw daily rows. A ledger-based
+        // demand series has one row per day something was consumed - four weeks
+        // of real movement can be four rows - while a sales-derived series
+        // spread over three years has dozens. The old "10 raw rows" gate sent
+        // every ledger-sourced material to the average-demand fallback even
+        // though the service accepts it and returns a proper Croston/SBA rate.
+        // Match the service's own minimum instead.
+        invPeriods = countServicePeriods(rows, forecastPeriod.type);
       }
 
       // Inventory never hard-fails on sparse data - use the average-demand
       // fallback so the depletion view always renders.
-      if (dataSource === "inventory_stock" && rows.length < 10) {
-        applyInvFallback(rows);
-        setIsLoading(false);
-        return;
+      if (dataSource === "inventory_stock") {
+        const minPeriods = SERVICE_MIN_PERIODS[forecastPeriod.type] ?? 4;
+        if (invPeriods < minPeriods) {
+          setDepletionMethod("none");
+          applyInvFallback(rows);
+          setIsLoading(false);
+          return;
+        }
+        setDepletionMethod("ssa");
       }
 
-      if (rows.length < 10) {
+      // Sales tabs only. Inventory decided its own path just above, on periods
+      // rather than raw rows - a ledger series of 5 daily rows can span the 4
+      // weeks the service needs, and falling through to this row count sent it
+      // to a hard error instead of the chart.
+      if (dataSource !== "inventory_stock" && rows.length < 10) {
         setError(`Not enough data points (${rows.length}). SSA requires at least 10.`);
         setIsLoading(false);
         return;
@@ -1335,7 +1452,13 @@ export default function SSAForecastPage() {
           rows,
           forecast_periods: count,
           forecast_type: forecastPeriod.type,
-          data_type: dataSource === "inventory_stock" ? "stock" : "sales",
+          // What we send for inventory is material demand per day - a flow, not
+          // a stock level. Calling it "stock" made the service forward-fill the
+          // history line and report the last raw row as the headline figure,
+          // which are level behaviours. "demand" keeps the sparse handling
+          // (zeros are real, intermittent series route to Croston/SBA) without
+          // the level display.
+          data_type: dataSource === "inventory_stock" ? "demand" : "sales",
         }),
         signal: controller.signal,
       });
@@ -1458,10 +1581,19 @@ export default function SSAForecastPage() {
         setServiceError("No sales data found for service segmentation.");
         return;
       }
+      // Group at the mother item before ranking. The service groups on
+      // productName, so "Mugs" from the imported history and each 2026 mug
+      // variant were ranked as unrelated products - one product split several
+      // ways, each looking smaller than it is. Resolving the name here keeps
+      // the grouping on the page, as agreed, and leaves the service untouched.
+      const rolledUp = sales.map((s) => {
+        const r = taxonomy?.saleResolution?.[s.productName];
+        return r?.productName ? { ...s, productName: r.productName } : s;
+      });
       const ssaRes = await fetch(`${SSA_API_URL}/api/service-segments`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sales }),
+        body: JSON.stringify({ sales: rolledUp }),
       });
       if (!ssaRes.ok) {
         const err = await ssaRes.json().catch(() => ({}));
@@ -1486,11 +1618,17 @@ export default function SSAForecastPage() {
       });
       const serviceD = await serviceRes.json();
       const sales = serviceD.data ?? [];
+      // Same mother-item roll-up as loadServiceSegments, so both entry points
+      // rank the same products rather than one splitting them by variant.
+      const rolledUp = sales.map((s) => {
+        const r = taxonomy?.saleResolution?.[s.productName];
+        return r?.productName ? { ...s, productName: r.productName } : s;
+      });
       const sRes = sales.length > 0
         ? await fetch(`${SSA_API_URL}/api/service-segments`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ sales }),
+            body: JSON.stringify({ sales: rolledUp }),
           }).then(r => r.ok ? r.json() : null).catch(() => null)
         : null;
       if (sRes) setServiceResult(sRes);
@@ -1518,7 +1656,7 @@ export default function SSAForecastPage() {
 
   // Compute stockout date whenever inventory depletion forecast updates
   useEffect(() => {
-    if (submittedConfig?.source !== "inventory_stock" || !result || currentStockQty === null) {
+    if (submittedConfig?.source !== "inventory_stock" || !result || availableQty === null) {
       setStockoutDate(null);
       return;
     }
@@ -1530,14 +1668,16 @@ export default function SSAForecastPage() {
     // a unit per period - a sticker sheet at 0.26/week rounds to 0 forever and
     // reports "never runs out", which is the flat line this page is meant to
     // have stopped drawing.
-    let remaining = currentStockQty;
+    // Plan against what is free to use: stock already promised to open orders
+    // will leave the shelf regardless of forecast demand.
+    let remaining = availableQty;
     for (let i = 0; i < fcDates.length; i++) {
       if (fcDates[i] <= todayStr) continue;
       remaining -= Math.max(0, fcValues[i] ?? 0);
       if (remaining <= 0) { setStockoutDate(fcDates[i]); return; }
     }
     setStockoutDate(null);
-  }, [result, currentStockQty, submittedConfig?.source]); // eslint-disable-line
+  }, [result, availableQty, submittedConfig?.source]); // eslint-disable-line
 
   // Auto-run: fires on mount (init) and whenever source/period/count changes
   // - On mount or when no count entered: runs with overrideCount=1 to populate training data + metrics
@@ -1600,7 +1740,11 @@ export default function SSAForecastPage() {
 
   // Materials shown for the current mother item, narrowed by the variant filter.
   const visibleMaterials = (() => {
-    const tracked = inventoryList.filter((i) => !i.isOnDemand);
+    // On-demand materials used to be hidden here. They are bought per order
+    // rather than held, but the owner now sets a minimum on them too, and one
+    // of them - Mug Box White 11oz - is the clearest restock signal in the
+    // shop. Show them, marked, instead of dropping them.
+    const tracked = inventoryList;
     if (!taxonomy || !selectedMotherId) return tracked;
 
     if (selectedMotherId === UNLINKED_KEY) {
@@ -1686,9 +1830,11 @@ export default function SSAForecastPage() {
     submittedConfig?.source === "inventory_stock" && result
       ? computeInventoryPolicy({
           rawRows,
-          currentStock: currentStockQty,
+          currentStock: availableQty,
           leadTimeDays: inventoryList.find((i) => (i._id ?? i.id) === selectedInventoryId)?.leadTimeDays,
           periodType: submittedConfig?.period?.type ?? forecastPeriod.type,
+          // Same numbers the depletion line uses, so the two cannot disagree.
+          forecastValues: result?.forecast?.values,
         })
       : null;
 
@@ -1820,10 +1966,15 @@ export default function SSAForecastPage() {
     if (result && currentStockQty !== null && parseInt(forecastCount, 10) > 0) {
       // Anchor the projection at today so the gold line starts from the current
       // stock base (the boundary between recorded history and the forecast).
+      // Anchor on the shelf count, not on the available count, so the gold line
+      // starts where the recorded staircase ends. Anchoring on available left a
+      // cliff at today the size of whatever was reserved.
       if (data.length > 0) data[data.length - 1].StockForecast = currentStockQty;
       const fcDates  = result.forecast?.dates  || [];
       const fcValues = result.forecast?.values || [];
-      let remaining = currentStockQty; // float - keep sub-unit demand so slow sellers still deplete
+      // Stock promised to open orders leaves the shelf whatever the forecast
+      // does, so take it off once at the start rather than ignoring it.
+      let remaining = Math.max(0, currentStockQty - reservedQty);
       for (let i = 0; i < fcDates.length; i++) {
         if (fcDates[i] <= todayStr) continue;
         remaining = Math.max(0, remaining - Math.max(0, fcValues[i] ?? 0));
@@ -2094,6 +2245,7 @@ export default function SSAForecastPage() {
                       return (
                         <option key={item._id ?? item.id} value={item._id ?? item.id}>
                           {item.name}{isLow ? ` (${item.stockQty ?? 0} left)` : ""}
+                          {item.isOnDemand ? " - bought per order" : ""}
                         </option>
                       );
                     })}
@@ -2270,7 +2422,10 @@ export default function SSAForecastPage() {
 
         {/* ── Inventory Stock Level overview ───────────────────────────────── */}
         {dataSource === "inventory_stock" && (() => {
-          const tracked = inventoryList.filter((i) => !i.isOnDemand);
+          // Count what the picker offers. On-demand materials were excluded
+          // here as well, which hid genuinely low ones - Mug Box White 11oz
+          // sits at 10 against a minimum of 31 and never appeared.
+          const tracked = inventoryList;
           const outItems = tracked.filter((i) => (i.stockQty ?? 0) === 0);
           const lowItems = tracked.filter(
             (i) => (i.stockQty ?? 0) > 0 && (i.stockQty ?? 0) <= (i.minStockLevel ?? 0),
@@ -2279,11 +2434,11 @@ export default function SSAForecastPage() {
           return (
             <div style={{ marginBottom: "1.5rem" }}>
               <p className="ssa-side-label" style={{ marginBottom: "0.6rem" }}>
-                Inventory Status · across all {tracked.length} tracked items
+                Inventory Status · across all {tracked.length} materials
               </p>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "1rem" }}>
                 {[
-                  { label: "Total Tracked Items", value: tracked.length, color: "var(--white)" },
+                  { label: "Materials", value: tracked.length, color: "var(--white)" },
                   { label: "Low Stock", value: lowItems.length, color: "#eab308", hint: "at/below reorder point" },
                   { label: "Out of Stock", value: outItems.length, color: "#f87171", hint: "zero on hand" },
                 ].map(({ label, value, color, hint }) => (
@@ -2335,11 +2490,11 @@ export default function SSAForecastPage() {
               : null;
             const unitSingular = (submittedConfig?.period?.unit ?? forecastPeriod.unit).replace(/s$/, "");
             let invStockoutDate = null, invPeriodsToOut = null;
-            if (isInvCard && result && currentStockQty != null) {
+            if (isInvCard && result && availableQty != null) {
               const fcD = result.forecast?.dates || [];
               const todayStr = new Date().toISOString().split("T")[0];
               // Float, not per-period rounding - see the stockout effect above.
-              let rem = currentStockQty, n = 0;
+              let rem = availableQty, n = 0;
               for (let i = 0; i < fcD.length; i++) {
                 if (fcD[i] <= todayStr) continue;
                 rem -= Math.max(0, fcVals[i] ?? 0);
@@ -2348,11 +2503,11 @@ export default function SSAForecastPage() {
               }
             }
             const stockStatus = isInvCard && currentStockQty != null
-              ? (currentStockQty === 0 ? "out" : (reorderPt != null && reorderPt > 0 && currentStockQty <= reorderPt ? "low" : "ok"))
+              ? (currentStockQty === 0 ? "out" : (reorderPt != null && reorderPt > 0 && availableQty <= reorderPt ? "low" : "ok"))
               : "ok";
             const stockColor = stockStatus === "out" ? "#f87171" : stockStatus === "low" ? "#fbbf24" : "var(--gold)";
             const policy = invPolicy;
-            const belowROP = policy && currentStockQty != null && currentStockQty <= policy.ROP;
+            const belowROP = policy && availableQty != null && availableQty <= policy.ROP;
             const invColor = currentStockQty === 0 ? "#f87171" : belowROP ? "#fbbf24" : "var(--gold)";
             let reorderByLabel = "-";
             if (policy && currentStockQty != null) {
@@ -2377,7 +2532,11 @@ export default function SSAForecastPage() {
                         {currentStockQty != null ? `${currentStockQty.toLocaleString("en-US")} units` : "-"}
                       </div>
                       <div style={{ fontSize: "0.72rem", color: "var(--gray)", marginTop: "0.2rem" }}>
-                        {currentStockQty === 0 ? "Out of stock" : belowROP ? "At/below reorder point" : "Above reorder point"}
+                        {currentStockQty === 0
+                          ? "Out of stock"
+                          : `${belowROP ? "At/below reorder point" : "Above reorder point"}${
+                              reservedQty > 0 ? ` - ${availableQty} free, ${reservedQty} reserved` : ""
+                            }`}
                       </div>
                     </>
                   )}
@@ -2455,7 +2614,9 @@ export default function SSAForecastPage() {
                     <span className="k">Stock lasts</span>
                     <span className="v">{coveragePhrase(policy.coverage, unitSingular, policy.daysPerPeriod)}</span>
                     <span style={{ fontSize: "0.72rem", color: "var(--gray)", lineHeight: 1.4 }}>
-                      at this rate, with no restock
+                      {reservedQty > 0
+                        ? `at this rate, from the ${availableQty} free to use (${reservedQty} reserved)`
+                        : "at this rate, with no restock"}
                     </span>
                   </div>
                   {isInvCard && demandBasis && (
@@ -2639,6 +2800,25 @@ export default function SSAForecastPage() {
                       but none of those products have sold, so there is nothing to project from.
                     </>
                   )}
+                </span>
+              </div>
+            )}
+
+            {/* The sales endpoint caps at 10,000 rows newest-first, so an
+                overflow silently removes the oldest history - the part the
+                model trains on. Rare today at a few hundred rows, but it must
+                not pass unnoticed when it happens. */}
+            {salesTruncated && (
+              <div className="ssa-warning-banner">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" strokeWidth="2" style={{ flexShrink: 0, marginTop: 1 }}>
+                  <circle cx="12" cy="12" r="10" />
+                  <line x1="12" y1="8" x2="12" y2="12" />
+                  <line x1="12" y1="16" x2="12.01" y2="16" />
+                </svg>
+                <span>
+                  <strong style={{ color: "#fbbf24" }}>Not all sales were read -</strong>{" "}
+                  the sales list stopped at its 10,000-row limit, and the rows left out are the
+                  oldest ones. The forecast is training on a shortened history.
                 </span>
               </div>
             )}
@@ -3280,7 +3460,7 @@ export default function SSAForecastPage() {
                           const fcDates  = result.forecast?.dates  || [];
                           const fcValues = result.forecast?.values || [];
                           const todayStr = new Date().toISOString().split("T")[0];
-                          const startStock = currentStockQty ?? 0;
+                          const startStock = availableQty ?? 0;   // reserved stock is spoken for
                           const reorderPt = invPolicy?.ROP ?? (inventoryList.find((it) => (it._id ?? it.id) === selectedInventoryId)?.minStockLevel ?? 0);
                           const tblRows = [];
                           let cumDemand = 0;   // float - accumulate sub-unit demand
