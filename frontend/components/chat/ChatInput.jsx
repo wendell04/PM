@@ -8,8 +8,6 @@ import { compressImage, formatBytes } from '../../lib/compressImage';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
-
 const ChatInput = ({ onSendMessage, isSending, activeConversation, token, onTyping, isAdmin, quotePrefill, onOrderFormSent }) => {
   const [text, setText] = useState('');
   const [isUploading, setIsUploading] = useState(false);
