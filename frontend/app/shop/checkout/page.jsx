@@ -122,8 +122,6 @@ export default function CheckoutPage() {
   // Delivery speed is ONE order-level choice (one parcel = one speed). Rush costs more + is faster,
   // subject to the shop's confirmation.
   const [rush, setRush] = useState(false);
-  // "Yes, I understand" on the hold-until-approval notice. Only asked when something is made.
-  const [holdAcknowledged, setHoldAcknowledged] = useState(false);
   // Clickwrap T&C acceptance recorded at the purchase moment (the order-creating step), so every
   // custom order carries proof - not just the product page.
   const [showTerms, setShowTerms] = useState(false);
@@ -643,10 +641,9 @@ export default function CheckoutPage() {
       return;
     }
 
-    if (waitsForApproval && !holdAcknowledged) {
-      setError('Please tick "Yes, I understand" under Delivery speed - your order waits for approval before anything is printed.');
-      return;
-    }
+    // The hold-until-approval acknowledgement is ticked on the product page, in the notice that
+    // opens when Upload or Request is picked - once, where MetroPrint asks it. A second tick here
+    // sat inside the card that only renders when Rush is off, and blocked every cart with Rush on.
     if (downpaymentRequired && paymentMethod === 'cod') {
       setError('Cash on Delivery is not available for downpayment orders. Please choose an online payment method.');
       return;
@@ -1472,13 +1469,6 @@ export default function CheckoutPage() {
                   made-to-order part is done. Order them separately if you need them sooner.
                 </>
               )}
-              {/* The tick. Told is not the same as agreed. */}
-              <label style={{ display: 'flex', gap: 10, alignItems: 'flex-start', marginTop: 10, paddingTop: 10, borderTop: '1px solid rgba(212,168,67,0.2)', cursor: 'pointer', color: 'var(--white, #111)' }}>
-                <input type="checkbox" checked={holdAcknowledged} onChange={e => setHoldAcknowledged(e.target.checked)} style={{ marginTop: 2, flexShrink: 0 }} />
-                <span style={{ fontSize: '0.78rem', fontWeight: 600, lineHeight: 1.5 }}>
-                  Yes, I understand - my order is on hold until {approvalActor}, and the delivery countdown starts then.
-                </span>
-              </label>
             </div>
           ) : (
             <div style={{ fontSize: '0.75rem', color: 'var(--gray)', lineHeight: 1.55 }}>
