@@ -27,6 +27,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import { S, ICONS, SummaryCard, EmptyState, Note } from '../inventory-v2/shared';
 import { needsJobOrder } from '@/lib/jobOrderEligibility';
+import { orderNo } from '@/lib/orderNumber';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 const SSA_API_URL = process.env.NEXT_PUBLIC_SSA_API_URL || 'http://localhost:8001';
@@ -187,6 +188,7 @@ export default function StaffHome() {
     return rows;
   }, [orders]);
 
+
   // Every payment the shop has actually taken, as a flat ledger. Both the chip and the chart
   // read this, so they cannot disagree. They used to: the chip summed payments on orders CREATED
   // this month, which credits an August order paid in September to neither month, while the
@@ -261,6 +263,82 @@ export default function StaffHome() {
   }, [payments, months]);
 
   const isOwnerView = isSuper || allows('reports') || allows('sales');
+
+  // Which Home this is. The first profile the permissions match wins, most specific first: a
+  // person who runs the bench gets the bench, whatever else they can also see.
+  const profile = isOwnerView ? 'owner'
+    : allows(['jobOrders']) ? 'production'
+    : allows(['design']) ? 'designer'
+    : allows(['orders', 'payments', 'pos']) ? 'frontdesk'
+    : allows(['inventory']) ? 'inventory'
+    : 'basic';
+
+  // The bench, read off the orders' job orders. Same statuses the Job Orders screen uses.
+  const bench = useMemo(() => {
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
+    const jobs = orders
+      .filter(o => o.jobOrder && !['Completed', 'Cancelled', 'QC_Passed'].includes(String(o.jobOrder.joStatus ?? '')))
+      .map(o => ({ order: o, jo: o.jobOrder, target: o.jobOrder.targetCompletion ? new Date(o.jobOrder.targetCompletion) : null }));
+    const st = (j) => String(j.jo.joStatus ?? '');
+    return {
+      dueToday:   jobs.filter(j => j.target && j.target >= today && j.target < tomorrow && st(j) !== 'QC_Pending'),
+      overdue:    jobs.filter(j => j.target && j.target < today && st(j) !== 'QC_Pending'),
+      inProgress: jobs.filter(j => ['In_Production', 'In Production'].includes(st(j))),
+      queued:     jobs.filter(j => st(j) === 'Queued'),
+      waitingQc:  jobs.filter(j => st(j) === 'QC_Pending'),
+      failedQc:   jobs.filter(j => st(j) === 'QC_Failed'),
+    };
+  }, [orders]);
+
+  // The drawing board, read off design status.
+  const board = useMemo(() => {
+    const open = orders.filter(o => !['cancelled', 'delivered', 'returned'].includes(String(o.orderStatus ?? '').toLowerCase()));
+    const ds = (o) => String(o.designStatus ?? '');
+    const isUpload = (o) => (o.items ?? []).some(i => i.designUrl || (i.designFiles?.length > 0)) && !(o.items ?? []).some(i => i.designRequested || i.designMode === 'request');
+    return {
+      filesToCheck:  open.filter(o => ds(o) === 'pending_review' && isUpload(o)),
+      proofsToDraft: open.filter(o => ['pending_design', 'revision_requested'].includes(ds(o)) || (ds(o) === 'pending_review' && !isUpload(o))),
+      onCustomer:    open.filter(o => ['draft_ready', 'proof_sent'].includes(ds(o))),
+    };
+  }, [orders]);
+
+  // The counter.
+  const desk = useMemo(() => {
+    const st = (o) => String(o.orderStatus ?? '').toLowerCase().replace(/[\s-]+/g, '_');
+    const live = orders.filter(o => !['cancelled', 'returned', 'delivered'].includes(st(o)));
+    const paidOf = (o) => Math.max(Number(o.downPayment ?? 0), (o.paymentHistory ?? []).reduce((a, p) => a + Number(p.amount ?? 0), 0));
+    return {
+      balancesDue: live.filter(o => Number(o.totalAmount ?? 0) - paidOf(o) > 0.009),
+      toRelease:   live.filter(o => ['for_delivery', 'ready_for_delivery', 'ready'].includes(st(o))),
+    };
+  }, [orders]);
+
+  // The role's own "needs you" list. The owner's list (blocked) is about the whole shop; a
+  // production hand needs the jobs, a designer the artwork, the counter the money and the door.
+  const roleRows = useMemo(() => {
+    const rows = [];
+    const fmtD = (d) => d ? new Date(d).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' }) : '';
+    if (profile === 'production') {
+      if (bench.overdue.length) rows.push({ n: bench.overdue.length, label: 'jobs past their target', sub: bench.overdue.slice(0, 3).map(j => `${orderNo(j.order)} was due ${fmtD(j.target)}`).join(' - '), href: '/dashboard/business/job-orders', tone: 'bad' });
+      if (bench.dueToday.length) rows.push({ n: bench.dueToday.length, label: 'jobs due today', sub: bench.dueToday.slice(0, 3).map(j => orderNo(j.order)).join(', '), href: '/dashboard/business/job-orders', tone: 'warn' });
+      if (bench.failedQc.length) rows.push({ n: bench.failedQc.length, label: 'failed QC and back on the bench', sub: 'Fix and send to QC again.', href: '/dashboard/business/job-orders', tone: 'bad' });
+      if (bench.waitingQc.length) rows.push({ n: bench.waitingQc.length, label: 'finished, waiting on QC', sub: 'Nothing ships until it passes.', href: '/dashboard/business/qc-preview', tone: 'warn' });
+      const paidNoJob = orders.filter(needsJobOrder);
+      if (paidNoJob.length) rows.push({ n: paidNoJob.length, label: 'paid, approved, no job order yet', sub: 'Create the job order so the clock has something to run on.', href: '/dashboard/business/job-orders', tone: 'warn' });
+    } else if (profile === 'designer') {
+      if (board.filesToCheck.length) rows.push({ n: board.filesToCheck.length, label: 'uploaded files waiting for your check', sub: 'Approve, or tell the customer what needs fixing.', href: '/dashboard/business/orders', tone: 'warn' });
+      if (board.proofsToDraft.length) rows.push({ n: board.proofsToDraft.length, label: 'proofs to draft or revise', sub: 'Requested designs and revisions the customer asked for.', href: '/dashboard/business/orders', tone: 'warn' });
+      if (board.onCustomer.length) rows.push({ n: board.onCustomer.length, label: 'proofs with the customer', sub: 'Sent and waiting on their approval - a nudge in chat helps.', href: '/dashboard/business/chat', tone: 'ok' });
+    } else if (profile === 'frontdesk') {
+      if (desk.balancesDue.length) rows.push({ n: desk.balancesDue.length, label: 'orders that still owe', sub: 'Record the payment when it lands.', href: '/dashboard/business/payments', tone: 'warn' });
+      if (desk.toRelease.length) rows.push({ n: desk.toRelease.length, label: 'ready to go out', sub: 'Hand over or book the courier.', href: '/dashboard/business/orders', tone: 'ok' });
+      for (const b of blocked) if (['past their promised delivery date', 'have money owed back to the customer'].includes(b.label)) rows.push(b);
+    } else if (profile === 'inventory') {
+      if (toBuy?.totalItems > 0) rows.push({ n: toBuy.totalItems, label: 'materials to buy for committed work', sub: `About ${peso(toBuy.estimatedCost)}.`, href: '/dashboard/business/inventory-v2?tab=tobuy', tone: 'warn' });
+    }
+    return rows;
+  }, [profile, bench, board, desk, blocked, orders, toBuy]);
 
   // The forecast the shop's own SSA service produces, asked for only on the owner's view and
   // only once there is enough history for it to mean anything. It runs as a separate local
@@ -410,9 +488,13 @@ export default function StaffHome() {
             {`Good ${new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 18 ? 'afternoon' : 'evening'}${currentUser?.firstName ? ', ' + currentUser.firstName : ''}`}
           </div>
           <div style={{ fontSize: '12.5px', color: 'var(--gray)', marginTop: 2 }}>
-            {blocked.length === 0
-              ? 'Nothing is blocked. Everything open is moving.'
-              : 'Start here - these are the things that are not moving on their own.'}
+            {profile === 'production' ? 'Your bench today - what is due, what is late, what is waiting on QC.'
+              : profile === 'designer' ? 'Your drawing board - files to check, proofs to draft, and who is still deciding.'
+              : profile === 'frontdesk' ? 'The counter - who still owes, and what is ready to go out.'
+              : profile === 'inventory' ? 'The shelves - what to buy, and what is running low.'
+              : blocked.length === 0
+                ? 'Nothing is blocked. Everything open is moving.'
+                : 'Start here - these are the things that are not moving on their own.'}
           </div>
         </div>
         <button type="button" onClick={load} style={S.btnGhost}>{ICONS.reload} Refresh</button>
@@ -432,8 +514,46 @@ export default function StaffHome() {
 
       {!loading && (
         <>
-          {/* Money in, money still owed, money about to go out - and, for anyone who reads
-              messages, whether somebody is waiting on a reply. */}
+          {/* The tiles are the role's own numbers. Money is the owner's; a production hand
+              cannot act on revenue and it is not theirs to read. Same card, different figures -
+              one grammar for every Home. */}
+          {profile === 'production' && (
+            <div style={{ ...S.row, marginBottom: '18px' }}>
+              <SummaryCard label="Due today" value={bench.dueToday.length} accent color={bench.dueToday.length ? 'var(--gold)' : 'var(--white)'} sub="Jobs whose target is today" />
+              <SummaryCard label="Overdue" value={bench.overdue.length} color={bench.overdue.length ? 'var(--st-red-fg, #dc2626)' : 'var(--white)'} sub="Past their target and not done" />
+              <SummaryCard label="In progress" value={bench.inProgress.length} sub={`${bench.queued.length} queued behind them`} />
+              <SummaryCard label="Waiting on QC" value={bench.waitingQc.length} color={bench.waitingQc.length ? 'var(--gold)' : 'var(--white)'} sub={bench.failedQc.length ? `${bench.failedQc.length} failed QC - back to the bench` : 'Finished, not yet checked'} />
+            </div>
+          )}
+          {profile === 'designer' && (
+            <div style={{ ...S.row, marginBottom: '18px' }}>
+              <SummaryCard label="Files to check" value={board.filesToCheck.length} accent color={board.filesToCheck.length ? 'var(--gold)' : 'var(--white)'} sub="Uploaded artwork waiting for your approval" />
+              <SummaryCard label="Proofs to draft" value={board.proofsToDraft.length} color={board.proofsToDraft.length ? 'var(--gold)' : 'var(--white)'} sub="Requested designs and revisions" />
+              <SummaryCard label="With the customer" value={board.onCustomer.length} sub="Proofs sent, waiting on their approval" />
+            </div>
+          )}
+          {profile === 'frontdesk' && (
+            <div style={{ ...S.row, marginBottom: '18px' }}>
+              <SummaryCard label="Balances due" value={desk.balancesDue.length} accent color={desk.balancesDue.length ? 'var(--gold)' : 'var(--white)'} sub="Live orders that still owe" />
+              <SummaryCard label="Ready to go out" value={desk.toRelease.length} sub="Finished and waiting for hand-over or courier" />
+              {allows('pos') && (
+                <div onClick={() => router.push('/dashboard/business/pos')} style={{ ...S.cardSm, flex: 1, minWidth: '140px', cursor: 'pointer' }}>
+                  <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: '6px' }}>Counter</div>
+                  <div style={{ fontSize: '16px', fontWeight: 700, color: 'var(--gold)' }}>Open POS</div>
+                  <div style={{ fontSize: '11px', color: 'var(--gray)', marginTop: '3px' }}>Ring up a sale or take an order in</div>
+                </div>
+              )}
+            </div>
+          )}
+          {profile === 'inventory' && (
+            <div style={{ ...S.row, marginBottom: '18px' }}>
+              <SummaryCard label="Materials to buy" value={toBuy?.totalItems ?? '-'} accent color={toBuy?.totalItems > 0 ? 'var(--gold)' : 'var(--white)'}
+                sub={toBuy ? `About ${peso(toBuy.estimatedCost)} to cover committed work` : 'Loading'} />
+              <SummaryCard label="At or below minimum" value={stock.filter(r => r.isActive !== false && Number(r.minStockLevel ?? 0) > 0 && (Number(r.stockQty ?? 0) - Number(r.reservedQty ?? 0)) <= Number(r.minStockLevel)).length} sub="Restock before an order needs it" />
+              <SummaryCard label="Out of stock" value={stock.filter(r => r.isActive !== false && !r.isOnDemand && (Number(r.stockQty ?? 0) - Number(r.reservedQty ?? 0)) <= 0).length} color="var(--st-red-fg, #dc2626)" sub="Nothing on the shelf" />
+            </div>
+          )}
+          {profile === 'owner' && (
           <div style={{ ...S.row, marginBottom: '18px' }}>
             <SummaryCard label="Collected this month" value={peso(money.collected)} accent
               sub="Money actually received this month" />
@@ -454,13 +574,14 @@ export default function StaffHome() {
               </div>
             )}
           </div>
+          )}
 
           {/* What is running out. "Materials to buy" above answers what committed orders still
               need; this answers the question before it - what is low or gone regardless of whether
               anyone has ordered it yet. Reads the same numbers the Inventory module does:
               stockQty is what is on the shelf, reservedQty is already promised to an order, and
               minStockLevel is the line the owner set. */}
-          {stock.length > 0 && (() => {
+          {stock.length > 0 && ['owner', 'inventory', 'production'].includes(profile) && (() => {
             const level = (r) => Number(r.stockQty ?? 0) - Number(r.reservedQty ?? 0);
             const floor = (r) => Number(r.minStockLevel ?? 0);
             // "Bought per order" means the material never blocks a sale - not that it has no
@@ -681,10 +802,13 @@ export default function StaffHome() {
             <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', fontSize: 13, fontWeight: 700 }}>
               Needs you now
             </div>
-            {blocked.length === 0 ? (
+            {(profile === 'owner' ? blocked : roleRows).length === 0 ? (
               <EmptyState icon={ICONS.check} message="Nothing is stuck"
-                sub="No order is waiting on a decision, a job order, or a late promise." />
-            ) : blocked.map((b, i) => {
+                sub={profile === 'production' ? 'No job is late, due today, or waiting on QC.'
+                  : profile === 'designer' ? 'No file to check and no proof to draft.'
+                  : profile === 'frontdesk' ? 'Nobody owes, nothing is waiting to go out.'
+                  : 'No order is waiting on a decision, a job order, or a late promise.'} />
+            ) : (profile === 'owner' ? blocked : roleRows).map((b, i) => {
               const t = toneStyle(b.tone);
               return (
                 <div key={i} onClick={() => router.push(b.href)}
