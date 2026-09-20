@@ -41,6 +41,8 @@ export default function PaymentSuccessPage() {
   const [mounted,      setMounted]      = useState(false);
   useEffect(() => { setMounted(true); }, []);
   const [loading,      setLoading]      = useState(true);
+  // The thank-you notice for a made-to-order order. Dismissed once per page load.
+  const [holdNoticeSeen, setHoldNoticeSeen] = useState(false);
   const [error,        setError]        = useState(null);
   const [verifying,    setVerifying]    = useState(!isCod && !viewOnly);
   // Confirmation is taking longer than the poll window. The money may well be through - we simply
@@ -288,28 +290,34 @@ export default function PaymentSuccessPage() {
                 : "Thank you for your order. We've received your payment and will begin processing shortly."}
         </p>
 
-        {/* MetroPrint says this in a modal the moment the order lands, and repeats it three
-            times. Same idea here: a made-to-order line does not start printing at payment, it
-            starts at approval, and the countdown starts with it. Said once, where the customer
-            is still reading. */}
-        {!verifying && !loading && order?.deliveryClock?.needsProduction && (() => {
+        {/* MetroPrint says this in a modal the moment the order lands. A made-to-order line does
+            not start printing at payment, it starts at approval, and the countdown starts with it.
+            A modal, because a box on the page was easy to scroll past. */}
+        {!verifying && !loading && !holdNoticeSeen && order?.deliveryClock?.needsProduction && (() => {
           const st = String(order?.designStatus ?? '');
           const waitingDesign = st !== '' && st !== 'approved';
           if (!waitingDesign) return null;
           const upload = (order?.items ?? []).some(i => !!i?.designUrl || (i?.designFiles?.length > 0))
             && !(order?.items ?? []).some(i => i?.designRequested || i?.designMode === 'request');
           return (
-            <div style={{
-              margin: '0 auto 28px', maxWidth: 520, padding: '14px 16px', borderRadius: 10, textAlign: 'left',
-              border: '1px solid rgba(212,168,67,0.35)', background: 'rgba(212,168,67,0.07)',
-              fontSize: '0.86rem', color: 'var(--gray-light)', lineHeight: 1.6,
-            }}>
-              <strong style={{ color: '#d4a843' }}>Before anything prints:</strong>{' '}
-              {upload
-                ? 'we check your file and approve it. '
-                : 'we send you a proof that you approve. '}
-              The countdown to your delivery date starts once that approval is done, not from
-              today - you will see the real date in My Orders the moment it starts.
+            <div onClick={() => setHoldNoticeSeen(true)} role="presentation"
+              style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.72)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+              <div onClick={e => e.stopPropagation()} role="dialog" aria-label="Before anything prints"
+                style={{ width: '100%', maxWidth: 440, background: 'var(--dark2, #1a1a1a)', border: '1px solid rgba(212,168,67,0.4)', borderRadius: 16, padding: '22px 22px 18px', textAlign: 'center', boxShadow: '0 20px 60px rgba(0,0,0,0.5)' }}>
+                <div style={{ fontSize: '1rem', fontWeight: 800, color: '#d4a843', letterSpacing: '0.04em', marginBottom: 10 }}>THANK YOU FOR YOUR ORDER</div>
+                <p style={{ margin: '0 0 10px', fontSize: '0.92rem', color: 'var(--white, #fff)', lineHeight: 1.6 }}>
+                  {upload
+                    ? 'We check your file carefully and approve it - or tell you what needs fixing - before anything prints.'
+                    : 'Our designer sends you a proof, here and in chat, that you must approve before anything prints.'}
+                </p>
+                <p style={{ margin: '0 0 18px', fontSize: '0.92rem', fontWeight: 700, color: '#e05252', lineHeight: 1.6 }}>
+                  The countdown to your delivery date starts once that approval is done - not today.
+                </p>
+                <button type="button" onClick={() => setHoldNoticeSeen(true)}
+                  style={{ width: '100%', padding: '12px', borderRadius: 10, border: 'none', background: '#d4a843', color: '#111', fontWeight: 800, fontSize: '0.92rem', cursor: 'pointer' }}>
+                  Got it - show my order
+                </button>
+              </div>
             </div>
           );
         })()}

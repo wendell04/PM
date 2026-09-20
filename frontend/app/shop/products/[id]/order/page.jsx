@@ -176,6 +176,10 @@ function CustomOrderInner() {
   const [agreedTerms, setAgreedTerms]         = useState(false);
   const [showTerms, setShowTerms]             = useState(false);
   const [termsScrolled, setTermsScrolled]     = useState(false);
+  // Step 1 of the terms modal: the one thing they must grasp before the legal text - the order is
+  // on hold until the artwork is approved, and the countdown starts then. Ticked once per mode.
+  const [termsStep, setTermsStep]             = useState('notice');   // 'notice' | 'terms'
+  const [holdUnderstood, setHoldUnderstood]   = useState(false);
   const [pendingMode, setPendingMode]         = useState(null);
   useLockBodyScroll(showTerms || !!pendingMode || failedModal || verifyingPayment);
   // Owner-controlled method availability (Homepage CMS → Payment Methods). Missing key = enabled.
@@ -641,6 +645,8 @@ function CustomOrderInner() {
     setDesignMode(mode);
     setAgreedTerms(false);
     setTermsScrolled(false);
+    setHoldUnderstood(false);
+    setTermsStep('notice');
     setShowTerms(true);
   };
   const handlePickMode = (mode) => {
@@ -1050,12 +1056,49 @@ function CustomOrderInner() {
       {showTerms && (
         <div onClick={() => setShowTerms(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 9998, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
           <div onClick={e => e.stopPropagation()} style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '16px', maxWidth: '560px', width: '100%', maxHeight: '85vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-            <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: 'var(--white)' }}>Custom Order Terms</h3>
-              <button onClick={() => setShowTerms(false)} aria-label="Close" style={{ background: 'none', border: 'none', color: 'var(--gray)', cursor: 'pointer', display: 'flex' }}>
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+              {/* Two steps, the way Create Account does it: the notice first, the terms second. */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.78rem', fontWeight: 700, minWidth: 0, flexWrap: 'wrap' }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: termsStep === 'notice' ? 'var(--gold)' : 'var(--gray)' }}>
+                  <span style={{ width: 18, height: 18, borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, background: termsStep === 'notice' ? 'var(--gold)' : 'var(--border)', color: termsStep === 'notice' ? '#000' : 'var(--gray)' }}>1</span>
+                  Before you order
+                </span>
+                <span style={{ width: 24, height: 1, background: 'var(--border)' }} />
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: termsStep === 'terms' ? 'var(--gold)' : 'var(--gray)' }}>
+                  <span style={{ width: 18, height: 18, borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, background: termsStep === 'terms' ? 'var(--gold)' : 'var(--border)', color: termsStep === 'terms' ? '#000' : 'var(--gray)' }}>2</span>
+                  Custom Order Terms
+                </span>
+              </div>
+              <button onClick={() => setShowTerms(false)} aria-label="Close" style={{ background: 'none', border: 'none', color: 'var(--gray)', cursor: 'pointer', display: 'flex', flexShrink: 0 }}>
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
               </button>
             </div>
+            {termsStep === 'notice' ? (
+              <>
+                <div style={{ padding: '18px 20px', overflowY: 'auto' }}>
+                  <div style={{ textAlign: 'center', fontSize: '0.95rem', fontWeight: 800, color: '#e05252', letterSpacing: '0.04em', marginBottom: 12 }}>IMPORTANT - PLEASE READ</div>
+                  <p style={{ margin: '0 0 10px', fontSize: '0.9rem', color: 'var(--white)', lineHeight: 1.6, textAlign: 'center' }}>
+                    {designMode === 'upload'
+                      ? 'After you pay, we check your file carefully and approve it - or tell you what needs fixing.'
+                      : 'After you pay the design fee, our designer sends you a proof here and in chat that you approve.'}
+                    {' '}Nothing is printed before that.
+                  </p>
+                  <p style={{ margin: '0 0 16px', fontSize: '0.9rem', fontWeight: 700, color: '#e05252', lineHeight: 1.6, textAlign: 'center' }}>
+                    Until it is approved and paid, your order is on hold and the delivery countdown has not started.
+                  </p>
+                  <label style={{ display: 'flex', gap: 10, alignItems: 'flex-start', justifyContent: 'center', cursor: 'pointer', fontSize: '0.88rem', color: 'var(--white)' }}>
+                    <input type="checkbox" checked={holdUnderstood} onChange={e => setHoldUnderstood(e.target.checked)} style={{ marginTop: 3 }} />
+                    <span>Yes, I understand.</span>
+                  </label>
+                </div>
+                <div style={{ padding: '14px 20px', borderTop: '1px solid var(--border)', display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                  <button onClick={() => setShowTerms(false)} style={{ padding: '8px 16px', background: 'transparent', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--gray)', fontSize: '0.85rem', cursor: 'pointer' }}>Close</button>
+                  <button onClick={() => setTermsStep('terms')} disabled={!holdUnderstood}
+                    style={{ padding: '8px 16px', background: 'var(--gold)', border: 'none', borderRadius: '8px', color: '#000', fontSize: '0.85rem', fontWeight: 700, cursor: holdUnderstood ? 'pointer' : 'not-allowed', opacity: holdUnderstood ? 1 : 0.5 }}>Continue to the terms</button>
+                </div>
+              </>
+            ) : (
+              <>
             <div
               ref={el => { if (el && el.scrollHeight - el.clientHeight < 24) setTermsScrolled(true); }}
               onScroll={e => { const el = e.currentTarget; if (el.scrollHeight - el.scrollTop - el.clientHeight < 24) setTermsScrolled(true); }}
@@ -1075,6 +1118,8 @@ function CustomOrderInner() {
                   style={{ padding: '8px 16px', background: 'var(--gold)', border: 'none', borderRadius: '8px', color: '#000', fontSize: '0.85rem', fontWeight: 700, cursor: termsScrolled ? 'pointer' : 'not-allowed', opacity: termsScrolled ? 1 : 0.5 }}>I Agree</button>
               </div>
             </div>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -1781,7 +1826,7 @@ function CustomOrderInner() {
                 <label style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', margin: '0 0 0.85rem', cursor: 'pointer', fontSize: '0.8rem', color: 'var(--gray)', lineHeight: 1.5 }}>
                   <input type="checkbox" checked={agreedTerms} onChange={e => setAgreedTerms(e.target.checked)} style={{ width: 16, height: 16, accentColor: 'var(--gold)', flexShrink: 0, marginTop: 1 }} />
                   <span>I have read and agree to the{' '}
-                    <button type="button" onClick={() => { setTermsScrolled(false); setShowTerms(true); }} style={{ background: 'none', border: 'none', padding: 0, color: 'var(--gold)', fontWeight: 700, textDecoration: 'underline', cursor: 'pointer', fontSize: 'inherit' }}>Custom Order Terms</button>.
+                    <button type="button" onClick={() => { setTermsScrolled(false); setTermsStep(holdUnderstood ? 'terms' : 'notice'); setShowTerms(true); }} style={{ background: 'none', border: 'none', padding: 0, color: 'var(--gold)', fontWeight: 700, textDecoration: 'underline', cursor: 'pointer', fontSize: 'inherit' }}>Custom Order Terms</button>.
                   </span>
                 </label>
               )}
