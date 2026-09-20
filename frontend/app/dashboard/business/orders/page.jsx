@@ -2736,37 +2736,56 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
               <div style={S.divider} />
               <SectionLabel>Delivery</SectionLabel>
               <div style={{ display:'flex', flexDirection:'column', gap:'6px' }}>
-                <div style={{ fontSize:'12px', color:'var(--gray)' }}>
-                  Est. delivery:{' '}
-                  <span style={{ color:'var(--white)', fontWeight:600 }}>
-                    {lo.estimatedDeliveryMin ? new Date(lo.estimatedDeliveryMin).toLocaleDateString('en-PH',{month:'short',day:'numeric',year:'numeric'}) : '-'}
-                    {lo.estimatedDeliveryMax && lo.estimatedDeliveryMax !== lo.estimatedDeliveryMin ? ` - ${new Date(lo.estimatedDeliveryMax).toLocaleDateString('en-PH',{month:'short',day:'numeric',year:'numeric'})}` : ''}
-                  </span>
-                  {lo.isRush && <span style={{ marginLeft:6, fontSize:'10px', fontWeight:700, color:'#991b1b', background:'#fef2f2', border:'1px solid #fecaca', borderRadius:4, padding:'1px 5px' }}>RUSH</span>}
-                </div>
                 {(() => {
+                  const fmtD  = (d) => new Date(d).toLocaleDateString('en-PH',{month:'short',day:'numeric',year:'numeric'});
+                  const range = lo.estimatedDeliveryMin
+                    ? fmtD(lo.estimatedDeliveryMin) + (lo.estimatedDeliveryMax && lo.estimatedDeliveryMax !== lo.estimatedDeliveryMin ? ` - ${fmtD(lo.estimatedDeliveryMax)}` : '')
+                    : '-';
+                  const rushTag = lo.isRush && <span style={{ marginLeft:6, fontSize:'10px', fontWeight:700, color:'#991b1b', background:'#fef2f2', border:'1px solid #fecaca', borderRadius:4, padding:'1px 5px' }}>RUSH</span>;
                   const clock = lo.deliveryClock;
-                  if (!clock?.needsProduction) return null;
-                  if (clock.restartedBecause) {
-                    return (
-                      <div style={{ fontSize:'11.5px', color:'#1a7f3c' }}>
-                        Counting from {clock.restartedBecause}
-                        {clock.startedAt ? ` (${new Date(clock.startedAt).toLocaleDateString('en-PH',{month:'short',day:'numeric'})})` : ''}.
-                      </div>
-                    );
-                  }
                   const st = String(lo.designStatus ?? '');
                   const waitingDesign = st !== '' && st !== 'approved';
                   const owes = remainingDue(lo) > 0 && paidSoFar(lo) <= 0;
-                  if (!waitingDesign && !owes) return null;
-                  const bits = [];
-                  if (waitingDesign) bits.push('the design is not approved');
-                  if (owes) bits.push('nothing has been paid');
+                  const parked = !!clock?.needsProduction && !clock?.restartedBecause && (waitingDesign || owes);
+
+                  // Parked: the headline is a DURATION. A date here was read as the promise, and it
+                  // was one the customer's own approval could push out. The tentative date stays,
+                  // in the caveat, so the queue can still be planned around it.
+                  if (parked) {
+                    const lo_ = (Number(clock.leadDays) || 0) + (Number(clock.shipMin) || 0);
+                    const hi  = (Number(clock.leadDays) || 0) + (Number(clock.shipMax) || 0);
+                    const bits = [];
+                    if (waitingDesign) bits.push('the design is approved');
+                    if (owes) bits.push('a payment lands');
+                    return (
+                      <>
+                        <div style={{ fontSize:'12px', color:'var(--gray)' }}>
+                          Est. delivery:{' '}
+                          <span style={{ color:'var(--white)', fontWeight:600 }}>
+                            {lo_ === hi ? `${lo_} working day${lo_ === 1 ? '' : 's'}` : `${lo_}-${hi} working days`} after {bits.join(' and ')}
+                          </span>
+                          {rushTag}
+                        </div>
+                        <div style={{ fontSize:'11.5px', color:'#b45309' }}>
+                          Countdown not started. If that happened today it would land {range}; it moves out by however long it takes.
+                        </div>
+                      </>
+                    );
+                  }
                   return (
-                    <div style={{ fontSize:'11.5px', color:'#b45309' }}>
-                      Countdown not started - {bits.join(' and ')}. The date above assumes that clears
-                      today and moves out if it does not.
-                    </div>
+                    <>
+                      <div style={{ fontSize:'12px', color:'var(--gray)' }}>
+                        Est. delivery:{' '}
+                        <span style={{ color:'var(--white)', fontWeight:600 }}>{range}</span>
+                        {rushTag}
+                      </div>
+                      {clock?.needsProduction && clock.restartedBecause && (
+                        <div style={{ fontSize:'11.5px', color:'#1a7f3c' }}>
+                          Counting from {clock.restartedBecause}
+                          {clock.startedAt ? ` (${new Date(clock.startedAt).toLocaleDateString('en-PH',{month:'short',day:'numeric'})})` : ''}.
+                        </div>
+                      )}
+                    </>
                   );
                 })()}
                 {lo.needByDate && (

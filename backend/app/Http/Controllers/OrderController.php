@@ -287,68 +287,29 @@ class OrderController extends Controller
 
             // Delivery estimate + optional rush. Turnaround config lives on the store owner; the
             // estimate is snapshotted onto the order so the promised window never shifts later.
-            $owner     = \App\Support\ShopSettings::owner();
-            $prodLead  = (int)   ($owner->productionLeadDays ?? 3);
-
-            // Transit depends on where it is going. A single national range promised Maguindanao
-            // the same one-to-two days as a delivery across Quezon City, and real orders have
-            // gone there on it. Zones come from the chosen address; the old flat pair remains the
-            // fallback when there is no address to read.
+            // The promise - zone transit, working days, production only when something is made,
+            // and the clock that lets it be re-counted at approval. Shared with the paid path in
+            // PaymentController so the two cannot drift apart again.
             $shipAddress  = $validated['deliveryAddress'] ?? [];
             $shipProvince = is_array($shipAddress)
                 ? ($shipAddress['province'] ?? $shipAddress['Province'] ?? null)
                 : null;
-            $zone      = \App\Support\ShippingZones::transitFor($shipProvince);
-            $shipMin   = $shipProvince ? $zone['min'] : (int) ($owner->shippingDaysMin ?? 1);
-            $shipMax   = $shipProvince ? $zone['max'] : (int) ($owner->shippingDaysMax ?? 2);
-            $rushOn    = (bool)  ($owner->rushEnabled        ?? true);
-            $rushLead  = (int)   ($owner->rushLeadDays       ?? 1);
-            // 150 to match SettingsController, which is what the settings screen and the public
-            // settings endpoint both report. A different fallback here meant the order was billed a
-            // fee the customer was never shown.
-            $rushFee   = (float) ($owner->rushFee            ?? 150);
-
-            // Does anything on this order actually have to be MADE? A cart of stocked goods needs
-            // picking and shipping, nothing more - charging it the production lead time promised a
-            // customer eleven days for a bag already sitting on the shelf. Read from the order items
-            // that were just built, so it reflects what was bought rather than what the products are
-            // capable of.
-            $needsProduction = collect($orderItems)->contains(
-                fn ($oi) => !empty($oi['isCustom']) || !empty($oi['isMadeToOrder'])
+            $plan = \App\Support\DeliveryClock::plan(
+                $orderItems,
+                $shipProvince,
+                filter_var($request->input('isRush', false), FILTER_VALIDATE_BOOLEAN)
             );
-
-            // Rush buys priority in the production queue. With nothing to produce there is no queue
-            // to jump, so it is neither offered nor charged.
-            $isRush = $needsProduction && $rushOn
-                && filter_var($request->input('isRush', false), FILTER_VALIDATE_BOOLEAN);
+            $needsProduction      = $plan['needsProduction'];
+            $isRush               = $plan['isRush'];
+            $rushFee              = $plan['rushFee'];
             if ($isRush && $rushFee > 0) { $totalAmount += $rushFee; }
             // Rush is a REQUEST the admin confirms ("kaya ba isabay"), never an auto-guarantee. The
             // need-by date is the customer's target, subject to the production queue.
-            $needByDate = $request->input('needByDate') ?: null;
-            $rushStatus = $isRush ? 'requested' : null;
-
-            $leadDays = !$needsProduction ? 0 : ($isRush ? $rushLead : $prodLead);
-            // Sundays and holidays are not working days; Saturday is. Shared with the clock
-            // restart and the job-order screen, because three copies of this loop meant three
-            // different answers about Christmas.
-            $addBusinessDays = fn (int $days) => \App\Support\WorkingDays::add(now(), $days);
-            $estimatedDeliveryMin = $addBusinessDays($leadDays + $shipMin)->toIso8601String();
-            $estimatedDeliveryMax = $addBusinessDays($leadDays + $shipMax)->toIso8601String();
-
-            // Kept so the promise can be REMADE later. A custom order cannot start until the
-            // customer approves the proof, and they take as long as they take - so a date counted
-            // from checkout is a promise the shop cannot keep and did not break. MetroPrint solves
-            // this by saying the countdown starts at approval and repeating it three times; the
-            // same idea, enforced rather than only stated.
-            $deliveryClock = [
-                'leadDays' => $leadDays,
-                'shipMin'  => $shipMin,
-                'shipMax'  => $shipMax,
-                'needsProduction' => $needsProduction,
-                // When the promise was last counted from. A custom order re-counts at approval,
-                // because that is the first moment the shop can actually start.
-                'startedAt'       => now()->toIso8601String(),
-            ];
+            $needByDate           = $request->input('needByDate') ?: null;
+            $rushStatus           = $isRush ? 'requested' : null;
+            $estimatedDeliveryMin = $plan['estimatedDeliveryMin'];
+            $estimatedDeliveryMax = $plan['estimatedDeliveryMax'];
+            $deliveryClock        = $plan['deliveryClock'];
 
             // The date picker enforces a minimum client-side, but a request built by hand skips it
             // entirely - and this is the one field that becomes a promise the shop is held to. A
@@ -631,7 +592,7 @@ class OrderController extends Controller
                 // Snapshot how shipping was charged AT THE TIME. A zero fee means two different
                 // things - free delivery, or the recipient pays the rider - and without this an old
                 // receipt would silently re-label itself the day the owner changes the setting.
-                'shippingMode'    => $owner->shippingMode ?? 'courier_booked',
+                'shippingMode'    => \App\Support\ShopSettings::owner()->shippingMode ?? 'courier_booked',
                 'discountAmount'  => $discountAmount > 0 ? $discountAmount : null,
                 'voucherCode'     => $appliedVoucher?->code ?? null,
                 'orderStatus'     => $this->resolveInitialStatus($request),

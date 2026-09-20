@@ -1490,7 +1490,22 @@ export default function OrdersHistoryPage() {
                           ['Placed', formatDate(selectedOrder.createdAt)],
                           (selectedOrder.estimatedDeliveryMin && !['delivered','Delivered','cancelled','Cancelled','returned','Returned'].includes(selectedOrder.orderStatus))
                             ? ['Est. Delivery', <span key="ed" style={{ fontSize: '13px', color: 'var(--white)', fontWeight: 600 }}>
-                                {formatDate(selectedOrder.estimatedDeliveryMin)}{selectedOrder.estimatedDeliveryMax && selectedOrder.estimatedDeliveryMax !== selectedOrder.estimatedDeliveryMin ? ` - ${formatDate(selectedOrder.estimatedDeliveryMax)}` : ''}
+                                {(() => {
+                                  // While the clock is parked the headline is a DURATION. A date here
+                                  // read as the promise, and the customer's own approval could push
+                                  // it out - so they were being told a date and then "not that date".
+                                  const clock = selectedOrder.deliveryClock;
+                                  const st = String(selectedOrder.designStatus ?? '');
+                                  const waitingDesign = st !== '' && st !== 'approved';
+                                  const owes = Number(selectedOrder.balance ?? 0) > 0 && String(selectedOrder.paymentStatus ?? '') === 'unpaid';
+                                  const parked = !!clock?.needsProduction && !clock?.restartedBecause && (waitingDesign || owes);
+                                  if (parked) {
+                                    const a = (Number(clock.leadDays) || 0) + (Number(clock.shipMin) || 0);
+                                    const b = (Number(clock.leadDays) || 0) + (Number(clock.shipMax) || 0);
+                                    return `${a === b ? `${a} working day${a === 1 ? '' : 's'}` : `${a}-${b} working days`} after approval`;
+                                  }
+                                  return `${formatDate(selectedOrder.estimatedDeliveryMin)}${selectedOrder.estimatedDeliveryMax && selectedOrder.estimatedDeliveryMax !== selectedOrder.estimatedDeliveryMin ? ` - ${formatDate(selectedOrder.estimatedDeliveryMax)}` : ''}`;
+                                })()}
                                 {selectedOrder.isRush && <span style={{ marginLeft: 6, fontSize: '10px', fontWeight: 700, color: '#ef4444', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: 4, padding: '1px 5px' }}>RUSH</span>}
                               </span>]
                             : null,
@@ -1549,9 +1564,8 @@ export default function OrdersHistoryPage() {
                               border: '1px solid rgba(212,168,67,0.28)', background: 'rgba(212,168,67,0.06)',
                               fontSize: '11.5px', color: 'var(--gray-light)', lineHeight: 1.55 }}>
                               <strong style={{ color: '#d4a843' }}>The countdown has not started yet.</strong>{' '}
-                              We are waiting on {bits.join(' and ')}. The date above assumes that happens
-                              today - it moves out by however long it takes, and nothing is printed
-                              before then.
+                              We are waiting on {bits.join(' and ')}. Nothing is printed before then, and
+                              the working days above are counted from the moment it clears.
                             </p>
                           );
                         })()}

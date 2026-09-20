@@ -855,22 +855,23 @@ class PaymentController extends Controller
 
             // Rush is a REQUEST the admin confirms; the need-by date is the customer's target. The
             // online path never recorded these before, so a cart/rush order lost its rush entirely.
-            $owner       = \App\Support\ShopSettings::owner();
-            $rushOn      = (bool)  ($owner->rushEnabled ?? true);
-            // Must equal OrderController's fallback and SettingsController's - see the note there.
-            $rushFeeAmt  = (float) ($owner->rushFee ?? 150);
-            $isRush      = $rushOn && filter_var($request->input('isRush', false), FILTER_VALIDATE_BOOLEAN);
+            // The same planner the COD path uses. This path had its own copy: Sundays-only
+            // working days, the national transit pair for every province, production lead
+            // charged to a cart of shelf goods, and no clock - so a paid custom order, which is
+            // nearly every real one, could never have its promise re-counted at approval.
+            $shipAddr    = $validated['deliveryAddress'] ?? [];
+            $plan        = \App\Support\DeliveryClock::plan(
+                $orderItems,
+                is_array($shipAddr) ? ($shipAddr['province'] ?? $shipAddr['Province'] ?? null) : null,
+                filter_var($request->input('isRush', false), FILTER_VALIDATE_BOOLEAN)
+            );
+            $isRush      = $plan['isRush'];
+            $rushFeeAmt  = $plan['rushFee'];
             if ($isRush && $rushFeeAmt > 0) { $totalAmount += $rushFeeAmt; }
             $needByDate  = $request->input('needByDate') ?: null;
             $rushStatus  = $isRush ? 'requested' : null;
-            $prodLead    = (int) ($owner->productionLeadDays ?? 3);
-            $rushLead    = (int) ($owner->rushLeadDays ?? 1);
-            $shipMinD    = (int) ($owner->shippingDaysMin ?? 1);
-            $shipMaxD    = (int) ($owner->shippingDaysMax ?? 2);
-            $leadDays    = $isRush ? $rushLead : $prodLead;
-            $addBiz      = function (int $days) { $d = now(); while ($days > 0) { $d = $d->addDay(); if (!$d->isSunday()) { $days--; } } return $d; };
-            $estDelivMin = $addBiz($leadDays + $shipMinD)->toIso8601String();
-            $estDelivMax = $addBiz($leadDays + $shipMaxD)->toIso8601String();
+            $estDelivMin = $plan['estimatedDeliveryMin'];
+            $estDelivMax = $plan['estimatedDeliveryMax'];
 
             // Same guard as the cart-checkout path (OrderController): a needByDate earlier than what
             // production and shipping can actually deliver is dropped rather than trusted. This is
@@ -1072,6 +1073,7 @@ class PaymentController extends Controller
                 'needByDate'           => $needByDate,
                 'estimatedDeliveryMin' => $estDelivMin,
                 'estimatedDeliveryMax' => $estDelivMax,
+                'deliveryClock'        => $plan['deliveryClock'],
                 // Clickwrap T&C acceptance (the online path recorded NONE before, so paid orders had
                 // no proof). Snapshot the exact clauses the customer agreed to, not just the version.
                 'agreedToTerms'        => filter_var($request->input('agreedToTerms', false), FILTER_VALIDATE_BOOLEAN),

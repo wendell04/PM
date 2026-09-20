@@ -23,6 +23,79 @@ use App\Models\Order;
  */
 class DeliveryClock
 {
+    /**
+     * The promise for a new order, from what is in it and where it is going.
+     *
+     * Both order-creation paths call this - the COD/unpaid one in OrderController and the paid
+     * one in PaymentController. They used to each have their own copy, and the paid one (which
+     * is nearly every real order) counted Sundays only, used the national transit pair for every
+     * province, charged the production lead to a cart of shelf goods, and never stored the clock
+     * that lets the promise be re-counted at approval.
+     *
+     * @param array       $orderItems   the built order lines (reads isCustom / isMadeToOrder)
+     * @param string|null $province     from the delivery address, for the transit zone
+     * @param bool        $rushWanted   what the customer ticked; only honoured if there is a queue to jump
+     * @return array{
+     *   needsProduction: bool, isRush: bool, rushFee: float, leadDays: int,
+     *   shipMin: int, shipMax: int, zone: string,
+     *   estimatedDeliveryMin: string, estimatedDeliveryMax: string, deliveryClock: array
+     * }
+     */
+    public static function plan(array $orderItems, ?string $province, bool $rushWanted): array
+    {
+        $owner    = ShopSettings::owner();
+        $prodLead = (int)   ($owner->productionLeadDays ?? 3);
+        $rushOn   = (bool)  ($owner->rushEnabled        ?? true);
+        $rushLead = (int)   ($owner->rushLeadDays       ?? 1);
+        // 150 to match SettingsController and the public settings endpoint. A different
+        // fallback here billed a fee the customer was never shown.
+        $rushFee  = (float) ($owner->rushFee            ?? 150);
+
+        // Transit depends on where it is going. The flat pair remains the fallback when there is
+        // no address to read - a pickup, or a legacy request with none.
+        $province = is_string($province) ? trim($province) : null;
+        $zone     = ShippingZones::transitFor($province ?: null);
+        $shipMin  = $province ? $zone['min'] : (int) ($owner->shippingDaysMin ?? 1);
+        $shipMax  = $province ? $zone['max'] : (int) ($owner->shippingDaysMax ?? 2);
+
+        // Does anything on this order actually have to be MADE? A cart of stocked goods needs
+        // picking and shipping, nothing more - charging it the production lead promised eleven
+        // days for a bag already on the shelf.
+        $needsProduction = collect($orderItems)->contains(
+            fn ($oi) => !empty($oi['isCustom']) || !empty($oi['isMadeToOrder'])
+        );
+
+        // Rush buys priority in the production queue. With nothing to produce there is no queue
+        // to jump, so it is neither offered nor charged.
+        $isRush   = $needsProduction && $rushOn && $rushWanted;
+        $leadDays = !$needsProduction ? 0 : ($isRush ? $rushLead : $prodLead);
+
+        $min = WorkingDays::add(now(), $leadDays + $shipMin);
+        $max = WorkingDays::add(now(), $leadDays + $shipMax);
+
+        return [
+            'needsProduction'      => $needsProduction,
+            'isRush'               => $isRush,
+            'rushFee'              => $isRush ? $rushFee : 0.0,
+            'leadDays'             => $leadDays,
+            'shipMin'              => $shipMin,
+            'shipMax'              => $shipMax,
+            'zone'                 => $zone['zone'],
+            'estimatedDeliveryMin' => $min->toIso8601String(),
+            'estimatedDeliveryMax' => $max->toIso8601String(),
+            // Kept so the promise can be REMADE later. A custom order cannot start until the
+            // artwork is settled and the money asked for has landed, and the customer holds both;
+            // a date counted from checkout is a promise the shop cannot keep and did not break.
+            'deliveryClock'        => [
+                'leadDays'        => $leadDays,
+                'shipMin'         => $shipMin,
+                'shipMax'         => $shipMax,
+                'needsProduction' => $needsProduction,
+                'startedAt'       => now()->toIso8601String(),
+            ],
+        ];
+    }
+
     /** Anything still stopping the bench from starting? */
     public static function unblocked(Order $order): bool
     {

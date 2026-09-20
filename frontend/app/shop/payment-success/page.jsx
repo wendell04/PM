@@ -288,6 +288,32 @@ export default function PaymentSuccessPage() {
                 : "Thank you for your order. We've received your payment and will begin processing shortly."}
         </p>
 
+        {/* MetroPrint says this in a modal the moment the order lands, and repeats it three
+            times. Same idea here: a made-to-order line does not start printing at payment, it
+            starts at approval, and the countdown starts with it. Said once, where the customer
+            is still reading. */}
+        {!verifying && !loading && order?.deliveryClock?.needsProduction && (() => {
+          const st = String(order?.designStatus ?? '');
+          const waitingDesign = st !== '' && st !== 'approved';
+          if (!waitingDesign) return null;
+          const upload = (order?.items ?? []).some(i => !!i?.designUrl || (i?.designFiles?.length > 0))
+            && !(order?.items ?? []).some(i => i?.designRequested || i?.designMode === 'request');
+          return (
+            <div style={{
+              margin: '0 auto 28px', maxWidth: 520, padding: '14px 16px', borderRadius: 10, textAlign: 'left',
+              border: '1px solid rgba(212,168,67,0.35)', background: 'rgba(212,168,67,0.07)',
+              fontSize: '0.86rem', color: 'var(--gray-light)', lineHeight: 1.6,
+            }}>
+              <strong style={{ color: '#d4a843' }}>Before anything prints:</strong>{' '}
+              {upload
+                ? 'we check your file and approve it. '
+                : 'we send you a proof that you approve. '}
+              The countdown to your delivery date starts once that approval is done, not from
+              today - you will see the real date in My Orders the moment it starts.
+            </div>
+          );
+        })()}
+
         {loading && !verifying && (
           <p style={{ color: 'var(--gray)', fontSize: '0.875rem' }}>
             Loading order details...
