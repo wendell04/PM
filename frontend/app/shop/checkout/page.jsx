@@ -8,6 +8,7 @@ import { billingName } from '@/lib/billingName';
 import { useCart } from '@/context/CartContext';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import { addWorkingDays } from '@/lib/workingDays';
+import { designFeeFor } from '@/lib/designFee';
 import { isNetworkError } from '@/lib/afterTimeout';
 import '@/app/shop/shop.css';
 import { applyVoucher } from '@/lib/voucherApi';
@@ -330,17 +331,10 @@ export default function CheckoutPage() {
   // ONE design fee for the order, not one per product. The fee buys the artwork, and one
   // artwork put on a mug and a totebag is still a single piece of work - so the highest
   // product's fee applies once rather than every fee being added up.
-  // The store-level fee is the truth; a product's own fee is only an override for work
-  // that really is harder. Either way it is charged ONCE.
+  // Per order (highest wins, once) or per item - the owner's rule in Settings. The same
+  // arithmetic the server runs, so the cart never shows a figure the charge disagrees with.
   const wantsDesign = items.some(i => i.designMode === 'request' || i.designRequested);
-  const designFee = wantsDesign
-    ? Math.max(
-        Number(storeSettings?.designRequestFee) || 0,
-        ...items
-          .filter(i => i.designMode === 'request' || i.designRequested)
-          .map(i => Number(i.designFee) || 0),
-      )
-    : 0;
+  const designFee = designFeeFor(items, storeSettings);
   // Order-level delivery speed (one parcel = one speed). Rush is faster + costs more, subject to the
   // shop confirming it fits the queue ("kaya ba isabay"). "Get by" ranges come from turnaround config.
   // Rush buys priority in the production queue. A cart of stocked goods has nothing queued, so

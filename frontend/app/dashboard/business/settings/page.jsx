@@ -374,6 +374,7 @@ export default function SettingsPage() {
             shippingPerKmRateFar: d.data.shippingPerKmRateFar != null ? String(d.data.shippingPerKmRateFar) : '5',
             shippingTierKm:       d.data.shippingTierKm       != null ? String(d.data.shippingTierKm)       : '5',
             designRequestFee:     d.data.designRequestFee     != null ? String(d.data.designRequestFee)     : '100',
+            designFeeMode:        d.data.designFeeMode === 'per_item' ? 'per_item' : 'per_order',
             freeRevisions:        d.data.freeRevisions        != null ? String(d.data.freeRevisions)        : '3',
             extraRevisionFee:     d.data.extraRevisionFee     != null ? String(d.data.extraRevisionFee)     : '50',
             maxRevisions:         d.data.maxRevisions         != null ? String(d.data.maxRevisions)         : '5',
@@ -1081,6 +1082,7 @@ export default function SettingsPage() {
     try {
       await saveShippingFields({
         designRequestFee:    parseFloat(shippingForm.designRequestFee) || 0,
+        designFeeMode:       shippingForm.designFeeMode === 'per_item' ? 'per_item' : 'per_order',
         freeRevisions:       Math.min(10, Math.max(0, parseInt(shippingForm.freeRevisions, 10) || 0)),
         extraRevisionFee:    Math.min(99999, Math.max(0, parseFloat(shippingForm.extraRevisionFee) || 0)),
         maxRevisions:        Math.min(20, Math.max(1, parseInt(shippingForm.maxRevisions, 10) || 1)),
@@ -2299,9 +2301,30 @@ export default function SettingsPage() {
                   />
                   </div>
                   <p style={{ fontSize: '0.72rem', color: 'var(--gray)', margin: '0.35rem 0 0', lineHeight: 1.5 }}>
-                    Charged once per order when a customer asks you to create the artwork -
-                    not per product. Three items sharing one design are still one fee.
+                    Charged when a customer asks you to create the artwork. A product can still
+                    override it for genuinely harder work. How many times it is charged is the
+                    switch below.
                   </p>
+                </div>
+
+                {/* One artwork across a mug and a totebag is one piece of work; two products with
+                    two different designs are two. The system cannot tell which it is looking at,
+                    so the owner chooses the rule rather than the code guessing. */}
+                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '1.25rem' }}>
+                  {[
+                    ['per_order', 'Once per order', 'The highest fee, charged once. Three items sharing one design are one fee.'],
+                    ['per_item',  'Once per item',  'Every item that asks for a design pays its own fee. Two products, two designs, two fees.'],
+                  ].map(([value, label, hint]) => {
+                    const on = (shippingForm.designFeeMode ?? 'per_order') === value;
+                    return (
+                      <button key={value} type="button" onClick={() => setShippingForm(f => ({ ...f, designFeeMode: value }))}
+                        style={{ flex: '1 1 220px', textAlign: 'left', padding: '0.7rem 0.9rem', borderRadius: 10, cursor: 'pointer',
+                          border: `1.5px solid ${on ? 'var(--gold)' : 'var(--border)'}`, background: on ? 'rgba(212,168,67,0.08)' : 'transparent' }}>
+                        <div style={{ fontSize: '0.82rem', fontWeight: 700, color: on ? 'var(--gold)' : 'var(--white)' }}>{label}</div>
+                        <div style={{ fontSize: '0.72rem', color: 'var(--gray)', lineHeight: 1.45, marginTop: 2 }}>{hint}</div>
+                      </button>
+                    );
+                  })}
                 </div>
 
                 {/* Revisions are what actually protect the designer's time - the design fee alone does

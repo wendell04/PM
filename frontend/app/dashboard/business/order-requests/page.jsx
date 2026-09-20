@@ -9,7 +9,7 @@ import {
 import { useIsPhone, KpiStrip, PhoneFilterBar, PhoneList, PhoneRow } from '@/components/dashboard/phone';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import { loadInventory } from '../inventory-v2/api';
-import { S } from '../inventory-v2/shared';
+import { S, EmptyState } from '../inventory-v2/shared';
 import QuotationModal from '@/components/chat/QuotationModal';
 
 // Same base the request helpers use - the picker calls one endpoint directly.
@@ -565,15 +565,10 @@ export default function OrderRequestsPage() {
       {!error && (
         <>
           {filteredRequests.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--gray)' }}>
-              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--gray)" strokeWidth="1.5" style={{ marginBottom: '1rem' }}>
-                <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/>
-              </svg>
-              <p style={{ fontSize: '1rem', color: 'var(--white)', marginBottom: '0.5rem' }}>No order requests found</p>
-              <p style={{ fontSize: '0.85rem' }}>
-                {activeFilter === 'quoted' ? 'No quotation is waiting on a customer right now.'
-                  : activeFilter !== 'all' ? `Nothing under ${FILTER_OPTIONS.find(f => f.key === activeFilter)?.label?.toLowerCase() || activeFilter}.` : 'No quotations sent yet.'}
-              </p>
+            <div style={{ ...S.card, padding: 0 }}>
+              <EmptyState
+                message={activeFilter === 'quoted' ? 'No quotation is waiting on a customer' : activeFilter === 'all' ? 'No quotations sent yet' : `Nothing under ${FILTER_OPTIONS.find(f => f.key === activeFilter)?.label?.toLowerCase() || activeFilter}`}
+                sub={activeFilter === 'quoted' ? 'Quotations you send from Messages or with + New quotation appear here until the customer pays.' : undefined} />
             </div>
           ) : (
             isPhone ? (

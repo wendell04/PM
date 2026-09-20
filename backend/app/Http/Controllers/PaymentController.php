@@ -839,13 +839,9 @@ class PaymentController extends Controller
                 $validated['items'],
                 fn($i) => filter_var($i['designRequested'] ?? false, FILTER_VALIDATE_BOOLEAN)
             );
-            if (count($designLines) > 0) {
-                $storeFee = (float) (\App\Support\ShopSettings::owner()->designRequestFee ?? 100);
-                $lineFees = array_map(fn($i) => (float) ($i['designFee'] ?? 0), $designLines);
-                // Highest wins, once. Summing it charged a fee per product, which is the
-                // opposite of "one artwork across a mug and a totebag is one piece of work".
-                $orderDesignFee = round(max($storeFee, ...$lineFees), 2);
-            }
+            // Per order (highest wins, once) or per item - the owner's rule in Settings, applied
+            // by App\Support\DesignFee so this path, the COD path and the cart agree.
+            $orderDesignFee = \App\Support\DesignFee::forLines($designLines);
             // The order still records the full value of the goods; isDesignFeeOnly only
             // changes what is collected NOW.
             $totalAmount += $orderDesignFee;

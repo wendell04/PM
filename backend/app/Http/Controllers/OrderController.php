@@ -272,14 +272,11 @@ class OrderController extends Controller
             // One design fee for the order (highest wins, once) - the same rule the cart and
             // checkout show. A request-design order carries it so the fee can be collected as
             // the first payment from the order detail modal, not on the product page.
-            $orderDesignFee = 0.0;
-            $designLines = array_filter($validated['items'], fn($i) => filter_var($i['designRequested'] ?? false, FILTER_VALIDATE_BOOLEAN));
-            if (count($designLines) > 0) {
-                $storeFee = (float) (\App\Support\ShopSettings::owner()->designRequestFee ?? 100);
-                $lineFees = array_map(fn($i) => (float) ($i['designFee'] ?? 0), $designLines);
-                $orderDesignFee = round(max($storeFee, ...$lineFees), 2);
-                $totalAmount += $orderDesignFee;
-            }
+            // Per order (highest wins, once) or per item - the owner's rule in Settings, applied
+            // by App\Support\DesignFee so the paid path, this path and the cart agree.
+            $designLines    = array_filter($validated['items'], fn($i) => filter_var($i['designRequested'] ?? false, FILTER_VALIDATE_BOOLEAN));
+            $orderDesignFee = \App\Support\DesignFee::forLines($designLines);
+            $totalAmount   += $orderDesignFee;
 
             // Add shipping fee to total
             $shippingFee  = (float) ($validated['shippingFee'] ?? 0);

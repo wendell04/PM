@@ -21,6 +21,7 @@ class SettingsController extends Controller
             $owner = $this->getOwner();
             return $this->successResponse('Public settings retrieved.', [
                 'designRequestFee'     => (float) ($owner->designRequestFee     ?? 100),
+                'designFeeMode'        => \App\Support\DesignFee::mode(),
                 'storeLat'             => $owner->storeLat              ?? null,
                 'storeLng'             => $owner->storeLng              ?? null,
                 'shippingMode'         => $owner->shippingMode          ?? 'courier_booked',
@@ -243,6 +244,7 @@ class SettingsController extends Controller
                 'flatRateInsideMetro'  => (float) ($owner->flatRateInsideMetro  ?? 150),
                 'flatRateOutsideMetro' => (float) ($owner->flatRateOutsideMetro ?? 250),
                 'designRequestFee'     => (float) ($user->designRequestFee      ?? 100),
+                'designFeeMode'        => \App\Support\DesignFee::mode(),
                 'productionLeadDays'   => (int)   ($owner->productionLeadDays   ?? 3),
                 'depositDueDays'       => (int)   ($owner->depositDueDays       ?? 7),
                 'unpaidOrderDays'      => (int)   ($owner->unpaidOrderDays      ?? 3),
@@ -306,6 +308,7 @@ class SettingsController extends Controller
                 'storeLng'             => 'nullable|numeric|between:-180,180',
                 // Stored on the OWNER, because that is where the storefront reads it from.
                 'designRequestFee'     => 'nullable|numeric|min:0|max:99999',
+                'designFeeMode'        => 'nullable|in:per_order,per_item',
                 'shippingMode'         => 'nullable|string|in:distance,flat,courier_booked',
                 'shippingBaseRate'     => 'nullable|numeric|min:0|max:9999',
                 'shippingPerKmRate'    => 'nullable|numeric|min:0|max:9999',
@@ -344,6 +347,7 @@ class SettingsController extends Controller
             if ($request->has('storeLat'))             $owner->storeLat             = $request->storeLat !== null ? (float) $request->storeLat : null;
             if ($request->has('storeLng'))             $owner->storeLng             = $request->storeLng !== null ? (float) $request->storeLng : null;
             if ($request->has('designRequestFee'))     $owner->designRequestFee     = (float) $request->designRequestFee;
+            if ($request->has('designFeeMode'))        $owner->designFeeMode        = $request->designFeeMode === 'per_item' ? 'per_item' : 'per_order';
             if ($request->has('shippingMode'))         $owner->shippingMode         = $request->shippingMode ?? 'courier_booked';
             if ($request->has('shippingBaseRate'))     $owner->shippingBaseRate     = (float) $request->shippingBaseRate;
             if ($request->has('shippingPerKmRate'))    $owner->shippingPerKmRate    = (float) $request->shippingPerKmRate;
