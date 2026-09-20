@@ -87,6 +87,42 @@ class DeliveryClock
         ];
         $order->statusHistory = $history;
 
+        self::rescheduleJobOrders($order, $newMax);
+
         return true;
+    }
+
+    /**
+     * Move any job order that was scheduled off the old promise.
+     *
+     * A job schedules backwards: finish before the courier collects, leaving room to QC and pack.
+     * When the promise moves and the job does not, the bench works to a deadline that no longer
+     * exists - and since the promise only ever moves LATER, the stale target is always an earlier
+     * one. A queue full of false urgency is a queue where real urgency stops being believed.
+     *
+     * Anything already finished is left alone; its date is a record of what was asked at the time.
+     */
+    private static function rescheduleJobOrders(Order $order, \Carbon\Carbon $newMax): void
+    {
+        try {
+            $clock   = $order->deliveryClock ?? [];
+            $transit = (int) ($clock['shipMax'] ?? 2);
+            $qcPack  = 1;   // QC and packing slack before hand-off
+            $target  = WorkingDays::subtract($newMax, $transit + $qcPack);
+
+            $jobs = \App\Models\JobOrder::where('orderId', (string) $order->_id)->get();
+            foreach ($jobs as $jo) {
+                if (in_array($jo->joStatus, ['QC_Passed', 'Completed', 'Cancelled'], true)) continue;
+                $jo->targetCompletion = $target->toDateString();
+                $jo->updatedAt        = now();
+                $jo->save();
+            }
+        } catch (\Throwable $e) {
+            // A rescheduling failure must never take the approval down with it.
+            \Illuminate\Support\Facades\Log::warning('DeliveryClock: could not reschedule job orders', [
+                'orderId' => (string) $order->_id,
+                'error'   => $e->getMessage(),
+            ]);
+        }
     }
 }

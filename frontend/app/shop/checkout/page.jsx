@@ -375,6 +375,11 @@ export default function CheckoutPage() {
   // Ready-made lines sitting behind a made-to-order one. They could ship today and will not,
   // because one order is one delivery - which is only fair to say out loud before they pay.
   const mixedCart = needsProduction && items.some(i => !(i.isCustom ?? i.product?.isCustom) && !(i.isMadeToOrder ?? i.product?.isMadeToOrder));
+  // Anywhere but Metro Manila carries variance a single figure cannot express. Saying so on a
+  // Metro order would be noise, and noise is how a real warning stops being read.
+  const shipProvince = String(selectedAddress?.province ?? '').toLowerCase().trim();
+  const isProvincial = !!shipProvince
+    && !['metro manila', 'ncr', 'national capital region', 'metropolitan manila'].includes(shipProvince);
   const durationRange = (lead) => {
     const a = lead + shipMin, b = lead + shipMax;
     return a === b ? `${a} working day${a === 1 ? '' : 's'}` : `${a}-${b} working days`;
@@ -1487,6 +1492,13 @@ export default function CheckoutPage() {
                 delivery, and the delivery fee is arranged after the order. */}
             <span style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--gold)' }}>{whenText(0)}</span>
           </div>
+          {isProvincial && (
+            <div style={{ fontSize: '0.74rem', color: 'var(--gray)', lineHeight: 1.55 }}>
+              Going outside Metro Manila, so the courier leg is longer and already included above.
+              It can still run over during holidays or bad weather, and remote areas may add a day -
+              we send you tracking the moment it leaves us.
+            </div>
+          )}
           {waitsForApproval ? (
             <div style={{ fontSize: '0.75rem', color: 'var(--gray)', lineHeight: 1.6, padding: '10px 12px',
               borderRadius: 8, border: '1px solid rgba(212,168,67,0.28)', background: 'rgba(212,168,67,0.05)' }}>

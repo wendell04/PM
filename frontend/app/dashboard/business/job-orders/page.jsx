@@ -69,8 +69,12 @@ function deriveTarget(order) {
   if (!anchor || isNaN(anchor)) {
     return { date: toYmd(addBizDays(new Date(), 3)), anchor: null, anchorLabel: null, fallback: true };
   }
-  const target = subtractBizDays(anchor, SHIP_BUFFER_DAYS + QC_PACK_DAYS);
-  return { date: toYmd(target), anchor: toYmd(anchor), anchorLabel, fallback: false };
+  // The order carries the transit its own promise was built from, and that is zone-based now -
+  // Metro Manila 1-2 days, Mindanao 4-7. Walking back by a hardcoded 2 on a Mindanao order put
+  // the bench deadline days after the courier would have had to collect it.
+  const transit = Number(order?.deliveryClock?.shipMax ?? SHIP_BUFFER_DAYS) || SHIP_BUFFER_DAYS;
+  const target = subtractBizDays(anchor, transit + QC_PACK_DAYS);
+  return { date: toYmd(target), anchor: toYmd(anchor), anchorLabel, transit, fallback: false };
 }
 
 // ─── Order-item classification (what needs a Job Order) ───
@@ -391,7 +395,7 @@ function JobOrderForm({ initial = EMPTY_FORM, isEdit = false, orders = [], order
                   <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 4 }}>
                     {derived.fallback
                       ? 'No delivery date on this order yet - defaulted to 3 business days. Set the date in Orders to schedule from the promise.'
-                      : `${derived.anchorLabel} ${fmtDate(derived.anchor)}  -  transit ${SHIP_BUFFER_DAYS}d  -  QC/pack ${QC_PACK_DAYS}d`}
+                      : `${derived.anchorLabel} ${fmtDate(derived.anchor)}  -  transit ${derived.transit ?? SHIP_BUFFER_DAYS}d  -  QC/pack ${QC_PACK_DAYS}d`}
                   </div>
                 </div>
                 {!derived.fallback && <span style={{ ...S.badge, background: 'var(--st-green-bg)', color: 'var(--st-green-fg)', border: 'none', fontSize: 9 }}>AUTO</span>}
