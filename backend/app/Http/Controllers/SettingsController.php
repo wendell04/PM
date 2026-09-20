@@ -9,8 +9,10 @@ class SettingsController extends Controller
 {
     private function getOwner(): ?User
     {
-        return User::where('role', 'owner')->first()
-            ?? User::whereIn('role', ['admin', 'owner'])->first();
+        // The same lookup every reader uses. This screen having its own copy is exactly how the
+        // writer and the readers came to disagree: settings saved onto the admin while the order
+        // flow asked only for an 'owner', found none, and used hardcoded defaults instead.
+        return \App\Support\ShopSettings::owner();
     }
 
     public function public(Request $request)

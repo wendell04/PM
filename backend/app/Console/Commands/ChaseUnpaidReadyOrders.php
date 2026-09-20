@@ -29,7 +29,7 @@ class ChaseUnpaidReadyOrders extends Command
     public function handle(): int
     {
         $dry   = (bool) $this->option('dry-run');
-        $owner = User::where('role', 'owner')->first();
+        $owner = \App\Support\ShopSettings::owner();
         $hold  = max(1, (int) ($owner->unpaidReadyHoldDays ?? 14));
 
         // Escalating, then silence. A reminder every day is noise people learn to ignore, and the

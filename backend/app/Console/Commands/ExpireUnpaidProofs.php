@@ -45,7 +45,7 @@ class ExpireUnpaidProofs extends Command
         // customer has already paid for. So this only touches orders where NOTHING has been received -
         // no design fee, no deposit, no payment history at all - and never one that has moved past
         // placement into the design or production workflow.
-        $days = max(1, (int) (User::where('role', 'owner')->first()->unpaidOrderDays ?? 3));
+        $days = max(1, (int) (\App\Support\ShopSettings::owner()->unpaidOrderDays ?? 3));
         $cutoff = now()->subDays($days);
 
         $stale = Order::where('paymentStatus', 'unpaid')

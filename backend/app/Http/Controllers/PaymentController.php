@@ -391,7 +391,7 @@ class PaymentController extends Controller
                 // How shipping was charged AT THE TIME. A zero fee means two different things -
                 // free delivery, or the recipient pays the rider - so without this an old order
                 // re-labels itself the day the owner switches mode. Mirrors OrderController@store.
-                'shippingMode'    => optional(User::where('role', 'owner')->first() ?? User::where('role', 'admin')->first())->shippingMode ?? 'courier_booked',
+                'shippingMode'    => optional(\App\Support\ShopSettings::owner())->shippingMode ?? 'courier_booked',
                 'discountAmount'  => $discountAmount > 0 ? $discountAmount : null,
                 'voucherCode'     => $appliedVoucher?->code ?? null,
                 'orderStatus'     => 'Pending',
@@ -840,7 +840,7 @@ class PaymentController extends Controller
                 fn($i) => filter_var($i['designRequested'] ?? false, FILTER_VALIDATE_BOOLEAN)
             );
             if (count($designLines) > 0) {
-                $storeFee = (float) (User::where('role', 'owner')->first()->designRequestFee ?? 100);
+                $storeFee = (float) (\App\Support\ShopSettings::owner()->designRequestFee ?? 100);
                 $lineFees = array_map(fn($i) => (float) ($i['designFee'] ?? 0), $designLines);
                 // Highest wins, once. Summing it charged a fee per product, which is the
                 // opposite of "one artwork across a mug and a totebag is one piece of work".
@@ -855,7 +855,7 @@ class PaymentController extends Controller
 
             // Rush is a REQUEST the admin confirms; the need-by date is the customer's target. The
             // online path never recorded these before, so a cart/rush order lost its rush entirely.
-            $owner       = User::where('role', 'owner')->first() ?? User::where('role', 'admin')->first();
+            $owner       = \App\Support\ShopSettings::owner();
             $rushOn      = (bool)  ($owner->rushEnabled ?? true);
             // Must equal OrderController's fallback and SettingsController's - see the note there.
             $rushFeeAmt  = (float) ($owner->rushFee ?? 150);
@@ -1044,7 +1044,7 @@ class PaymentController extends Controller
                 // How shipping was charged AT THE TIME. A zero fee means two different things -
                 // free delivery, or the recipient pays the rider - so without this an old order
                 // re-labels itself the day the owner switches mode. Mirrors OrderController@store.
-                'shippingMode'    => optional(User::where('role', 'owner')->first() ?? User::where('role', 'admin')->first())->shippingMode ?? 'courier_booked',
+                'shippingMode'    => optional(\App\Support\ShopSettings::owner())->shippingMode ?? 'courier_booked',
                 'discountAmount'  => $discountAmount > 0 ? $discountAmount : null,
                 'voucherCode'     => $appliedVoucher?->code ?? null,
                 'orderStatus'     => $this->resolveCustomOrderStatus($request),

@@ -37,7 +37,7 @@ class BackfillLegacyConsent extends Command
         $snapshot = null;
         $version  = 0;
         if ($seed) {
-            $owner = User::where('role', 'owner')->first() ?? User::where('role', 'admin')->first();
+            $owner = \App\Support\ShopSettings::owner();
             $rows  = $owner->registrationTerms ?? null;
 
             if (!is_array($rows) || !count($rows)) {
