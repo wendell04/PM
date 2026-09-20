@@ -495,7 +495,7 @@ export default function AuditLogsPage() {
                           background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.01)',
                         }}>
                           {/* Date */}
-                          <td style={{
+                          <td data-rt="head" style={{
                             padding: '0.875rem 1rem',
                             color: 'var(--gray)',
                             whiteSpace: 'nowrap',
@@ -505,7 +505,7 @@ export default function AuditLogsPage() {
                           </td>
 
                           {/* Product */}
-                          <td style={{
+                          <td data-label="Product" style={{
                             padding: '0.875rem 1rem',
                             fontWeight: 600,
                             color: 'var(--white)',
@@ -521,7 +521,7 @@ export default function AuditLogsPage() {
                           </td>
 
                           {/* Category */}
-                          <td style={{
+                          <td data-label="Category" style={{
                             padding: '0.875rem 1rem',
                             color: 'var(--gray)',
                             fontSize: '0.8rem',
@@ -538,7 +538,7 @@ export default function AuditLogsPage() {
                           </td>
 
                           {/* Reason badge */}
-                          <td style={{ padding: '0.875rem 1rem' }}>
+                          <td data-label="Reason" style={{ padding: '0.875rem 1rem' }}>
                             <span style={{
                               ...getReasonStyle(log.reason),
                               padding: '0.2rem 0.7rem',
@@ -553,7 +553,7 @@ export default function AuditLogsPage() {
                           </td>
 
                           {/* Qty Change */}
-                          <td style={{
+                          <td data-label="Qty Change" style={{
                             padding: '0.875rem 1rem',
                             textAlign: 'center',
                             fontWeight: 700,
@@ -564,7 +564,7 @@ export default function AuditLogsPage() {
                           </td>
 
                           {/* Stock Before */}
-                          <td style={{
+                          <td data-label="Stock Before" style={{
                             padding: '0.875rem 1rem',
                             textAlign: 'center',
                             color: 'var(--gray)',
@@ -573,7 +573,7 @@ export default function AuditLogsPage() {
                           </td>
 
                           {/* Stock After */}
-                          <td style={{
+                          <td data-label="Stock After" style={{
                             padding: '0.875rem 1rem',
                             textAlign: 'center',
                             color: 'var(--gold)',
@@ -583,7 +583,7 @@ export default function AuditLogsPage() {
                           </td>
 
                           {/* Unit Cost */}
-                          <td style={{
+                          <td data-label="Unit Cost" style={{
                             padding: '0.875rem 1rem',
                             textAlign: 'center',
                             color: 'var(--gray)',
@@ -597,7 +597,7 @@ export default function AuditLogsPage() {
                           </td>
 
                           {/* Performed By */}
-                          <td style={{
+                          <td data-label="Performed By" style={{
                             padding: '0.875rem 1rem',
                             color: 'var(--gray)',
                             fontSize: '0.8rem',
@@ -606,7 +606,7 @@ export default function AuditLogsPage() {
                           </td>
 
                           {/* Remarks */}
-                          <td style={{
+                          <td data-label="Remarks" style={{
                             padding: '0.875rem 1rem',
                             color: 'var(--gray)',
                             fontSize: '0.78rem',

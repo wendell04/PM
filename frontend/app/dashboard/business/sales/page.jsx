@@ -276,7 +276,7 @@ function DataTable({ rows, cols, empty = 'No data in this period' }) {
           ) : rows.map((r, i) => (
             <tr key={i} style={S.tr}>
               {cols.map((c, j) => (
-                <td key={j} style={{ ...S.td, ...(j === 0 ? {} : num), textAlign: j === 0 ? 'left' : 'right' }}>{c.render(r)}</td>
+                <td key={j} {...(j === 0 ? { 'data-rt': 'head' } : { 'data-label': c.label })} style={{ ...S.td, ...(j === 0 ? {} : num), textAlign: j === 0 ? 'left' : 'right' }}>{c.render(r)}</td>
               ))}
             </tr>
           ))}
@@ -914,24 +914,24 @@ export default function SalesListPage() {
                   return (
                     <React.Fragment key={order.id}>
                       <tr style={{ ...S.tr, opacity: cancelled ? 0.55 : 1, cursor: 'pointer' }} onClick={() => toggleExpand(order.id)}>
-                        <td style={{ ...S.td, textAlign: 'center' }}>
+                        <td data-rt="chev" style={{ ...S.td, textAlign: 'center' }}>
                           <span style={{ display: 'inline-flex', color: 'var(--gray)', transform: isExpanded ? 'rotate(90deg)' : 'none', transition: 'transform .15s' }}>{ICONS.chevR}</span>
                         </td>
-                        <td style={S.td}>
+                        <td data-rt="head" style={S.td}>
                           <div style={{ fontWeight: 700, color: 'var(--gold)' }}>{order.orderNumber}</div>
                           {order.source === 'manual' && <div style={{ fontSize: '11px', color: 'var(--orange)' }}>Outside System</div>}
                         </td>
-                        <td style={S.td}>
+                        <td data-label="Customer" style={S.td}>
                           <div style={{ fontWeight: 600, color: 'var(--white)' }}>{order.customerName}</div>
                           <div style={{ fontSize: '11px', color: 'var(--gray)' }}>{order.customerContact || ''}</div>
                         </td>
-                        <td style={{ ...S.td, textAlign: 'center' }}>
+                        <td data-label="Items" style={{ ...S.td, textAlign: 'center' }}>
                           <span style={{ fontWeight: 600, color: 'var(--white)' }}>{totalItems} pcs</span>
                           {order.items?.length > 1 && <div style={{ fontSize: '11px', color: 'var(--gray)' }}>{order.items.length} variants</div>}
                         </td>
-                        <td style={{ ...S.td, color: 'var(--gray)' }}>{new Date(order.orderDate).toLocaleDateString()}</td>
-                        <td style={{ ...S.td, textAlign: 'center', fontWeight: 700, color: 'var(--gold)' }}>{formatPrice(order.totalPrice)}</td>
-                        <td style={{ ...S.td, textAlign: 'center' }}>
+                        <td data-label="Date" style={{ ...S.td, color: 'var(--gray)' }}>{new Date(order.orderDate).toLocaleDateString()}</td>
+                        <td data-label="Total" style={{ ...S.td, textAlign: 'center', fontWeight: 700, color: 'var(--gold)' }}>{formatPrice(order.totalPrice)}</td>
+                        <td data-label="Paid" style={{ ...S.td, textAlign: 'center' }}>
                           {/* The header said "Downpayment" while the cell said "Paid in full" - a word
                               where a figure belongs, under a heading it no longer matched. The column
                               answers one question, how much has been received, so it shows that
@@ -950,12 +950,12 @@ export default function SalesListPage() {
                               </>
                             ) : <span style={{ color: 'var(--gray)' }}>-</span>}
                         </td>
-                        <td style={{ ...S.td, textAlign: 'center' }}>
+                        <td data-label="Balance" style={{ ...S.td, textAlign: 'center' }}>
                           <span style={{ fontWeight: 600, color: cancelled ? 'var(--gray)' : (order.balance === 0 ? 'var(--st-green-fg)' : '#e0a43a') }}>
                             {cancelled ? '-' : formatPrice(order.balance)}
                           </span>
                         </td>
-                        <td style={{ ...S.td, textAlign: 'center' }}><StatusPill status={order.status} /></td>
+                        <td data-label="Status" style={{ ...S.td, textAlign: 'center' }}><StatusPill status={order.status} /></td>
                       </tr>
                       {isExpanded && <OrderExpandRow order={order} colSpan={9} cost={costByOrder[String(order.id ?? order._id ?? "")]} />}
                     </React.Fragment>

@@ -390,15 +390,15 @@ function VouchersTab({ token }) {
                     onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.02)'}
                     onMouseLeave={e => e.currentTarget.style.background = ''}>
 
-                    <td style={{ padding: '11px 14px', fontSize: '0.875rem', color: 'var(--gold)', fontWeight: 700, fontFamily: 'monospace' }}>{v.code}</td>
+                    <td data-rt="head" style={{ padding: '11px 14px', fontSize: '0.875rem', color: 'var(--gold)', fontWeight: 700, fontFamily: 'monospace' }}>{v.code}</td>
 
-                    <td style={{ padding: '11px 14px' }}>
+                    <td data-label="Category" style={{ padding: '11px 14px' }}>
                       <span style={{ padding: '2px 8px', borderRadius: '999px', fontSize: '0.72rem', fontWeight: 600, background: ac.bg, color: ac.color, border: `1px solid ${ac.border}`, whiteSpace: 'nowrap' }}>
                         {catMeta?.icon} {catMeta?.label || cat}
                       </span>
                     </td>
 
-                    <td style={{ padding: '11px 14px', fontSize: '0.82rem', color: 'var(--white)', maxWidth: '220px' }}>
+                    <td data-label="Benefit / Discount" style={{ padding: '11px 14px', fontSize: '0.82rem', color: 'var(--white)', maxWidth: '220px' }}>
                       {cat === 'monetary' ? (
                         <span style={{ fontWeight: 600 }}>
                           {v.discountType === 'percentage' ? `${v.discountValue}%` : `₱${Number(v.discountValue).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} OFF
@@ -413,11 +413,11 @@ function VouchersTab({ token }) {
                       )}
                     </td>
 
-                    <td style={{ padding: '11px 14px', fontSize: '0.82rem', color: 'var(--white)' }}>
+                    <td data-label="Min Order" style={{ padding: '11px 14px', fontSize: '0.82rem', color: 'var(--white)' }}>
                       {v.minOrderAmount != null ? `₱${Number(v.minOrderAmount).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '-'}
                     </td>
 
-                    <td style={{ padding: '11px 14px', fontSize: '0.82rem', color: 'var(--white)', whiteSpace: 'nowrap' }}>
+                    <td data-label="Uses" style={{ padding: '11px 14px', fontSize: '0.82rem', color: 'var(--white)', whiteSpace: 'nowrap' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                         <span>{v.usedCount ?? 0}{v.maxUses != null ? ` / ${v.maxUses}` : ' / ∞'}</span>
                         {v.maxUses != null && (
@@ -428,17 +428,17 @@ function VouchersTab({ token }) {
                       </div>
                     </td>
 
-                    <td style={{ padding: '11px 14px', fontSize: '0.82rem', color: isExpired ? 'var(--red)' : 'var(--white)', whiteSpace: 'nowrap' }}>
+                    <td data-label="Expires" style={{ padding: '11px 14px', fontSize: '0.82rem', color: isExpired ? 'var(--red)' : 'var(--white)', whiteSpace: 'nowrap' }}>
                       {v.expiresAt ? new Date(v.expiresAt).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }) : '-'}
                     </td>
 
-                    <td style={{ padding: '11px 14px' }}>
+                    <td data-label="Status" style={{ padding: '11px 14px' }}>
                       <span style={{ padding: '3px 10px', borderRadius: '20px', fontSize: '0.7rem', fontWeight: 600, background: statusOk ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.12)', color: statusOk ? 'var(--green)' : 'var(--red)' }}>
                         {!v.isActive ? 'Inactive' : isExpired ? 'Expired' : isMaxed ? 'Maxed' : 'Active'}
                       </span>
                     </td>
 
-                    <td style={{ padding: '11px 14px' }}>
+                    <td data-rt="actions" style={{ padding: '11px 14px' }}>
                       <div style={{ display: 'flex', gap: '0.4rem' }}>
                         <button onClick={() => openEdit(v)} style={{ padding: '4px 10px', background: 'var(--border)', border: 'none', borderRadius: '6px', color: 'var(--white)', fontSize: '0.75rem', cursor: 'pointer' }}>Edit</button>
                         <button onClick={() => handleToggle(v)} disabled={toggling === (v._id || v.id)} style={{ padding: '4px 10px', background: v.isActive ? 'rgba(239,68,68,0.12)' : 'rgba(34,197,94,0.12)', border: 'none', borderRadius: '6px', color: v.isActive ? 'var(--red)' : 'var(--green)', fontSize: '0.75rem', cursor: toggling === (v._id || v.id) ? 'not-allowed' : 'pointer', opacity: toggling === (v._id || v.id) ? 0.5 : 1 }}>
@@ -791,7 +791,7 @@ function FlashSalesTab({ token }) {
                     onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.02)'}
                     onMouseLeave={e => e.currentTarget.style.background = ''}>
 
-                    <td style={{ padding: '11px 14px' }}>
+                    <td data-rt="head" style={{ padding: '11px 14px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
                         {sale.productThumbnail
                           /* eslint-disable-next-line @next/next/no-img-element */
@@ -802,22 +802,22 @@ function FlashSalesTab({ token }) {
                       </div>
                     </td>
 
-                    <td style={{ padding: '11px 14px' }}>
+                    <td data-label="Discount" style={{ padding: '11px 14px' }}>
                       <span style={{ padding: '0.25rem 0.625rem', borderRadius: '999px', fontWeight: 700, fontSize: '0.78rem', whiteSpace: 'nowrap', background: sale.discountType === 'percentage' ? 'rgba(74,222,128,0.12)' : 'rgba(96,165,250,0.12)', color: sale.discountType === 'percentage' ? 'var(--green)' : 'var(--blue)', border: `1px solid ${sale.discountType === 'percentage' ? 'rgba(74,222,128,0.3)' : 'rgba(96,165,250,0.3)'}` }}>
                         {sale.discountType === 'percentage' ? `${sale.discountValue}%` : `₱${sale.discountValue} OFF`}
                       </span>
                     </td>
 
-                    <td style={{ padding: '11px 14px', color: 'var(--gray)', fontSize: '0.85rem' }}>
+                    <td data-label="Original" style={{ padding: '11px 14px', color: 'var(--gray)', fontSize: '0.85rem' }}>
                       {sale.originalPrice != null ? `₱${Number(sale.originalPrice).toLocaleString('en-PH', { minimumFractionDigits: 2 })}` : '-'}
                     </td>
 
-                    <td style={{ padding: '11px 14px', color: 'var(--gold)', fontWeight: 700, fontSize: '0.85rem' }}>
+                    <td data-label="Sale Price" style={{ padding: '11px 14px', color: 'var(--gold)', fontWeight: 700, fontSize: '0.85rem' }}>
                       {sale.discountedPrice != null ? `₱${Number(sale.discountedPrice).toLocaleString('en-PH', { minimumFractionDigits: 2 })}` : '-'}
                     </td>
 
                     {/* Quantity column - progress bar */}
-                    <td style={{ padding: '11px 14px', minWidth: '110px' }}>
+                    <td data-label="Quantity" style={{ padding: '11px 14px', minWidth: '110px' }}>
                       {sale.isOnDemand ? (
                         <span style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>On-demand</span>
                       ) : sale.stockLimit == null ? (
@@ -842,14 +842,14 @@ function FlashSalesTab({ token }) {
                       )}
                     </td>
 
-                    <td style={{ padding: '11px 14px', color: 'var(--gray)', fontSize: '0.78rem', whiteSpace: 'nowrap' }}>{formatDate(sale.startDate)}</td>
-                    <td style={{ padding: '11px 14px', color: 'var(--gray)', fontSize: '0.78rem', whiteSpace: 'nowrap' }}>{formatDate(sale.endDate)}</td>
+                    <td data-label="Start" style={{ padding: '11px 14px', color: 'var(--gray)', fontSize: '0.78rem', whiteSpace: 'nowrap' }}>{formatDate(sale.startDate)}</td>
+                    <td data-label="End" style={{ padding: '11px 14px', color: 'var(--gray)', fontSize: '0.78rem', whiteSpace: 'nowrap' }}>{formatDate(sale.endDate)}</td>
 
-                    <td style={{ padding: '11px 14px' }}>
+                    <td data-label="Status" style={{ padding: '11px 14px' }}>
                       <span style={{ padding: '0.2rem 0.625rem', borderRadius: '999px', fontSize: '0.72rem', fontWeight: 700, whiteSpace: 'nowrap', background: status.bg, color: status.color }}>{status.label}</span>
                     </td>
 
-                    <td style={{ padding: '11px 14px' }}>
+                    <td data-rt="actions" style={{ padding: '11px 14px' }}>
                       <div style={{ display: 'flex', gap: '0.4rem' }}>
                         <button onClick={() => handleToggle(sale)} disabled={toggling === sale.id} title={sale.isActive ? 'Deactivate' : 'Activate'}
                           style={{ background: sale.isActive ? 'rgba(74,222,128,0.12)' : 'rgba(107,114,128,0.12)', border: `1px solid ${sale.isActive ? 'rgba(74,222,128,0.3)' : 'rgba(107,114,128,0.3)'}`, borderRadius: '6px', padding: '0.35rem', cursor: 'pointer', color: sale.isActive ? 'var(--green)' : 'var(--gray)', display: 'flex', alignItems: 'center' }}>

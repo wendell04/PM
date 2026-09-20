@@ -212,14 +212,14 @@ export default function AdminReviewsPage() {
                     <tr key={id} style={{ ...S.tr, opacity: r.is_visible ? 1 : 0.55 }}
                       onMouseEnter={e => e.currentTarget.style.background = 'var(--dark2)'}
                       onMouseLeave={e => e.currentTarget.style.background = ''}>
-                      <td style={{ ...S.td, fontWeight: 600 }}>{r.customerName || 'Customer'}</td>
-                      <td style={S.td}><Stars rating={r.rating} /></td>
-                      <td style={{ ...S.td, color: r.productName ? 'var(--white)' : 'var(--gray)', fontSize: '12px' }}>
+                      <td data-rt="head" style={{ ...S.td, fontWeight: 600 }}>{r.customerName || 'Customer'}</td>
+                      <td data-label="Rating" style={S.td}><Stars rating={r.rating} /></td>
+                      <td data-label="Product" style={{ ...S.td, color: r.productName ? 'var(--white)' : 'var(--gray)', fontSize: '12px' }}>
                         {/* Older reviews were written against a whole order, before the per-product
                             split, so they legitimately name no product. Say so rather than blank. */}
                         {r.productName || (r.productId ? 'Unknown product' : 'Whole order')}
                       </td>
-                      <td style={{ ...S.td, color: 'var(--gray)', lineHeight: 1.5 }}>
+                      <td data-label="Review" style={{ ...S.td, color: 'var(--gray)', lineHeight: 1.5 }}>
                         <span style={open ? undefined : {
                           display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
                         }}>
@@ -232,10 +232,10 @@ export default function AdminReviewsPage() {
                           </button>
                         )}
                       </td>
-                      <td style={{ ...S.td, color: 'var(--gray)', fontSize: '12px', whiteSpace: 'nowrap' }}>
+                      <td data-label="Date" style={{ ...S.td, color: 'var(--gray)', fontSize: '12px', whiteSpace: 'nowrap' }}>
                         {r.created_at ? reviewDate(r.created_at) : '-'}
                       </td>
-                      <td style={S.td}>
+                      <td data-label="Status" style={S.td}>
                         <span style={{
                           ...S.badge,
                           background: r.is_visible ? 'rgba(74,222,128,0.12)' : 'rgba(107,114,128,0.15)',
@@ -245,7 +245,7 @@ export default function AdminReviewsPage() {
                           {r.is_visible ? 'Visible' : 'Hidden'}
                         </span>
                       </td>
-                      <td style={{ ...S.td, textAlign: 'right', whiteSpace: 'nowrap' }}>
+                      <td data-rt="actions" style={{ ...S.td, textAlign: 'right', whiteSpace: 'nowrap' }}>
                         <button type="button" onClick={() => handleToggle(r._id ?? r.id, r.is_visible)}
                           disabled={busyId === (r._id ?? r.id)}
                           style={{ ...S.btnSmGhost, marginRight: '6px', opacity: busyId === (r._id ?? r.id) ? 0.5 : 1 }}>
