@@ -9,7 +9,7 @@ import {
 import { useIsPhone, KpiStrip, PhoneFilterBar, PhoneList, PhoneRow } from '@/components/dashboard/phone';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import { loadInventory } from '../inventory-v2/api';
-import { S, EmptyState } from '../inventory-v2/shared';
+import { S, EmptyState, SummaryCard, SearchBar, CustomSelect } from '../inventory-v2/shared';
 import QuotationModal from '@/components/chat/QuotationModal';
 
 // Same base the request helpers use - the picker calls one endpoint directly.
@@ -428,15 +428,6 @@ export default function OrderRequestsPage() {
           customerId={quoteFor.id}
           customerName={quoteFor.name} />
       )}
-      {/* Page title is shown in the top bar; keep only the descriptive subtitle */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', margin: '0 0 1.5rem' }}>
-        <p style={{ margin: 0, color: 'var(--gray)', fontSize: '0.9rem' }}>
-          Quotations you have sent, and what became of them. A quotation sets a price for work that
-          is not in the catalogue - printing on the customer's own shirt, a bulk job, a service.
-        </p>
-        <button onClick={openNewQuote} style={{ ...S.btnPrimary, whiteSpace: 'nowrap' }}>+ New quotation</button>
-      </div>
-
       {/* Asks are answered in Messages, not here. But a count that lives only in Messages is a
           count nobody sees until they open Messages, so it is repeated where quotations live. */}
       {(cardCounts.ask ?? 0) > 0 && (
@@ -461,65 +452,26 @@ export default function OrderRequestsPage() {
           <PhoneFilterBar search={searchQuery} onSearch={setSearchQuery} placeholder="Search customer or product"
             filters={[{ key: 'status', label: 'Show', value: activeFilter, defaultValue: 'quoted', onChange: setActiveFilter,
               options: FILTER_OPTIONS.map(o => ({ value: o.key, label: o.label })) }]}
-            note={`${filteredRequests.length} request${filteredRequests.length === 1 ? '' : 's'}`} />
+            actions={<button onClick={openNewQuote} style={{ ...S.btnPrimary, minHeight: 36, whiteSpace: 'nowrap' }}>+ New quotation</button>}
+            note={`${filteredRequests.length} quotation${filteredRequests.length === 1 ? '' : 's'}`} />
         </>
       ) : (<>
-      {/* Summary Cards */}
-      <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '1.5rem' }}>
-        {FILTER_OPTIONS.map(opt => {
-          const isActive = activeFilter === opt.key;
-          return (
-            <button
-              key={opt.key}
-              onClick={() => setActiveFilter(opt.key)}
-              style={{
-                flex: '1 1 120px',
-                minWidth: '100px',
-                padding: '0.75rem 1rem',
-                background: isActive ? 'rgba(212,168,67,0.1)' : 'var(--dark2)',
-                border: isActive ? '2px solid var(--gold)' : '1px solid var(--border)',
-                borderRadius: '10px',
-                cursor: 'pointer',
-                textAlign: 'center',
-                transition: 'all 0.2s',
-              }}
-            >
-              <div style={{ fontSize: '1.25rem', fontWeight: 800, color: isActive ? 'var(--gold)' : 'var(--white)' }}>
-                {cardCounts[opt.key] ?? 0}
-              </div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--gray)', marginTop: '0.25rem' }}>{opt.label}</div>
-              {STAGES[opt.key]?.hint && (
-                <div style={{ fontSize: '0.65rem', color: 'var(--gray)', opacity: 0.8, marginTop: '0.1rem' }}>{STAGES[opt.key].hint}</div>
-              )}
-            </button>
-          );
-        })}
+      {/* Same grammar as every other module: the numbers, then one filter card with the
+          primary action on its right, then the table. */}
+      <div className="pmp-stat-row" style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '16px' }}>
+        <SummaryCard label="Sent" value={cardCounts.quoted ?? 0} accent sub="Waiting on the customer" color={(cardCounts.quoted ?? 0) > 0 ? 'var(--gold)' : 'var(--white)'} />
+        <SummaryCard label="Accepted" value={cardCounts.accepted ?? 0} sub="Paid - now an order" color={(cardCounts.accepted ?? 0) > 0 ? 'var(--st-green-fg, #2e7d32)' : 'var(--white)'} />
+        <SummaryCard label="Expired" value={cardCounts.expired ?? 0} sub="Ran out unpaid" color={(cardCounts.expired ?? 0) > 0 ? 'var(--st-red-fg, #dc2626)' : 'var(--white)'} />
+        <SummaryCard label="All sent" value={cardCounts.all ?? 0} sub="Every quotation ever sent" />
       </div>
 
-      {/* Search */}
-      <div style={{ marginBottom: '1.5rem' }}>
-        <div style={{ position: 'relative', maxWidth: '400px' }}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--gray)" strokeWidth="2" style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)' }}>
-            <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
-          </svg>
-          <input
-            type="text"
-            placeholder="Search customer or product..."
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            style={{
-              width: '100%',
-              padding: '0.625rem 0.875rem 0.625rem 2.5rem',
-              background: 'var(--dark2)',
-              border: '1px solid var(--border)',
-              borderRadius: '8px',
-              color: 'var(--white)',
-              fontSize: '0.875rem',
-              outline: 'none',
-              boxSizing: 'border-box',
-            }}
-           maxLength={100}/>
+      <div style={{ ...S.card, ...S.rowBetween, marginBottom: '10px', padding: '12px 16px', flexWrap: 'wrap', gap: 10 }}>
+        <div className="pmp-filters" style={{ ...S.row, gap: '8px', flex: 1, flexWrap: 'wrap' }}>
+          <SearchBar value={searchQuery} onChange={setSearchQuery} placeholder="Search customer or product..." style={{ width: '260px' }} />
+          <CustomSelect value={activeFilter} onChange={setActiveFilter} style={{ width: '170px' }}
+            options={FILTER_OPTIONS.map(o => ({ value: o.key, label: o.label }))} />
         </div>
+        <button onClick={openNewQuote} style={{ ...S.btnPrimary, whiteSpace: 'nowrap' }}>+ New quotation</button>
       </div>
 
       </>)}

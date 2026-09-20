@@ -4557,3 +4557,12 @@ html.light .skeleton-table-header {
   .settings-shell > div { width: 100%; }
   .profile-form-grid { grid-template-columns: 1fr !important; }
 }
+
+/* Sheet footer on a phone: every button is a full-width, thumb-sized target. The shared Modal
+   adds this class under 700px; the buttons inside keep their own colours. */
+.pmp-sheet-footer > button,
+.pmp-sheet-footer > a {
+  flex: 1 1 140px;
+  min-height: 44px;
+  justify-content: center;
+}

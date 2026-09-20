@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import useLockBodyScroll from '@/lib/useLockBodyScroll';
+import { useIsPhone } from '@/components/dashboard/phone';
 // ── shared.jsx - inventory-v2 shared components ───────────────────────────────
 
 // ── Styles ────────────────────────────────────────────────────────────────────
@@ -298,29 +299,38 @@ export function StatusBadge({ status, label }) {
 // X button and footer buttons close. Pass closeOnBackdrop for throwaway/read-only dialogs.
 export function Modal({ open, onClose, title, width = 520, children, footer, closeOnBackdrop = false }) {
   useLockBodyScroll(open);
+  // On a phone the card becomes a sheet from the bottom: full width, most of the height, the
+  // close under the thumb. A 520px card in a 360px screen was a 328px box scrolling inside a
+  // page that also scrolled.
+  const phone = useIsPhone();
   if (!open) return null;
   return (
     <div
       onClick={closeOnBackdrop ? onClose : undefined}
-      style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.35)', zIndex:1000, display:'flex', alignItems:'center', justifyContent:'center', padding:'16px' }}
+      style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.35)', zIndex:1000, display:'flex',
+        alignItems: phone ? 'flex-end' : 'center', justifyContent:'center', padding: phone ? 0 : '16px' }}
     >
       <div
         onClick={e => e.stopPropagation()}
-        style={{ background:'var(--dark)', borderRadius:'10px', width:'100%', maxWidth:width, maxHeight:'90vh', display:'flex', flexDirection:'column', boxShadow:'0 8px 40px rgba(0,0,0,.35)' }}
+        style={{ background:'var(--dark)', width:'100%', display:'flex', flexDirection:'column', boxShadow:'0 8px 40px rgba(0,0,0,.35)',
+          ...(phone
+            ? { borderRadius:'14px 14px 0 0', maxWidth:'100%', maxHeight:'94vh', paddingBottom:'env(safe-area-inset-bottom, 0px)' }
+            : { borderRadius:'10px', maxWidth:width, maxHeight:'90vh' }) }}
       >
         {/* header */}
-        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'18px 20px 14px', borderBottom:'1px solid var(--border)', flexShrink:0 }}>
-          <span style={{ fontWeight:700, fontSize:'16px', color:'var(--white)' }}>{title}</span>
-          <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:'var(--gray)', padding:'4px', borderRadius:'5px', display:'flex' }}>{ICONS.x}</button>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding: phone ? '12px 16px 10px' : '18px 20px 14px', borderBottom:'1px solid var(--border)', flexShrink:0 }}>
+          <span style={{ fontWeight:700, fontSize: phone ? '15px' : '16px', color:'var(--white)', minWidth:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{title}</span>
+          <button onClick={onClose} aria-label="Close" style={{ background:'none', border:'none', cursor:'pointer', color:'var(--gray)', padding: phone ? '8px' : '4px', borderRadius:'5px', display:'flex', flexShrink:0 }}>{ICONS.x}</button>
         </div>
         {/* body - overflowX hidden so one long label can never turn the whole modal
             into a sideways scroller; content is expected to ellipsis instead. */}
         {/* marginRight pulls the scrollbar in off the card's edge so it sits inside the rounded
             corner; the padding is reduced by the same amount, so the content does not move. */}
-        <div style={{ overflowY:'auto', overflowX:'hidden', flex:1, minHeight:0, marginRight:'6px', padding:'18px 14px 18px 20px' }}>{children}</div>
-        {/* footer */}
+        <div style={{ overflowY:'auto', overflowX:'hidden', flex:1, minHeight:0, marginRight: phone ? 0 : '6px', padding: phone ? '14px 16px' : '18px 14px 18px 20px' }}>{children}</div>
+        {/* footer - on a phone the buttons fill the width so each is a real target */}
         {footer && (
-          <div style={{ padding:'14px 20px', borderTop:'1px solid var(--border)', display:'flex', justifyContent:'flex-end', gap:'8px', flexShrink:0 }}>
+          <div style={{ padding: phone ? '10px 16px' : '14px 20px', borderTop:'1px solid var(--border)', display:'flex', justifyContent:'flex-end', gap:'8px', flexShrink:0, flexWrap:'wrap' }}
+            className={phone ? 'pmp-sheet-footer' : undefined}>
             {footer}
           </div>
         )}
