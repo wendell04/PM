@@ -1829,7 +1829,7 @@
         /* Responsive */
         @media (max-width: 768px) {
           .shop-hero-banner {
-            grid-template-columns: 1fr;
+            grid-template-columns: minmax(0, 1fr);
             padding: 1.5rem;
             text-align: center;
           }
@@ -5738,4 +5738,25 @@ html.light .shop-search-suggest-name { color: #111; }
     padding-bottom: env(safe-area-inset-bottom, 0px);
   }
   .pmp-terms-footer > button { flex: 1 1 auto; min-height: 46px; }
+}
+
+/* A phone page never scrolls sideways. Anything wider than the screen is a bug in that element,
+   and it is contained there instead of dragging the header and every card out with it. Long
+   unbroken strings (filenames, URLs, codes) wrap rather than widen. */
+@media (max-width: 768px) {
+  html, body { overflow-x: hidden; }
+  p, span, a, li, td, th { overflow-wrap: anywhere; }
+}
+
+/* The receipt on a phone. It is drawn for paper - three rows of 40px-gapped columns - and on a
+   360px screen the meta row squeezed to single words and Bill To / Ship To became two columns of
+   eleven characters. Under 480px the rows stack and the gaps close. Desktop and the PDF (a
+   separate template) are untouched. */
+@media (max-width: 480px) {
+  .pmp-receipt-head { flex-direction: column; }
+  .pmp-receipt-head > div:last-child { text-align: left !important; }
+  .pmp-receipt-meta { gap: 14px 22px !important; }
+  .pmp-receipt-parties { flex-direction: column; gap: 14px !important; }
+  .pmp-receipt table { font-size: 12px !important; }
+  .pmp-receipt td, .pmp-receipt th { padding-left: 6px !important; padding-right: 6px !important; }
 }

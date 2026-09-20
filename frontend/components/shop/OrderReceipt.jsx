@@ -41,8 +41,8 @@ export default function OrderReceipt({ order }) {
   );
 
   return (
-    <div id="pmp-print-receipt" style={{ textAlign: 'left', color: '#111', fontFamily: 'Arial, Helvetica, sans-serif' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
+    <div id="pmp-print-receipt" className="pmp-receipt" style={{ textAlign: 'left', color: '#111', fontFamily: 'Arial, Helvetica, sans-serif' }}>
+      <div className="pmp-receipt-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20, gap: 12 }}>
         <div style={{ fontSize: 27, fontWeight: 800, letterSpacing: 1, color: '#111' }}>Receipt</div>
         <div style={{ textAlign: 'right', fontSize: 11.5, color: '#555', lineHeight: 1.7 }}>
           <div style={{ fontWeight: 800, color: GOLD, fontSize: 15 }}>Personalize Me Prints</div>
@@ -50,13 +50,13 @@ export default function OrderReceipt({ order }) {
           <div>personalizemeprints.com</div>
         </div>
       </div>
-      <div style={{ display: 'flex', gap: 40, fontSize: 12, color: '#333', borderTop: '2px solid #111', borderBottom: '1px solid #ddd', padding: '10px 0', marginBottom: 20 }}>
+      <div className="pmp-receipt-meta" style={{ display: 'flex', gap: 40, flexWrap: 'wrap', fontSize: 12, color: '#333', borderTop: '2px solid #111', borderBottom: '1px solid #ddd', padding: '10px 0', marginBottom: 20 }}>
         <div><div style={{ color: '#888', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>Order No.</div><div style={{ fontWeight: 700, marginTop: 2 }}>{orderNo(order)}</div></div>
         <div><div style={{ color: '#888', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>Date</div><div style={{ fontWeight: 700, marginTop: 2 }}>{rDate || '-'}</div></div>
         <div><div style={{ color: '#888', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>Status</div><div style={{ fontWeight: 700, marginTop: 2, color: settled ? '#166534' : '#b45309' }}>{statusText}</div></div>
       </div>
-      <div style={{ display: 'flex', gap: 40, marginBottom: 22 }}>
-        <div style={{ flex: 1 }}>
+      <div className="pmp-receipt-parties" style={{ display: 'flex', gap: 40, marginBottom: 22 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 10.5, fontWeight: 800, color: GOLD, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 5 }}>Bill To</div>
           <div style={{ fontSize: 12, color: '#333', lineHeight: 1.6 }}>{rName}{order.userSnapshot?.email ? <><br />{order.userSnapshot.email}</> : null}{rPhone ? <><br />{rPhone}</> : null}</div>
         </div>

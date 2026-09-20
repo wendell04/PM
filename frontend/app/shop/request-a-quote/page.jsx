@@ -166,5 +166,5 @@ const css = `
               color: #fca5a5; border-radius: 8px; padding: .65rem .8rem; font-size: .85rem;
               margin-bottom: 1rem; }
   .rq-fine { font-size: .78rem; color: rgba(245,245,245,.45); margin: .9rem 0 0; line-height: 1.5; }
-  @media (max-width: 480px) { .rq-row { grid-template-columns: 1fr; } .rq-card { padding: 1.25rem; } }
+  @media (max-width: 480px) { .rq-row { grid-template-columns: minmax(0, 1fr); } .rq-row > * { min-width: 0; } .rq-card { padding: 1.25rem; } }
 `;

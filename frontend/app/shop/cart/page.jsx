@@ -934,7 +934,7 @@ export default function CartPage() {
 
         <style jsx>{`
           @media (max-width: 820px) {
-            .cart-grid { grid-template-columns: 1fr !important; }
+            .cart-grid { grid-template-columns: minmax(0, 1fr) !important; }
           }
           /* Nothing inside a line may widen the page. A long filename or an unbroken word wraps or
              is cut inside its own box; the page never scrolls sideways on a phone. */

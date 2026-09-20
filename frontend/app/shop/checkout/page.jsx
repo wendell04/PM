@@ -871,7 +871,7 @@ export default function CheckoutPage() {
     <div className="checkout-wrapper">
       <style>{`
         .checkout-card-row { display:grid; grid-template-columns:1fr 1fr; gap:0.75rem; margin-bottom:0.75rem; }
-        @media(max-width:480px){ .checkout-card-row { grid-template-columns:1fr; } }
+        @media(max-width:480px){ .checkout-card-row { grid-template-columns:minmax(0,1fr); } .checkout-card-row > * { min-width:0; } }
       `}</style>
 
       {/* ── Payment Success Modal ── */}

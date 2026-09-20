@@ -303,20 +303,22 @@ export default function PaymentSuccessPage() {
             <div onClick={() => setHoldNoticeSeen(true)} role="presentation"
               style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.72)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
               <div onClick={e => e.stopPropagation()} role="dialog" aria-label="Before anything prints"
-                style={{ width: '100%', maxWidth: 440, background: 'var(--dark2, #1a1a1a)', border: '1px solid rgba(212,168,67,0.4)', borderRadius: 16, padding: '22px 22px 18px', textAlign: 'center', boxShadow: '0 20px 60px rgba(0,0,0,0.5)' }}>
-                <div style={{ fontSize: '1rem', fontWeight: 800, color: '#d4a843', letterSpacing: '0.04em', marginBottom: 10 }}>THANK YOU FOR YOUR ORDER</div>
+                style={{ position: 'relative', width: '100%', maxWidth: 440, background: 'var(--dark2, #1a1a1a)', border: '1px solid rgba(212,168,67,0.4)', borderRadius: 16, padding: '22px 22px 20px', textAlign: 'center', boxShadow: '0 20px 60px rgba(0,0,0,0.5)' }}>
+                {/* The X only. A button read as "there is a next step"; there is not - the receipt
+                    is the page behind this, and closing shows it. */}
+                <button type="button" onClick={() => setHoldNoticeSeen(true)} aria-label="Close"
+                  style={{ position: 'absolute', top: 8, right: 8, width: 36, height: 36, background: 'none', border: 'none', color: 'var(--gray)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+                <div style={{ fontSize: '1rem', fontWeight: 800, color: '#d4a843', letterSpacing: '0.04em', marginBottom: 10, padding: '0 28px' }}>THANK YOU FOR YOUR ORDER</div>
                 <p style={{ margin: '0 0 10px', fontSize: '0.92rem', color: 'var(--white, #fff)', lineHeight: 1.6 }}>
                   {upload
                     ? 'We check your file carefully and approve it - or tell you what needs fixing - before anything prints.'
                     : 'Our designer sends you a proof, here and in chat, that you must approve before anything prints.'}
                 </p>
-                <p style={{ margin: '0 0 18px', fontSize: '0.92rem', fontWeight: 700, color: '#e05252', lineHeight: 1.6 }}>
+                <p style={{ margin: 0, fontSize: '0.92rem', fontWeight: 700, color: '#e05252', lineHeight: 1.6 }}>
                   The countdown to your delivery date starts once that approval is done - not today.
                 </p>
-                <button type="button" onClick={() => setHoldNoticeSeen(true)}
-                  style={{ width: '100%', padding: '12px', borderRadius: 10, border: 'none', background: '#d4a843', color: '#111', fontWeight: 800, fontSize: '0.92rem', cursor: 'pointer' }}>
-                  Got it - show my order
-                </button>
               </div>
             </div>
           );

@@ -487,7 +487,7 @@ export default function QuoteCheckoutPage() {
 
       <style jsx>{`
         @media (max-width: 820px) {
-          .quote-checkout-grid { grid-template-columns: 1fr !important; }
+          .quote-checkout-grid { grid-template-columns: minmax(0, 1fr) !important; } .quote-checkout-grid > * { min-width: 0; }
         }
       `}</style>
     </div>

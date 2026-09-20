@@ -1242,7 +1242,7 @@ export default function CustomerProfilePage() {
           .order-stepper-full { display:none !important; }
           .order-stepper-mini { display:block; }
 
-          .profile-2col, .profile-form-2col, .profile-info-2col { grid-template-columns:1fr; }
+          .profile-2col, .profile-form-2col, .profile-info-2col { grid-template-columns:minmax(0,1fr); } .profile-2col > *, .profile-form-2col > *, .profile-info-2col > * { min-width:0; }
           .profile-info-2col { gap:0.5rem; }
           .profile-form-2col { gap:1rem; }
 

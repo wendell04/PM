@@ -1124,8 +1124,11 @@ function CustomOrderInner() {
         /* The two design-mode cards carry three lines of copy each. Side by side on a 390px phone
            that is a column of single words, so they stack before it gets there. */
         .co-modes { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-bottom: 1.25rem; }
-        @media (max-width: 560px) { .co-modes { grid-template-columns: 1fr; } }
-        @media (max-width: 768px) { .custom-order-grid { grid-template-columns: 1fr; } .custom-order-sidebar { position: static !important; } }
+        @media (max-width: 560px) { .co-modes { grid-template-columns: minmax(0, 1fr); } }
+        /* minmax(0, 1fr), never a bare 1fr: 1fr means minmax(auto, 1fr), and 'auto' lets one wide
+           element (a long template label, an unbroken word) grow the whole column past the phone.
+           The mousepad page did exactly that; the tote, with nothing wide, did not. */
+        @media (max-width: 768px) { .custom-order-grid { grid-template-columns: minmax(0, 1fr); } .custom-order-grid > * { min-width: 0; } .custom-order-sidebar { position: static !important; } }
         /* A phone has a third of the width this page was drawn for, so the chrome gives way first:
            headings, padding and gaps step down. Controls do NOT shrink - a button under about 44px
            is a button a thumb misses, and this page is nothing but controls. */
