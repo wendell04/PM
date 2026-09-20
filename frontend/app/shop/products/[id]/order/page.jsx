@@ -1,6 +1,7 @@
 'use client';
 
 import AddressPicker from '@/components/shop/AddressPicker';
+import { addWorkingDays } from '@/lib/workingDays';
 import { optionGroupsOf, defaultOptionSelection, selectedOptionList, optionsUnitAdd, optionsOrderAdd, withOptionSuffix, optionKey, groupKey } from '@/lib/shopUtils';
 import NoImage from '@/components/NoImage';
 
@@ -452,7 +453,8 @@ function CustomOrderInner() {
   const termsSnapshot = activeClauses.map(t => ({ title: t.title, body: t.body, mode: t.mode || 'both' }));
   const termsVersion = storeSettings?.termsVersion ?? 1;
   // "Get by" date = today + (production + shipping) business days, skipping Sundays.
-  const addBizDays = (n) => { const d = new Date(); let added = 0; while (added < n) { d.setDate(d.getDate() + 1); if (d.getDay() !== 0) added += 1; } return d; };
+  // Matches the server: Sundays, national holidays and the shop's own closures.
+  const addBizDays = (n) => addWorkingDays(n, { workingDays: storeSettings?.workingDays, holidays: storeSettings?.holidays });
   const fmtGetBy = (d) => d.toLocaleDateString('en-PH', { month: 'short', day: 'numeric' });
   const getByRange = (lead) => {
     const a = fmtGetBy(addBizDays(lead + shipMinDays));

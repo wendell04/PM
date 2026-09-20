@@ -7,6 +7,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { billingName } from '@/lib/billingName';
 import { useCart } from '@/context/CartContext';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
+import { addWorkingDays } from '@/lib/workingDays';
 import { isNetworkError } from '@/lib/afterTimeout';
 import '@/app/shop/shop.css';
 import { applyVoucher } from '@/lib/voucherApi';
@@ -362,7 +363,10 @@ export default function CheckoutPage() {
   const rushEnabled = storeSettings?.rushEnabled !== false && needsProduction;
   const rushLead    = Number(storeSettings?.rushLeadDays ?? 1);
   const rushFeeAmt  = Number(storeSettings?.rushFee ?? 150);
-  const addBizDays  = (n) => { const d = new Date(); d.setHours(0,0,0,0); let a = 0; while (a < n) { d.setDate(d.getDate() + 1); if (d.getDay() !== 0) a++; } return d; }; // skip Sundays
+  // Same rule the server uses, from the same settings - Sundays, national holidays and whatever
+  // the shop has closed. Counting only Sundays here made checkout print one date while the saved
+  // order held another, and the customer was told the earlier one.
+  const addBizDays  = (n) => addWorkingDays(n, { workingDays: storeSettings?.workingDays, holidays: storeSettings?.holidays });
   const getByRange  = (lead) => {
     const f = (d) => d.toLocaleDateString('en-PH', { month: 'short', day: 'numeric' });
     const a = addBizDays(lead + shipMin), b = addBizDays(lead + shipMax);

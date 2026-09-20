@@ -24,6 +24,7 @@ import { S, ICONS, SearchBar, SummaryCard, PaginationBar, EmptyState, usePaginat
 import { useIsPhone, KpiStrip, PhoneFilterBar, PhoneList, PhoneRow } from '@/components/dashboard/phone';
 import { isCodMethod } from '@/lib/paymentMethod';
 import { needsJobOrder } from '@/lib/jobOrderEligibility';
+import { addWorkingDays, subtractWorkingDays } from '@/lib/workingDays';
 
 // Backward-scheduling buffers: the JO must FINISH before the delivery promise, leaving room to QC,
 // pack, and ship. Target = (customer need-by || delivery promise) - shipping transit - QC/pack.
@@ -48,18 +49,10 @@ const toYmd = (d) => {
   return `${z.getFullYear()}-${String(z.getMonth() + 1).padStart(2, '0')}-${String(z.getDate()).padStart(2, '0')}`;
 };
 // Walk back N business days (skip Sundays; Saturday is a work day here - mirrors OrderController).
-const subtractBizDays = (from, days) => {
-  const d = new Date(from);
-  let left = days;
-  while (left > 0) { d.setDate(d.getDate() - 1); if (d.getDay() !== 0) left--; }
-  return d;
-};
-const addBizDays = (from, days) => {
-  const d = new Date(from);
-  let left = days;
-  while (left > 0) { d.setDate(d.getDate() + 1); if (d.getDay() !== 0) left--; }
-  return d;
-};
+// Sundays, national holidays and the shop's closures - the same rule the server schedules by,
+// so a bench deadline and a delivery promise cannot land on different assumptions.
+const subtractBizDays = (from, days) => subtractWorkingDays(days, {}, from);
+const addBizDays = (from, days) => addWorkingDays(days, {}, from);
 // Backward-schedule the production deadline from the order's delivery promise (or the customer's
 // need-by date, which wins). Returns the ymd date plus a human breakdown for the modal.
 function deriveTarget(order) {
