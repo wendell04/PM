@@ -52,6 +52,11 @@ class SettingsController extends Controller
                 // Transit by destination. One national range promised Maguindanao the same
                 // 1-2 days as a delivery across Quezon City; checkout reads this instead.
                 'shippingZones'        => \App\Support\ShippingZones::all(),
+                // Which weekdays the shop opens, and the dates it is shut. Every delivery
+                // estimate counts in working days, so these two decide what a "3 day" promise
+                // actually lands on - Christmas used to count as a working day.
+                'workingDays'          => \App\Support\WorkingDays::openWeekdays(),
+                'holidays'             => \App\Support\WorkingDays::extraHolidays(),
                 'shippingDaysMin'      => (int)   ($owner->shippingDaysMin      ?? 1),
                 'shippingDaysMax'      => (int)   ($owner->shippingDaysMax      ?? 2),
                 'rushEnabled'          => (bool)  ($owner->rushEnabled          ?? true),
@@ -254,6 +259,11 @@ class SettingsController extends Controller
                 // Transit by destination. One national range promised Maguindanao the same
                 // 1-2 days as a delivery across Quezon City; checkout reads this instead.
                 'shippingZones'        => \App\Support\ShippingZones::all(),
+                // Which weekdays the shop opens, and the dates it is shut. Every delivery
+                // estimate counts in working days, so these two decide what a "3 day" promise
+                // actually lands on - Christmas used to count as a working day.
+                'workingDays'          => \App\Support\WorkingDays::openWeekdays(),
+                'holidays'             => \App\Support\WorkingDays::extraHolidays(),
                 'shippingDaysMin'      => (int)   ($owner->shippingDaysMin      ?? 1),
                 'shippingDaysMax'      => (int)   ($owner->shippingDaysMax      ?? 2),
                 'rushEnabled'          => (bool)  ($owner->rushEnabled          ?? true),
@@ -312,6 +322,10 @@ class SettingsController extends Controller
                 'extraRevisionFee'     => 'nullable|numeric|min:0|max:99999',
                 'maxRevisions'         => 'nullable|integer|min:1|max:20',
                 'shippingZones'        => 'nullable|array',
+                'workingDays'          => 'nullable|array',
+                'workingDays.*'        => 'integer|min:0|max:6',
+                'holidays'             => 'nullable|array|max:120',
+                'holidays.*'           => 'date',
                 'shippingZones.*.min'  => 'nullable|integer|min:0|max:120',
                 'shippingZones.*.max'  => 'nullable|integer|min:0|max:120',
                 'shippingDaysMin'      => 'nullable|integer|min:0|max:120',
@@ -346,6 +360,8 @@ class SettingsController extends Controller
             if ($request->has('extraRevisionFee'))     $owner->extraRevisionFee     = (float) $request->extraRevisionFee;
             if ($request->has('maxRevisions'))         $owner->maxRevisions         = (int) $request->maxRevisions;
             if ($request->has('shippingZones'))        $owner->shippingZones        = $request->input('shippingZones');
+            if ($request->has('workingDays'))          $owner->workingDays          = array_values(array_unique(array_map('intval', (array) $request->input('workingDays'))));
+            if ($request->has('holidays'))             $owner->holidays             = array_values(array_unique(array_map(fn ($d) => substr((string) $d, 0, 10), (array) $request->input('holidays'))));
             if ($request->has('shippingDaysMin'))      $owner->shippingDaysMin      = (int) $request->shippingDaysMin;
             if ($request->has('shippingDaysMax'))      $owner->shippingDaysMax      = (int) $request->shippingDaysMax;
             if ($request->has('rushEnabled'))          $owner->rushEnabled          = (bool) $request->rushEnabled;
@@ -383,6 +399,11 @@ class SettingsController extends Controller
                 // Transit by destination. One national range promised Maguindanao the same
                 // 1-2 days as a delivery across Quezon City; checkout reads this instead.
                 'shippingZones'        => \App\Support\ShippingZones::all(),
+                // Which weekdays the shop opens, and the dates it is shut. Every delivery
+                // estimate counts in working days, so these two decide what a "3 day" promise
+                // actually lands on - Christmas used to count as a working day.
+                'workingDays'          => \App\Support\WorkingDays::openWeekdays(),
+                'holidays'             => \App\Support\WorkingDays::extraHolidays(),
                 'shippingDaysMin'      => (int)   ($owner->shippingDaysMin      ?? 1),
                 'shippingDaysMax'      => (int)   ($owner->shippingDaysMax      ?? 2),
                 'rushEnabled'          => (bool)  ($owner->rushEnabled          ?? true),

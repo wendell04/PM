@@ -61,12 +61,9 @@ class DeliveryClock
         $max  = (int) ($clock['shipMax'] ?? 0);
         if ($lead <= 0 && $min <= 0 && $max <= 0) return false;
 
-        // Saturday is a working day here; Sunday is not. Same rule the original estimate used.
-        $add = function (int $days) {
-            $d = now();
-            while ($days > 0) { $d = $d->addDay(); if (!$d->isSunday()) { $days--; } }
-            return $d;
-        };
+        // Same working-day rule as the original estimate - Sundays and holidays out,
+        // Saturday in - so a re-counted promise cannot disagree with the first one.
+        $add = fn (int $days) => WorkingDays::add(now(), $days);
 
         $newMin = $add($lead + $min);
         $newMax = $add($lead + $max);

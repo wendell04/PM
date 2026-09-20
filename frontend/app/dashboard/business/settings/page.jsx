@@ -233,6 +233,7 @@ export default function SettingsPage() {
     shippingBaseRate: '49', shippingPerKmRate: '6', shippingPerKmRateFar: '5', shippingTierKm: '5',
     flatRateInsideMetro: '150', flatRateOutsideMetro: '250',
     productionLeadDays: '3', shippingDaysMin: '1', shippingDaysMax: '2',
+    workingDays: [1, 2, 3, 4, 5, 6], holidays: [], shippingZones: [],
     rushEnabled: true, rushLeadDays: '1', rushFee: '150',
   });
   const setStorePart = (patch) => setShippingForm(f => {
@@ -381,6 +382,9 @@ export default function SettingsPage() {
             refundDays:           d.data.refundDays           != null ? String(d.data.refundDays)           : '7',
             flatRateInsideMetro:  d.data.flatRateInsideMetro  != null ? String(d.data.flatRateInsideMetro)  : '150',
             flatRateOutsideMetro: d.data.flatRateOutsideMetro != null ? String(d.data.flatRateOutsideMetro) : '250',
+            workingDays:          Array.isArray(d.data.workingDays)   ? d.data.workingDays   : [1,2,3,4,5,6],
+            holidays:             Array.isArray(d.data.holidays)      ? d.data.holidays      : [],
+            shippingZones:        Array.isArray(d.data.shippingZones) ? d.data.shippingZones : [],
             productionLeadDays:   d.data.productionLeadDays    != null ? String(d.data.productionLeadDays)   : '3',
             shippingDaysMin:      d.data.shippingDaysMin       != null ? String(d.data.shippingDaysMin)      : '1',
             shippingDaysMax:      d.data.shippingDaysMax       != null ? String(d.data.shippingDaysMax)      : '2',
@@ -1097,6 +1101,12 @@ export default function SettingsPage() {
     setPromiseError(''); setPromiseSuccess(''); setIsSavingPromise(true);
     try {
       await saveShippingFields({
+        workingDays:   shippingForm.workingDays ?? [1,2,3,4,5,6],
+        holidays:      shippingForm.holidays ?? [],
+        shippingZones: (shippingForm.shippingZones ?? []).reduce((acc, z) => {
+          acc[z.zone] = { min: parseInt(z.min, 10) || 0, max: parseInt(z.max, 10) || 0 };
+          return acc;
+        }, {}),
         productionLeadDays: parseInt(shippingForm.productionLeadDays, 10) || 0,
         shippingDaysMin:    parseInt(shippingForm.shippingDaysMin, 10) || 0,
         shippingDaysMax:    parseInt(shippingForm.shippingDaysMax, 10) || 0,
@@ -2461,6 +2471,90 @@ export default function SettingsPage() {
                       </div>
                     </div>
                   )}
+                </div>
+
+                {/* Which days the shop opens, and the dates it is shut. Every estimate counts in
+                    working days, so these decide what "3 days" actually lands on. Before this,
+                    Christmas Day counted as a working day. */}
+                <div style={{ marginBottom: '1.25rem', padding: '1.25rem 1.5rem', background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '10px' }}>
+                  <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--white)', marginBottom: '0.15rem' }}>When you are open</div>
+                  <p style={{ fontSize: '0.72rem', color: 'var(--gray)', margin: '0 0 0.9rem', lineHeight: 1.5 }}>
+                    Delivery estimates skip the days you are closed. Regular national holidays are
+                    already excluded; add anything else here - a proclaimed holiday, Holy Week, or
+                    a day you simply will not be in.
+                  </p>
+                  <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
+                    {[['Sun',0],['Mon',1],['Tue',2],['Wed',3],['Thu',4],['Fri',5],['Sat',6]].map(([label, n]) => {
+                      const on = (shippingForm.workingDays ?? []).includes(n);
+                      return (
+                        <button key={n} type="button"
+                          onClick={() => setShippingForm(f => {
+                            const cur = f.workingDays ?? [];
+                            return { ...f, workingDays: on ? cur.filter(x => x !== n) : [...cur, n] };
+                          })}
+                          style={{ padding: '0.45rem 0.8rem', borderRadius: 8, fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer',
+                            background: on ? 'var(--gold)' : 'transparent', color: on ? '#1a1a1a' : 'var(--gray)',
+                            border: `1px solid ${on ? 'var(--gold)' : 'var(--border)'}` }}>
+                          {label}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--gray-light)', marginBottom: '0.3rem' }}>Closed on these dates</label>
+                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap', marginBottom: '0.6rem' }}>
+                    <input type="date" value={shippingForm._newHoliday ?? ''}
+                      onChange={e => setShippingForm(f => ({ ...f, _newHoliday: e.target.value }))}
+                      style={{ padding: '0.5rem 0.7rem', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--dark)', color: 'var(--white)', fontSize: '0.85rem' }} />
+                    <button type="button"
+                      onClick={() => setShippingForm(f => {
+                        const d = (f._newHoliday ?? '').slice(0, 10);
+                        if (!d) return f;
+                        const cur = f.holidays ?? [];
+                        return { ...f, holidays: cur.includes(d) ? cur : [...cur, d].sort(), _newHoliday: '' };
+                      })}
+                      style={{ padding: '0.5rem 0.9rem', borderRadius: 8, border: '1px solid var(--gold)', background: 'transparent', color: 'var(--gold)', fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer' }}>
+                      Add closure
+                    </button>
+                  </div>
+                  <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                    {(shippingForm.holidays ?? []).length === 0
+                      ? <span style={{ fontSize: '0.74rem', color: 'var(--gray)' }}>No extra closures. National holidays are already excluded.</span>
+                      : (shippingForm.holidays ?? []).map(d => (
+                          <span key={d} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '0.3rem 0.6rem', borderRadius: 999, background: 'var(--dark)', border: '1px solid var(--border)', fontSize: '0.75rem', color: 'var(--white)' }}>
+                            {new Date(d + 'T00:00:00').toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}
+                            <button type="button" onClick={() => setShippingForm(f => ({ ...f, holidays: (f.holidays ?? []).filter(x => x !== d) }))}
+                              style={{ background: 'none', border: 'none', color: 'var(--gray)', cursor: 'pointer', fontSize: '0.9rem', lineHeight: 1, padding: 0 }}>&times;</button>
+                          </span>
+                        ))}
+                  </div>
+                </div>
+
+                {/* Transit by destination. One national range promised Maguindanao the same 1-2
+                    days as a delivery across Quezon City. */}
+                <div style={{ marginBottom: '1.25rem', padding: '1.25rem 1.5rem', background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '10px' }}>
+                  <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--white)', marginBottom: '0.15rem' }}>Transit by destination</div>
+                  <p style={{ fontSize: '0.72rem', color: 'var(--gray)', margin: '0 0 0.9rem', lineHeight: 1.5 }}>
+                    Courier days on top of production, chosen from the customer&apos;s address. Set these
+                    from what your courier actually does - the starting figures are typical, not yours.
+                  </p>
+                  {(shippingForm.shippingZones ?? []).map((z, i) => (
+                    <div key={z.zone} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.6rem', flexWrap: 'wrap' }}>
+                      <span style={{ flex: '1 1 140px', fontSize: '0.8rem', color: 'var(--white)', fontWeight: 600 }}>{z.label}</span>
+                      {['min', 'max'].map(k => (
+                        <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                          <span style={{ fontSize: '0.7rem', color: 'var(--gray)' }}>{k}</span>
+                          <input type="text" inputMode="numeric" maxLength={3} value={String(z[k] ?? '')}
+                            onChange={e => {
+                              const v = e.target.value.replace(/[^0-9]/g, '');
+                              setShippingForm(f => ({ ...f, shippingZones: (f.shippingZones ?? []).map((x, xi) => xi === i ? { ...x, [k]: v } : x) }));
+                            }}
+                            style={{ width: 56, padding: '0.4rem 0.5rem', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--dark)', color: 'var(--white)', fontSize: '0.85rem', textAlign: 'center' }} />
+                        </div>
+                      ))}
+                      <span style={{ fontSize: '0.72rem', color: 'var(--gray)' }}>days</span>
+                    </div>
+                  ))}
                 </div>
 
                 {promiseError && (

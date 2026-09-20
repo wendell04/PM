@@ -328,11 +328,10 @@ class OrderController extends Controller
             $rushStatus = $isRush ? 'requested' : null;
 
             $leadDays = !$needsProduction ? 0 : ($isRush ? $rushLead : $prodLead);
-            $addBusinessDays = function (int $days) {          // skip Sundays (Sat is a work day here)
-                $d = now();
-                while ($days > 0) { $d = $d->addDay(); if (!$d->isSunday()) { $days--; } }
-                return $d;
-            };
+            // Sundays and holidays are not working days; Saturday is. Shared with the clock
+            // restart and the job-order screen, because three copies of this loop meant three
+            // different answers about Christmas.
+            $addBusinessDays = fn (int $days) => \App\Support\WorkingDays::add(now(), $days);
             $estimatedDeliveryMin = $addBusinessDays($leadDays + $shipMin)->toIso8601String();
             $estimatedDeliveryMax = $addBusinessDays($leadDays + $shipMax)->toIso8601String();
 
