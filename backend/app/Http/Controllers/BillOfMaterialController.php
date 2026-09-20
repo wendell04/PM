@@ -108,10 +108,10 @@ class BillOfMaterialController extends Controller
                 'variantName'      => 'nullable|string|max:255',
                 'variantCombo'     => 'nullable|array',
                 'components'       => 'required|array|min:1',
-                'components.*.inventoryId'  => 'required|string',
-                'components.*.materialName' => 'required|string',
+                'components.*.inventoryId'  => 'required|string|max:128',
+                'components.*.materialName' => 'required|string|max:160',
                 'components.*.qty'          => 'required|numeric|min:0.001',
-                'components.*.unit'         => 'required|string',
+                'components.*.unit'         => 'required|string|max:160',
                 'components.*.unitCost'     => 'required|numeric|min:0',
             ]);
 
@@ -171,10 +171,10 @@ class BillOfMaterialController extends Controller
                 'variantName'      => 'sometimes|nullable|string|max:255',
                 'variantCombo'     => 'nullable|array',
                 'components'       => 'sometimes|array|min:1',
-                'components.*.inventoryId'  => 'required_with:components|string',
-                'components.*.materialName' => 'required_with:components|string',
+                'components.*.inventoryId'  => 'required_with:components|string|max:128',
+                'components.*.materialName' => 'required_with:components|string|max:160',
                 'components.*.qty'          => 'required_with:components|numeric|min:0.001',
-                'components.*.unit'         => 'required_with:components|string',
+                'components.*.unit'         => 'required_with:components|string|max:160',
                 'components.*.unitCost'     => 'required_with:components|numeric|min:0',
             ]);
 

@@ -56,7 +56,7 @@ class StaffController extends Controller
                 'firstName' => 'required|string|max:100',
                 'lastName'  => 'required|string|max:100',
                 'email'     => 'required|email',
-                'password'  => 'nullable|string|min:8',
+                'password'  => 'nullable|string|min:8|max:255',
                 'role'      => 'required|string|in:' . implode(',', $assignable),
             ]);
             $makingOwner = $validated['role'] === config('rbac.owner_role', 'owner');
@@ -184,7 +184,7 @@ class StaffController extends Controller
                 'firstName' => 'sometimes|string|max:100',
                 'lastName'  => 'sometimes|string|max:100',
                 'role'      => 'sometimes|string|in:' . implode(',', $this->getStaffRoles()),
-                'password'  => 'sometimes|string|min:8',
+                'password'  => 'sometimes|string|min:8|max:255',
             ]);
 
             // Escalation guard: cannot promote a user into a role at or above your own level.

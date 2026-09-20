@@ -74,21 +74,21 @@ class AuditLogController extends Controller
             }
 
             $validated = $request->validate([
-                'inventoryId'   => 'required|string',
-                'productName'   => 'required|string',
-                'category'      => 'required|string',
+                'inventoryId'   => 'required|string|max:128',
+                'productName'   => 'required|string|max:160',
+                'category'      => 'required|string|max:160',
                 'reason'        => 'required|in:restock,correction-add,correction-deduct,sale,return,sales-outside',
                 'quantity'      => 'required|integer',
                 'stockBefore'   => 'required|integer',
                 'stockAfter'    => 'required|integer',
                 'unitCost'      => 'nullable|numeric|min:0',
                 'totalCost'     => 'nullable|numeric|min:0',
-                'supplierId'    => 'nullable|string',
+                'supplierId'    => 'nullable|string|max:128',
                 'sellingPrice'  => 'nullable|numeric|min:0',
-                'customerName'  => 'nullable|string',
+                'customerName'  => 'nullable|string|max:160',
                 'saleDate'      => 'nullable|date',
-                'remarks'       => 'nullable|string',
-                'performedBy'   => 'nullable|string',
+                'remarks'       => 'nullable|string|max:2000',
+                'performedBy'   => 'nullable|string|max:255',
             ]);
 
             $auditLog = AuditLog::create([

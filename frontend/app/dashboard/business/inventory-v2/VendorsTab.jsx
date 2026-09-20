@@ -312,7 +312,7 @@ export default function VendorsTab({ vendors, setVendors, materials, categories,
                     placeholder="e.g. Packaging"
                     autoFocus
                     style={{ flex:1, ...S.input, fontSize:'12px', padding:'4px 8px' }}
-                  />
+                   maxLength={255}/>
                   <button type="button" onClick={addCustomCategory} style={{ ...S.btnPrimary, fontSize:'12px', padding:'4px 10px' }}>Add</button>
                   <button type="button" onClick={() => { setShowCustom(false); setCustomInput(''); }} style={{ ...S.btnGhost, fontSize:'12px', padding:'4px 8px' }}>✕</button>
                 </div>

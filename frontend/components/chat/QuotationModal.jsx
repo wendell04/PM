@@ -743,7 +743,7 @@ const QuotationModal = ({ onClose, onSubmit, isSending, token, customerId, custo
                       <div style={{ marginTop: '6px' }}>
                         <input autoFocus value={matQuery} onChange={e => setMatQuery(e.target.value)}
                           placeholder="Search Master Data (e.g. DTF film)…"
-                          style={{ ...S.input, padding: '5px 8px', fontSize: '12px' }} />
+                          style={{ ...S.input, padding: '5px 8px', fontSize: '12px' }}  maxLength={80}/>
                         <div style={{ maxHeight: '132px', overflowY: 'auto', marginTop: '4px', border: '1px solid var(--border)', borderRadius: '6px' }}>
                           {matchingMaterials(l).length === 0 ? (
                             <div style={{ padding: '8px', fontSize: '11px', color: 'var(--gray)', textAlign: 'center' }}>No materials found</div>
@@ -803,7 +803,7 @@ const QuotationModal = ({ onClose, onSubmit, isSending, token, customerId, custo
                           ) : (
                             <input autoFocus value={matQuery} onChange={e => setMatQuery(e.target.value)}
                               placeholder="Search Master Data (e.g. t-shirt)…"
-                              style={{ ...S.input, padding: '5px 8px', fontSize: '12px' }} />
+                              style={{ ...S.input, padding: '5px 8px', fontSize: '12px' }}  maxLength={80}/>
                           )}
                           <div style={{ maxHeight: '132px', overflowY: 'auto', marginTop: '4px', border: '1px solid var(--border)', borderRadius: '6px' }}>
                             {list.length === 0 ? (

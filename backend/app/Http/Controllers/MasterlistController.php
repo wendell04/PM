@@ -43,7 +43,7 @@ class MasterlistController extends Controller
 
             $validated = $request->validate([
                 'categories'             => 'required|array',
-                'categories.*.id'        => 'required|string',
+                'categories.*.id'        => 'required|string|max:128',
                 'categories.*.name'      => 'required|string|max:100',
                 'categories.*.products'  => 'nullable|array',
             ]);
@@ -115,7 +115,7 @@ class MasterlistController extends Controller
             $validated = $request->validate([
                 'name'           => 'required|string|max:120',
                 'abbreviation'   => 'nullable|string|max:32',
-                'id'             => 'nullable|string',
+                'id'             => 'nullable|string|max:128',
                 'isActive'       => 'sometimes|boolean',
             ]);
 

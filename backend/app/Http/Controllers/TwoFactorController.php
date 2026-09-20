@@ -376,7 +376,7 @@ class TwoFactorController extends Controller
     // ─── Remove TOTP - requires password confirmation ─────────────────────
     public function removeTotp(Request $request)
     {
-        $request->validate(['password' => 'required|string']);
+        $request->validate(['password' => 'required|string|max:255']);
 
         try {
             $user = $request->user();

@@ -1201,7 +1201,7 @@ export default function BannerManagementPage() {
                 </div>
                 <div className="banner-form-group">
                   <label className="banner-form-label">Button 1 Link</label>
-                  <input type="text" className="banner-form-input" value={editedBanner?.ctaLink || ''} onChange={(e) => updateField('ctaLink', e.target.value)} placeholder="/shop or /contact..." disabled={isLive} />
+                  <input type="text" className="banner-form-input" value={editedBanner?.ctaLink || ''} onChange={(e) => updateField('ctaLink', e.target.value)} placeholder="/shop or /contact..." disabled={isLive}  maxLength={2048}/>
                 </div>
               </div>
               <div className="banner-form-row">
@@ -1232,7 +1232,7 @@ export default function BannerManagementPage() {
                   </div>
                   <div className="banner-form-group">
                     <label className="banner-form-label">Button 2 Link</label>
-                    <input type="text" className="banner-form-input" value={editedBanner?.cta2Link || ''} onChange={(e) => updateField('cta2Link', e.target.value)} placeholder="#how-it-works..." disabled={isLive} />
+                    <input type="text" className="banner-form-input" value={editedBanner?.cta2Link || ''} onChange={(e) => updateField('cta2Link', e.target.value)} placeholder="#how-it-works..." disabled={isLive}  maxLength={2048}/>
                   </div>
                 </div>
               )}

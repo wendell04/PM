@@ -1361,7 +1361,7 @@ export default function SettingsPage() {
                   </div>
                   <div className="profile-form-field" style={{ gridColumn: '1 / -1' }}>
                     <label>Email Address <span style={{ marginLeft: '0.5rem', fontSize: '0.75rem', color: 'var(--gray)' }}>(cannot be changed)</span></label>
-                    <input type="email" value={profileForm.email} disabled readOnly tabIndex={-1} autoComplete="off" style={{ opacity: 0.5, cursor: 'not-allowed', background: 'var(--dark3)', userSelect: 'none' }} />
+                    <input type="email" value={profileForm.email} disabled readOnly tabIndex={-1} autoComplete="off" style={{ opacity: 0.5, cursor: 'not-allowed', background: 'var(--dark3)', userSelect: 'none' }}  maxLength={160}/>
                   </div>
                   <div className="profile-form-field">
                     <label>Phone <span className="required">*</span></label>
@@ -1664,7 +1664,7 @@ export default function SettingsPage() {
           <div style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--red)', marginBottom: '0.35rem' }}>Remove authenticator app</div>
           <div style={{ fontSize: '0.75rem', color: 'var(--gray)', marginBottom: '0.875rem' }}>Enter your account password to confirm removal.</div>
           <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-            <input type="password" value={totpRemovePassword} onChange={e => setTotpRemovePassword(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') handleRemoveTotp(); }} placeholder="Your password" style={{ flex: 1, padding: '0.625rem 0.75rem', background: 'var(--dark)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: 'var(--white)', fontSize: '0.875rem' }} />
+            <input type="password" value={totpRemovePassword} onChange={e => setTotpRemovePassword(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') handleRemoveTotp(); }} placeholder="Your password" style={{ flex: 1, padding: '0.625rem 0.75rem', background: 'var(--dark)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: 'var(--white)', fontSize: '0.875rem' }}  maxLength={128}/>
             <button type="button" onClick={handleRemoveTotp} disabled={totpRemoveLoading} style={{ padding: '0.625rem 1rem', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: 'var(--red)', fontSize: '0.875rem', fontWeight: 600, cursor: 'pointer' }}>
               {totpRemoveLoading ? <span className="spinner" style={{ width: '14px', height: '14px' }} /> : 'Confirm'}
             </button>
@@ -1941,7 +1941,7 @@ export default function SettingsPage() {
                       onFocus={() => addrSuggestions.length > 0 && setAddrShowSug(true)}
                       placeholder="Type a street, barangay, or landmark…"
                       style={{ width: '100%', paddingRight: '2.2rem', boxSizing: 'border-box' }}
-                    />
+                     maxLength={100}/>
                     <span style={{ position: 'absolute', right: '0.65rem', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: 'var(--gray)' }}>
                       {addrSearching
                         ? <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="2" style={{ animation: 'spin 0.8s linear infinite', display: 'block' }}><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>

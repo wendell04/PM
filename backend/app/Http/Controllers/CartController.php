@@ -87,8 +87,8 @@ class CartController extends Controller
 
             $validated = $request->validate([
                 'items' => 'required|array',
-                'items.*.productId' => 'required|string',
-                'items.*.productName' => 'required|string',
+                'items.*.productId' => 'required|string|max:128',
+                'items.*.productName' => 'required|string|max:160',
                 'items.*.qty' => 'required|integer|min:1',
                 'items.*.unitPrice' => 'required|numeric|min:0',
                 // Derivable from qty x unitPrice, so requiring it rejects an otherwise perfectly good cart
@@ -96,12 +96,12 @@ class CartController extends Controller
                 // app had none, and the whole merge failed - losing everything the customer had added
                 // before signing in.
                 'items.*.lineTotal' => 'nullable|numeric|min:0',
-                'items.*.variantId' => 'nullable|string',
-                'items.*.variantName' => 'nullable|string',
-                'items.*.image' => 'nullable|string',
-                'items.*.lineId' => 'nullable|string',
+                'items.*.variantId' => 'nullable|string|max:128',
+                'items.*.variantName' => 'nullable|string|max:160',
+                'items.*.image' => 'nullable|string|max:2048',
+                'items.*.lineId' => 'nullable|string|max:128',
                 'items.*.isCustom' => 'nullable|boolean',
-                'items.*.designUrl' => 'nullable|string',
+                'items.*.designUrl' => 'nullable|string|max:2048',
                 'items.*.designNotes' => 'nullable|string|max:2000',
                 // Cloudinary renames the stored file, so the customer's own filename has to
                 // travel with the line or they only ever see a random string.
@@ -121,7 +121,7 @@ class CartController extends Controller
                 'items.*.allowCOD' => 'nullable|boolean',
                 'items.*.minOrderQty' => 'nullable|integer|min:1',
                 'items.*.priceTiers' => 'nullable|array',
-                'items.*.flashSaleId' => 'nullable|string',
+                'items.*.flashSaleId' => 'nullable|string|max:128',
                 // The clickwrap acceptance, for the same reason as everything above it: the customer
                 // ticks "I have read and agree" on the product page, the acceptance rides along on the
                 // cart line - and then the very first sync dropped all three of these fields, because
@@ -178,8 +178,8 @@ class CartController extends Controller
 
             $validated = $request->validate([
                 'items' => 'required|array',
-                'items.*.productId' => 'required|string',
-                'items.*.productName' => 'required|string',
+                'items.*.productId' => 'required|string|max:128',
+                'items.*.productName' => 'required|string|max:160',
                 'items.*.qty' => 'required|integer|min:1',
                 'items.*.unitPrice' => 'required|numeric|min:0',
                 // Derivable from qty x unitPrice, so requiring it rejects an otherwise perfectly good cart
@@ -187,12 +187,12 @@ class CartController extends Controller
                 // app had none, and the whole merge failed - losing everything the customer had added
                 // before signing in.
                 'items.*.lineTotal' => 'nullable|numeric|min:0',
-                'items.*.variantId' => 'nullable|string',
-                'items.*.variantName' => 'nullable|string',
-                'items.*.image' => 'nullable|string',
-                'items.*.lineId' => 'nullable|string',
+                'items.*.variantId' => 'nullable|string|max:128',
+                'items.*.variantName' => 'nullable|string|max:160',
+                'items.*.image' => 'nullable|string|max:2048',
+                'items.*.lineId' => 'nullable|string|max:128',
                 'items.*.isCustom' => 'nullable|boolean',
-                'items.*.designUrl' => 'nullable|string',
+                'items.*.designUrl' => 'nullable|string|max:2048',
                 'items.*.designNotes' => 'nullable|string|max:2000',
                 // Cloudinary renames the stored file, so the customer's own filename has to
                 // travel with the line or they only ever see a random string.
@@ -212,7 +212,7 @@ class CartController extends Controller
                 'items.*.allowCOD' => 'nullable|boolean',
                 'items.*.minOrderQty' => 'nullable|integer|min:1',
                 'items.*.priceTiers' => 'nullable|array',
-                'items.*.flashSaleId' => 'nullable|string',
+                'items.*.flashSaleId' => 'nullable|string|max:128',
                 // The clickwrap acceptance, for the same reason as everything above it: the customer
                 // ticks "I have read and agree" on the product page, the acceptance rides along on the
                 // cart line - and then the very first sync dropped all three of these fields, because

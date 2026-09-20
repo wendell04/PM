@@ -42,20 +42,20 @@ class WalkInOrderController extends Controller
                 // POS contract (frontend) - keep backward-compatible aliases
                 'customerName'    => 'nullable|string|max:120',
                 'items'           => 'required|array|min:1',
-                'items.*.productId'     => 'required|string',
+                'items.*.productId'     => 'required|string|max:128',
                 'items.*.name'          => 'nullable|string|max:255',
                 'items.*.variantLabel'  => 'nullable|string|max:255',
                 'items.*.quantity'      => 'nullable|integer|min:1',
                 'items.*.price'         => 'nullable|numeric|min:0',
                 // legacy keys (older POS / admin tooling)
-                'items.*.variantId'     => 'nullable|string',
-                'items.*.variantName'   => 'nullable|string',
+                'items.*.variantId'     => 'nullable|string|max:128',
+                'items.*.variantName'   => 'nullable|string|max:160',
                 'items.*.qty'           => 'nullable|integer|min:1',
                 'items.*.unitPrice'     => 'nullable|numeric|min:0',
                 // A service priced by quotation has no bill of materials, so the staff member picks
                 // what it actually consumes. When present these win over the product's BOM.
                 'items.*.materials'               => 'nullable|array|max:30',
-                'items.*.materials.*.inventoryId' => 'required_with:items.*.materials|string',
+                'items.*.materials.*.inventoryId' => 'required_with:items.*.materials|string|max:128',
                 'items.*.materials.*.name'        => 'nullable|string|max:200',
                 'items.*.materials.*.qty'         => 'required_with:items.*.materials|numeric|min:0',
                 'paymentMethod'  => 'required|in:cash,gcash,paymaya,card,bank_transfer',

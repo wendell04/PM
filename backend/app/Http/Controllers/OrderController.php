@@ -128,12 +128,12 @@ class OrderController extends Controller
 
             $validated = $request->validate([
                 'items'                       => 'required|array|min:1',
-                'items.*.productId'           => 'required|string',
-                'items.*.variantId'           => 'nullable|string',
-                'items.*.variantName'         => 'nullable|string',
+                'items.*.productId'           => 'required|string|max:128',
+                'items.*.variantId'           => 'nullable|string|max:128',
+                'items.*.variantName'         => 'nullable|string|max:160',
                 'items.*.qty'                 => 'required|integer|min:1',
                 'items.*.flashSaleId'         => 'nullable|string|max:24',
-                'items.*.designUrl'           => 'nullable|string',
+                'items.*.designUrl'           => 'nullable|string|max:2048',
                 'items.*.designName'          => 'nullable|string|max:255',
                 'items.*.designNotes'         => 'nullable|string|max:2000',
                 'items.*.designFiles'         => 'nullable|array|max:5',
@@ -2249,7 +2249,7 @@ class OrderController extends Controller
             }
 
             $validated = $request->validate([
-                'orderStatus' => 'required|string',
+                'orderStatus' => 'required|string|max:160',
             ]);
 
             $order = Order::find($id);

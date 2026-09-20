@@ -739,13 +739,13 @@ export default function UserManagementPage() {
                   <label htmlFor="staff-first" style={labelStyle}>
                     First Name <span style={{ color: 'var(--red)' }}>*</span>
                   </label>
-                  <input id="staff-first" value={form.firstName} onChange={(e) => setField('firstName', e.target.value)} style={inputBase} autoComplete="given-name" />
+                  <input id="staff-first" value={form.firstName} onChange={(e) => setField('firstName', e.target.value)} style={inputBase} autoComplete="given-name"  maxLength={255}/>
                 </div>
                 <div>
                   <label htmlFor="staff-last" style={labelStyle}>
                     Last Name <span style={{ color: 'var(--red)' }}>*</span>
                   </label>
-                  <input id="staff-last" value={form.lastName} onChange={(e) => setField('lastName', e.target.value)} style={inputBase} autoComplete="family-name" />
+                  <input id="staff-last" value={form.lastName} onChange={(e) => setField('lastName', e.target.value)} style={inputBase} autoComplete="family-name"  maxLength={255}/>
                 </div>
               </div>
 
@@ -762,7 +762,7 @@ export default function UserManagementPage() {
                   disabled={!!selectedStaff}
                   style={{ ...inputBase, opacity: selectedStaff ? 0.5 : 1, cursor: selectedStaff ? 'not-allowed' : 'text' }}
                   autoComplete="email"
-                />
+                 maxLength={160}/>
               </div>
 
               {!selectedStaff && (
@@ -770,7 +770,7 @@ export default function UserManagementPage() {
                   <label htmlFor="staff-phone" style={labelStyle}>
                     Phone Number <span style={{ color: 'var(--gray)', fontWeight: 400 }}>(optional)</span>
                   </label>
-                  <input id="staff-phone" value={form.phoneNumber} onChange={(e) => setField('phoneNumber', e.target.value)} style={inputBase} autoComplete="tel" />
+                  <input id="staff-phone" value={form.phoneNumber} onChange={(e) => setField('phoneNumber', e.target.value)} style={inputBase} autoComplete="tel"  maxLength={255}/>
                 </div>
               )}
 
@@ -822,7 +822,7 @@ export default function UserManagementPage() {
                     placeholder={selectedStaff ? 'Leave blank to keep current' : 'Min. 8 characters'}
                     style={{ ...inputBase, paddingRight: '42px' }}
                     autoComplete="new-password"
-                  />
+                   maxLength={255}/>
                   <button
                     type="button"
                     onClick={() => setShowPassword((v) => !v)}

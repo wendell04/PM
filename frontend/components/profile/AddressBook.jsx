@@ -1033,7 +1033,7 @@ export default function AddressBook({ onSaved, initialEditAddress }) {
               placeholder="e.g. Across SM Fairview. Green gate beside the sari-sari store, ring the bell on arrival."
               rows={2}
               style={{ ...inputStyle, resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.5 }}
-            />
+             maxLength={300}/>
             <span style={{ fontSize: '0.7rem', color: 'var(--gray)', display: 'block', marginTop: '0.2rem', textAlign: 'right' }}>{(formData.delivery_notes || '').length}/300</span>
           </div>
 

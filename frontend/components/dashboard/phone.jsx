@@ -106,7 +106,7 @@ export function PhoneFilterBar({ search, onSearch, placeholder = 'Search…', fi
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
           </span>
           <input type="search" value={search} onChange={e => onSearch(e.target.value)} placeholder={placeholder}
-            style={{ width: '100%', boxSizing: 'border-box', minHeight: 44, padding: '10px 12px 10px 36px', fontSize: 16, borderRadius: 10, border: '1px solid var(--border)', background: 'var(--dark)', color: 'var(--white)', outline: 'none' }} />
+            style={{ width: '100%', boxSizing: 'border-box', minHeight: 44, padding: '10px 12px 10px 36px', fontSize: 16, borderRadius: 10, border: '1px solid var(--border)', background: 'var(--dark)', color: 'var(--white)', outline: 'none' }}  maxLength={100}/>
         </div>
         {filters.length > 0 && (
           <button type="button" onClick={() => setOpen(true)}

@@ -72,7 +72,7 @@ class FlashSaleController extends Controller
             return response()->json(['message' => 'Unauthenticated.'], 401);
         }
         $validated = Validator::make($request->all(), [
-            'productId'     => 'required|string',
+            'productId'     => 'required|string|max:128',
             'discountType'  => 'required|in:percentage,fixed',
             'discountValue' => 'required|numeric|min:0.01',
             'startDate'     => 'required|date',
@@ -169,7 +169,7 @@ class FlashSaleController extends Controller
         }
 
         $validated = Validator::make($request->all(), [
-            'productId'     => 'required|string',
+            'productId'     => 'required|string|max:128',
             'discountType'  => 'required|in:percentage,fixed',
             'discountValue' => 'required|numeric|min:0.01',
             'startDate'     => 'required|date',

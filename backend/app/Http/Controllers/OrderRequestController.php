@@ -56,7 +56,7 @@ class OrderRequestController extends Controller
             'quantity'  => 'nullable|integer|min:1|max:100000',
             'neededBy'  => 'nullable|date',
             'budget'    => 'nullable|numeric|min:0',
-            'designUrl' => 'nullable|string|url',
+            'designUrl' => 'nullable|string|url|max:2048',
         ])->validate();
 
         $clean = fn ($v) => $v === null ? null
@@ -163,10 +163,10 @@ class OrderRequestController extends Controller
         }
 
         $validated = Validator::make($request->all(), [
-            'productId'        => 'required|string',
+            'productId'        => 'required|string|max:128',
             'quantity'         => 'required|integer|min:1',
             'designNotes'      => 'nullable|string|max:1000',
-            'designUrl'        => 'nullable|string|url',
+            'designUrl'        => 'nullable|string|url|max:2048',
             'selectedVariants' => 'nullable|array',
             'isCustom'         => 'nullable|boolean',
             'designType'       => 'nullable|string|in:upload,request',
@@ -384,10 +384,10 @@ class OrderRequestController extends Controller
             'eta' => 'nullable|date',
             'note'          => 'nullable|string|max:500',
             'adminComment'  => 'nullable|string|max:2000',
-            'mockupUrl'     => 'nullable|string|url',
+            'mockupUrl'     => 'nullable|string|url|max:2048',
             'materials'                => 'nullable|array',
-            'materials.*.inventoryId'  => 'required_with:materials|string',
-            'materials.*.materialName' => 'nullable|string',
+            'materials.*.inventoryId'  => 'required_with:materials|string|max:128',
+            'materials.*.materialName' => 'nullable|string|max:160',
             'materials.*.qty'          => 'required_with:materials|numeric|min:0',
             'materials.*.unitCost'     => 'nullable|numeric|min:0',
         ])->validate();
@@ -674,15 +674,15 @@ class OrderRequestController extends Controller
         }
 
         $validated = $request->validate([
-            'recipientId'       => 'required|string',
+            'recipientId'       => 'required|string|max:128',
             'items'             => 'required|array|min:1|max:20',
-            'items.*.productId' => 'required|string',
+            'items.*.productId' => 'required|string|max:128',
             'items.*.qty'       => 'required|integer|min:1',
             'items.*.unitPrice' => 'required|numeric|min:0',
             'items.*.variantId'   => 'nullable|string|max:64',
             'items.*.variantName' => 'nullable|string|max:200',
             'items.*.materials'                 => 'nullable|array|max:30',
-            'items.*.materials.*.inventoryId'   => 'required_with:items.*.materials|string',
+            'items.*.materials.*.inventoryId'   => 'required_with:items.*.materials|string|max:128',
             'items.*.materials.*.qty'           => 'required_with:items.*.materials|numeric|min:0',
             'designFee'         => 'nullable|numeric|min:0',
             'deliveryFee'       => 'nullable|numeric|min:0',

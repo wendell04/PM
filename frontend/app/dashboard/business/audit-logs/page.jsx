@@ -302,7 +302,7 @@ export default function AuditLogsPage() {
               placeholder="Search product, category, or performed by..."
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-            />
+             maxLength={100}/>
             {searchQuery && (
               <button
                 className="search-clear"

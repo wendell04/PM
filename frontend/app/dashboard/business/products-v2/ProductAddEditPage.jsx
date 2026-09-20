@@ -133,7 +133,7 @@ function MediaLibraryModal({ multi = false, onSelect, onClose, existingImages = 
             </svg>
             <input value={search} onChange={e => setSearch(e.target.value)}
               placeholder="Search files…"
-              style={{ ...S.input, paddingLeft: '32px', width: '100%', boxSizing: 'border-box' }} />
+              style={{ ...S.input, paddingLeft: '32px', width: '100%', boxSizing: 'border-box' }}  maxLength={100}/>
           </div>
         </div>
 
@@ -1004,7 +1004,7 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
                       handleFileUpload([f], 'product');
                     }}
                     placeholder="Paste an image, or its URL..." autoFocus
-                    style={{ ...S.input, flex: 1 }} />
+                    style={{ ...S.input, flex: 1 }}  maxLength={2048}/>
                   <button onClick={commitMediaUrl} style={S.btnSm}>Add</button>
                   <button onClick={() => { setMediaUrlMode(false); setMediaUrlInput(''); }} style={S.btnGhost}>Cancel</button>
                 </div>

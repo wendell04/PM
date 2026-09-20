@@ -529,7 +529,7 @@ function VoucherModal({ form, setForm, formError, saving, editTarget, onSave, on
           {/* Code */}
           <div>
             <label style={lbl}>Voucher Code <span style={{ color: 'var(--red)' }}>*</span></label>
-            <input value={form.code} onChange={e => setForm(f => ({ ...f, code: e.target.value.toUpperCase() }))} placeholder="e.g. SAVE20, BIRTHDAY10" style={{ ...inp, fontFamily: 'monospace', fontWeight: 700, letterSpacing: '1px' }} />
+            <input value={form.code} onChange={e => setForm(f => ({ ...f, code: e.target.value.toUpperCase() }))} placeholder="e.g. SAVE20, BIRTHDAY10" style={{ ...inp, fontFamily: 'monospace', fontWeight: 700, letterSpacing: '1px' }}  maxLength={30}/>
             <p style={{ margin: '4px 0 0', fontSize: '0.72rem', color: 'var(--gray)' }}>Owner manually shares this code with customers to claim the benefit.</p>
           </div>
 
@@ -595,7 +595,7 @@ function VoucherModal({ form, setForm, formError, saving, editTarget, onSave, on
                 placeholder="e.g. Show this code at checkout to receive 1 free ref magnet with your order."
                 rows={3}
                 style={{ ...inp, resize: 'vertical', lineHeight: '1.5' }}
-              />
+               maxLength={2000}/>
             </div>
           )}
 

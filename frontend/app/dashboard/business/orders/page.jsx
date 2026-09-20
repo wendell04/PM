@@ -307,7 +307,7 @@ function PaymentModal({ order, onClose, onSuccess }) {
           <div style={S.label}>Note <span style={{ fontWeight:400, textTransform:'none', color:'var(--gray)' }}>(optional)</span></div>
           <input type="text" value={note} onChange={e => setNote(e.target.value)}
             placeholder="e.g. Downpayment, ref #12345"
-            style={{ ...S.input, marginTop:'4px' }} />
+            style={{ ...S.input, marginTop:'4px' }}  maxLength={255}/>
         </div>
       </div>
 
@@ -691,7 +691,7 @@ function PrintJOModal({ order, jobOrder = null, onClose }) {
           <div style={{ ...S.label, marginBottom:'6px' }}>Print Instructions <span style={{ fontWeight:400, textTransform:'none', color:'var(--gray)' }}>(optional)</span></div>
           <textarea value={description} onChange={e => setDescription(e.target.value)}
             placeholder="Special instructions for production…"
-            rows={3} style={S.textarea} />
+            rows={3} style={S.textarea}  maxLength={2000}/>
         </div>
       </div>
 
@@ -1836,7 +1836,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                         onChange={e => { setFeeInput(e.target.value.replace(/[^\d.]/g, '')); if (feeErr) setFeeErr(''); }}
                         placeholder="0.00"
                         style={{ width:'90px', border:'none', outline:'none', padding:'6px 8px 6px 0', fontSize:'12px', color:'var(--white)' }}
-                      />
+                       maxLength={12}/>
                     </div>
                     <button type="button" onClick={handleSaveCourierFee} disabled={savingFee}
                       style={{ padding:'6px 12px', fontSize:'11px', fontWeight:600, borderRadius:'6px', border:'none', background: savingFee ? 'var(--border)' : 'var(--gold)', color:'var(--dark)', cursor: savingFee ? 'not-allowed' : 'pointer' }}>

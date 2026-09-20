@@ -1447,7 +1447,7 @@ export default function ProductDetailPage() {
                     color: 'var(--white)',
                     fontSize: '0.95rem', fontWeight: 700,
                   }}
-                />
+                 maxLength={5}/>
                 <button
                   onClick={() => {
                     const next = Math.min(quantity + 1, effectiveMaxQty);

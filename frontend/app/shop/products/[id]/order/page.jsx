@@ -1247,7 +1247,7 @@ function CustomOrderInner() {
                       const n = isNaN(v) || v < moq ? moq : Math.min(v, qtyCeiling);
                       setQuantity(n); setQuantityInput(String(n));
                     }}
-                    style={{ width: 64, textAlign: 'center', padding: '0.4rem', borderRadius: '8px', border: '1px solid var(--border)', background: 'rgba(255,255,255,0.05)', color: 'var(--white)', fontSize: '0.95rem', fontFamily: "Arial, Arimo, Helvetica, sans-serif" }} />
+                    style={{ width: 64, textAlign: 'center', padding: '0.4rem', borderRadius: '8px', border: '1px solid var(--border)', background: 'rgba(255,255,255,0.05)', color: 'var(--white)', fontSize: '0.95rem', fontFamily: "Arial, Arimo, Helvetica, sans-serif" }}  maxLength={5}/>
                   <button
                     onClick={() => { const n = Math.min(qtyCeiling, quantity + 1); setQuantity(n); setQuantityInput(String(n)); }}
                     style={{ width: 36, height: 36, borderRadius: '8px', border: '1px solid var(--border)', background: 'rgba(255,255,255,0.05)', color: 'var(--white)', fontSize: '1.1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>+</button>
@@ -1595,14 +1595,14 @@ function CustomOrderInner() {
                   <div style={{ marginBottom: '0.75rem' }}>
                     <label style={{ display: 'block', fontSize: '0.72rem', color: 'var(--gray)', fontWeight: 600, marginBottom: '0.35rem' }}>Card number</label>
                     <div style={{ position: 'relative' }}>
-                      <input type="text" inputMode="numeric" placeholder="1234 1234 1234 1234" value={cardNumber} onChange={e => setCardNumber(fmtCardNumber(e.target.value))} style={{ width: '100%', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '0.72rem 2.75rem 0.72rem 0.875rem', color: 'var(--white)', fontSize: '1rem', outline: 'none', boxSizing: 'border-box', fontFamily: 'monospace', letterSpacing: '0.08em' }} onFocus={e => { e.target.style.borderColor='#9C7BE8'; }} onBlur={e => { e.target.style.borderColor='rgba(255,255,255,0.1)'; }} />
+                      <input type="text" inputMode="numeric" placeholder="1234 1234 1234 1234" value={cardNumber} onChange={e => setCardNumber(fmtCardNumber(e.target.value))} style={{ width: '100%', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '0.72rem 2.75rem 0.72rem 0.875rem', color: 'var(--white)', fontSize: '1rem', outline: 'none', boxSizing: 'border-box', fontFamily: 'monospace', letterSpacing: '0.08em' }} onFocus={e => { e.target.style.borderColor='#9C7BE8'; }} onBlur={e => { e.target.style.borderColor='rgba(255,255,255,0.1)'; }}  maxLength={19}/>
                       {cardBrand(cardNumber) && <span style={{ position: 'absolute', right: '0.75rem', top: '50%', transform: 'translateY(-50%)', fontSize: '0.6rem', fontWeight: 900, color: '#9C7BE8', background: 'rgba(156,123,232,0.12)', padding: '2px 6px', borderRadius: '4px' }}>{cardBrand(cardNumber)}</span>}
                     </div>
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
                     <div>
                       <label style={{ display: 'block', fontSize: '0.72rem', color: 'var(--gray)', fontWeight: 600, marginBottom: '0.35rem' }}>Expiration date</label>
-                      <input type="text" inputMode="numeric" placeholder="MM / YY" value={cardExpiry} onChange={e => setCardExpiry(fmtExpiry(e.target.value))} style={{ width: '100%', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '0.72rem 0.875rem', color: 'var(--white)', fontSize: '0.95rem', outline: 'none', fontFamily: 'monospace', boxSizing: 'border-box' }} onFocus={e => { e.target.style.borderColor='#9C7BE8'; }} onBlur={e => { e.target.style.borderColor='rgba(255,255,255,0.1)'; }} />
+                      <input type="text" inputMode="numeric" placeholder="MM / YY" value={cardExpiry} onChange={e => setCardExpiry(fmtExpiry(e.target.value))} style={{ width: '100%', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '0.72rem 0.875rem', color: 'var(--white)', fontSize: '0.95rem', outline: 'none', fontFamily: 'monospace', boxSizing: 'border-box' }} onFocus={e => { e.target.style.borderColor='#9C7BE8'; }} onBlur={e => { e.target.style.borderColor='rgba(255,255,255,0.1)'; }}  maxLength={7}/>
                     </div>
                     <div>
                       <label style={{ display: 'block', fontSize: '0.72rem', color: 'var(--gray)', fontWeight: 600, marginBottom: '0.35rem' }}>Security code</label>

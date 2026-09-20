@@ -144,13 +144,13 @@ export default function AccessPage() {
               <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 10 }}>Add someone to the team</div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                 <input placeholder="First name" value={newFields.firstName}
-                  onChange={e => setNewFields(p => ({ ...p, firstName: e.target.value }))} style={S.input} />
+                  onChange={e => setNewFields(p => ({ ...p, firstName: e.target.value }))} style={S.input}  maxLength={60}/>
                 <input placeholder="Last name" value={newFields.lastName}
-                  onChange={e => setNewFields(p => ({ ...p, lastName: e.target.value }))} style={S.input} />
+                  onChange={e => setNewFields(p => ({ ...p, lastName: e.target.value }))} style={S.input}  maxLength={60}/>
               </div>
               <input placeholder="Work email" type="email" value={newFields.email}
                 onChange={e => setNewFields(p => ({ ...p, email: e.target.value }))}
-                style={{ ...S.input, marginTop: 10, width: '100%' }} />
+                style={{ ...S.input, marginTop: 10, width: '100%' }}  maxLength={160}/>
               <div style={{ fontSize: 11.5, color: 'var(--gray)', marginTop: 6 }}>
                 They get an email to set their own password. You never type it.
               </div>

@@ -1177,7 +1177,7 @@ export default function OrderQuickViewModal({
                                 boxSizing: 'border-box',
                                 fontFamily: 'inherit',
                               }}
-                            />
+                             maxLength={2000}/>
                             <button
                               onClick={handleRejectDesign}
                               disabled={!!designAction}

@@ -2966,7 +2966,7 @@ const handleForgotResetPassword = async () => {
                       onChange={e => { setForgotEmail(e.target.value); setForgotError(''); }}
                       className={forgotError ? 'error' : ''}
                       onKeyDown={e => e.key === 'Enter' && handleForgotSubmit()}
-                    />
+                     maxLength={160}/>
                     {forgotError && <span className="error-message">{forgotError}</span>}
                   </div>
                   <button className="btn-auth-submit" disabled={isSendingReset} onClick={handleForgotSubmit}>

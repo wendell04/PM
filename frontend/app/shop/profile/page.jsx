@@ -595,7 +595,7 @@ function TwoFactorSection({ token, twoFactorEnabled, setTwoFactorEnabled }) {
               value={removePassword}
               onChange={(e) => setRemovePassword(e.target.value)}
               style={{ ...s.input, paddingRight: "2.5rem" }}
-            />
+             maxLength={128}/>
             <button
               type="button"
               onClick={() => setShowRemovePass((v) => !v)}
@@ -2336,19 +2336,19 @@ export default function CustomerProfilePage() {
                         <label style={{ display: "block", fontSize: "0.72rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--gray)", marginBottom: "0.4rem" }}>
                           First Name <span style={{ color: "var(--red)" }}>*</span>
                         </label>
-                        <input type="text" maxLength={100} value={profileForm.firstName} onChange={(e) => handleProfileChange("firstName", e.target.value)} style={{ width: "100%", padding: "0.625rem 0.75rem", background: "var(--dark)", border: "1px solid var(--border)", borderRadius: "8px", color: "var(--white)", fontSize: "0.875rem", boxSizing: "border-box" }} />
+                        <input type="text" maxLength={60} value={profileForm.firstName} onChange={(e) => handleProfileChange("firstName", e.target.value)} style={{ width: "100%", padding: "0.625rem 0.75rem", background: "var(--dark)", border: "1px solid var(--border)", borderRadius: "8px", color: "var(--white)", fontSize: "0.875rem", boxSizing: "border-box" }} />
                       </div>
                       <div>
                         <label style={{ display: "block", fontSize: "0.72rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--gray)", marginBottom: "0.4rem" }}>
                           Last Name <span style={{ color: "var(--red)" }}>*</span>
                         </label>
-                        <input type="text" maxLength={100} value={profileForm.lastName} onChange={(e) => handleProfileChange("lastName", e.target.value)} style={{ width: "100%", padding: "0.625rem 0.75rem", background: "var(--dark)", border: "1px solid var(--border)", borderRadius: "8px", color: "var(--white)", fontSize: "0.875rem", boxSizing: "border-box" }} />
+                        <input type="text" maxLength={60} value={profileForm.lastName} onChange={(e) => handleProfileChange("lastName", e.target.value)} style={{ width: "100%", padding: "0.625rem 0.75rem", background: "var(--dark)", border: "1px solid var(--border)", borderRadius: "8px", color: "var(--white)", fontSize: "0.875rem", boxSizing: "border-box" }} />
                       </div>
                       <div>
                         <label style={{ display: "block", fontSize: "0.72rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--gray)", marginBottom: "0.4rem" }}>
                           Email Address <span style={{ fontSize: "0.68rem", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>(cannot be changed)</span>
                         </label>
-                        <input type="email" value={profileForm.email} disabled style={{ width: "100%", padding: "0.625rem 0.75rem", background: "var(--dark3)", border: "1px solid var(--border)", borderRadius: "8px", color: "var(--gray)", fontSize: "0.875rem", cursor: "not-allowed", opacity: 0.6, boxSizing: "border-box" }} />
+                        <input type="email" value={profileForm.email} disabled style={{ width: "100%", padding: "0.625rem 0.75rem", background: "var(--dark3)", border: "1px solid var(--border)", borderRadius: "8px", color: "var(--gray)", fontSize: "0.875rem", cursor: "not-allowed", opacity: 0.6, boxSizing: "border-box" }}  maxLength={160}/>
                       </div>
                       <div>
                         <label style={{ display: "block", fontSize: "0.72rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--gray)", marginBottom: "0.4rem" }}>
@@ -2516,7 +2516,7 @@ export default function CustomerProfilePage() {
                           fontSize: "0.875rem",
                           boxSizing: "border-box",
                         }}
-                      />
+                       maxLength={128}/>
                       <button
                         type="button"
                         onClick={() =>
@@ -2599,7 +2599,7 @@ export default function CustomerProfilePage() {
                           fontSize: "0.875rem",
                           boxSizing: "border-box",
                         }}
-                      />
+                       maxLength={128}/>
                       <button
                         type="button"
                         onClick={() =>
@@ -2808,7 +2808,7 @@ export default function CustomerProfilePage() {
                           fontSize: "0.875rem",
                           boxSizing: "border-box",
                         }}
-                      />
+                       maxLength={128}/>
                       <button
                         type="button"
                         onClick={() =>
@@ -3322,7 +3322,7 @@ export default function CustomerProfilePage() {
                           onChange={e => setDeletePassword(e.target.value)}
                           placeholder="Enter your current password"
                           style={{ width: '100%', height: '40px', padding: '0 40px 0 12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--dark)', color: 'var(--white)', fontSize: '0.875rem', boxSizing: 'border-box', outline: 'none' }}
-                        />
+                         maxLength={128}/>
                         <button type="button" onClick={() => setDeleteShowPassword(v => !v)}
                           style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--gray)', cursor: 'pointer', padding: 0, lineHeight: 1 }}>
                           {deleteShowPassword
@@ -3344,7 +3344,7 @@ export default function CustomerProfilePage() {
                         onChange={e => setDeleteConfirmText(e.target.value)}
                         placeholder="DELETE MY ACCOUNT"
                         style={{ width: '100%', height: '40px', padding: '0 12px', borderRadius: '8px', border: `1px solid ${deleteConfirmText === 'DELETE MY ACCOUNT' ? 'rgba(239,68,68,0.55)' : 'var(--border)'}`, background: 'var(--dark)', color: deleteConfirmText === 'DELETE MY ACCOUNT' ? 'rgba(239,68,68,0.9)' : 'var(--white)', fontSize: '0.875rem', boxSizing: 'border-box', outline: 'none', fontFamily: 'monospace' }}
-                      />
+                       maxLength={20}/>
                     </div>
 
                     {deleteError && (

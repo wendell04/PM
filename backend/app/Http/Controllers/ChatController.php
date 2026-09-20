@@ -253,12 +253,12 @@ class ChatController extends Controller
         try {
             $user = $request->user();
             $request->validate([
-                'conversation_id' => 'nullable|string',
-                'recipient_id'    => 'nullable|string',
+                'conversation_id' => 'nullable|string|max:128',
+                'recipient_id'    => 'nullable|string|max:128',
                 'body'            => 'nullable|string|max:2000',
                 'type'            => 'required|in:text,image,file,order_reference,quotation,inquiry',
-                'file_url'        => 'nullable|string',
-                'order_id'        => 'nullable|string',
+                'file_url'        => 'nullable|string|max:2048',
+                'order_id'        => 'nullable|string|max:128',
                 'metadata'        => 'nullable|array',
                 // The sender's own id for this message, echoed back untouched so the browser can
                 // recognise its own optimistic bubble instead of guessing from the text.

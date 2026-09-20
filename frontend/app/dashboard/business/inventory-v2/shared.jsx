@@ -111,7 +111,7 @@ export function DecimalInput({ value, onChange, placeholder = '0.00', style, ...
       placeholder={placeholder}
       style={{ ...S.input, ...style }}
       {...rest}
-    />
+     maxLength={12}/>
   );
 }
 
@@ -203,7 +203,7 @@ export function CustomSelect({ value, onChange, options = [], placeholder = 'Sel
               <input ref={searchRef} type="text" value={query} onChange={e => setQuery(e.target.value)}
                 onClick={e => e.stopPropagation()} onKeyDown={e => { if (e.key === 'Enter') e.preventDefault(); }} placeholder="Search…"
                 style={{ width: '100%', background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '6px',
-                  padding: '6px 9px', fontSize: '13px', color: 'var(--white)', outline: 'none', boxSizing: 'border-box' }} />
+                  padding: '6px 9px', fontSize: '13px', color: 'var(--white)', outline: 'none', boxSizing: 'border-box' }}  maxLength={100}/>
             </div>
           )}
           {visible.map((o, i) => {
@@ -487,7 +487,7 @@ export function SearchBar({ value, onChange, placeholder = 'Search…', style })
         onChange={e => onChange(e.target.value)}
         placeholder={placeholder}
         style={{ ...S.input, paddingLeft:'32px' }}
-      />
+       maxLength={255}/>
     </div>
   );
 }

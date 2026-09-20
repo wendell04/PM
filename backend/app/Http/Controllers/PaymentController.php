@@ -92,9 +92,9 @@ class PaymentController extends Controller
 
             $validated = $request->validate([
                 'items'                       => 'required|array|min:1',
-                'items.*.productId'           => 'required|string',
-                'items.*.variantId'           => 'nullable|string',
-                'items.*.variantName'         => 'nullable|string',
+                'items.*.productId'           => 'required|string|max:128',
+                'items.*.variantId'           => 'nullable|string|max:128',
+                'items.*.variantName'         => 'nullable|string|max:160',
                 'items.*.qty'                 => 'required|integer|min:1',
                 'items.*.flashSaleId'         => 'nullable|string|max:24',
                 'voucherCode'                 => 'nullable|string|max:50',
@@ -680,9 +680,9 @@ class PaymentController extends Controller
 
             $validated = $request->validate([
                 'items'                       => 'required|array|min:1',
-                'items.*.productId'           => 'required|string',
-                'items.*.variantId'           => 'nullable|string',
-                'items.*.variantName'         => 'nullable|string',
+                'items.*.productId'           => 'required|string|max:128',
+                'items.*.variantId'           => 'nullable|string|max:128',
+                'items.*.variantName'         => 'nullable|string|max:160',
                 'items.*.qty'                 => 'required|integer|min:1',
                 'items.*.flashSaleId'         => 'nullable|string|max:24',
                 'voucherCode'                 => 'nullable|string|max:50',
@@ -701,7 +701,7 @@ class PaymentController extends Controller
                 'design_notes'                => 'nullable|string|max:2000',
                 'shippingFee'                 => 'nullable|numeric|min:0|max:10000',
                 'paymentType'                 => 'required|in:gcash,paymaya,card',
-                'paymentMethodId'             => 'nullable|string',
+                'paymentMethodId'             => 'nullable|string|max:128',
                 'eWalletPhone'                => 'nullable|string|max:20',
                 'isCustomOrder'               => 'nullable|boolean',
                 // Without these the checkout's "Pay 50% now" was decoration - the customer
@@ -2391,7 +2391,7 @@ class PaymentController extends Controller
             if (!$user) return $this->unauthorizedResponse();
 
             $validated = $request->validate([
-                'orderRequestId' => 'required|string|regex:/^[a-f0-9]{24}$/i',
+                'orderRequestId' => 'required|string|regex:/^[a-f0-9]{24}$/i|max:128',
                 'intentId'       => 'nullable|string|max:120',
             ]);
 
@@ -2462,7 +2462,7 @@ class PaymentController extends Controller
             if (!$user) return $this->unauthorizedResponse();
 
             $validated = $request->validate([
-                'orderId'  => 'required|string|regex:/^[a-f0-9]{24}$/i',
+                'orderId'  => 'required|string|regex:/^[a-f0-9]{24}$/i|max:128',
                 // PayMongo puts the intent id in the success URL. Ignoring it and reading only the
                 // order's stored paymongoIntentId meant a SECOND payment on the same order verified
                 // the FIRST intent again - so the balance payment was never recorded and the receipt
@@ -3042,9 +3042,9 @@ class PaymentController extends Controller
             if (!$user) return $this->unauthorizedResponse();
 
             $validated = $request->validate([
-                'orderId'         => 'required|string|regex:/^[a-f0-9]{24}$/i',
+                'orderId'         => 'required|string|regex:/^[a-f0-9]{24}$/i|max:128',
                 'paymentMethod'   => 'nullable|string|in:gcash,paymaya,card',
-                'paymentMethodId' => 'nullable|string',
+                'paymentMethodId' => 'nullable|string|max:128',
                 'eWalletPhone'    => 'nullable|string|max:20',
                 'payFull'         => 'nullable|boolean',
                 'designFeeOnly'   => 'nullable|boolean',

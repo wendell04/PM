@@ -196,7 +196,7 @@ function LoginForm({ onSuccess, onSwitchToRegister, onForgotPassword }) {
           onChange={e => setEmail(e.target.value)}
           className={errors.email ? 'error' : ''}
           required
-        />
+         maxLength={160}/>
         {errors.email && <span className="error-message">{errors.email}</span>}
       </div>
 
@@ -210,7 +210,7 @@ function LoginForm({ onSuccess, onSwitchToRegister, onForgotPassword }) {
             onChange={e => setPassword(e.target.value)}
             className={errors.password ? 'error' : ''}
             required
-          />
+           maxLength={128}/>
           <button type="button" className="auth-eye" onClick={() => setShowPassword(v => !v)}>
             {showPassword ? <EyeOpen /> : <EyeClosed />}
           </button>
@@ -1376,7 +1376,7 @@ export default function ShopLayout({ children }) {
                     setSearchOpen(false);
                     router.push('/shop?q=' + encodeURIComponent(q));
                   }}
-                />
+                 maxLength={100}/>
                 {searchOpen && searchSuggestions.length > 0 && (
                   <div className="shop-search-suggest" role="listbox">
                     {searchSuggestions.map((p, i) => (
@@ -1842,7 +1842,7 @@ export default function ShopLayout({ children }) {
                         onChange={e => { setForgotEmail(e.target.value); setForgotError(''); }}
                         className={forgotError ? 'error' : ''}
                         onKeyDown={e => e.key === 'Enter' && handleForgotSubmit()}
-                      />
+                       maxLength={160}/>
                       {forgotError && <span className="error-message">{forgotError}</span>}
                     </div>
                     <button className="btn-auth-submit" disabled={isSendingReset} onClick={handleForgotSubmit}>

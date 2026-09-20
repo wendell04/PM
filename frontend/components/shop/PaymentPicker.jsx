@@ -91,12 +91,12 @@ export default function PaymentPicker({ methods = ['gcash', 'paymaya', 'card'], 
             {active && id === 'card' && (
               <div style={{ marginTop: '7px', display: 'flex', flexDirection: 'column', gap: '7px' }}>
                 <input inputMode="numeric" placeholder="1234 1234 1234 1234" value={card.number}
-                  onChange={(e) => setCard((c) => ({ ...c, number: fmtCardNumber(e.target.value) }))} style={inputStyle} />
+                  onChange={(e) => setCard((c) => ({ ...c, number: fmtCardNumber(e.target.value) }))} style={inputStyle}  maxLength={19}/>
                 <div style={{ display: 'flex', gap: '7px' }}>
                   <input inputMode="numeric" placeholder="MM/YY" value={card.expiry}
-                    onChange={(e) => setCard((c) => ({ ...c, expiry: fmtExpiry(e.target.value) }))} style={{ ...inputStyle, flex: 1 }} />
+                    onChange={(e) => setCard((c) => ({ ...c, expiry: fmtExpiry(e.target.value) }))} style={{ ...inputStyle, flex: 1 }}  maxLength={7}/>
                   <input inputMode="numeric" placeholder="CVC" value={card.cvc}
-                    onChange={(e) => setCard((c) => ({ ...c, cvc: e.target.value.replace(/\D/g, '').slice(0, 4) }))} style={{ ...inputStyle, flex: 1 }} />
+                    onChange={(e) => setCard((c) => ({ ...c, cvc: e.target.value.replace(/\D/g, '').slice(0, 4) }))} style={{ ...inputStyle, flex: 1 }}  maxLength={4}/>
                 </div>
               </div>
             )}

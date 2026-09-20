@@ -99,20 +99,20 @@ class SaleController extends Controller
             }
 
             $validated = $request->validate([
-                'inventoryId'    => 'required|string',
-                'productName'    => 'required|string',
-                'category'       => 'required|string',
+                'inventoryId'    => 'required|string|max:128',
+                'productName'    => 'required|string|max:160',
+                'category'       => 'required|string|max:160',
                 'quantity'       => 'required|integer|min:1',
                 'unitPrice'      => 'required|numeric|min:0',
                 'totalPrice'     => 'required|numeric|min:0',
                 'cost'           => 'nullable|numeric|min:0',
                 'saleDate'       => 'required|date',
-                'customerName'   => 'nullable|string',
-                'customerContact' => 'nullable|string',
-                'customerEmail'  => 'nullable|string',
+                'customerName'   => 'nullable|string|max:160',
+                'customerContact' => 'nullable|string|max:255',
+                'customerEmail'  => 'nullable|string|max:160',
                 'source'         => 'sometimes|in:manual,online',
                 'status'         => 'sometimes|in:completed,refunded',
-                'notes'          => 'nullable|string',
+                'notes'          => 'nullable|string|max:2000',
             ]);
 
             // Generate Sale ID (no transaction wrapper for MongoDB compatibility)
@@ -220,7 +220,7 @@ class SaleController extends Controller
 
             $validated = $request->validate([
                 'status' => 'sometimes|in:completed,refunded',
-                'notes'  => 'nullable|string',
+                'notes'  => 'nullable|string|max:2000',
             ]);
 
             if (isset($validated['notes'])) {

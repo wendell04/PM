@@ -88,7 +88,7 @@ class CollectionController extends Controller
             $validated = $request->validate([
                 'title'                  => 'required|string|max:255',
                 'description'            => 'nullable|string|max:5000',
-                'image'                  => 'nullable|string',
+                'image'                  => 'nullable|string|max:2048',
                 'productIds'             => 'nullable|array',
                 'isPublished'            => 'nullable|boolean',
                 'sortOrder'              => 'nullable|integer',
@@ -132,7 +132,7 @@ class CollectionController extends Controller
             $validated = $request->validate([
                 'title'                  => 'sometimes|string|max:255',
                 'description'            => 'nullable|string|max:5000',
-                'image'                  => 'nullable|string',
+                'image'                  => 'nullable|string|max:2048',
                 'productIds'             => 'nullable|array',
                 'isPublished'            => 'nullable|boolean',
                 'sortOrder'              => 'nullable|integer',

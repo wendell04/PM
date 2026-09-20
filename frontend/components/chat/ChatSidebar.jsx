@@ -80,7 +80,7 @@ const ChatSidebar = ({ conversations, activeConversation, onSelectConversation, 
             placeholder="Search conversations..."
             value={search}
             onChange={e => setSearch(e.target.value)}
-          />
+           maxLength={80}/>
           {search && (
             <button type="button" className="chat-search-clear" onClick={() => setSearch('')}>
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">

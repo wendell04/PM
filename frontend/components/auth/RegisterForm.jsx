@@ -234,7 +234,7 @@ export default function RegisterForm({ onSuccess, onSwitchToLogin, theme = 'ligh
               <input type="text" placeholder="Juan" value={formData.firstName}
                 onChange={e => handleChange('firstName', e.target.value)}
                 onBlur={e => handleChange('firstName', e.target.value.trim())}
-                className={errors.firstName ? 'error' : ''} />
+                className={errors.firstName ? 'error' : ''}  maxLength={60}/>
               {errors.firstName && <span className="error-message">{errors.firstName}</span>}
             </div>
             <div className="auth-field">
@@ -249,7 +249,7 @@ export default function RegisterForm({ onSuccess, onSwitchToLogin, theme = 'ligh
               <input type="text" placeholder="Dela Cruz" value={formData.lastName}
                 onChange={e => handleChange('lastName', e.target.value)}
                 onBlur={e => handleChange('lastName', e.target.value.trim())}
-                className={errors.lastName ? 'error' : ''} />
+                className={errors.lastName ? 'error' : ''}  maxLength={60}/>
               {errors.lastName && <span className="error-message">{errors.lastName}</span>}
             </div>
           </div>
@@ -268,7 +268,7 @@ export default function RegisterForm({ onSuccess, onSwitchToLogin, theme = 'ligh
             <label>Email Address</label>
             <input type="email" placeholder="you@example.com" value={formData.email}
               onChange={e => handleChange('email', e.target.value)}
-              className={errors.email ? 'error' : ''} />
+              className={errors.email ? 'error' : ''}  maxLength={160}/>
             {errors.email && <span className="error-message">{errors.email}</span>}
           </div>
 
@@ -301,7 +301,7 @@ export default function RegisterForm({ onSuccess, onSwitchToLogin, theme = 'ligh
                   autoComplete="new-password" value={formData.confirmPassword}
                   onChange={e => handleChange('confirmPassword', e.target.value)}
                   onFocus={() => setConfirmTouched(true)}
-                  className={errors.confirmPassword ? 'error' : ''} />
+                  className={errors.confirmPassword ? 'error' : ''}  maxLength={128}/>
                 <button type="button" className="auth-eye" onClick={() => setShowConfirm(v => !v)}>
                   {showConfirm ? <EyeOpen /> : <EyeClosed />}
                 </button>

@@ -145,7 +145,7 @@ export default function PhoneInput({ value = '', onChange, error, defaultCountry
               value={search}
               onChange={e => setSearch(e.target.value)}
               style={{ width: '100%', padding: '6px 8px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--dark3)', color: 'var(--white)', fontSize: '0.82rem' }}
-            />
+             maxLength={40}/>
           </div>
           {filtered.map(c => (
             <button

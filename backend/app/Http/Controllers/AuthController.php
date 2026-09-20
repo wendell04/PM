@@ -25,10 +25,10 @@ class AuthController extends Controller
         try {
             // Validate email format and domain
             $request->validate([
-                'firstName'   => 'required|string|min:2',
+                'firstName'   => 'required|string|min:2|max:60',
                 'middleInitial' => 'nullable|string|max:2',
-                'lastName'    => 'required|string|min:2',
-                'address'     => 'nullable|string',
+                'lastName'    => 'required|string|min:2|max:60',
+                'address'     => 'nullable|string|max:2000',
                 // E.164 (any country) - the client picks the country and validates its exact
                 // length/format; this is the shape check for what it sends.
                 'phoneNumber' => ['required', 'string', 'regex:/^\+[1-9]\d{6,14}$/'],
@@ -161,7 +161,7 @@ class AuthController extends Controller
         try {
             $request->validate([
                 'email'        => 'required|email',
-                'password'     => 'required|string',
+                'password'     => 'required|string|max:255',
                 'device_token' => 'nullable|string|size:64',
             ]);
 
@@ -569,7 +569,7 @@ class AuthController extends Controller
         try {
             $request->validate([
                 'email' => 'required|email',
-                'token' => 'required|string|min:20',
+                'token' => 'required|string|min:20|max:128',
             ]);
 
             $user = User::emailIs($request->email)->where('is_verified', true)->first();
@@ -636,7 +636,7 @@ class AuthController extends Controller
         try {
             $request->validate([
                 'email' => 'required|email',
-                'token' => 'required|string|min:20',
+                'token' => 'required|string|min:20|max:128',
             ]);
 
             $user = User::emailIs($request->email)->where('is_verified', true)->first();

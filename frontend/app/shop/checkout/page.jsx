@@ -1865,7 +1865,7 @@ export default function CheckoutPage() {
                   }}
                   onFocus={e => { e.target.style.borderColor = '#9C7BE8'; }}
                   onBlur={e => { e.target.style.borderColor = 'var(--border)'; }}
-                />
+                 maxLength={19}/>
                 {cardBrand(cardNumber) && (
                   <span style={{
                     position: 'absolute', right: '0.75rem', top: '50%', transform: 'translateY(-50%)',
@@ -1896,7 +1896,7 @@ export default function CheckoutPage() {
                   }}
                   onFocus={e => { e.target.style.borderColor = '#9C7BE8'; }}
                   onBlur={e => { e.target.style.borderColor = 'var(--border)'; }}
-                />
+                 maxLength={7}/>
               </div>
               <div>
                 <label style={{ display: 'block', fontSize: '0.72rem', color: 'var(--gray)', fontWeight: 600, marginBottom: '0.35rem', letterSpacing: '0.03em' }}>

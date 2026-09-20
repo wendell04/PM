@@ -202,18 +202,18 @@ class JobOrderController extends Controller
             $validated = $request->validate([
                 'orderId'          => 'required|string|exists:orders,_id',
                 'product'          => 'required|array',
-                'product.name'     => 'required|string',
-                'product.variant'  => 'nullable|string',
+                'product.name'     => 'required|string|max:160',
+                'product.variant'  => 'nullable|string|max:160',
                 'product.quantity' => 'required|integer|min:1',
-                'product.productId'=> 'nullable|string',
-                'product.variantId'=> 'nullable|string',
+                'product.productId'=> 'nullable|string|max:128',
+                'product.variantId'=> 'nullable|string|max:128',
                 // Which order line this job is for. Only used to find the line's own materials
                 // when the product has no BOM - a quoted service, where the admin chose them.
                 'itemIndex'        => 'nullable|integer|min:0',
                 'targetCompletion' => 'required|date',
                 'isRush'           => 'boolean',
-                'assignedTo'       => 'nullable|string',
-                'notes'            => 'nullable|string',
+                'assignedTo'       => 'nullable|string|max:255',
+                'notes'            => 'nullable|string|max:2000',
             ]);
 
             // Generate JO ID
@@ -319,15 +319,15 @@ class JobOrderController extends Controller
                 'items'                   => 'required|array|min:1',
                 'items.*.itemIndex'       => 'required|integer|min:0',
                 'items.*.product'         => 'required|array',
-                'items.*.product.name'    => 'required|string',
-                'items.*.product.variant' => 'nullable|string',
+                'items.*.product.name'    => 'required|string|max:160',
+                'items.*.product.variant' => 'nullable|string|max:160',
                 'items.*.product.quantity'=> 'required|integer|min:1',
-                'items.*.product.productId'=> 'nullable|string',
-                'items.*.product.variantId'=> 'nullable|string',
+                'items.*.product.productId'=> 'nullable|string|max:128',
+                'items.*.product.variantId'=> 'nullable|string|max:128',
                 'items.*.notes'           => 'nullable|string|max:2000',
                 'targetCompletion'        => 'required|date',
                 'isRush'                  => 'boolean',
-                'notes'                   => 'nullable|string',
+                'notes'                   => 'nullable|string|max:2000',
             ]);
 
             $linkedOrder = Order::find($validated['orderId']);
@@ -564,8 +564,8 @@ class JobOrderController extends Controller
                 'materialOverride' => 'sometimes|boolean',
                 'targetCompletion' => 'sometimes|date',
                 'isRush'           => 'sometimes|boolean',
-                'assignedTo'       => 'nullable|string',
-                'notes'            => 'nullable|string',
+                'assignedTo'       => 'nullable|string|max:255',
+                'notes'            => 'nullable|string|max:2000',
             ]);
 
             if (isset($validated['notes'])) {
@@ -1294,7 +1294,7 @@ class JobOrderController extends Controller
                 // the oven costs the mug, the paper and the film. Deducting the whole BOM every time
                 // would quietly write off material still sitting on the shelf.
                 'materials'   => 'sometimes|array',
-                'materials.*' => 'string',
+                'materials.*' => 'string|max:255',
             ], [
                 'quantity.max' => "You cannot spoil more than the {$ordered} this job is producing.",
                 'reason.required' => 'Say what happened - a bare count tells nobody how to prevent it.',

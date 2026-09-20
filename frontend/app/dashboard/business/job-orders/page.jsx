@@ -424,7 +424,7 @@ function JobOrderForm({ initial = EMPTY_FORM, isEdit = false, orders = [], order
         <label style={S.label}>{isEdit ? 'Notes' : 'Notes for every job order'}</label>
         <textarea style={S.textarea} value={form.notes} onChange={e => set('notes', e.target.value)}
           placeholder={isEdit ? 'Production notes…' : 'Applies to all of them - anything item-specific goes on the item above.'}
-          disabled={isSubmitting} />
+          disabled={isSubmitting}  maxLength={2000}/>
       </div>
 
       {submitError && <div style={{ ...S.note, background: 'var(--st-red-bg)', borderColor: 'rgba(239,68,68,0.35)', color: 'var(--st-red-fg)' }}>{submitError}</div>}

@@ -219,7 +219,7 @@ function ManageListsModal({ open, onClose, categories, setCategories, units, set
           <div style={{ display:'flex', gap:'6px', marginBottom:'10px' }}>
             <input value={newCat} onChange={e => setNewCat(e.target.value)} placeholder="New category…"
               onKeyDown={e => e.key==='Enter' && addCat()}
-              style={{ ...S.input, flex:1, fontSize:'12px', padding:'6px 10px' }} />
+              style={{ ...S.input, flex:1, fontSize:'12px', padding:'6px 10px' }}  maxLength={255}/>
             <button onClick={addCat} style={{ ...S.btnPrimary, padding:'6px 12px', fontSize:'12px' }}>{ICONS.plus}</button>
           </div>
           <div style={{ maxHeight:'260px', overflowY:'auto' }}>
@@ -231,7 +231,7 @@ function ManageListsModal({ open, onClose, categories, setCategories, units, set
           <div style={{ display:'flex', gap:'6px', marginBottom:'10px' }}>
             <input value={newUnit} onChange={e => setNewUnit(e.target.value)} placeholder="New unit…"
               onKeyDown={e => e.key==='Enter' && addUnit()}
-              style={{ ...S.input, flex:1, fontSize:'12px', padding:'6px 10px' }} />
+              style={{ ...S.input, flex:1, fontSize:'12px', padding:'6px 10px' }}  maxLength={255}/>
             <button onClick={addUnit} style={{ ...S.btnPrimary, padding:'6px 12px', fontSize:'12px' }}>{ICONS.plus}</button>
           </div>
           <div style={{ maxHeight:'260px', overflowY:'auto' }}>

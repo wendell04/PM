@@ -106,10 +106,10 @@ class InventoryReturnController extends Controller
 
             $validated = $request->validate([
                 // Accept both new and legacy keys
-                'materialId'    => 'required_without:inventoryId|string',
-                'inventoryId'   => 'nullable|string',
-                'vendorId'      => 'nullable|string',
-                'batchId'       => 'nullable|string',
+                'materialId'    => 'required_without:inventoryId|string|max:128',
+                'inventoryId'   => 'nullable|string|max:128',
+                'vendorId'      => 'nullable|string|max:128',
+                'batchId'       => 'nullable|string|max:128',
                 'damageType'    => 'required|string|in:damaged,defective,wrong_item,shortage,expired,other',
                 'quantity'      => 'required_without:qty|integer|min:1',
                 'qty'           => 'nullable|integer|min:1',

@@ -785,7 +785,7 @@ export default function PosPage() {
                         /* Spread first: inputStyle carries width:100% and would otherwise override
                            the fixed width and blow the row apart. */
                         style={{ ...inputStyle, width: '52px', textAlign: 'center', padding: '3px 4px', fontSize: '0.8rem' }}
-                      />
+                       maxLength={12}/>
                       <button type="button" onClick={() => updateQty(c.key, 1)} aria-label="Increase quantity"
                         style={{ width: '26px', height: '26px', borderRadius: '6px', background: 'var(--dark2)', border: '1px solid var(--border)', color: 'var(--white)', cursor: 'pointer', fontSize: '0.95rem', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}>+</button>
                     </div>
@@ -822,7 +822,7 @@ export default function PosPage() {
                 placeholder={discountMode === 'percent' ? 'e.g. 10' : '0.00'}
                 style={{ ...inputStyle, flex: 1 }}
                 disabled={cart.length === 0}
-              />
+               maxLength={12}/>
             </div>
             {discountPeso > 0 && (
               <div style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>
@@ -858,7 +858,7 @@ export default function PosPage() {
                   onChange={e => setAmountPaid(sanitiseAmount(e.target.value, netTotal))}
                   placeholder={netTotal > 0 ? `Half is ${(netTotal / 2).toFixed(2)}` : '0.00'}
                   style={{ ...inputStyle, marginTop: '0.5rem' }}
-                />
+                 maxLength={12}/>
               )}
               {balanceDue > 0 && (
                 <div style={{ marginTop: '0.5rem', padding: '8px 10px', background: 'var(--st-amber-bg)', borderRadius: 8, fontSize: '0.78rem', display: 'flex', justifyContent: 'space-between' }}>
@@ -965,7 +965,7 @@ export default function PosPage() {
             {paymentMethod === 'cash' && (
               <div>
                 <label style={{ ...S.label, display: 'block', marginBottom: '0.375rem' }}>Amount tendered</label>
-                <input inputMode="decimal" value={amountTendered} onChange={e => setAmountTendered(sanitiseAmount(e.target.value, MAX_TENDERED))} placeholder={netTotal > 0 ? String(netTotal.toFixed(2)) : '0.00'} style={inputStyle} />
+                <input inputMode="decimal" value={amountTendered} onChange={e => setAmountTendered(sanitiseAmount(e.target.value, MAX_TENDERED))} placeholder={netTotal > 0 ? String(netTotal.toFixed(2)) : '0.00'} style={inputStyle}  maxLength={12}/>
                 {amountTendered !== '' && !isNaN(tenderNum) && (
                   <div style={{ marginTop: '0.375rem', fontSize: '0.8rem', color: 'var(--gray)' }}>
                     Change: <span style={{ color: 'var(--white)', fontWeight: 600 }}>{formatPrice(changeDue)}</span>
@@ -1023,7 +1023,7 @@ export default function PosPage() {
               onChange={e => setSvcPrice(sanitiseAmount(e.target.value, MAX_TENDERED))}
               placeholder="0.00"
               style={inputStyle}
-            />
+             maxLength={12}/>
 
             <label style={{ ...S.label, display: 'block', margin: '0.9rem 0 0.375rem' }}>Quantity</label>
             <input
@@ -1035,7 +1035,7 @@ export default function PosPage() {
               }}
               onBlur={() => { if (svcQty === '' || svcQty < 1) setSvcQty(1); }}
               style={inputStyle}
-            />
+             maxLength={12}/>
 
             <label style={{ ...S.label, display: 'block', margin: '0.9rem 0 0.375rem' }}>Materials this job consumes</label>
             <input
@@ -1043,7 +1043,7 @@ export default function PosPage() {
               onChange={e => setMatSearch(e.target.value)}
               placeholder="Search Master Data, e.g. white t-shirt"
               style={inputStyle}
-            />
+             maxLength={100}/>
             {matResults.length > 0 && (
               <div style={{ marginTop: 6, border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
                 {matResults.map(inv => (
@@ -1142,7 +1142,7 @@ export default function PosPage() {
                 }}
                 onBlur={() => { if (variantQty === '' || variantQty < 1) setVariantQty(1); }}
                 style={inputStyle}
-              />
+               maxLength={12}/>
             </div>
 
             {selectedVariant && (

@@ -55,7 +55,7 @@ function ProductPicker({ selected, onChange, products }) {
         )}
       </div>
       <input placeholder="Search products..." value={search} onChange={e => setSearch(e.target.value)}
-        style={{ ...S.input, marginBottom: '8px' }} />
+        style={{ ...S.input, marginBottom: '8px' }}  maxLength={100}/>
       <div style={{ maxHeight: '240px', overflowY: 'auto', border: '1px solid var(--border)', borderRadius: '8px' }}>
         {visible.length === 0 && (
           <div style={{ padding: '16px', textAlign: 'center', color: 'var(--gray)', fontSize: '13px' }}>No products found</div>

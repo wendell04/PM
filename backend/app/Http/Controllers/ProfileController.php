@@ -23,11 +23,11 @@ class ProfileController extends Controller
             }
 
             $request->validate([
-                'firstName' => 'required|string|min:2',
-                'lastName' => 'required|string|min:2',
+                'firstName' => 'required|string|min:2|max:60',
+                'lastName' => 'required|string|min:2|max:60',
                 'email' => ['required', 'email', Rule::unique('users')->ignore($user->id, '_id')],
                 'phoneNumber' => ['required', 'string', 'regex:/^(\+?63|0)9\d{9}$/'],
-                'address' => 'required|string|min:3',
+                'address' => 'required|string|min:3|max:2000',
             ]);
 
             // The rule above compares capitals exactly; this catches "Name@gmail.com" vs "name@gmail.com".
@@ -83,7 +83,7 @@ class ProfileController extends Controller
             }
 
             $request->validate([
-                'currentPassword' => 'required|string',
+                'currentPassword' => 'required|string|max:255',
                 'password' => ['required', 'confirmed', Password::min(8)->mixedCase()->numbers()->symbols()],
             ]);
 
@@ -118,7 +118,7 @@ class ProfileController extends Controller
             }
 
             $request->validate([
-                'avatar' => 'required|string|url',
+                'avatar' => 'required|string|url|max:255',
             ]);
 
             $user->avatar = $request->avatar;
@@ -157,7 +157,7 @@ class ProfileController extends Controller
             }
 
             $request->validate([
-                'password' => 'required|string',
+                'password' => 'required|string|max:255',
                 'reason'   => 'nullable|string|max:500',
             ]);
 

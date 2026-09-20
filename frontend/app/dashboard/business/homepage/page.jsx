@@ -448,9 +448,9 @@ export default function HomepageCmsPage() {
               <div><label style={lbl}>Subtext</label><textarea style={{ ...inp, minHeight: 64, resize: 'vertical' }} value={editTag.subtext || ''} onChange={e => setT('subtext', e.target.value.slice(0, 200))} maxLength={200} /></div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }} className="hp-2col">
                 <div><label style={lbl}>Button 1 text</label><input style={inp} value={editTag.ctaLabel || ''} onChange={e => setT('ctaLabel', e.target.value.slice(0, 30))} maxLength={30} /></div>
-                <div><label style={lbl}>Button 1 link</label><input style={inp} value={editTag.ctaLink || ''} onChange={e => setT('ctaLink', e.target.value)} /></div>
+                <div><label style={lbl}>Button 1 link</label><input style={inp} value={editTag.ctaLink || ''} onChange={e => setT('ctaLink', e.target.value)}  maxLength={255}/></div>
                 <div><label style={lbl}>Button 2 text</label><input style={inp} value={editTag.cta2Label || ''} onChange={e => setT('cta2Label', e.target.value.slice(0, 30))} maxLength={30} /></div>
-                <div><label style={lbl}>Button 2 link</label><input style={inp} value={editTag.cta2Link || ''} onChange={e => setT('cta2Link', e.target.value)} /></div>
+                <div><label style={lbl}>Button 2 link</label><input style={inp} value={editTag.cta2Link || ''} onChange={e => setT('cta2Link', e.target.value)}  maxLength={255}/></div>
               </div>
             </div>
           )}
@@ -536,9 +536,9 @@ export default function HomepageCmsPage() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               {pricing.map((c, i) => (
                 <div key={i} className="hp-price-row" style={{ display: 'grid', gridTemplateColumns: '1.3fr 0.6fr 2.2fr auto', gap: '8px', alignItems: 'center' }}>
-                  <input style={inp} placeholder="Category (e.g. T-Shirt Printing)" value={c.category || ''} onChange={e => setPricingCard(i, 'category', e.target.value)} />
-                  <input style={inp} placeholder="₱300" value={c.startingAt || ''} onChange={e => setPricingCard(i, 'startingAt', e.target.value)} />
-                  <input style={inp} placeholder="Short note" value={c.note || ''} onChange={e => setPricingCard(i, 'note', e.target.value)} />
+                  <input style={inp} placeholder="Category (e.g. T-Shirt Printing)" value={c.category || ''} onChange={e => setPricingCard(i, 'category', e.target.value)}  maxLength={255}/>
+                  <input style={inp} placeholder="₱300" value={c.startingAt || ''} onChange={e => setPricingCard(i, 'startingAt', e.target.value)}  maxLength={12}/>
+                  <input style={inp} placeholder="Short note" value={c.note || ''} onChange={e => setPricingCard(i, 'note', e.target.value)}  maxLength={255}/>
                   <button onClick={() => removePricingCard(i)} title="Remove" style={{ padding: '0.5rem 0.7rem', borderRadius: 6, border: '1px solid rgba(239,68,68,0.3)', background: 'rgba(239,68,68,0.08)', color: '#ef4444', cursor: 'pointer', fontSize: '0.8rem' }}>✕</button>
                 </div>
               ))}
@@ -558,8 +558,8 @@ export default function HomepageCmsPage() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               {whyus.map((f, i) => (
                 <div key={i} className="hp-price-row" style={{ display: 'grid', gridTemplateColumns: '1fr 2.4fr', gap: '8px', alignItems: 'center' }}>
-                  <input style={inp} placeholder="Title" value={f.title || ''} onChange={e => setRow(setWhyus, i, 'title', e.target.value)} />
-                  <input style={inp} placeholder="Description" value={f.desc || ''} onChange={e => setRow(setWhyus, i, 'desc', e.target.value)} />
+                  <input style={inp} placeholder="Title" value={f.title || ''} onChange={e => setRow(setWhyus, i, 'title', e.target.value)}  maxLength={255}/>
+                  <input style={inp} placeholder="Description" value={f.desc || ''} onChange={e => setRow(setWhyus, i, 'desc', e.target.value)}  maxLength={255}/>
                 </div>
               ))}
               <button onClick={() => saveContent('why_us', { features: whyus }, 'Why-Us updated - live on the homepage.')} disabled={busy} style={{ ...pubBtn(false), alignSelf: 'flex-end' }}>{busy ? 'Saving…' : 'Save'}</button>
@@ -575,8 +575,8 @@ export default function HomepageCmsPage() {
               {hiw.map((s, i) => (
                 <div key={i} className="hp-price-row" style={{ display: 'grid', gridTemplateColumns: 'auto 1fr 2.4fr', gap: '8px', alignItems: 'center' }}>
                   <span style={{ color: 'var(--gray)', fontSize: '0.8rem', fontWeight: 700 }}>{String(i + 1).padStart(2, '0')}</span>
-                  <input style={inp} placeholder="Step title" value={s.title || ''} onChange={e => setRow(setHiw, i, 'title', e.target.value)} />
-                  <input style={inp} placeholder="Step description" value={s.desc || ''} onChange={e => setRow(setHiw, i, 'desc', e.target.value)} />
+                  <input style={inp} placeholder="Step title" value={s.title || ''} onChange={e => setRow(setHiw, i, 'title', e.target.value)}  maxLength={255}/>
+                  <input style={inp} placeholder="Step description" value={s.desc || ''} onChange={e => setRow(setHiw, i, 'desc', e.target.value)}  maxLength={255}/>
                 </div>
               ))}
               <button onClick={() => saveContent('how_it_works', { steps: hiw }, 'How-It-Works updated - live on the homepage.')} disabled={busy} style={{ ...pubBtn(false), alignSelf: 'flex-end' }}>{busy ? 'Saving…' : 'Save'}</button>
@@ -589,15 +589,15 @@ export default function HomepageCmsPage() {
           <h2 style={cardTitle}>Let&apos;s Talk <span style={{ fontSize: '0.72rem', fontWeight: 400, color: 'var(--gray)' }}>contact details and the contact form on the homepage</span></h2>
           {contact === null ? <div style={{ color: 'var(--gray)', fontSize: '0.85rem' }}>Loading…</div> : (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }} className="hp-2col">
-              <div><label style={lbl}>Social handle</label><input style={inp} value={contact.handle || ''} onChange={e => setContact(p => ({ ...p, handle: e.target.value }))} /></div>
-              <div><label style={lbl}>Email</label><input style={inp} type="email" placeholder="you@yourshop.com" value={contact.email || ''} onChange={e => setContact(p => ({ ...p, email: e.target.value }))} /></div>
-              <div><label style={lbl}>Facebook URL</label><input style={inp} placeholder="https://facebook.com/yourpage" value={contact.facebook || ''} onChange={e => setContact(p => ({ ...p, facebook: e.target.value }))} /></div>
-              <div><label style={lbl}>Instagram URL</label><input style={inp} placeholder="https://instagram.com/yourpage" value={contact.instagram || ''} onChange={e => setContact(p => ({ ...p, instagram: e.target.value }))} /></div>
-              <div><label style={lbl}>TikTok URL</label><input style={inp} placeholder="https://tiktok.com/@yourpage" value={contact.tiktok || ''} onChange={e => setContact(p => ({ ...p, tiktok: e.target.value }))} /></div>
-              <div><label style={lbl}>Shopee link (URL)</label><input style={inp} value={contact.shopeeUrl || ''} onChange={e => setContact(p => ({ ...p, shopeeUrl: e.target.value }))} /></div>
-              <div><label style={lbl}>Shopee label</label><input style={inp} value={contact.shopeeText || ''} onChange={e => setContact(p => ({ ...p, shopeeText: e.target.value }))} /></div>
-              <div><label style={lbl}>Hours line 1</label><input style={inp} value={contact.hours1 || ''} onChange={e => setContact(p => ({ ...p, hours1: e.target.value }))} /></div>
-              <div><label style={lbl}>Hours line 2</label><input style={inp} value={contact.hours2 || ''} onChange={e => setContact(p => ({ ...p, hours2: e.target.value }))} /></div>
+              <div><label style={lbl}>Social handle</label><input style={inp} value={contact.handle || ''} onChange={e => setContact(p => ({ ...p, handle: e.target.value }))}  maxLength={255}/></div>
+              <div><label style={lbl}>Email</label><input style={inp} type="email" placeholder="you@yourshop.com" value={contact.email || ''} onChange={e => setContact(p => ({ ...p, email: e.target.value }))}  maxLength={160}/></div>
+              <div><label style={lbl}>Facebook URL</label><input style={inp} placeholder="https://facebook.com/yourpage" value={contact.facebook || ''} onChange={e => setContact(p => ({ ...p, facebook: e.target.value }))}  maxLength={2048}/></div>
+              <div><label style={lbl}>Instagram URL</label><input style={inp} placeholder="https://instagram.com/yourpage" value={contact.instagram || ''} onChange={e => setContact(p => ({ ...p, instagram: e.target.value }))}  maxLength={2048}/></div>
+              <div><label style={lbl}>TikTok URL</label><input style={inp} placeholder="https://tiktok.com/@yourpage" value={contact.tiktok || ''} onChange={e => setContact(p => ({ ...p, tiktok: e.target.value }))}  maxLength={160}/></div>
+              <div><label style={lbl}>Shopee link (URL)</label><input style={inp} value={contact.shopeeUrl || ''} onChange={e => setContact(p => ({ ...p, shopeeUrl: e.target.value }))}  maxLength={255}/></div>
+              <div><label style={lbl}>Shopee label</label><input style={inp} value={contact.shopeeText || ''} onChange={e => setContact(p => ({ ...p, shopeeText: e.target.value }))}  maxLength={255}/></div>
+              <div><label style={lbl}>Hours line 1</label><input style={inp} value={contact.hours1 || ''} onChange={e => setContact(p => ({ ...p, hours1: e.target.value }))}  maxLength={255}/></div>
+              <div><label style={lbl}>Hours line 2</label><input style={inp} value={contact.hours2 || ''} onChange={e => setContact(p => ({ ...p, hours2: e.target.value }))}  maxLength={255}/></div>
               <div style={{ gridColumn: '1 / -1' }}>
                 <label style={lbl}>Hours note</label>
                 <input style={inp} maxLength={200}

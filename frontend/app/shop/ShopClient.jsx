@@ -533,7 +533,7 @@ function QuickViewModal({ product, flashSale, onClose, onToast }) {
                       const c = isNaN(v) || v < moq ? moq : Math.min(v, maxQty);
                       setQty(c); setQtyInput(String(c));
                     }}
-                  />
+                   maxLength={5}/>
                   <button disabled={qty >= maxQty} onClick={() => { const n = Math.min(maxQty, qty + 1); setQty(n); setQtyInput(String(n)); }}>+</button>
                 </div>
               </div>
@@ -2010,7 +2010,7 @@ export default function ShopClient({
                         setQuickQty(Math.min(Math.max(quickAddProduct.minOrderQty || 1, val), effectiveMaxQty));
                       }}
                       style={{ width: '64px', height: '38px', background: 'var(--dark)', border: '1px solid var(--border)', borderLeft: 'none', borderRight: 'none', color: 'var(--white)', textAlign: 'center', fontSize: '0.95rem', outline: 'none' }}
-                    />
+                     maxLength={5}/>
                     <button
                       onClick={() => setQuickQty(q => Math.min(effectiveMaxQty, q + 1))}
                       style={{ width: '38px', height: '38px', background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '0 8px 8px 0', cursor: 'pointer', color: 'var(--white)', fontSize: '1.25rem', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}

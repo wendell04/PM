@@ -518,7 +518,7 @@ export default function OrderRequestsPage() {
               outline: 'none',
               boxSizing: 'border-box',
             }}
-          />
+           maxLength={100}/>
         </div>
       </div>
 
@@ -1011,7 +1011,7 @@ export default function OrderRequestsPage() {
                           outline: 'none',
                           boxSizing: 'border-box',
                         }}
-                      />
+                       maxLength={2000}/>
                     </div>
 
                     {/* Materials (per-order BOM) - assembled at quote time; drives COGS/profit */}
@@ -1071,7 +1071,7 @@ export default function OrderRequestsPage() {
                           outline: 'none',
                           boxSizing: 'border-box',
                         }}
-                      />
+                       maxLength={2048}/>
                     </div>
 
                     {/* Messages */}
@@ -1181,7 +1181,7 @@ function CustomerPicker({ token, onClose, onPick }) {
           </div>
           <input autoFocus value={q} onChange={e => setQ(e.target.value)}
             placeholder="Search name, email or phone"
-            style={{ ...S.input, marginTop: 10, width: '100%' }} />
+            style={{ ...S.input, marginTop: 10, width: '100%' }}  maxLength={160}/>
         </div>
         <div style={{ overflowY: 'auto', padding: '6px 0' }}>
           {loading ? (

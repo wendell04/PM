@@ -159,7 +159,7 @@ export default function ProductFormModal({ open, onClose, onSave, product, boms 
         {/* Cover Image */}
         <Field label="Cover Image URL">
           <input value={form.thumbnail} onChange={e => setF('thumbnail', e.target.value)}
-            placeholder="https://… (leave blank for default)" style={S.input} />
+            placeholder="https://… (leave blank for default)" style={S.input}  maxLength={2048}/>
         </Field>
 
         {/* Divider */}
