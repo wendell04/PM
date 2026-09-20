@@ -158,29 +158,34 @@ export function CartProvider({ children }) {
   /**
    * Remove item from cart by lineId
    */
+  // Removal is optimistic: the line leaves the screen at once and only comes back if the server
+  // refuses. Saving first and updating after made the row fade out, reappear while the request
+  // was in flight, and vanish again when the answer landed. No loading flag either - the page
+  // reads it as "the cart is loading" and blanks the list, which is the same flicker by another
+  // route.
   const removeFromCart = useCallback(async (lineId) => {
-    setIsCartLoading(true);
+    const before = cartItems;
+    const updatedItems = cartItems.filter(item => item.lineId !== lineId);
+    setCartItems(updatedItems);
     try {
-      const updatedItems = cartItems.filter(item => item.lineId !== lineId);
       await saveCart(updatedItems);
     } catch (error) {
       console.error('Failed to remove from cart:', error);
+      setCartItems(before);
       throw error;
-    } finally {
-      setIsCartLoading(false);
     }
   }, [cartItems, saveCart]);
 
   const bulkRemove = useCallback(async (lineIds) => {
-    setIsCartLoading(true);
+    const before = cartItems;
+    const updatedItems = cartItems.filter(item => !lineIds.includes(item.lineId));
+    setCartItems(updatedItems);
     try {
-      const updatedItems = cartItems.filter(item => !lineIds.includes(item.lineId));
       await saveCart(updatedItems);
     } catch (error) {
       console.error('[bulkRemove]', error);
+      setCartItems(before);
       throw error;
-    } finally {
-      setIsCartLoading(false);
     }
   }, [cartItems, saveCart]);
 

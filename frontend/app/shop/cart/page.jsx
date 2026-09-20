@@ -284,14 +284,19 @@ export default function CartPage() {
   const handleRemoveItem = (lineId, index) => {
     setRemovingId(lineId);
     if (removeTimerRef.current) clearTimeout(removeTimerRef.current);
-    removeTimerRef.current = setTimeout(() => {
-      removeFromCart(lineId);
+    removeTimerRef.current = setTimeout(async () => {
       setSelectedItems(prev => {
         const newSet = new Set(prev);
         newSet.delete(index);
         return newSet;
       });
-      setRemovingId(null);
+      try {
+        await removeFromCart(lineId);   // optimistic: the line is gone before the request lands
+      } catch {
+        setError('Could not remove that item. Please try again.');
+      } finally {
+        setRemovingId(null);            // only matters if the server refused and the line came back
+      }
     }, 250);
   };
 
@@ -634,7 +639,9 @@ export default function CartPage() {
                                   ? <img src={cloudinaryThumb(designHref, 96)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                                   : <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#166534" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>}
                               </span>
-                              <span style={{ minWidth: 0 }}>
+                              {/* display:block, not inline: min-width does nothing on an inline span, so the
+                                  filename's ellipsis never engaged and the box grew past the phone. */}
+                              <span style={{ display: 'block', minWidth: 0, flex: 1 }}>
                                 <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '.76rem', fontWeight: 700, color: '#166534' }}>
                                   {fileCount} file{fileCount === 1 ? '' : 's'} attached
                                   {fileCount > 1 && (
@@ -684,7 +691,7 @@ export default function CartPage() {
                                             ? <img src={cloudinaryThumb(f.url, 80)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                                             : <span style={{ fontSize: '7.5px', fontWeight: 800, color: '#166534', letterSpacing: '.02em' }}>{fileExtLabel(f.url, 'FILE')}</span>}
                                         </span>
-                                        <span style={{ fontSize: '.7rem', color: '#166534', opacity: .9,
+                                        <span style={{ fontSize: '.7rem', color: '#166534', opacity: .9, minWidth: 0,
                                           textDecoration: 'underline', overflow: 'hidden',
                                           textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                           {f.name || fileNameFromUrl(f.url)}
@@ -929,6 +936,11 @@ export default function CartPage() {
           @media (max-width: 820px) {
             .cart-grid { grid-template-columns: 1fr !important; }
           }
+          /* Nothing inside a line may widen the page. A long filename or an unbroken word wraps or
+             is cut inside its own box; the page never scrolls sideways on a phone. */
+          .cart-grid, .cart-grid > * { min-width: 0; max-width: 100%; }
+          .cart-grid section { overflow-x: hidden; }
+          .cart-grid p, .cart-grid span, .cart-grid a { overflow-wrap: anywhere; }
         `}</style>
       </div>
     </ErrorBoundary>
