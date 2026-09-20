@@ -1,7 +1,6 @@
 'use client';
 
 import AddressPicker from '@/components/shop/AddressPicker';
-import { addWorkingDays } from '@/lib/workingDays';
 import { optionGroupsOf, defaultOptionSelection, selectedOptionList, optionsUnitAdd, optionsOrderAdd, withOptionSuffix, optionKey, groupKey } from '@/lib/shopUtils';
 import NoImage from '@/components/NoImage';
 
@@ -451,13 +450,6 @@ function CustomOrderInner() {
   const termsVersion = storeSettings?.termsVersion ?? 1;
   // "Get by" date = today + (production + shipping) business days, skipping Sundays.
   // Matches the server: Sundays, national holidays and the shop's own closures.
-  const addBizDays = (n) => addWorkingDays(n, { workingDays: storeSettings?.workingDays, holidays: storeSettings?.holidays });
-  const fmtGetBy = (d) => d.toLocaleDateString('en-PH', { month: 'short', day: 'numeric' });
-  const getByRange = (lead) => {
-    const a = fmtGetBy(addBizDays(lead + shipMinDays));
-    const b = fmtGetBy(addBizDays(lead + shipMaxDays));
-    return a === b ? a : `${a} - ${b}`;
-  };
 
   // Rush is chosen at checkout now, so the product-page total never includes a rush fee.
   const grandTotal = lineTotal + designFee + (shippingFeeAmt ?? 0);
@@ -1668,16 +1660,32 @@ function CustomOrderInner() {
                       <span style={{ color: 'var(--gold)' }}>+{fmt(designFee)}</span>
                     </div>
                   )}
-                  {/* Delivery is now chosen ONCE for the whole order at CHECKOUT (pick your need-by
-                      date there; a Rush option appears if it is earlier than standard). Here we only
-                      show the standard estimate so the product page has no separate rush selector. */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', padding: '8px 0', borderTop: '1px solid var(--border)' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem' }}>
-                      <span style={{ color: 'var(--gray)' }}>Estimated delivery</span>
-                      <span style={{ color: 'var(--white)', fontWeight: 600 }}>{getByRange(prodLeadDays)}</span>
-                    </div>
-                    <span style={{ fontSize: '0.72rem', color: 'var(--gray)', lineHeight: 1.5 }}>Need it sooner? Choose Standard or Rush at checkout.</span>
-                  </div>
+                  {/* A made-to-order item has no delivery DATE yet: the clock starts when the
+                      artwork is approved, and the customer holds that. So this is a duration, the
+                      way MetroPrint's cart says "6 Business Days - after proof approval", from the
+                      same settings checkout and the order use (production lead + courier days). */}
+                  {(() => {
+                    const range = (lead) => {
+                      const a = lead + shipMinDays, b = lead + shipMaxDays;
+                      return a === b ? `${a} working day${a === 1 ? '' : 's'}` : `${a}-${b} working days`;
+                    };
+                    const after = designMode === 'upload' ? 'after we approve your file'
+                      : designMode === 'request' ? 'after you approve the proof'
+                      : 'after your artwork is approved';
+                    return (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', padding: '8px 0', borderTop: '1px solid var(--border)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: '0.82rem' }}>
+                          <span style={{ color: 'var(--gray)', flexShrink: 0 }}>Delivery</span>
+                          <span style={{ color: 'var(--white)', fontWeight: 600, textAlign: 'right' }}>{range(prodLeadDays)} {after}</span>
+                        </div>
+                        <span style={{ fontSize: '0.72rem', color: 'var(--gray)', lineHeight: 1.5 }}>
+                          {rushEnabled
+                            ? `Rush (${range(rushLeadDays)}) is offered at checkout. The countdown starts at approval, not today.`
+                            : 'The countdown starts at approval, not today.'}
+                        </span>
+                      </div>
+                    );
+                  })()}
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
                     <span style={{ color: 'var(--gray)' }}>Shipping</span>
                     {shippingFeeAmt !== null
