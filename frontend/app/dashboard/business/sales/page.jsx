@@ -395,7 +395,8 @@ export default function SalesListPage() {
       setIsLoading(true); setError(null);
       const auth = { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } };
       try {
-        const res = await fetch(`${API_URL}/api/admin/orders`, auth);
+        // Archived orders included: archiving tidies the Orders list, it does not un-sell anything.
+        const res = await fetch(`${API_URL}/api/admin/orders?showArchived=1`, auth);
         const data = await res.json();
         if (!res.ok) throw new Error(data.message || data.error || 'Failed to load orders');
         const list = Array.isArray(data.data) ? data.data : (Array.isArray(data) ? data : []);

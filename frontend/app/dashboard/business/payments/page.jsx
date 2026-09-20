@@ -54,6 +54,21 @@ const fmt = (n) => '₱' + Number(n ?? 0).toLocaleString('en-PH', { minimumFract
 // `due > 0`. Compute it from payments received instead, the same way the Orders modal does.
 const balanceOf = (o) => remainingDue(o);
 
+const SORT_OPTIONS = [
+  { value: 'newest',  label: 'Newest first' },
+  { value: 'oldest',  label: 'Oldest first' },
+  { value: 'balance', label: 'Largest balance' },
+];
+
+// A parked order that still owes. The tag is the difference between "this is hidden from the
+// Orders queue" and "this is settled" - archiving does the first and never the second.
+const ArchivedTag = () => (
+  <span style={{ marginLeft: 6, padding: '1px 6px', borderRadius: 4, fontSize: 10, fontWeight: 700, letterSpacing: '0.04em',
+    fontFamily: 'inherit', background: '#fff7ed', color: '#c2410c', border: '1px solid #fdba74', verticalAlign: 'middle' }}>
+    ARCHIVED
+  </span>
+);
+
 const customerOf = (o) =>
   o.userSnapshot?.name || o.customerName ||
   `${o.customer?.firstName || ''} ${o.customer?.lastName || ''}`.trim() || 'Walk-in';
@@ -86,6 +101,7 @@ export default function PaymentsPage() {
   const [statusFilter, setStatusFilter] = useState('outstanding');
   const isPhone = useIsPhone();
   const [ageFilter, setAgeFilter] = useState('all');
+  const [sortBy, setSortBy] = useState('newest');
 
   const [modalOrder, setModalOrder] = useState(null);
   const [payForm, setPayForm] = useState({ amount: '', method: 'cash', note: '' });
@@ -100,7 +116,10 @@ export default function PaymentsPage() {
     if (!token) return;
     setLoading(true); setError('');
     try {
-      const res = await fetchWithTimeout(`${API_URL}/api/admin/orders`, { headers: HEADERS(token) }, 20000);
+      // Archived orders included. Archiving parks an order; it does not settle it. A balance on
+      // an archived order is still owed, and this is the page that exists to show what is owed.
+      // To make a balance go away the owner cancels or writes it off, not archives it.
+      const res = await fetchWithTimeout(`${API_URL}/api/admin/orders?showArchived=1`, { headers: HEADERS(token) }, 20000);
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || data.error || `Request failed (${res.status})`);
       const list = Array.isArray(data.data) ? data.data : (Array.isArray(data) ? data : []);
@@ -167,7 +186,12 @@ export default function PaymentsPage() {
 
     const matchAge = ageFilter === 'all' || (balanceOf(o) > 0 && bucketOf(o).key === ageFilter);
     return matchSearch && matchStatus && matchAge;
-  }).sort((a, b) => ageDays(b) - ageDays(a));   // oldest receivable first
+  }).sort((a, b) => {
+    if (sortBy === 'balance') return balanceOf(b) - balanceOf(a);
+    const ta = new Date(a.createdAt ?? a.created_at ?? 0).getTime();
+    const tb = new Date(b.createdAt ?? b.created_at ?? 0).getTime();
+    return sortBy === 'oldest' ? ta - tb : tb - ta;
+  });
 
   const { slice, page, perPage, total, setPage, setPerPage } = usePagination(filtered, 15);
 
@@ -230,6 +254,8 @@ export default function PaymentsPage() {
                 options: [{ value: 'outstanding', label: 'Outstanding only' }, { value: 'all', label: 'All orders' }, { value: 'unpaid', label: 'Unpaid' }, { value: 'partial', label: 'Partial' }, { value: 'paid', label: 'Paid' }] },
               { key: 'age', label: 'Age', value: ageFilter, defaultValue: 'all', onChange: v => { setAgeFilter(v); setPage(1); },
                 options: [{ value: 'all', label: 'Any age' }, ...AGE_BUCKETS.map(b => ({ value: b.key, label: b.label }))] },
+              { key: 'sort', label: 'Sort', value: sortBy, defaultValue: 'newest', onChange: v => { setSortBy(v); setPage(1); },
+                options: SORT_OPTIONS },
             ]}
             actions={<button onClick={fetchOrders} style={{ ...S.btnSmGhost, minHeight: 36 }}>{ICONS.reload} Refresh</button>}
             note={`${total} order${total === 1 ? '' : 's'}`} />
@@ -247,6 +273,8 @@ export default function PaymentsPage() {
               ]} />
             <CustomSelect value={ageFilter} onChange={v => { setAgeFilter(v); setPage(1); }} style={{ width: '150px' }}
               options={[{ value: 'all', label: 'Any age' }, ...AGE_BUCKETS.map(b => ({ value: b.key, label: b.label }))]} />
+            <CustomSelect value={sortBy} onChange={v => { setSortBy(v); setPage(1); }} style={{ width: '160px' }}
+              options={SORT_OPTIONS} />
           </div>
           <button onClick={fetchOrders} style={S.btnGhost}>{ICONS.reload} Refresh</button>
         </div>
@@ -269,7 +297,7 @@ export default function PaymentsPage() {
                     <PhoneRow key={o._id || o.id} first={i === 0}
                       onClick={() => bal > 0 ? openRecordPayment(o) : (o.paymentHistory?.length > 0 ? setHistoryOrder(o) : null)}
                       title={orderNo(o)}
-                      chip={<StatusBadge status={o.paymentStatus || 'unpaid'} />}
+                      chip={<span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>{o.isArchived && <ArchivedTag />}<StatusBadge status={o.paymentStatus || 'unpaid'} /></span>}
                       meta={customerOf(o)}
                       sub={[`total ${fmt(o.totalAmount)}`, `paid ${fmt(paidSoFar(o))}`, bal > 0 ? `owes ${fmt(bal)} \u00b7 ${ageDays(o)}d` : 'settled'].join(' \u00b7 ')} />
                   );
@@ -309,7 +337,9 @@ export default function PaymentsPage() {
                 const days = ageDays(o);
                 return (
                   <tr key={o._id || o.id} style={S.tr}>
-                    <td data-rt="head" style={{ ...S.td, fontFamily: 'monospace', fontWeight: 600, fontSize: 12, color: 'var(--gold)' }}>{orderNo(o)}</td>
+                    <td data-rt="head" style={{ ...S.td, fontFamily: 'monospace', fontWeight: 600, fontSize: 12, color: 'var(--gold)' }}>
+                      {orderNo(o)}{o.isArchived && <ArchivedTag />}
+                    </td>
                     <td data-label="Customer" style={S.td}>{customerOf(o)}</td>
                     <td data-label="Total" style={{ ...S.td, textAlign: 'right', fontFamily: 'monospace' }}>{fmt(o.totalAmount)}</td>
                     <td data-label="Paid" style={{ ...S.td, textAlign: 'right', fontFamily: 'monospace', color: 'var(--st-green-fg)' }}>{fmt(paidSoFar(o))}</td>

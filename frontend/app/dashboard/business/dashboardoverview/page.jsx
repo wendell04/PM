@@ -164,7 +164,8 @@ export default function DashboardOverviewPage() {
       };
 
       const settled = await Promise.allSettled([
-        fetchWithTimeout(`${API_URL}/api/admin/orders?limit=2000`,           { headers }, 30000),
+        // Archived included so revenue agrees with Sales; the queue counts below skip them.
+        fetchWithTimeout(`${API_URL}/api/admin/orders?limit=2000&showArchived=1`, { headers }, 30000),
         fetchWithTimeout(`${API_URL}/api/admin/inventory`,                    { headers }, 30000),
         fetchWithTimeout(`${API_URL}/api/admin/banners`,                      { headers }, 30000),
         fetchWithTimeout(`${API_URL}/api/admin/returns/stats`,                { headers }, 30000),
@@ -212,7 +213,7 @@ export default function DashboardOverviewPage() {
 
       const computedOrderStats = {
         totalOrders:      orders.length,
-        pendingOrders:    orders.filter(isPending).length,
+        pendingOrders:    orders.filter(o => isPending(o) && !o.isArchived).length,   // parked is not pending
         completedOrders:  deliveredOrders.length,
         cancelledOrders:  orders.filter(isCancelled).length,
         expiredOrders:    orders.filter(isExpiredOrder).length,

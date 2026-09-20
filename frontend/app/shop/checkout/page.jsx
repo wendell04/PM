@@ -97,8 +97,6 @@ export default function CheckoutPage() {
   const [designPreviewUrl, setDesignPreviewUrl] = useState(null);
   const [designFilePreviewUrl, setDesignFilePreviewUrl] = useState(null);
   const [paymentMethod,    setPaymentMethod]    = useState('cod');
-  const [eWalletPhone,     setEWalletPhone]     = useState('');
-  const [showEWalletPhone, setShowEWalletPhone] = useState(false);
   const [cardNumber,       setCardNumber]       = useState('');
   const [cardExpiry,    setCardExpiry]    = useState('');
   const [cardCvc,       setCardCvc]       = useState('');
@@ -548,11 +546,6 @@ export default function CheckoutPage() {
   // ── Card helpers ──
   const isOnlinePayment = ['gcash', 'paymaya', 'card'].includes(paymentMethod);
 
-  function fmtPHPhone(digits) {
-    if (digits.length <= 3) return digits;
-    if (digits.length <= 6) return digits.slice(0, 3) + ' ' + digits.slice(3);
-    return digits.slice(0, 3) + ' ' + digits.slice(3, 6) + ' ' + digits.slice(6);
-  }
 
   function fmtCardNumber(v) {
     return v.replace(/\D/g, '').slice(0, 16).replace(/(.{4})/g, '$1 ').trim();
@@ -777,7 +770,6 @@ export default function CheckoutPage() {
           design_notes: designNotes || null,
           paymentType: paymentMethod,
           paymentMethodId,
-          eWalletPhone: eWalletPhone.trim() ? `+63${eWalletPhone.trim()}` : null,
           shippingFee: shippingFeeAmt ?? 0,
           isRush,
           ...(isRush ? { rushFee: rushCharge } : {}),
@@ -1770,18 +1762,16 @@ export default function CheckoutPage() {
           },
         ].filter(opt => methodAvailable(opt.id))).map(opt => {
           const isSelected = paymentMethod === opt.id;
-          const isEWallet = opt.id === 'gcash' || opt.id === 'paymaya';
-          const showPanel = isEWallet && isSelected;
           return (
             <React.Fragment key={opt.id}>
               <div
-                onClick={() => { setPaymentMethod(opt.id); setEWalletPhone(''); setShowEWalletPhone(false); }}
+                onClick={() => setPaymentMethod(opt.id)}
                 style={{
                   display: 'flex', alignItems: 'center', gap: '0.875rem',
                   padding: '0.875rem 1rem', borderRadius: '10px', cursor: 'pointer',
                   border: `1px solid ${isSelected ? opt.accent : 'var(--border)'}`,
                   background: isSelected ? opt.accentBg : 'var(--dark)',
-                  marginBottom: showPanel ? '0' : '0.625rem', transition: 'all 0.18s',
+                  marginBottom: '0.625rem', transition: 'all 0.18s',
                 }}
               >
                 {/* Logo / icon box */}
@@ -1832,80 +1822,6 @@ export default function CheckoutPage() {
                 }} />
               </div>
 
-              {/* Inline e-wallet panel - appears directly below its own card */}
-              {showPanel && (
-                <div style={{
-                  marginTop: '4px', marginBottom: '0.625rem',
-                  padding: '0.875rem 1rem', borderRadius: '10px',
-                  background: opt.id === 'gcash' ? 'rgba(0,102,255,0.04)' : 'rgba(0,177,79,0.04)',
-                  border: `1px solid ${opt.id === 'gcash' ? 'rgba(0,102,255,0.18)' : 'rgba(0,177,79,0.18)'}`,
-                }}>
-                  {!showEWalletPhone ? (
-                    <button
-                      type="button"
-                      onClick={() => setShowEWalletPhone(true)}
-                      style={{
-                        background: 'none', border: 'none', cursor: 'pointer', padding: 0,
-                        display: 'flex', alignItems: 'center', gap: '0.4rem',
-                        color: opt.id === 'gcash' ? '#0066FF' : '#00B14F',
-                        fontSize: '0.8rem', fontWeight: 600,
-                      }}
-                    >
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                        <rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/>
-                      </svg>
-                      Use a different {opt.id === 'gcash' ? 'GCash' : 'Maya'} number for billing reference
-                    </button>
-                  ) : (
-                    <>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.625rem' }}>
-                        <span style={{ fontSize: '0.75rem', fontWeight: 700, color: opt.id === 'gcash' ? '#0066FF' : '#00B14F', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                          {opt.id === 'gcash' ? 'GCash' : 'Maya'} number
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => { setShowEWalletPhone(false); setEWalletPhone(''); }}
-                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--gray)', fontSize: '0.75rem', padding: 0 }}
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                      <div style={{
-                        display: 'flex', alignItems: 'center',
-                        background: 'var(--dark2)', border: '1px solid var(--border)',
-                        borderRadius: '8px', overflow: 'hidden',
-                      }}
-                        onFocusCapture={e => { e.currentTarget.style.borderColor = opt.id === 'gcash' ? '#0066FF' : '#00B14F'; }}
-                        onBlurCapture={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'; }}
-                      >
-                        <span style={{
-                          padding: '0.65rem 0.75rem', fontSize: '0.9rem', fontFamily: 'monospace',
-                          color: 'var(--gray)', borderRight: '1px solid rgba(255,255,255,0.08)',
-                          flexShrink: 0, userSelect: 'none',
-                        }}>+63</span>
-                        <input
-                          type="tel"
-                          inputMode="numeric"
-                          placeholder="9XX XXX XXXX"
-                          maxLength={12}
-                          value={fmtPHPhone(eWalletPhone)}
-                          autoFocus
-                          onChange={e => setEWalletPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
-                          style={{
-                            flex: 1, background: 'transparent', border: 'none',
-                            padding: '0.65rem 0.875rem',
-                            color: 'var(--white)', fontSize: '0.9rem', outline: 'none',
-                            fontFamily: 'monospace',
-                          }}
-                        />
-                      </div>
-                      <p style={{ margin: '0.5rem 0 0', fontSize: '0.7rem', color: 'var(--gray)', lineHeight: 1.5 }}>
-                        For billing reference only. Actual authorization happens in the {opt.id === 'gcash' ? 'GCash' : 'Maya'} app.
-                      </p>
-                    </>
-                  )}
-                </div>
-              )}
             </React.Fragment>
           );
         })}

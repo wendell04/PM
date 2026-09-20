@@ -1161,8 +1161,15 @@ class OrderController extends Controller
                 // which Sales and the dashboards read, never did.
                 ->where('checkoutPending', '!=', true)
                 ->where('voidedCheckout', '!=', true)
-                ->where('isArchived', '!=', true)
                 ->orderBy('createdAt', 'desc');
+
+            // Archiving tidies the Orders list. It does not change what was sold or what is
+            // still owed, so the money screens (Payments, Sales) ask for everything and the
+            // operational screens keep the default. Before this, archiving an order with a
+            // balance made the balance leave the books.
+            if (!$request->boolean('showArchived')) {
+                $query->where('isArchived', '!=', true);
+            }
 
             if ($request->filled('orderStatus')) {
                 $query->where('orderStatus', $request->orderStatus);
