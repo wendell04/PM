@@ -388,6 +388,11 @@ export default function CheckoutPage() {
     const a = lead + shipMin, b = lead + shipMax;
     return a === b ? `${a} working day${a === 1 ? '' : 's'}` : `${a}-${b} working days`;
   };
+  // Only an uploaded file gets reviewed behind the customer's back: a requested design is approved
+  // by the customer themselves before it prints, and a ready-made line has no artwork at all. So
+  // the review promise is shown for upload lines and nothing else - a cart of ready-made mugs
+  // should not be told we are checking a file it never sent.
+  const hasUploadLine = items.some(i => !!i.designUrl || (i.designFiles?.length > 0));
   // Upload lines are checked by the shop; requested designs are approved by the customer. Said
   // plainly, because "after approval" means a different person in each case.
   const approvalActor = hasUploadLine ? 'we approve your file' : 'you approve the proof';
@@ -433,11 +438,6 @@ export default function CheckoutPage() {
   // The design fee and shipping are always collected once, now. The rest is the balance, settled
   // from the order detail modal (upload goods balance + requested-design goods after approval).
   const isReqLine = (i) => (i.designMode === 'request' || i.designRequested) && !i.designUrl;
-  // Only an uploaded file gets reviewed behind the customer's back: a requested design is approved
-  // by the customer themselves before it prints, and a ready-made line has no artwork at all. So
-  // the review promise is shown for upload lines and nothing else - a cart of ready-made mugs
-  // should not be told we are checking a file it never sent.
-  const hasUploadLine = items.some(i => !!i.designUrl || (i.designFiles?.length > 0));
   // A line takes a deposit when the product asks for one - either the flag is set OR a percent is
   // configured (a percent > 0 alone means downpayment, even if the boolean was never saved).
   const lineDpPct = (i) => {
