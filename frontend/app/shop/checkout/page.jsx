@@ -121,9 +121,8 @@ export default function CheckoutPage() {
   // Pay in full option for downpayment orders
   const [payFull, setPayFull] = useState(false);
   // Delivery speed is ONE order-level choice (one parcel = one speed). Rush costs more + is faster,
-  // subject to the shop's confirmation. An optional exact "need by" date can accompany a Rush.
+  // subject to the shop's confirmation.
   const [rush, setRush] = useState(false);
-  const [needByDate, setNeedByDate] = useState('');
   // Clickwrap T&C acceptance recorded at the purchase moment (the order-creating step), so every
   // custom order carries proof - not just the product page.
   const [showTerms, setShowTerms] = useState(false);
@@ -401,25 +400,11 @@ export default function CheckoutPage() {
     : `Get by ${getByRange(lead)}`;
   const isRush      = rushEnabled && rush;
   const rushCharge  = isRush ? rushFeeAmt : 0;
-  // Earliest an optional need-by date may be. Two bugs used to live here: this ignored shipping
-  // transit entirely (rush production alone was treated as the whole promise), and toISOString() on
-  // a local-midnight Date converts to UTC before slicing the date, which in any zone ahead of UTC
-  // (PHT is +8) reads back one calendar day earlier than the Date actually holds - so a real
-  // multi-day minimum was showing up as "tomorrow", which is exactly the promise a rush customer
-  // would hold the shop to.
-  //
-  // A cart with nothing to produce has no rush lead to add - the earliest it can go is however long
-  // the shipping leg itself takes, full stop. Adding rushLead here for a ready-made order would
-  // block dates that are genuinely achievable once nothing is waiting on production.
-  const toLocalDateStr = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  const minNeedByStr = toLocalDateStr(addBizDays(shipMin + (needsProduction ? rushLead : 0)));
-  // The latest a Standard order arrives. A need-by date on/after this fits Standard (no rush needed).
-  const standardEtaMax = addBizDays(prodLead + shipMax);
-  // Picking a date auto-sets the speed: sooner than Standard can make it -> Rush; otherwise Standard.
-  const onPickNeedBy = (val) => {
-    setNeedByDate(val);
-    if (val) setRush(new Date(val + 'T23:59:59') < standardEtaMax);
-  };
+  // There used to be a "need it by" date picker here that chose Standard or Rush by comparing the
+  // date against a promise counted from today. The promise now counts from approval, which the
+  // customer controls, so no date picked at checkout can be checked honestly. The two speed rows
+  // are the whole choice; an occasion belongs in the order notes, where the shop reads it as
+  // information rather than a deadline the system pretends to have verified.
 
   const grandTotal      = total + designFee + rushCharge + (shippingFeeAmt ?? 0);
 
@@ -737,7 +722,6 @@ export default function CheckoutPage() {
         formData.append('shippingFee', String(shippingFeeAmt ?? 0));
         formData.append('isRush', String(isRush));
         if (isRush) formData.append('rushFee', String(rushCharge));
-        if (isRush && needByDate) formData.append('needByDate', needByDate);
         if (termsAgreed) {
           formData.append('agreedToTerms', 'true');
           formData.append('termsVersion', String(termsVersion));
@@ -757,7 +741,6 @@ export default function CheckoutPage() {
           shippingFee: shippingFeeAmt ?? 0,
           isRush,
           ...(isRush ? { rushFee: rushCharge } : {}),
-          ...(isRush && needByDate ? { needByDate } : {}),
           ...(termsAgreed ? { agreedToTerms: true, termsVersion, agreedTermsSnapshot, ...(termsAgreedAt ? { agreedAt: termsAgreedAt } : {}) } : {}),
           ...(appliedVoucher?.code ? { voucherCode: appliedVoucher.code } : {}),
         });
@@ -798,7 +781,6 @@ export default function CheckoutPage() {
           shippingFee: shippingFeeAmt ?? 0,
           isRush,
           ...(isRush ? { rushFee: rushCharge } : {}),
-          ...(isRush && needByDate ? { needByDate } : {}),
           ...(termsAgreed ? { agreedToTerms: true, termsVersion, agreedTermsSnapshot, ...(termsAgreedAt ? { agreedAt: termsAgreedAt } : {}) } : {}),
           ...(appliedVoucher?.code ? { voucherCode: appliedVoucher.code } : {}),
           ...(designFeeOnly ? { isDesignFeeOnly: true, isCustomOrder: true, designType: 'request' } : {}),
@@ -1412,17 +1394,10 @@ export default function CheckoutPage() {
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="2"><rect x="1" y="3" width="15" height="13" rx="1"/><path d="M16 8h4l3 3v5h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
             Delivery speed
           </div>
-          {/* The range is a ceiling the shop commits to, not a fixed date - it is stated as a range
-              precisely because production time varies order to order. Saying so here means an early
-              arrival reads as expected rather than as a surprise nobody promised. */}
-          <p style={{ fontSize: '0.72rem', color: 'var(--gray)', margin: 0, lineHeight: 1.5 }}>
-            These are the latest expected dates - your order can arrive sooner if production finishes early.
-          </p>
           {[{ key: false, label: 'Standard', lead: prodLead, fee: 0 }, { key: true, label: 'Rush', lead: rushLead, fee: rushFeeAmt }].map(opt => {
             const active = rush === opt.key;
-            // Choosing a speed directly clears any specific date (the two are alternative ways in).
             return (
-              <button key={String(opt.key)} type="button" onClick={() => { setRush(opt.key); setNeedByDate(''); }}
+              <button key={String(opt.key)} type="button" onClick={() => setRush(opt.key)}
                 style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', padding: '11px 14px', borderRadius: '10px', border: `1.5px solid ${active ? 'var(--gold)' : 'var(--border)'}`, background: active ? 'rgba(212,168,67,0.08)' : 'transparent', cursor: 'pointer', textAlign: 'left', transition: 'all .15s' }}>
                 <span style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                   <span style={{ width: 16, height: 16, borderRadius: '50%', border: `2px solid ${active ? 'var(--gold)' : 'var(--border)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -1433,7 +1408,11 @@ export default function CheckoutPage() {
                     <span style={{ fontSize: '0.74rem', color: 'var(--gray)' }}>{whenText(opt.lead)}</span>
                   </span>
                 </span>
-                <span style={{ fontSize: '0.85rem', fontWeight: 800, color: opt.fee > 0 ? 'var(--gold)' : 'var(--gray)' }}>{opt.fee > 0 ? `+₱${opt.fee.toLocaleString('en-PH')}` : 'No extra charge'}</span>
+                {/* Only a real surcharge earns a figure. "No extra charge" on Standard was true and
+                    useless, and on a phone it wrapped into two lines and squeezed the label. */}
+                {opt.fee > 0 && (
+                  <span style={{ fontSize: '0.85rem', fontWeight: 800, color: 'var(--gold)', whiteSpace: 'nowrap', flexShrink: 0 }}>+₱{opt.fee.toLocaleString('en-PH')}</span>
+                )}
               </button>
             );
           })}
@@ -1443,37 +1422,18 @@ export default function CheckoutPage() {
               style={{ flexShrink: 0, marginTop: 2 }}>
               <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
             </svg>
+            {/* The range is a ceiling, stated as a range because production time varies order to
+                order. Saying so means an early arrival reads as expected, not as a surprise. */}
             <span style={{ fontSize: '0.75rem', color: 'var(--gray)', lineHeight: 1.55 }}>
-              These dates are the latest you should expect it.{' '}
+              This is the longest you should wait.{' '}
               <strong style={{ color: '#166534' }}>Orders often arrive earlier</strong> when our
               production queue is light - we message you as soon as yours is ready.
             </span>
           </div>
 
-          {/* Optional exact deadline. Picking a date auto-sets the speed above: sooner than Standard can
-              make it -> Rush; otherwise Standard (no fee). The native "dd/mm/yyyy" is hidden. */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-            <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>Need it by a specific date?</span>
-            <label onClick={(e) => { const inp = e.currentTarget.querySelector('input[type="date"]'); try { inp?.showPicker(); } catch { inp?.focus(); } }}
-              style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 8, border: `1.5px solid ${needByDate ? 'var(--gold)' : 'var(--border)'}`, borderRadius: '9px', background: 'var(--dark2, var(--dark2))', padding: '7px 11px', cursor: 'pointer', minWidth: 140 }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="2" style={{ flexShrink: 0 }}><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-              <span style={{ fontSize: '0.82rem', fontWeight: 600, color: needByDate ? 'var(--white, #111)' : 'var(--gray)', flex: 1 }}>
-                {needByDate ? new Date(needByDate).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Pick a date'}
-              </span>
-              {needByDate && <button type="button" onClick={(e) => { e.preventDefault(); e.stopPropagation(); setNeedByDate(''); }} title="Clear" style={{ position: 'relative', zIndex: 2, background: 'none', border: 'none', color: 'var(--gray)', cursor: 'pointer', fontSize: '1rem', lineHeight: 1 }}>&times;</button>}
-              <input type="date" value={needByDate} min={minNeedByStr} onChange={e => onPickNeedBy(e.target.value)}
-                style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0, margin: 0, padding: 0, border: 'none', cursor: 'pointer' }} />
-            </label>
-            <span style={{ fontSize: '0.7rem', color: 'var(--gray)' }}>(optional)</span>
-          </div>
-          {needByDate && !isRush && (
-            <div style={{ fontSize: '0.75rem', color: '#16a34a', lineHeight: 1.5 }}>
-              Standard delivery fits this date - no rush fee.
-            </div>
-          )}
           {isRush && (
             <div style={{ padding: '9px 12px', borderRadius: '9px', background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.3)' }}>
-              <span style={{ fontSize: '0.75rem', color: '#b45309', lineHeight: 1.5 }}>Rush is <strong>subject to our confirmation</strong>. If other orders are still in production ahead of yours, this date may be pushed back - we will notify you either way.</span>
+              <span style={{ fontSize: '0.75rem', color: '#b45309', lineHeight: 1.5 }}>Rush is <strong>subject to our confirmation</strong>. If other orders are still in production ahead of yours it may take longer - we will tell you either way.</span>
             </div>
           )}
         </div>
