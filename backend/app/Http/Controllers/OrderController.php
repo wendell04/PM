@@ -275,7 +275,7 @@ class OrderController extends Controller
             $orderDesignFee = 0.0;
             $designLines = array_filter($validated['items'], fn($i) => filter_var($i['designRequested'] ?? false, FILTER_VALIDATE_BOOLEAN));
             if (count($designLines) > 0) {
-                $storeFee = (float) (User::where('role', 'owner')->first()->designRequestFee ?? 100);
+                $storeFee = (float) (\App\Support\ShopSettings::owner()->designRequestFee ?? 100);
                 $lineFees = array_map(fn($i) => (float) ($i['designFee'] ?? 0), $designLines);
                 $orderDesignFee = round(max($storeFee, ...$lineFees), 2);
                 $totalAmount += $orderDesignFee;
@@ -287,7 +287,7 @@ class OrderController extends Controller
 
             // Delivery estimate + optional rush. Turnaround config lives on the store owner; the
             // estimate is snapshotted onto the order so the promised window never shifts later.
-            $owner     = \App\Models\User::where('role', 'owner')->first() ?? \App\Models\User::where('role', 'admin')->first();
+            $owner     = \App\Support\ShopSettings::owner();
             $prodLead  = (int)   ($owner->productionLeadDays ?? 3);
             $shipMin   = (int)   ($owner->shippingDaysMin    ?? 1);
             $shipMax   = (int)   ($owner->shippingDaysMax    ?? 2);
@@ -325,6 +325,21 @@ class OrderController extends Controller
             };
             $estimatedDeliveryMin = $addBusinessDays($leadDays + $shipMin)->toIso8601String();
             $estimatedDeliveryMax = $addBusinessDays($leadDays + $shipMax)->toIso8601String();
+
+            // Kept so the promise can be REMADE later. A custom order cannot start until the
+            // customer approves the proof, and they take as long as they take - so a date counted
+            // from checkout is a promise the shop cannot keep and did not break. MetroPrint solves
+            // this by saying the countdown starts at approval and repeating it three times; the
+            // same idea, enforced rather than only stated.
+            $deliveryClock = [
+                'leadDays' => $leadDays,
+                'shipMin'  => $shipMin,
+                'shipMax'  => $shipMax,
+                'needsProduction' => $needsProduction,
+                // When the promise was last counted from. A custom order re-counts at approval,
+                // because that is the first moment the shop can actually start.
+                'startedAt'       => now()->toIso8601String(),
+            ];
 
             // The date picker enforces a minimum client-side, but a request built by hand skips it
             // entirely - and this is the one field that becomes a promise the shop is held to. A
@@ -623,6 +638,7 @@ class OrderController extends Controller
                 'needByDate'           => $needByDate,
                 'estimatedDeliveryMin' => $estimatedDeliveryMin,
                 'estimatedDeliveryMax' => $estimatedDeliveryMax,
+                'deliveryClock'        => $deliveryClock,
                 // Clickwrap acceptance recorded for proof (which terms version, when).
                 'agreedToTerms'        => filter_var($request->input('agreedToTerms', false), FILTER_VALIDATE_BOOLEAN),
                 'agreedAt'             => filter_var($request->input('agreedToTerms', false), FILTER_VALIDATE_BOOLEAN) ? ($request->input('agreedAt') ?: now()->toIso8601String()) : null,
@@ -1146,6 +1162,27 @@ class OrderController extends Controller
      *
      * @return array<int, string>
      */
+    /**
+     * Re-count the delivery promise from today.
+     *
+     * A custom order cannot start until the customer approves the proof, and they take as long as
+     * they take. Counting the promise from checkout means a customer who approves on Friday is
+     * still owed Wednesday's date - a promise the shop cannot keep and did not break. MetroPrint
+     * says the countdown starts at approval and repeats it in three places; this does the same
+     * thing and then actually moves the date, so the two can never disagree.
+     *
+     * Only ever moves the promise FORWARD from the moment work can really begin, and only for
+     * orders that have something to make. It is a no-op on everything else.
+     */
+    /**
+     * The promise is re-counted by Support\DeliveryClock, which PaymentController shares - the
+     * money gate and the artwork gate are two halves of one decision and must not be two copies.
+     */
+    private function restartDeliveryClock(Order $order, string $because): bool
+    {
+        return \App\Support\DeliveryClock::restart($order, $because);
+    }
+
     private function orderListFields(): array
     {
         return [
@@ -3527,7 +3564,7 @@ class OrderController extends Controller
             ]);
             $notes = htmlspecialchars(strip_tags(trim($validated['notes'])), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 
-            $owner        = User::where('role', 'owner')->first();
+            $owner        = \App\Support\ShopSettings::owner();
             $maxRevisions = max(0, (int) ($owner->maxRevisions ?? 5));
             $designFee    = max(0, (float) ($owner->designRequestFee ?? 100));
 
@@ -3641,7 +3678,7 @@ class OrderController extends Controller
                 return $this->errorResponse('This order is already in production.', 422);
             }
 
-            $owner     = User::where('role', 'owner')->first();
+            $owner     = \App\Support\ShopSettings::owner();
             $designFee = max(0, (float) ($request->input('designFee', $owner->designRequestFee ?? 100)));
 
             $itemIndex = $request->input('itemIndex');
@@ -3859,6 +3896,9 @@ class OrderController extends Controller
                     'error' => $logErr->getMessage(),
                 ]);
             }
+
+            // The shop can only start now, so the promise is re-counted from now.
+            if ($this->restartDeliveryClock($order, 'design approval')) $order->save();
 
             return $this->successResponse('Design approved.', $order);
 
@@ -4387,12 +4427,15 @@ class OrderController extends Controller
                     $order->orderStatus = $awaitingPayment ? 'awaiting_payment' : 'awaiting_production';
                 }
                 if ($awaitingPayment) {
-                    $dueDays = (int) (User::where('role', 'owner')->first()->depositDueDays ?? 7);
+                    $dueDays = (int) (\App\Support\ShopSettings::owner()->depositDueDays ?? 7);
                     $order->paymentDueAt = now()->addDays(max(1, $dueDays));
                 }
             }
             $order->statusHistory = $history;
             $order->updatedAt     = now();
+            // The customer approving is the first moment the shop can actually start, so the
+            // promise is re-counted from here rather than from the day they ordered.
+            $this->restartDeliveryClock($order, 'your approval');
             $order->save();
 
             try { broadcast(new \App\Events\OrderStatusUpdated((string) $order->_id, (string) $order->orderStatus, null)); } catch (\Throwable) {}
@@ -4488,7 +4531,7 @@ class OrderController extends Controller
             // because without a cap one P100 order can be sent back forever. A couple of rounds come
             // with the fee; past that each round is billed onto the order, and a hard ceiling stops an
             // endless loop from ever forming.
-            $owner            = User::where('role', 'owner')->first();
+            $owner            = \App\Support\ShopSettings::owner();
             $freeRevisions    = max(0, (int) ($owner->freeRevisions    ?? 3));
             $extraRevisionFee = max(0, (float) ($owner->extraRevisionFee ?? 50));
             $maxRevisions     = max($freeRevisions, (int) ($owner->maxRevisions ?? 5));

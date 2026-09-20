@@ -2189,6 +2189,10 @@ class PaymentController extends Controller
                 ];
                 $order->paymentHistory          = $prior;
                 $order->updatedAt               = now();
+                // The money gate. If the artwork is already settled this is the second gate, so
+                // the promise re-counts from now; if it is not, this is a no-op and approval will
+                // do it. Either way the customer's own delay stops landing on the shop.
+                \App\Support\DeliveryClock::restart($order, 'your payment');
                 $order->save();
                 CheckoutHold::confirm($order);
 
