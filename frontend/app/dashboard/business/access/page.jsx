@@ -18,6 +18,15 @@ import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
+// One look for every role, the Super Admin one: gold on dark. The old Staff page painted each
+// role its own colour, which said nothing and clashed with everything.
+const RoleBadge = ({ label }) => (
+  <span style={{ display: 'inline-block', padding: '3px 10px', borderRadius: 999, fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap',
+    background: 'rgba(212,168,67,0.16)', color: 'var(--gold)', border: '1px solid rgba(212,168,67,0.35)' }}>
+    {label}
+  </span>
+);
+
 export default function AccessPage() {
   const { token } = useAuth();
   const isPhone = useIsPhone();
@@ -34,6 +43,9 @@ export default function AccessPage() {
   const [saving,    setSaving]    = useState(false);
   const [isNew,     setIsNew]     = useState(false);
   const [newFields, setNewFields] = useState({ firstName: '', lastName: '', email: '', role: '' });
+  // Roles: the templates, with who holds each. Add one, delete one that nobody holds.
+  const [roleForm,  setRoleForm]  = useState(null);     // { label, startFrom } while adding
+  const [roleBusy,  setRoleBusy]  = useState('');       // role key being deleted / saved
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -87,16 +99,28 @@ export default function AccessPage() {
     }
     setSaving(true);
     try {
-      const res = await fetchWithTimeout(
+      const send = (promoteExisting) => fetchWithTimeout(
         isNew ? `${API_URL}/api/admin/access/staff` : `${API_URL}/api/admin/access/staff/${editing.id}`, {
         method: isNew ? 'POST' : 'PUT',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(isNew ? { ...newFields, permissions: draft } : { permissions: draft }),
+        body: JSON.stringify(isNew ? { ...newFields, permissions: draft, promoteExisting } : { permissions: draft }),
       }, 20000);
-      const d = await res.json().catch(() => ({}));
+      let res = await send(false);
+      let d = await res.json().catch(() => ({}));
+      // The email already shops here. One login per person: the same account gets the role,
+      // keeps its password, name and orders, and can still shop. Removing them later hands the
+      // account back as a customer. Asked, never assumed.
+      let promoted = false;
+      if (res.status === 409 && d.code === 'customer_account') {
+        const ok = window.confirm(`${newFields.email} already has a customer account here.\n\nGive that same account staff access? They keep their password, their orders and can still shop. Removing them from staff later turns it back into a customer account.`);
+        if (!ok) { setSaving(false); return; }
+        res = await send(true);
+        d = await res.json().catch(() => ({}));
+        promoted = true;
+      }
       if (!res.ok) throw new Error(d.message || d.error || 'Could not save.');
       toast?.(isNew
-        ? `${newFields.firstName} was added. They get an email to set their password.`
+        ? (promoted ? `${newFields.firstName}'s customer account is now a staff account.` : `${newFields.firstName} was added. They get an email to set their password.`)
         : `Saved. ${editing.firstName} can now do exactly what is ticked.`, 'success');
       setEditing(null);
       setIsNew(false);
@@ -104,6 +128,64 @@ export default function AccessPage() {
     } catch (e) {
       toast?.(e.message, 'error');
     } finally { setSaving(false); }
+  };
+
+  // Off the team. A customer's own account goes back to being a customer (orders kept, signed
+  // out); a login the shop created is deleted unless it has orders, in which case it is kept as
+  // a customer too. The server decides which; this only asks.
+  const removeStaff = async (row) => {
+    const msg = row.fromCustomer
+      ? `Remove ${row.firstName} from staff? Their account goes back to being a customer - they keep their orders and can still shop.`
+      : `Remove ${row.firstName} from staff? Their dashboard login is closed.`;
+    if (!window.confirm(msg)) return;
+    try {
+      const res = await fetchWithTimeout(`${API_URL}/api/admin/staff/${row.id}`, {
+        method: 'DELETE', headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+      }, 20000);
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.message || d.error || 'Could not remove.');
+      toast?.(d.message || `${row.firstName} is no longer staff.`, 'success');
+      await load();
+    } catch (e) { toast?.(e.message, 'error'); }
+  };
+
+  const holders = (role) => staff.filter(r => r.role === role);
+
+  const saveRole = async () => {
+    const label = (roleForm?.label || '').trim();
+    if (!label) { toast?.('Give the role a name.', 'error'); return; }
+    setRoleBusy('new');
+    try {
+      const from = templates.find(t => t.role === roleForm.startFrom);
+      const res = await fetchWithTimeout(`${API_URL}/api/admin/role-permissions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ label, permissions: from?.permissions ?? {} }),
+      }, 20000);
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.message || d.error || 'Could not add the role.');
+      toast?.(`Role "${label}" added. Give it to someone from Add staff, or tick their access directly.`, 'success');
+      setRoleForm(null);
+      await load();
+    } catch (e) { toast?.(e.message, 'error'); }
+    finally { setRoleBusy(''); }
+  };
+
+  const deleteRole = async (t) => {
+    const who = holders(t.role);
+    if (who.length) { toast?.(`${t.label} is still held by ${who.map(w => w.firstName).join(', ')}. Move them first.`, 'error'); return; }
+    if (!window.confirm(`Delete the role "${t.label}"? Nobody holds it.`)) return;
+    setRoleBusy(t.role);
+    try {
+      const res = await fetchWithTimeout(`${API_URL}/api/admin/role-permissions/${encodeURIComponent(t.role)}`, {
+        method: 'DELETE', headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+      }, 20000);
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.message || d.error || 'Could not delete the role.');
+      toast?.(`Role "${t.label}" deleted.`, 'success');
+      await load();
+    } catch (e) { toast?.(e.message, 'error'); }
+    finally { setRoleBusy(''); }
   };
 
   // The plain-words summary. A grid of ticks tells you what was configured; this tells you what
@@ -132,7 +214,9 @@ export default function AccessPage() {
     template:  staff.filter(r => r.source === 'template').length,
   }), [staff]);
 
-  const Editor = () => {
+  // A render FUNCTION, deliberately. As a component declared inside the page, React saw a new
+  // type on every render, unmounted the form on each keystroke, and the box lost focus.
+  const renderEditor = () => {
     if (!editing) return null;
     const total = Object.values(groups).reduce((n, g) => n + Object.keys(g.items || {}).length, 0);
     const on = Object.keys(draft).filter(k => draft[k]).length;
@@ -249,7 +333,7 @@ export default function AccessPage() {
           {loading ? (
             <div style={{ ...S.card, padding: 24, fontSize: 13, color: 'var(--gray)' }}>Loading...</div>
           ) : filtered.length === 0 ? (
-            <div style={{ ...S.card, padding: 0 }}><EmptyState message="Nobody found" sub="Add staff from the Staff page for now." /></div>
+            <div style={{ ...S.card, padding: 0 }}><EmptyState message="Nobody found" sub="Add someone with + Add staff." /></div>
           ) : isPhone ? (
             <PhoneList>
               {filtered.map((r, i) => (
@@ -258,7 +342,7 @@ export default function AccessPage() {
                   chip={<span style={{ fontSize: 11, fontWeight: 700, color: r.unlimited ? 'var(--gold)' : 'var(--gray)' }}>
                     {r.unlimited ? 'Unlimited' : r.source === 'person' ? 'Per person' : 'Template'}
                   </span>}
-                  meta={r.roleLabel}
+                  meta={<RoleBadge label={r.roleLabel} />}
                   sub={r.unlimited ? 'Cannot be limited' : summarise(r.permissions)} />
               ))}
             </PhoneList>
@@ -273,7 +357,7 @@ export default function AccessPage() {
                         {r.firstName} {r.lastName}
                         <div style={{ fontSize: 11, color: 'var(--gray)' }}>{r.email}</div>
                       </td>
-                      <td style={{ ...S.td, fontSize: 12 }}>{r.roleLabel}</td>
+                      <td style={S.td}><RoleBadge label={r.roleLabel} /></td>
                       <td style={{ ...S.td, fontSize: 12, color: 'var(--gray-light)', maxWidth: 340 }}>
                         {r.unlimited ? <i style={{ color: 'var(--gold)' }}>Everything - the owner and super admin cannot be limited</i> : summarise(r.permissions)}
                       </td>
@@ -284,8 +368,13 @@ export default function AccessPage() {
                           {r.unlimited ? 'Unlimited' : r.source === 'person' ? 'Per person' : 'Template'}
                         </span>
                       </td>
-                      <td style={{ ...S.td, textAlign: 'right' }}>
-                        {!r.unlimited && <button onClick={() => openEditor(r)} style={S.btnSmGhost}>Edit access</button>}
+                      <td style={{ ...S.td, textAlign: 'right', whiteSpace: 'nowrap' }}>
+                        {!r.unlimited && (
+                          <span style={{ display: 'inline-flex', gap: 6 }}>
+                            <button onClick={() => openEditor(r)} style={S.btnSmGhost}>Edit access</button>
+                            <button onClick={() => removeStaff(r)} style={{ ...S.btnSmGhost, color: 'var(--st-red-fg, #dc2626)' }}>Remove</button>
+                          </span>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -293,12 +382,58 @@ export default function AccessPage() {
               </table>
             </div>
           )}
+          {/* Roles are templates: a starting set of ticks for a new person. Listed with who
+              holds each, so deleting one cannot strand anybody. */}
+          {!loading && (
+            <div style={{ ...S.card, padding: 0, overflow: 'hidden', marginTop: 18 }}>
+              <div style={{ ...S.rowBetween, padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: 14 }}>Roles</div>
+                  <div style={{ fontSize: 11.5, color: 'var(--gray)' }}>A role is a template - the ticks a new person starts with. What each person can actually do is set above.</div>
+                </div>
+                <button onClick={() => setRoleForm({ label: '', startFrom: '' })} style={S.btnSmGhost}>+ Add role</button>
+              </div>
+              {roleForm && (
+                <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+                  <input placeholder="Role name, e.g. Cashier" value={roleForm.label} maxLength={60}
+                    onChange={e => setRoleForm(f => ({ ...f, label: e.target.value }))} style={{ ...S.input, flex: '1 1 200px' }} />
+                  <CustomSelect value={roleForm.startFrom} onChange={v => setRoleForm(f => ({ ...f, startFrom: v }))}
+                    options={[{ value: '', label: 'Start empty' }, ...templates.map(t => ({ value: t.role, label: `Copy ${t.label}` }))]}
+                    style={{ width: 200 }} />
+                  <button onClick={saveRole} disabled={roleBusy === 'new'} style={S.btnPrimary}>{roleBusy === 'new' ? 'Saving...' : 'Add role'}</button>
+                  <button onClick={() => setRoleForm(null)} style={S.btnGhost}>Cancel</button>
+                </div>
+              )}
+              <div style={{ display: 'grid', gridTemplateColumns: isPhone ? '1fr' : 'repeat(auto-fill, minmax(260px, 1fr))', gap: 10, padding: 12 }}>
+                {templates.map(t => {
+                  const who = holders(t.role);
+                  const n = Object.keys(t.permissions || {}).filter(k => t.permissions[k]).length;
+                  return (
+                    <div key={t.role} style={{ border: '1px solid var(--border)', borderRadius: 10, padding: '10px 12px', background: 'var(--dark)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                        <RoleBadge label={t.label} />
+                        <button onClick={() => deleteRole(t)} disabled={roleBusy === t.role || who.length > 0}
+                          title={who.length ? `Held by ${who.map(w => w.firstName).join(', ')}` : 'Delete this role'}
+                          style={{ ...S.btnSmGhost, color: who.length ? 'var(--gray)' : 'var(--st-red-fg, #dc2626)', opacity: who.length ? 0.6 : 1 }}>
+                          {roleBusy === t.role ? '...' : 'Delete'}
+                        </button>
+                      </div>
+                      <div style={{ fontSize: 11.5, color: 'var(--gray)', marginTop: 6 }}>{n} permission{n === 1 ? '' : 's'} - {summarise(t.permissions)}</div>
+                      <div style={{ fontSize: 11.5, color: who.length ? 'var(--white)' : 'var(--gray)', marginTop: 4 }}>
+                        {who.length ? `Held by ${who.map(w => w.firstName).join(', ')}` : 'Nobody holds it'}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </>
       )}
 
       {editing && (isPhone
-        ? <PhoneSheet open onClose={() => setEditing(null)} title={`${editing.firstName}'s access`}><Editor /></PhoneSheet>
-        : <Editor />)}
+        ? <PhoneSheet open onClose={() => setEditing(null)} title={`${editing.firstName}'s access`}>{renderEditor()}</PhoneSheet>
+        : renderEditor())}
     </div>
   );
 }

@@ -50,6 +50,8 @@ export default function BusinessDashboardLayout({ children }) {
   }, []);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [permissions, setPermissions] = useState(null);
+  // Set when the guard turns someone away from a module URL; shown once on Home.
+  const [turnedAway, setTurnedAway] = useState('');
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
@@ -536,6 +538,14 @@ export default function BusinessDashboardLayout({ children }) {
   const isAdminOwner = ["superAdmin", "admin", "owner"].includes(currentUser?.role);
   const { theme, toggleTheme } = useTheme();
 
+  // One answer for "may this person open this item", read by the sidebar and by the route guard.
+  const itemAccessible = (item) => {
+    if (item.adminOnly && !isAdminOwner) return false;
+    if (isAdminOwner) return true;
+    return item.marketingGroup ? (can("flashSales") || can("vouchers")) : can(item.permKey ?? "dashboard");
+  };
+
+
   const navItems = [
     {
       name: "Dashboard",
@@ -685,11 +695,11 @@ export default function BusinessDashboardLayout({ children }) {
     },
     { type: "divider", label: "Users" },
     {
-      name: "Staff",
-      href: "/dashboard/business/users",
-      // Staff, Customers, Permissions and the customer inbox are Owner / Super Admin only on the
-      // server, so a department role saw them here and got an error page or an empty inbox.
-      adminOnly: true,
+      // Staff, roles and per-person permissions, in one place. The old Staff and Permissions
+      // pages still exist at their URLs and redirect here; they are deleted once this is proven.
+      name: "Staff and access",
+      href: "/dashboard/business/access",
+      permKey: "userManagement",
       icon: "M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z",
     },
     {
@@ -697,18 +707,6 @@ export default function BusinessDashboardLayout({ children }) {
       href: "/dashboard/business/customers",
       adminOnly: true,
       icon: "M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75M9 7a4 4 0 100 8 4 4 0 000-8z",
-    },
-    {
-      name: "Access (new)",
-      href: "/dashboard/business/access",
-      permKey: "userManagement",
-      icon: "M12 11c0-1.1.9-2 2-2h1V7a3 3 0 10-6 0v2h1a2 2 0 012 2zM5 11h14a1 1 0 011 1v8a1 1 0 01-1 1H5a1 1 0 01-1-1v-8a1 1 0 011-1z",
-    },
-    {
-      name: "Permissions",
-      href: "/dashboard/business/role-permissions",
-      adminOnly: true,
-      icon: "M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z",
     },
     { type: "divider", label: "Admin" },
     {
@@ -733,6 +731,22 @@ export default function BusinessDashboardLayout({ children }) {
     },
   ];
 
+  // The guard. The sidebar hiding a module is not a lock; the URL still opened the page and it
+  // rendered an empty shell while the API refused it. Once the permission map has loaded, a
+  // module URL the role cannot open goes back to Home with one line saying which one.
+  const HOME = "/dashboard/business/home";
+  useEffect(() => {
+    if (!currentUser || isAdminOwner || permissions === null) return;
+    const item = navItems
+      .filter((i) => i.type !== "divider" && i.href && i.href !== HOME)
+      .sort((a, b) => b.href.length - a.href.length)
+      .find((i) => pathname === i.href || pathname.startsWith(i.href + "/") || pathname.startsWith(i.href + "?"));
+    if (!item || itemAccessible(item)) return;
+    setTurnedAway(item.name);
+    router.replace(HOME);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname, currentUser, permissions, isAdminOwner]);
+
 
   const getInitials = (user) => {
     if (!user) return "?";
@@ -752,7 +766,7 @@ export default function BusinessDashboardLayout({ children }) {
       "/dashboard/business/home": "Home",
       "/dashboard/business/orders": "Orders",
       "/dashboard/business/order-requests": "Order Requests",
-      "/dashboard/business/access": "Access",
+      "/dashboard/business/access": "Staff and access",
       "/dashboard/business/job-orders": "Job Orders",
       "/dashboard/business/pos": "Point of Sale",
       "/dashboard/business/inventory-v2": "Inventory",
@@ -1067,12 +1081,18 @@ export default function BusinessDashboardLayout({ children }) {
           </div>
 
           <nav className="sidebar-nav">
-            {navItems
-              .filter((item) => {
-                if (item.type === "divider") return true;
-                if (item.adminOnly && !isAdminOwner) return false;
-                return true;
-              })
+            {(() => {
+              // A module the role cannot open is not shown at all. Greying it with a padlock
+              // advertised every screen a person was kept out of, which is noise for them and a
+              // map of the shop for anyone looking over their shoulder. Section headers go with
+              // their last item.
+              const visible = navItems.filter((item) => item.type === "divider" || itemAccessible(item));
+              return visible.filter((item, i) => {
+                if (item.type !== "divider") return true;
+                const next = visible[i + 1];
+                return next && next.type !== "divider";
+              });
+            })()
               .map((item) => {
                 if (item.type === "divider") {
                   return (
@@ -1088,27 +1108,6 @@ export default function BusinessDashboardLayout({ children }) {
                   </svg>
                 ) : null;
 
-                const lockIcon = (
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ marginLeft: "auto", flexShrink: 0, opacity: 0.6 }}>
-                    <rect x="5" y="11" width="14" height="10" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/>
-                  </svg>
-                );
-
-                const isAccessible = isAdminOwner || (
-                  item.marketingGroup
-                    ? (can("flashSales") || can("vouchers"))
-                    : can(item.permKey ?? "dashboard")
-                );
-
-                if (!isAccessible) {
-                  return (
-                    <div key={item.name} className="sidebar-nav-item" style={{ opacity: 0.4, cursor: "not-allowed", display: "flex", alignItems: "center" }}>
-                      {navIcon}
-                      <span className="nav-text">{item.name}</span>
-                      {lockIcon}
-                    </div>
-                  );
-                }
 
                 const fullHref = pathname + (currentTab ? `?tab=${currentTab}` : '');
                 const isActive = (item.matchTabs && currentTab && item.matchTabs.includes(currentTab))
@@ -1508,7 +1507,18 @@ export default function BusinessDashboardLayout({ children }) {
         })()}
 
         {/* Page content */}
-        <main className="admin-page-content" ref={pageContentRef}>{children}</main>
+        <main className="admin-page-content" ref={pageContentRef}>
+            {turnedAway && pathname === HOME && (
+              <div role="status" style={{ margin: "0 0 12px", padding: "10px 14px", borderRadius: 8, fontSize: 13,
+                background: "rgba(212,168,67,0.1)", border: "1px solid rgba(212,168,67,0.35)", color: "var(--white)",
+                display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+                <span><b>{turnedAway}</b> is not open to your role. Ask the owner in Staff and access if you need it.</span>
+                <button type="button" onClick={() => setTurnedAway('')} aria-label="Dismiss"
+                  style={{ background: "none", border: "none", color: "var(--gray)", cursor: "pointer", fontSize: 18, lineHeight: 1 }}>&times;</button>
+              </div>
+            )}
+            {children}
+        </main>
 
         {/* The bottom tab bar, phone only (the stylesheet hides it above 700px). Shopify's admin
             and the Shopee Seller app both put the four or five places a thumb goes at the bottom;

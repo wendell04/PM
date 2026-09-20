@@ -65,6 +65,8 @@ class AccessController extends Controller
                     'source'      => $unlimited ? 'unlimited' : ($own !== [] ? 'person' : 'template'),
                     'permissions' => $own !== [] ? $own : PermissionCatalog::template((string) $u->role),
                     'lastLogin'   => $u->lastLogin,
+                    // A customer's own account given staff access. Removing them hands it back.
+                    'fromCustomer' => (bool) ($u->promotedFromCustomer ?? false),
                 ];
             })->values();
 
