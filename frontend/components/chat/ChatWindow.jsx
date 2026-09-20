@@ -242,7 +242,10 @@ const ChatWindow = ({ activeConversation, messages, user, isLoading, isAdmin, on
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#d4a843" strokeWidth="2.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
               <span className="quotation-tag">Inquiry</span>
             </div>
-            <a href={`/shop/products/${m.productSlug || m.productId || ''}`} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none', color: 'inherit', cursor: 'pointer' }}>
+            {/* An open request ("print on my own shirt") has no product page; the card is the ask. */}
+            <a href={m.productSlug || m.productId ? `/shop/products/${m.productSlug || m.productId}` : undefined}
+              target={m.productSlug || m.productId ? '_blank' : undefined} rel="noopener noreferrer"
+              style={{ textDecoration: 'none', color: 'inherit', cursor: m.productSlug || m.productId ? 'pointer' : 'default' }}>
               <div className="quotation-body" style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
                 {m.thumbnail ? (
                   /* eslint-disable-next-line @next/next/no-img-element */

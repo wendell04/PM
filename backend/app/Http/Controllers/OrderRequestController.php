@@ -98,10 +98,60 @@ class OrderRequestController extends Controller
             ]],
         ]);
 
+        // The ask goes into the customer's chat thread as an inquiry card, the same shape a
+        // product-page inquiry has. That is where the shop reads asks and answers them with a
+        // quotation - a request that only existed in a table nobody opens was an unanswered one.
+        $this->postAskInChat($orderRequest, $user, [
+            'qty'      => (int) ($validated['quantity'] ?? 1),
+            'budget'   => isset($validated['budget']) ? (float) $validated['budget'] : null,
+            'neededBy' => $validated['neededBy'] ?? null,
+            'details'  => $clean($validated['details']),
+        ]);
+
         return $this->successResponse(
             'Thanks - we have your request. We will come back to you with a price, and you will see it in your chat with us.',
             $orderRequest
         );
+    }
+
+    /** The customer's ask, in their own thread, as if they had typed it there. */
+    private function postAskInChat(OrderRequest $req, User $customer, array $ask): void
+    {
+        try {
+            [$conversation] = $this->quoteConversation($req);
+            if (!$conversation) return;
+
+            $bits = ["Qty {$ask['qty']}"];
+            if ($ask['budget'] !== null && $ask['budget'] > 0) $bits[] = 'budget PHP ' . number_format($ask['budget'], 2);
+            if (!empty($ask['neededBy'])) {
+                try { $bits[] = 'needed by ' . \Carbon\Carbon::parse($ask['neededBy'])->format('M j'); } catch (\Throwable) {}
+            }
+            $body = implode(' - ', $bits) . ($ask['details'] !== '' ? "\n" . $ask['details'] : '');
+
+            $message = Message::create([
+                'conversation_id' => (string) $conversation->_id,
+                'sender_id'       => (string) $customer->_id,
+                'sender_name'     => trim(($customer->firstName ?? '') . ' ' . ($customer->lastName ?? '')) ?: 'Customer',
+                'body'            => $body,
+                'type'            => 'inquiry',
+                'metadata'        => [
+                    'productName'    => $req->productName,
+                    'thumbnail'      => $req->designUrl ?: null,
+                    'category'       => 'Custom request',
+                    'productSlug'    => null,
+                    'productId'      => null,
+                    'orderRequestId' => (string) $req->_id,
+                    'isOpenRequest'  => true,
+                ],
+                'is_read'         => false,
+            ]);
+            $conversation->update(['last_message' => 'Requested a quote', 'last_message_at' => now()]);
+            try { broadcast(new MessageSent($message))->toOthers(); } catch (\Throwable $e) {
+                Log::warning('Ask chat broadcast failed (message still saved): ' . $e->getMessage());
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Could not post ask into chat: ' . $e->getMessage(), ['requestId' => (string) $req->_id]);
+        }
     }
 
     public function store(Request $request)
@@ -771,6 +821,26 @@ class OrderRequestController extends Controller
             'createdAt'     => now(),
             'updatedAt'     => now(),
         ]);
+
+        // The quotation answers whatever this customer was still asking. Left open, the ask would
+        // sit in the "waiting" count after the shop had already replied to it.
+        try {
+            $answered = OrderRequest::where('customerId', (string) $validated['recipientId'])
+                ->where('status', 'pending_review')
+                ->where(function ($q) { $q->whereNull('finalPrice')->orWhere('finalPrice', 0); })
+                ->get();
+            foreach ($answered as $ask) {
+                $h   = $ask->statusHistory ?? [];
+                $h[] = ['status' => 'answered', 'at' => now()->toISOString(), 'by' => 'admin',
+                        'note' => 'Answered with quotation ' . (string) $orderRequest->_id . '.'];
+                $ask->status            = 'cancelled';
+                $ask->answeredByQuoteId = (string) $orderRequest->_id;
+                $ask->statusHistory     = $h;
+                $ask->save();
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Could not mark asks answered: ' . $e->getMessage());
+        }
 
         $this->notifyQuoteInChat($orderRequest, [
             'designFee'   => $designFee,

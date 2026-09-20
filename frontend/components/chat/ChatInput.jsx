@@ -371,6 +371,9 @@ const ChatInput = ({ onSendMessage, isSending, activeConversation, token, onTypi
           )}
         </button>
 
+        {/* A button with words. This was a bare document icon, and the one thing an admin does
+            in a customer's thread that is not typing is send a quotation - it should not have to
+            be discovered by hovering. */}
         {canQuote && (
           <button
             type="button"
@@ -378,17 +381,17 @@ const ChatInput = ({ onSendMessage, isSending, activeConversation, token, onTypi
             onClick={() => { setQuotationError(''); setShowQuotation(true); }}
             title="Send quotation"
             style={{
-              width: '34px', height: '34px', flexShrink: 0,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              background: 'transparent', border: 'none',
-              color: '#d4a843',
+              height: '34px', flexShrink: 0, padding: '0 12px',
+              display: 'inline-flex', alignItems: 'center', gap: '6px',
+              background: 'rgba(212,168,67,0.12)', border: '1px solid rgba(212,168,67,0.45)', borderRadius: '999px',
+              color: '#d4a843', fontSize: '0.78rem', fontWeight: 700, whiteSpace: 'nowrap',
               cursor: isSending || isUploading ? 'not-allowed' : 'pointer',
-              padding: 0,
             }}
           >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <rect x="4" y="2" width="16" height="20" rx="2" /><line x1="8" y1="7" x2="16" y2="7" /><line x1="8" y1="11" x2="16" y2="11" /><line x1="8" y1="15" x2="12" y2="15" />
             </svg>
+            Send quotation
           </button>
         )}
 

@@ -71,6 +71,7 @@ const STAGES = {
   accepted:  { label: 'Accepted',  hint: 'Paid - now an order',     bg: 'rgba(34,197,94,0.18)',     color: 'var(--green)' },
   expired:   { label: 'Expired',   hint: 'Ran out unpaid',          bg: 'rgba(120,120,120,0.22)',   color: 'var(--gray-light)' },
   cancelled: { label: 'Cancelled', hint: 'Closed',                  bg: 'rgba(196,30,58,0.18)',     color: 'var(--red)' },
+  answered:  { label: 'Answered',  hint: 'Replaced by a quotation', bg: 'rgba(120,120,120,0.22)',   color: 'var(--gray-light)' },
 };
 
 function stageOf(req) {
@@ -78,7 +79,7 @@ function stageOf(req) {
   if (req.convertedOrderId) return 'accepted';
   if (['downpayment_paid', 'partial', 'paid'].includes(String(req.paymentStatus ?? ''))) return 'accepted';
   const st = String(req.status ?? 'pending_review');
-  if (st === 'cancelled') return 'cancelled';
+  if (st === 'cancelled') return req.answeredByQuoteId ? 'answered' : 'cancelled';
   if (['processing', 'ready', 'delivered'].includes(st)) return 'accepted';   // legacy pipeline: work happened
   if (st === 'confirmed') {
     const t = req.expiresAt ? new Date(req.expiresAt) : null;
@@ -96,14 +97,15 @@ function daysLeft(req) {
   return Math.ceil((t.getTime() - Date.now()) / 86400000);
 }
 
+// Only what the shop has SENT. An ask is a conversation, not a quotation - it arrives in
+// Messages and is answered there with the Send quotation button. This screen counts them and
+// points at Messages; it does not list them.
 const FILTER_OPTIONS = [
-  { key: 'open',      label: 'Open' },          // asks + quotations: anything not finished
-  { key: 'ask',       label: 'Asks' },
-  { key: 'quoted',    label: 'Quoted' },
+  { key: 'quoted',    label: 'Sent' },
   { key: 'accepted',  label: 'Accepted' },
   { key: 'expired',   label: 'Expired' },
   { key: 'cancelled', label: 'Cancelled' },
-  { key: 'all',       label: 'All' },
+  { key: 'all',       label: 'All sent' },
 ];
 
 function formatPeso(n) {
@@ -176,7 +178,7 @@ export default function OrderRequestsPage() {
   const [requests, setRequests] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [activeFilter, setActiveFilter] = useState('open');
+  const [activeFilter, setActiveFilter] = useState('quoted');
   const isPhone = useIsPhone();
   const [searchQuery, setSearchQuery] = useState('');
   // Raising a quotation from its own module rather than only from inside a chat thread.
@@ -262,9 +264,9 @@ export default function OrderRequestsPage() {
 
   // Filtered requests
   const filtered = useCallback(() => {
-    let list = requests;
-    if (activeFilter === 'open') list = list.filter(r => ['ask', 'quoted'].includes(stageOf(r)));
-    else if (activeFilter !== 'all') list = list.filter(r => stageOf(r) === activeFilter);
+    // Asks never appear here, whatever the filter - they are answered in Messages.
+    let list = requests.filter(r => stageOf(r) !== 'ask');
+    if (activeFilter !== 'all') list = list.filter(r => stageOf(r) === activeFilter);
     if (searchQuery.trim()) {
       const q = searchQuery.trim().toLowerCase();
       list = list.filter(r =>
@@ -288,12 +290,12 @@ export default function OrderRequestsPage() {
 
   // Counts for summary cards
   const counts = useCallback(() => {
-    const c = { all: requests.length, open: 0 };
+    const c = { all: 0 };
     Object.keys(STAGES).forEach(k => { c[k] = 0; });
     requests.forEach(r => {
       const st = stageOf(r);
       c[st]++;
-      if (st === 'ask' || st === 'quoted') c.open++;
+      if (st !== 'ask') c.all++;
     });
     return c;
   }, [requests]);
@@ -429,23 +431,35 @@ export default function OrderRequestsPage() {
       {/* Page title is shown in the top bar; keep only the descriptive subtitle */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', margin: '0 0 1.5rem' }}>
         <p style={{ margin: 0, color: 'var(--gray)', fontSize: '0.9rem' }}>
-          Quotations you have sent and requests customers have raised. A quotation sets a price for
-          work that is not in the catalogue - printing on the customer's own shirt, a bulk job, a
-          service.
+          Quotations you have sent, and what became of them. A quotation sets a price for work that
+          is not in the catalogue - printing on the customer's own shirt, a bulk job, a service.
         </p>
         <button onClick={openNewQuote} style={{ ...S.btnPrimary, whiteSpace: 'nowrap' }}>+ New quotation</button>
       </div>
 
+      {/* Asks are answered in Messages, not here. But a count that lives only in Messages is a
+          count nobody sees until they open Messages, so it is repeated where quotations live. */}
+      {(cardCounts.ask ?? 0) > 0 && (
+        <a href="/dashboard/business/chat" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap',
+          margin: '0 0 1rem', padding: '0.75rem 1rem', borderRadius: 10, textDecoration: 'none',
+          background: 'rgba(212,168,67,0.08)', border: '1px solid rgba(212,168,67,0.35)' }}>
+          <span style={{ fontSize: '0.85rem', color: 'var(--white)' }}>
+            <strong style={{ color: 'var(--gold)' }}>{cardCounts.ask} ask{cardCounts.ask === 1 ? '' : 's'}</strong> waiting for a price in Messages.
+            Open the thread and press <strong>Send quotation</strong>.
+          </span>
+          <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--gold)', whiteSpace: 'nowrap' }}>Open Messages</span>
+        </a>
+      )}
+
       {isPhone ? (
         <>
           <KpiStrip items={[
-            { key: 'ask',      label: 'Asks' },
-            { key: 'quoted',   label: 'Quoted' },
+            { key: 'quoted',   label: 'Sent' },
             { key: 'accepted', label: 'Accepted' },
             { key: 'expired',  label: 'Expired' },
-          ].map(k => ({ ...k, value: cardCounts[k.key] ?? 0, active: activeFilter === k.key, onClick: () => setActiveFilter(activeFilter === k.key ? 'open' : k.key) }))} />
+          ].map(k => ({ ...k, value: cardCounts[k.key] ?? 0, active: activeFilter === k.key, onClick: () => setActiveFilter(activeFilter === k.key ? 'all' : k.key) }))} />
           <PhoneFilterBar search={searchQuery} onSearch={setSearchQuery} placeholder="Search customer or product"
-            filters={[{ key: 'status', label: 'Show', value: activeFilter, defaultValue: 'open', onChange: setActiveFilter,
+            filters={[{ key: 'status', label: 'Show', value: activeFilter, defaultValue: 'quoted', onChange: setActiveFilter,
               options: FILTER_OPTIONS.map(o => ({ value: o.key, label: o.label })) }]}
             note={`${filteredRequests.length} request${filteredRequests.length === 1 ? '' : 's'}`} />
         </>
@@ -557,8 +571,8 @@ export default function OrderRequestsPage() {
               </svg>
               <p style={{ fontSize: '1rem', color: 'var(--white)', marginBottom: '0.5rem' }}>No order requests found</p>
               <p style={{ fontSize: '0.85rem' }}>
-                {activeFilter === 'open' ? 'Nothing waiting - every ask has been quoted and every quotation answered.'
-                  : activeFilter !== 'all' ? `Nothing under ${FILTER_OPTIONS.find(f => f.key === activeFilter)?.label?.toLowerCase() || activeFilter}.` : 'No requests yet.'}
+                {activeFilter === 'quoted' ? 'No quotation is waiting on a customer right now.'
+                  : activeFilter !== 'all' ? `Nothing under ${FILTER_OPTIONS.find(f => f.key === activeFilter)?.label?.toLowerCase() || activeFilter}.` : 'No quotations sent yet.'}
               </p>
             </div>
           ) : (
