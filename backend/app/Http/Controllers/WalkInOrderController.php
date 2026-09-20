@@ -88,6 +88,7 @@ class WalkInOrderController extends Controller
             // Build order items - resolve price server-side as a sanity check
             $orderItems  = [];
             $totalAmount = 0.0;
+            $anyToMake   = false;   // does any line need the bench?
 
             foreach ($validated['items'] as $item) {
                 $product = Product::find($item['productId']);
@@ -113,14 +114,23 @@ class WalkInOrderController extends Controller
                 $lineTotal    = round($unitPrice * $qty, 2);
                 $totalAmount += $lineTotal;
 
+                // The same flags the online path writes. Job Orders, Production and Home all
+                // decide "does this need making?" from them; without them a custom line taken in
+                // at the counter looked like a shelf item and never reached the bench.
+                $lineIsCustom = (bool) ($product->isCustom ?? false) && !($product->allowPlainPurchase ?? false);
+                $lineIsMade   = (bool) ($product->isMadeToOrder ?? false);
+                if ($lineIsCustom || $lineIsMade) $anyToMake = true;
+
                 $orderItems[] = [
-                    'productId'   => (string) $product->_id,
-                    'productName' => $product->name,
-                    'variantId'   => $item['variantId']   ?? null,
-                    'variantName' => $item['variantLabel'] ?? ($item['variantName'] ?? null),
-                    'qty'         => $qty,
-                    'unitPrice'   => $unitPrice,
-                    'lineTotal'   => $lineTotal,
+                    'productId'     => (string) $product->_id,
+                    'productName'   => $product->name,
+                    'variantId'     => $item['variantId']   ?? null,
+                    'variantName'   => $item['variantLabel'] ?? ($item['variantName'] ?? null),
+                    'qty'           => $qty,
+                    'unitPrice'     => $unitPrice,
+                    'lineTotal'     => $lineTotal,
+                    'isCustom'      => $lineIsCustom,
+                    'isMadeToOrder' => $lineIsMade,
                     // Hand-picked materials for a service with no recipe. Kept on the line so the
                     // job order and any later costing can see what this job actually consumed.
                     'materials'   => !empty($item['materials']) ? array_values(array_map(fn ($m) => [
@@ -185,6 +195,12 @@ class WalkInOrderController extends Controller
                 'paymentStatus'   => $paymentStatus,
                 'paymentMethod'   => $validated['paymentMethod'],
                 'orderSource'     => 'walk-in',
+                // Artwork on a counter order is settled at the counter: the customer brought the
+                // file or agreed the design with the staff in front of them. There is no proof
+                // cycle to wait for, so the job-order gate is open from the start. Only an order
+                // still to be produced carries these; a collected sale never sees a bench.
+                'isCustomOrder'   => $saleType !== 'collected' && $anyToMake,
+                'designStatus'    => $saleType !== 'collected' && $anyToMake ? 'approved' : null,
                 'saleType'        => $saleType,
                 'fulfillment'     => $fulfillment,
                 'deliveryAddress' => $fulfillment === 'delivery' && !empty($validated['deliveryAddress'])
