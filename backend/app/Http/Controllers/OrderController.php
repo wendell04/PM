@@ -289,8 +289,18 @@ class OrderController extends Controller
             // estimate is snapshotted onto the order so the promised window never shifts later.
             $owner     = \App\Support\ShopSettings::owner();
             $prodLead  = (int)   ($owner->productionLeadDays ?? 3);
-            $shipMin   = (int)   ($owner->shippingDaysMin    ?? 1);
-            $shipMax   = (int)   ($owner->shippingDaysMax    ?? 2);
+
+            // Transit depends on where it is going. A single national range promised Maguindanao
+            // the same one-to-two days as a delivery across Quezon City, and real orders have
+            // gone there on it. Zones come from the chosen address; the old flat pair remains the
+            // fallback when there is no address to read.
+            $shipAddress  = $validated['deliveryAddress'] ?? [];
+            $shipProvince = is_array($shipAddress)
+                ? ($shipAddress['province'] ?? $shipAddress['Province'] ?? null)
+                : null;
+            $zone      = \App\Support\ShippingZones::transitFor($shipProvince);
+            $shipMin   = $shipProvince ? $zone['min'] : (int) ($owner->shippingDaysMin ?? 1);
+            $shipMax   = $shipProvince ? $zone['max'] : (int) ($owner->shippingDaysMax ?? 2);
             $rushOn    = (bool)  ($owner->rushEnabled        ?? true);
             $rushLead  = (int)   ($owner->rushLeadDays       ?? 1);
             // 150 to match SettingsController, which is what the settings screen and the public

@@ -49,6 +49,9 @@ class SettingsController extends Controller
                 'freeRevisions'        => (int)   ($owner->freeRevisions        ?? 3),
                 'extraRevisionFee'     => (float) ($owner->extraRevisionFee     ?? 50),
                 'maxRevisions'         => (int)   ($owner->maxRevisions         ?? 5),
+                // Transit by destination. One national range promised Maguindanao the same
+                // 1-2 days as a delivery across Quezon City; checkout reads this instead.
+                'shippingZones'        => \App\Support\ShippingZones::all(),
                 'shippingDaysMin'      => (int)   ($owner->shippingDaysMin      ?? 1),
                 'shippingDaysMax'      => (int)   ($owner->shippingDaysMax      ?? 2),
                 'rushEnabled'          => (bool)  ($owner->rushEnabled          ?? true),
@@ -248,6 +251,9 @@ class SettingsController extends Controller
                 'freeRevisions'        => (int)   ($owner->freeRevisions        ?? 3),
                 'extraRevisionFee'     => (float) ($owner->extraRevisionFee     ?? 50),
                 'maxRevisions'         => (int)   ($owner->maxRevisions         ?? 5),
+                // Transit by destination. One national range promised Maguindanao the same
+                // 1-2 days as a delivery across Quezon City; checkout reads this instead.
+                'shippingZones'        => \App\Support\ShippingZones::all(),
                 'shippingDaysMin'      => (int)   ($owner->shippingDaysMin      ?? 1),
                 'shippingDaysMax'      => (int)   ($owner->shippingDaysMax      ?? 2),
                 'rushEnabled'          => (bool)  ($owner->rushEnabled          ?? true),
@@ -305,6 +311,9 @@ class SettingsController extends Controller
                 'freeRevisions'        => 'nullable|integer|min:0|max:10',
                 'extraRevisionFee'     => 'nullable|numeric|min:0|max:99999',
                 'maxRevisions'         => 'nullable|integer|min:1|max:20',
+                'shippingZones'        => 'nullable|array',
+                'shippingZones.*.min'  => 'nullable|integer|min:0|max:120',
+                'shippingZones.*.max'  => 'nullable|integer|min:0|max:120',
                 'shippingDaysMin'      => 'nullable|integer|min:0|max:120',
                 'shippingDaysMax'      => 'nullable|integer|min:0|max:120',
                 'rushEnabled'          => 'nullable|boolean',
@@ -336,6 +345,7 @@ class SettingsController extends Controller
             if ($request->has('freeRevisions'))        $owner->freeRevisions        = (int) $request->freeRevisions;
             if ($request->has('extraRevisionFee'))     $owner->extraRevisionFee     = (float) $request->extraRevisionFee;
             if ($request->has('maxRevisions'))         $owner->maxRevisions         = (int) $request->maxRevisions;
+            if ($request->has('shippingZones'))        $owner->shippingZones        = $request->input('shippingZones');
             if ($request->has('shippingDaysMin'))      $owner->shippingDaysMin      = (int) $request->shippingDaysMin;
             if ($request->has('shippingDaysMax'))      $owner->shippingDaysMax      = (int) $request->shippingDaysMax;
             if ($request->has('rushEnabled'))          $owner->rushEnabled          = (bool) $request->rushEnabled;
@@ -370,6 +380,9 @@ class SettingsController extends Controller
                 'freeRevisions'        => (int)   ($owner->freeRevisions        ?? 3),
                 'extraRevisionFee'     => (float) ($owner->extraRevisionFee     ?? 50),
                 'maxRevisions'         => (int)   ($owner->maxRevisions         ?? 5),
+                // Transit by destination. One national range promised Maguindanao the same
+                // 1-2 days as a delivery across Quezon City; checkout reads this instead.
+                'shippingZones'        => \App\Support\ShippingZones::all(),
                 'shippingDaysMin'      => (int)   ($owner->shippingDaysMin      ?? 1),
                 'shippingDaysMax'      => (int)   ($owner->shippingDaysMax      ?? 2),
                 'rushEnabled'          => (bool)  ($owner->rushEnabled          ?? true),
