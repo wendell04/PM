@@ -328,6 +328,8 @@ class OrderRequestController extends Controller
             'status'     => 'required|in:pending_review,confirmed,processing,ready,delivered,cancelled',
             'finalPrice' => 'nullable|numeric|min:0',
             'downPayment' => 'nullable|numeric|min:0',
+            // How long the customer has to pay it. Same default the chat path uses.
+            'expiresInDays' => 'nullable|integer|min:1|max:60',
             'paymentStatus' => 'nullable|in:unpaid,downpayment_paid,partial,paid',
             'eta' => 'nullable|date',
             'note'          => 'nullable|string|max:500',
@@ -357,7 +359,9 @@ class OrderRequestController extends Controller
         // Enforce valid status transitions
         $transitions = [
             'pending_review' => ['confirmed', 'cancelled'],
-            'confirmed'      => ['processing', 'cancelled'],
+            // confirmed -> confirmed is a re-quote: a new price or a fresh validity, re-sent.
+            // An expired quote is still 'confirmed' underneath, so this is also how it is revived.
+            'confirmed'      => ['confirmed', 'processing', 'cancelled'],
             'processing'     => ['ready', 'cancelled'],
             'ready'          => ['delivered', 'cancelled'],
             'delivered'      => [],
@@ -376,6 +380,14 @@ class OrderRequestController extends Controller
 
         if (isset($validated['finalPrice']) && $validated['finalPrice'] !== null) {
             $req->finalPrice = (float) $validated['finalPrice'];
+        }
+
+        // A quotation is an offer with a shelf life. The chat path always stamped one; this path
+        // never did, so quotes made here stayed payable at whatever the price was months ago.
+        if ($validated['status'] === 'confirmed') {
+            $days = (int) ($validated['expiresInDays'] ?? 7);
+            $req->expiresAt = now()->addDays($days);
+            $req->quotedAt  = now();
         }
 
         if (array_key_exists('downPayment', $validated)) {
@@ -428,7 +440,9 @@ class OrderRequestController extends Controller
                             orderId:        (string) $req->_id,
                             productName:    $req->productName,
                             quantity:       (int) $req->quantity,
-                            suggestedPrice: (float) ($req->suggestedPrice ?? 0),
+                            // The price the customer is being asked to pay, not the one the
+                            // form suggested before anyone looked at it.
+                            suggestedPrice: (float) ($req->finalPrice ?? $req->suggestedPrice ?? 0),
                         ));
                 } catch (\Exception $e) {
                     Log::error('OrderConfirmedMail failed', [

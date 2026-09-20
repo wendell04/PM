@@ -61,23 +61,49 @@ const PAYMENT_STATUS_STYLES = {
   },
 };
 
-const VALID_NEXT_STATUSES = {
-  pending_review: ['confirmed', 'cancelled'],
-  confirmed: ['processing', 'cancelled'],
-  processing: ['ready', 'cancelled'],
-  ready: ['delivered', 'cancelled'],
-  delivered: [],
-  cancelled: [],
+// A request answers two questions: has the shop priced it, and has the customer paid it. The
+// old statuses (confirmed / processing / ready / delivered) were a second order pipeline living
+// inside this screen; after payment the ORDER carries the state. So here a request is only ever
+// one of these five, and thirteen unpriced asks stop looking like thirteen quotations.
+const STAGES = {
+  ask:       { label: 'Ask',       hint: 'Waiting on you',          bg: 'var(--gold)',              color: 'var(--black)' },
+  quoted:    { label: 'Quoted',    hint: 'Waiting on the customer', bg: 'rgba(59,130,246,0.18)',    color: '#93c5fd' },
+  accepted:  { label: 'Accepted',  hint: 'Paid - now an order',     bg: 'rgba(34,197,94,0.18)',     color: 'var(--green)' },
+  expired:   { label: 'Expired',   hint: 'Ran out unpaid',          bg: 'rgba(120,120,120,0.22)',   color: 'var(--gray-light)' },
+  cancelled: { label: 'Cancelled', hint: 'Closed',                  bg: 'rgba(196,30,58,0.18)',     color: 'var(--red)' },
 };
 
+function stageOf(req) {
+  if (!req) return 'ask';
+  if (req.convertedOrderId) return 'accepted';
+  if (['downpayment_paid', 'partial', 'paid'].includes(String(req.paymentStatus ?? ''))) return 'accepted';
+  const st = String(req.status ?? 'pending_review');
+  if (st === 'cancelled') return 'cancelled';
+  if (['processing', 'ready', 'delivered'].includes(st)) return 'accepted';   // legacy pipeline: work happened
+  if (st === 'confirmed') {
+    const t = req.expiresAt ? new Date(req.expiresAt) : null;
+    if (t && !isNaN(t) && t < new Date()) return 'expired';
+    return 'quoted';
+  }
+  return 'ask';
+}
+
+// Whole days until a quotation runs out. Negative once it has.
+function daysLeft(req) {
+  if (!req?.expiresAt) return null;
+  const t = new Date(req.expiresAt);
+  if (isNaN(t)) return null;
+  return Math.ceil((t.getTime() - Date.now()) / 86400000);
+}
+
 const FILTER_OPTIONS = [
-  { key: 'all', label: 'All' },
-  { key: 'pending_review', label: 'Pending Review' },
-  { key: 'confirmed', label: 'Confirmed' },
-  { key: 'processing', label: 'Processing' },
-  { key: 'ready', label: 'Ready' },
-  { key: 'delivered', label: 'Delivered' },
+  { key: 'open',      label: 'Open' },          // asks + quotations: anything not finished
+  { key: 'ask',       label: 'Asks' },
+  { key: 'quoted',    label: 'Quoted' },
+  { key: 'accepted',  label: 'Accepted' },
+  { key: 'expired',   label: 'Expired' },
   { key: 'cancelled', label: 'Cancelled' },
+  { key: 'all',       label: 'All' },
 ];
 
 function formatPeso(n) {
@@ -105,6 +131,25 @@ function isExpiredQuote(req) {
   return !isNaN(t) && t < new Date();
 }
 
+function StageBadge({ stage, size = 'sm' }) {
+  const st = STAGES[stage] || STAGES.ask;
+  return (
+    <span style={{
+      display: 'inline-block',
+      background: st.bg,
+      color: st.color,
+      borderRadius: '999px',
+      padding: size === 'lg' ? '0.375rem 1rem' : '0.25rem 0.75rem',
+      fontSize: size === 'lg' ? '0.875rem' : '0.75rem',
+      fontWeight: 700,
+      whiteSpace: 'nowrap',
+    }}>
+      {st.label}
+    </span>
+  );
+}
+
+// History entries still carry the raw status words; shown as they were written.
 function StatusBadge({ status, size = 'sm', expired = false }) {
   const colors = expired
     ? { bg: 'rgba(120,120,120,0.22)', color: 'var(--gray-light)' }
@@ -131,7 +176,7 @@ export default function OrderRequestsPage() {
   const [requests, setRequests] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [activeFilter, setActiveFilter] = useState('all');
+  const [activeFilter, setActiveFilter] = useState('open');
   const isPhone = useIsPhone();
   const [searchQuery, setSearchQuery] = useState('');
   // Raising a quotation from its own module rather than only from inside a chat thread.
@@ -159,11 +204,9 @@ export default function OrderRequestsPage() {
   const [modalLoading, setModalLoading] = useState(false);
   const [modalError, setModalError] = useState(null);
   const [modalSuccess, setModalSuccess] = useState(null);
-  const [updateStatus, setUpdateStatus] = useState('');
   const [updatePrice, setUpdatePrice] = useState('');
   const [updateDownPayment, setUpdateDownPayment] = useState('');
-  const [updatePaymentStatus, setUpdatePaymentStatus] = useState('');
-  const [updateEta, setUpdateEta] = useState('');
+  const [updateValidDays, setUpdateValidDays] = useState('7');
   const [updateNote, setUpdateNote] = useState('');
   const [updateAdminComment, setUpdateAdminComment] = useState('');
   const [updateMockupUrl, setUpdateMockupUrl] = useState('');
@@ -220,9 +263,8 @@ export default function OrderRequestsPage() {
   // Filtered requests
   const filtered = useCallback(() => {
     let list = requests;
-    if (activeFilter !== 'all') {
-      list = list.filter(r => r.status === activeFilter);
-    }
+    if (activeFilter === 'open') list = list.filter(r => ['ask', 'quoted'].includes(stageOf(r)));
+    else if (activeFilter !== 'all') list = list.filter(r => stageOf(r) === activeFilter);
     if (searchQuery.trim()) {
       const q = searchQuery.trim().toLowerCase();
       list = list.filter(r =>
@@ -231,25 +273,37 @@ export default function OrderRequestsPage() {
         (r.productName || '').toLowerCase().includes(q)
       );
     }
-    return list;
+    // Asks first, the one who has waited longest at the top. Then quotations by soonest expiry,
+    // because that is the one about to be lost. Everything finished goes newest first.
+    const rank = { ask: 0, quoted: 1, expired: 2, accepted: 3, cancelled: 4 };
+    return [...list].sort((a, b) => {
+      const sa = stageOf(a), sb = stageOf(b);
+      if (rank[sa] !== rank[sb]) return rank[sa] - rank[sb];
+      const ta = new Date(a.createdAt ?? 0).getTime(), tb = new Date(b.createdAt ?? 0).getTime();
+      if (sa === 'ask') return ta - tb;
+      if (sa === 'quoted') return (daysLeft(a) ?? 999) - (daysLeft(b) ?? 999);
+      return tb - ta;
+    });
   }, [requests, activeFilter, searchQuery]);
 
   // Counts for summary cards
   const counts = useCallback(() => {
-    const c = { all: requests.length };
-    FILTER_OPTIONS.forEach(f => { if (f.key !== 'all') c[f.key] = 0; });
-    requests.forEach(r => { if (c[r.status] !== undefined) c[r.status]++; });
+    const c = { all: requests.length, open: 0 };
+    Object.keys(STAGES).forEach(k => { c[k] = 0; });
+    requests.forEach(r => {
+      const st = stageOf(r);
+      c[st]++;
+      if (st === 'ask' || st === 'quoted') c.open++;
+    });
     return c;
   }, [requests]);
 
   // Open review modal
   function openReview(req) {
     setSelectedRequest(req);
-    setUpdateStatus('');
     setUpdatePrice(req.finalPrice != null ? String(req.finalPrice) : '');
     setUpdateDownPayment(req.downPayment != null ? String(req.downPayment) : '');
-    setUpdatePaymentStatus(req.paymentStatus || 'unpaid');
-    setUpdateEta(req.eta ? req.eta.split('T')[0] : '');
+    setUpdateValidDays('7');
     setUpdateNote('');
     setUpdateAdminComment(req.adminComment || '');
     setUpdateMockupUrl(req.mockupUrl || '');
@@ -263,11 +317,9 @@ export default function OrderRequestsPage() {
   // Close review modal
   function closeReview() {
     setSelectedRequest(null);
-    setUpdateStatus('');
     setUpdatePrice('');
     setUpdateDownPayment('');
-    setUpdatePaymentStatus('');
-    setUpdateEta('');
+    setUpdateValidDays('7');
     setUpdateNote('');
     setUpdateAdminComment('');
     setUpdateMockupUrl('');
@@ -276,18 +328,16 @@ export default function OrderRequestsPage() {
     setModalSuccess(null);
   }
 
-  // Submit status update
-  async function handleSubmitUpdate() {
+  // Two things can happen to a request here: it gets a price and goes to the customer, or it
+  // is closed. Everything after "paid" happens on the order, not here.
+  async function handleSubmitUpdate(action) {
     if (!selectedRequest || !token) return;
-    const nextStatus = updateStatus;
-    if (!nextStatus) {
-      setModalError('Please select a status.');
-      return;
-    }
+    const nextStatus = action === 'close' ? 'cancelled' : 'confirmed';
     if (nextStatus === 'confirmed' && (!updatePrice || Number(updatePrice) <= 0)) {
-      setModalError('Final price is required and must be greater than 0 when confirming.');
+      setModalError('Put a price on it first.');
       return;
     }
+    const validDays = Math.min(60, Math.max(1, parseInt(updateValidDays, 10) || 7));
 
     setSubmitting(true);
     setModalError(null);
@@ -295,11 +345,10 @@ export default function OrderRequestsPage() {
     try {
       const payload = {
         status: nextStatus,
-        finalPrice: updatePrice ? Number(updatePrice) : undefined,
+        finalPrice: nextStatus === 'confirmed' && updatePrice ? Number(updatePrice) : undefined,
+        expiresInDays: nextStatus === 'confirmed' ? validDays : undefined,
         note: updateNote.trim() || undefined,
         downPayment: updateDownPayment !== '' ? Number(updateDownPayment) : undefined,
-        paymentStatus: updatePaymentStatus || undefined,
-        eta: updateEta || undefined,
         adminComment: updateAdminComment.trim() || undefined,
         mockupUrl: updateMockupUrl.trim() || undefined,
         materials: updateMaterials
@@ -310,9 +359,10 @@ export default function OrderRequestsPage() {
       // Update local state
       setRequests(prev => prev.map(r => r.id === updated.id ? updated : r));
       setSelectedRequest(updated);
-      setModalSuccess(`Status updated to "${STATUS_LABELS[updated.status] || updated.status}".`);
+      setModalSuccess(nextStatus === 'confirmed'
+        ? `Quotation sent. The customer has ${validDays} day${validDays === 1 ? '' : 's'} to pay it.`
+        : 'Request closed.');
       setUpdateNote('');
-      setUpdateStatus('');
     } catch (err) {
       setModalError(err.message);
     } finally {
@@ -331,10 +381,6 @@ export default function OrderRequestsPage() {
     return { ...m, inventoryId: invId, materialName: mat?.name ?? '', unitCost: mat ? Number(mat.baseCost) || 0 : 0 };
   }));
 
-  // Get valid next statuses for current request
-  function getNextStatuses(currentStatus) {
-    return VALID_NEXT_STATUSES[currentStatus] || [];
-  }
 
   const filteredRequests = filtered();
   const cardCounts = counts();
@@ -393,14 +439,13 @@ export default function OrderRequestsPage() {
       {isPhone ? (
         <>
           <KpiStrip items={[
-            { key: 'all',            label: 'All' },
-            { key: 'pending_review', label: 'To review' },
-            { key: 'confirmed',      label: 'Confirmed' },
-            { key: 'processing',     label: 'Processing' },
-            { key: 'ready',          label: 'Ready' },
-          ].map(k => ({ ...k, value: cardCounts[k.key] ?? 0, active: activeFilter === k.key, onClick: () => setActiveFilter(activeFilter === k.key ? 'all' : k.key) }))} />
+            { key: 'ask',      label: 'Asks' },
+            { key: 'quoted',   label: 'Quoted' },
+            { key: 'accepted', label: 'Accepted' },
+            { key: 'expired',  label: 'Expired' },
+          ].map(k => ({ ...k, value: cardCounts[k.key] ?? 0, active: activeFilter === k.key, onClick: () => setActiveFilter(activeFilter === k.key ? 'open' : k.key) }))} />
           <PhoneFilterBar search={searchQuery} onSearch={setSearchQuery} placeholder="Search customer or product"
-            filters={[{ key: 'status', label: 'Status', value: activeFilter, defaultValue: 'all', onChange: setActiveFilter,
+            filters={[{ key: 'status', label: 'Show', value: activeFilter, defaultValue: 'open', onChange: setActiveFilter,
               options: FILTER_OPTIONS.map(o => ({ value: o.key, label: o.label })) }]}
             note={`${filteredRequests.length} request${filteredRequests.length === 1 ? '' : 's'}`} />
         </>
@@ -429,6 +474,9 @@ export default function OrderRequestsPage() {
                 {cardCounts[opt.key] ?? 0}
               </div>
               <div style={{ fontSize: '0.75rem', color: 'var(--gray)', marginTop: '0.25rem' }}>{opt.label}</div>
+              {STAGES[opt.key]?.hint && (
+                <div style={{ fontSize: '0.65rem', color: 'var(--gray)', opacity: 0.8, marginTop: '0.1rem' }}>{STAGES[opt.key].hint}</div>
+              )}
             </button>
           );
         })}
@@ -509,7 +557,8 @@ export default function OrderRequestsPage() {
               </svg>
               <p style={{ fontSize: '1rem', color: 'var(--white)', marginBottom: '0.5rem' }}>No order requests found</p>
               <p style={{ fontSize: '0.85rem' }}>
-                {activeFilter !== 'all' ? `No ${STATUS_LABELS[activeFilter]?.toLowerCase() || activeFilter} requests` : 'No requests yet'}
+                {activeFilter === 'open' ? 'Nothing waiting - every ask has been quoted and every quotation answered.'
+                  : activeFilter !== 'all' ? `Nothing under ${FILTER_OPTIONS.find(f => f.key === activeFilter)?.label?.toLowerCase() || activeFilter}.` : 'No requests yet.'}
               </p>
             </div>
           ) : (
@@ -518,11 +567,11 @@ export default function OrderRequestsPage() {
                 {filteredRequests.map((req, i) => (
                   <PhoneRow key={req.id} first={i === 0} mono={false} onClick={() => openReview(req)}
                     title={req.customerName || '-'}
-                    chip={<StatusBadge status={req.status} expired={isExpiredQuote(req)} />}
+                    chip={<StageBadge stage={stageOf(req)} />}
                     meta={[req.productName || '-', req.quantity != null ? `\u00d7${req.quantity}` : null].filter(Boolean).join(' ')}
                     sub={[
-                      req.finalPrice != null ? `final ${formatPeso(req.finalPrice)}` : (req.suggestedPrice != null ? `suggested ${formatPeso(req.suggestedPrice)}` : 'no price yet'),
-                      formatDate(req.createdAt),
+                      stageOf(req) === 'ask' ? 'no price yet' : formatPeso(req.finalPrice),
+                      stageOf(req) === 'quoted' ? `${daysLeft(req)}d left` : formatDate(req.createdAt),
                     ].filter(Boolean).join(' \u00b7 ')} />
                 ))}
               </PhoneList>
@@ -531,20 +580,23 @@ export default function OrderRequestsPage() {
               <table className="pmp-rt" style={{ width: '100%', borderCollapse: 'collapse', minWidth: '900px' }}>
                 <thead>
                   <tr style={{ background: 'var(--dark2)', borderBottom: '1px solid var(--border)' }}>
-                    {['#', 'Customer', 'Product', 'Qty', 'Suggested', 'Final Price', 'Status', 'Date', 'Actions'].map(h => (
-                      <th key={h} style={{ padding: '0.75rem 1rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap' }}>{h}</th>
+                    {['Customer', 'Request', 'Qty', 'Asked', 'Price', 'Expires', 'Stage', ''].map((h, i) => (
+                      <th key={i} style={{ padding: '0.75rem 1rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap' }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredRequests.map((req, idx) => (
+                  {filteredRequests.map((req) => {
+                    const stage = stageOf(req);
+                    const left  = daysLeft(req);
+                    const action = stage === 'ask' ? 'Quote' : stage === 'expired' ? 'Re-quote' : stage === 'accepted' ? 'Open order' : 'View';
+                    return (
                     <tr key={req.id} style={{ borderBottom: '1px solid var(--border)', background: 'var(--dark)' }}>
-                      <td data-rt="hide" style={{ padding: '0.75rem 1rem', fontSize: '0.85rem', color: 'var(--gray)' }}>{idx + 1}</td>
                       <td data-rt="head" style={{ padding: '0.75rem 1rem' }}>
                         <div style={{ fontSize: '0.875rem', color: 'var(--white)', fontWeight: 600 }}>{req.customerName || '-'}</div>
                         <div style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>{req.customerEmail || '-'}</div>
                       </td>
-                      <td data-label="Product" style={{ padding: '0.75rem 1rem' }}>
+                      <td data-label="Request" style={{ padding: '0.75rem 1rem' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                           {req.productThumbnail ? (
                             /* eslint-disable-next-line @next/next/no-img-element */
@@ -562,21 +614,37 @@ export default function OrderRequestsPage() {
                           </div>
                         </div>
                       </td>
-                      <td data-label="Qty" style={{ padding: '0.75rem 1rem', fontSize: '0.85rem', color: 'var(--white)', fontWeight: 600 }}>{req.quantity}</td>
-                      <td data-label="Suggested" style={{ padding: '0.75rem 1rem', fontSize: '0.85rem', color: 'var(--gray)' }}>{formatPeso(req.suggestedPrice)}</td>
-                      <td data-label="Final price" style={{ padding: '0.75rem 1rem', fontSize: '0.85rem', fontWeight: 600, color: req.finalPrice != null ? 'var(--gold)' : 'var(--gray)' }}>{formatPeso(req.finalPrice)}</td>
-                      <td data-label="Status" style={{ padding: '0.75rem 1rem' }}><StatusBadge status={req.status} expired={isExpiredQuote(req)} /></td>
-                      <td data-label="Date" style={{ padding: '0.75rem 1rem', fontSize: '0.8rem', color: 'var(--gray)', whiteSpace: 'nowrap' }}>{formatDate(req.createdAt)}</td>
-                      <td data-rt="actions" style={{ padding: '0.75rem 1rem' }}>
-                        <button
-                          onClick={() => openReview(req)}
-                          style={{ background: 'var(--gold)', color: 'var(--black)', border: 'none', borderRadius: '6px', padding: '0.375rem 0.75rem', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer' }}
-                        >
-                          Review
-                        </button>
+                      <td data-label="Qty" style={{ padding: '0.75rem 1rem', fontSize: '0.85rem', color: 'var(--white)', fontWeight: 600 }}>{req.quantity ?? '-'}</td>
+                      <td data-label="Asked" style={{ padding: '0.75rem 1rem', fontSize: '0.8rem', color: 'var(--gray)', whiteSpace: 'nowrap' }}>{formatDate(req.createdAt)}</td>
+                      <td data-label="Price" style={{ padding: '0.75rem 1rem', fontSize: '0.85rem', fontWeight: 600, whiteSpace: 'nowrap', color: stage === 'ask' ? 'var(--gray)' : 'var(--gold)' }}>
+                        {stage === 'ask' ? 'not yet' : formatPeso(req.finalPrice)}
+                      </td>
+                      <td data-label="Expires" style={{ padding: '0.75rem 1rem', fontSize: '0.8rem', whiteSpace: 'nowrap',
+                        color: stage === 'quoted' && left != null && left <= 2 ? 'var(--red)' : 'var(--gray)' }}>
+                        {stage === 'quoted' && left != null ? (left <= 0 ? 'today' : `in ${left}d`)
+                          : stage === 'expired' ? formatDate(req.expiresAt)
+                          : stage === 'accepted' && req.convertedOrderId ? 'paid' : '-'}
+                      </td>
+                      <td data-label="Stage" style={{ padding: '0.75rem 1rem' }}><StageBadge stage={stage} /></td>
+                      <td data-rt="actions" style={{ padding: '0.75rem 1rem', whiteSpace: 'nowrap' }}>
+                        {stage === 'accepted' && req.convertedOrderId ? (
+                          <a href={`/dashboard/business/orders?order=${req.convertedOrderId}`}
+                            style={{ display: 'inline-block', background: 'var(--dark2)', color: 'var(--white)', border: '1px solid var(--border)', borderRadius: '6px', padding: '0.375rem 0.75rem', fontSize: '0.75rem', fontWeight: 700, textDecoration: 'none' }}>
+                            {action}
+                          </a>
+                        ) : (
+                          <button
+                            onClick={() => openReview(req)}
+                            style={{ background: stage === 'ask' || stage === 'expired' ? 'var(--gold)' : 'var(--dark2)', color: stage === 'ask' || stage === 'expired' ? 'var(--black)' : 'var(--white)',
+                              border: stage === 'ask' || stage === 'expired' ? 'none' : '1px solid var(--border)', borderRadius: '6px', padding: '0.375rem 0.75rem', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer' }}
+                          >
+                            {action}
+                          </button>
+                        )}
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -779,12 +847,24 @@ export default function OrderRequestsPage() {
 
               {/* Right Column - Status Management */}
               <div style={{ flex: '1 1 300px', minWidth: '280px' }}>
-                <h3 style={{ margin: '0 0 1rem', fontSize: '0.9rem', fontWeight: 700, color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Status Management</h3>
+                <h3 style={{ margin: '0 0 1rem', fontSize: '0.9rem', fontWeight: 700, color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Quotation</h3>
 
-                {/* Current Status */}
+                {/* Where it stands */}
                 <div style={{ marginBottom: '1.25rem' }}>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--gray)', marginBottom: '0.375rem' }}>Current Status</div>
-                  <StatusBadge status={selectedRequest.status} size="lg" expired={isExpiredQuote(selectedRequest)} />
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+                    <StageBadge stage={stageOf(selectedRequest)} size="lg" />
+                    <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>
+                      {stageOf(selectedRequest) === 'quoted' && daysLeft(selectedRequest) != null
+                        ? `${daysLeft(selectedRequest) <= 0 ? 'Runs out today' : `${daysLeft(selectedRequest)} day${daysLeft(selectedRequest) === 1 ? '' : 's'} left to pay`}`
+                        : STAGES[stageOf(selectedRequest)]?.hint}
+                    </span>
+                  </div>
+                  {stageOf(selectedRequest) === 'accepted' && selectedRequest.convertedOrderId && (
+                    <a href={`/dashboard/business/orders?order=${selectedRequest.convertedOrderId}`}
+                      style={{ display: 'inline-block', marginTop: '0.6rem', fontSize: '0.8rem', color: 'var(--gold)', fontWeight: 700 }}>
+                      Open the order
+                    </a>
+                  )}
                   {isExpiredQuote(selectedRequest) && (
                     <div style={{ marginTop: '0.5rem', padding: '0.6rem 0.75rem', borderRadius: 8,
                       background: 'rgba(224,168,82,0.1)', border: '1px solid rgba(224,168,82,0.3)',
@@ -824,30 +904,18 @@ export default function OrderRequestsPage() {
                 {/* Divider */}
                 <div style={{ borderTop: '1px solid var(--border)', margin: '1.25rem 0' }} />
 
-                {/* Update Form */}
-                {getNextStatuses(selectedRequest.status).length > 0 ? (
+                {/* The form: price it and send, or close it. Shown while the request is still open
+                    in any sense - an expired quote is re-sent from here too. */}
+                {['ask', 'quoted', 'expired'].includes(stageOf(selectedRequest)) ? (
                   <div>
-                    <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--white)', marginBottom: '0.75rem' }}>Update Status</div>
-
-                    {/* Status Dropdown */}
-                    <div style={{ marginBottom: '0.75rem' }}>
-                      <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--gray)', marginBottom: '0.375rem' }}>New Status</label>
-                      <select
-                        value={updateStatus}
-                        onChange={e => setUpdateStatus(e.target.value)}
-                        style={{ width: '100%', padding: '0.625rem 0.875rem', background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--white)', fontSize: '0.875rem', outline: 'none', boxSizing: 'border-box' }}
-                      >
-                        <option value="">Select status...</option>
-                        {getNextStatuses(selectedRequest.status).map(s => (
-                          <option key={s} value={s}>{STATUS_LABELS[s]}</option>
-                        ))}
-                      </select>
+                    <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--white)', marginBottom: '0.75rem' }}>
+                      {stageOf(selectedRequest) === 'ask' ? 'Put a price on it' : stageOf(selectedRequest) === 'expired' ? 'Send it again' : 'Change the quotation'}
                     </div>
 
-                    {/* Final Price */}
+                    {/* Price */}
                     <div style={{ marginBottom: '0.75rem' }}>
                       <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--gray)', marginBottom: '0.375rem' }}>
-                        Final Price {updateStatus === 'confirmed' && <span style={{ color: 'var(--red)' }}>*</span>}
+                        Price <span style={{ color: 'var(--red)' }}>*</span>
                       </label>
                       <div style={{ position: 'relative' }}>
                         <span style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--gray)', fontSize: '0.875rem' }}>₱</span>
@@ -882,32 +950,21 @@ export default function OrderRequestsPage() {
                       </div>
                     </div>
 
-                    {/* Est. Completion Date */}
+                    {/* Validity. A quotation is an offer with a shelf life; without one the customer
+                        could pay a months-old price. */}
                     <div style={{ marginBottom: '0.75rem' }}>
                       <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--gray)', marginBottom: '0.375rem' }}>
-                        Est. Completion Date (optional)
+                        Valid for
                       </label>
-                      <input
-                        type="date"
-                        value={updateEta}
-                        onChange={e => setUpdateEta(e.target.value)}
-                        style={{ width: '100%', padding: '0.625rem 0.875rem', background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--white)', fontSize: '0.875rem', outline: 'none', boxSizing: 'border-box' }}
-                      />
-                    </div>
-
-                    {/* Payment Status */}
-                    <div style={{ marginBottom: '0.75rem' }}>
-                      <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--gray)', marginBottom: '0.375rem' }}>Payment Status</label>
-                      <select
-                        value={updatePaymentStatus}
-                        onChange={e => setUpdatePaymentStatus(e.target.value)}
-                        style={{ width: '100%', padding: '0.625rem 0.875rem', background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--white)', fontSize: '0.875rem', outline: 'none', boxSizing: 'border-box' }}
-                      >
-                        <option value="unpaid">Unpaid</option>
-                        <option value="downpayment_paid">50% Downpayment Paid</option>
-                        <option value="partial">Partially Paid</option>
-                        <option value="paid">Paid</option>
-                      </select>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <input
+                          type="text" inputMode="numeric" maxLength={2}
+                          value={updateValidDays}
+                          onChange={e => setUpdateValidDays(e.target.value.replace(/[^0-9]/g, ''))}
+                          style={{ width: '72px', padding: '0.625rem 0.875rem', background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--white)', fontSize: '0.875rem', outline: 'none', boxSizing: 'border-box', textAlign: 'center' }}
+                        />
+                        <span style={{ fontSize: '0.8rem', color: 'var(--gray)' }}>days - the customer pays within this, or it expires</span>
+                      </div>
                     </div>
 
                     {/* Note */}
@@ -1016,14 +1073,29 @@ export default function OrderRequestsPage() {
                       <div style={{ marginBottom: '0.75rem', padding: '0.625rem 0.875rem', background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: '8px', color: 'var(--green)', fontSize: '0.85rem' }}>{modalSuccess}</div>
                     )}
 
-                    {/* Submit */}
-                    <button
-                      onClick={handleSubmitUpdate}
-                      disabled={submitting}
-                      style={{ width: '100%', padding: '0.75rem', background: submitting ? 'var(--gray)' : 'var(--gold)', color: 'var(--black)', border: 'none', borderRadius: '8px', fontWeight: 700, fontSize: '0.875rem', cursor: submitting ? 'not-allowed' : 'pointer', opacity: submitting ? 0.6 : 1 }}
-                    >
-                      {submitting ? 'Updating...' : 'Update Status'}
-                    </button>
+                    {/* Send, or close. The send goes to the customer's chat and, for non-chat
+                        requests, their email - there is no separate "notify" step. */}
+                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                      <button
+                        onClick={() => handleSubmitUpdate('quote')}
+                        disabled={submitting}
+                        style={{ flex: '2 1 180px', padding: '0.75rem', background: submitting ? 'var(--gray)' : 'var(--gold)', color: 'var(--black)', border: 'none', borderRadius: '8px', fontWeight: 700, fontSize: '0.875rem', cursor: submitting ? 'not-allowed' : 'pointer', opacity: submitting ? 0.6 : 1 }}
+                      >
+                        {submitting ? 'Sending...' : stageOf(selectedRequest) === 'ask' ? 'Send quotation' : stageOf(selectedRequest) === 'expired' ? 'Send again' : 'Update and re-send'}
+                      </button>
+                      <button
+                        onClick={() => { if (window.confirm('Close this request? The customer will not be able to pay it.')) handleSubmitUpdate('close'); }}
+                        disabled={submitting}
+                        style={{ flex: '1 1 120px', padding: '0.75rem', background: 'transparent', color: 'var(--red)', border: '1px solid rgba(196,30,58,0.4)', borderRadius: '8px', fontWeight: 700, fontSize: '0.875rem', cursor: submitting ? 'not-allowed' : 'pointer' }}
+                      >
+                        {stageOf(selectedRequest) === 'ask' ? 'Decline' : 'Cancel quotation'}
+                      </button>
+                    </div>
+                  </div>
+                ) : stageOf(selectedRequest) === 'accepted' ? (
+                  <div style={{ padding: '1rem 0', color: 'var(--gray)', fontSize: '0.82rem', lineHeight: 1.55 }}>
+                    The customer paid this quotation, so it is an order now. Production, payments and
+                    delivery are handled on the order, not here.
                   </div>
                 ) : (
                   <div style={{ textAlign: 'center', padding: '1.5rem 0', color: 'var(--gray)' }}>
@@ -1031,7 +1103,6 @@ export default function OrderRequestsPage() {
                       <path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/><path d="M15 9l-6 6M9 9l6 6"/>
                     </svg>
                     <p style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--white)', marginBottom: '0.25rem' }}>This request is closed.</p>
-                    <p style={{ fontSize: '0.8rem' }}>No further status updates can be made.</p>
                   </div>
                 )}
               </div>
