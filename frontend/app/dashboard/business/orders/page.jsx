@@ -147,14 +147,20 @@ function InfoRow({ label, value, mono }) {
 
 function Modal({ children, onClose, maxWidth = 480, overflow = 'auto' }) {
   useLockBodyScroll(true);
+  // On a phone: a sheet from the bottom, full width, most of the height. A 480px card in a
+  // 360px screen was a 328px box scrolling inside a page that also scrolled.
+  const phone = useIsPhone();
   return (
     <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.35)', zIndex:1000,
-      display:'flex', alignItems:'center', justifyContent:'center', padding:'16px' }}>
+      display:'flex', alignItems: phone ? 'flex-end' : 'center', justifyContent:'center', padding: phone ? 0 : '16px' }}>
       {/* No backdrop-close: modal may hold form input - a stray click would wipe it.
           overflow='visible' lets a short modal's dropdown pop-over float free instead of being
           clipped (and triggering the modal's own scrollbar). */}
-      <div style={{ ...S.card, width:'100%', maxWidth, maxHeight:'90vh', overflow,
-        boxShadow:'0 20px 60px rgba(0,0,0,.18)', padding:'24px' }}
+      <div style={{ ...S.card, width:'100%', overflow,
+        boxShadow:'0 20px 60px rgba(0,0,0,.18)',
+        ...(phone
+          ? { maxWidth:'100%', maxHeight:'94vh', borderRadius:'14px 14px 0 0', padding:'16px 16px calc(16px + env(safe-area-inset-bottom, 0px))' }
+          : { maxWidth, maxHeight:'90vh', padding:'24px' }) }}
         onClick={e => e.stopPropagation()}>
         {children}
       </div>
@@ -3211,6 +3217,10 @@ export default function OrdersPage() {
   // A phone list is for what is still moving. Delivered and cancelled orders stay reachable
   // through a toggle and the Done filter, but do not bury today's work under last month's.
   const [showDone, setShowDone] = useState(false);
+  // Desktop: hide finished orders (delivered and paid) the way Show Archived hides archived ones.
+  // Remembered per browser - a preference, not data.
+  const [hideDone, setHideDone] = useState(() => { try { return localStorage.getItem('pmp.orders.hideDone') === '1'; } catch { return false; } });
+  const toggleHideDone = () => setHideDone(v => { const n = !v; try { localStorage.setItem('pmp.orders.hideDone', n ? '1' : '0'); } catch {} return n; });
   const [loading,      setLoading]      = useState(true);
   const [loadError,    setLoadError]    = useState('');
   const [refreshing,   setRefreshing]   = useState(false);
@@ -3347,7 +3357,9 @@ export default function OrdersPage() {
       : statusFilter === 'unpaid' ? remainingDue(o) > 0 && !isDone(o.orderStatus)
       : statusFilter.startsWith('stage:') ? stageOf(o.orderStatus) === statusFilter.slice(6)
       : normalizeStatus(o.orderStatus) === statusFilter)
-    && (!isPhone || showDone || wantsDone || !isDone(o.orderStatus))
+    // "Done" for hiding means finished on both sides: delivered AND paid off, or cancelled /
+    // returned. A delivered order that still owes is not finished - it is a debt with a parcel.
+    && ((isPhone ? showDone : !hideDone) || wantsDone || !(isDone(o.orderStatus) && (normalizeStatus(o.orderStatus) !== 'delivered' || remainingDue(o) <= 0.009)))
   ).sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
 
   // ── Summary counts ──────────────────────────────────────────────────────────
@@ -3531,6 +3543,12 @@ export default function OrdersPage() {
           <div style={S.row}>
             {refreshing && <span style={{ fontSize:'12px', color:'var(--gray)' }}>Refreshing…</span>}
             <button onClick={() => setShowJOQueue(true)} style={S.btnSmGhost}>{ICONS.pkg} JO Queue</button>
+            <button
+              onClick={toggleHideDone}
+              title="Delivered and paid orders are finished - hide them to see only what is still moving"
+              style={{ ...S.btnSmGhost, ...(hideDone ? { background:'rgba(212,168,67,0.12)', color:'var(--gold)', borderColor:'rgba(212,168,67,0.35)' } : {}) }}>
+              {hideDone ? `Show done (${counts.done})` : 'Hide done'}
+            </button>
             <button
               onClick={() => setShowArchived(v => !v)}
               style={{ ...S.btnSmGhost, ...(showArchived ? { background:'#fff7ed', color:'#c2410c', borderColor:'#fdba74' } : {}) }}>

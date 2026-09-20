@@ -616,8 +616,11 @@ export default function OrderRequestsPage() {
 
       {/* Review Modal */}
       {selectedRequest && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }} onClick={closeReview}>
-          <div style={{ background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '16px', maxWidth: '860px', width: '100%', maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
+        <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: isPhone ? 'flex-end' : 'center', justifyContent: 'center', padding: isPhone ? 0 : '1rem' }} onClick={closeReview}>
+          <div style={{ background: 'var(--dark)', border: '1px solid var(--border)', width: '100%', overflowY: 'auto',
+            ...(isPhone
+              ? { borderRadius: '14px 14px 0 0', maxWidth: '100%', maxHeight: '94vh', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }
+              : { borderRadius: '16px', maxWidth: '860px', maxHeight: '90vh' }) }} onClick={e => e.stopPropagation()}>
             {/* Modal Header */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1.25rem 1.5rem', borderBottom: '1px solid var(--border)' }}>
               <h2 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: 'var(--white)' }}>
@@ -1090,6 +1093,7 @@ export default function OrderRequestsPage() {
  * already knows the name before they open this.
  */
 function CustomerPicker({ token, onClose, onPick }) {
+  const isPhone = useIsPhone();
   const [q, setQ] = useState('');
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -1122,10 +1126,11 @@ function CustomerPicker({ token, onClose, onPick }) {
   return (
     <div onClick={onClose}
       style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 1200,
-        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+        display: 'flex', alignItems: isPhone ? 'flex-end' : 'center', justifyContent: 'center', padding: isPhone ? 0 : 16 }}>
       <div onClick={e => e.stopPropagation()}
-        style={{ background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: 10,
-          width: '100%', maxWidth: 520, maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
+        style={{ background: 'var(--dark)', border: '1px solid var(--border)',
+          width: '100%', display: 'flex', flexDirection: 'column',
+          ...(isPhone ? { borderRadius: '14px 14px 0 0', maxWidth: '100%', maxHeight: '90vh' } : { borderRadius: 10, maxWidth: 520, maxHeight: '80vh' }) }}>
         <div style={{ padding: '16px 18px 10px', borderBottom: '1px solid var(--border)' }}>
           <div style={{ fontWeight: 700, fontSize: 15 }}>Who is this quotation for?</div>
           <div style={{ fontSize: 12, color: 'var(--gray)', marginTop: 3 }}>
