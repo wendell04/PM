@@ -737,10 +737,13 @@ export default function BusinessDashboardLayout({ children }) {
   const HOME = "/dashboard/business/home";
   useEffect(() => {
     if (!currentUser || isAdminOwner || permissions === null) return;
+    // Compare on the path only: several items carry ?tab=... in their href, and the pathname
+    // never does, so the inventory pages matched nothing and went unguarded.
+    const pathOf = (href) => String(href).split("?")[0];
     const item = navItems
-      .filter((i) => i.type !== "divider" && i.href && i.href !== HOME)
-      .sort((a, b) => b.href.length - a.href.length)
-      .find((i) => pathname === i.href || pathname.startsWith(i.href + "/") || pathname.startsWith(i.href + "?"));
+      .filter((i) => i.type !== "divider" && i.href && pathOf(i.href) !== HOME)
+      .sort((a, b) => pathOf(b.href).length - pathOf(a.href).length)
+      .find((i) => pathname === pathOf(i.href) || pathname.startsWith(pathOf(i.href) + "/"));
     if (!item || itemAccessible(item)) return;
     setTurnedAway(item.name);
     router.replace(HOME);
