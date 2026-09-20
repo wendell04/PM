@@ -423,7 +423,9 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
       allowPreorder:      product.allowPreorder ?? false,
       downpaymentPct:     product.downpaymentPct != null ? String(product.downpaymentPct) : '0',
       hideWhenOutOfStock: product.hideWhenOutOfStock ?? false,
-      availabilityBadge:  product.availabilityBadge ?? 'auto',
+      // "Always Made to Order" was removed: the Made to Order switch decides it, and the card
+      // carries the Print to order badge already. Anything saved with it reads as Auto.
+      availabilityBadge:  product.availabilityBadge === 'made_to_order' ? 'auto' : (product.availabilityBadge ?? 'auto'),
       isPublished:        product.isPublished ?? false,
       isFeatured:         product.isFeatured ?? false,
       designFee:          product.designFee != null ? String(product.designFee) : '',
@@ -737,8 +739,11 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
 
   // ── Save ────────────────────────────────────────────────────────────────────
 
-  const handleSave = (publish) => {
-    const f = publish ? { ...form, isPublished: true } : form;
+  // The Draft / Published switch in the form is the only word on it. The button used to force
+  // isPublished: true, so "Draft" plus "Add Product" published the product anyway - two controls
+  // for one fact, and the one the owner had just set lost.
+  const handleSave = () => {
+    const f = form;
     const e = validate(f);
     if (Object.keys(e).length) { setErrors(e); return; }
     const base = {
@@ -844,9 +849,8 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
           </div>
           <div style={{ display: 'flex', gap: '8px' }}>
             <button onClick={onCancel} style={S.btnGhost}>Cancel</button>
-            <button onClick={() => handleSave(false)} style={S.btnGhost}>Save as Draft</button>
-            <button onClick={() => handleSave(true)} style={S.btnPrimary}>
-              {ICONS.check} {isEdit ? 'Save Changes' : 'Add Product'}
+            <button onClick={handleSave} style={S.btnPrimary}>
+              {ICONS.check} {isEdit ? 'Save Changes' : 'Add Product'}{form.isPublished ? '' : ' (draft)'}
             </button>
           </div>
         </div>
@@ -1042,18 +1046,31 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
                 {/* Standalone */}
                 {form.type === 'standalone' && (
                   <>
-                    <Field label="Bill of Materials (BOM)" required error={errors.bomId}>
+                    {/* Fixed and tiered sell from a recipe, so a BOM is required. A quoted product
+                        may have none - the materials are picked on each quotation - so it gets a
+                        real blank rather than a required star it cannot satisfy. */}
+                    <Field label="Bill of Materials (BOM)" required={form.pricingMode !== 'inquiry'} error={errors.bomId}>
                       <CustomSelect value={form.bomId} onChange={v => setF('bomId', v)}
-                        options={boms.map(b => ({ value:b.id, label:b.productName }))}
-                        placeholder="Select BOM" searchable
+                        options={[
+                          ...(form.pricingMode === 'inquiry' ? [{ value: '', label: 'No BOM - materials are set on each quotation' }] : []),
+                          ...boms.map(b => ({ value:b.id, label:b.productName })),
+                        ]}
+                        placeholder={form.pricingMode === 'inquiry' ? 'No BOM' : 'Select BOM'} searchable
                         error={errors.bomId} />
+                      {form.pricingMode === 'inquiry' && (
+                        <span style={{ fontSize: '11px', color: 'var(--gray)', lineHeight: 1.5 }}>
+                          Optional. Pick one to show its options and a floor cost; leave it blank and the materials are set on each quotation.
+                        </span>
+                      )}
                     </Field>
                     {form.bomId && (
                       <div style={{ display: 'flex', gap: '20px', padding: '8px 12px', background: 'var(--dark2)', borderRadius: '7px', fontSize: '12px', color: 'var(--gray)' }}>
                         <span>Floor cost: <b style={{ color: 'var(--gray-light)' }}>{floorCostMap[form.bomId] > 0 ? formatCurrency(floorCostMap[form.bomId]) : '--'}</b></span>
-                        <span>Can produce: <b style={{ color: (maxProducibleMap[form.bomId] || 0) > 0 ? '#2e7d32' : '#dc2626' }}>
-                          {(maxProducibleMap[form.bomId] || 0) > 0 ? `${maxProducibleMap[form.bomId]} units` : 'Out of stock'}
-                        </b></span>
+                        {form.pricingMode !== 'inquiry' && (
+                          <span>Can produce: <b style={{ color: (maxProducibleMap[form.bomId] || 0) > 0 ? '#2e7d32' : '#dc2626' }}>
+                            {(maxProducibleMap[form.bomId] || 0) > 0 ? `${maxProducibleMap[form.bomId]} units` : 'Out of stock'}
+                          </b></span>
+                        )}
                       </div>
                     )}
                   </>
@@ -1346,7 +1363,7 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
                     answers a question that is already answered - and invites a number that will be
                     ignored. It appears only where nothing else can say what the item cost: something
                     bought finished and resold, with no BOM behind it. */}
-                {!hasAnyBom && (
+                {!hasAnyBom && form.pricingMode !== 'inquiry' && (
                   <Field label="Cost Price / Buy Price (P, optional)">
                   <DecimalInput value={form.cost} onChange={v => setF('cost', v)} placeholder="0.00" />
                   <Note type="info">What you pay the supplier per unit. Used to compute profit when this product has no BOM or linked inventory. Leave blank if the cost comes from a BOM or inventory item.</Note>
@@ -1507,6 +1524,16 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
             <Card>
               <CardTitle>Order Settings</CardTitle>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                {/* A quoted product has no shelf, no fixed price and no fixed terms: deposit,
+                    quantity and payment are set on each quotation. Showing the shelf controls here
+                    invited settings that nothing reads. */}
+                {form.pricingMode === 'inquiry' && (
+                  <div style={{ padding: '10px 12px', borderRadius: 8, background: 'rgba(212,168,67,0.06)', border: '1px solid rgba(212,168,67,0.2)', fontSize: 12, color: 'var(--gray)', lineHeight: 1.5 }}>
+                    <b style={{ color: 'var(--white)' }}>Priced per quotation.</b> Deposit, quantity, payment method and
+                    validity are set on each quotation you send, so the shelf settings do not apply here.
+                    The product is made to order by definition.
+                  </div>
+                )}
                 {/* The old hint - "No stock held; supplies ordered on demand" - described a different
                     flag entirely. Buying per order is isOnDemand on the MATERIAL; this toggle has
                     never done that, and reading it that way is what made the storefront offer
@@ -1519,16 +1546,16 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
                 {/* What the storefront badge SAYS is a separate decision from whether it sells
                     past zero. A shop that produces after payment may want every card to read
                     Pre-order or Made to Order whatever the shelf holds - and never a count. */}
+                {form.pricingMode !== 'inquiry' && (<>
                 <div style={{ marginBottom: 12 }}>
                   <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--white)', marginBottom: 4 }}>Storefront badge</div>
                   <div style={{ fontSize: 12, color: 'var(--gray)', marginBottom: 8, lineHeight: 1.5 }}>
-                    Auto follows the stock: In Stock, Only N left, Pre-order (when allowed) or Out of Stock. The other two show that word always and never a count.
+                    Auto follows the stock: In Stock, Only N left, Pre-order (when allowed) or Out of Stock. "Always Pre-order" shows that word always and never a count.
                   </div>
                   <CustomSelect value={form.availabilityBadge || 'auto'} onChange={v => setF('availabilityBadge', v)} style={{ maxWidth: 320 }}
                     options={[
                       { value: 'auto',          label: 'Auto - from stock' },
                       { value: 'preorder',      label: 'Always "Pre-order"' },
-                      { value: 'made_to_order', label: 'Always "Made to Order"' },
                     ]} />
                 </div>
 
@@ -1537,16 +1564,19 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
                   hint="Customers can keep ordering after the stock runs out, and the card shows Pre-order instead of Out of Stock. Only for what you can genuinely restock in time - the delivery date is already on the order."
                   on={form.allowPreorder}
                   onChange={v => setF('allowPreorder', v)} />
+                </>)}
 
                 {/* Made to Order is what routes a line to a job order. A customizable product is
                     produced by definition, so it is already on and the toggle would be a second
                     switch for one outcome; it only earns its place on a non-customizable product
                     that is still made rather than picked off a shelf. */}
-                {form.isCustomizable ? (
+                {form.isCustomizable || form.pricingMode === 'inquiry' ? (
                   <div style={{ padding: '10px 12px', borderRadius: 8, background: 'rgba(212,168,67,0.06)', border: '1px solid rgba(212,168,67,0.2)' }}>
                     <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--white)' }}>Made to Order - always on here</div>
                     <div style={{ fontSize: 11.5, color: 'var(--gray)', marginTop: 3, lineHeight: 1.5 }}>
-                      A customizable product is produced after the order, so it already gets a job order.
+                      {form.pricingMode === 'inquiry'
+                        ? 'A quoted product is produced after the quotation is paid, so it already gets a job order.'
+                        : 'A customizable product is produced after the order, so it already gets a job order.'}
                     </div>
                   </div>
                 ) : (
@@ -1625,13 +1655,16 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
                     )}
                   </Field>
                 )}
+                {form.pricingMode !== 'inquiry' && (<>
                 <ToggleRow label="COD Available" hint="Cash on delivery allowed" on={form.allowCOD} onChange={v => setF('allowCOD', v)} />
                 {form.isCustomizable && form.allowCOD && Number(form.downpaymentPct) <= 0 && (
                   <div style={{ background: '#fef9c3', border: '1px solid #fcd34d', borderRadius: '6px', padding: '8px 12px', fontSize: '12px', color: '#92400e', lineHeight: 1.5 }}>
                     Warning: COD without a downpayment is high-risk for custom orders. Consider setting a downpayment % below.
                   </div>
                 )}
+                </>)}
                 <ToggleRow label="Feature on Homepage" hint="Shows in Best Sellers on the landing page" on={form.isFeatured} onChange={v => setF('isFeatured', v)} />
+                {form.pricingMode !== 'inquiry' && (<>
                 {/* A deposit buys the shop protection against work started on something it cannot
                     resell. An item taken off the shelf carries none of that risk, so asking for one
                     only splits a simple sale into two payments - which is how a ready-made totebag
@@ -1690,9 +1723,11 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
                     </div>
                   )}
                 </Field>
+                </>)}
               </div>
             </Card>
 
+            {form.pricingMode !== 'inquiry' && (
             <Card>
               <CardTitle>Visibility</CardTitle>
               {/* Pre-order and hide-at-zero are opposites: one keeps the product selling with an
@@ -1717,6 +1752,7 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
                 </span>
               )}
             </Card>
+            )}
 
           </div>
         </div>

@@ -234,8 +234,10 @@ function QuickViewModal({ product, flashSale, onClose, onToast }) {
       const n = Number(product.availableQty);
       return { label: n <= 10 ? `Only ${n} left!` : `${n} units available`, type: 'gold' };
     }
-    // Nothing counted constrains it: every material is bought per order.
-    return { label: product.isMadeToOrder ? 'Made to Order' : 'In Stock', type: 'gold' };
+    // Nothing counted constrains it. A made-to-order product gets no stock badge at all - the
+    // Print to order badge on the card already says it, and two badges for one fact is noise.
+    if (product.isMadeToOrder) return null;
+    return { label: 'In Stock', type: 'gold' };
   })();
 
   const buildCart = () => {
@@ -833,8 +835,9 @@ function ProductCard({ product, onAddToCart, onQuickView, flashSale }) {
             if (totalStock != null) return (
               <div className="shop-stock-img-badge in-stock">{totalStock} pcs</div>
             );
+            if (product.isMadeToOrder) return null;   // the Print to order badge covers it
             return (
-              <div className="shop-stock-img-badge in-stock">{product.isMadeToOrder ? 'Made to Order' : 'In Stock'}</div>
+              <div className="shop-stock-img-badge in-stock">In Stock</div>
             );
           })()}
 

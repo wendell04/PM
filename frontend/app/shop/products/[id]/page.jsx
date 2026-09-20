@@ -1215,11 +1215,11 @@ export default function ProductDetailPage() {
               // accepted - not the count above it.
               // The owner can pin the badge: a product made after payment reads Pre-order or Made
               // to Order whatever the shelf holds, and shows no count. Ordering rules are unchanged.
-              if (product.availabilityBadge === 'preorder' || product.availabilityBadge === 'made_to_order') {
+              if (product.availabilityBadge === 'preorder') {
                 return (
                   <div style={{ display: 'flex' }}>
                     <span style={{ fontSize: '0.8rem', fontWeight: 700, ...BADGE_GOLD, borderRadius: '999px', padding: '0.25rem 0.75rem' }}>
-                      {product.availabilityBadge === 'preorder' ? 'Pre-order' : 'Made to Order'}
+                      Pre-order
                     </span>
                   </div>
                 );
@@ -1264,10 +1264,12 @@ export default function ProductDetailPage() {
               // promise, and for variants that share a material (three mug colours, one shelf of
               // boxes) it is one the shop cannot keep three times over. A count is only printed
               // when it is low, above, where it changes what the customer does.
+              // Made to order: no stock badge. The product type already says it is printed per order.
+              if (product.isMadeToOrder) return null;
               return (
                 <div style={{ display: 'flex' }}>
                   <span style={{ fontSize: '0.8rem', fontWeight: 700, ...BADGE_GOLD, borderRadius: '999px', padding: '0.25rem 0.75rem' }}>
-                    {product.isMadeToOrder ? 'Made to Order' : 'In Stock'}
+                    In Stock
                   </span>
                 </div>
               );
