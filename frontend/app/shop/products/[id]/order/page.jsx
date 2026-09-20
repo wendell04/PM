@@ -31,11 +31,6 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 function fmt(n) {
   return `₱${Number(n).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
-function fmtPHPhone(d) {
-  if (d.length <= 3) return d;
-  if (d.length <= 6) return d.slice(0,3)+' '+d.slice(3);
-  return d.slice(0,3)+' '+d.slice(3,6)+' '+d.slice(6);
-}
 function fmtCardNumber(v) { return v.replace(/\D/g,'').slice(0,16).replace(/(.{4})/g,'$1 ').trim(); }
 function fmtExpiry(v) { const d=v.replace(/\D/g,'').slice(0,4); return d.length>=3?d.slice(0,2)+'/'+d.slice(2):d; }
 function cardBrand(num) {
@@ -155,8 +150,6 @@ function CustomOrderInner() {
   const [addressLoading, setAddressLoading] = useState(false);
 
   const [paymentMethod, setPaymentMethod] = useState(null);
-  const [eWalletPhone, setEWalletPhone] = useState('');
-  const [showEWalletPhone, setShowEWalletPhone] = useState(false);
   const [cardNumber, setCardNumber] = useState('');
   const [cardExpiry, setCardExpiry] = useState('');
   const [cardCvc, setCardCvc] = useState('');
@@ -930,7 +923,6 @@ function CustomOrderInner() {
             ...commonFields,
             paymentType: paymentMethod,
             paymentMethodId,
-            eWalletPhone: (['gcash','paymaya'].includes(paymentMethod) && eWalletPhone.trim()) ? `+63${eWalletPhone.trim()}` : null,
           }),
         }, 25000);
         const data = await res.json();
@@ -1573,12 +1565,10 @@ function CustomOrderInner() {
                 { id: 'card',    label: 'Credit / Debit Card', sub: 'Pay with Visa or Mastercard.',     accent: '#9C7BE8', accentBg: 'rgba(156,123,232,0.07)', logo: '/logos/credit-card.svg', filterImg: true },
               ].filter(opt => payEnabled[opt.id] !== false).map(opt => {
                 const isSelected = paymentMethod === opt.id;
-                const isEWallet = opt.id === 'gcash' || opt.id === 'paymaya';
-                const showPanel = isEWallet && isSelected;
                 return (
                   <div key={opt.id}>
-                    <div onClick={() => { setPaymentMethod(opt.id); setEWalletPhone(''); setShowEWalletPhone(false); }}
-                      style={{ display: 'flex', alignItems: 'center', gap: '0.875rem', padding: '0.875rem 1rem', borderRadius: '10px', cursor: 'pointer', border: `1px solid ${isSelected ? opt.accent : 'rgba(255,255,255,0.07)'}`, background: isSelected ? opt.accentBg : 'var(--black)', marginBottom: showPanel ? 0 : '0.625rem', transition: 'all 0.18s' }}>
+                    <div onClick={() => setPaymentMethod(opt.id)}
+                      style={{ display: 'flex', alignItems: 'center', gap: '0.875rem', padding: '0.875rem 1rem', borderRadius: '10px', cursor: 'pointer', border: `1px solid ${isSelected ? opt.accent : 'rgba(255,255,255,0.07)'}`, background: isSelected ? opt.accentBg : 'var(--black)', marginBottom: '0.625rem', transition: 'all 0.18s' }}>
                       <div style={{ width: '44px', height: '44px', borderRadius: '10px', flexShrink: 0, background: isSelected ? opt.accentBg : 'rgba(255,255,255,0.04)', border: `1px solid ${isSelected ? opt.accent : 'rgba(255,255,255,0.06)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img src={opt.logo} alt={opt.label} style={{ width: '30px', height: '30px', objectFit: 'contain', ...(opt.filterImg ? { filter: 'brightness(0) invert(1)', opacity: isSelected ? 1 : 0.45 } : { borderRadius: '6px' }) }} />
@@ -1589,27 +1579,6 @@ function CustomOrderInner() {
                       </div>
                       <div style={{ width: '18px', height: '18px', borderRadius: '50%', flexShrink: 0, border: `2px solid ${isSelected ? opt.accent : 'rgba(255,255,255,0.2)'}`, background: isSelected ? opt.accent : 'transparent', transition: 'all 0.18s' }} />
                     </div>
-                    {showPanel && (
-                      <div style={{ marginTop: '4px', marginBottom: '0.625rem', padding: '0.875rem 1rem', borderRadius: '10px', background: opt.id === 'gcash' ? 'rgba(0,102,255,0.04)' : 'rgba(0,177,79,0.04)', border: `1px solid ${opt.id === 'gcash' ? 'rgba(0,102,255,0.18)' : 'rgba(0,177,79,0.18)'}` }}>
-                        {!showEWalletPhone ? (
-                          <button type="button" onClick={() => setShowEWalletPhone(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', gap: '0.4rem', color: opt.id === 'gcash' ? '#0066FF' : '#00B14F', fontSize: '0.8rem', fontWeight: 600 }}>
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
-                            Use a different {opt.id === 'gcash' ? 'GCash' : 'Maya'} number for billing reference
-                          </button>
-                        ) : (
-                          <>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.625rem' }}>
-                              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: opt.id === 'gcash' ? '#0066FF' : '#00B14F', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{opt.id === 'gcash' ? 'GCash' : 'Maya'} number</span>
-                              <button type="button" onClick={() => { setShowEWalletPhone(false); setEWalletPhone(''); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--gray)', fontSize: '0.75rem', padding: 0 }}>Cancel</button>
-                            </div>
-                            <div style={{ display: 'flex', alignItems: 'center', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', overflow: 'hidden' }} onFocusCapture={e => { e.currentTarget.style.borderColor = opt.id === 'gcash' ? '#0066FF' : '#00B14F'; }} onBlurCapture={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'; }}>
-                              <span style={{ padding: '0.65rem 0.75rem', fontSize: '0.9rem', fontFamily: 'monospace', color: 'var(--gray)', borderRight: '1px solid rgba(255,255,255,0.08)', flexShrink: 0 }}>+63</span>
-                              <input type="tel" inputMode="numeric" placeholder="9XX XXX XXXX" maxLength={12} value={fmtPHPhone(eWalletPhone)} autoFocus onChange={e => setEWalletPhone(e.target.value.replace(/\D/g,'').slice(0,10))} style={{ flex: 1, background: 'transparent', border: 'none', padding: '0.65rem 0.875rem', color: 'var(--white)', fontSize: '0.9rem', outline: 'none', fontFamily: 'monospace' }} />
-                            </div>
-                          </>
-                        )}
-                      </div>
-                    )}
                   </div>
                 );
               })}

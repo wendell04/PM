@@ -1,6 +1,7 @@
 ﻿'use client';
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import PhoneInput from '@/components/auth/PhoneInput';
 import dynamic from 'next/dynamic';
 import Image from 'next/image';
 import { useAuth } from '@/contexts/AuthContext';
@@ -1362,7 +1363,7 @@ export default function SettingsPage() {
                   </div>
                   <div className="profile-form-field">
                     <label>Phone <span className="required">*</span></label>
-                    <input type="tel" value={profileForm.phoneNumber} onChange={e => setProfileForm(p => ({ ...p, phoneNumber: e.target.value }))} placeholder="e.g., 09123456789" maxLength={20} autoComplete="tel" onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleSaveProfile(); } }} />
+                    <PhoneInput value={profileForm.phoneNumber} onChange={v => setProfileForm(p => ({ ...p, phoneNumber: v }))} />
                   </div>
                   <div className="profile-form-field">
                     <label>Address <span className="required">*</span></label>

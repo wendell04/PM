@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import useLockBodyScroll from '@/lib/useLockBodyScroll';
+import PhoneInput from '@/components/auth/PhoneInput';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import {
   blankAnswers, blankOrderLine, validateAnswers, MAX_ORDER_LINES,
@@ -101,7 +102,7 @@ export default function OrderFormModal({ open, onClose, token, user, message, on
           <label style={label}>Who to make it for</label>
           <div style={{ display: 'grid', gap: 8 }}>
             <input style={field} placeholder="Your name" value={a.name} maxLength={120} onChange={e => set('name', e.target.value)} />
-            <input style={field} placeholder="Contact number" inputMode="tel" value={a.contact} maxLength={40} onChange={e => set('contact', e.target.value)} />
+            <PhoneInput value={a.contact} onChange={v => set('contact', v)} inputStyle={field} />
             <input style={field} placeholder="Email" inputMode="email" value={a.email} maxLength={160} onChange={e => set('email', e.target.value)} />
           </div>
         </div>

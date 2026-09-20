@@ -1,5 +1,6 @@
 "use client";
 
+import PhoneInput from "@/components/auth/PhoneInput";
 import {
   confirmTotp,
   removeTotp,
@@ -885,10 +886,10 @@ export default function CustomerProfilePage() {
     }
     if (
       !profileForm.phoneNumber.trim() ||
-      !/^(\+?63|0)9\d{9}$/.test(profileForm.phoneNumber.trim())
+      !/^\+[1-9]\d{6,14}$/.test(profileForm.phoneNumber.trim())
     ) {
       setSaveError(
-        "Phone number must be a valid PH number (e.g. 09171234567 or +639171234567).",
+        "Enter a complete phone number.",
       );
       return;
     }
@@ -2353,7 +2354,10 @@ export default function CustomerProfilePage() {
                         <label style={{ display: "block", fontSize: "0.72rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--gray)", marginBottom: "0.4rem" }}>
                           Phone Number <span style={{ color: "var(--red)" }}>*</span>
                         </label>
-                        <input type="text" maxLength={20} value={profileForm.phoneNumber} onChange={(e) => handleProfileChange("phoneNumber", e.target.value)} placeholder="+639XXXXXXXXX" style={{ width: "100%", padding: "0.625rem 0.75rem", background: "var(--dark)", border: "1px solid var(--border)", borderRadius: "8px", color: "var(--white)", fontSize: "0.875rem", boxSizing: "border-box" }} />
+                        {/* The sign-up field: country picker, digits only, that country's own length.
+                            A text box here accepted letters and any length, and the account carried
+                            "+639272518750jiii8kd" as a phone number. */}
+                        <PhoneInput value={profileForm.phoneNumber} onChange={(v) => handleProfileChange("phoneNumber", v)} />
                       </div>
                       <div style={{ gridColumn: "1 / -1", display: "flex", gap: "0.75rem", justifyContent: "flex-end", paddingTop: "0.25rem", borderTop: "1px solid var(--border)" }}>
                         <button onClick={handleCancelEdit} style={{ padding: "0.625rem 1.25rem", background: "transparent", border: "1px solid var(--border)", borderRadius: "8px", color: "var(--gray)", fontSize: "0.875rem", cursor: "pointer" }}>Cancel</button>

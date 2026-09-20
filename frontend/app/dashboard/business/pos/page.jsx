@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import PhoneInput from '@/components/auth/PhoneInput';
 import Image from 'next/image';
 import { useAuth } from '@/contexts/AuthContext';
 import { fetchProducts } from '@/lib/productApi';
@@ -910,14 +911,7 @@ export default function PosPage() {
             {saleType === 'production' && (
               <div>
                 <label style={{ ...S.label, display: 'block', marginBottom: '0.375rem' }}>Contact number</label>
-                <input
-                  inputMode="tel"
-                  value={customerPhone}
-                  maxLength={40}
-                  onChange={e => setCustomerPhone(e.target.value.replace(/[^\d+\-\s()]/g, ''))}
-                  placeholder="How to reach them about this order"
-                  style={inputStyle}
-                />
+                <PhoneInput value={customerPhone} onChange={setCustomerPhone} inputStyle={inputStyle} />
               </div>
             )}
             <div>
