@@ -1679,9 +1679,12 @@ function CustomOrderInner() {
                           <span style={{ color: 'var(--white)', fontWeight: 600, textAlign: 'right' }}>{range(prodLeadDays)} {after}</span>
                         </div>
                         <span style={{ fontSize: '0.72rem', color: 'var(--gray)', lineHeight: 1.5 }}>
+                          {/* The courier part is the Metro Manila figure - the address is not known
+                              yet. Checkout re-counts it by province, and saying so here keeps a
+                              Mindanao customer from reading 4-5 now and 7-10 at checkout as a trick. */}
                           {rushEnabled
-                            ? `Rush (${range(rushLeadDays)}) is offered at checkout. The countdown starts at approval, not today.`
-                            : 'The countdown starts at approval, not today.'}
+                            ? `Rush (${range(rushLeadDays)}) is offered at checkout. Metro Manila courier days; provinces add a few. The countdown starts at approval, not today.`
+                            : 'Metro Manila courier days; provinces add a few. The countdown starts at approval, not today.'}
                         </span>
                       </div>
                     );
