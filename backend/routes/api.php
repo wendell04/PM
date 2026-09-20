@@ -174,6 +174,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/chat/messages',                 [ChatController::class, 'store'])->middleware('throttle:60,1');
     Route::post('/chat/upload-image',             [ChatController::class, 'uploadImage'])->middleware('throttle:30,1');
     Route::patch('/chat/conversations/{id}/read', [ChatController::class, 'markAsRead']);
+    Route::post('/chat/conversations/{id}/order-form', [ChatController::class, 'sendOrderForm'])->middleware('throttle:30,1');
+    Route::patch('/chat/messages/{id}/order-form',     [ChatController::class, 'fillOrderForm'])->middleware('throttle:30,1');
     Route::patch('/chat/heartbeat',              [ChatController::class, 'heartbeat']);
 });
 

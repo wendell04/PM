@@ -35,7 +35,7 @@ const tierPriceOf = (line, variantId, qty) => {
   return Number(v?.price ?? line.basePrice ?? 0) || 0;
 };
 
-const QuotationModal = ({ onClose, onSubmit, isSending, token, customerId, customerName }) => {
+const QuotationModal = ({ onClose, onSubmit, isSending, token, customerId, customerName, initialNote = '' }) => {
   // The customer's pinned address - so the delivery fee can be checked against a
   // courier (Lalamove etc.) before the quote is sent.
   const [addr, setAddr] = useState(null);
@@ -60,7 +60,9 @@ const QuotationModal = ({ onClose, onSubmit, isSending, token, customerId, custo
     deliveryFee: '',
     downPayment: '',
     expiresInDays: '7',
-    note: '',
+    // A quotation raised from a filled order form starts with the customer's own answers in
+    // the note, so what they asked for and what they are being priced sit on the same card.
+    note: initialNote || '',
   });
 
   // Owner attaches the agreed artwork here; it rides the quote into the order and skips the

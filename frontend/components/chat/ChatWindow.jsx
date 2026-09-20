@@ -17,7 +17,7 @@ const dateLabel = (ts) => {
   return d.toLocaleDateString('en-PH', { weekday: 'long', month: 'long', day: 'numeric' });
 };
 
-const ChatWindow = ({ activeConversation, messages, user, isLoading, isAdmin, onStartChat, isSending, isLoadingMessages, isLoadingConversations, addToCart, onlineUsers = new Set(), typingUsers = {}, onApproveProof, onRequestChanges, proofActionState }) => {
+const ChatWindow = ({ activeConversation, messages, user, isLoading, isAdmin, onStartChat, isSending, isLoadingMessages, isLoadingConversations, addToCart, onlineUsers = new Set(), typingUsers = {}, onApproveProof, onRequestChanges, proofActionState, onQuoteFromForm }) => {
   const scrollRef = useRef(null);
   const [lightboxIdx, setLightboxIdx] = useState(null);
   // Every photo in the thread, in the order it was sent. Built here so the viewer can move between
@@ -225,6 +225,80 @@ const ChatWindow = ({ activeConversation, messages, user, isLoading, isAdmin, on
               </div>
             )}
 
+            <div className="quotation-timestamp" style={{ textAlign: isMe ? 'right' : 'left' }}>
+              {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // The order form the shop sent. "Filled" is read off the thread itself - the reply card
+    // names the form it answers - so the card is right even before a refetch.
+    if (msg.type === 'order_form') {
+      const filled = (msg.metadata?.status === 'filled')
+        || messages.some(x => x.type === 'order_form_reply' && String(x.metadata?.orderFormMessageId ?? '') === String(msg._id ?? msg.id ?? ''));
+      return (
+        <div key={msgKey} style={{ display: 'flex', justifyContent: isMe ? 'flex-end' : 'flex-start', padding: '4px 12px' }}>
+          <div className="quotation-card">
+            <div className="quotation-header">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#d4a843" strokeWidth="2.5"><path d="M9 11l3 3L22 4" /><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" /></svg>
+              <span className="quotation-tag">Order form</span>
+              <span style={{ marginLeft: 'auto', fontSize: '0.68rem', fontWeight: 700, color: filled ? '#1a7f3c' : 'var(--gray)' }}>{filled ? 'Filled in' : 'Waiting on the customer'}</span>
+            </div>
+            <div style={{ padding: '6px 12px 8px', fontSize: '0.82rem', color: 'var(--gray-light)', lineHeight: 1.5 }}>{msg.body}</div>
+            <div className="quotation-timestamp" style={{ textAlign: isMe ? 'right' : 'left' }}>
+              {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // The customer's answers. This is the card the shop quotes from.
+    if (msg.type === 'order_form_reply' && msg.metadata?.answers) {
+      const a = msg.metadata.answers;
+      const payLabel = { gcash: 'GCash', maya: 'Maya', card: 'Card', cash: 'Cash on pickup' }[a.payment] || a.payment;
+      const lines = Array.isArray(a.lines) ? a.lines : [];
+      const noteForQuote = [
+        lines.map(l => `${l.qty} x ${l.item}${l.details ? ` (${l.details})` : ''}`).join('\n'),
+        `${a.shipment === 'pickup' ? 'Pickup' : `Delivery - ${a.address || ''}`}`,
+        `Pays by ${payLabel}`,
+        a.instructions ? `Notes: ${a.instructions}` : '',
+      ].filter(Boolean).join('\n');
+      const row = (k, v) => v ? (
+        <div style={{ display: 'flex', gap: 8, fontSize: '0.78rem', lineHeight: 1.45 }}>
+          <span style={{ color: 'var(--gray)', flex: '0 0 72px' }}>{k}</span>
+          <span style={{ color: 'var(--white, #111)', whiteSpace: 'pre-wrap', minWidth: 0 }}>{v}</span>
+        </div>
+      ) : null;
+      return (
+        <div key={msgKey} style={{ display: 'flex', justifyContent: isMe ? 'flex-end' : 'flex-start', padding: '4px 12px' }}>
+          <div className="quotation-card" style={{ maxWidth: 360 }}>
+            <div className="quotation-header">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#d4a843" strokeWidth="2.5"><path d="M9 11l3 3L22 4" /><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" /></svg>
+              <span className="quotation-tag">Order details</span>
+            </div>
+            <div style={{ padding: '8px 12px', display: 'grid', gap: 5 }}>
+              {lines.map((l, i) => (
+                <div key={i} style={{ fontSize: '0.84rem', fontWeight: 700, color: 'var(--white, #111)' }}>
+                  {l.qty} x {l.item}{l.details ? <span style={{ fontWeight: 500, color: 'var(--gray)' }}> - {l.details}</span> : null}
+                </div>
+              ))}
+              <div style={{ height: 4 }} />
+              {row('For', [a.name, a.contact, a.email].filter(Boolean).join(' - '))}
+              {row(a.shipment === 'pickup' ? 'Pickup' : 'Deliver to', a.shipment === 'pickup' ? 'At the shop' : a.address)}
+              {row('Pays by', payLabel)}
+              {row('Notes', a.instructions)}
+            </div>
+            {isAdmin && onQuoteFromForm && (
+              <div style={{ padding: '0 12px 10px' }}>
+                <button type="button" onClick={() => onQuoteFromForm(noteForQuote)}
+                  style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: 'none', background: '#d4a843', color: '#111', fontWeight: 800, fontSize: '0.8rem', cursor: 'pointer' }}>
+                  Send quotation for this
+                </button>
+              </div>
+            )}
             <div className="quotation-timestamp" style={{ textAlign: isMe ? 'right' : 'left' }}>
               {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
             </div>

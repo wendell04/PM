@@ -5,6 +5,7 @@ import ChatInput from './ChatInput';
 import { useScrollToLatest } from '@/lib/useScrollToLatest';
 import { cloudinaryThumb } from '@/lib/cloudinaryImage';
 import PhotoLightbox from './PhotoLightbox';
+import OrderFormModal from './OrderFormModal';
 import { getMessages, sendMessage, markAsRead, sendHeartbeat, getConversations } from '../../lib/chatApi';
 import { getEcho } from '../../lib/echo';
 import './chat.css';
@@ -116,6 +117,8 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
   };
   const [activeConv, setActiveConv] = useState(null);
   const [messages, setMessages] = useState([]);
+  // The order form the shop sent, open for filling in.
+  const [orderFormMsg, setOrderFormMsg] = useState(null);
   // Same album the admin side builds: every photo in this thread, in the order it was sent.
   const chatPhotoUrls = messages.filter(m => m.type === 'image' && m.file_url).map(m => m.file_url);
   const [isSending, setIsSending] = useState(false);
@@ -937,6 +940,63 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
                         );
                       }
 
+                      // The shop's order form. Once filled it says so; before that it is a button.
+                      if (msg.type === 'order_form') {
+                        const filled = (msg.metadata?.status === 'filled')
+                          || messages.some(x => x.type === 'order_form_reply' && String(x.metadata?.orderFormMessageId ?? '') === String(msg._id ?? msg.id ?? ''));
+                        return (
+                          <div key={msgKey} style={{ display: 'flex', justifyContent: isMe ? 'flex-end' : 'flex-start' }}>
+                            <div className="quotation-card">
+                              <div className="quotation-header">
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#d4a843" strokeWidth="2.5"><path d="M9 11l3 3L22 4" /><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" /></svg>
+                                <span className="quotation-tag">Order form</span>
+                              </div>
+                              <div style={{ padding: '6px 12px 8px', fontSize: '0.84rem', color: 'var(--gray-light)', lineHeight: 1.5 }}>{msg.body}</div>
+                              <div style={{ padding: '0 12px 10px' }}>
+                                {filled ? (
+                                  <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#1a7f3c' }}>Filled in - thank you. Your quotation will arrive here.</div>
+                                ) : (
+                                  <button type="button" onClick={() => setOrderFormMsg(msg)}
+                                    style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: 'none', background: '#d4a843', color: '#111', fontWeight: 800, fontSize: '0.82rem', cursor: 'pointer' }}>
+                                    Fill it in
+                                  </button>
+                                )}
+                              </div>
+                              <div className="quotation-timestamp">{formatTime(msg.created_at)}</div>
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      // Their own answers, as sent.
+                      if (msg.type === 'order_form_reply' && msg.metadata?.answers) {
+                        const a = msg.metadata.answers;
+                        const lines = Array.isArray(a.lines) ? a.lines : [];
+                        const payLabel = { gcash: 'GCash', maya: 'Maya', card: 'Card', cash: 'Cash on pickup' }[a.payment] || a.payment;
+                        return (
+                          <div key={msgKey} style={{ display: 'flex', justifyContent: isMe ? 'flex-end' : 'flex-start' }}>
+                            <div className="quotation-card">
+                              <div className="quotation-header">
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#d4a843" strokeWidth="2.5"><path d="M9 11l3 3L22 4" /><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" /></svg>
+                                <span className="quotation-tag">Your order details</span>
+                              </div>
+                              <div style={{ padding: '8px 12px', display: 'grid', gap: 4, fontSize: '0.82rem' }}>
+                                {lines.map((l, i) => (
+                                  <div key={i} style={{ fontWeight: 700, color: 'var(--white, #111)' }}>
+                                    {l.qty} x {l.item}{l.details ? <span style={{ fontWeight: 500, color: 'var(--gray)' }}> - {l.details}</span> : null}
+                                  </div>
+                                ))}
+                                <div style={{ color: 'var(--gray)', marginTop: 4 }}>
+                                  {a.shipment === 'pickup' ? 'Pickup at the shop' : `Deliver to ${a.address || ''}`} - pays by {payLabel}
+                                </div>
+                                {a.instructions ? <div style={{ color: 'var(--gray)', whiteSpace: 'pre-wrap' }}>{a.instructions}</div> : null}
+                              </div>
+                              <div className="quotation-timestamp">{formatTime(msg.created_at)}</div>
+                            </div>
+                          </div>
+                        );
+                      }
+
                       if (msg.type === 'inquiry' && msg.metadata) {
                         const m = msg.metadata;
                         return (
@@ -1087,6 +1147,26 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
         index={chatPhotoIdx}
         onIndexChange={setChatPhotoIdx}
         onClose={() => setChatPhotoIdx(null)}
+      />
+
+      <OrderFormModal
+        open={!!orderFormMsg}
+        message={orderFormMsg}
+        token={token}
+        user={user}
+        onClose={() => setOrderFormMsg(null)}
+        onFilled={(d) => {
+          // The form card flips to filled and the answers card lands, without waiting for the
+          // broadcast to come back round.
+          const form  = d?.form;
+          const reply = d?.reply;
+          setMessages(prev => {
+            let next = prev;
+            if (form?._id) next = next.map(m => (m._id === form._id ? { ...m, metadata: form.metadata } : m));
+            if (reply?._id && !next.some(m => m._id === reply._id)) next = [...next, reply];
+            return next;
+          });
+        }}
       />
 
       {preview && (

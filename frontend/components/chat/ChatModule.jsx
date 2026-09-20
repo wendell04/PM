@@ -18,6 +18,8 @@ const ChatModule = ({ user, token, addToCart }) => {
   const [isSending, setIsSending] = useState(false);
   const [onlineUsers, setOnlineUsers] = useState(new Set());
   const [typingUsers, setTypingUsers] = useState({});
+  // Set by a filled order-form card; ChatInput opens the quotation modal with it.
+  const [quotePrefill, setQuotePrefill] = useState(null);
   const typingTimeoutRefs = useRef({});
   const conversationChannelRef = useRef(null);
   // Ref keeps handleNewMessage free of stale closure on activeConversation
@@ -404,6 +406,7 @@ const ChatModule = ({ user, token, addToCart }) => {
           addToCart={addToCart}
           onlineUsers={onlineUsers}
           typingUsers={typingUsers}
+          onQuoteFromForm={(note) => setQuotePrefill({ note, at: Date.now() })}
         />
 
         {/* A guest thread has only the shop in it, so anything typed here reaches nobody.
@@ -429,6 +432,8 @@ const ChatModule = ({ user, token, addToCart }) => {
             token={token}
             isAdmin={isAdmin}
             onTyping={handleTyping}
+            quotePrefill={quotePrefill}
+            onOrderFormSent={(m) => { if (m && m._id) setMessages(prev => prev.some(x => x._id === m._id) ? prev : [...prev, m]); }}
           />
         )}
       </div>

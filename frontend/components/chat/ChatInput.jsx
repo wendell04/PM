@@ -8,7 +8,9 @@ import { compressImage, formatBytes } from '../../lib/compressImage';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
-const ChatInput = ({ onSendMessage, isSending, activeConversation, token, onTyping, isAdmin }) => {
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
+
+const ChatInput = ({ onSendMessage, isSending, activeConversation, token, onTyping, isAdmin, quotePrefill, onOrderFormSent }) => {
   const [text, setText] = useState('');
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
@@ -21,7 +23,36 @@ const ChatInput = ({ onSendMessage, isSending, activeConversation, token, onTypi
   const [showQuotation, setShowQuotation] = useState(false);
   const [quotationSending, setQuotationSending] = useState(false);
   const [quotationError, setQuotationError] = useState('');
+  const [quoteNote, setQuoteNote] = useState('');
+  const [formSending, setFormSending] = useState(false);
   const fileInputRef = useRef(null);
+
+  // "Send quotation" pressed on a filled order form card: open the modal with the answers in.
+  useEffect(() => {
+    if (!quotePrefill?.at) return;
+    setQuoteNote(quotePrefill.note || '');
+    setQuotationError('');
+    setShowQuotation(true);
+  }, [quotePrefill]);
+
+  const handleSendOrderForm = async () => {
+    const convId = activeConversation?._id;
+    if (!convId || formSending) return;
+    setFormSending(true);
+    try {
+      const res = await fetch(`${API_URL}/api/chat/conversations/${convId}/order-form`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.message || 'Could not send the order form.');
+      onOrderFormSent?.(d.data ?? d);
+    } catch (err) {
+      setQuotationError(err.message || 'Could not send the order form.');
+    } finally {
+      setFormSending(false);
+    }
+  };
   const typingThrottleRef = useRef(null);
   const profanityTimerRef = useRef(null);
 
@@ -395,6 +426,29 @@ const ChatInput = ({ onSendMessage, isSending, activeConversation, token, onTypi
           </button>
         )}
 
+        {/* The order form goes BEFORE the quotation: sizes, colours, where to, how they pay.
+            Asking those one message at a time is how a price takes three days. */}
+        {canQuote && (
+          <button
+            type="button"
+            disabled={isSending || isUploading || formSending}
+            onClick={handleSendOrderForm}
+            title="Send order form"
+            style={{
+              height: '34px', flexShrink: 0, padding: '0 12px',
+              display: 'inline-flex', alignItems: 'center', gap: '6px',
+              background: 'transparent', border: '1px solid rgba(255,255,255,0.18)', borderRadius: '999px',
+              color: 'var(--gray-light, #ccc)', fontSize: '0.78rem', fontWeight: 700, whiteSpace: 'nowrap',
+              cursor: isSending || isUploading || formSending ? 'not-allowed' : 'pointer',
+            }}
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M9 11l3 3L22 4" /><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+            </svg>
+            {formSending ? 'Sending...' : 'Send order form'}
+          </button>
+        )}
+
         <input
           type="file"
           ref={fileInputRef}
@@ -447,12 +501,13 @@ const ChatInput = ({ onSendMessage, isSending, activeConversation, token, onTypi
 
       {showQuotation && (
         <QuotationModal
-          onClose={() => setShowQuotation(false)}
+          onClose={() => { setShowQuotation(false); setQuoteNote(''); }}
           onSubmit={handleSendQuotation}
           isSending={quotationSending}
           token={token}
           customerId={activeConversation?.other_user?.id}
           customerName={activeConversation?.other_user?.name}
+          initialNote={quoteNote}
         />
       )}
     </div>

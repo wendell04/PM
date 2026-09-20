@@ -73,6 +73,7 @@ class OrderRequest extends Model
         'expiresAt',
         'quotedAt',
         'answeredByQuoteId',
+        'orderFormAnswers',
         // Set when a quote is paid through a Payment Intent rather than PayMongo's hosted page.
         // Fillable because $fillable is what decides whether they reach the document at all.
         'paymongoIntentId',

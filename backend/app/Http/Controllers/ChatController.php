@@ -748,4 +748,199 @@ class ChatController extends Controller
             Log::warning('Chat auto reply broadcast failed (reply still saved): ' . $e->getMessage());
         }
     }
+
+    /**
+     * POST /chat/conversations/{id}/order-form
+     *
+     * The shop sends the order form into a thread before quoting. "How much for 30 shirts?"
+     * cannot be priced without sizes, colours, where to and how they pay, and asking those one
+     * message at a time is how a quote takes three days. The form is a card the customer fills
+     * in; the answers come back as a card the shop quotes from.
+     */
+    public function sendOrderForm(Request $request, $id)
+    {
+        try {
+            $user = $request->user();
+            if (!in_array($user->role ?? null, ['admin', 'owner'], true)
+                && !\App\Support\Rbac::isSuperAdmin($user) && !\App\Support\Rbac::isOwner($user)) {
+                return $this->unauthorizedResponse();
+            }
+            $conversation = Conversation::find($id);
+            if (!$conversation) {
+                return $this->notFoundResponse('Conversation');
+            }
+
+            $message = Message::create([
+                'conversation_id' => (string) $conversation->_id,
+                'sender_id'       => (string) ($user->_id ?? $user->id),
+                'sender_name'     => trim(($user->firstName ?? '') . ' ' . ($user->lastName ?? '')) ?: 'Store',
+                'body'            => 'Please fill in this order form so we can give you an exact price.',
+                'type'            => 'order_form',
+                'metadata'        => [
+                    'status'      => 'sent',
+                    'formVersion' => 1,
+                ],
+                'is_read'         => false,
+            ]);
+            $conversation->update(['last_message' => 'Sent an order form', 'last_message_at' => now()]);
+
+            try { broadcast(new MessageSent($message))->toOthers(); } catch (\Throwable $e) {
+                Log::warning('Order form broadcast failed (message still saved): ' . $e->getMessage());
+            }
+
+            $participants = array_map('strval', $conversation->participants ?? []);
+            $senderId     = (string) ($user->_id ?? $user->id);
+            foreach ($participants as $pid) {
+                if ($pid === $senderId) continue;
+                try {
+                    Notification::create([
+                        'user_id' => $pid,
+                        'type'    => 'chat_message',
+                        'title'   => 'Order form to fill in',
+                        'message' => 'We sent you an order form in chat. Fill it in and we will send your quotation.',
+                        'is_read' => false,
+                    ]);
+                } catch (\Throwable) {}
+            }
+
+            return $this->successResponse('Order form sent.', $message);
+        } catch (\Exception $e) {
+            return $this->serverErrorResponse($e, 'Could not send the order form.');
+        }
+    }
+
+    /**
+     * PATCH /chat/messages/{id}/order-form
+     *
+     * The customer's answers. The form card is marked filled, a reply card carries the answers
+     * back into the thread, and an ask is opened so the "asks waiting" count sees it. The reply
+     * card is what the shop presses Send quotation from.
+     */
+    public function fillOrderForm(Request $request, $id)
+    {
+        try {
+            $user = $request->user();
+            $form = Message::find($id);
+            if (!$form || $form->type !== 'order_form') {
+                return $this->notFoundResponse('Order form');
+            }
+            $conversation = Conversation::find($form->conversation_id);
+            if (!$conversation) {
+                return $this->notFoundResponse('Conversation');
+            }
+            $userId       = (string) ($user->_id ?? $user->id ?? '');
+            $participants = array_map('strval', $conversation->participants ?? []);
+            if (!in_array($userId, $participants, true) || $userId === (string) $form->sender_id) {
+                return $this->unauthorizedResponse();
+            }
+            if (($form->metadata['status'] ?? 'sent') === 'filled') {
+                return response()->json(['message' => 'This form has already been filled in.'], 422);
+            }
+
+            $v = $request->validate([
+                'name'            => 'required|string|max:120',
+                'contact'         => 'required|string|max:40',
+                'email'           => 'required|email|max:160',
+                'address'         => 'nullable|string|max:400',
+                'lines'           => 'required|array|min:1|max:10',
+                'lines.*.item'    => 'required|string|max:160',
+                'lines.*.details' => 'nullable|string|max:200',
+                'lines.*.qty'     => 'required|integer|min:1|max:100000',
+                'shipment'        => 'required|in:delivery,pickup',
+                'payment'         => 'required|in:gcash,maya,card,cash',
+                'instructions'    => 'nullable|string|max:2000',
+                'confirmDetails'  => 'accepted',
+                'agreeTerms'      => 'accepted',
+            ]);
+            if ($v['shipment'] === 'delivery' && trim((string) ($v['address'] ?? '')) === '') {
+                return response()->json(['message' => 'A delivery address is needed for delivery.'], 422);
+            }
+
+            $clean = fn ($x) => htmlspecialchars(strip_tags(trim((string) $x)), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+            $answers = [
+                'name'         => $clean($v['name']),
+                'contact'      => $clean($v['contact']),
+                'email'        => $clean($v['email']),
+                'address'      => $clean($v['address'] ?? ''),
+                'lines'        => array_values(array_map(fn ($l) => [
+                    'item'    => $clean($l['item']),
+                    'details' => $clean($l['details'] ?? ''),
+                    'qty'     => (int) $l['qty'],
+                ], $v['lines'])),
+                'shipment'     => $v['shipment'],
+                'payment'      => $v['payment'],
+                'instructions' => $clean($v['instructions'] ?? ''),
+                'agreedAt'     => now()->toIso8601String(),
+            ];
+
+            // The ask, so it counts as waiting and the quotation can answer it.
+            $first = $answers['lines'][0];
+            $totalQty = array_sum(array_map(fn ($l) => $l['qty'], $answers['lines']));
+            $ask = \App\Models\OrderRequest::create([
+                'customerId'       => $userId,
+                'customerName'     => $answers['name'],
+                'customerEmail'    => $answers['email'],
+                'productId'        => null,
+                'productName'      => count($answers['lines']) > 1
+                    ? "{$first['item']} + " . (count($answers['lines']) - 1) . ' more'
+                    : $first['item'],
+                'productThumbnail' => null,
+                'category'         => 'Order form',
+                'priceType'        => 'inquiry',
+                'isOpenRequest'    => true,
+                'selectedVariants' => [],
+                'quantity'         => $totalQty,
+                'designNotes'      => $answers['instructions'],
+                'designType'       => 'request',
+                'designFee'        => 0,
+                'isCustom'         => true,
+                'suggestedPrice'   => null,
+                'finalPrice'       => null,
+                'downPayment'      => null,
+                'paymentStatus'    => 'unpaid',
+                'status'           => 'pending_review',
+                'orderFormAnswers' => $answers,
+                'statusHistory'    => [[
+                    'status' => 'pending_review', 'at' => now()->toISOString(), 'by' => 'customer',
+                    'note'   => 'Filled in the order form.',
+                ]],
+            ]);
+
+            $meta = $form->metadata ?? [];
+            $meta['status']         = 'filled';
+            $meta['filledAt']       = now()->toIso8601String();
+            $meta['orderRequestId'] = (string) $ask->_id;
+            $form->metadata = $meta;
+            $form->save();
+
+            $summary = implode("\n", array_map(fn ($l) => "{$l['qty']} x {$l['item']}" . ($l['details'] !== '' ? " ({$l['details']})" : ''), $answers['lines']));
+            $reply = Message::create([
+                'conversation_id' => (string) $conversation->_id,
+                'sender_id'       => $userId,
+                'sender_name'     => $answers['name'],
+                'body'            => $summary,
+                'type'            => 'order_form_reply',
+                'metadata'        => [
+                    'answers'            => $answers,
+                    'orderFormMessageId' => (string) $form->_id,
+                    'orderRequestId'     => (string) $ask->_id,
+                ],
+                'is_read'         => false,
+            ]);
+            $conversation->update(['last_message' => 'Filled in the order form', 'last_message_at' => now()]);
+
+            try { broadcast(new MessageSent($reply))->toOthers(); } catch (\Throwable $e) {
+                Log::warning('Order form reply broadcast failed (message still saved): ' . $e->getMessage());
+            }
+
+            return $this->successResponse('Thanks - we have your details and will send your quotation here.', [
+                'form'  => $form,
+                'reply' => $reply,
+            ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json(['message' => collect($e->errors())->flatten()->first() ?? 'Please check the form.'], 422);
+        } catch (\Exception $e) {
+            return $this->serverErrorResponse($e, 'Could not save the order form.');
+        }
+    }
 }
