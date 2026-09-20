@@ -3924,7 +3924,7 @@ class OrderController extends Controller
             }
 
             // The shop can only start now, so the promise is re-counted from now.
-            if ($this->restartDeliveryClock($order, 'design approval')) $order->save();
+            if ($this->restartDeliveryClock($order, 'our approval of your file')) $order->save();
 
             return $this->successResponse('Design approved.', $order);
 
