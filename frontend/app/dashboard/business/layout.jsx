@@ -1123,6 +1123,19 @@ export default function BusinessDashboardLayout({ children }) {
               })}
           </nav>
 
+          <a
+            href="/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="sidebar-nav-item"
+            title="Opens the storefront in a new tab"
+            style={{ margin: "0 8px 4px", borderTop: "1px solid var(--border)", borderRadius: 0, paddingTop: 10 }}
+          >
+            <svg className="nav-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6M15 3h6v6M10 14L21 3" />
+            </svg>
+            <span className="nav-text">View the store</span>
+          </a>
           <div className="sidebar-footer">
             <div className="sidebar-footer-avatar">
               {currentUser?.avatar ? (
@@ -1208,6 +1221,21 @@ export default function BusinessDashboardLayout({ children }) {
             </div>
           </div>
           <div className="top-bar-right">
+            {/* The shop itself, in a new tab - the same "View your store" every admin has, and
+                the fastest way for a staff to see what the customer sees. */}
+            <a
+              href="/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="top-bar-icon-btn"
+              aria-label="View the store"
+              title="View the store (opens in a new tab)"
+              style={{ textDecoration: "none" }}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 9l1-5h16l1 5" /><path d="M3 9a3 3 0 006 0 3 3 0 006 0 3 3 0 006 0" /><path d="M5 11v9h14v-9" /><path d="M10 20v-5h4v5" />
+              </svg>
+            </a>
             {/* Theme toggle */}
             <button
               type="button"
