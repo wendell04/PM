@@ -2744,6 +2744,31 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                   </span>
                   {lo.isRush && <span style={{ marginLeft:6, fontSize:'10px', fontWeight:700, color:'#991b1b', background:'#fef2f2', border:'1px solid #fecaca', borderRadius:4, padding:'1px 5px' }}>RUSH</span>}
                 </div>
+                {(() => {
+                  const clock = lo.deliveryClock;
+                  if (!clock?.needsProduction) return null;
+                  if (clock.restartedBecause) {
+                    return (
+                      <div style={{ fontSize:'11.5px', color:'#1a7f3c' }}>
+                        Counting from {clock.restartedBecause}
+                        {clock.startedAt ? ` (${new Date(clock.startedAt).toLocaleDateString('en-PH',{month:'short',day:'numeric'})})` : ''}.
+                      </div>
+                    );
+                  }
+                  const st = String(lo.designStatus ?? '');
+                  const waitingDesign = st !== '' && st !== 'approved';
+                  const owes = remainingDue(lo) > 0 && paidSoFar(lo) <= 0;
+                  if (!waitingDesign && !owes) return null;
+                  const bits = [];
+                  if (waitingDesign) bits.push('the design is not approved');
+                  if (owes) bits.push('nothing has been paid');
+                  return (
+                    <div style={{ fontSize:'11.5px', color:'#b45309' }}>
+                      Countdown not started - {bits.join(' and ')}. The date above assumes that clears
+                      today and moves out if it does not.
+                    </div>
+                  );
+                })()}
                 {lo.needByDate && (
                   <div style={{ fontSize:'12px', color:'var(--gray)' }}>
                     Customer needs by:{' '}

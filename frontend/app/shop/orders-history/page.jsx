@@ -1525,6 +1525,36 @@ export default function OrdersHistoryPage() {
                             our production queue is light - we message you as soon as yours is ready.
                           </p>
                         )}
+                        {/* The clock does not run while the order is waiting on an answer, and the
+                            answer is usually theirs to give. Saying which of the two things is
+                            outstanding turns a date they cannot explain into one they can move. */}
+                        {(() => {
+                          const st = String(selectedOrder.designStatus ?? '');
+                          const waitingOnDesign = st !== '' && st !== 'approved';
+                          const owes = Number(selectedOrder.balance ?? 0) > 0
+                            && String(selectedOrder.paymentStatus ?? '') === 'unpaid';
+                          if (!waitingOnDesign && !owes) return null;
+                          if (['delivered','Delivered','cancelled','Cancelled','returned','Returned'].includes(selectedOrder.orderStatus)) return null;
+                          const bits = [];
+                          if (waitingOnDesign) {
+                            bits.push(st === 'draft_ready' || st === 'proof_sent'
+                              ? 'your approval of the proof'
+                              : st === 'revision_requested'
+                                ? 'the new proof we are working on'
+                                : 'our check of your file');
+                          }
+                          if (owes) bits.push('your payment');
+                          return (
+                            <p style={{ margin: '8px 0 0', padding: '8px 10px', borderRadius: 8,
+                              border: '1px solid rgba(212,168,67,0.28)', background: 'rgba(212,168,67,0.06)',
+                              fontSize: '11.5px', color: 'var(--gray-light)', lineHeight: 1.55 }}>
+                              <strong style={{ color: '#d4a843' }}>The countdown has not started yet.</strong>{' '}
+                              We are waiting on {bits.join(' and ')}. The date above assumes that happens
+                              today - it moves out by however long it takes, and nothing is printed
+                              before then.
+                            </p>
+                          );
+                        })()}
                       </div>
                     </div>
 

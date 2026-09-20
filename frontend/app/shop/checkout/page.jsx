@@ -368,6 +368,23 @@ export default function CheckoutPage() {
     const a = addBizDays(lead + shipMin), b = addBizDays(lead + shipMax);
     return a.getTime() === b.getTime() ? f(a) : `${f(a)} - ${f(b)}`;
   };
+  // A custom order cannot start until its artwork is settled, and the customer holds that. Giving
+  // them a calendar date now publishes a deadline they can spend and the shop is then late for.
+  // So while the clock is parked it is a DURATION; it becomes a date the moment work can start.
+  const waitsForApproval = needsProduction;   // anything made here waits on an approval
+  // Ready-made lines sitting behind a made-to-order one. They could ship today and will not,
+  // because one order is one delivery - which is only fair to say out loud before they pay.
+  const mixedCart = needsProduction && items.some(i => !(i.isCustom ?? i.product?.isCustom) && !(i.isMadeToOrder ?? i.product?.isMadeToOrder));
+  const durationRange = (lead) => {
+    const a = lead + shipMin, b = lead + shipMax;
+    return a === b ? `${a} working day${a === 1 ? '' : 's'}` : `${a}-${b} working days`;
+  };
+  // Upload lines are checked by the shop; requested designs are approved by the customer. Said
+  // plainly, because "after approval" means a different person in each case.
+  const approvalActor = hasUploadLine ? 'we approve your file' : 'you approve the proof';
+  const whenText = (lead) => waitsForApproval
+    ? `${durationRange(lead)} after ${approvalActor}`
+    : `Get by ${getByRange(lead)}`;
   const isRush      = rushEnabled && rush;
   const rushCharge  = isRush ? rushFeeAmt : 0;
   // Earliest an optional need-by date may be. Two bugs used to live here: this ignored shipping
@@ -1404,7 +1421,7 @@ export default function CheckoutPage() {
                   </span>
                   <span style={{ display: 'flex', flexDirection: 'column' }}>
                     <span style={{ fontSize: '0.88rem', fontWeight: 700, color: active ? 'var(--gold)' : 'var(--white, #111)' }}>{opt.label}</span>
-                    <span style={{ fontSize: '0.74rem', color: 'var(--gray)' }}>Get by {getByRange(opt.lead)}</span>
+                    <span style={{ fontSize: '0.74rem', color: 'var(--gray)' }}>{whenText(opt.lead)}</span>
                   </span>
                 </span>
                 <span style={{ fontSize: '0.85rem', fontWeight: 800, color: opt.fee > 0 ? 'var(--gold)' : 'var(--gray)' }}>{opt.fee > 0 ? `+₱${opt.fee.toLocaleString('en-PH')}` : 'No extra charge'}</span>
@@ -1468,13 +1485,33 @@ export default function CheckoutPage() {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, padding: '11px 13px', borderRadius: '10px', border: '1px solid rgba(212,168,67,0.3)', background: 'rgba(212,168,67,0.06)' }}>
             {/* No "Free" here: it meant "no rush fee", but next to a delivery date it read as free
                 delivery, and the delivery fee is arranged after the order. */}
-            <span style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--gold)' }}>Get by {getByRange(0)}</span>
+            <span style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--gold)' }}>{whenText(0)}</span>
           </div>
-          <div style={{ fontSize: '0.75rem', color: 'var(--gray)', lineHeight: 1.55 }}>
-            Ready-made items are already on the shelf, so they skip production and
-            <strong style={{ color: '#16a34a' }}> often arrive sooner than this</strong>. We message
-            you as soon as yours is on the way.
-          </div>
+          {waitsForApproval ? (
+            <div style={{ fontSize: '0.75rem', color: 'var(--gray)', lineHeight: 1.6, padding: '10px 12px',
+              borderRadius: 8, border: '1px solid rgba(212,168,67,0.28)', background: 'rgba(212,168,67,0.05)' }}>
+              <strong style={{ color: 'var(--gold)' }}>This is made to order.</strong>{' '}
+              {hasUploadLine
+                ? 'We check your file first and let you know if anything needs fixing.'
+                : 'We send you a proof to approve before anything is printed.'}{' '}
+              <strong>The countdown above starts once {approvalActor}</strong>
+              {downpaymentRequired ? ' and your payment clears' : ''} - so answering quickly is what
+              gets it to you sooner. Nothing is printed before then.
+              {mixedCart && (
+                <>
+                  <br /><br />
+                  Your ready-made items are on the shelf now, but this order ships together once the
+                  made-to-order part is done. Order them separately if you need them sooner.
+                </>
+              )}
+            </div>
+          ) : (
+            <div style={{ fontSize: '0.75rem', color: 'var(--gray)', lineHeight: 1.55 }}>
+              Ready-made items are already on the shelf, so they skip production and
+              <strong style={{ color: '#16a34a' }}> often arrive sooner than this</strong>. We message
+              you as soon as yours is on the way.
+            </div>
+          )}
         </div>
       )}
 

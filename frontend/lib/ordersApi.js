@@ -147,6 +147,8 @@ function normalizeOrder(apiOrder) {
     id: apiOrder._id || apiOrder.id,
     isArchived: !!(apiOrder.isArchived),
     archivedAt: apiOrder.archivedAt ?? null,
+    // What the delivery promise was counted from, and whether it has started.
+    deliveryClock: apiOrder.deliveryClock ?? null,
     orderNumber: apiOrder.order_number || apiOrder.orderId,
     customer: {
       name:  apiOrder.userSnapshot?.name  || apiOrder.customer?.name  || apiOrder.customerName  || 'Unknown',

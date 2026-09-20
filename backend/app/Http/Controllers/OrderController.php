@@ -348,7 +348,16 @@ class OrderController extends Controller
             // be rejected rather than trusted.
             if ($needByDate) {
                 try {
-                    if (\Carbon\Carbon::parse($needByDate)->lt(\Carbon\Carbon::parse($estimatedDeliveryMin)->startOfDay())) {
+                    // The floor is the earliest this could arrive, and on a made-to-order line
+                    // that is not counted from today: nothing starts until the artwork is settled.
+                    // Assume the fastest realistic answer - same day - and add a day of grace, so
+                    // a date that was only ever reachable by approving instantly is refused rather
+                    // than stored as a promise.
+                    $floor = \Carbon\Carbon::parse($estimatedDeliveryMin)->startOfDay();
+                    if ($needsProduction) {
+                        $floor = $floor->copy()->addDay();
+                    }
+                    if (\Carbon\Carbon::parse($needByDate)->lt($floor)) {
                         $needByDate = null;
                     }
                 } catch (\Throwable) {
@@ -1269,6 +1278,7 @@ class OrderController extends Controller
             'rushStatus',
             'needByDate',
             'estimatedDeliveryMin',
+            'deliveryClock',
             'estimatedDeliveryMax',
             'agreedTermsSnapshot',
             'agreedToTerms',
