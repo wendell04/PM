@@ -1663,28 +1663,21 @@ function CustomOrderInner() {
                   {/* A made-to-order item has no delivery DATE yet: the clock starts when the
                       artwork is approved, and the customer holds that. So this is a duration, the
                       way MetroPrint's cart says "6 Business Days - after proof approval", from the
-                      same settings checkout and the order use (production lead + courier days). */}
+                      same settings checkout and the order use. The number gets the line to itself;
+                      Rush, the province note and the countdown line live at checkout, where the
+                      speed and the address are actually chosen. */}
                   {(() => {
-                    const range = (lead) => {
-                      const a = lead + shipMinDays, b = lead + shipMaxDays;
-                      return a === b ? `${a} working day${a === 1 ? '' : 's'}` : `${a}-${b} working days`;
-                    };
+                    const a = prodLeadDays + shipMinDays, b = prodLeadDays + shipMaxDays;
+                    const days = a === b ? `${a} working day${a === 1 ? '' : 's'}` : `${a}-${b} working days`;
                     const after = designMode === 'upload' ? 'after we approve your file'
                       : designMode === 'request' ? 'after you approve the proof'
-                      : 'after your artwork is approved';
+                      : 'after approval';
                     return (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', padding: '8px 0', borderTop: '1px solid var(--border)' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: '0.82rem' }}>
-                          <span style={{ color: 'var(--gray)', flexShrink: 0 }}>Delivery</span>
-                          <span style={{ color: 'var(--white)', fontWeight: 600, textAlign: 'right' }}>{range(prodLeadDays)} {after}</span>
-                        </div>
-                        <span style={{ fontSize: '0.72rem', color: 'var(--gray)', lineHeight: 1.5 }}>
-                          {/* The courier part is the Metro Manila figure - the address is not known
-                              yet. Checkout re-counts it by province, and saying so here keeps a
-                              Mindanao customer from reading 4-5 now and 7-10 at checkout as a trick. */}
-                          {rushEnabled
-                            ? `Rush (${range(rushLeadDays)}) is offered at checkout. Metro Manila courier days; provinces add a few. The countdown starts at approval, not today.`
-                            : 'Metro Manila courier days; provinces add a few. The countdown starts at approval, not today.'}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, padding: '8px 0', borderTop: '1px solid var(--border)', fontSize: '0.82rem' }}>
+                        <span style={{ color: 'var(--gray)', flexShrink: 0 }}>Delivery</span>
+                        <span style={{ textAlign: 'right' }}>
+                          <span style={{ display: 'block', color: 'var(--white)', fontWeight: 600, whiteSpace: 'nowrap' }}>{days}</span>
+                          <span style={{ display: 'block', color: 'var(--gray)', fontSize: '0.74rem' }}>{after}</span>
                         </span>
                       </div>
                     );
