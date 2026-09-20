@@ -3440,6 +3440,12 @@ export default function OrdersPage() {
             {statusFilter !== 'all' && (
               <button onClick={() => { setStatusFilter('all'); setPage(1); }} style={S.btnSmGhost}>Clear</button>
             )}
+            {/* The search sits with the status, stretched to the row's end - the one control used
+                on every visit, at the top, as wide as the cards above it. */}
+            <div style={{ flex:1, minWidth:220 }}>
+              <SearchBar value={search} onChange={v => { setSearch(v); setPage(1); }}
+                placeholder="Search order, customer, product…" style={{ width:'100%' }} />
+            </div>
           </div>
         )}
 
@@ -3490,8 +3496,6 @@ export default function OrdersPage() {
         {/* Toolbar */}
         <div style={{ ...S.card, ...S.rowBetween, marginBottom:'10px', padding:'12px 16px' }}>
           <div style={{ ...S.row, gap:'8px', flex:1 }}>
-            <SearchBar value={search} onChange={v => { setSearch(v); setPage(1); }}
-              placeholder="Search order, customer, product…" style={{ width:'260px' }} />
 
             <CustomSelect
               value={typeFilter}

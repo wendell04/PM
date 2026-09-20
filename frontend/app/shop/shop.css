@@ -5726,3 +5726,16 @@ html.light .shop-search-suggest-name { color: #111; }
   .shop-carousel-nav { display: none !important; }
   .shop-carousel-slide { cursor: zoom-in; }
 }
+
+/* The notice + terms modal on a phone: a sheet from the bottom, full width, most of the height,
+   the button under the thumb. Centred 560px card above 640px. */
+@media (max-width: 640px) {
+  .pmp-terms-overlay { align-items: flex-end !important; padding: 0 !important; }
+  .pmp-terms-card {
+    max-width: 100% !important;
+    max-height: 92vh !important;
+    border-radius: 16px 16px 0 0 !important;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .pmp-terms-footer > button { flex: 1 1 auto; min-height: 46px; }
+}

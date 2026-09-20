@@ -642,6 +642,12 @@ function CustomOrderInner() {
     setTermsStep('notice');
     setShowTerms(true);
   };
+  // Closing the notice or the terms without agreeing un-picks the mode. The customer has to
+  // press Upload or Request again, and the notice runs again - it cannot be dismissed past.
+  const dismissTerms = () => {
+    setShowTerms(false);
+    if (!agreedTerms) { setDesignMode(null); setHoldUnderstood(false); setTermsStep('notice'); }
+  };
   const handlePickMode = (mode) => {
     if (mode === designMode) return;
     if (designMode) { setPendingMode(mode); return; }
@@ -1046,28 +1052,22 @@ function CustomOrderInner() {
   return (
     <div style={{ minHeight: '100vh', background: 'var(--black)', color: 'var(--white)', padding: '2rem 1rem 4rem', fontFamily: "Arial, Arimo, Helvetica, sans-serif" }}>
       {showTerms && (
-        <div onClick={() => setShowTerms(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 9998, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
-          <div onClick={e => e.stopPropagation()} style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '16px', maxWidth: '560px', width: '100%', maxHeight: '85vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-            <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
-              {/* Two steps, the way Create Account does it: the notice first, the terms second. */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.78rem', fontWeight: 700, minWidth: 0, flexWrap: 'wrap' }}>
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: termsStep === 'notice' ? 'var(--gold)' : 'var(--gray)' }}>
-                  <span style={{ width: 18, height: 18, borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, background: termsStep === 'notice' ? 'var(--gold)' : 'var(--border)', color: termsStep === 'notice' ? '#000' : 'var(--gray)' }}>1</span>
-                  Before you order
-                </span>
-                <span style={{ width: 24, height: 1, background: 'var(--border)' }} />
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: termsStep === 'terms' ? 'var(--gold)' : 'var(--gray)' }}>
-                  <span style={{ width: 18, height: 18, borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, background: termsStep === 'terms' ? 'var(--gold)' : 'var(--border)', color: termsStep === 'terms' ? '#000' : 'var(--gray)' }}>2</span>
-                  Custom Order Terms
-                </span>
-              </div>
-              <button onClick={() => setShowTerms(false)} aria-label="Close" style={{ background: 'none', border: 'none', color: 'var(--gray)', cursor: 'pointer', display: 'flex', flexShrink: 0 }}>
+        // The backdrop does not close it and the page behind does not scroll: this is the one
+        // thing they must read. Closing with the X un-picks the mode, so picking again brings
+        // the notice back - it cannot be skipped by dismissing it.
+        <div className="pmp-terms-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 9998, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
+          <div className="pmp-terms-card" onClick={e => e.stopPropagation()} style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '16px', maxWidth: '560px', width: '100%', maxHeight: '85vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+              <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: 'var(--white)' }}>
+                {termsStep === 'notice' ? 'Before you order' : 'Custom Order Terms'}
+              </h3>
+              <button onClick={dismissTerms} aria-label="Close" style={{ background: 'none', border: 'none', color: 'var(--gray)', cursor: 'pointer', display: 'flex', flexShrink: 0, padding: 6 }}>
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
               </button>
             </div>
             {termsStep === 'notice' ? (
               <>
-                <div style={{ padding: '18px 20px', overflowY: 'auto' }}>
+                <div style={{ padding: '20px 20px 18px', overflowY: 'auto' }}>
                   <div style={{ textAlign: 'center', fontSize: '0.95rem', fontWeight: 800, color: '#e05252', letterSpacing: '0.04em', marginBottom: 12 }}>IMPORTANT - PLEASE READ</div>
                   <p style={{ margin: '0 0 10px', fontSize: '0.9rem', color: 'var(--white)', lineHeight: 1.6, textAlign: 'center' }}>
                     {designMode === 'upload'
@@ -1075,41 +1075,38 @@ function CustomOrderInner() {
                       : 'After you pay the design fee, our designer sends you a proof here and in chat that you approve.'}
                     {' '}Nothing is printed before that.
                   </p>
-                  <p style={{ margin: '0 0 16px', fontSize: '0.9rem', fontWeight: 700, color: '#e05252', lineHeight: 1.6, textAlign: 'center' }}>
+                  <p style={{ margin: '0 0 18px', fontSize: '0.9rem', fontWeight: 700, color: '#e05252', lineHeight: 1.6, textAlign: 'center' }}>
                     Until it is approved and paid, your order is on hold and the delivery countdown has not started.
                   </p>
-                  <label style={{ display: 'flex', gap: 10, alignItems: 'flex-start', justifyContent: 'center', cursor: 'pointer', fontSize: '0.88rem', color: 'var(--white)' }}>
-                    <input type="checkbox" checked={holdUnderstood} onChange={e => setHoldUnderstood(e.target.checked)} style={{ marginTop: 3 }} />
+                  <label style={{ display: 'flex', gap: 10, alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: '0.9rem', color: 'var(--white)' }}>
+                    <input type="checkbox" checked={holdUnderstood} onChange={e => setHoldUnderstood(e.target.checked)}
+                      style={{ width: 18, height: 18, accentColor: 'var(--gold)', cursor: 'pointer' }} />
                     <span>Yes, I understand.</span>
                   </label>
                 </div>
-                <div style={{ padding: '14px 20px', borderTop: '1px solid var(--border)', display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-                  <button onClick={() => setShowTerms(false)} style={{ padding: '8px 16px', background: 'transparent', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--gray)', fontSize: '0.85rem', cursor: 'pointer' }}>Close</button>
+                <div className="pmp-terms-footer" style={{ padding: '14px 20px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end' }}>
                   <button onClick={() => setTermsStep('terms')} disabled={!holdUnderstood}
-                    style={{ padding: '8px 16px', background: 'var(--gold)', border: 'none', borderRadius: '8px', color: '#000', fontSize: '0.85rem', fontWeight: 700, cursor: holdUnderstood ? 'pointer' : 'not-allowed', opacity: holdUnderstood ? 1 : 0.5 }}>Continue to the terms</button>
+                    style={{ padding: '10px 18px', background: 'var(--gold)', border: 'none', borderRadius: '8px', color: '#000', fontSize: '0.88rem', fontWeight: 700, cursor: holdUnderstood ? 'pointer' : 'not-allowed', opacity: holdUnderstood ? 1 : 0.5 }}>Continue to the terms</button>
                 </div>
               </>
             ) : (
               <>
-            <div
-              ref={el => { if (el && el.scrollHeight - el.clientHeight < 24) setTermsScrolled(true); }}
-              onScroll={e => { const el = e.currentTarget; if (el.scrollHeight - el.scrollTop - el.clientHeight < 24) setTermsScrolled(true); }}
-              style={{ padding: '16px 20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {terms.map(([title, body], i) => (
-                <div key={i}>
-                  <div style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--gold)', marginBottom: '2px' }}>{i + 1}. {title}</div>
-                  <div style={{ fontSize: '0.8rem', color: 'var(--gray)', lineHeight: 1.55 }}>{body}</div>
+                <div
+                  ref={el => { if (el && el.scrollHeight - el.clientHeight < 24) setTermsScrolled(true); }}
+                  onScroll={e => { const el = e.currentTarget; if (el.scrollHeight - el.scrollTop - el.clientHeight < 24) setTermsScrolled(true); }}
+                  style={{ padding: '16px 20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  {terms.map(([title, body], i) => (
+                    <div key={i}>
+                      <div style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--gold)', marginBottom: '2px' }}>{i + 1}. {title}</div>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--gray)', lineHeight: 1.55 }}>{body}</div>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-            <div style={{ padding: '14px 20px', borderTop: '1px solid var(--border)', display: 'flex', gap: '8px', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: '0.72rem', color: 'var(--gray)' }}>{termsScrolled ? `Terms v${termsVersion}` : 'Scroll down to read all terms'}</span>
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <button onClick={() => setShowTerms(false)} style={{ padding: '8px 16px', background: 'transparent', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--gray)', fontSize: '0.85rem', cursor: 'pointer' }}>Close</button>
-                <button onClick={() => { setAgreedTerms(true); setShowTerms(false); }} disabled={!termsScrolled}
-                  style={{ padding: '8px 16px', background: 'var(--gold)', border: 'none', borderRadius: '8px', color: '#000', fontSize: '0.85rem', fontWeight: 700, cursor: termsScrolled ? 'pointer' : 'not-allowed', opacity: termsScrolled ? 1 : 0.5 }}>I Agree</button>
-              </div>
-            </div>
+                <div className="pmp-terms-footer" style={{ padding: '14px 20px', borderTop: '1px solid var(--border)', display: 'flex', gap: '8px', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.72rem', color: 'var(--gray)' }}>{termsScrolled ? `Terms v${termsVersion}` : 'Scroll down to read all terms'}</span>
+                  <button onClick={() => { setAgreedTerms(true); setShowTerms(false); }} disabled={!termsScrolled}
+                    style={{ padding: '10px 18px', background: 'var(--gold)', border: 'none', borderRadius: '8px', color: '#000', fontSize: '0.88rem', fontWeight: 700, cursor: termsScrolled ? 'pointer' : 'not-allowed', opacity: termsScrolled ? 1 : 0.5 }}>I Agree</button>
+                </div>
               </>
             )}
           </div>
@@ -1716,9 +1713,9 @@ function CustomOrderInner() {
               )}
 
               {designMode === 'upload' && !isInquiry && (
-                <div style={{ padding: '0.875rem', background: 'rgba(96,165,250,0.08)', border: '1px solid rgba(96,165,250,0.2)', borderRadius: '10px', marginBottom: '1rem', fontSize: '0.78rem', color: 'var(--gray)', lineHeight: 1.6 }}>
-                  <strong style={{ color: '#60a5fa', display: 'block', marginBottom: '4px' }}>We check your file before we print</strong>
-                  If it will not print well we send you a mockup, or ask for a new file - free either way. If we still cannot print it, you get your money back.
+                <div style={{ padding: '0.875rem', background: 'rgba(212,168,67,0.07)', border: '1px solid rgba(212,168,67,0.2)', borderRadius: '10px', marginBottom: '1rem', fontSize: '0.78rem', color: 'var(--gray-light)', lineHeight: 1.6, textAlign: 'justify' }}>
+                  <strong style={{ color: 'var(--white)', display: 'block', marginBottom: '4px', textAlign: 'left' }}>We check your file before we print</strong>
+                  If it will not print well we send you a mockup, or ask for a new file.
                 </div>
               )}
 
@@ -1880,11 +1877,15 @@ function CustomOrderInner() {
                 </button>
               )}
 
-              <p style={{ textAlign: 'center', fontSize: '0.72rem', color: 'var(--gray)', marginTop: '0.75rem', lineHeight: 1.5 }}>
-                {isInquiry
-                  ? 'No charge now - we\'ll send your quote after review.'
-                  : 'Add more items to your cart before checking out. Delivery and design are charged once per order.'}
-              </p>
+              {/* Only once the buttons exist. Before a mode is picked there is nothing to add, and
+                  the line just crowded the panel with text about a button that was not there. */}
+              {canOrder && !addedToCart && (
+                <p style={{ textAlign: 'center', fontSize: '0.72rem', color: 'var(--gray)', marginTop: '0.75rem', lineHeight: 1.5 }}>
+                  {isInquiry
+                    ? 'No charge now - we\'ll send your quote after review.'
+                    : 'Add more items to your cart before checking out. Delivery and design are charged once per order.'}
+                </p>
+              )}
             </div>
           </div>
 
