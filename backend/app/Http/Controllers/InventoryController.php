@@ -434,6 +434,32 @@ class InventoryController extends Controller
                                    ->orderBy('createdAt', 'desc')
                                    ->get();
 
+            // A deduction on its own does not say whether the material was
+            // consumed. A "sale_reserved" row is a hold placed at order time;
+            // if that order was later cancelled the stock came back (as a
+            // separate addition row) and the hold was never demand. The
+            // forecast reads this ledger for demand, so tell it which
+            // deductions belong to an order that went nowhere. One batch
+            // lookup, keyed by orderId, normalised through OrderStatus so the
+            // caller never has to know that "Cancelled" and "cancelled" are
+            // both in the data.
+            $orderIds = $history->pluck('orderId')->filter()->unique()->values()->all();
+            $statusByOrder = [];
+            if ($orderIds) {
+                $objectIds = [];
+                foreach ($orderIds as $oid) {
+                    try { $objectIds[] = new \MongoDB\BSON\ObjectId((string) $oid); } catch (\Throwable $e) {}
+                }
+                foreach (\App\Models\Order::whereIn('_id', $objectIds)->get(['_id', 'orderStatus']) as $o) {
+                    $statusByOrder[(string) $o->_id] = \App\Support\OrderStatus::normalize($o->orderStatus);
+                }
+            }
+            $history = $history->map(function ($h) use ($statusByOrder) {
+                $oid = (string) ($h->orderId ?? '');
+                $h->orderStatus = $oid !== '' ? ($statusByOrder[$oid] ?? null) : null;
+                return $h;
+            });
+
             return $this->successResponse('Stock history fetched successfully.', $history);
         } catch (\Exception $e) {
             return $this->serverErrorResponse($e, 'An unexpected error occurred while fetching the stock history.');

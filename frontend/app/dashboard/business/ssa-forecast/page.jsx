@@ -140,8 +140,9 @@ function buildMaterialDemand(inventoryId, taxonomy, sales, ledger = []) {
   const entry = taxonomy?.materialIndex?.[inventoryId];
   if (!entry) return { rows: [], linked: false, basis: null };
 
-  const variantCountFor = (productId) =>
-    (taxonomy.motherItems ?? []).find((m) => m.productId === productId)?.variants?.length ?? 0;
+  const variantNamesFor = (productId) =>
+    (taxonomy.motherItems ?? []).find((m) => m.productId === productId)?.variants ?? [];
+  const variantCountFor = (productId) => variantNamesFor(productId).length;
 
   // Per product, how does this material relate to that product's variants?
   const planByProduct = {};
@@ -155,8 +156,18 @@ function buildMaterialDemand(inventoryId, taxonomy, sales, ledger = []) {
   sales.forEach((s) => {
     // Sales written since the productId/variantName fix resolve directly; older
     // rows still go through the name map the taxonomy endpoint built.
+    //
+    // The direct path still has to pin the variant. OrderController writes the
+    // combination label as the customer chose it - "Glossy · Diecut" - while
+    // only one part of that names a BOM-bearing variant. The taxonomy pins
+    // names it resolves; this path must do the same or a sale that carries the
+    // new link is dropped for not matching any BOM line, which is exactly what
+    // happened to the first seven-sheet sticker order.
     const r = s.productId
-      ? { productId: String(s.productId), variant: s.variantName ?? null }
+      ? {
+          productId: String(s.productId),
+          variant: pinVariantTo(s.variantName ?? null, variantNamesFor(String(s.productId))),
+        }
       : taxonomy.saleResolution?.[s.productName];
     if (!r) { basis.unmatched += 1; return; }
 
@@ -239,12 +250,65 @@ function buildMaterialDemand(inventoryId, taxonomy, sales, ledger = []) {
   };
 }
 
-/** Daily material demand straight from stock-ledger deductions. */
+/**
+ * Daily material demand straight from stock-ledger deductions.
+ *
+ * Not every deduction is consumption. The ledger records four reasons:
+ *
+ *   production     material used to make an order - always demand
+ *   sale_reserved  a hold placed when a ready-made item is ordered. It is the
+ *                  consumption event for stock that is sold as-is, but only if
+ *                  the order went through; a cancelled order releases the hold
+ *                  and the stock comes back. Counting those made 53 units of
+ *                  phantom demand on two materials, every one of them a test
+ *                  order cancelled the same week.
+ *   qc_scrap       shrinkage, not demand
+ *   damaged        shrinkage, not demand
+ *
+ * The history endpoint annotates each row with the order's normalised status
+ * so this can be decided here without a second request.
+ */
+/**
+ * Reduce a sale's variant label to one of the product's real combination
+ * names. Mirrors ForecastTaxonomyController::pinVariant so the direct
+ * productId path and the name-map path pin the same way.
+ */
+function pinVariantTo(variant, known) {
+  if (variant == null || variant === "" || known.length === 0) return variant ?? null;
+  const norm = (s) => String(s).trim().toLowerCase();
+  const v = norm(variant);
+  const exact = known.find((k) => norm(k) === v);
+  if (exact) return exact;
+  // Combination labels join variant groups with a middle dot or slash
+  const parts = String(variant).split(/\s*[·•/,]\s*/).map(norm).filter(Boolean);
+  for (const part of parts) {
+    const hit = known.find((k) => norm(k) === part);
+    if (hit) return hit;
+  }
+  // A shorthand against a fuller label ("Medium" vs "Medium (12x14\")")
+  for (const part of parts) {
+    const hit = known.find((k) => norm(k).startsWith(part));
+    if (hit) return hit;
+  }
+  return variant;
+}
+
+function isConsumption(h) {
+  const reason = h?.reason ?? "";
+  if (reason === "production") return true;
+  if (reason === "sale_reserved") {
+    const st = h?.orderStatus ?? null;
+    return st !== "cancelled" && st !== "returned";
+  }
+  return false;
+}
+
 function buildLedgerDemand(ledger) {
   if (!Array.isArray(ledger) || ledger.length === 0) return [];
   const byDay = {};
   ledger.forEach((h) => {
     if ((h?.type ?? "") !== "deduction") return;
+    if (!isConsumption(h)) return;
     const d = h.createdAt ? new Date(h.createdAt) : null;
     if (!d || isNaN(d)) return;
     const qty = Math.abs(Number(h.quantity ?? 0));
@@ -257,15 +321,28 @@ function buildLedgerDemand(ledger) {
     .map(([date, value]) => ({ date, value: Math.round(value * 100) / 100 }));
 }
 
-/** Weekly rate from each source over the window the ledger covers. */
+/**
+ * Weekly rate from each source over the window the ledger covers.
+ *
+ * The two sources date the same event differently: a sale carries the date
+ * the order was placed, the ledger carries the date the material was taken
+ * for production - a week apart in the data. Windowing sales to the ledger's
+ * own dates therefore dropped every order placed before the first deduction,
+ * and reported "sales 0" for seven materials whose sales were simply dated
+ * earlier. The sales window opens PRODUCTION_LAG_DAYS before the ledger's.
+ */
+const PRODUCTION_LAG_DAYS = 14;
+
 function compareRates(ledgerRows, salesRows) {
   if (ledgerRows.length === 0) return null;
   const from = ledgerRows[0].date;
   const to = ledgerRows[ledgerRows.length - 1].date;
   const weeks = Math.max(1, (new Date(to) - new Date(from)) / 604800000 + 1 / 7);
-  const sum = (rs) => rs.filter((r) => r.date >= from && r.date <= to).reduce((s, r) => s + r.value, 0);
-  const ledgerRate = sum(ledgerRows) / weeks;
-  const salesRate = sum(salesRows) / weeks;
+  const salesFrom = new Date(new Date(from).getTime() - PRODUCTION_LAG_DAYS * 86400000)
+    .toISOString().split("T")[0];
+  const sum = (rs, lo) => rs.filter((r) => r.date >= lo && r.date <= to).reduce((s, r) => s + r.value, 0);
+  const ledgerRate = sum(ledgerRows, from) / weeks;
+  const salesRate = sum(salesRows, salesFrom) / weeks;
   const denom = Math.max(ledgerRate, salesRate);
   return {
     ledgerRate: Math.round(ledgerRate * 100) / 100,
