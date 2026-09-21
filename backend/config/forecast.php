@@ -46,6 +46,13 @@ return [
         'Magnetic Bookmark'  => 'Custom Magnetic Bookmark 2.5"',     // 18
         'Stickers Kraft'     => 'Custom Kraft Sticker Paper',        // 4
         'Totebag Medium'     => 'Custom Canvas Totebag',             // 5 - carries a variant, see below
+        // Inferred from price, not from the name: the spreadsheet's three sticker
+        // lines sit on a ladder that matches today's tier-1 prices exactly -
+        // "Stickers Laminated" 55 = Laminated 55, "Stickers Kraft" 33-40 ~ Kraft 35,
+        // and plain "Stickers" at 40 (12 of 14 rows) = Regular Sticker Paper 40.
+        // The other two rows are 45, which is Photopaper. Confirm with the client;
+        // move it back to 'unresolved' below if this is wrong.
+        'Stickers'           => 'Custom Regular Sticker Paper Non-Waterproof', // 14 - price-inferred
     ],
 
     /*
@@ -70,11 +77,10 @@ return [
     | taxonomy endpoint as unresolved rather than being guessed at, so the
     | figure shows up in the UI instead of silently landing on one product.
     |
-    | "Stickers" (14 rows) could belong to any of six sticker products.
-    | Resolve it by moving an entry into legacy_map once the client confirms.
+    | Empty at present. "Stickers" was here until its price tied it to one
+    | product; see the note on it in legacy_map.
     */
     'unresolved' => [
-        'Stickers',
     ],
 
     /*
