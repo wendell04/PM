@@ -30,7 +30,7 @@ class AccessController extends Controller
 
         $templates = RolePermission::all()->map(fn ($r) => [
             'role'        => $r->role,
-            'label'       => $this->humanRole($r->role),
+            'label'       => $r->label ?: $this->humanRole($r->role),
             'permissions' => PermissionCatalog::sanitize((array) ($r->permissions ?? [])),
         ])->values();
 

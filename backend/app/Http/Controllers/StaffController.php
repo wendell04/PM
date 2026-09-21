@@ -52,12 +52,17 @@ class StaffController extends Controller
                 $assignable[] = config('rbac.owner_role', 'owner');
             }
 
+            // Names are letters (any language), spaces, hyphens, apostrophes and periods - "Ma. Clara",
+            // "O'Neil", "Dela Cruz-Santos". Email is a real address with a domain.
             $validated = $request->validate([
-                'firstName' => 'required|string|max:100',
-                'lastName'  => 'required|string|max:100',
-                'email'     => 'required|email',
-                'password'  => 'nullable|string|min:8|max:255',
+                'firstName' => ['required', 'string', 'min:2', 'max:50', 'regex:/^[\pL][\pL\s.\'\-]*$/u'],
+                'lastName'  => ['required', 'string', 'min:2', 'max:50', 'regex:/^[\pL][\pL\s.\'\-]*$/u'],
+                'email'     => 'required|email:rfc|max:100',
+                'password'  => 'nullable|string|min:8|max:128',
                 'role'      => 'required|string|in:' . implode(',', $assignable),
+            ], [
+                'firstName.regex' => 'A first name uses letters, spaces, hyphens, apostrophes or periods only.',
+                'lastName.regex'  => 'A last name uses letters, spaces, hyphens, apostrophes or periods only.',
             ]);
             $makingOwner = $validated['role'] === config('rbac.owner_role', 'owner');
 
@@ -120,20 +125,40 @@ class StaffController extends Controller
                 ], 201);
             }
 
-            if (empty($validated['password'])) {
-                $msg = 'Set a password of at least 8 characters for the new staff account.';
-                return response()->json(['success' => false, 'message' => $msg, 'errors' => ['password' => [$msg]]], 422);
-            }
+            // No password typed: the person sets their own from an invite link. The owner should never
+            // know a staff's password - it is how a shared login starts. A typed one still works for
+            // the older Staff screen.
+            $invite = empty($validated['password']);
 
             $staff = User::create([
-                'firstName'    => $validated['firstName'],
-                'lastName'     => $validated['lastName'],
+                'firstName'    => trim($validated['firstName']),
+                'lastName'     => trim($validated['lastName']),
                 'email'        => $validated['email'],
-                'password'     => Hash::make($validated['password']),
+                'password'     => Hash::make($invite ? \Illuminate\Support\Str::random(48) : $validated['password']),
                 'role'         => $validated['role'],
                 'is_verified'  => true, // Admin-created accounts skip verification
                 'phoneNumber'  => $request->input('phoneNumber', ''),
             ]);
+
+            $inviteSent = false;
+            if ($invite) {
+                $plainToken = \Illuminate\Support\Str::random(60);
+                $staff->reset_token            = hash('sha256', $plainToken);
+                // Same clock convention the reset flow reads; three days, because an invite is often
+                // opened the next morning.
+                $staff->reset_token_expires_at = \Carbon\Carbon::now('Asia/Manila')->addDays(3)->toDateTimeString();
+                $staff->save();
+                $frontendUrl = env('FRONTEND_URL', 'http://localhost:3000');
+                $inviteUrl   = "{$frontendUrl}/?reset_token={$plainToken}&email=" . urlencode($staff->email);
+                try {
+                    \Illuminate\Support\Facades\Mail::to($staff->email)->send(new \App\Mail\StaffInviteMail(
+                        $inviteUrl, (string) $staff->firstName, $this->labelForRole($staff->role)
+                    ));
+                    $inviteSent = true;
+                } catch (\Throwable $e) {
+                    \Illuminate\Support\Facades\Log::error('StaffController@store: invite email failed', ['email' => $staff->email, 'error' => $e->getMessage()]);
+                }
+            }
 
             $this->logActivity(
                 $request, $makingOwner ? 'user.owner_created' : 'user.created', 'user', (string) $staff->_id,
@@ -141,7 +166,12 @@ class StaffController extends Controller
                 ['email' => $staff->email, 'role' => $staff->role]
             );
 
-            return $this->successResponse('Staff account created successfully.', [
+            return $this->successResponse(
+                $invite
+                    ? ($inviteSent ? 'Added. An invite to set their password is on its way.' : 'Added, but the invite email could not be sent - use Resend invite.')
+                    : 'Staff account created successfully.', [
+                'id'        => (string) $staff->_id,
+                'inviteSent' => $inviteSent,
                 '_id'       => (string) $staff->_id,
                 'firstName' => $staff->firstName,
                 'lastName'  => $staff->lastName,
@@ -455,5 +485,13 @@ class StaffController extends Controller
         } catch (\Exception $e) {
             return $this->serverErrorResponse($e, 'Failed to deny unlock request.');
         }
+    }
+
+    /** "graphicDesigner" -> the template's label, or a readable fallback. */
+    private function labelForRole(?string $role): string
+    {
+        $rec = \App\Models\RolePermission::where('role', (string) $role)->first();
+        if ($rec && !empty($rec->label)) return (string) $rec->label;
+        return ucwords(trim(preg_replace('/([a-z])([A-Z])/', '$1 $2', (string) $role)));
     }
 }

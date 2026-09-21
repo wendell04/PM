@@ -26,8 +26,10 @@ class CheckPermission
             return response()->json(['message' => 'Unauthenticated.'], 401);
         }
 
+        // A write needs a doing-tick, not only the seeing one - see Rbac::allowsFor.
+        $write = !in_array(strtoupper($request->method()), ['GET', 'HEAD', 'OPTIONS'], true);
         foreach ($keys as $key) {
-            if (Rbac::allows($user, $key)) {
+            if (Rbac::allowsFor($user, $key, $write)) {
                 return $next($request);
             }
         }

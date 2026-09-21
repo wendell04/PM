@@ -71,10 +71,13 @@ class RolePermissionController extends Controller
                 return $this->errorResponse('A role with this key already exists.', 422);
             }
 
+            // A template can start as a copy of another; only real catalog keys are kept.
+            $startWith = \App\Support\PermissionCatalog::sanitize((array) $request->input('permissions', []));
+
             $record = RolePermission::create([
                 'role'        => $role,
                 'label'       => $label,
-                'permissions' => RolePermission::defaultPermissions(),
+                'permissions' => $startWith,
                 'updatedBy'   => (string) $request->user()->_id,
                 'updatedAt'   => now(),
             ]);
@@ -88,7 +91,7 @@ class RolePermissionController extends Controller
             return $this->successResponse('Role created successfully.', [
                 'role'        => $role,
                 'label'       => $label,
-                'permissions' => RolePermission::defaultPermissions(),
+                'permissions' => $startWith,
             ], 201);
         } catch (\Illuminate\Validation\ValidationException $e) {
             return $this->validationErrorResponse($e);
@@ -150,18 +153,11 @@ class RolePermissionController extends Controller
                 return $this->errorResponse('Role not found.', 404);
             }
 
-            $permissions = $request->input('permissions', []);
-            // Accept both coarse module keys and fine action keys (module.action),
-            // so the current module-toggle UI and the future action UI both work.
-            $allowed     = array_merge(
-                array_keys(RolePermission::defaultPermissions()),
-                RolePermission::actionKeys()
-            );
-            $filtered    = array_filter(
-                $permissions,
-                fn($k) => in_array($k, $allowed, true),
-                ARRAY_FILTER_USE_KEY
-            );
+            // Only keys the catalog offers - the same list the Access grid shows - so a template
+            // cannot carry a tick nobody can see or explain.
+            $filtered = \App\Support\PermissionCatalog::sanitize((array) $request->input('permissions', []));
+            $label    = trim((string) $request->input('label', ''));
+            if ($label !== '') $record->label = mb_substr(strip_tags($label), 0, 60);
 
             $record->permissions = $filtered;
             $record->updatedBy   = (string) $request->user()->_id;

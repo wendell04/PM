@@ -18,6 +18,14 @@ import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
+// Names: letters in any language, spaces, hyphens, apostrophes, periods - "Ma. Clara", "O'Neil",
+// "Dela Cruz-Santos". Anything else is dropped as it is typed rather than refused on save. The
+// server holds the same rule. Email: one real address, checked before it is sent.
+const NAME_MAX  = 50;
+const EMAIL_MAX = 100;
+const cleanName = (v) => String(v).replace(/[^\p{L}\s.'\-]/gu, '').replace(/\s{2,}/g, ' ').slice(0, NAME_MAX);
+const EMAIL_RE  = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
 // One look for every role, the Super Admin one: gold on dark. The old Staff page painted each
 // role its own colour, which said nothing and clashed with everything.
 const RoleBadge = ({ label }) => (
@@ -46,6 +54,9 @@ export default function AccessPage() {
   // Roles: the templates, with who holds each. Add one, delete one that nobody holds.
   const [roleForm,  setRoleForm]  = useState(null);     // { label, startFrom } while adding
   const [roleBusy,  setRoleBusy]  = useState('');       // role key being deleted / saved
+  // Editing a role TEMPLATE (not a person): { role, label }. Shares the grid with the person editor.
+  const [editingRole, setEditingRole] = useState(null);
+  const [fieldErr,  setFieldErr]  = useState({});
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -69,12 +80,42 @@ export default function AccessPage() {
   useEffect(() => { load(); }, [load]);
 
   const openEditor = (row) => {
+    setEditingRole(null);
     setEditing(row);
     setDraft({ ...(row.permissions ?? {}) });
     setIsNew(false);
   };
 
+  const openRoleEditor = (t) => {
+    setEditingRole({ role: t.role, label: t.label });
+    setEditing({ id: null, firstName: t.label, lastName: '', email: '', role: t.role, permissions: t.permissions });
+    setDraft({ ...(t.permissions ?? {}) });
+    setIsNew(false);
+  };
+
+  const saveRoleEdit = async () => {
+    const label = (editingRole?.label || '').trim();
+    if (label.length < 2) { toast?.('Give the role a name.', 'error'); return; }
+    setSaving(true);
+    try {
+      const res = await fetchWithTimeout(`${API_URL}/api/admin/role-permissions/${encodeURIComponent(editingRole.role)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ label, permissions: draft }),
+      }, 20000);
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.message || d.error || 'Could not save the role.');
+      const who = holders(editingRole.role).filter(r => r.source === 'template');
+      toast?.(`Saved. ${who.length ? `${who.map(w => w.firstName).join(', ')} now ${who.length === 1 ? 'has' : 'have'} exactly these ticks.` : 'Nobody follows this template yet.'}`, 'success');
+      setEditing(null); setEditingRole(null);
+      await load();
+    } catch (e) { toast?.(e.message, 'error'); }
+    finally { setSaving(false); }
+  };
+
   const openNew = () => {
+    setEditingRole(null);
+    setFieldErr({});
     setEditing({ id: null, firstName: '', lastName: '', email: '', role: '', permissions: {} });
     setDraft({});
     setNewFields({ firstName: '', lastName: '', email: '', role: '' });
@@ -90,12 +131,16 @@ export default function AccessPage() {
 
   const save = async () => {
     if (!editing) return;
+    if (editingRole) { await saveRoleEdit(); return; }
     if (isNew) {
       const { firstName, lastName, email, role } = newFields;
-      if (!firstName.trim() || !lastName.trim() || !email.trim() || !role) {
-        toast?.('Name, email and a starting role are needed before saving.', 'error');
-        return;
-      }
+      const errs = {};
+      if (firstName.trim().length < 2) errs.firstName = 'At least 2 letters.';
+      if (lastName.trim().length < 2)  errs.lastName  = 'At least 2 letters.';
+      if (!EMAIL_RE.test(email.trim())) errs.email    = 'Enter a real email address, like name@gmail.com.';
+      if (!role)                        errs.role     = 'Pick the role they start from.';
+      setFieldErr(errs);
+      if (Object.keys(errs).length) return;
     }
     setSaving(true);
     try {
@@ -120,7 +165,7 @@ export default function AccessPage() {
       }
       if (!res.ok) throw new Error(d.message || d.error || 'Could not save.');
       toast?.(isNew
-        ? (promoted ? `${newFields.firstName}'s customer account is now a staff account.` : `${newFields.firstName} was added. They get an email to set their password.`)
+        ? (promoted ? `${newFields.firstName}'s customer account is now a staff account.` : (d.message || `${newFields.firstName} was added.`))
         : `Saved. ${editing.firstName} can now do exactly what is ticked.`, 'success');
       setEditing(null);
       setIsNew(false);
@@ -226,33 +271,63 @@ export default function AccessPage() {
           {isNew ? (
             <>
               <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 10 }}>Add someone to the team</div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                <input placeholder="First name" value={newFields.firstName}
-                  onChange={e => setNewFields(p => ({ ...p, firstName: e.target.value }))} style={S.input}  maxLength={60}/>
-                <input placeholder="Last name" value={newFields.lastName}
-                  onChange={e => setNewFields(p => ({ ...p, lastName: e.target.value }))} style={S.input}  maxLength={60}/>
+              <div style={{ display: 'grid', gridTemplateColumns: isPhone ? 'minmax(0,1fr)' : 'minmax(0,1fr) minmax(0,1fr)', gap: 10 }}>
+                <div>
+                  <input placeholder="First name" value={newFields.firstName} autoComplete="given-name"
+                    onChange={e => { setNewFields(p => ({ ...p, firstName: cleanName(e.target.value) })); setFieldErr(p => ({ ...p, firstName: '' })); }}
+                    style={{ ...S.input, width: '100%', ...(fieldErr.firstName ? { borderColor: 'var(--st-red-fg, #dc2626)' } : {}) }} maxLength={NAME_MAX} />
+                  {fieldErr.firstName && <div style={{ fontSize: 11, color: 'var(--st-red-fg, #dc2626)', marginTop: 3 }}>{fieldErr.firstName}</div>}
+                </div>
+                <div>
+                  <input placeholder="Last name" value={newFields.lastName} autoComplete="family-name"
+                    onChange={e => { setNewFields(p => ({ ...p, lastName: cleanName(e.target.value) })); setFieldErr(p => ({ ...p, lastName: '' })); }}
+                    style={{ ...S.input, width: '100%', ...(fieldErr.lastName ? { borderColor: 'var(--st-red-fg, #dc2626)' } : {}) }} maxLength={NAME_MAX} />
+                  {fieldErr.lastName && <div style={{ fontSize: 11, color: 'var(--st-red-fg, #dc2626)', marginTop: 3 }}>{fieldErr.lastName}</div>}
+                </div>
               </div>
-              <input placeholder="Work email" type="email" value={newFields.email}
-                onChange={e => setNewFields(p => ({ ...p, email: e.target.value }))}
-                style={{ ...S.input, marginTop: 10, width: '100%' }}  maxLength={160}/>
-              <div style={{ fontSize: 11.5, color: 'var(--gray)', marginTop: 6 }}>
-                They get an email to set their own password. You never type it.
+              <input placeholder="Email - name@gmail.com" type="email" inputMode="email" autoComplete="email" value={newFields.email}
+                onChange={e => { setNewFields(p => ({ ...p, email: e.target.value.replace(/\s/g, '').slice(0, EMAIL_MAX) })); setFieldErr(p => ({ ...p, email: '' })); }}
+                onBlur={e => { const v = e.target.value.trim(); if (v && !EMAIL_RE.test(v)) setFieldErr(p => ({ ...p, email: 'Enter a real email address, like name@gmail.com.' })); }}
+                style={{ ...S.input, marginTop: 10, width: '100%', ...(fieldErr.email ? { borderColor: 'var(--st-red-fg, #dc2626)' } : {}) }} maxLength={EMAIL_MAX} />
+              {fieldErr.email && <div style={{ fontSize: 11, color: 'var(--st-red-fg, #dc2626)', marginTop: 3 }}>{fieldErr.email}</div>}
+              <div style={{ fontSize: 11.5, color: 'var(--gray)', marginTop: 6, lineHeight: 1.5 }}>
+                No account needed first. A new email gets an invite to set its own password - you never type it.
+                An email that already shops here is asked about, then that same account gets the access.
+              </div>
+            </>
+          ) : editingRole ? (
+            <>
+              <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 8 }}>Edit role template</div>
+              <input value={editingRole.label} maxLength={40}
+                onChange={e => setEditingRole(r => ({ ...r, label: e.target.value.replace(/[^\p{L}\p{N}\s&.'\-]/gu, '').slice(0, 40) }))}
+                style={{ ...S.input, width: '100%', maxWidth: 320 }} />
+              <div style={{ fontSize: 11.5, color: 'var(--gray)', marginTop: 6, lineHeight: 1.5 }}>
+                Changes apply to everyone who follows this template
+                {(() => { const w = holders(editingRole.role).filter(r => r.source === 'template'); return w.length ? ` (${w.map(x => x.firstName).join(', ')})` : ' (nobody yet)'; })()}.
+                People whose access was set one by one keep their own ticks.
               </div>
             </>
           ) : (
             <>
               <div style={{ fontWeight: 700, fontSize: 15 }}>{editing.firstName} {editing.lastName}</div>
               <div style={{ fontSize: 12, color: 'var(--gray)' }}>{editing.email}</div>
+              <div style={{ fontSize: 11.5, color: 'var(--gray)', marginTop: 6, lineHeight: 1.5 }}>
+                Starts from the <b>{editing.roleLabel || 'role'}</b> template. Tick or untick anything - it applies
+                to {editing.firstName} only; the template and everyone else on it stay as they are.
+              </div>
             </>
           )}
           <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 12, color: 'var(--gray)' }}>Start from a template</span>
+            {fieldErr.role && <span style={{ fontSize: 11, color: 'var(--st-red-fg, #dc2626)', width: '100%' }}>{fieldErr.role}</span>}
+            {!editingRole && <span style={{ fontSize: 12, color: 'var(--gray)' }}>Start from a template</span>}
+            {!editingRole && (
             <CustomSelect
               value={isNew ? newFields.role : ''}
-              onChange={(v) => { if (isNew) setNewFields(p => ({ ...p, role: v })); applyTemplate(v); }}
+              onChange={(v) => { if (isNew) { setNewFields(p => ({ ...p, role: v })); setFieldErr(p => ({ ...p, role: '' })); } applyTemplate(v); }}
               options={[{ value: '', label: 'Choose one...' },
                 ...templates.map(t => ({ value: t.role, label: t.label }))]}
               style={{ width: 190 }} />
+            )}
             <button onClick={() => setDraft({})} style={S.btnSmGhost}>Clear all</button>
             <span style={{ fontSize: 12, color: 'var(--gray)', marginLeft: 'auto' }}>{on} of {total} granted</span>
           </div>
@@ -264,7 +339,10 @@ export default function AccessPage() {
           return (
             <div key={gk} style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
               <div style={{ ...S.rowBetween, padding: '10px 14px', borderBottom: '1px solid var(--border)' }}>
-                <span style={{ fontWeight: 700, fontSize: 13 }}>{g.label}</span>
+                <span style={{ minWidth: 0 }}>
+                  <span style={{ fontWeight: 700, fontSize: 13 }}>{g.label}</span>
+                  {g.note && <span style={{ display: 'block', fontSize: 11, color: 'var(--gray)', marginTop: 2 }}>{g.note}</span>}
+                </span>
                 <button onClick={() => setDraft(p => {
                   const next = { ...p };
                   keys.forEach(k => { if (allOn) delete next[k]; else next[k] = true; });
@@ -294,14 +372,17 @@ export default function AccessPage() {
         <div style={{ ...S.card, padding: '12px 14px', background: 'var(--dark2)' }}>
           <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 4 }}>What this means</div>
           <div style={{ fontSize: 12.5, color: 'var(--gray-light)', lineHeight: 1.6 }}>
-            {editing.firstName} will be able to reach: <b>{summarise(draft)}</b>
+            {editingRole ? 'Anyone on this template' : (editing.firstName || 'This person')} will be able to reach: <b>{summarise(draft)}</b>
+          </div>
+          <div style={{ fontSize: 11.5, color: 'var(--gray)', marginTop: 6, lineHeight: 1.55 }}>
+            A "See" tick is read only. To change anything in an area, tick one of that area's other boxes.
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-          <button onClick={() => { setEditing(null); setIsNew(false); }} disabled={saving} style={S.btnGhost}>Cancel</button>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+          <button onClick={() => { setEditing(null); setIsNew(false); setEditingRole(null); }} disabled={saving} style={S.btnGhost}>Cancel</button>
           <button onClick={save} disabled={saving} style={S.btnPrimary}>
-            {saving ? 'Saving...' : isNew ? 'Add and save access' : 'Save permissions'}
+            {saving ? 'Saving...' : editingRole ? 'Save role' : isNew ? 'Add and save access' : 'Save permissions'}
           </button>
         </div>
       </div>
@@ -412,11 +493,14 @@ export default function AccessPage() {
                     <div key={t.role} style={{ border: '1px solid var(--border)', borderRadius: 10, padding: '10px 12px', background: 'var(--dark)' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
                         <RoleBadge label={t.label} />
+                        <span style={{ display: 'inline-flex', gap: 6 }}>
+                        <button onClick={() => openRoleEditor(t)} style={S.btnSmGhost}>Edit</button>
                         <button onClick={() => deleteRole(t)} disabled={roleBusy === t.role || who.length > 0}
                           title={who.length ? `Held by ${who.map(w => w.firstName).join(', ')}` : 'Delete this role'}
                           style={{ ...S.btnSmGhost, color: who.length ? 'var(--gray)' : 'var(--st-red-fg, #dc2626)', opacity: who.length ? 0.6 : 1 }}>
                           {roleBusy === t.role ? '...' : 'Delete'}
                         </button>
+                        </span>
                       </div>
                       <div style={{ fontSize: 11.5, color: 'var(--gray)', marginTop: 6 }}>{n} permission{n === 1 ? '' : 's'} - {summarise(t.permissions)}</div>
                       <div style={{ fontSize: 11.5, color: who.length ? 'var(--white)' : 'var(--gray)', marginTop: 4 }}>
@@ -432,7 +516,7 @@ export default function AccessPage() {
       )}
 
       {editing && (isPhone
-        ? <PhoneSheet open onClose={() => setEditing(null)} title={`${editing.firstName}'s access`}>{renderEditor()}</PhoneSheet>
+        ? <PhoneSheet open onClose={() => { setEditing(null); setEditingRole(null); }} title={editingRole ? 'Edit role' : isNew ? 'Add staff' : `${editing.firstName}'s access`}>{renderEditor()}</PhoneSheet>
         : renderEditor())}
     </div>
   );

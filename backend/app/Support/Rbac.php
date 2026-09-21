@@ -79,6 +79,36 @@ class Rbac
         return self::roleGrants($user->role, $permKey);
     }
 
+    /**
+     * allows(), aware of whether the request changes something.
+     *
+     * Most controllers check a bare module key ('products'), and a bare key is satisfied by ANY
+     * tick in that module - so a staff given only "See products" could create, edit and delete
+     * them. On a write, a bare module key now needs a tick in that module other than '.view'.
+     * Action keys ('orders.edit') and reads behave exactly as before.
+     */
+    public static function allowsFor(?User $user, string $permKey, bool $write): bool
+    {
+        if (!$write || str_contains($permKey, '.')) return self::allows($user, $permKey);
+        if (!$user) return false;
+        if (self::isSuperAdmin($user) || self::isOwner($user)) return self::allows($user, $permKey);
+
+        $own  = $user->permissions ?? null;
+        $grid = (is_array($own) && $own !== [])
+            ? $own
+            : ((is_string($user->role ?? null) && $user->role !== '' && $user->role !== 'customer')
+                ? ((array) (RolePermission::where('role', $user->role)->first()?->permissions ?? []))
+                : []);
+
+        if (!empty($grid[$permKey])) return true;          // a whole-module switch (older templates)
+        $prefix = $permKey . '.';
+        foreach ($grid as $k => $v) {
+            if (!is_string($k) || empty($v) || !str_starts_with($k, $prefix)) continue;
+            if ($k !== $permKey . '.view') return true;     // any doing-tick, not the seeing one
+        }
+        return false;
+    }
+
     /** Is $permKey within Super Admin's scoped (system-task) responsibilities? */
     public static function inSuperAdminScope(string $permKey): bool
     {

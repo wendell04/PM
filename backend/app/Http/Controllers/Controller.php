@@ -35,7 +35,9 @@ abstract class Controller
     {
         $user = $request->user();
         if (!$user) return false;
-        return \App\Support\Rbac::allows($user, $permKey) ? $user : false;
+        // A write needs a doing-tick, not only the seeing one - see Rbac::allowsFor.
+        $write = !in_array(strtoupper($request->method()), ['GET', 'HEAD', 'OPTIONS'], true);
+        return \App\Support\Rbac::allowsFor($user, $permKey, $write) ? $user : false;
     }
 
     /**
@@ -44,10 +46,8 @@ abstract class Controller
      */
     protected function hasAnyPermission(\Illuminate\Http\Request $request, array $permKeys): mixed
     {
-        $user = $request->user();
-        if (!$user) return false;
         foreach ($permKeys as $key) {
-            if (\App\Support\Rbac::allows($user, $key)) return $user;
+            if ($u = $this->hasPermission($request, (string) $key)) return $u;
         }
         return false;
     }

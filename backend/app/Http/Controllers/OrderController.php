@@ -1096,7 +1096,7 @@ class OrderController extends Controller
     public function adminIndex(Request $request)
     {
         try {
-            if (!$this->hasPermission($request, 'orders')) {
+            if (!$this->hasAnyPermission($request, ['orders', 'design.view'])) {
                 return $this->unauthorizedResponse();
             }
 
@@ -2200,7 +2200,7 @@ class OrderController extends Controller
                 return response()->json(['error' => 'Unauthorized'], 401);
             }
 
-            if (!$this->hasPermission($request, 'orders')) {
+            if (!$this->hasAnyPermission($request, ['orders', 'design.view'])) {
                 return $this->unauthorizedResponse();
             }
 
@@ -3215,7 +3215,7 @@ class OrderController extends Controller
     {
         try {
             $user = $request->user();
-            if (!$this->hasPermission($request, 'payments.create')) {
+            if (!$this->hasPermission($request, 'payments.refund')) {
                 return $this->unauthorizedResponse();
             }
             $order = Order::find($id);
@@ -3254,7 +3254,7 @@ class OrderController extends Controller
     {
         try {
             $user = $request->user();
-            if (!$this->hasPermission($request, 'payments.create')) {
+            if (!$this->hasPermission($request, 'payments.refund')) {
                 return $this->unauthorizedResponse();
             }
 
@@ -4728,7 +4728,7 @@ class OrderController extends Controller
     {
         try {
             $user = $request->user();
-            if (!$this->hasPermission($request, 'orders.edit')) {
+            if (!$this->hasAnyPermission($request, ['design.proof', 'orders.edit'])) {
                 return $this->unauthorizedResponse();
             }
 
@@ -5002,7 +5002,7 @@ class OrderController extends Controller
     {
         try {
             $user = $request->user();
-            if (!$this->hasPermission($request, 'orders.edit')) {
+            if (!$this->hasAnyPermission($request, ['design.approve', 'orders.edit'])) {
                 return $this->unauthorizedResponse();
             }
 
