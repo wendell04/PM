@@ -149,7 +149,9 @@ class StaffController extends Controller
                 $staff->reset_token_expires_at = \Carbon\Carbon::now('Asia/Manila')->addDays(3)->toDateTimeString();
                 $staff->save();
                 $frontendUrl = env('FRONTEND_URL', 'http://localhost:3000');
-                $inviteUrl   = "{$frontendUrl}/?reset_token={$plainToken}&email=" . urlencode($staff->email);
+                // invite=1 makes the landing page's password screens read "Set your password"
+                // instead of "Forgot Password" - same steps, words for someone who never had one.
+                $inviteUrl   = "{$frontendUrl}/?reset_token={$plainToken}&invite=1&email=" . urlencode($staff->email);
                 try {
                     \Illuminate\Support\Facades\Mail::to($staff->email)->send(new \App\Mail\StaffInviteMail(
                         $inviteUrl, (string) $staff->firstName, $this->labelForRole($staff->role)

@@ -226,6 +226,8 @@ const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=
   const [forgotModal, setForgotModal]     = useState(false);
   const [forgotEmail, setForgotEmail]     = useState('');
   const [forgotLinkToken, setForgotLinkToken] = useState('');
+  // Opened from a staff invite: the same screens, worded for someone setting a first password.
+  const [isInvite, setIsInvite] = useState(false);
   const [forgotError, setForgotError]     = useState('');
   const [forgotSent, setForgotSent]       = useState(false);
   const [isSendingReset, setIsSendingReset] = useState(false);
@@ -353,6 +355,7 @@ const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=
     const params = new URLSearchParams(window.location.search);
     const resetToken = params.get('reset_token');
     const email = params.get('email');
+    if (params.get('invite') === '1') setIsInvite(true);
 
     if (resetToken && email) {
       // Verify the token automatically
@@ -2917,11 +2920,13 @@ const handleForgotResetPassword = async () => {
             <div className="auth-modal-header">
               <img src="/logos/PersonalizeMe logo.png" alt="Logo" className="auth-modal-logo"/>
               <div>
-                <h2>Forgot Password</h2>
+                <h2>{isInvite ? 'Set your password' : 'Forgot Password'}</h2>
                 <p>
-                  {forgotStep === 1 ? "We'll send you a reset link" : 
-                   forgotStep === 2 ? "Confirm it's you" : 
-                   forgotStep === 3 ? "Enter verification code" : "Set a new password"}
+                  {isInvite
+                    ? (forgotStep === 3 ? "Welcome to the team - confirm it's your email" : 'Choose the password you will sign in with')
+                    : (forgotStep === 1 ? "We'll send you a reset link" :
+                       forgotStep === 2 ? "Confirm it's you" :
+                       forgotStep === 3 ? "Enter verification code" : "Set a new password")}
                 </p>
               </div>
               <button className="auth-close" onClick={() => { setForgotModal(false); setForgotStep(1); setForgotPasswordFocused(false); setForgotConfirmTouched(false); }}>✕</button>
@@ -3131,7 +3136,7 @@ const handleForgotResetPassword = async () => {
                     {forgotError && <span className="error-message">{forgotError}</span>}
                   </div>
                   <button className="btn-auth-submit" disabled={isSendingReset} onClick={handleForgotResetPassword}>
-                    {isSendingReset ? 'Resetting...' : 'Reset Password'}
+                    {isSendingReset ? (isInvite ? 'Saving...' : 'Resetting...') : (isInvite ? 'Set password' : 'Reset Password')}
                   </button>
                 </div>
               )}
