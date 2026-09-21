@@ -1550,22 +1550,36 @@ export default function CustomerProfilePage() {
                   border: "1px solid var(--border)",
                 },
               };
-              const style = badgeStyles[role] || badgeStyles.customer;
+              // A staff member who shops: their customer self, plus the staff role in words and a
+              // door to the dashboard. The raw role code ("productionstaff") meant nothing here.
+              const rawRole = String(currentUser?.role || "customer");
+              const isStaff = rawRole !== "customer";
+              const staffLabel = rawRole.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/^./, (c) => c.toUpperCase());
+              const pill = {
+                display: "inline-block",
+                padding: "2px 10px",
+                borderRadius: "999px",
+                fontSize: "0.7rem",
+                fontWeight: 700,
+                letterSpacing: "0.08em",
+                textTransform: "uppercase",
+              };
               return (
-                <span
-                  style={{
-                    display: "inline-block",
-                    padding: "2px 10px",
-                    borderRadius: "999px",
-                    fontSize: "0.7rem",
-                    fontWeight: 700,
-                    letterSpacing: "0.08em",
-                    textTransform: "uppercase",
-                    ...style,
-                  }}
-                >
-                  {role}
-                </span>
+                <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "6px" }}>
+                  <span style={{ ...pill, ...badgeStyles.customer }}>Customer</span>
+                  {isStaff && (
+                    <>
+                      <span style={{ ...pill, background: "rgba(212,168,67,0.16)", color: "var(--gold)", border: "1px solid rgba(212,168,67,0.35)" }}>
+                        {staffLabel}
+                      </span>
+                      <a href="/dashboard/business/home"
+                        style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "4px 12px", borderRadius: 999,
+                          background: "var(--gold)", color: "#111", fontSize: "0.72rem", fontWeight: 800, textDecoration: "none" }}>
+                        Open dashboard
+                      </a>
+                    </>
+                  )}
+                </div>
               );
             })()}
 

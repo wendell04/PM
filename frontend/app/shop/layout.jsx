@@ -604,10 +604,11 @@ export default function ShopLayout({ children }) {
       // Do NOT write to storage yet - hold in state only.
       // Storage write happens in onSuccess after OTP verified.
       sessionStorage.setItem('pending_2fa', 'true');
-      const isAdminUser = userData.role !== 'customer';
+      // Same rule as below: business accounts to the dashboard, staff who shop stay on the shop.
+      const isAdminUser = ['admin', 'owner', 'superAdmin'].includes(userData.role);
       const currentPath = window.location.pathname;
       const returnTo = isAdminUser
-        ? '/dashboard/business/dashboardoverview'
+        ? '/dashboard/business/home'
         : (currentPath === '/shop/2fa-verify' || currentPath === '/')
           ? '/shop'
           : currentPath;
@@ -631,11 +632,14 @@ export default function ShopLayout({ children }) {
       bc.close();
     } catch {}
 
-    // Redirect non-customers to dashboard
-    if (userData.role !== 'customer') {
+    // The owner and super admin are business accounts - they go to the dashboard. A staff
+    // member signing in ON THE SHOP was usually shopping (a customer account given staff
+    // access), so they stay where they were; the avatar menu and their profile both have a
+    // Dashboard door. The landing page, the work entrance, still sends staff to the dashboard.
+    if (['admin', 'owner', 'superAdmin'].includes(userData.role)) {
       sessionStorage.removeItem('pre_login_redirect');
       setAuthModalOpen(false);
-      window.location.href = '/dashboard/business/dashboardoverview';
+      window.location.href = '/dashboard/business/home';
       return;
     }
 
@@ -1537,7 +1541,7 @@ export default function ShopLayout({ children }) {
                             </div>
                           </div>
                           {user?.role && user.role !== 'customer' && (
-                            <Link href="/dashboard/business/dashboardoverview" className="shop-navbar-menu-item" onClick={() => setMenuOpen(false)}>
+                            <Link href="/dashboard/business/home" className="shop-navbar-menu-item" onClick={() => setMenuOpen(false)}>
                               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                 <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
                               </svg>
@@ -1663,7 +1667,7 @@ export default function ShopLayout({ children }) {
                 <h4>Account</h4>
                 <svg className="shop-footer-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
               </summary>
-              {user?.role && user.role !== 'customer' && <Link href="/dashboard/business/dashboardoverview">Dashboard</Link>}
+              {user?.role && user.role !== 'customer' && <Link href="/dashboard/business/home">Dashboard</Link>}
               <Link href="/shop/orders-history">My Orders</Link>
               <Link href={['admin', 'owner', 'superAdmin'].includes(user?.role) ? '/dashboard/business/home?profile=1' : '/shop/profile'}>{['admin', 'owner', 'superAdmin'].includes(user?.role) ? 'My account' : 'My Profile'}</Link>
               <Link href="/shop/cart">Cart</Link>
