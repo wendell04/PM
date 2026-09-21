@@ -218,6 +218,8 @@ class PaymentController extends Controller
             $discountAmount = 0.0;
             $appliedVoucher = null;
 
+            // A voucher discounts the goods - not the design fee, the rush fee or the courier.
+            $goodsSubtotal = round(array_sum(array_map(fn ($l) => (float) ($l['lineTotal'] ?? 0), $orderItems ?? [])), 2);
             if (!empty($validated['voucherCode'])) {
                 $voucherCode = strtoupper(trim($validated['voucherCode']));
                 $userId      = (string) $user->_id;
@@ -230,12 +232,12 @@ class PaymentController extends Controller
                     && (!$voucher->expiresAt || $voucher->expiresAt >= $now)
                     && ($voucher->maxUses === null || $voucher->usedCount < $voucher->maxUses)
                     && !in_array($userId, $voucher->usedBy ?? [], true)
-                    && ($voucher->minOrderAmount === null || $totalAmount >= $voucher->minOrderAmount);
+                    && ($voucher->minOrderAmount === null || $goodsSubtotal >= $voucher->minOrderAmount);
 
                 if ($preValid) {
                     $discountAmount = $voucher->discountType === 'percentage'
-                        ? round($totalAmount * $voucher->discountValue / 100, 2)
-                        : min((float) $voucher->discountValue, $totalAmount);
+                        ? round($goodsSubtotal * $voucher->discountValue / 100, 2)
+                        : min((float) $voucher->discountValue, $goodsSubtotal);
 
                     $filter = [
                         'code'     => $voucherCode,
@@ -394,6 +396,11 @@ class PaymentController extends Controller
                 'shippingMode'    => optional(\App\Support\ShopSettings::owner())->shippingMode ?? 'courier_booked',
                 'discountAmount'  => $discountAmount > 0 ? $discountAmount : null,
                 'voucherCode'     => $appliedVoucher?->code ?? null,
+                // A benefit voucher (free item, free layout) takes nothing off - the shop honours it
+                // by hand, so the order has to say what was promised.
+                'voucherBenefit'  => ($appliedVoucher && ($appliedVoucher->benefitCategory ?? 'monetary') !== 'monetary')
+                    ? trim(($appliedVoucher->benefitType ?? '') . ((string) ($appliedVoucher->benefitDescription ?? '') !== '' ? ' - ' . $appliedVoucher->benefitDescription : ''))
+                    : null,
                 'orderStatus'     => 'Pending',
                 'paymentStatus'   => 'unpaid',
                 'paymentMethod'   => 'online',
@@ -960,6 +967,8 @@ class PaymentController extends Controller
             $discountAmount = 0.0;
             $appliedVoucher = null;
 
+            // A voucher discounts the goods - not the design fee, the rush fee or the courier.
+            $goodsSubtotal = round(array_sum(array_map(fn ($l) => (float) ($l['lineTotal'] ?? 0), $orderItems ?? [])), 2);
             if (!empty($validated['voucherCode'])) {
                 $voucherCode = strtoupper(trim($validated['voucherCode']));
                 $userId      = (string) $user->_id;
@@ -969,12 +978,12 @@ class PaymentController extends Controller
                     && (!$voucher->expiresAt || $voucher->expiresAt >= now())
                     && ($voucher->maxUses === null || $voucher->usedCount < $voucher->maxUses)
                     && !in_array($userId, $voucher->usedBy ?? [], true)
-                    && ($voucher->minOrderAmount === null || $totalAmount >= $voucher->minOrderAmount);
+                    && ($voucher->minOrderAmount === null || $goodsSubtotal >= $voucher->minOrderAmount);
 
                 if ($preValid) {
                     $discountAmount = $voucher->discountType === 'percentage'
-                        ? round($totalAmount * $voucher->discountValue / 100, 2)
-                        : min((float) $voucher->discountValue, $totalAmount);
+                        ? round($goodsSubtotal * $voucher->discountValue / 100, 2)
+                        : min((float) $voucher->discountValue, $goodsSubtotal);
 
                     $filter = ['code' => $voucherCode, 'isActive' => true, 'usedBy' => ['$nin' => [$userId]]];
                     if ($voucher->maxUses !== null) $filter['$expr'] = ['$lt' => ['$usedCount', '$maxUses']];
@@ -1044,6 +1053,11 @@ class PaymentController extends Controller
                 'shippingMode'    => optional(\App\Support\ShopSettings::owner())->shippingMode ?? 'courier_booked',
                 'discountAmount'  => $discountAmount > 0 ? $discountAmount : null,
                 'voucherCode'     => $appliedVoucher?->code ?? null,
+                // A benefit voucher (free item, free layout) takes nothing off - the shop honours it
+                // by hand, so the order has to say what was promised.
+                'voucherBenefit'  => ($appliedVoucher && ($appliedVoucher->benefitCategory ?? 'monetary') !== 'monetary')
+                    ? trim(($appliedVoucher->benefitType ?? '') . ((string) ($appliedVoucher->benefitDescription ?? '') !== '' ? ' - ' . $appliedVoucher->benefitDescription : ''))
+                    : null,
                 'orderStatus'     => $this->resolveCustomOrderStatus($request),
                 'paymentStatus'   => 'unpaid',
                 'paymentMethod'   => $paymentType,

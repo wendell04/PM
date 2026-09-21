@@ -505,6 +505,8 @@ class OrderController extends Controller
             $discountAmount = 0.0;
             $appliedVoucher = null;
 
+            // A voucher discounts the goods - not the design fee, the rush fee or the courier.
+            $goodsSubtotal = round(array_sum(array_map(fn ($l) => (float) ($l['lineTotal'] ?? 0), $orderItems ?? [])), 2);
             if (!empty($validated['voucherCode'])) {
                 $voucherCode = strtoupper(trim($validated['voucherCode']));
                 $userId      = (string) $user->_id;
@@ -517,12 +519,12 @@ class OrderController extends Controller
                     && (!$voucher->expiresAt || $voucher->expiresAt >= $now)
                     && ($voucher->maxUses === null || $voucher->usedCount < $voucher->maxUses)
                     && !in_array($userId, $voucher->usedBy ?? [], true)
-                    && ($voucher->minOrderAmount === null || $totalAmount >= $voucher->minOrderAmount);
+                    && ($voucher->minOrderAmount === null || $goodsSubtotal >= $voucher->minOrderAmount);
 
                 if ($preValid) {
                     $discountAmount = $voucher->discountType === 'percentage'
-                        ? round($totalAmount * $voucher->discountValue / 100, 2)
-                        : min((float) $voucher->discountValue, $totalAmount);
+                        ? round($goodsSubtotal * $voucher->discountValue / 100, 2)
+                        : min((float) $voucher->discountValue, $goodsSubtotal);
 
                     $filter = [
                         'code'     => $voucherCode,
@@ -592,6 +594,11 @@ class OrderController extends Controller
                 'shippingMode'    => \App\Support\ShopSettings::owner()->shippingMode ?? 'courier_booked',
                 'discountAmount'  => $discountAmount > 0 ? $discountAmount : null,
                 'voucherCode'     => $appliedVoucher?->code ?? null,
+                // A benefit voucher (free item, free layout) takes nothing off - the shop honours it
+                // by hand, so the order has to say what was promised.
+                'voucherBenefit'  => ($appliedVoucher && ($appliedVoucher->benefitCategory ?? 'monetary') !== 'monetary')
+                    ? trim(($appliedVoucher->benefitType ?? '') . ((string) ($appliedVoucher->benefitDescription ?? '') !== '' ? ' - ' . $appliedVoucher->benefitDescription : ''))
+                    : null,
                 'orderStatus'     => $this->resolveInitialStatus($request),
                 'paymentStatus'   => 'unpaid',
                 'paymentMethod'   => $paymentMethod,
@@ -1213,6 +1220,7 @@ class OrderController extends Controller
             'targetCompletion',
             'orderSource',
             'voucherCode',
+            'voucherBenefit',
             'discountAmount',
             'courierName',
             'trackingNumber',
@@ -1848,9 +1856,13 @@ class OrderController extends Controller
                 return;
             }
 
-            foreach ($order->items as $item) {
+            // The voucher, shared across the lines by value, so revenue and profit are what was taken.
+            $discShares = \App\Support\DiscountAllocator::shares(array_values($order->items ?? []), (float) ($order->discountAmount ?? 0));
+            foreach (array_values($order->items) as $lineIdx => $item) {
                 $product = Product::find($item['productId']);
                 if (!$product) continue;
+                $discShare = (float) ($discShares[$lineIdx] ?? 0);
+                $netLine   = round((float) $item['lineTotal'] - $discShare, 2);
 
                 $inventory = null;
                 if ($product->inventoryId) {
@@ -1871,7 +1883,7 @@ class OrderController extends Controller
                 // COGS resolved from BOM → inventory → product cost, so profit is correct even when
                 // there is no directly-linked inventory item (services, finished goods with a buy price).
                 $cost        = \App\Support\CostResolver::lineCost($product, $item['qty']);
-                $profit      = $item['lineTotal'] - $cost;
+                $profit      = $netLine - $cost;
                 $variantName = $item['variantName'] ?? '';
 
                 Sale::create([
@@ -1889,7 +1901,10 @@ class OrderController extends Controller
                     'category'        => $product->category,
                     'quantity'        => $item['qty'],
                     'unitPrice'       => $item['unitPrice'],
-                    'totalPrice'      => $item['lineTotal'],
+                    'totalPrice'      => $netLine,
+                    // What the voucher took off this line; totalPrice is already net of it.
+                    'discount'        => $discShare > 0 ? $discShare : null,
+                    'voucherCode'     => $discShare > 0 ? ($order->voucherCode ?? null) : null,
                     'cost'            => $cost,
                     'profit'          => $profit,
                     'saleDate'        => $order->createdAt ?? now(),

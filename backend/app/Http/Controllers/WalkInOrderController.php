@@ -334,7 +334,10 @@ class WalkInOrderController extends Controller
     private function recordSalesAndDeductInventory(Order $order, string $customerName, string $performedByUserId): void
     {
         try {
-            foreach ($order->items as $item) {
+            // The counter discount, shared across the lines by value - see DiscountAllocator.
+            $discShares = \App\Support\DiscountAllocator::shares(array_values($order->items ?? []), (float) ($order->discountAmount ?? 0));
+            foreach (array_values($order->items) as $lineIdx => $item) {
+                $netLine = round((float) $item['lineTotal'] - (float) ($discShares[$lineIdx] ?? 0), 2);
                 $product = Product::find($item['productId']);
                 if (!$product) continue;
 
@@ -375,7 +378,7 @@ class WalkInOrderController extends Controller
                     $ci = Inventory::find($invId);
                     if ($ci) $cost += (float) ($ci->averageCost ?? $ci->lastUnitCost ?? 0) * (float) $qty;
                 }
-                $profit      = (float) $item['lineTotal'] - $cost;
+                $profit      = $netLine - $cost;
                 $variantName = $item['variantName'] ?? '';
 
                 Sale::create([
@@ -390,7 +393,8 @@ class WalkInOrderController extends Controller
                     'category'        => $product->category,
                     'quantity'        => (int) $item['qty'],
                     'unitPrice'       => (float) $item['unitPrice'],
-                    'totalPrice'      => (float) $item['lineTotal'],
+                    'totalPrice'      => $netLine,
+                    'discount'        => ((float) ($discShares[$lineIdx] ?? 0)) > 0 ? (float) $discShares[$lineIdx] : null,
                     'cost'            => $cost,
                     'profit'          => $profit,
                     'saleDate'        => $order->createdAt ?? now(),

@@ -99,6 +99,22 @@ class FlashSaleController extends Controller
             ], 422);
         }
 
+        // Below what it costs to make: allowed (a loss leader is a real tactic) but never by accident.
+        $unitCost  = \App\Support\CostResolver::unitCost($product);
+        $salePrice = $validated['discountType'] === 'percentage'
+            ? round($basePrice * (1 - (float) $validated['discountValue'] / 100), 2)
+            : round($basePrice - (float) $validated['discountValue'], 2);
+        if ($unitCost > 0 && $salePrice < $unitCost && !$request->boolean('confirmBelowCost')) {
+            return response()->json([
+                'code'      => 'below_cost',
+                'message'   => 'At this discount the sale price is P' . number_format($salePrice, 2)
+                    . ' and it costs about P' . number_format($unitCost, 2) . ' to make - every one sold loses P'
+                    . number_format($unitCost - $salePrice, 2) . '. Confirm to create it anyway.',
+                'salePrice' => $salePrice,
+                'unitCost'  => $unitCost,
+            ], 422);
+        }
+
         if ($validated['discountType'] === 'fixed' && $validated['discountValue'] >= $basePrice) {
             return response()->json([
                 'message' => 'Fixed discount must be less than the product price.',
@@ -193,6 +209,22 @@ class FlashSaleController extends Controller
         if ($validated['discountType'] === 'percentage' && $validated['discountValue'] >= 100) {
             return response()->json([
                 'message' => 'Percentage discount must be less than 100%.',
+            ], 422);
+        }
+
+        // Below what it costs to make: allowed (a loss leader is a real tactic) but never by accident.
+        $unitCost  = \App\Support\CostResolver::unitCost($product);
+        $salePrice = $validated['discountType'] === 'percentage'
+            ? round($basePrice * (1 - (float) $validated['discountValue'] / 100), 2)
+            : round($basePrice - (float) $validated['discountValue'], 2);
+        if ($unitCost > 0 && $salePrice < $unitCost && !$request->boolean('confirmBelowCost')) {
+            return response()->json([
+                'code'      => 'below_cost',
+                'message'   => 'At this discount the sale price is P' . number_format($salePrice, 2)
+                    . ' and it costs about P' . number_format($unitCost, 2) . ' to make - every one sold loses P'
+                    . number_format($unitCost - $salePrice, 2) . '. Confirm to create it anyway.',
+                'salePrice' => $salePrice,
+                'unitCost'  => $unitCost,
             ], 422);
         }
 

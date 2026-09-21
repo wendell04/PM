@@ -2957,6 +2957,10 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
           {Number(lo.discountAmount) > 0 && (
             <InfoRow label="Subtotal" value={`₱${fmt(Number(lo.totalAmount??0) + Number(lo.discountAmount))}`} />
           )}
+          {lo.voucherBenefit && (
+            // Nothing was taken off: the customer was promised something to be given by hand.
+            <InfoRow label={`Voucher${lo.voucherCode ? ` (${lo.voucherCode})` : ''}`} value={`Give: ${lo.voucherBenefit}`} />
+          )}
           {Number(lo.discountAmount) > 0 && (
             <InfoRow label={`Voucher${lo.voucherCode ? ` (${lo.voucherCode})` : ''}`} value={`−₱${fmt(lo.discountAmount)}`} />
           )}

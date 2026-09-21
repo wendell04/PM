@@ -88,6 +88,8 @@ function orderToRow(o) {
     dueDate: o.dueDate || null,
     totalPrice: total,
     shipping,
+    // What a voucher took off. Already out of the total - shown so a promotion's cost is visible.
+    discount: Number(o.discountAmount ?? 0) || 0,
     designFee: Math.round(designFee * 100) / 100,
     subtotal: Math.max(0, Math.round((total - shipping - designFee) * 100) / 100),
     downPayment: dp,
@@ -510,6 +512,8 @@ export default function SalesListPage() {
       totalSales: active.length, paid: paid.length, pending50: partial.length, cancelled: cancelled.length,
       revenue: active.reduce((s, o) => s + Math.max(0, (o.totalPrice || 0) - (o.shipping || 0)), 0),
       shippingCollected: active.reduce((s, o) => s + (o.shipping || 0), 0),
+      discounts: active.reduce((s, o) => s + (o.discount || 0), 0),
+      discountedOrders: active.filter(o => (o.discount || 0) > 0).length,
       outstanding: active.reduce((s, o) => s + (o.balance || 0), 0),
       topProductsCount: products.size,
     };
@@ -811,6 +815,10 @@ export default function SalesListPage() {
             <SummaryCard label="Shipping Collected" value={formatPrice(m.shippingCollected)} sub="Held for delivery, not income" color="var(--st-blue-fg)" />
           )}
           <SummaryCard label="Products Sold"      value={m.topProductsCount}               sub="Distinct products" color="var(--st-purple-fg)" />
+          {/* The cost of promotions, in one number. Revenue above is already net of it. */}
+          {m.discounts > 0 && (
+            <SummaryCard label="Discounts Given" value={formatPrice(m.discounts)} sub={`Vouchers on ${m.discountedOrders} order${m.discountedOrders === 1 ? '' : 's'} - already taken out of revenue`} color="var(--st-red-fg)" />
+          )}
         </div>
 
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '14px' }}>

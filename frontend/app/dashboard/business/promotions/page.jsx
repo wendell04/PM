@@ -690,7 +690,7 @@ function FlashSalesTab({ token }) {
     return null;
   }
 
-  async function handleSubmit() {
+  async function handleSubmit(confirmBelowCost = false) {
     const ce = validateFlash(); if (ce) { setFormError(ce); return; }
     setSaving(true); setFormError(null);
     const url = editTarget ? `${API_URL}/api/admin/flash-sales/${editTarget.id}` : `${API_URL}/api/admin/flash-sales`;
@@ -698,9 +698,17 @@ function FlashSalesTab({ token }) {
       const res = await fetchWithTimeout(url, {
         method: editTarget ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ ...form, discountValue: parseFloat(form.discountValue), stockLimit: form.stockLimit !== '' ? parseInt(form.stockLimit) : null }),
+        body: JSON.stringify({ ...form, discountValue: parseFloat(form.discountValue), stockLimit: form.stockLimit !== '' ? parseInt(form.stockLimit) : null, ...(confirmBelowCost ? { confirmBelowCost: true } : {}) }),
       }, 30000);
       const data = await res.json();
+      // Below what the product costs to make: the server says by how much and waits for a yes.
+      // A loss leader is a real tactic - it just must never happen by accident.
+      if (res.status === 422 && data.code === 'below_cost') {
+        setSaving(false);
+        if (window.confirm(data.message)) return handleSubmit(true);
+        setFormError(data.message);
+        return;
+      }
       if (!res.ok) { setFormError(data.message || 'Something went wrong.'); return; }
       closeModal(); fetchSales();
     } catch { setFormError('Network error. Please try again.'); }
@@ -879,7 +887,7 @@ function FlashSalesTab({ token }) {
         <FlashSaleModal
           form={form} setForm={setForm} formError={formError} saving={saving}
           editTarget={editTarget} products={products}
-          onSubmit={handleSubmit} onClose={closeModal}
+          onSubmit={() => handleSubmit(false)} onClose={closeModal}
         />
       )}
 
