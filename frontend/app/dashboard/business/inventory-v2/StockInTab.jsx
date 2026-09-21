@@ -97,6 +97,9 @@ export default function StockInTab({ materials, vendors, batches, setBatches, ba
   // Step 2
   const [invoiceNo,      setInvoiceNo]      = useState('');
   const [date,           setDate]           = useState(new Date().toISOString().split('T')[0]);
+  // When the order was placed with the vendor. Optional - a walk-in purchase has
+  // no order behind it - but it is the only way a real lead time ever gets measured.
+  const [orderedAt,      setOrderedAt]      = useState('');
   const [vendorId,       setVendorId]       = useState('');
   const [sharedNotes,    setSharedNotes]    = useState('');
   const [showAllVendors, setShowAllVendors] = useState(false);
@@ -108,7 +111,7 @@ export default function StockInTab({ materials, vendors, batches, setBatches, ba
 
   const openModal = () => {
     setStep(1); setSelectedIds([]); setSearch1(''); setExpanded({});
-    setInvoiceNo(''); setDate(new Date().toISOString().split('T')[0]);
+    setInvoiceNo(''); setDate(new Date().toISOString().split('T')[0]); setOrderedAt('');
     setVendorId(''); setSharedNotes(''); setShowAllVendors(false); setRows([]); setErr2({});
     setOpen(true);
   };
@@ -204,6 +207,7 @@ export default function StockInTab({ materials, vendors, batches, setBatches, ba
           unitCost:       Number(r.unitCost),
           invoiceNumber:  invoiceNo.trim(),
           deliveryDate:   date,
+          orderedAt:      orderedAt || null,
           remarks:        sharedNotes.trim() || null,
         })
       ));
@@ -441,6 +445,10 @@ export default function StockInTab({ materials, vendors, batches, setBatches, ba
                 <Field label="Received Date" required error={errors2.date}>
                   <input type="date" value={date} onChange={e => { setDate(e.target.value); setErr2(p=>({...p,date:''})); }}
                     max={new Date().toISOString().split('T')[0]} style={errors2.date ? S.inputErr : S.input} />
+                </Field>
+                <Field label="Ordered On" hint="optional - lets the shop measure this vendor's lead time">
+                  <input type="date" value={orderedAt} onChange={e => setOrderedAt(e.target.value)}
+                    max={date || new Date().toISOString().split('T')[0]} style={S.input} />
                 </Field>
                 <Field label="Vendor" required error={errors2.vendorId} style={{ gridColumn:'1 / -1' }}>
                   <div style={{ display:'flex', gap:'8px', alignItems:'flex-start' }}>

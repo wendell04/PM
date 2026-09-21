@@ -1022,7 +1022,7 @@ function bucketDemand(rows, periodType) {
   return series;
 }
 
-function computeInventoryPolicy({ rawRows, currentStock, leadTimeDays, periodType, forecastValues }) {
+function computeInventoryPolicy({ rawRows, currentStock, leadTimeDays, supplierLead, periodType, forecastValues }) {
   const series = bucketDemand(rawRows, periodType);
   const n = series.length;
   const nz = series.filter((v) => v > 0);
@@ -1055,26 +1055,41 @@ function computeInventoryPolicy({ rawRows, currentStock, leadTimeDays, periodTyp
   else cls = "lumpy";
 
   const daysPerPeriod = PERIOD_DAYS[periodType] ?? 7;
-  const hasLead = leadTimeDays != null && leadTimeDays > 0;
-  const leadDays = hasLead ? leadTimeDays : DEFAULT_LEAD_DAYS;
+
+  // Lead time, in order of how much it is worth: measured from this supplier's
+  // own receipts once there are enough of them; the number typed on the
+  // material; and finally an assumed week, flagged wherever it is used.
+  // Measured comes with a spread; the other two do not.
+  let leadDays, leadSource, sigmaLeadDays = 0;
+  if (supplierLead?.sufficient) {
+    leadDays = supplierLead.meanDays; sigmaLeadDays = supplierLead.sigmaDays ?? 0; leadSource = "measured";
+  } else if (leadTimeDays != null && leadTimeDays > 0) {
+    leadDays = leadTimeDays; leadSource = "typed";
+  } else {
+    leadDays = DEFAULT_LEAD_DAYS; leadSource = "assumed";
+  }
+  const hasLead = leadSource !== "assumed";
   const L = leadDays / daysPerPeriod;            // lead time in periods
+  const sigmaL = sigmaLeadDays / daysPerPeriod;  // its spread, in periods
   const R = REVIEW_DAYS / daysPerPeriod;         // buying cycle in periods
   const d = mean;                                 // demand rate (units/period)
-  const SS = Math.max(0, SERVICE_Z * sigma * Math.sqrt(L));
+  // Safety stock with both spreads: z * sqrt(L*sigma_d^2 + d^2*sigma_L^2).
+  // With no measured lead time sigmaL is 0 and this is the plain z*sigma*sqrt(L).
+  const SS = Math.max(0, SERVICE_Z * Math.sqrt(L * sigma ** 2 + d ** 2 * sigmaL ** 2));
   const ROP = d * L + SS;
   // Order-up-to must cover the wait for delivery AND the gap until the next
   // buying trip, and its safety margin scales with that whole window. The old
   // form used d*(L+L) with the lead-time safety stock, which silently assumed
   // the shop reorders exactly as often as the supplier takes to deliver, and
   // under-protected the review gap.
-  const orderUpTo = d * (L + R) + Math.max(0, SERVICE_Z * sigma * Math.sqrt(L + R));
+  const orderUpTo = d * (L + R) + Math.max(0, SERVICE_Z * Math.sqrt((L + R) * sigma ** 2 + d ** 2 * sigmaL ** 2));
   const orderQty = Math.max(0, orderUpTo - (currentStock ?? 0));
   const cov = currentStock ?? 0;
   const coverage = d > 0 ? cov / d : null;        // periods of cover (null ≈ unlimited)
   const periodsToROP = d > 0 && cov > ROP ? (cov - ROP) / d : 0;
 
   return {
-    d, sigma, adi, cv2, cls, L, R, leadDays, reviewDays: REVIEW_DAYS, daysPerPeriod,
+    d, sigma, adi, cv2, cls, L, R, leadDays, leadSource, sigmaLeadDays, reviewDays: REVIEW_DAYS, daysPerPeriod,
     usingDefaultLead: !hasLead,
     SS: Math.round(SS), ROP: Math.round(ROP), orderUpTo: Math.round(orderUpTo),
     orderQty: Math.round(orderQty),
@@ -1909,6 +1924,11 @@ export default function SSAForecastPage() {
           rawRows,
           currentStock: availableQty,
           leadTimeDays: inventoryList.find((i) => (i._id ?? i.id) === selectedInventoryId)?.leadTimeDays,
+          // This material's supplier, and what its receipts say the lead time is
+          supplierLead: (() => {
+            const sid = inventoryList.find((i) => (i._id ?? i.id) === selectedInventoryId)?.supplierId;
+            return sid ? taxonomy?.supplierLeadTimes?.[String(sid)] ?? null : null;
+          })(),
           periodType: submittedConfig?.period?.type ?? forecastPeriod.type,
           // Same numbers the depletion line uses, so the two cannot disagree.
           forecastValues: result?.forecast?.values,
@@ -2642,7 +2662,11 @@ export default function SSAForecastPage() {
                         {reorderByLabel}
                       </div>
                       <div style={{ fontSize: "0.72rem", color: "var(--gray)", marginTop: "0.2rem" }}>
-                        lead time {policy.leadDays}d{policy.usingDefaultLead ? " (default)" : ""}
+                        {policy.leadSource === "measured"
+                          ? `lead time ${policy.leadDays}d ± ${policy.sigmaLeadDays}d, measured from this vendor's deliveries`
+                          : policy.leadSource === "typed"
+                            ? `lead time ${policy.leadDays}d, as typed on the material`
+                            : `lead time ${policy.leadDays}d assumed - record "Ordered On" at stock-in to measure it`}
                       </div>
                     </>
                   )}

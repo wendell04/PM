@@ -788,12 +788,35 @@ class InventoryController extends Controller
                 'batchId'          => 'nullable|string|max:128',
                 'invoiceNumber'    => 'nullable|string|max:100',
                 'deliveryDate'     => 'nullable|string|max:255',
+                // When the order was placed with the supplier. Together with
+                // deliveryDate this is one observed lead time - the only way
+                // the shop will ever have a measured lead time rather than the
+                // typed guess on the material. Optional, because a restock can
+                // be a walk-in purchase with no order behind it.
+                'orderedAt'        => 'nullable|date',
                 'sellingPrice'     => 'nullable|numeric|min:0',
                 'saleDate'         => 'nullable|string|max:255',
                 'customerName'     => 'nullable|string|max:100',
                 'remarks'          => 'nullable|string|max:500',
                 'performedBy'      => 'nullable|string|max:100',
             ]);
+
+            // One observed lead time, in days, when both ends of it are known.
+            // Received defaults to today, matching how dateReceived is stored.
+            $leadTimeObserved = null;
+            if (!empty($validated['orderedAt'])) {
+                try {
+                    $ordered  = \Carbon\Carbon::parse($validated['orderedAt'])->startOfDay();
+                    $received = !empty($validated['deliveryDate'])
+                        ? \Carbon\Carbon::parse($validated['deliveryDate'])->startOfDay()
+                        : now()->startOfDay();
+                    $days = $ordered->diffInDays($received, false);
+                    // A receipt dated before its order is a typo, not a negative lead time.
+                    $leadTimeObserved = $days >= 0 ? (int) $days : null;
+                } catch (\Throwable $e) {
+                    $leadTimeObserved = null;
+                }
+            }
 
             // Determine actual direction from adjustmentType if provided
             // Frontend sends positive quantity + adjustmentType signal
@@ -876,6 +899,8 @@ class InventoryController extends Controller
                     'qtyDamaged'    => 0,
                     'unitCost'      => $unitCost,
                     'dateReceived'  => $validated['deliveryDate'] ?? now()->toISOString(),
+                    'orderedAt'     => $validated['orderedAt'] ?? null,
+                    'leadTimeDays'  => $leadTimeObserved,
                     'damageType'    => null,
                     'createdAt'     => now()->toISOString(),
                 ];
@@ -951,6 +976,8 @@ class InventoryController extends Controller
                     'batchId'       => $validated['batchId'] ?? null,
                     'invoiceNumber' => $validated['invoiceNumber'] ?? null,
                     'deliveryDate'  => $validated['deliveryDate'] ?? null,
+                    'orderedAt'     => $validated['orderedAt'] ?? null,
+                    'leadTimeDays'  => $leadTimeObserved,
                     'sellingPrice'  => $validated['sellingPrice'] ?? null,
                     'saleDate'      => $validated['saleDate'] ?? null,
                     'customerName'  => $validated['customerName'] ?? null,
