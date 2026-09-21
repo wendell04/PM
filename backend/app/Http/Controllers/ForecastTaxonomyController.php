@@ -88,6 +88,20 @@ class ForecastTaxonomyController extends Controller
                 return $this->unauthorizedResponse();
             }
 
+            return $this->successResponse('Forecast taxonomy built.', $this->build());
+        } catch (\Exception $e) {
+            return $this->serverErrorResponse($e, 'Could not build the forecast taxonomy.');
+        }
+    }
+
+    /**
+     * The taxonomy itself, with no request attached, so the nightly
+     * inventory:forecast command can use the same resolution the page does
+     * rather than carrying a second copy of the name map and the BOM walk.
+     */
+    public function build(): array
+    {
+        {
             $cfg         = config('forecast');
             $legacyMap   = $cfg['legacy_map'] ?? [];
             $legacyVar   = $cfg['legacy_variant'] ?? [];
@@ -279,7 +293,7 @@ class ForecastTaxonomyController extends Controller
                 ];
             }
 
-            return $this->successResponse('Forecast taxonomy built.', [
+            return [
                 'motherItems'       => $motherItems,
                 'materialIndex'     => $materialIndex,
                 'unlinked'          => $unlinked,
@@ -291,9 +305,7 @@ class ForecastTaxonomyController extends Controller
                     'minOrders'           => $minOrders,
                     'leadTimeMinReceipts' => self::LEAD_TIME_MIN_RECEIPTS,
                 ],
-            ]);
-        } catch (\Exception $e) {
-            return $this->serverErrorResponse($e, 'Could not build the forecast taxonomy.');
+            ];
         }
     }
 

@@ -17,9 +17,11 @@ class Inventory extends Model
         'parentId', 'hasVariants', 'variantTypes', 'variantCombo',
         'procurementType', 'allowBackorder',
         'createdAt', 'updatedAt',
+        'forecast',   // the stored restock plan, written nightly by inventory:forecast
     ];
   
     protected $casts = [
+        'forecast' => 'array',
         'sku'      => 'string',  'uom' => 'string',
         'stockQty' => 'integer', 'minStockLevel' => 'integer', 'leadTimeDays' => 'integer',
         'isOnDemand' => 'boolean', 'isActive' => 'boolean',

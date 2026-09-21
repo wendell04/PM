@@ -2,6 +2,12 @@
 
 return [
 
+    // The SSA forecast service. The dashboard reaches it directly from the
+    // browser; inventory:forecast reaches it from here.
+    'ssa' => [
+        'url' => env('SSA_API_URL', 'http://127.0.0.1:8001'),
+    ],
+
     /*
     |--------------------------------------------------------------------------
     | Third Party Services

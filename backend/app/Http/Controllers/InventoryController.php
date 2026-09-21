@@ -209,8 +209,27 @@ class InventoryController extends Controller
                 $reasons   = [];
                 if ($need > $onHand)                       $reasons[] = 'orders';
                 if ($minimum > 0 && ($onHand - $need) < $minimum) $reasons[] = 'minimum';
+
+                // The third reason: demand that has not arrived yet. The nightly
+                // inventory:forecast job stores a plan on the material - a reorder
+                // point from the forecast's rate and spread, and a restock quantity
+                // that brings the shelf up to enough for the lead time plus one
+                // buying cycle. A row appears on it even with no order in hand.
+                // The plan is advisory beside the owner's minimum, never in place of
+                // it; a stale plan (older than two days) is ignored rather than
+                // trusted, since a forecast the job stopped refreshing is a guess
+                // wearing a date.
+                $plan = is_array($inv->forecast ?? null) ? $inv->forecast : null;
+                $planFresh = $plan && !empty($plan['computedAt'])
+                    && \Carbon\Carbon::parse($plan['computedAt'])->gt(now()->subDays(2));
+                $forecastRestock = ($planFresh && !empty($plan['reorderNow'])) ? (float) ($plan['restockQty'] ?? 0) : 0.0;
+                if ($forecastRestock > 0)                  $reasons[] = 'forecast';
+
                 if (!$reasons) continue;                   // enough on hand - nothing to buy
-                $shortfall = $need + $minimum - $onHand;
+                // Buy enough for whichever target is higher: the orders-plus-minimum
+                // formula, or the forecast's order-up-to. Not their sum - both are
+                // "bring the shelf up to X", and X is the larger of the two.
+                $shortfall = max($need + $minimum - $onHand, $forecastRestock);
                 if ($shortfall <= 0) continue;
 
                 $unitCost = (float) ($inv->lastUnitCost ?: $inv->averageCost ?: $inv->baseCost ?: 0);
@@ -242,6 +261,18 @@ class InventoryController extends Controller
                     'for'           => array_slice(array_map(fn ($n, $q) => ['product' => $n, 'pieces' => $q], array_keys($uses[$invId] ?? []), array_values($uses[$invId] ?? [])), 0, 6),
                     // Products this material holds back right now, orders or no orders.
                     'blocks'        => array_slice($blocking[$invId] ?? [], 0, 6),
+                    // The stored plan, so the row can say why the forecast wants a
+                    // restock and how much to trust it - same numbers the SSA page shows.
+                    'forecast'      => $planFresh ? [
+                        'restockQty'      => (int) ($plan['restockQty'] ?? 0),
+                        'reorderPoint'    => $plan['reorderPoint'] ?? null,
+                        'stockoutDate'    => $plan['stockoutDate'] ?? null,
+                        'ratePerWeek'     => $plan['ratePerWeek'] ?? null,
+                        'basis'           => $plan['basis'] ?? null,
+                        'lowConfidence'   => (bool) ($plan['lowConfidence'] ?? true),
+                        'leadTimeAssumed' => (bool) ($plan['leadTimeAssumed'] ?? true),
+                        'computedAt'      => $plan['computedAt'] ?? null,
+                    ] : null,
                 ];
             }
 

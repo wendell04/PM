@@ -323,7 +323,7 @@ export default function ToBuyPage() {
 
       {tab === 'materials' && rows.length > 0 && (
         <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '10px', alignItems: 'center' }}>
-          {[['all', `All (${rows.length})`], ['orders', `Short for orders (${countFor('orders')})`], ['minimum', `Below minimum (${countFor('minimum')})`]].map(([id, label]) => (
+          {[['all', `All (${rows.length})`], ['orders', `Short for orders (${countFor('orders')})`], ['minimum', `Below minimum (${countFor('minimum')})`], ['forecast', `Forecast says reorder (${countFor('forecast')})`]].map(([id, label]) => (
             <button key={id} type="button" onClick={() => setReason(id)}
               style={{ minHeight: 34, padding: '0 12px', borderRadius: 999, fontSize: 12.5, fontWeight: reason === id ? 700 : 500, cursor: 'pointer',
                 background: reason === id ? 'var(--gold)' : 'var(--dark2)', color: reason === id ? '#1a1a1a' : 'var(--white)', border: reason === id ? '1px solid var(--gold)' : '1px solid var(--border)' }}>
@@ -477,8 +477,9 @@ export default function ToBuyPage() {
                   {r.name}
                   {(r.reasons ?? ['orders']).map(w => (
                     <span key={w} style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: '.3px', textTransform: 'uppercase', padding: '2px 6px', borderRadius: 4,
-                      background: w === 'orders' ? 'rgba(224,168,82,0.16)' : 'rgba(59,130,246,0.14)', color: w === 'orders' ? '#b45309' : '#1d4ed8' }}>
-                      {w === 'orders' ? 'short for orders' : 'below minimum'}
+                      background: w === 'orders' ? 'rgba(224,168,82,0.16)' : w === 'forecast' ? 'rgba(139,92,246,0.14)' : 'rgba(59,130,246,0.14)',
+                      color: w === 'orders' ? '#b45309' : w === 'forecast' ? '#6d28d9' : '#1d4ed8' }}>
+                      {w === 'orders' ? 'short for orders' : w === 'forecast' ? 'forecast says reorder' : 'below minimum'}
                     </span>
                   ))}
                   <CoverBadge row={r} />
@@ -489,12 +490,23 @@ export default function ToBuyPage() {
                   if (r.for?.length) who.push(r.for.map(f => `${f.pieces} × ${f.product}`).join(', '));
                   const extra = (r.blocks ?? []).filter(b => !(r.for ?? []).some(f => String(f.product).startsWith(b.product)));
                   if (extra.length) who.push(extra.map(b => b.product).join(', '));
-                  if (!who.length) return null;
                   const first = r.blocks?.[0];
+                  // A forecast row with no order behind it has nothing in `who`;
+                  // it still has to say why it is here, and how far to trust that.
+                  const fc = (r.reasons ?? []).includes('forecast') ? r.forecast : null;
+                  if (!who.length && !fc) return null;
                   return (
                     <div style={{ fontSize: '11px', color: 'var(--gray-light)', marginTop: '2px' }}>
-                      For {who.join(', ')}
+                      {who.length > 0 && <>For {who.join(', ')}</>}
                       {first && <span style={{ color: '#b45309' }}>{` — only ${first.canShip} of ${first.canBuild} can ship`}</span>}
+                      {fc && (
+                        <div style={{ color: '#6d28d9', marginTop: who.length ? 2 : 0 }}>
+                          {fc.ratePerWeek != null ? `Using about ${fc.ratePerWeek} ${r.uom ?? ''} a week` : 'Forecast'}
+                          {fc.stockoutDate ? ` — runs out around ${fc.stockoutDate}` : ''}
+                          {fc.lowConfidence ? ' (thin history, treat as a guide)' : ''}
+                          {fc.leadTimeAssumed ? ' · lead time assumed' : ''}
+                        </div>
+                      )}
                     </div>
                   );
                 })()}
