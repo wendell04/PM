@@ -54,6 +54,11 @@ export default function BusinessDashboardLayout({ children }) {
   const [turnedAway, setTurnedAway] = useState('');
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
+  // Opened from the shop's "My account": the owner's profile is here, not on the storefront.
+  useEffect(() => {
+    if (searchParams.get('profile') === '1') setProfileModalOpen(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
   useLockBodyScroll(logoutConfirmOpen);
   const [isSaving, setIsSaving] = useState(false);
@@ -906,11 +911,20 @@ export default function BusinessDashboardLayout({ children }) {
             </p>
             {selectedNotif.data?.orderId && (
               <a
-                href={`/dashboard/business/orders`}
+                href={`/dashboard/business/orders?order=${selectedNotif.data.orderId}`}
                 style={{ fontSize: '0.8rem', color: 'var(--gold)', textDecoration: 'none', fontWeight: 600 }}
                 onClick={() => setSelectedNotif(null)}
               >
-                View Order â†’
+                Open the order
+              </a>
+            )}
+            {selectedNotif.data?.conversationId && (
+              <a
+                href={`/dashboard/business/chat`}
+                style={{ fontSize: '0.8rem', color: 'var(--gold)', textDecoration: 'none', fontWeight: 600 }}
+                onClick={() => setSelectedNotif(null)}
+              >
+                Open Messages
               </a>
             )}
             <div style={{ fontSize: '0.75rem', color: 'var(--gray)', opacity: 0.6, marginTop: '0.25rem' }}>

@@ -1544,12 +1544,14 @@ export default function ShopLayout({ children }) {
                               Dashboard
                             </Link>
                           )}
-                          <Link href="/shop/profile" className="shop-navbar-menu-item" onClick={() => setMenuOpen(false)}>
+                          {/* The owner and super admin accounts are business accounts, not customers -
+                              their profile lives in the dashboard. Staff who shop keep the customer one. */}
+                          <Link href={['admin', 'owner', 'superAdmin'].includes(user?.role) ? '/dashboard/business/home?profile=1' : '/shop/profile'} className="shop-navbar-menu-item" onClick={() => setMenuOpen(false)}>
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                               <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
                               <circle cx="12" cy="7" r="4"/>
                             </svg>
-                            My Profile
+                            {['admin', 'owner', 'superAdmin'].includes(user?.role) ? 'My account' : 'My Profile'}
                           </Link>
                           <Link href="/shop/orders-history" className="shop-navbar-menu-item" onClick={() => setMenuOpen(false)}>
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -1663,7 +1665,7 @@ export default function ShopLayout({ children }) {
               </summary>
               {user?.role && user.role !== 'customer' && <Link href="/dashboard/business/dashboardoverview">Dashboard</Link>}
               <Link href="/shop/orders-history">My Orders</Link>
-              <Link href="/shop/profile">My Profile</Link>
+              <Link href={['admin', 'owner', 'superAdmin'].includes(user?.role) ? '/dashboard/business/home?profile=1' : '/shop/profile'}>{['admin', 'owner', 'superAdmin'].includes(user?.role) ? 'My account' : 'My Profile'}</Link>
               <Link href="/shop/cart">Cart</Link>
             </details>
           </div>
@@ -2054,7 +2056,7 @@ export default function ShopLayout({ children }) {
         </Link>
 
         <Link
-          href={user ? '/shop/profile' : '/shop'}
+          href={user ? (['admin', 'owner', 'superAdmin'].includes(user?.role) ? '/dashboard/business/home?profile=1' : '/shop/profile') : '/shop'}
           className={`sbn-item${pathname.startsWith('/shop/profile') ? ' active' : ''}`}
           onClick={e => {
             if (user) return;

@@ -936,6 +936,22 @@ class ChatController extends Controller
                 Log::warning('Order form reply broadcast failed (message still saved): ' . $e->getMessage());
             }
 
+            // Tell the shop. The card lands in the thread either way, but a thread nobody opens is
+            // an order nobody quotes - the bell is how it is noticed.
+            foreach ($participants as $pid) {
+                if ($pid === $userId) continue;
+                try {
+                    Notification::create([
+                        'user_id' => $pid,
+                        'type'    => 'order_form_filled',
+                        'title'   => 'Order form filled in',
+                        'message' => $answers['name'] . ' filled in the order form: ' . str_replace("\n", ', ', $summary) . '. Open the thread and send the quotation.',
+                        'data'    => ['conversationId' => (string) $conversation->_id, 'orderRequestId' => (string) $ask->_id],
+                        'is_read' => false,
+                    ]);
+                } catch (\Throwable) {}
+            }
+
             return $this->successResponse('Thanks - we have your details and will send your quotation here.', [
                 'form'  => $form,
                 'reply' => $reply,

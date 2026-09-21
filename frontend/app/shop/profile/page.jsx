@@ -777,8 +777,10 @@ export default function CustomerProfilePage() {
     if (!user) return;
 
     // Role guard
-    if (user.role === "admin" || user.role === "owner") {
-      router.push("/dashboard/business");
+    // The owner and super admin accounts are business accounts: their profile (name, phone,
+    // password, 2FA) is in the dashboard, and the shop's own address is Settings > Shipping.
+    if (user.role === "admin" || user.role === "owner" || user.role === "superAdmin") {
+      router.replace("/dashboard/business/home?profile=1");
       return;
     }
 
