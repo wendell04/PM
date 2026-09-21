@@ -114,7 +114,12 @@ class DeliveryClock
         foreach (($order->paymentHistory ?? []) as $p) $paid += (float) ($p['amount'] ?? 0);
         $paid = max($paid, (float) ($order->downPayment ?? 0));
 
-        return $paid > 0;
+        // The design fee buys the drawing, not the goods. A request-design order pays it at
+        // checkout and the goods after the proof is approved; counting the fee as the money gate
+        // started the countdown before a peso had been paid towards what is being made.
+        if (!empty($order->designFeePaid)) $paid -= (float) ($order->designFee ?? 0);
+
+        return $paid > 0.009;
     }
 
     /**

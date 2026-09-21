@@ -3487,6 +3487,7 @@ class OrderController extends Controller
     private function syncDesignAggregate(Order $order): void
     {
         $statuses = [];
+        $waitingRequests = 0;
         foreach (($order->items ?? []) as $it) {
             // designFiles counts too. Today the configurator always mirrors the first upload into
             // designUrl, so this holds - but if that ever stops, an uploaded line would drop out of
@@ -3494,9 +3495,16 @@ class OrderController extends Controller
             $isCustom = ($it['isCustom'] ?? false) || !empty($it['designRequested'])
                 || !empty($it['designUrl']) || !empty($it['designFiles']);
             $st = $it['designStatus'] ?? null;
-            if ($isCustom && $st !== null && $st !== '') $statuses[] = $st;
+            if ($isCustom && $st !== null && $st !== '') { $statuses[] = $st; continue; }
+            // A requested design has no status until its first proof exists. Skipping it let an
+            // approved upload line alone mark a mixed order approved, with the requested artwork
+            // never drawn. It counts as waiting - but only once another line is tracked, so a
+            // pure-request order (no per-line statuses at all) behaves exactly as before.
+            $requested = !empty($it['designRequested']) || (($it['designMode'] ?? null) === 'request');
+            if ($isCustom && $requested && empty($it['designUrl']) && empty($it['designFiles'])) $waitingRequests++;
         }
         if (empty($statuses)) return; // no per-item design state - leave the order-level value alone
+        for ($i = 0; $i < $waitingRequests; $i++) $statuses[] = 'pending_design';
 
         $allApproved = count(array_filter($statuses, fn($s) => $s === 'approved')) === count($statuses);
         if ($allApproved) {
@@ -3828,7 +3836,26 @@ class OrderController extends Controller
                 return $this->errorResponse('Invalid item.', 422);
             }
             if ($itemIndex === null || !is_numeric($itemIndex)) {
-                $order->designStatus = 'approved';
+                // On a mixed order (a file uploaded AND a design requested) the order-level Approve
+                // is the uploaded file's. Approve those lines and let the aggregate decide - the
+                // requested line still waits for its own proof.
+                $its = $order->items ?? [];
+                $hasUpload = false; $hasRequestOnly = false;
+                foreach ($its as $it) {
+                    $up  = !empty($it['designUrl']) || !empty($it['designFiles']);
+                    $req = !empty($it['designRequested']) || (($it['designMode'] ?? null) === 'request');
+                    if ($up) $hasUpload = true;
+                    elseif ($req && ($it['designStatus'] ?? null) !== 'approved') $hasRequestOnly = true;
+                }
+                if ($hasUpload && $hasRequestOnly) {
+                    foreach ($its as $k => $it) {
+                        if (!empty($it['designUrl']) || !empty($it['designFiles'])) $its[$k]['designStatus'] = 'approved';
+                    }
+                    $order->items = array_values($its);
+                    $this->syncDesignAggregate($order);
+                } else {
+                    $order->designStatus = 'approved';
+                }
             }
             // An order submitted for review has not been paid yet - approving the artwork is what
             // unlocks payment. Only unlock once the order aggregate is fully approved.
@@ -5036,11 +5063,11 @@ class OrderController extends Controller
             // refused to let a job order be created, and the Create Job Order shortcut, which
             // keys on the same field, never appeared. Approving in one place has to mean the
             // same thing as approving in the other.
+            // The UPLOADED lines only. A requested design in the same order has not been drawn;
+            // approving the customer's file does not approve artwork that does not exist yet.
             $items = $order->items ?? [];
             foreach ($items as $i => $it) {
-                $isCustom = ($it['isCustom'] ?? false) || !empty($it['designRequested'])
-                    || !empty($it['designUrl']) || !empty($it['designFiles']);
-                if ($isCustom) {
+                if (!empty($it['designUrl']) || !empty($it['designFiles'])) {
                     $items[$i]['designStatus'] = 'approved';
                 }
             }

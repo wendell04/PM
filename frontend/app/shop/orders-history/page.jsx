@@ -8,7 +8,7 @@ import { billingName } from '@/lib/billingName';
 import { fetchMyShopOrders, fetchMyShopOrder } from '@/lib/orderTrackingApi';
 import { orderNo } from '@/lib/orderNumber';
 import { StatusBadge, humanizeStatus, formatDate, formatPeso } from '@/lib/shopUtils';
-import { remainingDue } from '@/lib/orderBalance';
+import { remainingDue, goodsPaid } from '@/lib/orderBalance';
 import { getEcho } from '@/lib/echo';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import useLockBodyScroll from '@/lib/useLockBodyScroll';
@@ -1497,7 +1497,7 @@ export default function OrdersHistoryPage() {
                                   const clock = selectedOrder.deliveryClock;
                                   const st = String(selectedOrder.designStatus ?? '');
                                   const waitingDesign = st !== '' && st !== 'approved';
-                                  const owes = Number(selectedOrder.balance ?? 0) > 0 && String(selectedOrder.paymentStatus ?? '') === 'unpaid';
+                                  const owes = remainingDue(selectedOrder) > 0 && goodsPaid(selectedOrder) <= 0;   // the design fee is not a deposit
                                   const parked = !!clock?.needsProduction && !clock?.restartedBecause && (waitingDesign || owes);
                                   if (parked) {
                                     const a = (Number(clock.leadDays) || 0) + (Number(clock.shipMin) || 0);
@@ -1546,8 +1546,7 @@ export default function OrdersHistoryPage() {
                         {(() => {
                           const st = String(selectedOrder.designStatus ?? '');
                           const waitingOnDesign = st !== '' && st !== 'approved';
-                          const owes = Number(selectedOrder.balance ?? 0) > 0
-                            && String(selectedOrder.paymentStatus ?? '') === 'unpaid';
+                          const owes = remainingDue(selectedOrder) > 0 && goodsPaid(selectedOrder) <= 0;
                           if (!waitingOnDesign && !owes) return null;
                           if (['delivered','Delivered','cancelled','Cancelled','returned','Returned'].includes(selectedOrder.orderStatus)) return null;
                           const bits = [];

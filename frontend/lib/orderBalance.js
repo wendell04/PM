@@ -23,6 +23,13 @@ export function orderTotal(order) {
 }
 
 /** Still owed. Never negative - an overpaid order owes nothing, it is owed TO. */
+/** Paid towards the goods - the design fee buys the drawing, not the item. Mirrors the server's
+ *  DeliveryClock money gate, so the screens and the countdown agree on "has the deposit landed". */
+export function goodsPaid(order) {
+  const fee = order?.designFeePaid ? (Number(order?.designFee) || 0) : 0;
+  return Math.max(0, Math.round((paidSoFar(order) - fee) * 100) / 100);
+}
+
 export function remainingDue(order) {
   return Math.max(0, Math.round((orderTotal(order) - paidSoFar(order)) * 100) / 100);
 }

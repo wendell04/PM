@@ -7,7 +7,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { fetchAllOrdersNew, deleteOrder as deleteOrderApi, unarchiveOrder } from '@/lib/ordersApi';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import { isNetworkError, settleAfterTimeout } from '@/lib/afterTimeout';
-import { remainingDue, depositDue, paidSoFar, orderTotal } from '@/lib/orderBalance';
+import { remainingDue, depositDue, paidSoFar, orderTotal, goodsPaid } from '@/lib/orderBalance';
 import { S, ICONS, SearchBar, SummaryCard, PaginationBar, EmptyState, usePagination, CustomSelect, ConfirmModal } from '../inventory-v2/shared';
 import { DEFAULT_CUSTOM_ORDER_TERMS } from '@/lib/customOrderTerms';
 import { orderNo } from '@/lib/orderNumber';
@@ -2751,7 +2751,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                   const clock = lo.deliveryClock;
                   const st = String(lo.designStatus ?? '');
                   const waitingDesign = st !== '' && st !== 'approved';
-                  const owes = remainingDue(lo) > 0 && paidSoFar(lo) <= 0;
+                  const owes = remainingDue(lo) > 0 && goodsPaid(lo) <= 0;
                   const parked = !!clock?.needsProduction && !clock?.restartedBecause && (waitingDesign || owes);
 
                   // Parked: the headline is a DURATION. A date here was read as the promise, and it
@@ -2833,7 +2833,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                   // date typed now would be overwritten or promise a day the clock never reached.
                   const clk = lo.deliveryClock;
                   const ds = String(lo.designStatus ?? '');
-                  const owesDeposit = remainingDue(lo) > 0 && paidSoFar(lo) <= 0;
+                  const owesDeposit = remainingDue(lo) > 0 && goodsPaid(lo) <= 0;
                   const parkedNow = !!clk?.needsProduction && !clk?.restartedBecause
                     && ((ds !== '' && ds !== 'approved') || owesDeposit);
                   if (parkedNow) {
