@@ -1354,6 +1354,16 @@ class OrderController extends Controller
 
             $prevDeliveryMax = $order->estimatedDeliveryMax ?? null;
 
+            // While the countdown has not started there is no date to move: the promise is a
+            // duration counted from approval, and the approval re-counts it anyway - a date set now
+            // would be overwritten or, worse, promise the customer a day the clock never reached.
+            if ((array_key_exists('estimatedDeliveryMin', $validated) || array_key_exists('estimatedDeliveryMax', $validated))
+                && !empty(($order->deliveryClock ?? [])['needsProduction'])
+                && empty(($order->deliveryClock ?? [])['restartedBecause'])
+                && !\App\Support\DeliveryClock::unblocked($order)) {
+                return $this->errorResponse('The delivery countdown has not started - approve the design (and receive the deposit) first. The date is set from that moment.', 422);
+            }
+
             // Balance gate - a non-COD order must be fully paid before it can be released for
             // delivery/marked delivered (COD collects on delivery, so it's exempt). Casing-tolerant.
             if (isset($validated['orderStatus'])) {

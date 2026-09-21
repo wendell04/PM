@@ -2828,15 +2828,35 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                 )}
                 {lo.rushStatus === 'accepted' && <div style={{ fontSize:'11px', fontWeight:700, color:'#166534' }}>Rush accepted - prioritise this order.</div>}
                 {lo.rushStatus === 'declined' && <div style={{ fontSize:'11px', color:'var(--gray)' }}>Rush declined - standard schedule, fee waived.</div>}
-                <div style={{ display:'flex', gap:'6px' }}>
-                  <input type="date" value={delivDate || fmtDeliveryInput(lo.estimatedDeliveryMax)} onChange={e => setDelivDate(e.target.value)}
-                    style={{ flex:1, padding:'6px 8px', borderRadius:'6px', border:'1px solid var(--border)', background:'var(--dark)', color:'var(--white)', fontSize:'12px' }} />
-                  <button onClick={handleSaveDelivery} disabled={savingDeliv || !(delivDate || fmtDeliveryInput(lo.estimatedDeliveryMax))}
-                    style={{ padding:'6px 12px', background:'var(--gold)', border:'none', borderRadius:'6px', color:'var(--dark)', fontSize:'12px', fontWeight:700, cursor:savingDeliv?'not-allowed':'pointer', opacity:savingDeliv?.6:1 }}>
-                    {savingDeliv ? 'Saving...' : 'Update'}
-                  </button>
-                </div>
-                <div style={{ fontSize:'10px', color:'var(--gray)' }}>Changing this notifies the customer.</div>
+                {(() => {
+                  // No date to move while the countdown is parked: approval re-counts it anyway, and a
+                  // date typed now would be overwritten or promise a day the clock never reached.
+                  const clk = lo.deliveryClock;
+                  const ds = String(lo.designStatus ?? '');
+                  const owesDeposit = remainingDue(lo) > 0 && paidSoFar(lo) <= 0;
+                  const parkedNow = !!clk?.needsProduction && !clk?.restartedBecause
+                    && ((ds !== '' && ds !== 'approved') || owesDeposit);
+                  if (parkedNow) {
+                    return (
+                      <div style={{ fontSize:'11px', color:'var(--gray)', lineHeight:1.5 }}>
+                        The date can be changed once the countdown starts - after the design is approved{owesDeposit ? ' and the deposit is in' : ''}.
+                      </div>
+                    );
+                  }
+                  return (
+                    <>
+                      <div style={{ display:'flex', gap:'6px' }}>
+                        <input type="date" value={delivDate || fmtDeliveryInput(lo.estimatedDeliveryMax)} onChange={e => setDelivDate(e.target.value)}
+                          style={{ flex:1, padding:'6px 8px', borderRadius:'6px', border:'1px solid var(--border)', background:'var(--dark)', color:'var(--white)', fontSize:'12px' }} />
+                        <button onClick={handleSaveDelivery} disabled={savingDeliv || !(delivDate || fmtDeliveryInput(lo.estimatedDeliveryMax))}
+                          style={{ padding:'6px 12px', background:'var(--gold)', border:'none', borderRadius:'6px', color:'var(--dark)', fontSize:'12px', fontWeight:700, cursor:savingDeliv?'not-allowed':'pointer', opacity:savingDeliv?.6:1 }}>
+                          {savingDeliv ? 'Saving...' : 'Update'}
+                        </button>
+                      </div>
+                      <div style={{ fontSize:'10px', color:'var(--gray)' }}>Changing this notifies the customer.</div>
+                    </>
+                  );
+                })()}
               </div>
             </>
           )}
