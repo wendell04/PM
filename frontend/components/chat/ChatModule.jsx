@@ -18,6 +18,8 @@ const ChatModule = ({ user, token, addToCart }) => {
   const [isSending, setIsSending] = useState(false);
   const [onlineUsers, setOnlineUsers] = useState(new Set());
   const [typingUsers, setTypingUsers] = useState({});
+  // Which conversation the pane is loading for; a late answer for any other is dropped.
+  const loadForRef = useRef(null);
   // Set by a filled order-form card; ChatInput opens the quotation modal with it.
   const [quotePrefill, setQuotePrefill] = useState(null);
   const typingTimeoutRefs = useRef({});
@@ -176,13 +178,20 @@ const ChatModule = ({ user, token, addToCart }) => {
   useEffect(() => {
     const loadMessages = async () => {
       if (!activeConversation || activeConversation._id === 'support_auto' || activeConversation._id.startsWith('new_')) {
+        loadForRef.current = null;
         setMessages([]);
         return;
       }
-      
+
+      // Only the answer for the conversation still selected may paint the pane. A slow load for
+      // the previous one used to land after the click and show its thread under the new name.
+      const wanted = activeConversation._id;
+      loadForRef.current = wanted;
       try {
         setIsLoadingMessages(true);
-        const data = await getMessages(token, activeConversation._id);
+        setMessages([]);
+        const data = await getMessages(token, wanted);
+        if (loadForRef.current !== wanted) return;
         setMessages(data.map(normalizeMsg));
         
         if (activeConversation.unread_count > 0) {

@@ -33,6 +33,7 @@ const ChatSidebar = ({ conversations, activeConversation, onSelectConversation, 
     return base.filter(c =>
       (c.other_user?.name || '').toLowerCase().includes(q) ||
       (c.other_user?.email || '').toLowerCase().includes(q) ||
+      (c.other_user?.email || '').toLowerCase().includes(q) ||
       (c.last_message || '').toLowerCase().includes(q)
     );
   }, [guests, customers, box, search]);
@@ -144,7 +145,9 @@ const ChatSidebar = ({ conversations, activeConversation, onSelectConversation, 
                   </div>
                   <div className="chat-item-row" style={{ marginTop: '2px' }}>
                     <div className={`chat-last-msg${hasUnread ? ' unread' : ''}`}>
-                      {conv.last_message || 'No messages yet'}
+                      {conv._id?.startsWith('new_') && conv.other_user?.email
+                        ? `No chat yet - ${conv.other_user.email}`
+                        : (conv.last_message || 'No messages yet')}
                     </div>
                     {hasUnread && (
                       <span className="chat-unread-badge">{conv.unread_count > 9 ? '9+' : conv.unread_count}</span>

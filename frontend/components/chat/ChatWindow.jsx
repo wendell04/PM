@@ -551,6 +551,12 @@ const ChatWindow = ({ activeConversation, messages, user, isLoading, isAdmin, on
                         </span>
                         <span className="chat-header-dot">·</span>
                         <span className="chat-header-role">{roleLabel}</span>
+                        {isAdmin && activeConversation.other_user?.email && (
+                          <>
+                            <span className="chat-header-dot">&middot;</span>
+                            <span className="chat-header-role" style={{ textTransform: 'none' }}>{activeConversation.other_user.email}</span>
+                          </>
+                        )}
                       </>
                     )}
                   </div>

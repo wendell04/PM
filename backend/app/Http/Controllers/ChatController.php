@@ -52,6 +52,8 @@ class ChatController extends Controller
                     'other_user'      => $other ? [
                         'id'          => (string)$other->_id,
                         'name'        => $other->firstName . ' ' . $other->lastName,
+                        // Two customers can share a name; staff tell them apart by email.
+                        'email'       => $isAdmin ? ($other->email ?? null) : null,
                         'avatar'      => $other->avatar,
                         'role'        => $other->role,
                         'last_seen_at' => $other->last_seen_at ? $other->last_seen_at->toIso8601String() : null,
@@ -101,6 +103,7 @@ class ChatController extends Controller
                         'other_user'      => [
                             'id'          => (string)$c->_id,
                             'name'        => $c->firstName . ' ' . $c->lastName,
+                            'email'       => $c->email ?? null,
                             'avatar'      => $c->avatar,
                             'role'        => 'customer',
                             'last_seen_at' => $c->last_seen_at ? $c->last_seen_at->toIso8601String() : null,
