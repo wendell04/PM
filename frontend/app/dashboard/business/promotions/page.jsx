@@ -166,6 +166,25 @@ function PromotionsInner() {
         />
       </div>
 
+      {/* What each tool does to the money, said once where the tools are. */}
+      <div style={{ ...S.card, padding: '12px 16px', marginBottom: 16, fontSize: 12.5, color: 'var(--gray-light)', lineHeight: 1.6 }}>
+        {tab === 'vouchers' ? (
+          <>
+            <b style={{ color: 'var(--white)' }}>Vouchers</b> are codes a customer types at checkout. A money voucher
+            (percent or fixed peso) comes off the <b>goods only</b> - never the design fee, the rush fee or delivery -
+            and each customer can use a code once. A benefit voucher (free item, free layout) takes nothing off: the
+            order shows <i>Give: ...</i> so you know what to hand over. Every discount is taken out of revenue in Sales,
+            and the Discounts Given card there adds them up.
+          </>
+        ) : (
+          <>
+            <b style={{ color: 'var(--white)' }}>Flash sales</b> cut one product&apos;s price for a set time, for everyone,
+            no code needed. Set a stock limit so it cannot run past what you can make. If the sale price is below what
+            the product costs to make, you are asked first - every one sold would lose money.
+          </>
+        )}
+      </div>
+
       {tab === 'vouchers'    && <VouchersTab    token={token} />}
       {tab === 'flash_sales' && <FlashSalesTab  token={token} />}
     </div>
@@ -529,7 +548,7 @@ function VoucherModal({ form, setForm, formError, saving, editTarget, onSave, on
           {/* Code */}
           <div>
             <label style={lbl}>Voucher Code <span style={{ color: 'var(--red)' }}>*</span></label>
-            <input value={form.code} onChange={e => setForm(f => ({ ...f, code: e.target.value.toUpperCase() }))} placeholder="e.g. SAVE20, BIRTHDAY10" style={{ ...inp, fontFamily: 'monospace', fontWeight: 700, letterSpacing: '1px' }}  maxLength={30}/>
+            <input value={form.code} onChange={e => setForm(f => ({ ...f, code: e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, '').slice(0, 30) }))} placeholder="e.g. SAVE20, BIRTHDAY10" style={{ ...inp, fontFamily: 'monospace', fontWeight: 700, letterSpacing: '1px' }}  maxLength={30}/>
             <p style={{ margin: '4px 0 0', fontSize: '0.72rem', color: 'var(--gray)' }}>Owner manually shares this code with customers to claim the benefit.</p>
           </div>
 
@@ -575,7 +594,7 @@ function VoucherModal({ form, setForm, formError, saving, editTarget, onSave, on
                 </div>
                 <div>
                   <label style={lbl}>{form.discountType === 'percentage' ? 'Discount %' : 'Amount (₱)'} <span style={{ color: 'var(--red)' }}>*</span></label>
-                  <input type="number" min="0.01" step="0.01" value={form.discountValue} onChange={e => setForm(f => ({ ...f, discountValue: e.target.value }))} placeholder={form.discountType === 'percentage' ? 'e.g. 20' : 'e.g. 100'} style={inp} />
+                  <input type="number" min="0.01" step="0.01" max={form.discountType === 'percentage' ? 90 : 100000} value={form.discountValue} onChange={e => { const raw = e.target.value; const cap = form.discountType === 'percentage' ? 90 : 100000; setForm(f => ({ ...f, discountValue: raw === '' ? '' : String(Math.min(cap, Number(raw))) })); }} onKeyDown={e => ['e','E','+','-'].includes(e.key) && e.preventDefault()} placeholder={form.discountType === 'percentage' ? 'e.g. 20 (max 90)' : 'e.g. 100'} style={inp} />
                 </div>
               </div>
               <div>
@@ -951,7 +970,7 @@ function FlashSaleModal({ form, setForm, formError, saving, editTarget, products
             </div>
             <div>
               <label style={lbl}>{form.discountType === 'percentage' ? 'Discount %' : 'Amount (₱)'} <span style={{ color: 'var(--red)' }}>*</span></label>
-              <input type="number" min="0.01" step="0.01" value={form.discountValue} onChange={e => setForm(f => ({ ...f, discountValue: e.target.value }))} onKeyDown={e => ['e','E','+','-'].includes(e.key) && e.preventDefault()} placeholder={form.discountType === 'percentage' ? 'e.g. 20' : 'e.g. 50'} style={inp} />
+              <input type="number" min="0.01" step="0.01" max={form.discountType === 'percentage' ? 90 : 100000} value={form.discountValue} onChange={e => { const raw = e.target.value; const cap = form.discountType === 'percentage' ? 90 : 100000; setForm(f => ({ ...f, discountValue: raw === '' ? '' : String(Math.min(cap, Number(raw))) })); }} onKeyDown={e => ['e','E','+','-'].includes(e.key) && e.preventDefault()} placeholder={form.discountType === 'percentage' ? 'e.g. 20 (max 90)' : 'e.g. 50'} style={inp} />
             </div>
           </div>
 

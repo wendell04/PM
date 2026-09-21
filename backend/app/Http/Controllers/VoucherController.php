@@ -73,12 +73,12 @@ class VoucherController extends Controller
         if (!$user) return response()->json(['message' => 'Unauthorized.'], 401);
 
         $v = Validator::make($request->all(), [
-            'code'               => 'required|string|max:50',
+            'code'               => ['required', 'string', 'min:3', 'max:30', 'regex:/^[A-Za-z0-9-]+$/'],
             'benefitCategory'    => 'required|in:monetary,product,service,production,loyalty,experiential',
             'benefitType'        => 'required|string|max:50',
             'benefitDescription' => 'nullable|string|max:500',
             'discountType'       => 'nullable|in:percentage,fixed,tiered',
-            'discountValue'      => 'nullable|numeric|min:0',
+            'discountValue'      => ['nullable', 'numeric', 'min:0', 'max:100000', function ($a, $v, $fail) use ($request) { if ($request->input('discountType') === 'percentage' && (float) $v > 90) $fail('A percentage voucher can take at most 90% off.'); }],
             'minOrderAmount'     => 'nullable|numeric|min:0',
             'maxUses'            => 'nullable|integer|min:1',
             'isActive'           => 'boolean',
@@ -141,12 +141,12 @@ class VoucherController extends Controller
         if (!$voucher) return response()->json(['message' => 'Voucher not found.'], 404);
 
         $v = Validator::make($request->all(), [
-            'code'               => 'sometimes|string|max:50',
+            'code'               => ['sometimes', 'string', 'min:3', 'max:30', 'regex:/^[A-Za-z0-9-]+$/'],
             'benefitCategory'    => 'sometimes|in:monetary,product,service,production,loyalty,experiential',
             'benefitType'        => 'sometimes|string|max:50',
             'benefitDescription' => 'nullable|string|max:500',
             'discountType'       => 'nullable|in:percentage,fixed,tiered',
-            'discountValue'      => 'nullable|numeric|min:0',
+            'discountValue'      => ['nullable', 'numeric', 'min:0', 'max:100000', function ($a, $v, $fail) use ($request) { if ($request->input('discountType') === 'percentage' && (float) $v > 90) $fail('A percentage voucher can take at most 90% off.'); }],
             'minOrderAmount'     => 'nullable|numeric|min:0',
             'maxUses'            => 'nullable|integer|min:1',
             'isActive'           => 'boolean',

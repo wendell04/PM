@@ -74,7 +74,7 @@ class FlashSaleController extends Controller
         $validated = Validator::make($request->all(), [
             'productId'     => 'required|string|max:128',
             'discountType'  => 'required|in:percentage,fixed',
-            'discountValue' => 'required|numeric|min:0.01',
+            'discountValue' => ['required', 'numeric', 'min:0.01', 'max:100000', function ($a, $v, $fail) use ($request) { if ($request->input('discountType') === 'percentage' && (float) $v > 90) $fail('A flash sale can take at most 90% off.'); }],
             'startDate'     => 'required|date',
             'endDate'       => 'required|date|after:startDate',
             'isActive'      => 'boolean',
@@ -187,7 +187,7 @@ class FlashSaleController extends Controller
         $validated = Validator::make($request->all(), [
             'productId'     => 'required|string|max:128',
             'discountType'  => 'required|in:percentage,fixed',
-            'discountValue' => 'required|numeric|min:0.01',
+            'discountValue' => ['required', 'numeric', 'min:0.01', 'max:100000', function ($a, $v, $fail) use ($request) { if ($request->input('discountType') === 'percentage' && (float) $v > 90) $fail('A flash sale can take at most 90% off.'); }],
             'startDate'     => 'required|date',
             'endDate'       => 'required|date|after:startDate',
             'isActive'      => 'boolean',
