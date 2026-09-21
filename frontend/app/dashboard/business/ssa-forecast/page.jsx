@@ -1033,8 +1033,15 @@ function computeInventoryPolicy({ rawRows, currentStock, leadTimeDays, supplierL
   // the stockout date on the same screen subtracted the forecast - so a rising
   // forecast never moved the reorder point. Take the forward rate from the
   // forecast when there is one; keep the historical mean as the fallback.
+  // ...but only once there is enough history for the forecast's rate to mean
+  // something. Croston/SBA at alpha 0.1 stays anchored to its first
+  // observation for twenty-odd periods; on four weeks of 10, 0, 50, 30 it
+  // returns 13.6 against a mean of 22.5 and would under-order by forty
+  // percent. Eight weeks is the confidence line the restock proposal draws,
+  // and /api/inventory-plan applies the same rule, so page and service agree.
   const fc = Array.isArray(forecastValues) ? forecastValues.filter((v) => Number.isFinite(v)) : [];
-  const mean = fc.length > 0 ? fc.reduce((a, b) => a + b, 0) / fc.length : histMean;
+  const weeksOfHistory = (n * (PERIOD_DAYS[periodType] ?? 7)) / 7;
+  const mean = fc.length > 0 && weeksOfHistory >= 8 ? fc.reduce((a, b) => a + b, 0) / fc.length : histMean;
   // Spread stays measured around the historical mean. Variability is an
   // observed property of past demand; centring it on a forward rate would
   // inflate it by however far the forecast has moved.
