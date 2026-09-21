@@ -168,7 +168,7 @@ class StaffController extends Controller
 
             return $this->successResponse(
                 $invite
-                    ? ($inviteSent ? 'Added. An invite to set their password is on its way.' : 'Added, but the invite email could not be sent - use Resend invite.')
+                    ? ($inviteSent ? 'Added. An invite to set their password is on its way.' : 'Added, but the invite email could not be sent. They can open the shop, press Forgot password and use this email to set theirs.')
                     : 'Staff account created successfully.', [
                 'id'        => (string) $staff->_id,
                 'inviteSent' => $inviteSent,
