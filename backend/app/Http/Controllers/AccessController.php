@@ -7,6 +7,7 @@ use App\Models\User;
 use App\Support\PermissionCatalog;
 use App\Support\Rbac;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 
 /**
  * Access: who works here and what each of them may do.
@@ -164,6 +165,8 @@ class AccessController extends Controller
         if (array_key_exists('role', $validated) && $validated['role']) $user->role = $validated['role'];
         if (array_key_exists('isActive', $validated) && $validated['isActive'] !== null) $user->isActive = (bool) $validated['isActive'];
         $user->save();
+        // Their sidebar reads a 60-second cache; without this the change showed up to a minute late.
+        Cache::forget('admin_permissions_' . (string) $user->_id);
 
         return $this->successResponse('Permissions saved.', [
             'id'          => (string) $user->_id,

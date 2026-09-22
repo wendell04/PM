@@ -229,6 +229,15 @@ class Rbac
             return array_map(fn() => true, $all);
         }
 
+        // The person's own grid, when they have one - exactly what allows() judges them by. This
+        // map drives the sidebar and the page guard; it used to be the role's grid only, so a
+        // person given their own access saw their role's modules and was refused inside them.
+        // The defaults keep what every staff member has (Home, their own Settings).
+        $own = $user->permissions ?? null;
+        if (is_array($own) && $own !== []) {
+            return array_merge($all, $own);
+        }
+
         return RolePermission::forRole($user->role);
     }
 }
