@@ -25,6 +25,7 @@ import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
 import { S, TabBar } from '@/app/dashboard/business/inventory-v2/shared';
 import { useIsPhone, KpiStrip, BottomSheet, pesoShort } from '@/components/dashboard/phone';
+import { useAccess } from '@/contexts/AccessContext';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 const SSA_API_URL = process.env.NEXT_PUBLIC_SSA_API_URL || 'http://localhost:8001';
@@ -185,6 +186,7 @@ function Table({ cols: allCols, rows, empty = 'Nothing in this period.' }) {
 
 // ── Sales ─────────────────────────────────────────────────────────────────────
 function SalesReport({ token }) {
+  const mayExport = useAccess().can('reports.export');
   const isPhone = useIsPhone();
   const colors = useChartColors();
   const [range, setRange] = useState(() => { const [from, to] = PRESETS[0].range(); return { preset: 'this-month', from, to }; });
@@ -240,7 +242,7 @@ function SalesReport({ token }) {
           ))}
         </div>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-          <button type="button" onClick={exportRows} disabled={!data} style={{ ...S.btnGhost, minHeight: 40 }}>Export CSV</button>
+          {mayExport && (<button type="button" onClick={exportRows} disabled={!data} style={{ ...S.btnGhost, minHeight: 40 }}>Export CSV</button>)}
           <button type="button" onClick={() => window.print()} disabled={!data} style={{ ...S.btnGhost, minHeight: 40 }}>Print</button>
         </div>
       </div>
@@ -344,6 +346,7 @@ function SalesReport({ token }) {
 
 // ── Inventory ─────────────────────────────────────────────────────────────────
 function InventoryReport({ token }) {
+  const mayExport = useAccess().can('reports.export');
   const isPhone = useIsPhone();
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
@@ -379,7 +382,7 @@ function InventoryReport({ token }) {
       <div className="rpt-noprint" style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 14, flexWrap: 'wrap' }}>
         <span style={{ fontSize: 12.5, color: 'var(--gray)' }}>As of {data.asOf} (Manila). Stock is a snapshot; movement is the last 30 days.</span>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-          <button type="button" onClick={exportRows} style={{ ...S.btnGhost, minHeight: 40 }}>Export CSV</button>
+          {mayExport && (<button type="button" onClick={exportRows} style={{ ...S.btnGhost, minHeight: 40 }}>Export CSV</button>)}
           <button type="button" onClick={() => window.print()} style={{ ...S.btnGhost, minHeight: 40 }}>Print</button>
         </div>
       </div>
@@ -431,6 +434,7 @@ function InventoryReport({ token }) {
 
 // ── Demand ────────────────────────────────────────────────────────────────────
 function DemandReport() {
+  const { can } = useAccess();
   const [state, setState] = useState('checking');   // checking | up | down
   useEffect(() => {
     (async () => {
@@ -446,8 +450,8 @@ function DemandReport() {
     <Card title="Demand - SSA forecast" sub="What the forecast expects the coming weeks to bring, from the sales ledger.">
       <div style={{ padding: '28px 16px', textAlign: 'center', color: 'var(--gray)', fontSize: 13, lineHeight: 1.6 }}>
         {state === 'checking' ? 'Checking the forecast service' : state === 'up'
-          ? <>The forecast service is running. Its full output lives in <a href="/dashboard/business/ssa-forecast" style={{ color: 'var(--gold)', fontWeight: 700 }}>Forecast</a>; this tab will carry the summary once the next version of the model is in.</>
-          : <>The forecast service is not answering right now. Nothing is wrong with your sales - the Demand tab fills in when it is back. Open <a href="/dashboard/business/ssa-forecast" style={{ color: 'var(--gold)', fontWeight: 700 }}>Forecast</a> to check it.</>}
+          ? <>The forecast service is running. Its full output lives in {can('forecast') ? <a href="/dashboard/business/ssa-forecast" style={{ color: 'var(--gold)', fontWeight: 700 }}>Forecast</a> : 'Forecast'}; this tab will carry the summary once the next version of the model is in.</>
+          : <>The forecast service is not answering right now. Nothing is wrong with your sales - the Demand tab fills in when it is back. {can('forecast') ? <>Open <a href="/dashboard/business/ssa-forecast" style={{ color: 'var(--gold)', fontWeight: 700 }}>Forecast</a> to check it.</> : null}</>}
       </div>
     </Card>
   );

@@ -765,8 +765,8 @@ export default function StaffHome() {
                      render as a forecast of zero - that is a number somebody would act on. */
                   <div style={{ fontSize: 12, color: 'var(--gray)', lineHeight: 1.5 }}>
                     {ssa.unavailable}{' '}
-                    <span onClick={() => router.push('/dashboard/business/ssa-forecast')}
-                      style={{ color: 'var(--gold)', cursor: 'pointer', fontWeight: 600 }}>Open Forecast</span>
+                    {allows('forecast') && (<span onClick={() => router.push('/dashboard/business/ssa-forecast')}
+                      style={{ color: 'var(--gold)', cursor: 'pointer', fontWeight: 600 }}>Open Forecast</span>)}
                   </div>
                 ) : (
                   <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', alignItems: 'flex-end' }}>
@@ -786,8 +786,8 @@ export default function StaffHome() {
                         : ssa.accuracy?.mape != null
                           ? 'Backtested MAPE ' + Number(ssa.accuracy.mape).toFixed(1) + '%.'
                           : 'Projected from your own sales history.'}{' '}
-                      <span onClick={() => router.push('/dashboard/business/ssa-forecast')}
-                        style={{ color: 'var(--gold)', cursor: 'pointer', fontWeight: 600 }}>Full forecast</span>
+                      {allows('forecast') && (<span onClick={() => router.push('/dashboard/business/ssa-forecast')}
+                        style={{ color: 'var(--gold)', cursor: 'pointer', fontWeight: 600 }}>Full forecast</span>)}
                     </div>
                   </div>
                 )}

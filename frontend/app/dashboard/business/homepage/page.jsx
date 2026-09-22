@@ -17,6 +17,7 @@ import {
 } from '@/lib/bannerUtils';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import HeroImagePositioner from '@/components/cms/HeroImagePositioner';
+import { useAccess } from '@/contexts/AccessContext';
 
 const ACCENTS = ['gold', 'red', 'white'];
 const accentBg = (c) => (c === 'gold' ? 'var(--gold)' : c === 'red' ? '#dc2626' : 'var(--dark2)');
@@ -92,6 +93,10 @@ const PAY_METHODS = [
 const DEFAULT_PAY_ENABLED = { cod: true, gcash: true, paymaya: true, card: true };
 
 export default function HomepageCmsPage() {
+  const { can } = useAccess();
+  // Homepage See reads every section as it is; Homepage Work edits and saves. A read-only form is
+  // the standard view for an editor page - the fields show their values, nothing saves.
+  const mayWork = can('homepage.work');
   const { token } = useAuth();
   const fileRef = useRef(null);
 
@@ -348,9 +353,11 @@ export default function HomepageCmsPage() {
     <ErrorBoundary>
       <div style={{ padding: '2rem', maxWidth: 1400, margin: '0 auto' }}>
         <div style={{ marginBottom: '1.5rem' }}>
-          <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--gray)' }}>Hero = taglines that loop, paired with images that cycle through all of them. Shop strips are in <Link href="/dashboard/business/banners" style={{ color: 'var(--gold)' }}>Banners</Link>.</p>
+          <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--gray)' }}>Hero = taglines that loop, paired with images that cycle through all of them. Shop strips are in {can('banners') ? <Link href="/dashboard/business/banners" style={{ color: 'var(--gold)' }}>Banners</Link> : 'Banners'}.</p>
+          {!mayWork && <p style={{ margin: '6px 0 0', fontSize: '0.8rem', color: 'var(--gold)', fontWeight: 600 }}>View only - editing the homepage needs Homepage Work.</p>}
         </div>
 
+        <fieldset disabled={!mayWork} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
         {empty && (
           <div style={{ ...card, marginBottom: '1.5rem', textAlign: 'center' }}>
             <p style={{ color: 'var(--gray-light)', margin: '0 0 1rem' }}>Start by importing your current hero (3 taglines + 12 product images) as editable drafts.</p>
@@ -685,7 +692,7 @@ export default function HomepageCmsPage() {
 
         {/* Other sections */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }} className="hp-2col">
-          <div style={card}><h2 style={cardTitle}>Shop by Collections</h2><p style={{ color: 'var(--gray)', fontSize: '0.85rem', margin: '0 0 1rem', lineHeight: 1.6 }}>Managed in the Collections module (order + per-image focus).</p><Link href="/dashboard/business/collections" style={{ display: 'inline-flex', gap: '0.4rem', padding: '0.55rem 1.1rem', borderRadius: 8, background: 'var(--dark2)', border: '1px solid var(--border)', color: 'var(--white)', textDecoration: 'none', fontSize: '0.82rem', fontWeight: 600 }}>Open Collections →</Link></div>
+          <div style={card}><h2 style={cardTitle}>Shop by Collections</h2><p style={{ color: 'var(--gray)', fontSize: '0.85rem', margin: '0 0 1rem', lineHeight: 1.6 }}>Managed in the Collections module (order + per-image focus).</p>{can('collections') && (<Link href="/dashboard/business/collections" style={{ display: 'inline-flex', gap: '0.4rem', padding: '0.55rem 1.1rem', borderRadius: 8, background: 'var(--dark2)', border: '1px solid var(--border)', color: 'var(--white)', textDecoration: 'none', fontSize: '0.82rem', fontWeight: 600 }}>Open Collections →</Link>)}</div>
           <div style={card}><h2 style={cardTitle}>All set</h2><p style={{ color: 'var(--gray)', fontSize: '0.85rem', margin: 0, lineHeight: 1.6 }}>Every homepage section is editable here - Hero, Work Gallery, Pricing, Why-Us, How It Works &amp; Contact. Saving applies to the live homepage right away.</p></div>
         </div>
 
@@ -706,6 +713,7 @@ export default function HomepageCmsPage() {
           </div>
         )}
 
+        </fieldset>
         <style jsx>{`@media (max-width: 1024px) { .hp-2col { grid-template-columns: 1fr !important; } } @media (max-width: 768px) { .hp-price-row { grid-template-columns: 1fr !important; } }`}</style>
       </div>
     </ErrorBoundary>

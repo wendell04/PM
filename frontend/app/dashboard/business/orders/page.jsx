@@ -4,6 +4,7 @@ import { cloudinaryThumb } from '@/lib/cloudinaryImage';
 import ErrorBoundary from '../../../../components/ErrorBoundary';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useAccess } from '@/contexts/AccessContext';
 import { fetchAllOrdersNew, deleteOrder as deleteOrderApi, unarchiveOrder } from '@/lib/ordersApi';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import { isNetworkError, settleAfterTimeout } from '@/lib/afterTimeout';
@@ -956,6 +957,21 @@ function DraftFilePreview({ files = [], onRemove, onOpen }) {
 }
 
 function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
+  // What this person may do to an order. Anything else is hidden, not greyed - Orders See is for
+  // following an order, and each action below belongs to one row or extra tick.
+  const { can, owner } = useAccess();
+  const mayWork     = can('orders.edit');          // delivery date, rush, courier, notes
+  const mayStatus   = can('orders.updateStatus');  // move it along
+  const mayCancel   = can('orders.delete');        // cancel, expire, archive, restore
+  const mayProof    = can('design.proof');
+  const mayApprove  = can('design.approve');
+  const mayPay      = can('payments.create');      // record a payment, send a reminder
+  const mayWriteOff = can('payments.edit');
+  const mayRefund   = can('payments.refund');
+  const mayCreateJO = can('jobOrders.create');
+  const mayProduce  = can('production.work');
+  const seeMoney    = can(['sales', 'payments', 'reports']);
+  const canActOnStatus = mayStatus || mayCancel || mayWriteOff || mayCreateJO;
   const fmt = n => Number(n ?? 0).toLocaleString('en-PH', { minimumFractionDigits:2, maximumFractionDigits:2 });
 
   const today = new Date(); today.setHours(0,0,0,0);
@@ -1780,7 +1796,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
               )}
 
               {/* Courier-booked delivery fee - paid by customer to the rider on delivery */}
-              {!(Number(lo.shippingFee) > 0) && (
+              {(mayWork || seeMoney) && !(Number(lo.shippingFee) > 0) && (
                 <div style={{ marginTop:'10px', padding:'10px 12px', background:'var(--dark2)', border:'1px solid var(--border)', borderRadius:'8px' }}>
                   <div style={{ fontSize:'11px', fontWeight:600, color:'var(--gray-light)', marginBottom:'2px' }}>Delivery fee (paid by customer to rider)</div>
                   {/* Once it is settled, everything below this is an answer to a question nobody is
@@ -1810,7 +1826,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                   {/* An on-demand rider can take cash at the door; a parcel network is prepaid at
                       the branch. Getting this wrong on a provincial order means the shop pays the
                       courier and never collects. */}
-                  {!lo.courierFeePaid && (
+                  {mayWork && !lo.courierFeePaid && (
                   <div style={{ display:'flex', gap:'6px', marginBottom:'8px', flexWrap:'wrap' }}>
                     {[
                       { on:true,  label:'Rider collects it',      hint:'Lalamove, Grab, same-day' },
@@ -1844,10 +1860,10 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                         style={{ width:'90px', border:'none', outline:'none', padding:'6px 8px 6px 0', fontSize:'12px', color:'var(--white)' }}
                        maxLength={12}/>
                     </div>
-                    <button type="button" onClick={handleSaveCourierFee} disabled={savingFee}
+                    {mayWork && (<button type="button" onClick={handleSaveCourierFee} disabled={savingFee}
                       style={{ padding:'6px 12px', fontSize:'11px', fontWeight:600, borderRadius:'6px', border:'none', background: savingFee ? 'var(--border)' : 'var(--gold)', color:'var(--dark)', cursor: savingFee ? 'not-allowed' : 'pointer' }}>
                       {savingFee ? 'Saving…' : (Number(lo.courierFee) > 0 ? 'Update fee' : 'Set fee')}
-                    </button>
+                    </button>)}
                     {Number(lo.courierFee) > 0 && (
                       <span style={{ fontSize:'11px', color:'#166534', fontWeight:600 }}>
                         Set: ₱{fmt(lo.courierFee)}
@@ -1899,10 +1915,10 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                               </span>
                             );
                           })()}
-                          <button type="button" onClick={() => handleCourierFeePaid(false)} disabled={savingFee}
+                          {mayWork && (<button type="button" onClick={() => handleCourierFeePaid(false)} disabled={savingFee}
                             style={{ padding:'3px 9px', fontSize:'10.5px', fontWeight:600, borderRadius:'6px', border:'1px solid var(--border)', background:'transparent', color:'var(--gray)', cursor: savingFee ? 'not-allowed' : 'pointer' }}>
                             Undo
-                          </button>
+                          </button>)}
                         </>
                       ) : (
                         <>
@@ -1911,10 +1927,10 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                               ? 'Paid the rider in cash, or sent it ahead by GCash / Maya?'
                               : 'Settle it here if they paid you another way.'}
                           </span>
-                          <button type="button" onClick={() => handleCourierFeePaid(true)} disabled={savingFee}
+                          {mayWork && (<button type="button" onClick={() => handleCourierFeePaid(true)} disabled={savingFee}
                             style={{ padding:'4px 11px', fontSize:'11px', fontWeight:700, borderRadius:'6px', border:'1px solid #166534', background:'transparent', color:'#166534', cursor: savingFee ? 'not-allowed' : 'pointer' }}>
                             Mark fee received
-                          </button>
+                          </button>)}
                         </>
                       )}
                     </div>
@@ -1968,10 +1984,10 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                             {j.targetCompletion ? ` · due ${fmtJODate(j.targetCompletion)}` : ''}
                           </div>
                         </div>
-                        {j.joStatus === 'Queued' && (
+                        {mayProduce && j.joStatus === 'Queued' && (
                           <button disabled={busy} onClick={() => setJoConfirm({ jo: j, to: 'In Progress' })} style={S.btnSmGhost}>{busy ? 'Saving…' : 'Start'}</button>
                         )}
-                        {j.joStatus === 'In Progress' && (
+                        {mayProduce && j.joStatus === 'In Progress' && (
                           <button disabled={busy} onClick={() => setJoConfirm({ jo: j, to: 'QC_Pending' })} style={S.btnSmGhost}>{busy ? 'Saving…' : 'Send to QC'}</button>
                         )}
                       </div>
@@ -2147,14 +2163,14 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                     </div>
                   </div>
                       <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
-                    <button type="button" onClick={messageCustomer} disabled={msgState === 'sending'}
+                    {(owner || mayWork) && (<button type="button" onClick={messageCustomer} disabled={msgState === 'sending'}
                       style={{ ...S.btnSm, cursor: msgState === 'sending' ? 'wait' : 'pointer' }}>
                       {msgState === 'sent' ? 'Sent - open Messages'
                         : msgState === 'sending' ? 'Sending...'
                         : msgState === 'error' ? 'Could not send - try again'
                         : 'Message customer'}
-                    </button>
-                    {!confirmConvert && (
+                    </button>)}
+                    {mayWork && !confirmConvert && (
                       <button type="button" onClick={() => setConfirmConvert(true)} style={S.btnSmGhost}>
                         Convert to design job
                       </button>
@@ -2189,20 +2205,20 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                 </div>
               )}
 
-              {aiStatus==='pending_review' && aiHasFile && !aiRequested && !showReject && !showFix && !confirmApprove && (
+              {(mayApprove || mayProof) && aiStatus==='pending_review' && aiHasFile && !aiRequested && !showReject && !showFix && !confirmApprove && (
                 <div style={{ display:'flex', gap:'6px', marginBottom:'8px', flexWrap:'wrap' }}>
-                  <button onClick={() => { setConfirmApprove(true); setDesignErr(''); }} disabled={!!designAct}
+                  {mayApprove && (<button onClick={() => { setConfirmApprove(true); setDesignErr(''); }} disabled={!!designAct}
                     style={{ flex:'1 1 30%', padding:'5px 0', background:'#f0fdf4', border:'1px solid #bbf7d0', borderRadius:'6px', color:'#166534', fontSize:'12px', fontWeight:700, cursor:designAct?'not-allowed':'pointer', opacity:designAct?.6:1 }}>
                     Approve
-                  </button>
-                  <button onClick={() => { setShowReject(true); setDesignErr(''); }} disabled={!!designAct}
+                  </button>)}
+                  {mayApprove && (<button onClick={() => { setShowReject(true); setDesignErr(''); }} disabled={!!designAct}
                     style={{ flex:'1 1 30%', padding:'5px 0', background:'#fef2f2', border:'1px solid #fecaca', borderRadius:'6px', color:'#991b1b', fontSize:'12px', fontWeight:700, cursor:designAct?'not-allowed':'pointer', opacity:designAct?.6:1 }}>
                     Reject
-                  </button>
-                  <button onClick={() => { setShowFix(true); setDesignErr(''); }} disabled={!!designAct}
+                  </button>)}
+                  {mayProof && (<button onClick={() => { setShowFix(true); setDesignErr(''); }} disabled={!!designAct}
                     style={{ flex:'1 1 100%', padding:'5px 0', background:'rgba(212,168,67,0.08)', border:'1px solid var(--gold)', borderRadius:'6px', color:'var(--gold)', fontSize:'12px', fontWeight:700, cursor:designAct?'not-allowed':'pointer', opacity:designAct?.6:1 }}>
                     Adjust &amp; Send Proof
-                  </button>
+                  </button>)}
                 </div>
               )}
 
@@ -2226,7 +2242,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
 
               {/* A mockup after approval changes nothing, so unlike Revert it stays available once a
                   Job Order exists - which is exactly when someone asks to see what they are getting. */}
-              {aiStatus === 'approved' && !showFix && (
+              {mayProof && aiStatus === 'approved' && !showFix && (
                 <div style={{ display:'flex', alignItems:'center', gap:'8px', marginBottom:'8px' }}>
                   <span style={{ fontSize:'11px', color:'var(--gray)' }}>Show them what it will look like?</span>
                   <button onClick={() => { setMockupMode(true); setShowFix(true); setDesignErr(''); }} disabled={!!designAct}
@@ -2254,7 +2270,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
               })()}
 
               {/* Undo an accidental approval - allowed only while no Job Order exists yet. */}
-              {aiStatus === 'approved' && !hasAnyJobOrder && (
+              {mayApprove && aiStatus === 'approved' && !hasAnyJobOrder && (
                 <div style={{ display:'flex', alignItems:'center', gap:'8px', marginBottom:'8px' }}>
                   <span style={{ fontSize:'11px', color:'var(--gray)' }}>Approved by mistake?</span>
                   <button onClick={handleRevertApprove} disabled={!!designAct}
@@ -2350,14 +2366,14 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                       </div>
                       <ProofGallery urls={aiProofs.map(designUrl)} tiles compact
                         onOpen={(u, kind) => { setLightboxKind(kind); setLightboxUrl(u); }} />
-                      <button type="button" onClick={sendReviewLink} disabled={reviewLinkState === 'sending'}
+                      {mayProof && (<button type="button" onClick={sendReviewLink} disabled={reviewLinkState === 'sending'}
                         style={{ ...S.btnGhost, marginTop:'8px', fontSize:'11px', padding:'5px 10px',
                           cursor: reviewLinkState === 'sending' ? 'wait' : 'pointer' }}>
                         {reviewLinkState === 'sent' ? 'Link sent to chat'
                           : reviewLinkState === 'sending' ? 'Sending...'
                           : reviewLinkState === 'error' ? 'Could not send - try again'
                           : 'Send review link to chat'}
-                      </button>
+                      </button>)}
                     </div>
                   )}
                   {draftFiles.length > 0 ? (
@@ -2402,7 +2418,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                         </button>
                       </div>
                     </div>
-                  ) : (
+                  ) : mayProof ? (
                     <label style={{ cursor:'pointer', display:'inline-block' }}>
                       <div style={{ display:'inline-flex', alignItems:'center', gap:'4px', padding:'4px 10px', border:'1px solid var(--gold)', borderRadius:'6px', color:'var(--gold)', fontSize:'12px', fontWeight:700, cursor:'pointer' }}>
                         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>
@@ -2419,16 +2435,17 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                           if (accepted.length) setDraftFiles(accepted);
                         }} />
                     </label>
-                  )}
+                  ) : null}
                 </div>
               )}
               {designErr && <div style={{ fontSize:'11px', color:'#991b1b', marginTop:'4px' }}>{designErr}</div>}
             </>
           )}
 
-          {/* Update Status */}
-          <div style={S.divider} />
-          <SectionLabel>Update Status</SectionLabel>
+          {/* Update Status - only for someone who can do something here. The cancel reason below
+              is a record and shows to anyone who can open the order. */}
+          {(canActOnStatus || lo.cancelledReason) && <div style={S.divider} />}
+          {canActOnStatus && <SectionLabel>Update Status</SectionLabel>}
 
           {/* A reason nobody can read is a reason nobody collected. This is the only signal that
               separates a pricing problem from a delivery-time problem from a change of mind. */}
@@ -2440,7 +2457,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
               <div style={{ fontSize:'12px', color:'var(--gray-light)', marginTop:'3px' }}>{lo.cancelledReason}</div>
             </div>
           )}
-          {['pending_design','revision_requested'].includes(lo.orderStatus) ? (
+          {!canActOnStatus ? null : ['pending_design','revision_requested'].includes(lo.orderStatus) ? (
             <span style={{ fontSize:'11px', color:'var(--gray)', fontStyle:'italic' }}>Managed via design upload above</span>
           ) : awaitingMoney ? (
             <div style={{ display:'flex', flexDirection:'column', gap:'6px' }}>
@@ -2459,7 +2476,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                 </span>
               )}
 
-              {readySince !== null && readySince >= 7 && !lo.writeOff && (
+              {mayWriteOff && readySince !== null && readySince >= 7 && !lo.writeOff && (
                 !woConfirm ? (
                   <button onClick={() => { setWoErr(''); setWoConfirm(true); }}
                     style={{ ...S.btnSmGhost, justifyContent:'center', color:'#c2410c' }}>
@@ -2491,7 +2508,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
               )}
               {/* The transition maps spell it "Cancelled"; an exact lowercase match hid the button on
                   every awaiting-payment order, whose own message says "cancel it below". */}
-              {availableRaw.map(normalizeStatus).includes('cancelled') && (
+              {mayCancel && availableRaw.map(normalizeStatus).includes('cancelled') && (
                 <button onClick={() => { setSelStatus('cancelled'); setConfirmSt(true); }}
                   style={{ ...S.btnSmGhost, justifyContent:'center', color:'var(--st-red-fg)' }}>
                   Cancel this order
@@ -2506,6 +2523,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
             </span>
           ) : available.length > 0 ? (
             <div style={{ display:'flex', flexDirection:'column', gap:'6px' }}>
+              {mayStatus && (
               <CustomSelect
                 value={selStatus}
                 onChange={v => { setSelStatus(v); setConfirmSt(false); setUpdateErr(''); }}
@@ -2514,7 +2532,8 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                   ...available.map(s => ({ value: s, label: getStatusBadge(s).label })),
                 ]}
               />
-              {isForDelivery(selStatus) && (
+              )}
+              {mayStatus && isForDelivery(selStatus) && (
                 <div style={{ padding:'10px', borderRadius:'7px', border:'1px solid var(--border)', display:'flex', flexDirection:'column', gap:'7px' }}>
                   <span style={{ fontSize:'11px', fontWeight:700, color:'var(--gray)', textTransform:'uppercase', letterSpacing:'.5px' }}>Who is carrying it?</span>
                   <CustomSelect
@@ -2688,11 +2707,11 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
               {/* One button, one modal. The old version swapped this button in place for a "Set to X"
                   confirm, so a double-click landed on the confirm and fired it - the exact accident
                   the step was there to prevent. */}
-              <button onClick={() => selStatus !== lo.orderStatus && setConfirmSt(true)}
+              {mayStatus && (<button onClick={() => selStatus !== lo.orderStatus && setConfirmSt(true)}
                 disabled={selStatus === lo.orderStatus}
                 style={{ ...S.btnSmGhost, justifyContent:'center', opacity: selStatus===lo.orderStatus?.5:1, cursor: selStatus===lo.orderStatus?'not-allowed':'pointer' }}>
                 Update Status
-              </button>
+              </button>)}
               {updateErr && <div style={{ fontSize:'11px', color:'#991b1b' }}>{updateErr}</div>}
 
               {/* The shortcut used to live only in the branch for orders with no legal transition
@@ -2701,7 +2720,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                   available, and needs a job order - so the dropdown showed and the shortcut never
                   did. Request-design orders happened to land on a status with nothing to move to,
                   which is the only reason it ever appeared. */}
-              {lo.isCustom && lo.designStatus === 'approved' && jobOrdersMissing > 0 && (
+              {mayCreateJO && lo.isCustom && lo.designStatus === 'approved' && jobOrdersMissing > 0 && (
                 <>
                   <span style={{ fontSize:'11px', color:'var(--gray)', fontStyle:'italic' }}>
                     {hasAnyJobOrder
@@ -2716,7 +2735,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
               )}
             </div>
           ) : (
-            (lo.isCustom && lo.designStatus === 'approved' && jobOrdersMissing > 0) ? (
+            (mayCreateJO && lo.isCustom && lo.designStatus === 'approved' && jobOrdersMissing > 0) ? (
               <div style={{ display:'flex', flexDirection:'column', gap:'6px' }}>
                 <span style={{ fontSize:'11px', color:'var(--gray)', fontStyle:'italic' }}>
                   {hasAnyJobOrder
@@ -2815,14 +2834,14 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                         : 'Accepting charges nothing more - the fee is already in the order total.'}
                     </div>
                     <div style={{ display:'flex', gap:'6px' }}>
-                      <button onClick={() => handleRushDecision('accepted')} disabled={savingDeliv}
-                        style={{ flex:1, padding:'6px 0', background:'#166534', border:'none', borderRadius:'6px', color:'#fff', fontSize:'12px', fontWeight:700, cursor:savingDeliv?'not-allowed':'pointer', opacity:savingDeliv?.6:1 }}>Accept rush</button>
-                      <button onClick={() => handleRushDecision('declined')} disabled={savingDeliv}
+                      {mayWork && (<button onClick={() => handleRushDecision('accepted')} disabled={savingDeliv}
+                        style={{ flex:1, padding:'6px 0', background:'#166534', border:'none', borderRadius:'6px', color:'#fff', fontSize:'12px', fontWeight:700, cursor:savingDeliv?'not-allowed':'pointer', opacity:savingDeliv?.6:1 }}>Accept rush</button>)}
+                      {mayWork && (<button onClick={() => handleRushDecision('declined')} disabled={savingDeliv}
                         style={{ flex:1, padding:'6px 0', background:'transparent', border:'1px solid #fecaca', borderRadius:'6px', color:'#991b1b', fontSize:'12px', fontWeight:700, cursor:savingDeliv?'not-allowed':'pointer', opacity:savingDeliv?.6:1 }}>
                         {Number(lo.balance ?? 0) <= 0
                           ? `Decline & refund \u20B1${Number(lo.rushFee ?? 0).toLocaleString('en-PH')}`
                           : 'Decline (waive fee)'}
-                      </button>
+                      </button>)}
                     </div>
                   </div>
                 )}
@@ -2836,6 +2855,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                   const owesDeposit = remainingDue(lo) > 0 && goodsPaid(lo) <= 0;
                   const parkedNow = !!clk?.needsProduction && !clk?.restartedBecause
                     && ((ds !== '' && ds !== 'approved') || owesDeposit);
+                  if (!mayWork) return null;
                   if (parkedNow) {
                     return (
                       <div style={{ fontSize:'11px', color:'var(--gray)', lineHeight:1.5 }}>
@@ -3060,7 +3080,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                       Send this back by hand - the system cannot return it for you. Log it here once
                       you have, so the order stops reading as unpaid business.
                     </div>
-                    <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+                    {mayRefund && <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
                       <select value={refundMethod} onChange={e => setRefundMethod(e.target.value)}
                         style={{ ...S.input, width: 'auto', flex: '0 0 auto', fontSize: 12, padding: '5px 8px' }}>
                         <option value="gcash">GCash</option>
@@ -3078,14 +3098,14 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                         style={{ ...S.btnSmGhost, opacity: payingRefund ? 0.6 : 1 }}>
                         Keep it - not refundable
                       </button>
-                    </div>
+                    </div>}
                     {refundErr && <div style={{ fontSize: 11, color: '#b91c1c', marginTop: 5 }}>{refundErr}</div>}
                   </div>
                 )}
 
                 {/* The automatic balance notice fires once, when the last job passes QC. Without a way
                     to send it again the only follow-up was typing in the chat by hand. */}
-                {owing > 0 && String(lo.paymentMethod || '').toLowerCase() !== 'cod' && (
+                {mayPay && owing > 0 && String(lo.paymentMethod || '').toLowerCase() !== 'cod' && (
                   <div style={{ marginTop: 8 }}>
                     <button type="button" onClick={handleRemindBalance} disabled={reminding}
                       style={{ ...S.btnSmGhost, width: '100%', opacity: reminding ? 0.6 : 1 }}>
@@ -3119,19 +3139,19 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
 
       {/* Action row */}
       <div style={{ display:'flex', gap:'8px', flexWrap:'wrap', marginTop:'12px', alignItems:'center' }}>
-        {lo.paymentStatus !== 'paid' && (
+        {mayPay && lo.paymentStatus !== 'paid' && (
           <button onClick={onPayment} style={{ ...S.btnSmGhost, color:'#166534', borderColor:'#bbf7d0' }}>Record Payment</button>
         )}
-        {canExpire && (
+        {mayCancel && canExpire && (
           <button onClick={handleExpire} disabled={expiring}
             style={{ ...S.btnSmDanger, background:'#fff7ed', color:'#c2410c', borderColor:'#fdba74', opacity: expiring ? 0.6 : 1 }}>
             {expiring ? 'Expiring…' : 'Mark Expired'}
           </button>
         )}
-        {canDelete && (
+        {mayCancel && canDelete && (
           <button onClick={onDelete} style={S.btnSmDanger}>{ICONS.trash} Archive</button>
         )}
-        {lo.isArchived && (
+        {mayCancel && lo.isArchived && (
           <button onClick={async () => {
             setRestoring(true);
             try {

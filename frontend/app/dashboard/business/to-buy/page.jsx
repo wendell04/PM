@@ -18,6 +18,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { S, ICONS, SearchBar, SummaryCard } from '../inventory-v2/shared';
 import { updateMat } from '../inventory-v2/api';
 import { useIsPhone, KpiStrip, PhoneRow , pesoShort } from '@/components/dashboard/phone';
+import { useAccess } from '@/contexts/AccessContext';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
@@ -86,6 +87,7 @@ function CoverBadge({ row }) {
 }
 
 export default function ToBuyPage() {
+  const { can, owner } = useAccess();
   const { token } = useAuth();
   const [rows, setRows]       = useState([]);
   const [totals, setTotals]   = useState({ totalItems: 0, estimatedCost: 0 });
@@ -143,7 +145,7 @@ export default function ToBuyPage() {
     return `${num(toMin)} to reach minimum ${num(r.minimum)}`;
   };
   const MinEditor = ({ r, compact }) => (
-    minEdit[r.inventoryId] === undefined ? (
+    !can('masterData.work') ? null : minEdit[r.inventoryId] === undefined ? (
       <button type="button" onClick={() => setMinEdit(prev => ({ ...prev, [r.inventoryId]: String(r.minimum || '') }))}
         style={{ background: 'none', border: 'none', padding: 0, color: 'var(--gold)', fontSize: compact ? 12 : 11, fontWeight: 600, cursor: 'pointer', minHeight: compact ? 36 : undefined }}>
         {r.minimum > 0 ? 'Change minimum' : 'Set minimum'}
@@ -297,20 +299,20 @@ export default function ToBuyPage() {
                 )}
 
                 <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '10px' }}>
-                  {q.stillShort && (
+                  {can('orderRequests.edit') && q.stillShort && (
                     <button type="button" disabled={!!quoteBusy} onClick={() => quoteAction(q, 'allow-preorder')}
                       style={{ ...S.btnSm, background: 'var(--gold)', color: '#111', border: '1px solid var(--gold)', fontWeight: 700 }}
                       title="Only this quote - the product stays as it is on the storefront">
                       {quoteBusy === q.id + 'allow-preorder' ? 'Allowing…' : 'Allow pre-order for this quote'}
                     </button>
                   )}
-                  <button type="button" disabled={!!quoteBusy} onClick={() => quoteAction(q, 'restocked')} style={{ ...S.btnSm }}>
+                  {can('orderRequests.edit') && (<button type="button" disabled={!!quoteBusy} onClick={() => quoteAction(q, 'restocked')} style={{ ...S.btnSm }}>
                     {quoteBusy === q.id + 'restocked' ? 'Checking…' : 'Restocked - tell the customer'}
-                  </button>
-                  <a href="/dashboard/business/chat" style={{ ...S.btnSm, textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}
+                  </button>)}
+                  {owner && (<a href="/dashboard/business/chat" style={{ ...S.btnSm, textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}
                     title="Send a new quote from the customer's conversation">
                     Send a new quote
-                  </a>
+                  </a>)}
                 </div>
                 {note && (
                   <div style={{ marginTop: '8px', fontSize: '12px', color: note.error ? '#e05252' : '#4ade80' }}>{note.text}</div>
@@ -435,9 +437,9 @@ export default function ToBuyPage() {
             <div style={{ ...S.row, gap: '10px', ...(isPhone ? { width: '100%', justifyContent: 'space-between' } : {}) }}>
               <span style={{ fontSize: '14px', fontWeight: 700, color: 'var(--gold)' }}>{peso(g.cost)}</span>
               <button type="button" onClick={() => copyList(g)} style={{ ...S.btnSm, ...(isPhone ? { minHeight: 40 } : {}) }} title="Copy this list to paste to the supplier">Copy</button>
-              <a href="/dashboard/business/inventory-v2?tab=stockin"
+              {can('stock.work') && (<a href="/dashboard/business/inventory-v2?tab=stockin"
                 style={{ ...S.btnSm, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', ...(isPhone ? { minHeight: 40 } : {}) }}
-                title="Record the delivery once it arrives">Stock In</a>
+                title="Record the delivery once it arrives">Stock In</a>)}
             </div>
           </div>
 

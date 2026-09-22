@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import PhoneInput from '@/components/auth/PhoneInput';
 import Image from 'next/image';
 import { useAuth } from '@/contexts/AuthContext';
+import { useAccess } from '@/contexts/AccessContext';
 import { fetchProducts } from '@/lib/productApi';
 import { submitWalkInOrder, fetchProductAvailability } from '@/lib/posApi';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
@@ -172,6 +173,8 @@ function ProductGridSkeleton() {
 // ── Main Component ────────────────────────────────────────────────────────────
 export default function PosPage() {
   const { token, currentUser } = useAuth();
+  // POS See browses products and prices; ringing up a sale or an order to produce is POS Work.
+  const maySell = useAccess().can('pos.sell');
 
   const [allProducts, setAllProducts] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -988,6 +991,7 @@ export default function PosPage() {
             </div>
           )}
 
+          {maySell ? (
           <div style={{ display: 'flex', gap: '0.5rem' }}>
             <button type="button" onClick={clearCart} disabled={submitting} style={{ ...btnGhost, flex: 1 }}>Clear</button>
             <button
@@ -1004,6 +1008,11 @@ export default function PosPage() {
               Review &amp; pay
             </button>
           </div>
+          ) : (
+            <div style={{ fontSize: '0.8rem', color: 'var(--gray)', textAlign: 'center', padding: '0.5rem 0' }}>
+              View only - selling at the counter needs POS Work.
+            </div>
+          )}
         </div>
       </div>
 

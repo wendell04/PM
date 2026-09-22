@@ -1,5 +1,6 @@
 'use client';
 
+import { useAccess } from '@/contexts/AccessContext';
 import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
@@ -205,6 +206,8 @@ export default function PromotionsPage() {
 // VOUCHERS TAB
 // ════════════════════════════════════════════════════════════════════════════
 function VouchersTab({ token }) {
+  // Promotions Work creates, edits, switches and deletes; See only reads.
+  const mayWork = useAccess().can('promotions.work');
   const [vouchers, setVouchers]   = useState([]);
   const [loading, setLoading]     = useState(true);
   const [error, setError]         = useState(null);
@@ -342,7 +345,7 @@ function VouchersTab({ token }) {
 
       <div style={{ ...S.rowBetween, marginBottom: '10px' }}>
         <span style={{ fontSize: 13, fontWeight: 700 }}>Vouchers</span>
-        <button onClick={openCreate} style={S.btnPrimary}>+ New Voucher</button>
+        {mayWork && (<button onClick={openCreate} style={S.btnPrimary}>+ New Voucher</button>)}
       </div>
 
       {/* Category filter */}
@@ -383,13 +386,13 @@ function VouchersTab({ token }) {
       <div style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
         {paged.length === 0 ? (
           <div style={{ padding: '2.5rem', textAlign: 'center', color: 'var(--gray)', fontSize: '0.875rem' }}>
-            {catFilter === 'all' ? 'No vouchers yet. Create one to get started.' : `No ${catFilter} vouchers yet.`}
+            {catFilter === 'all' ? (mayWork ? 'No vouchers yet. Create one to get started.' : 'No vouchers yet.') : `No ${catFilter} vouchers yet.`}
           </div>
         ) : (
           <table className="pmp-rt" style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                {['Code', 'Category', 'Benefit / Discount', 'Min Order', 'Uses', 'Expires', 'Status', 'Actions'].map(h => (
+                {['Code', 'Category', 'Benefit / Discount', 'Min Order', 'Uses', 'Expires', 'Status', ...(mayWork ? ['Actions'] : [])].map(h => (
                   <th key={h} style={S.th}>{h}</th>
                 ))}
               </tr>
@@ -457,7 +460,7 @@ function VouchersTab({ token }) {
                       </span>
                     </td>
 
-                    <td data-rt="actions" style={{ padding: '11px 14px' }}>
+                    {mayWork && (<td data-rt="actions" style={{ padding: '11px 14px' }}>
                       <div style={{ display: 'flex', gap: '0.4rem' }}>
                         <button onClick={() => openEdit(v)} style={{ padding: '4px 10px', background: 'var(--border)', border: 'none', borderRadius: '6px', color: 'var(--white)', fontSize: '0.75rem', cursor: 'pointer' }}>Edit</button>
                         <button onClick={() => handleToggle(v)} disabled={toggling === (v._id || v.id)} style={{ padding: '4px 10px', background: v.isActive ? 'rgba(239,68,68,0.12)' : 'rgba(34,197,94,0.12)', border: 'none', borderRadius: '6px', color: v.isActive ? 'var(--red)' : 'var(--green)', fontSize: '0.75rem', cursor: toggling === (v._id || v.id) ? 'not-allowed' : 'pointer', opacity: toggling === (v._id || v.id) ? 0.5 : 1 }}>
@@ -465,7 +468,7 @@ function VouchersTab({ token }) {
                         </button>
                         <button onClick={() => setDeleteId(v._id || v.id)} style={{ padding: '4px 10px', background: 'rgba(239,68,68,0.12)', border: 'none', borderRadius: '6px', color: 'var(--red)', fontSize: '0.75rem', cursor: 'pointer' }}>Del</button>
                       </div>
-                    </td>
+                    </td>)}
                   </tr>
                 );
               })}
@@ -648,6 +651,8 @@ function VoucherModal({ form, setForm, formError, saving, editTarget, onSave, on
 // FLASH SALES TAB
 // ════════════════════════════════════════════════════════════════════════════
 function FlashSalesTab({ token }) {
+  // Promotions Work creates, edits, switches and deletes; See only reads.
+  const mayWork = useAccess().can('promotions.work');
   const [sales, setSales]       = useState([]);
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState(null);
@@ -778,9 +783,9 @@ function FlashSalesTab({ token }) {
             <span style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>{c.label}</span>
           </div>
         ))}
-        <button onClick={openCreate} style={{ marginLeft: 'auto', padding: '0.45rem 1rem', background: 'var(--gold)', color: 'var(--black)', border: 'none', borderRadius: '7px', fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer' }}>
+        {mayWork && (<button onClick={openCreate} style={{ marginLeft: 'auto', padding: '0.45rem 1rem', background: 'var(--gold)', color: 'var(--black)', border: 'none', borderRadius: '7px', fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer' }}>
           + New Flash Sale
-        </button>
+        </button>)}
       </div>
 
       {error && (
@@ -794,7 +799,7 @@ function FlashSalesTab({ token }) {
         <div style={{ textAlign: 'center', padding: '2.5rem 2rem', color: 'var(--gray)', border: '1px solid var(--border)', borderRadius: '10px' }}>
           <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.5, marginBottom: '0.75rem' }}><path d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
           <p style={{ fontSize: '0.95rem', color: 'var(--white)', marginBottom: '0.25rem', fontWeight: 600 }}>No flash sales yet</p>
-          <p style={{ fontSize: '0.82rem' }}>Create one to get started</p>
+          {mayWork && <p style={{ fontSize: '0.82rem' }}>Create one to get started</p>}
         </div>
       )}
 
@@ -804,7 +809,7 @@ function FlashSalesTab({ token }) {
           <table className="pmp-rt" style={{ width: '100%', borderCollapse: 'collapse', minWidth: '800px' }}>
             <thead>
               <tr style={{ borderBottom: '1px solid var(--border)', background: 'var(--dark2)' }}>
-                {['Product', 'Discount', 'Original', 'Sale Price', 'Quantity', 'Start', 'End', 'Status', 'Actions'].map(col => (
+                {['Product', 'Discount', 'Original', 'Sale Price', 'Quantity', 'Start', 'End', 'Status', ...(mayWork ? ['Actions'] : [])].map(col => (
                   <th key={col} style={S.th}>{col}</th>
                 ))}
               </tr>
@@ -876,7 +881,7 @@ function FlashSalesTab({ token }) {
                       <span style={{ padding: '0.2rem 0.625rem', borderRadius: '999px', fontSize: '0.72rem', fontWeight: 700, whiteSpace: 'nowrap', background: status.bg, color: status.color }}>{status.label}</span>
                     </td>
 
-                    <td data-rt="actions" style={{ padding: '11px 14px' }}>
+                    {mayWork && (<td data-rt="actions" style={{ padding: '11px 14px' }}>
                       <div style={{ display: 'flex', gap: '0.4rem' }}>
                         <button onClick={() => handleToggle(sale)} disabled={toggling === sale.id} title={sale.isActive ? 'Deactivate' : 'Activate'}
                           style={{ background: sale.isActive ? 'rgba(74,222,128,0.12)' : 'rgba(107,114,128,0.12)', border: `1px solid ${sale.isActive ? 'rgba(74,222,128,0.3)' : 'rgba(107,114,128,0.3)'}`, borderRadius: '6px', padding: '0.35rem', cursor: 'pointer', color: sale.isActive ? 'var(--green)' : 'var(--gray)', display: 'flex', alignItems: 'center' }}>
@@ -891,7 +896,7 @@ function FlashSalesTab({ token }) {
                           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
                         </button>
                       </div>
-                    </td>
+                    </td>)}
                   </tr>
                 );
               })}

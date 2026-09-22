@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useAccess } from '@/contexts/AccessContext';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import { remainingDue, paidSoFar } from '@/lib/orderBalance';
 import ErrorBoundary from '@/components/ErrorBoundary';
@@ -93,6 +94,8 @@ function StatusBadge({ status }) {
 
 export default function PaymentsPage() {
   const { token } = useAuth();
+  // Payments Work records money received; See reads who paid and who owes.
+  const mayRecord = useAccess().can('payments.create');
 
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -295,7 +298,7 @@ export default function PaymentsPage() {
                   const bal = balanceOf(o);
                   return (
                     <PhoneRow key={o._id || o.id} first={i === 0}
-                      onClick={() => bal > 0 ? openRecordPayment(o) : (o.paymentHistory?.length > 0 ? setHistoryOrder(o) : null)}
+                      onClick={() => (bal > 0 && mayRecord) ? openRecordPayment(o) : (o.paymentHistory?.length > 0 ? setHistoryOrder(o) : null)}
                       title={orderNo(o)}
                       chip={<span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>{o.isArchived && <ArchivedTag />}<StatusBadge status={o.paymentStatus || 'unpaid'} /></span>}
                       meta={customerOf(o)}
@@ -354,7 +357,7 @@ export default function PaymentsPage() {
                       {(o.paymentHistory?.length > 0) && (
                         <button onClick={() => setHistoryOrder(o)} style={S.btnSmGhost}>History</button>
                       )}
-                      {bal > 0 && (
+                      {mayRecord && bal > 0 && (
                         <button onClick={() => openRecordPayment(o)} style={{ ...S.btnSm, marginLeft: 6 }}>Record</button>
                       )}
                     </td>
