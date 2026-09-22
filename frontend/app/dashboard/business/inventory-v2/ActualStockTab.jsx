@@ -4,6 +4,7 @@ import { useState, useMemo } from 'react';
 import { S, ICONS, Field, IntegerInput, Modal, ConfirmModal, PaginationBar, SearchBar, StatusBadge, Note, EmptyState, SummaryCard, usePagination, formatCurrency, formatDate, uid, CustomSelect } from './shared';
 import { DateRangeFilter, inDateRange, performedByLabel } from './StockOutHistoryTab';
 import { adjustStock } from './api';
+import { useAccess } from '@/contexts/AccessContext';
 
 // "Qc Scrap" is what generic title-casing does to an acronym. These are the reasons the stock screens
 // can actually receive; anything unmapped still degrades to words rather than a raw database key.
@@ -160,6 +161,11 @@ const REASON_MAP = {
 };
 
 export default function ActualStockTab({ materials, batches, setBatches, badOrders, stockOuts, setStockOuts, toast, token, onRefresh }) {
+  // Stock Work records stock-outs; without it the tab is for watching. Peso figures (cost, value)
+  // are for people with a Finance row - a production hand monitoring the shelf needs counts.
+  const { can } = useAccess();
+  const mayWork  = can('stock.work');
+  const seeMoney = can(['sales', 'payments', 'reports']);
   const [search,      setSearch]     = useState('');
   const [catFilter,   setCat]        = useState('All');
   const [statusFilter,setStatus]     = useState('All');
@@ -253,7 +259,7 @@ export default function ActualStockTab({ materials, batches, setBatches, badOrde
             { key:'In Stock',     label:'In stock', value: inStock,  color:'#2e7d32', active: statusFilter === 'In Stock',     onClick: () => setStatus(statusFilter === 'In Stock' ? 'All' : 'In Stock') },
             { key:'Low Stock',    label:'Low',      value: lowStock, color:'#b45309', active: statusFilter === 'Low Stock',    onClick: () => setStatus(statusFilter === 'Low Stock' ? 'All' : 'Low Stock') },
             { key:'Out of Stock', label:'Out',      value: outStock, color:'#c62828', active: statusFilter === 'Out of Stock', onClick: () => setStatus(statusFilter === 'Out of Stock' ? 'All' : 'Out of Stock') },
-            { key:'val',          label:'Value',    value: pesoShort(totalVal), title: formatCurrency(totalVal) },
+            ...(seeMoney ? [{ key:'val',  label:'Value',    value: pesoShort(totalVal), title: formatCurrency(totalVal) }] : []),
           ]} />
           <PhoneFilterBar search={search} onSearch={setSearch} placeholder="Search name or SKU"
             filters={[
@@ -268,7 +274,7 @@ export default function ActualStockTab({ materials, batches, setBatches, badOrde
         <SummaryCard label="In Stock"     value={inStock}  color="#2e7d32" accent />
         <SummaryCard label="Low Stock"    value={lowStock} color="#b45309" />
         <SummaryCard label="Out of Stock" value={outStock} color="#c62828" />
-        <SummaryCard label="Actual Value" value={formatCurrency(totalVal)} />
+        {seeMoney && <SummaryCard label="Actual Value" value={formatCurrency(totalVal)} />}
       </div>
 
       <Note type="info">
@@ -293,7 +299,7 @@ export default function ActualStockTab({ materials, batches, setBatches, badOrde
       {isPhone ? (
         <>
           {slice.length === 0 ? (
-            <div style={{ ...S.card, padding:0 }}><EmptyState message="No stock data" sub="Receive stock first." /></div>
+            <div style={{ ...S.card, padding:0 }}><EmptyState message="No stock data" sub={mayWork ? "Receive stock first." : "Nothing received yet."} /></div>
           ) : (
             <PhoneList>
               {slice.map((d, i) => (
@@ -301,9 +307,9 @@ export default function ActualStockTab({ materials, batches, setBatches, badOrde
                   <PhoneRow first title={d.mat.sku} chip={<StatusBadge status={d.status} />}
                     meta={d.mat.name}
                     sub={[`on hand ${d.actualQty}`, d.reservedQty > 0 ? `held ${d.reservedQty}` : null, d.pendingBOQty > 0 ? `bad ${d.pendingBOQty}` : null, `sellable ${d.availableQty} ${d.mat.unit}`, `value ${formatCurrency(d.stockValue)}`].filter(Boolean).join(' \u00b7 ')} />
-                  <div style={{ padding:'0 12px 10px 14px' }}>
+                  {mayWork && (<div style={{ padding:'0 12px 10px 14px' }}>
                     <button onClick={() => setReduceTarget(d.mat)} style={{ ...S.btnSmDanger, minHeight:40, width:'100%', justifyContent:'center' }}>{ICONS.warn} Record stock out</button>
-                  </div>
+                  </div>)}
                 </div>
               ))}
             </PhoneList>
@@ -322,8 +328,10 @@ export default function ActualStockTab({ materials, batches, setBatches, badOrde
                 {[
                   {l:'SKU'},{l:'Material'},
                   {l:'Actual Stock',r:true},{l:'Pending BO',r:true},{l:'Stock Outs',r:true},
-                  {l:'Reserved',r:true},{l:'Available',r:true},{l:'FIFO Cost',r:true},{l:'Value',c:true},
-                  {l:'Status'},{l:''},
+                  {l:'Reserved',r:true},{l:'Available',r:true},
+                  ...(seeMoney ? [{l:'FIFO Cost',r:true},{l:'Value',c:true}] : []),
+                  {l:'Status'},
+                  ...(mayWork ? [{l:''}] : []),
                 ].map(h => (
                   <th key={h.l} style={{ ...S.th, textAlign: h.r ? 'right' : h.c ? 'center' : 'left' }}>{h.l}</th>
                 ))}
@@ -331,7 +339,7 @@ export default function ActualStockTab({ materials, batches, setBatches, badOrde
             </thead>
             <tbody>
               {slice.length === 0 ? (
-                <tr><td colSpan={11}><EmptyState message="No stock data" sub="Receive stock first." /></td></tr>
+                <tr><td colSpan={8 + (seeMoney ? 2 : 0) + (mayWork ? 1 : 0)}><EmptyState message="No stock data" sub={mayWork ? "Receive stock first." : "Nothing received yet."} /></td></tr>
               ) : slice.map(d => (
                 <tr key={d.mat.id} style={S.tr} onMouseEnter={e => e.currentTarget.style.background='var(--dark2)'} onMouseLeave={e => e.currentTarget.style.background=''}>
                   <td style={{ ...S.td, fontFamily:'monospace', fontSize:'12px', color:'var(--gray)' }}>{d.mat.sku}</td>
@@ -353,12 +361,12 @@ export default function ActualStockTab({ materials, batches, setBatches, badOrde
                     title="What the storefront can still sell.">
                     {d.availableQty} {d.mat.unit}
                   </td>
-                  <td style={{ ...S.td, textAlign:'right' }}>{formatCurrency(d.unitCost)}</td>
-                  <td style={{ ...S.td, textAlign:'center', fontWeight:600 }}>{formatCurrency(d.stockValue)}</td>
+                  {seeMoney && <td style={{ ...S.td, textAlign:'right' }}>{formatCurrency(d.unitCost)}</td>}
+                  {seeMoney && <td style={{ ...S.td, textAlign:'center', fontWeight:600 }}>{formatCurrency(d.stockValue)}</td>}
                   <td style={S.td}><StatusBadge status={d.status} /></td>
-                  <td style={{ ...S.td, textAlign:'right' }}>
+                  {mayWork && (<td style={{ ...S.td, textAlign:'right' }}>
                     <button onClick={() => setReduceTarget(d.mat)} style={S.btnSmDanger} title="Record Stock Out">{ICONS.warn} Stock Out</button>
-                  </td>
+                  </td>)}
                 </tr>
               ))}
             </tbody>
@@ -390,7 +398,7 @@ export default function ActualStockTab({ materials, batches, setBatches, badOrde
                 {[
                   {l:'Date'},{l:'Reference'},{l:'Type'},{l:'Material'},
                   {l:'Qty Out',r:true},{l:'Reason'},
-                  {l:'Total Cost',r:true},
+                  ...(seeMoney ? [{l:'Total Cost',r:true}] : []),
                   {l:'By'},{l:'Notes'},
                 ].map(h => (
                   <th key={h.l} style={{ ...S.th, textAlign: h.r ? 'right' : 'left' }}>{h.l}</th>
@@ -399,7 +407,7 @@ export default function ActualStockTab({ materials, batches, setBatches, badOrde
             </thead>
             <tbody>
               {hSlice.length === 0 ? (
-                <tr><td colSpan={9}><EmptyState message="No stock outs recorded" /></td></tr>
+                <tr><td colSpan={seeMoney ? 9 : 8}><EmptyState message="No stock outs recorded" /></td></tr>
               ) : hSlice.map(s => {
                 const mat = materials.find(m => m.id === s.matId);
                 const isProduction = s.type === 'production';
@@ -417,7 +425,7 @@ export default function ActualStockTab({ materials, batches, setBatches, badOrde
                     <td style={{ ...S.td, fontWeight:500 }}>{s.matName}</td>
                     <td style={{ ...S.td, textAlign:'right', color:'#c62828', fontWeight:600 }}>−{Math.abs(Number(s.qty) || 0)} {mat?.unit}</td>
                     <td style={S.td}><StatusBadge status={s.reason} label={outReasonLabel(s.reason)} /></td>
-                    <td style={{ ...S.td, textAlign:'right', fontWeight:600, color: isProduction ? 'var(--gray-light)' : '#c62828' }}>{formatCurrency(s.totalCost)}</td>
+                    {seeMoney && <td style={{ ...S.td, textAlign:'right', fontWeight:600, color: isProduction ? 'var(--gray-light)' : '#c62828' }}>{formatCurrency(s.totalCost)}</td>}
                     <td style={{ ...S.td, fontSize:'12px', color:'var(--gray-light)' }}>{performedByLabel(s.performedBy)}</td>
                     {/* One line, hover for the rest. The note is an audit record and has to stay whole
                         in the data, but a row that grows to four lines because of it pushes every

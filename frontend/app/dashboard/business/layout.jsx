@@ -17,6 +17,7 @@ import { useAuth } from "../../../contexts/AuthContext";
 import { watchTableLabels } from "@/lib/tableCards";
 import { useTheme } from "../../../contexts/ThemeContext";
 import useLockBodyScroll from "@/lib/useLockBodyScroll";
+import { AccessProvider } from "@/contexts/AccessContext";
 import "./admin-dashboard.css";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
@@ -1561,7 +1562,10 @@ export default function BusinessDashboardLayout({ children }) {
                   style={{ background: "none", border: "none", color: "var(--gray)", cursor: "pointer", fontSize: 18, lineHeight: 1 }}>&times;</button>
               </div>
             )}
-            {children}
+            {/* Every page asks the same can() the sidebar uses, so a button and the menu never disagree. */}
+            <AccessProvider value={{ can, owner: isAdminOwner, ready: isAdminOwner || permissions !== null }}>
+              {children}
+            </AccessProvider>
         </main>
 
         {/* The bottom tab bar, phone only (the stylesheet hides it above 700px). Shopify's admin

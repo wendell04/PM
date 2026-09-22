@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useAccess } from '@/contexts/AccessContext';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import { fetchJobOrders, updateJobOrder, reportSpoilage } from '@/lib/jobOrderApi';
 import { orderNo } from '@/lib/orderNumber';
@@ -25,6 +26,8 @@ const STATUS_TABS = [
 
 export default function ProductionPage() {
   const { token } = useAuth();
+  // Production See watches the bench; Production Work starts and finishes the jobs.
+  const mayWork = useAccess().can('production.work');
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -181,7 +184,7 @@ export default function ProductionPage() {
                           j.materialShort?.length ? `waiting on ${j.materialShort.map(r => `${r.name} (short ${r.short})`).join(', ')}` : null,
                           j.qcResult?.defects && done > 0 ? `back from QC: ${j.qcResult.defects}` : null,
                         ].filter(Boolean).join(' \u00b7 ')} />
-                      {act && (
+                      {act && mayWork && (
                         <div style={{ padding: '0 12px 10px 14px' }}>
                           <button disabled={busy} onClick={() => setConfirmAct({ jo: j, to: act.to })}
                             style={{ ...S.btnPrimary, width: '100%', minHeight: 44, justifyContent: 'center', opacity: busy ? .6 : 1 }}>
@@ -204,13 +207,13 @@ export default function ProductionPage() {
             <thead><tr>
               <th style={S.th}>JO</th><th style={S.th}>Design</th><th style={S.th}>Product</th><th style={S.th}>To make</th>
               <th style={S.th}>Order</th><th style={S.th}>Target</th><th style={S.th}>Status</th>
-              <th style={{ ...S.th, textAlign: 'right' }}>Action</th>
+              {mayWork && <th style={{ ...S.th, textAlign: 'right' }}>Action</th>}
             </tr></thead>
             <tbody>
               {loading ? (
-                <TableSkeleton cols={8} rows={4} />
+                <TableSkeleton cols={mayWork ? 8 : 7} rows={4} />
               ) : slice.length === 0 ? (
-                <tr><td colSpan={8} style={{ padding: 0 }}><EmptyState message="No active job orders" sub="Create one from a paid, design-approved order in Job Orders." /></td></tr>
+                <tr><td colSpan={8} style={{ padding: 0 }}><EmptyState message="No active job orders" sub="Jobs appear here once a job order is created for a paid, approved order." /></td></tr>
               ) : slice.map(j => {
                 const id = idOf(j); const busy = busyId === id;
                 const risk = joRisk(j);
@@ -270,12 +273,12 @@ export default function ProductionPage() {
                       {risk && <div style={{ marginTop: 3 }}><span style={{ ...S.badge, ...RISK_STYLE[risk.color], fontSize: 9, fontWeight: 700 }}>{risk.label}</span></div>}
                     </td>
                     <td style={S.td}><JobOrderStatusBadge status={j.joStatus} /><WaitingBadge jo={j} block /></td>
-                    <td style={{ ...S.td, textAlign: 'right' }} onClick={e => e.stopPropagation()}>
+                    {mayWork && (<td style={{ ...S.td, textAlign: 'right' }} onClick={e => e.stopPropagation()}>
                       {j.joStatus === 'Queued' && <button disabled={busy} onClick={e => { e.stopPropagation(); setConfirmAct({ jo: j, to: 'In Progress' }); }} style={S.btnSm}>{busy ? 'Saving…' : 'Start'}</button>}
                       {j.joStatus === 'In Progress' && <button disabled={busy} onClick={e => { e.stopPropagation(); setConfirmAct({ jo: j, to: 'QC_Pending' }); }} style={S.btnSm}>{busy ? 'Saving…' : 'Send to QC'}</button>}
                       {j.joStatus === 'QC_Pending' && <span style={{ fontSize: '12px', color: 'var(--gray)' }}>Awaiting QC</span>}
                       {j.joStatus === 'QC_Failed' && <button disabled={busy} onClick={e => { e.stopPropagation(); setConfirmAct({ jo: j, to: 'In Progress' }); }} style={S.btnSm}>{busy ? 'Saving…' : 'Redo'}</button>}
-                    </td>
+                    </td>)}
                   </tr>
                 );
               })}
@@ -349,6 +352,7 @@ export default function ProductionPage() {
  */
 function JobDetail({ jo, onClose, onPreview, onChanged }) {
   const { token } = useAuth();
+  const mayWork = useAccess().can('production.work');
   const [qty, setQty]       = useState('1');
   const [kind, setKind]     = useState('abnormal');
   const [reason, setReason] = useState('');
@@ -497,14 +501,14 @@ function JobDetail({ jo, onClose, onPreview, onChanged }) {
         {/* Reported against the JOB, not as a bare stock adjustment: a stock-out with reason "damaged"
             never says WHICH job, and that link is the only way to find the machine or material costing
             you money. */}
-        <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12 }}>
-          {!open ? (
+        {(mayWork || (jo.spoilage ?? []).length > 0) && <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12 }}>
+          {!open ? (mayWork && (
             <button type="button"
               onClick={() => { setLost(bom.map(m => String(m.inventoryId ?? ''))); setOpen(true); }}
               style={{ ...S.btnSmGhost, color: 'var(--st-red-fg)', borderColor: 'rgba(239,68,68,0.35)' }}>
               Report spoilage
             </button>
-          ) : (
+          )) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               <div style={{ ...S.label }}>Report spoilage</div>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -572,7 +576,7 @@ function JobDetail({ jo, onClose, onPreview, onChanged }) {
               ))}
             </div>
           )}
-        </div>
+        </div>}
       </div>
     </div>
   );

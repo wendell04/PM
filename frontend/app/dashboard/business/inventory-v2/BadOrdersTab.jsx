@@ -1,6 +1,7 @@
 'use client';
 import { useState, useMemo } from 'react';
 import { S, ICONS, Field, Modal, ConfirmModal, PaginationBar, SearchBar, StatusBadge, Note, EmptyState, SummaryCard, usePagination, formatCurrency, formatDate, CustomSelect } from './shared';
+import { useAccess } from '@/contexts/AccessContext';
 import { resolveReturn } from './api';
 
 const STATUS_OPTIONS = ['All','Pending','Replaced','Written Off'];
@@ -78,6 +79,8 @@ function ResolveModal({ open, onClose, badOrder, material, onResolve }) {
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 export default function BadOrdersTab({ badOrders, setBadOrders, materials, batches, vendors, toast, token, onRefresh }) {
+  // Bad Orders Work resolves them (replaced, refunded, written off); See only watches the list.
+  const mayWork = useAccess().can('badOrders.create');
   const [search,        setSearch]       = useState('');
   const [statusFilter,  setStatusFilter] = useState('All');
   const [typeFilter,    setTypeFilter]   = useState('All');
@@ -153,7 +156,7 @@ export default function BadOrdersTab({ badOrders, setBadOrders, materials, batch
                 {[
                   {l:'Date'},{l:'Invoice'},{l:'Material'},
                   {l:'Qty',r:true},{l:'Type'},{l:'Notes'},{l:'Status'},{l:'Resolved Date'},
-                  {l:'Actions',c:true},
+                  ...(mayWork ? [{l:'Actions',c:true}] : []),
                 ].map(h => (
                   <th key={h.l} style={{ ...S.th, textAlign: h.r ? 'right' : h.c ? 'center' : 'left' }}>{h.l}</th>
                 ))}
@@ -161,7 +164,7 @@ export default function BadOrdersTab({ badOrders, setBadOrders, materials, batch
             </thead>
             <tbody>
               {slice.length === 0 ? (
-                <tr><td colSpan={9}><EmptyState message="No bad orders found" sub="Bad orders are logged during stock receiving." /></td></tr>
+                <tr><td colSpan={mayWork ? 9 : 8}><EmptyState message="No bad orders found" sub="Bad orders are logged during stock receiving." /></td></tr>
               ) : slice.map(b => {
                 const mat = materials.find(m => m.id === b.matId);
                 return (
@@ -177,11 +180,11 @@ export default function BadOrdersTab({ badOrders, setBadOrders, materials, batch
                       {b.resolvedDate ? formatDate(b.resolvedDate) : ''}
                       {b.resolvedNotes && <div style={{ color:'var(--gray)', marginTop:'2px' }}>{b.resolvedNotes}</div>}
                     </td>
-                    <td style={{ ...S.td, textAlign:'center' }}>
+                    {mayWork && <td style={{ ...S.td, textAlign:'center' }}>
                       {b.status === 'pending' && (
                         <button onClick={() => setResolveTarget(b)} style={S.btnSm}>{ICONS.check} Resolve</button>
                       )}
-                    </td>
+                    </td>}
                   </tr>
                 );
               })}

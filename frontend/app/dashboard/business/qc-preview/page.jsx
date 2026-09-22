@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef} from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useAccess } from '@/contexts/AccessContext';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import { fetchJobOrders } from '@/lib/jobOrderApi';
 import { submitJobOrderQC } from '@/lib/ordersApi';
@@ -22,6 +23,8 @@ import { useIsPhone, KpiStrip, PhoneFilterBar, PhoneList, PhoneRow } from '@/com
 
 export default function QualityControlPage() {
   const { token, currentUser } = useAuth();
+  // QC See watches the queue; QC Work inspects, passes and fails.
+  const mayWork = useAccess().can('qc.work');
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -175,7 +178,7 @@ export default function QualityControlPage() {
                   };
                   return (
                     <div key={id} style={{ borderTop: i === 0 ? 'none' : '1px solid var(--border)' }}>
-                      <PhoneRow first onClick={startInspect}
+                      <PhoneRow first onClick={mayWork ? startInspect : undefined}
                         title={<>{j.joId || '-'} <RushBadge isRush={j.isRush} /></>}
                         chip={<JobOrderStatusBadge status={j.joStatus} />}
                         meta={prodName(j)}
@@ -186,12 +189,12 @@ export default function QualityControlPage() {
                           risk?.label ?? null,
                           j.qcResult?.defects ? `last defect: ${j.qcResult.defects}` : null,
                         ].filter(Boolean).join(' \u00b7 ')} />
-                      <div style={{ padding: '0 12px 10px 14px' }}>
+                      {mayWork && <div style={{ padding: '0 12px 10px 14px' }}>
                         <button disabled={busy} onClick={startInspect}
                           style={{ ...S.btnPrimary, width: '100%', minHeight: 44, justifyContent: 'center', opacity: busy ? .6 : 1 }}>
                           {busy ? 'Saving' : 'Inspect'}
                         </button>
-                      </div>
+                      </div>}
                     </div>
                   );
                 })}
@@ -207,11 +210,11 @@ export default function QualityControlPage() {
             <thead><tr>
               <th style={S.th}>JO</th><th style={S.th}>Approved Design</th><th style={S.th}>Product</th><th style={S.th}>Qty</th>
               <th style={S.th}>Order</th><th style={S.th}>Target</th><th style={S.th}>Status</th><th style={S.th}>Last Defect</th>
-              <th style={{ ...S.th, textAlign: 'right' }}>QC Action</th>
+              {mayWork && <th style={{ ...S.th, textAlign: 'right' }}>QC Action</th>}
             </tr></thead>
             <tbody>
               {loading ? (
-                <TableSkeleton cols={9} rows={4} />
+                <TableSkeleton cols={mayWork ? 9 : 8} rows={4} />
               ) : slice.length === 0 ? (
                 <tr><td colSpan={9} style={{ padding: 0 }}><EmptyState message="Nothing to inspect" sub="Job orders appear here once production sends them For QC." /></td></tr>
               ) : slice.map(j => {
@@ -238,7 +241,7 @@ export default function QualityControlPage() {
                     </td>
                     <td style={S.td}><JobOrderStatusBadge status={j.joStatus} /></td>
                     <td style={{ ...S.td, color: 'var(--gray)', maxWidth: 220 }}>{j.qcResult?.defects || '-'}</td>
-                    <td style={{ ...S.td, textAlign: 'right', whiteSpace: 'nowrap' }}>
+                    {mayWork && <td style={{ ...S.td, textAlign: 'right', whiteSpace: 'nowrap' }}>
                       <button disabled={busy}
                         onClick={() => {
                           const left = Math.max(0, (j.product?.quantity ?? 1) - (j.acceptedQty ?? 0));
@@ -248,7 +251,7 @@ export default function QualityControlPage() {
                         style={{ ...S.btnSm, background: 'var(--gold)' }}>
                         {busy ? 'Saving…' : 'Inspect'}
                       </button>
-                    </td>
+                    </td>}
                   </tr>
                 );
               })}

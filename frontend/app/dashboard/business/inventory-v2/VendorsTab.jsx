@@ -1,5 +1,6 @@
 'use client';
 import { useIsPhone, KpiStrip, PhoneFilterBar, PhoneList, PhoneRow } from '@/components/dashboard/phone';
+import { useAccess } from '@/contexts/AccessContext';
 import { useState, useMemo } from 'react';
 import { S, ICONS, Field, Modal, ConfirmModal, PaginationBar, SearchBar, StatusBadge, EmptyState, SummaryCard, usePagination, uid } from './shared';
 import { createSupplier, updateSupplier, deleteSupplier } from './api';
@@ -22,6 +23,8 @@ function validate(f) {
 }
 
 export default function VendorsTab({ vendors, setVendors, materials, categories, onAddCategory, token, onRefresh, toast }) {
+  // Suppliers are Master Data: adding, editing and removing one is Master Data Work.
+  const mayWork = useAccess().can('masterData.work');
   const [search,      setSearch]      = useState('');
   const [form,        setForm]        = useState(EMPTY_FORM);
   const [errors,      setErrors]      = useState({});
@@ -128,7 +131,7 @@ export default function VendorsTab({ vendors, setVendors, materials, categories,
     <div style={S.col}>
       {isPhone ? (
         <>
-          <button onClick={openAdd} style={{ ...S.btnPrimary, minHeight:44, justifyContent:'center' }}>{ICONS.plus} Add Vendor</button>
+          {mayWork && <button onClick={openAdd} style={{ ...S.btnPrimary, minHeight:44, justifyContent:'center' }}>{ICONS.plus} Add Vendor</button>}
           <KpiStrip items={[
             { key:'v', label:'Vendors',        value: vendors.length },
             { key:'m', label:'With materials', value: Object.keys(matCountMap).length },
@@ -145,7 +148,7 @@ export default function VendorsTab({ vendors, setVendors, materials, categories,
       {/* toolbar */}
       <div style={{ ...S.card, ...S.rowBetween }}>
         <SearchBar value={search} onChange={setSearch} placeholder="Search vendor name, email…" style={{ width:'260px' }} />
-        <button onClick={openAdd} style={S.btnPrimary}>{ICONS.plus} Add Vendor</button>
+        {mayWork && <button onClick={openAdd} style={S.btnPrimary}>{ICONS.plus} Add Vendor</button>}
       </div>
 
       </>)}
@@ -157,7 +160,7 @@ export default function VendorsTab({ vendors, setVendors, materials, categories,
           ) : (
             <PhoneList>
               {slice.map((v, i) => (
-                <PhoneRow key={v.id} first={i === 0} mono={false} onClick={() => openEdit(v)}
+                <PhoneRow key={v.id} first={i === 0} mono={false} onClick={mayWork ? () => openEdit(v) : undefined}
                   title={v.name}
                   chip={<span style={{ fontSize:12, color:'var(--gray)' }}>{matCountMap[v.id] || 0} materials</span>}
                   meta={[v.contact, v.email].filter(Boolean).join(' \u00b7 ')}
@@ -178,7 +181,7 @@ export default function VendorsTab({ vendors, setVendors, materials, categories,
               <tr>
                 {[
                   {l:'Vendor Name'},{l:'Contact'},{l:'Email'},{l:'Address'},{l:'Items Supplied'},
-                  {l:'Materials',c:true},{l:'',r:true},
+                  {l:'Materials',c:true},...(mayWork ? [{l:'',r:true}] : []),
                 ].map(h => (
                   <th key={h.l} style={{ ...S.th, textAlign: h.r ? 'right' : h.c ? 'center' : 'left' }}>{h.l}</th>
                 ))}
@@ -186,7 +189,7 @@ export default function VendorsTab({ vendors, setVendors, materials, categories,
             </thead>
             <tbody>
               {slice.length === 0 ? (
-                <tr><td colSpan={7}><EmptyState message="No vendors found" sub="Add a vendor to get started." /></td></tr>
+                <tr><td colSpan={mayWork ? 7 : 6}><EmptyState message="No vendors found" sub={mayWork ? "Add a vendor to get started." : "No suppliers recorded yet."} /></td></tr>
               ) : slice.map(v => (
                 <tr key={v.id} style={S.tr} onMouseEnter={e => e.currentTarget.style.background='var(--dark2)'} onMouseLeave={e => e.currentTarget.style.background=''}>
                   <td style={{ ...S.td, fontWeight:600 }}>{v.name}</td>
@@ -201,12 +204,12 @@ export default function VendorsTab({ vendors, setVendors, materials, categories,
                     </div>
                   </td>
                   <td style={{ ...S.td, textAlign:'center', fontWeight:600 }}>{matCountMap[v.id] || 0}</td>
-                  <td style={{ ...S.td, textAlign:'right' }}>
+                  {mayWork && <td style={{ ...S.td, textAlign:'right' }}>
                     <div style={{ display:'flex', gap:'6px', justifyContent:'flex-end' }}>
                       <button onClick={() => openEdit(v)} style={S.btnSmGhost}>{ICONS.edit}</button>
                       <button onClick={() => confirmDelete(v)} style={S.btnSmDanger}>{ICONS.trash}</button>
                     </div>
-                  </td>
+                  </td>}
                 </tr>
               ))}
             </tbody>

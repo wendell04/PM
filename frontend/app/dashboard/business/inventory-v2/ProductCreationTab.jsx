@@ -1,6 +1,7 @@
 'use client';
 import { useState, useMemo } from 'react';
 import { S, ICONS, Field, IntegerInput, Modal, ConfirmModal, PaginationBar, SearchBar, Note, EmptyState, SummaryCard, usePagination, formatCurrency, uid, CustomSelect } from './shared';
+import { useAccess } from '@/contexts/AccessContext';
 import { createBom, updateBom, deleteBom } from './api';
 
 const EMPTY_FORM = { productName:'', items:[] };
@@ -54,6 +55,13 @@ function BomCostBreakdown({ items, materials, batches }) {
 }
 
 export default function ProductCreationTab({ boms, setBoms, materials, batches, token, onRefresh, toast }) {
+  // Recipes are Master Data: Work creates and edits them, the Archive tick deletes one. The
+  // estimated cost shows to whoever edits recipes and to the Finance rows.
+  const { can } = useAccess();
+  const mayWork    = can('masterData.work');
+  const mayArchive = can('masterData.archive');
+  const seeCost    = mayWork || can(['sales', 'payments', 'reports']);
+  const hasActions = mayWork || mayArchive;
   const [search,   setSearch]  = useState('');
   const [form,     setForm]    = useState(EMPTY_FORM);
   const [errors,   setErrors]  = useState({});
@@ -152,7 +160,7 @@ export default function ProductCreationTab({ boms, setBoms, materials, batches, 
       {/* toolbar */}
       <div style={{ ...S.card, ...S.rowBetween }}>
         <SearchBar value={search} onChange={setSearch} placeholder="Search product name…" style={{ width:'260px' }} />
-        <button onClick={openAdd} style={S.btnPrimary}>{ICONS.plus} New Product</button>
+        {mayWork && <button onClick={openAdd} style={S.btnPrimary}>{ICONS.plus} New Product</button>}
       </div>
 
       {/* table */}
@@ -161,14 +169,14 @@ export default function ProductCreationTab({ boms, setBoms, materials, batches, 
           <table className="pmp-rt" style={{ width:'100%', borderCollapse:'collapse' }}>
             <thead>
               <tr>
-                {[{l:'Product Name'},{l:'Materials (BOM)'},{l:'Est. Cost',r:true},{l:'',r:true}].map(h => (
+                {[{l:'Product Name'},{l:'Materials (BOM)'},...(seeCost ? [{l:'Est. Cost',r:true}] : []),...(hasActions ? [{l:'',r:true}] : [])].map(h => (
                   <th key={h.l} style={{ ...S.th, textAlign: h.r ? 'right' : 'left' }}>{h.l}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {slice.length === 0 ? (
-                <tr><td colSpan={4}><EmptyState message="No products defined" sub="Create a product with its Bill of Materials." /></td></tr>
+                <tr><td colSpan={2 + (seeCost ? 1 : 0) + (hasActions ? 1 : 0)}><EmptyState message="No products defined" sub={mayWork ? "Create a product with its Bill of Materials." : "No recipes recorded yet."} /></td></tr>
               ) : slice.map(bom => {
                 const cost = bom.items.reduce((s, it) => {
                   const mat = materials.find(m => m.id === it.matId);
@@ -194,13 +202,13 @@ export default function ProductCreationTab({ boms, setBoms, materials, batches, 
                         })}
                       </div>
                     </td>
-                    <td style={{ ...S.td, fontWeight:600, color:'var(--gold)', textAlign:'right' }}>{formatCurrency(cost)}</td>
-                    <td style={{ ...S.td, textAlign:'right' }}>
+                    {seeCost && <td style={{ ...S.td, fontWeight:600, color:'var(--gold)', textAlign:'right' }}>{formatCurrency(cost)}</td>}
+                    {hasActions && <td style={{ ...S.td, textAlign:'right' }}>
                       <div style={{ display:'flex', gap:'6px', justifyContent:'flex-end' }}>
-                        <button onClick={() => openEdit(bom)} style={S.btnSmGhost}>{ICONS.edit}</button>
-                        <button onClick={() => setConfirm({ id:bom.id, name:bom.productName })} style={S.btnSmDanger}>{ICONS.trash}</button>
+                        {mayWork && <button onClick={() => openEdit(bom)} style={S.btnSmGhost}>{ICONS.edit}</button>}
+                        {mayArchive && <button onClick={() => setConfirm({ id:bom.id, name:bom.productName })} style={S.btnSmDanger}>{ICONS.trash}</button>}
                       </div>
-                    </td>
+                    </td>}
                   </tr>
                 );
               })}

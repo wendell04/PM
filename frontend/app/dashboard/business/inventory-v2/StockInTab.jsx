@@ -3,6 +3,7 @@ import { useIsPhone, KpiStrip, PhoneFilterBar, PhoneList, PhoneRow , pesoShort }
 import { useState, useMemo } from 'react';
 import { S, ICONS, Field, IntegerInput, DecimalInput, Modal, PaginationBar, SearchBar, StatusBadge, Note, EmptyState, SummaryCard, usePagination, formatCurrency, formatDate, uid, CustomSelect } from './shared';
 import { adjustStock, createReturn } from './api';
+import { useAccess } from '@/contexts/AccessContext';
 
 const BO_TYPES = ['damaged','defective','shortage','wrong_item','expired'];
 
@@ -86,6 +87,11 @@ function CategoryCard({ group, expanded, onToggle, selectedIds, onToggleMat }) {
 }
 
 export default function StockInTab({ materials, vendors, batches, setBatches, badOrders, setBadOrders, toast, token, onRefresh }) {
+  // Stock Work receives stock; watchers see the history. Peso figures follow the Finance rows -
+  // except inside the receive form, where whoever receives has to enter what it cost.
+  const { can } = useAccess();
+  const mayWork  = can('stock.work');
+  const seeMoney = can(['sales', 'payments', 'reports']);
   const [open,  setOpen] = useState(false);
   const [step,  setStep] = useState(1);
 
@@ -278,11 +284,11 @@ export default function StockInTab({ materials, vendors, batches, setBatches, ba
     <div style={S.col}>
       {isPhone ? (
         <>
-          <button onClick={openModal} style={{ ...S.btnPrimary, minHeight:44, justifyContent:'center' }}>{ICONS.truck} Receive Stock</button>
+          {mayWork && <button onClick={openModal} style={{ ...S.btnPrimary, minHeight:44, justifyContent:'center' }}>{ICONS.truck} Receive Stock</button>}
           <KpiStrip items={[
             { key:'b', label:'Batches',  value: batches.length },
             { key:'q', label:'Qty in',   value: totalReceived.toLocaleString() },
-            { key:'v', label:'Value in', value: pesoShort(totalValue), title: formatCurrency(totalValue) },
+            ...(seeMoney ? [{ key:'v', label:'Value in', value: pesoShort(totalValue), title: formatCurrency(totalValue) }] : []),
           ]} />
           <PhoneFilterBar search={histSearch} onSearch={setHistSearch} placeholder="Search invoice, material, vendor"
             note={`${hTotal} record${hTotal !== 1 ? 's' : ''}`} />
@@ -291,12 +297,12 @@ export default function StockInTab({ materials, vendors, batches, setBatches, ba
       <div style={{ display:'flex', gap:'12px', flexWrap:'wrap' }}>
         <SummaryCard label="Total Batches"  value={batches.length}                accent />
         <SummaryCard label="Total Qty In"   value={totalReceived.toLocaleString()} />
-        <SummaryCard label="Total Value In" value={formatCurrency(totalValue)}     />
+        {seeMoney && <SummaryCard label="Total Value In" value={formatCurrency(totalValue)}     />}
       </div>
 
       <div style={{ ...S.card, ...S.rowBetween }}>
         <SearchBar value={histSearch} onChange={setHistSearch} placeholder="Search invoice, material, vendor…" style={{ width:'280px' }} />
-        <button onClick={openModal} style={S.btnPrimary}>{ICONS.truck} Receive Stock</button>
+        {mayWork && <button onClick={openModal} style={S.btnPrimary}>{ICONS.truck} Receive Stock</button>}
       </div>
 
       </>)}
@@ -304,7 +310,7 @@ export default function StockInTab({ materials, vendors, batches, setBatches, ba
       {isPhone ? (
         <>
           {hSlice.length === 0 ? (
-            <div style={{ ...S.card, padding:0 }}><EmptyState message="No stock-in records" sub="Receive stock to see records here." /></div>
+            <div style={{ ...S.card, padding:0 }}><EmptyState message="No stock-in records" sub={mayWork ? "Receive stock to see records here." : "Nothing received yet."} /></div>
           ) : (
             <PhoneList>
               {hSlice.map((b, i) => {
@@ -314,7 +320,7 @@ export default function StockInTab({ materials, vendors, batches, setBatches, ba
                     title={mat?.name || b.matId}
                     chip={<span style={{ fontSize:12, fontWeight:700, color: b.remainingQty < b.qtyReceived ? '#b45309' : '#2e7d32' }}>{b.remainingQty}/{b.qtyReceived} {mat?.unit} left</span>}
                     meta={[formatDate(b.date), b.invoiceNo, b.vendorName].filter(Boolean).join(' \u00b7 ')}
-                    sub={[`${b.qtyReceived} ${mat?.unit ?? ''} at ${formatCurrency(b.unitCost)}`, formatCurrency(b.qtyReceived * b.unitCost), b.notes].filter(Boolean).join(' \u00b7 ')} />
+                    sub={[seeMoney ? `${b.qtyReceived} ${mat?.unit ?? ''} at ${formatCurrency(b.unitCost)}` : `${b.qtyReceived} ${mat?.unit ?? ''}`, seeMoney ? formatCurrency(b.qtyReceived * b.unitCost) : null, b.notes].filter(Boolean).join(' \u00b7 ')} />
                 );
               })}
             </PhoneList>
@@ -332,7 +338,7 @@ export default function StockInTab({ materials, vendors, batches, setBatches, ba
               <tr>
                 {[
                   {l:'Date'},{l:'Invoice / OR'},{l:'Material'},{l:'Vendor'},
-                  {l:'Qty Received',r:true},{l:'Unit Cost',r:true},{l:'Total Value',r:true},{l:'Remaining',r:true},
+                  {l:'Qty Received',r:true},...(seeMoney ? [{l:'Unit Cost',r:true},{l:'Total Value',r:true}] : []),{l:'Remaining',r:true},
                   {l:'Notes'},
                 ].map(h => (
                   <th key={h.l} style={{ ...S.th, textAlign: h.r ? 'right' : 'left' }}>{h.l}</th>
@@ -341,7 +347,7 @@ export default function StockInTab({ materials, vendors, batches, setBatches, ba
             </thead>
             <tbody>
               {hSlice.length === 0 ? (
-                <tr><td colSpan={9}><EmptyState message="No stock-in records" sub="Receive stock to see records here." /></td></tr>
+                <tr><td colSpan={seeMoney ? 9 : 7}><EmptyState message="No stock-in records" sub={mayWork ? "Receive stock to see records here." : "Nothing received yet."} /></td></tr>
               ) : hSlice.map(b => {
                 const mat = materials.find(m => m.id === b.matId);
                 return (
@@ -351,8 +357,8 @@ export default function StockInTab({ materials, vendors, batches, setBatches, ba
                     <td style={{ ...S.td, fontWeight:500 }}>{mat?.name || b.matId}</td>
                     <td style={{ ...S.td, fontSize:'12px', color:'var(--gray)' }}>{b.vendorName}</td>
                     <td style={{ ...S.td, textAlign:'right' }}>{b.qtyReceived} {mat?.unit}</td>
-                    <td style={{ ...S.td, textAlign:'right' }}>{formatCurrency(b.unitCost)}</td>
-                    <td style={{ ...S.td, textAlign:'right', fontWeight:600 }}>{formatCurrency(b.qtyReceived * b.unitCost)}</td>
+                    {seeMoney && <td style={{ ...S.td, textAlign:'right' }}>{formatCurrency(b.unitCost)}</td>}
+                    {seeMoney && <td style={{ ...S.td, textAlign:'right', fontWeight:600 }}>{formatCurrency(b.qtyReceived * b.unitCost)}</td>}
                     <td style={{ ...S.td, textAlign:'right', color: b.remainingQty < b.qtyReceived ? '#b45309' : '#2e7d32', fontWeight:600 }}>{b.remainingQty} {mat?.unit}</td>
                     <td style={{ ...S.td, fontSize:'12px', color:'var(--gray)', maxWidth:'180px' }}>{b.notes}</td>
                   </tr>

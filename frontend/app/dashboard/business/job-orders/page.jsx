@@ -4,6 +4,7 @@ import React from 'react';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
+import { useAccess } from '@/contexts/AccessContext';
 import ProofGallery from '@/components/shop/ProofGallery';
 import ImageLightbox from '@/components/shop/ImageLightbox';
 import ErrorBoundary from '@/components/ErrorBoundary';
@@ -444,6 +445,13 @@ function JobOrderForm({ initial = EMPTY_FORM, isEdit = false, orders = [], order
 export default function JobOrdersPage() {
   const { token } = useAuth();
   const router = useRouter();
+  // What this person may do here. Anything they cannot is hidden, not greyed: a Job Orders
+  // viewer sees the board, a production hand works the jobs from Production instead.
+  const { can } = useAccess();
+  const mayCreate = can('jobOrders.create');
+  const mayEdit   = can('jobOrders.edit');
+  const mayDelete = can('jobOrders.delete');
+  const hasActions = mayEdit || mayDelete;
 
   const [jobOrders, setJobOrders] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -597,9 +605,11 @@ export default function JobOrdersPage() {
   return (
     <ErrorBoundary>
       <div style={S.page}>
-        <div style={{ ...S.rowBetween, marginBottom: '16px' }}>
-          <button onClick={openCreate} style={S.btnPrimary}>{ICONS.plus} Create Job Order</button>
-        </div>
+        {mayCreate && (
+          <div style={{ ...S.rowBetween, marginBottom: '16px' }}>
+            <button onClick={openCreate} style={S.btnPrimary}>{ICONS.plus} Create Job Order</button>
+          </div>
+        )}
 
         {isPhone ? (
           <KpiStrip items={[
@@ -648,7 +658,7 @@ export default function JobOrdersPage() {
             {notice && (
               <div style={{ ...S.note, marginBottom: '10px', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
                 <span style={{ flex: 1 }}>{notice}</span>
-                <a href="/dashboard/business/to-buy" style={{ ...S.btnSm, textDecoration: 'none', whiteSpace: 'nowrap' }}>Open To Buy</a>
+                {can('toBuy') && <a href="/dashboard/business/to-buy" style={{ ...S.btnSm, textDecoration: 'none', whiteSpace: 'nowrap' }}>Open To Buy</a>}
                 <button type="button" onClick={() => setNotice('')} style={{ ...S.btnSmGhost }}>Dismiss</button>
               </div>
             )}
@@ -658,13 +668,13 @@ export default function JobOrdersPage() {
                 {isLoading ? (
                   <div style={{ ...S.card, padding: '28px 16px', textAlign: 'center', color: 'var(--gray)', fontSize: 13 }}>Loading job orders</div>
                 ) : slice.length === 0 ? (
-                  <div style={{ ...S.card, padding: 0 }}><EmptyState message="No job orders found" sub="Create one from a paid, design-approved order." /></div>
+                  <div style={{ ...S.card, padding: 0 }}><EmptyState message="No job orders found" sub={mayCreate ? "Create one from a paid, design-approved order." : "Job orders appear here once they are created."} /></div>
                 ) : (
                   <PhoneList>
                     {slice.map((jo, i) => {
                       const risk = joRisk(jo);
                       return (
-                        <PhoneRow key={jo.id ?? jo._id} first={i === 0} onClick={() => openEdit(jo)}
+                        <PhoneRow key={jo.id ?? jo._id} first={i === 0} onClick={mayEdit ? () => openEdit(jo) : undefined}
                           title={<>{jo.joId || (jo.id ?? jo._id)?.slice(-8).toUpperCase()} <RushBadge isRush={jo.isRush} /></>}
                           chip={<StatusBadge status={jo.joStatus} />}
                           meta={prodName(jo)}
@@ -691,13 +701,13 @@ export default function JobOrdersPage() {
                       staff member here just created a field nobody kept current. */}
                   <th style={S.th}>JO</th><th style={S.th}>Product</th><th style={S.th}>Qty</th>
                   <th style={S.th}>Order</th><th style={S.th}>Due</th>
-                  <th style={S.th}>Status</th><th style={{ ...S.th, textAlign: 'right' }}>Action</th>
+                  <th style={S.th}>Status</th>{hasActions && <th style={{ ...S.th, textAlign: 'right' }}>Action</th>}
                 </tr></thead>
                 <tbody>
                   {isLoading ? (
-                    <TableSkeleton cols={7} rows={4} />
+                    <TableSkeleton cols={hasActions ? 7 : 6} rows={4} />
                   ) : slice.length === 0 ? (
-                    <tr><td colSpan={8} data-rt="full" style={{ padding: 0 }}><EmptyState message="No job orders found" sub="Create one from a paid, design-approved order." /></td></tr>
+                    <tr><td colSpan={8} data-rt="full" style={{ padding: 0 }}><EmptyState message="No job orders found" sub={mayCreate ? "Create one from a paid, design-approved order." : "Job orders appear here once they are created."} /></td></tr>
                   ) : slice.map(jo => (
                     <tr key={jo.id ?? jo._id} style={S.tr}>
                       <td data-rt="head" style={{ ...S.td, fontFamily: 'monospace', fontWeight: 600 }}>
@@ -724,10 +734,10 @@ export default function JobOrdersPage() {
                         })()}
                       </td>
                       <td data-label="Status" style={S.td}><StatusBadge status={jo.joStatus} /><WaitingBadge jo={jo} block /></td>
-                      <td data-rt="actions" style={{ ...S.td, textAlign: 'right' }}>
-                        <button onClick={() => openEdit(jo)} style={S.btnSmGhost}>{ICONS.edit} Edit</button>
-                        {canDelete(jo) && <button onClick={() => { setDeleteErr(''); setDeleting(jo); }} style={{ ...S.btnSmGhost, marginLeft: 6, color: 'var(--st-red-fg)' }} title="Delete (test/junk only)">Delete</button>}
-                      </td>
+                      {hasActions && <td data-rt="actions" style={{ ...S.td, textAlign: 'right' }}>
+                        {mayEdit && <button onClick={() => openEdit(jo)} style={S.btnSmGhost}>{ICONS.edit} Edit</button>}
+                        {mayDelete && canDelete(jo) && <button onClick={() => { setDeleteErr(''); setDeleting(jo); }} style={{ ...S.btnSmGhost, marginLeft: 6, color: 'var(--st-red-fg)' }} title="Delete (test/junk only)">Delete</button>}
+                      </td>}
                     </tr>
                   ))}
                 </tbody>
