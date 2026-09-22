@@ -40,7 +40,8 @@ export default function AccessPage() {
   const isPhone = useIsPhone();
   const { toasts, push: toast, dismiss } = useToast();
 
-  const [groups,    setGroups]    = useState({});
+  // The same catalogue as rows - one per sidebar entry, each Off / See / Work plus a few extras.
+  const [rows,      setRows]      = useState({});
   const [templates, setTemplates] = useState([]);
   const [staff,     setStaff]     = useState([]);
   const [loading,   setLoading]   = useState(true);
@@ -69,7 +70,7 @@ export default function AccessPage() {
       ]);
       if (!c.ok || !s.ok) throw new Error('Could not load access settings.');
       const cd = await c.json(), sd = await s.json();
-      setGroups(cd?.data?.groups ?? {});
+      setRows(cd?.data?.rows ?? {});
       setTemplates(cd?.data?.templates ?? []);
       setStaff(sd?.data ?? []);
     } catch (e) {
@@ -233,17 +234,42 @@ export default function AccessPage() {
     finally { setRoleBusy(''); }
   };
 
+  // A row's level, read from the grid: Work when every Work key is on, See when its See keys are,
+  // otherwise Off. The server keeps saved grids in whole levels, so nothing is "half Work".
+  const levelOf = (r, grid) => {
+    const on = (k) => !!(grid || {})[k];
+    if (r.work.keys.length && r.work.keys.every(on)) return 'work';
+    if (r.view.keys.length && r.view.keys.every(on)) return 'see';
+    return 'off';
+  };
+  const setLevel = (r, lvl) => setDraft(p => {
+    const n = { ...p };
+    if (lvl === 'off') {
+      [...r.view.keys, ...r.work.keys, ...Object.keys(r.extras || {})].forEach(k => { delete n[k]; });
+    } else {
+      r.view.keys.forEach(k => { n[k] = true; });
+      r.work.keys.forEach(k => { if (lvl === 'work') n[k] = true; else delete n[k]; });
+    }
+    return n;
+  });
+  // An extra needs its row open - ticking one turns See on with it.
+  const toggleExtra = (r, k, checked) => setDraft(p => {
+    const n = { ...p };
+    if (checked) { n[k] = true; r.view.keys.forEach(v => { n[v] = true; }); } else delete n[k];
+    return n;
+  });
+
   // The plain-words summary. A grid of ticks tells you what was configured; this tells you what
   // the person can actually do, which is the question being asked.
   const summarise = (grid) => {
-    const on = Object.keys(grid || {}).filter(k => grid[k]);
-    if (!on.length) return 'Nothing yet - they can sign in and see nothing.';
-    const byGroup = [];
-    for (const [gk, g] of Object.entries(groups)) {
-      const hits = Object.keys(g.items || {}).filter(k => grid[k]);
-      if (hits.length) byGroup.push(`${g.label.toLowerCase()} (${hits.length})`);
+    const parts = [];
+    for (const r of Object.values(rows)) {
+      const lvl = levelOf(r, grid);
+      const ex = Object.keys(r.extras || {}).filter(k => (grid || {})[k]).map(k => r.extras[k][0].toLowerCase());
+      if (lvl === 'off' && !ex.length) continue;
+      parts.push(`${r.label} (${lvl === 'work' ? 'work' : 'see'}${ex.length ? ' + ' + ex.join(', ') : ''})`);
     }
-    return byGroup.join(', ');
+    return parts.length ? parts.join(', ') : 'Nothing yet - Home and their own Settings only.';
   };
 
   const filtered = useMemo(() => {
@@ -263,8 +289,8 @@ export default function AccessPage() {
   // type on every render, unmounted the form on each keystroke, and the box lost focus.
   const renderEditor = () => {
     if (!editing) return null;
-    const total = Object.values(groups).reduce((n, g) => n + Object.keys(g.items || {}).length, 0);
-    const on = Object.keys(draft).filter(k => draft[k]).length;
+    const total = Object.keys(rows).length;
+    const on = Object.values(rows).filter(r => levelOf(r, draft) !== 'off').length;
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         <div style={{ ...S.card, padding: '12px 14px' }}>
@@ -329,45 +355,71 @@ export default function AccessPage() {
               style={{ width: 190 }} />
             )}
             <button onClick={() => setDraft({})} style={S.btnSmGhost}>Clear all</button>
-            <span style={{ fontSize: 12, color: 'var(--gray)', marginLeft: 'auto' }}>{on} of {total} granted</span>
+            <span style={{ fontSize: 12, color: 'var(--gray)', marginLeft: 'auto' }}>{on} of {total} areas open</span>
           </div>
         </div>
 
-        {Object.entries(groups).map(([gk, g]) => {
-          const keys = Object.keys(g.items || {});
-          const allOn = keys.every(k => draft[k]);
-          return (
-            <div key={gk} style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
-              <div style={{ ...S.rowBetween, padding: '10px 14px', borderBottom: '1px solid var(--border)' }}>
-                <span style={{ minWidth: 0 }}>
-                  <span style={{ fontWeight: 700, fontSize: 13 }}>{g.label}</span>
-                  {g.note && <span style={{ display: 'block', fontSize: 11, color: 'var(--gray)', marginTop: 2 }}>{g.note}</span>}
-                </span>
-                <button onClick={() => setDraft(p => {
-                  const next = { ...p };
-                  keys.forEach(k => { if (allOn) delete next[k]; else next[k] = true; });
-                  return next;
-                })} style={S.btnSmGhost}>{allOn ? 'None' : 'All'}</button>
-              </div>
-              <div style={{ padding: '6px 14px 12px' }}>
-                {keys.map(k => {
-                  const [label, hint] = g.items[k];
-                  return (
-                    <label key={k} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '7px 0', cursor: 'pointer' }}>
-                      <input type="checkbox" checked={!!draft[k]}
-                        onChange={e => setDraft(p => { const n = { ...p }; if (e.target.checked) n[k] = true; else delete n[k]; return n; })}
-                        style={{ marginTop: 3, width: 16, height: 16, flexShrink: 0, accentColor: 'var(--gold)' }} />
-                      <span style={{ minWidth: 0 }}>
-                        <span style={{ fontSize: 13, color: 'var(--white)' }}>{label}</span>
-                        {hint && <span style={{ display: 'block', fontSize: 11, color: 'var(--gray)' }}>{hint}</span>}
+        {(() => {
+          // Sections in sidebar order; rows keep the order the server sends (the sidebar's).
+          const sections = [];
+          for (const [id, r] of Object.entries(rows)) {
+            let sec = sections.find(x => x.name === r.section);
+            if (!sec) { sec = { name: r.section, rows: [] }; sections.push(sec); }
+            sec.rows.push([id, r]);
+          }
+          const seg = (active) => ({
+            padding: '6px 12px', fontSize: 12, fontWeight: 700, border: 'none', cursor: 'pointer', minHeight: 32,
+            background: active ? 'var(--gold)' : 'transparent', color: active ? '#111' : 'var(--gray-light)',
+          });
+          return sections.map(sec => (
+            <div key={sec.name} style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
+              <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--border)', fontWeight: 700, fontSize: 12,
+                textTransform: 'uppercase', letterSpacing: '.6px', color: 'var(--gray)' }}>{sec.name}</div>
+              {sec.rows.map(([id, r], i) => {
+                const lvl = levelOf(r, draft);
+                const levels = r.work.keys.length ? ['off', 'see', 'work'] : ['off', 'see'];
+                const extras = Object.entries(r.extras || {});
+                return (
+                  <div key={id} style={{ padding: '10px 14px', borderTop: i === 0 ? 'none' : '1px solid var(--border)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                      <span style={{ flex: '1 1 160px', minWidth: 0 }}>
+                        <span style={{ fontWeight: 700, fontSize: 13, color: 'var(--white)' }}>{r.label}</span>
+                        {r.note && <span style={{ display: 'block', fontSize: 11, color: 'var(--gray)', marginTop: 2 }}>{r.note}</span>}
                       </span>
-                    </label>
-                  );
-                })}
-              </div>
+                      <div role="radiogroup" aria-label={r.label}
+                        style={{ display: 'inline-flex', border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden', flexShrink: 0 }}>
+                        {levels.map(l => (
+                          <button key={l} type="button" role="radio" aria-checked={lvl === l} onClick={() => setLevel(r, l)} style={seg(lvl === l)}>
+                            {l === 'off' ? 'Off' : l === 'see' ? 'See' : 'Work'}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    {lvl !== 'off' && (
+                      <div style={{ fontSize: 11.5, color: 'var(--gray)', marginTop: 5, lineHeight: 1.45 }}>
+                        {lvl === 'work' ? r.work.hint : r.view.hint}
+                      </div>
+                    )}
+                    {lvl !== 'off' && extras.length > 0 && (
+                      <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                        {extras.map(([k, [label, hint]]) => (
+                          <label key={k} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '5px 0', cursor: 'pointer' }}>
+                            <input type="checkbox" checked={!!draft[k]} onChange={e => toggleExtra(r, k, e.target.checked)}
+                              style={{ marginTop: 2, width: 16, height: 16, flexShrink: 0, accentColor: 'var(--gold)' }} />
+                            <span style={{ minWidth: 0 }}>
+                              <span style={{ fontSize: 12.5, color: 'var(--white)' }}>{label}</span>
+                              {hint && <span style={{ display: 'block', fontSize: 11, color: 'var(--gray)' }}>{hint}</span>}
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
-          );
-        })}
+          ));
+        })()}
 
         <div style={{ ...S.card, padding: '12px 14px', background: 'var(--dark2)' }}>
           <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 4 }}>What this means</div>
@@ -375,7 +427,8 @@ export default function AccessPage() {
             {editingRole ? 'Anyone on this template' : (editing.firstName || 'This person')} will be able to reach: <b>{summarise(draft)}</b>
           </div>
           <div style={{ fontSize: 11.5, color: 'var(--gray)', marginTop: 6, lineHeight: 1.55 }}>
-            A "See" tick is read only. To change anything in an area, tick one of that area's other boxes.
+            See is read only. Work is the everyday job on that page. The ticks under a row are the
+            risky actions - cancelling, refunds, deleting - and each is its own decision.
           </div>
         </div>
 

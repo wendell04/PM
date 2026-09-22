@@ -37,6 +37,9 @@ class AccessController extends Controller
 
         return $this->successResponse('Catalog fetched.', [
             'groups'    => PermissionCatalog::groups(),
+            // The same catalogue as rows (one per sidebar entry, See / Work / extras) - what the
+            // Access editor draws.
+            'rows'      => PermissionCatalog::rows(),
             'templates' => $templates,
         ]);
     }
