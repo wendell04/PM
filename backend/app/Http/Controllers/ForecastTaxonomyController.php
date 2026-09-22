@@ -34,7 +34,7 @@ class ForecastTaxonomyController extends Controller
     public function index(Request $request)
     {
         try {
-            if (! $this->hasPermission($request, 'inventory')) {
+            if (! $this->hasAnyPermission($request, ['masterData.view', 'forecast.view', 'reports.view'])) {
                 return $this->unauthorizedResponse();
             }
 

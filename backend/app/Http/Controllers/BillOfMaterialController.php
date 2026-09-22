@@ -22,7 +22,7 @@ class BillOfMaterialController extends Controller
     public function index(Request $request)
     {
         try {
-            if (!$this->hasPermission($request, 'inventory')) {
+            if (!$this->hasAnyPermission($request, ['masterData.view', 'stock.view', 'toBuy.view', 'badOrders.view', 'products.view'])) {
                 return $this->unauthorizedResponse();
             }
 
@@ -49,7 +49,7 @@ class BillOfMaterialController extends Controller
     public function byProduct(Request $request, string $name)
     {
         try {
-            if (!$this->hasPermission($request, 'inventory')) {
+            if (!$this->hasAnyPermission($request, ['masterData.view', 'stock.view', 'toBuy.view', 'badOrders.view', 'products.view'])) {
                 return $this->unauthorizedResponse();
             }
 
@@ -71,7 +71,7 @@ class BillOfMaterialController extends Controller
     public function show(Request $request, string $id)
     {
         try {
-            if (!$this->hasPermission($request, 'inventory')) {
+            if (!$this->hasAnyPermission($request, ['masterData.view', 'stock.view', 'toBuy.view', 'badOrders.view', 'products.view'])) {
                 return $this->unauthorizedResponse();
             }
 
@@ -95,7 +95,7 @@ class BillOfMaterialController extends Controller
     public function store(Request $request)
     {
         try {
-            if (!$this->hasPermission($request, 'inventory.create')) {
+            if (!$this->hasAnyPermission($request, ['masterData.work', 'products.edit'])) {
                 return $this->unauthorizedResponse();
             }
 
@@ -155,7 +155,7 @@ class BillOfMaterialController extends Controller
     public function update(Request $request, string $id)
     {
         try {
-            if (!$this->hasPermission($request, 'inventory.edit')) {
+            if (!$this->hasAnyPermission($request, ['masterData.work', 'products.edit'])) {
                 return $this->unauthorizedResponse();
             }
 
@@ -206,7 +206,7 @@ class BillOfMaterialController extends Controller
     public function destroy(Request $request, string $id)
     {
         try {
-            if (!$this->hasPermission($request, 'inventory.delete')) {
+            if (!$this->hasAnyPermission($request, ['masterData.archive', 'products.edit'])) {
                 return $this->unauthorizedResponse();
             }
 

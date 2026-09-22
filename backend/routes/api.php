@@ -352,7 +352,7 @@ Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
     });
 
     // ─── Flash Sales ── RBAC: gated by `flashSales` (controller has no own check) ─
-    Route::middleware('permission:flashSales')->group(function () {
+    Route::middleware('permission:promotions')->group(function () {
         Route::get('/admin/flash-sales',              [FlashSaleController::class, 'index']);
         Route::post('/admin/flash-sales',             [FlashSaleController::class, 'store']);
         Route::put('/admin/flash-sales/{id}',         [FlashSaleController::class, 'update']);
@@ -405,7 +405,7 @@ Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
 
     // ── Vouchers ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
     // RBAC: gated by `vouchers` (controller has no own check)
-    Route::middleware('permission:vouchers')->group(function () {
+    Route::middleware('permission:promotions')->group(function () {
         Route::get('/admin/vouchers',              [VoucherController::class, 'index']);
         Route::post('/admin/vouchers',             [VoucherController::class, 'store']);
         Route::put('/admin/vouchers/{id}',         [VoucherController::class, 'update']);
@@ -418,9 +418,9 @@ Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
     Route::patch('/admin/reviews/{id}/visibility',      [ReviewController::class, 'toggleVisibility']);
     Route::delete('/admin/reviews/{id}',                [ReviewController::class, 'destroy']);
 
-    // ─── Site content (editable landing sections) ── RBAC: gated by `products` ─
+    // ─── Site content (editable landing sections) ── RBAC: the Homepage row ─
     Route::put('/admin/content/{key}',                  [SiteContentController::class, 'update'])
-        ->middleware('permission:products');
+        ->middleware('permission:homepage');
 });
 
 // ─── Order Requests (Customer) ───────────────────────────────────────────────

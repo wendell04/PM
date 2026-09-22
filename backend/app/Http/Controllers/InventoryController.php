@@ -41,7 +41,7 @@ class InventoryController extends Controller
     public function toBuy(Request $request)
     {
         try {
-            if (!$this->hasPermission($request, 'inventory')) {
+            if (!$this->hasAnyPermission($request, ['masterData.view', 'stock.view', 'toBuy.view', 'badOrders.view', 'jobOrders.view', 'production.view'])) {
                 return $this->unauthorizedResponse();
             }
 
@@ -331,6 +331,9 @@ class InventoryController extends Controller
     public function index(Request $request)
     {
         try {
+            if (!$this->hasAnyPermission($request, ['masterData.view', 'stock.view', 'toBuy.view', 'badOrders.view', 'jobOrders.view', 'production.view', 'products.view'])) {
+                return $this->unauthorizedResponse();
+            }
             $ver = (int) Cache::get('inventory_list_ver', 0);
             $filterSig = md5(json_encode([
                 'category' => $request->query('category'),
@@ -409,6 +412,9 @@ class InventoryController extends Controller
     public function show($id)
     {
         try {
+            if (!$this->hasAnyPermission($request, ['masterData.view', 'stock.view', 'toBuy.view', 'badOrders.view', 'jobOrders.view', 'production.view', 'products.view'])) {
+                return $this->unauthorizedResponse();
+            }
             $inventory = Inventory::find($id);
 
             if (!$inventory) {
@@ -424,6 +430,9 @@ class InventoryController extends Controller
     public function history($id)
     {
         try {
+            if (!$this->hasAnyPermission($request, ['masterData.view', 'stock.view'])) {
+                return $this->unauthorizedResponse();
+            }
             $inventory = Inventory::find($id);
 
             if (!$inventory) {
@@ -447,6 +456,9 @@ class InventoryController extends Controller
     public function recentMovements(Request $request)
     {
         try {
+            if (!$this->hasAnyPermission($request, ['masterData.view', 'stock.view'])) {
+                return $this->unauthorizedResponse();
+            }
             $movements = StockHistory::orderBy('createdAt', 'desc')
                 ->limit(10)
                 ->get(['inventoryId', 'quantity', 'reason', 'remarks', 'createdAt', 'performedBy', 'type']);
@@ -569,7 +581,7 @@ class InventoryController extends Controller
     public function store(Request $request)
     {
         try {
-            if (!$this->hasPermission($request, 'inventory')) {
+            if (!$this->hasPermission($request, 'masterData.work')) {
                 return $this->unauthorizedResponse();
             }
 
@@ -666,7 +678,7 @@ class InventoryController extends Controller
     public function update(Request $request, $id)
     {
         try {
-            if (!$this->hasPermission($request, 'inventory')) {
+            if (!$this->hasPermission($request, 'masterData.work')) {
                 return $this->unauthorizedResponse();
             }
 
@@ -742,7 +754,7 @@ class InventoryController extends Controller
     public function adjustStock(Request $request, $id)
     {
         try {
-            if (!$this->hasPermission($request, 'inventory')) {
+            if (!$this->hasPermission($request, 'stock.work')) {
                 return $this->unauthorizedResponse();
             }
 
@@ -989,7 +1001,7 @@ class InventoryController extends Controller
     public function minStockSuggestions(Request $request)
     {
         try {
-            if (!$this->hasPermission($request, 'inventory')) {
+            if (!$this->hasAnyPermission($request, ['masterData.view', 'stock.view'])) {
                 return $this->unauthorizedResponse();
             }
 
@@ -1090,6 +1102,9 @@ class InventoryController extends Controller
     public function stockOuts(Request $request)
     {
         try {
+            if (!$this->hasAnyPermission($request, ['masterData.view', 'stock.view', 'toBuy.view', 'badOrders.view'])) {
+                return $this->unauthorizedResponse();
+            }
             $history = StockHistory::where('type', 'deduction')
                 ->orderBy('createdAt', 'desc')
                 ->get();
@@ -1131,7 +1146,7 @@ class InventoryController extends Controller
     public function destroy(Request $request, $id)
     {
         try {
-            if (!$this->hasPermission($request, 'inventory')) {
+            if (!$this->hasPermission($request, 'masterData.archive')) {
                 return $this->unauthorizedResponse();
             }
 
@@ -1190,7 +1205,7 @@ class InventoryController extends Controller
     public function archived(Request $request)
     {
         try {
-            if (!$this->hasPermission($request, 'inventory')) {
+            if (!$this->hasPermission($request, 'masterData.view')) {
                 return $this->unauthorizedResponse();
             }
 
@@ -1221,7 +1236,7 @@ class InventoryController extends Controller
     public function restore(Request $request, $id)
     {
         try {
-            if (!$this->hasPermission($request, 'inventory')) {
+            if (!$this->hasPermission($request, 'masterData.archive')) {
                 return $this->unauthorizedResponse();
             }
 
