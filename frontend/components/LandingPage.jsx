@@ -785,7 +785,7 @@ const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=
         sessionStorage.setItem('pending_2fa', 'true');
         const isAdminUser = data.data.user.role !== 'customer';
         sessionStorage.setItem('post_2fa_redirect', isAdminUser
-          ? '/dashboard/business/dashboardoverview'
+          ? '/dashboard/business/home'
           : '/shop');
         closeModal();
         router.push('/dashboard/2fa-challenge');
@@ -807,7 +807,7 @@ const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=
       sessionStorage.removeItem('redirectAfterLogin');
 
       if (data.data.user.role !== 'customer') {
-        window.location.href = '/dashboard/business/dashboardoverview';
+        window.location.href = '/dashboard/business/home';
         return;
       }
       if (loginFromPricing) { setPricelistModalOpen(true); setLoginFromPricing(false); closeModal(); return; }
@@ -1509,7 +1509,7 @@ const handleForgotResetPassword = async () => {
                             <div className="lp-nav-user-name-full">{user?.firstName} {user?.lastName}</div>
                           </div>
                           {user?.role && user.role !== 'customer' && (
-                            <a href="/dashboard/business/dashboardoverview" className="lp-nav-menu-item" onClick={() => setUserMenuOpen(false)}>
+                            <a href="/dashboard/business/home" className="lp-nav-menu-item" onClick={() => setUserMenuOpen(false)}>
                               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
                               Dashboard
                             </a>

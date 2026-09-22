@@ -62,7 +62,7 @@ export default function CustomersPage() {
 
   useEffect(() => {
     if (currentUser && !isPrivileged) {
-      router.replace('/dashboard/business/dashboardoverview');
+      router.replace('/dashboard/business/home');
     }
   }, [currentUser, isPrivileged, router]);
 

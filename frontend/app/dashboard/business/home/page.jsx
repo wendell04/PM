@@ -28,6 +28,7 @@ import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import { S, ICONS, SummaryCard, EmptyState, Note } from '../inventory-v2/shared';
 import { needsJobOrder } from '@/lib/jobOrderEligibility';
 import { orderNo } from '@/lib/orderNumber';
+import { statusLabel, statusColor } from '@/lib/orderStatus';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 const SSA_API_URL = process.env.NEXT_PUBLIC_SSA_API_URL || 'http://localhost:8001';
@@ -412,6 +413,28 @@ export default function StaffHome() {
     return { collectedToday, liveOrders, profit };
   }, [payments, orders, sales]);
 
+  // The two things the old Dashboard showed that had no other one-glance place. Its "Top products
+  // today" counted every order ever placed; this is the current month, and the title says so.
+  const topProducts = useMemo(() => {
+    const now = new Date();
+    const tally = {};
+    for (const o of orders) {
+      if (['cancelled', 'returned'].includes(String(o.orderStatus ?? o.status ?? '').toLowerCase())) continue;
+      const at = o.createdAt ? new Date(o.createdAt) : null;
+      if (!at || at.getFullYear() !== now.getFullYear() || at.getMonth() !== now.getMonth()) continue;
+      for (const it of (o.items || [])) {
+        const key = it.productId || it.productName || 'unknown';
+        if (!tally[key]) tally[key] = { key, name: it.productName || '-', qty: 0, revenue: 0 };
+        tally[key].qty += Number(it.qty ?? it.quantity ?? 0);
+        tally[key].revenue += Number(it.lineTotal ?? 0);
+      }
+    }
+    return Object.values(tally).sort((a, b) => b.qty - a.qty).slice(0, 5);
+  }, [orders]);
+  const recentOrders = useMemo(() => [...orders]
+    .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
+    .slice(0, 5), [orders]);
+
   useEffect(() => {
     if (loading || !Array.isArray(sales) || !sales.length) return undefined;
     const revMap = {}, qtyMap = {};
@@ -775,7 +798,7 @@ export default function StaffHome() {
           )}
 
           {/* ── Sales metrics - the figures the old Dashboard card carried, under the chart they
-                 belong with. The old Dashboard stays where it is; this is not a replacement. ── */}
+                 belong with. ── */}
           {isOwnerView && !loading && (
             <div style={{ ...S.card, marginBottom: 16 }}>
               <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', fontSize: 13, fontWeight: 700 }}>
@@ -827,6 +850,45 @@ export default function StaffHome() {
             })}
           </div>
 
+          {profile === 'owner' && !loading && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))', gap: 16, marginBottom: 18 }}>
+              <div style={{ ...S.card, padding: 0, overflow: 'hidden', minWidth: 0 }}>
+                <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', fontSize: 13, fontWeight: 700 }}>Top products this month</div>
+                {topProducts.length === 0 ? (
+                  <EmptyState message="No orders yet this month" sub="Products appear here as orders come in." />
+                ) : topProducts.map((p, i) => (
+                  <div key={p.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '11px 16px', borderTop: i === 0 ? 'none' : '1px solid var(--border)' }}>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--white)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
+                    <span style={{ textAlign: 'right', flexShrink: 0 }}>
+                      <span style={{ display: 'block', fontSize: 13, fontWeight: 700, color: 'var(--gold)' }}>{p.qty.toLocaleString()} pcs</span>
+                      <span style={{ display: 'block', fontSize: 11, color: 'var(--gray)' }}>{peso(p.revenue)}</span>
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <div style={{ ...S.card, padding: 0, overflow: 'hidden', minWidth: 0 }}>
+                <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', fontSize: 13, fontWeight: 700 }}>Recent orders</div>
+                {recentOrders.length === 0 ? (
+                  <EmptyState message="No orders yet" />
+                ) : recentOrders.map((o, i) => {
+                  const c = statusColor(o.orderStatus ?? o.status);
+                  return (
+                    <div key={o._id ?? o.id ?? i} onClick={() => router.push(`/dashboard/business/orders?order=${o._id ?? o.id}`)}
+                      style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', cursor: 'pointer', borderTop: i === 0 ? 'none' : '1px solid var(--border)' }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontFamily: 'monospace', fontSize: 12, fontWeight: 700, color: 'var(--white)' }}>{orderNo(o)}</div>
+                        <div style={{ fontSize: 11.5, color: 'var(--gray)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.customerName || '-'}</div>
+                      </div>
+                      <span style={{ fontSize: 10.5, fontWeight: 700, padding: '2px 8px', borderRadius: 999, whiteSpace: 'nowrap',
+                        color: c.color, background: c.bg, border: `1px solid ${c.border}` }}>{statusLabel(o.orderStatus ?? o.status)}</span>
+                      <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--gold)', whiteSpace: 'nowrap' }}>{peso(o.totalAmount)}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {/* ── The launchpad ── */}
           <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10 }}>
             Your modules
@@ -846,7 +908,7 @@ export default function StaffHome() {
             {tiles.length === 0 && (
               <div style={{ gridColumn: '1 / -1' }}>
                 <EmptyState icon={ICONS.warn} message="No modules are open to your role"
-                  sub="Ask an administrator to grant permissions in Role Permissions." />
+                  sub="Ask the owner to give you access in Staff and access." />
               </div>
             )}
           </div>
