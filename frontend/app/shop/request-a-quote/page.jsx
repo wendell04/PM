@@ -66,7 +66,12 @@ export default function RequestAQuotePage() {
         <div className="rq-card">
           <h1 className="rq-title">Ask for a price</h1>
           <p className="rq-lede">Sign in first so we can send the quotation back to you.</p>
-          <button className="rq-btn" onClick={() => router.push('/shop')}>Go to the shop</button>
+          {/* The message said "sign in" and the only button went to the shop. Signing in here brings
+              them straight back to this form. */}
+          <div className="rq-actions">
+            <button className="rq-btn" onClick={() => window.dispatchEvent(new CustomEvent('pmp_open_auth', { detail: { type: 'login' } }))}>Sign in</button>
+            <button className="rq-btn ghost" onClick={() => window.dispatchEvent(new CustomEvent('pmp_open_auth', { detail: { type: 'register' } }))}>Create an account</button>
+          </div>
         </div>
         <style jsx>{css}</style>
       </div>
@@ -144,13 +149,13 @@ export default function RequestAQuotePage() {
 
 const css = `
   .rq-wrap { max-width: 640px; margin: 0 auto; padding: 2.5rem 1rem 4rem; }
-  .rq-card { background: var(--dark, #151515); border: 1px solid rgba(255,255,255,0.08);
+  .rq-card { background: var(--dark, #151515); border: 1px solid var(--border, rgba(255,255,255,0.08));
              border-radius: 14px; padding: 1.75rem; display: flex; flex-direction: column; }
   .rq-title { font-size: 1.5rem; font-weight: 800; margin: 0 0 .5rem; color: var(--white, #f5f5f5); }
-  .rq-lede { font-size: .92rem; line-height: 1.6; color: rgba(245,245,245,.65); margin: 0 0 1.5rem; }
+  .rq-lede { font-size: .92rem; line-height: 1.6; color: var(--gray-light, #aaa); margin: 0 0 1.5rem; }
   .rq-label { font-size: .78rem; font-weight: 700; letter-spacing: .4px; text-transform: uppercase;
-              color: rgba(245,245,245,.55); margin-bottom: .35rem; }
-  .rq-input { width: 100%; background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.12);
+              color: var(--gray, #888); margin-bottom: .35rem; }
+  .rq-input { width: 100%; background: var(--dark2, #222); border: 1px solid var(--border, rgba(255,255,255,.12));
               border-radius: 8px; padding: .7rem .85rem; color: var(--white, #f5f5f5);
               font-size: .95rem; margin-bottom: 1.1rem; font-family: inherit; }
   .rq-input:focus { outline: 2px solid var(--gold, #D4A843); outline-offset: 1px; }
@@ -159,12 +164,12 @@ const css = `
   .rq-btn { background: var(--gold, #D4A843); color: #1a1a1a; border: none; border-radius: 8px;
             padding: .8rem 1.2rem; font-weight: 700; font-size: .95rem; cursor: pointer; }
   .rq-btn[disabled] { opacity: .6; cursor: wait; }
-  .rq-btn.ghost { background: transparent; color: rgba(245,245,245,.75);
-                  border: 1px solid rgba(255,255,255,.18); }
+  .rq-btn.ghost { background: transparent; color: var(--gray-light, #aaa);
+                  border: 1px solid var(--border, rgba(255,255,255,.18)); }
   .rq-actions { display: flex; gap: .6rem; flex-wrap: wrap; }
   .rq-error { background: rgba(239,68,68,.12); border: 1px solid rgba(239,68,68,.35);
-              color: #fca5a5; border-radius: 8px; padding: .65rem .8rem; font-size: .85rem;
+              color: var(--st-red-fg, #f87171); border-radius: 8px; padding: .65rem .8rem; font-size: .85rem;
               margin-bottom: 1rem; }
-  .rq-fine { font-size: .78rem; color: rgba(245,245,245,.45); margin: .9rem 0 0; line-height: 1.5; }
+  .rq-fine { font-size: .78rem; color: var(--gray, #888); margin: .9rem 0 0; line-height: 1.5; }
   @media (max-width: 480px) { .rq-row { grid-template-columns: minmax(0, 1fr); } .rq-row > * { min-width: 0; } .rq-card { padding: 1.25rem; } }
 `;

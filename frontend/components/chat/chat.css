@@ -1751,8 +1751,10 @@ html.light .chat-box-switch { background: rgba(0, 0, 0, 0.04); }
    Dragging must not scroll the page under the finger, and a dragged bubble must not animate its
    way to where the finger already is. */
 .cw-launcher { touch-action: none; }
-/* Glides to where it was dropped and into a dock; dead still while a finger is on it. */
-.cw-launcher { transition: left 0.22s ease, top 0.22s ease, transform 0.22s ease; }
+/* Glides to where it was dropped and into a dock; dead still while a finger is on it. Opacity
+   rides along so coming back from tucked fades in - without it the bubble snapped to full opacity
+   and slid up across the tab bar. */
+.cw-launcher { transition: left 0.22s ease, top 0.22s ease, transform 0.22s ease, opacity 0.22s ease; }
 .cw-launcher--dragging {
   transition: none !important;
   cursor: grabbing;

@@ -372,8 +372,11 @@ export default function ShopLayout({ children }) {
   const router = useRouter();
   const pathname = usePathname();
   // Product search only makes sense on browsing pages - hide it on cart/orders/account/checkout.
-  const SEARCH_HIDDEN_ROUTES = ['/shop/cart', '/shop/orders-history', '/shop/profile', '/shop/checkout', '/shop/payment-success', '/shop/payment-failed'];
-  const showSearch = !SEARCH_HIDDEN_ROUTES.some(r => pathname === r || pathname.startsWith(r + '/'));
+  // One rule for the header's middle: browsing pages get the search box, every other page gets the
+  // Shop button - never both. It was two separate lists, and any page on neither (Ask for a price,
+  // the receipt, 2FA) got both, which pushed Register off the right edge of a phone.
+  const isBrowsing = pathname === '/shop' || pathname.startsWith('/shop/products') || pathname.startsWith('/shop/collections') || pathname.startsWith('/shop/search');
+  const showSearch = isBrowsing;
   const { theme, toggleTheme } = useTheme();
   const { setCartItems, cartItems: globalCartItems, cartCount: globalCartCount, addToCart: globalAddToCart, removeFromCart: globalRemoveFromCart } = useGlobalCart();
   const [user, setUser]       = useState(null);
@@ -1428,7 +1431,7 @@ export default function ShopLayout({ children }) {
             {/* Right side */}
             <div className="shop-navbar-right">
               {/* Shop button - hidden on storefront browsing pages and landing */}
-              {!(pathname === '/shop' || pathname.startsWith('/shop/products') || pathname.startsWith('/shop/collections') || pathname.startsWith('/shop/search')) && (
+              {!isBrowsing && (
                 <Link
                   href="/shop"
                   className="shop-navbar-shop-btn"
