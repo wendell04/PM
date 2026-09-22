@@ -183,6 +183,10 @@ function QuickViewModal({ product, flashSale, onClose, onToast }) {
   ) : unitPrice;
 
   const isOOS = (() => {
+    // Price-on-request items are quoted, not stocked - the same rule as the card and the product
+    // page. With no recipe behind it the count read zero, and the quick view said Out of Stock
+    // over an "Ask about this" button.
+    if (mode === 'inquiry') return false;
     // Availability comes from what can actually be built, not from the made-to-order flag.
     // A product genuinely bought per order has on-demand materials, which canProduce already
     // skips - so it stays available truthfully rather than by assertion.
@@ -217,23 +221,21 @@ function QuickViewModal({ product, flashSale, onClose, onToast }) {
 
   // Made to Order is not a supply claim. It says the product is produced after the order (job
   // order, materials held); the blank it is printed on can still run out, and pre-order decides
-  // what happens then. So the badge reads the real count for every product. "Upon Order" was the
-  // old name for the same flag and is gone from the product form.
+  // what happens then. So a low count is shown for every product. "Upon Order" was the old name
+  // for the same flag and is gone from the product form.
   const displayStock = (() => {
+    if (mode === 'inquiry') return null;
     // Sold out on the shelf but still orderable, because the shop said it can restock.
     if (product.allowPreorder && readyNow != null && readyNow <= 0) return { label: 'Pre-order', type: 'gold' };
     if (isOOS) return { label: 'Out of Stock', type: 'red' };
     // What the shop can actually build today, never the backorder sentinel. Pre-order changes
     // whether an order is accepted past this number - it does not change the number.
-    if (readyNow != null) {
-      const n = Number(readyNow);
-      if (n <= 10) return { label: `Only ${n} left!`, type: 'gold' };
-      return { label: `${n} units available`, type: 'gold' };
-    }
-    if (product.availableQty != null && Number(product.availableQty) > 0) {
-      const n = Number(product.availableQty);
-      return { label: n <= 10 ? `Only ${n} left!` : `${n} units available`, type: 'gold' };
-    }
+    // Same rule as the product page this previews: a number only when it is low enough to change
+    // what the customer does. "104 units available" read as a promise - and variants that share a
+    // material (three mug colours, one shelf of boxes) cannot each keep it.
+    const n = readyNow != null ? Number(readyNow)
+      : (product.availableQty != null && Number(product.availableQty) > 0 ? Number(product.availableQty) : null);
+    if (n != null && n > 0 && n <= 10) return { label: `Only ${n} left!`, type: 'gold' };
     // Nothing counted constrains it. A made-to-order product gets no stock badge at all - the
     // Print to order badge on the card already says it, and two badges for one fact is noise.
     if (product.isMadeToOrder) return null;
