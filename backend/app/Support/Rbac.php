@@ -71,12 +71,33 @@ class Rbac
         // `permissions` on the user has existed and been empty since it was added, so nothing
         // changes for anyone until a grid is actually saved against them: an empty grid falls
         // through to exactly today's behaviour.
-        $own = $user->permissions ?? null;
-        if (is_array($own) && $own !== []) {
-            return self::gridAllows($own, $permKey);
-        }
+        return self::gridAllows(self::grid($user), $permKey);
+    }
 
-        return self::roleGrants($user->role, $permKey);
+    /** Per-request memo: a page load asks dozens of questions about the same person. */
+    private static array $gridMemo = [];
+
+    /**
+     * The grid a staff member is judged by, in today's keys: their own when they have one, their
+     * role's template otherwise. An older grid is upgraded as it is read (PermissionCatalog::upgrade),
+     * so nobody is locked out between a deploy and rbac:convert-grids saving the new keys.
+     */
+    public static function grid(?User $user): array
+    {
+        if (!$user) return [];
+        $own = $user->permissions ?? null;
+        $raw = (is_array($own) && $own !== [])
+            ? $own
+            : ((is_string($user->role ?? null) && $user->role !== '' && $user->role !== 'customer')
+                ? (array) (RolePermission::where('role', $user->role)->first()?->permissions ?? [])
+                : []);
+        $memoKey = md5(json_encode($raw));
+        if (!isset(self::$gridMemo[$memoKey])) {
+            self::$gridMemo[$memoKey] = PermissionCatalog::isLegacy($raw)
+                ? PermissionCatalog::upgrade($raw)
+                : PermissionCatalog::completeLevels(array_filter($raw));
+        }
+        return self::$gridMemo[$memoKey];
     }
 
     /**
@@ -93,14 +114,7 @@ class Rbac
         if (!$user) return false;
         if (self::isSuperAdmin($user) || self::isOwner($user)) return self::allows($user, $permKey);
 
-        $own  = $user->permissions ?? null;
-        $grid = (is_array($own) && $own !== [])
-            ? $own
-            : ((is_string($user->role ?? null) && $user->role !== '' && $user->role !== 'customer')
-                ? ((array) (RolePermission::where('role', $user->role)->first()?->permissions ?? []))
-                : []);
-
-        if (!empty($grid[$permKey])) return true;          // a whole-module switch (older templates)
+        $grid   = self::grid($user);
         $prefix = $permKey . '.';
         foreach ($grid as $k => $v) {
             if (!is_string($k) || empty($v) || !str_starts_with($k, $prefix)) continue;
@@ -115,14 +129,6 @@ class Rbac
         $scope  = config('rbac.super_admin_scope', []);
         $module = explode('.', $permKey)[0];
         return in_array($permKey, $scope, true) || in_array($module, $scope, true);
-    }
-
-    protected static function roleGrants(?string $role, string $permKey): bool
-    {
-        if (!is_string($role) || $role === '' || $role === 'customer') return false;
-        $record = RolePermission::where('role', $role)->first();
-        if (!$record) return false;
-        return self::gridAllows($record->permissions ?? [], $permKey);
     }
 
     /**
@@ -212,7 +218,8 @@ class Rbac
      */
     public static function effectivePermissions(?User $user): array
     {
-        $all = RolePermission::defaultPermissions();
+        // Every catalogue key plus the older module names, so a check on either answers.
+        $all = array_merge(RolePermission::defaultPermissions(), array_fill_keys(PermissionCatalog::keys(), false));
 
         if (self::isSuperAdmin($user)) {
             if (self::superAdminFullAccess()) {
@@ -229,15 +236,12 @@ class Rbac
             return array_map(fn() => true, $all);
         }
 
-        // The person's own grid, when they have one - exactly what allows() judges them by. This
-        // map drives the sidebar and the page guard; it used to be the role's grid only, so a
-        // person given their own access saw their role's modules and was refused inside them.
-        // The defaults keep what every staff member has (Home, their own Settings).
-        $own = $user->permissions ?? null;
-        if (is_array($own) && $own !== []) {
-            return array_merge($all, $own);
-        }
-
-        return RolePermission::forRole($user->role);
+        // Exactly the grid allows() judges them by (their own, else their role's), on top of the
+        // defaults every staff member keeps (Home, their own Settings). The module names from the
+        // old defaults are dropped: their ticks now live under the row keys, and a stale "orders"
+        // switch would tell the sidebar something the server no longer believes.
+        $base = array_map(fn () => false, $all);
+        $base['dashboard'] = true;
+        return array_merge($base, self::grid($user));
     }
 }

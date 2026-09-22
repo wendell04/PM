@@ -32,7 +32,7 @@ class AccessController extends Controller
         $templates = RolePermission::all()->map(fn ($r) => [
             'role'        => $r->role,
             'label'       => $r->label ?: $this->humanRole($r->role),
-            'permissions' => PermissionCatalog::sanitize((array) ($r->permissions ?? [])),
+            'permissions' => PermissionCatalog::normalize((array) ($r->permissions ?? [])),
         ])->values();
 
         return $this->successResponse('Catalog fetched.', [
@@ -50,7 +50,7 @@ class AccessController extends Controller
 
         $rows = User::where('role', '!=', 'customer')->orderBy('firstName')->get()
             ->map(function (User $u) {
-                $own = is_array($u->permissions ?? null) ? PermissionCatalog::sanitize($u->permissions) : [];
+                $own = is_array($u->permissions ?? null) ? PermissionCatalog::normalize($u->permissions) : [];
                 // Owner and Super Admin are not grantable - saying so on screen is better than
                 // showing a grid of ticks that the resolver ignores anyway.
                 $unlimited = Rbac::isOwner($u) || Rbac::isSuperAdmin($u);
