@@ -81,10 +81,9 @@ export default function OrderFormSendModal({ open, onClose, token, conversationI
   const cap = { fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--gray)' };
 
   return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 100002, background: 'rgba(0,0,0,0.72)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+    <div onClick={onClose} className="pmp-sheet-scrim" style={{ zIndex: 100002 }}>
       <div onClick={e => e.stopPropagation()} role="dialog" aria-label="Send an order form"
-        style={{ width: '100%', maxWidth: 520, maxHeight: '90vh', overflowY: 'auto', background: 'var(--dark, #151515)', color: 'var(--white, #fff)',
-          borderRadius: '16px 16px 0 0', padding: '16px 16px calc(16px + env(safe-area-inset-bottom, 0px))', boxShadow: '0 -8px 40px rgba(0,0,0,0.5)' }}>
+        className="pmp-sheet" style={{ background: 'var(--dark, #151515)', color: 'var(--white, #fff)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
           <div style={{ fontSize: '1rem', fontWeight: 800 }}>Send an order form</div>
           <button type="button" onClick={onClose} aria-label="Close" style={{ background: 'none', border: 'none', color: 'var(--gray)', fontSize: '1.4rem', lineHeight: 1, cursor: 'pointer' }}>&times;</button>

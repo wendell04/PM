@@ -226,10 +226,9 @@ export default function OrderFormModal({ open, onClose, token, user, message, on
   };
 
   return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 100001, background: 'rgba(0,0,0,0.72)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+    <div onClick={onClose} className="pmp-sheet-scrim">
       <div onClick={e => e.stopPropagation()} role="dialog" aria-label={form.name || 'Order form'}
-        style={{ width: '100%', maxWidth: 560, maxHeight: '92vh', overflowY: 'auto', background: 'var(--dark, #151515)', color: 'var(--white, #fff)',
-          borderRadius: '16px 16px 0 0', padding: '18px 16px calc(18px + env(safe-area-inset-bottom, 0px))', boxShadow: '0 -8px 40px rgba(0,0,0,0.5)' }}>
+        className="pmp-sheet" style={{ background: 'var(--dark, #151515)', color: 'var(--white, #fff)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
           <div style={{ fontSize: '1.05rem', fontWeight: 800 }}>{form.name || 'Order form'}</div>
           <button type="button" onClick={onClose} aria-label="Close" style={{ background: 'none', border: 'none', color: 'var(--gray)', fontSize: '1.4rem', lineHeight: 1, cursor: 'pointer' }}>&times;</button>
