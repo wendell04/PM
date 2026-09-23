@@ -55,8 +55,8 @@ class StaffController extends Controller
             // Names are letters (any language), spaces, hyphens, apostrophes and periods - "Ma. Clara",
             // "O'Neil", "Dela Cruz-Santos". Email is a real address with a domain.
             $validated = $request->validate([
-                'firstName' => ['required', 'string', 'min:2', 'max:50', 'regex:/^[\pL][\pL\s.\'\-]*$/u'],
-                'lastName'  => ['required', 'string', 'min:2', 'max:50', 'regex:/^[\pL][\pL\s.\'\-]*$/u'],
+                'firstName' => ['required', 'string', 'min:2', 'max:40', 'regex:/^[\pL][\pL\s.\'\-]*$/u'],
+                'lastName'  => ['required', 'string', 'min:2', 'max:40', 'regex:/^[\pL][\pL\s.\'\-]*$/u'],
                 'email'     => 'required|email:rfc|max:100',
                 'password'  => 'nullable|string|min:8|max:128',
                 'role'      => 'required|string|in:' . implode(',', $assignable),
@@ -213,8 +213,10 @@ class StaffController extends Controller
             }
 
             $validated = $request->validate([
-                'firstName' => 'sometimes|string|max:100',
-                'lastName'  => 'sometimes|string|max:100',
+                // The same 40 the create form takes. They disagreed, so a name too long for the
+                // add form could still be saved afterwards by editing the person.
+                'firstName' => 'sometimes|string|max:40',
+                'lastName'  => 'sometimes|string|max:40',
                 'role'      => 'sometimes|string|in:' . implode(',', $this->getStaffRoles()),
                 'password'  => 'sometimes|string|min:8|max:255',
             ]);

@@ -46,7 +46,11 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 // Names: letters in any language, spaces, hyphens, apostrophes, periods - "Ma. Clara", "O'Neil",
 // "Dela Cruz-Santos". Anything else is dropped as it is typed rather than refused on save. The
 // server holds the same rule. Email: one real address, checked before it is sent.
-const NAME_MAX  = 50;
+// A name field has no standard to point at, so it is sized against real names: the longest
+// Filipino given names run to the mid-twenties, and 40 leaves room without letting the field be
+// typed into as if it were a notes box. The email cap is a different question - RFC 5321 allows
+// 254 characters, so trimming it to a name-sized number would refuse valid addresses.
+const NAME_MAX  = 40;
 const EMAIL_MAX = 100;
 const cleanName = (v) => String(v).replace(/[^\p{L}\s.'\-]/gu, '').replace(/\s{2,}/g, ' ').slice(0, NAME_MAX);
 const EMAIL_RE  = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
