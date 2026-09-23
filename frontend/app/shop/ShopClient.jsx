@@ -151,7 +151,7 @@ function QuickViewModal({ product, flashSale, onClose, onToast }) {
     const backorder = product.variantPreorder?.[id] ?? product.variantBackorder?.[id] ?? product.allowPreorder;
     if (qty <= 0) return { label: backorder ? 'Pre-order' : 'Sold out', tone: backorder ? 'wait' : 'gone' };
     if (qty <= 10) return { label: `${qty} left`, tone: 'low' };
-    return null;
+    return { label: `${qty} pcs`, tone: 'have' };
   };
 
   const unitPrice = (() => {
@@ -257,6 +257,8 @@ function QuickViewModal({ product, flashSale, onClose, onToast }) {
     // Nothing counted constrains it. A made-to-order product gets no stock badge at all - the
     // Print to order badge on the card already says it, and two badges for one fact is noise.
     if (product.isMadeToOrder) return null;
+    // The count for the variant showing, which is the figure an order can use.
+    if (n != null && n > 0) return { label: `${n} pcs available`, type: 'gold' };
     return { label: 'In Stock', type: 'gold' };
   })();
 
@@ -850,16 +852,28 @@ function ProductCard({ product, onAddToCart, onQuickView, flashSale }) {
             const hasAnyBackorder = (product.variantPreorder && Object.values(product.variantPreorder).some(v => !!v))
               || (product.variantBackorder && Object.values(product.variantBackorder).some(v => !!v))
               || !!product.allowPreorder;
-            if (totalStock === 0) return hasAnyBackorder
+            // The count a customer can act on is the one for a VARIANT, not the variants added
+            // together: 104 white + 180 inner + 190 magic printed "474 pcs" on the card, while
+            // the largest order any of them can fill is 190. So a product with variants shows the
+            // range across them, and a standalone product shows its own figure.
+            const perVariant = Object.values(product.variantCanProduce ?? {})
+              .filter(v => v != null).map(Number).filter(v => !Number.isNaN(v));
+            // A sold-out variant is said inside, on the variant itself; letting it drag the range
+            // down to "0-190 pcs" reads as if nothing is ready. The range is over what can be had.
+            const inStock = perVariant.filter(v => v > 0);
+            const most  = perVariant.length ? Math.max(...perVariant) : totalStock;
+            const least = inStock.length ? Math.min(...inStock) : most;
+
+            if (most === 0) return hasAnyBackorder
               ? <div className="shop-stock-img-badge on-order">Pre-order</div>
               : <div className="shop-stock-img-badge out-stock">Out of Stock</div>;
-            // A count only where it changes what the customer does. The card used to print the
-            // shelf ("474 pcs") while the product page it opens said "In Stock", so the shop
-            // answered the same question two ways; and a printed count is a promise that three
-            // variants sharing one shelf cannot keep, that competitors can read, and that is out
-            // of date the moment somebody else checks out. Scarcity is the part worth saying.
-            if (totalStock != null && totalStock <= 10) return (
-              <div className="shop-stock-img-badge low-stock">Only {totalStock} left!</div>
+            if (most != null && most <= 10) return (
+              <div className="shop-stock-img-badge low-stock">Only {most} left!</div>
+            );
+            if (most != null) return (
+              <div className="shop-stock-img-badge in-stock">
+                {least !== most ? `${least}-${most} pcs` : `${most} pcs`}
+              </div>
             );
             if (product.isMadeToOrder) return null;   // the Print to order badge covers it
             return (

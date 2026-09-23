@@ -4766,6 +4766,7 @@ html.light .shop-active-clear:hover { color: #111; }
 .shop-qv-variant-stock.low  { color: #dc2626; }
 .shop-qv-variant-stock.gone { color: #8a8a8a; }
 .shop-qv-variant-stock.wait { color: #9a6e10; }
+.shop-qv-variant-stock.have { color: #6b6b6b; font-weight: 600; }
 
 .shop-qv-qty { display: flex; align-items: center; width: fit-content; }
 .shop-qv-qty button {

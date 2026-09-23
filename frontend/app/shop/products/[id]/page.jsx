@@ -628,7 +628,10 @@ export default function ProductDetailPage() {
     const backorder = product.variantPreorder?.[comboId] ?? product.variantBackorder?.[comboId] ?? product.allowPreorder;
     if (qty <= 0) return backorder ? { label: 'Pre-order', tone: 'wait' } : { label: 'Sold out', tone: 'gone' };
     if (qty <= 10) return { label: `${qty} left`, tone: 'low' };
-    return null;
+    // The owner's call, and a fair one for a shop that sells by the hundred: a buyer working out
+    // whether 300 shirts are possible should not have to add a line to the cart to find out. The
+    // figure is per variant - the one number an order can actually use.
+    return { label: `${qty} pcs`, tone: 'have' };
   };
 
   const variantImage = (() => {
@@ -1278,16 +1281,16 @@ export default function ProductDetailPage() {
                   </div>
                 );
               }
-              // Plenty on the shelf: say so, without the number. "295 units available" reads as a
-              // promise, and for variants that share a material (three mug colours, one shelf of
-              // boxes) it is one the shop cannot keep three times over. A count is only printed
-              // when it is low, above, where it changes what the customer does.
               // Made to order: no stock badge. The product type already says it is printed per order.
               if (product.isMadeToOrder) return null;
+              // The count itself, where there is one to give. A shop selling by the hundred is
+              // asked "can you do 300?" before anything else, and the buyer should not have to
+              // put a line in the cart to find out. The figure is for the VARIANT in front of
+              // them - never the variants added together, which is a number no one order can use.
               return (
                 <div style={{ display: 'flex' }}>
                   <span style={{ fontSize: '0.8rem', fontWeight: 700, ...BADGE_GOLD, borderRadius: '999px', padding: '0.25rem 0.75rem' }}>
-                    In Stock
+                    {displayQty != null && displayQty > 0 ? `${displayQty} pcs available` : 'In Stock'}
                   </span>
                 </div>
               );
@@ -1341,7 +1344,8 @@ export default function ProductDetailPage() {
                             <span style={{ fontSize: '0.65rem', fontWeight: 700, letterSpacing: '0.02em',
                               color: isSelected ? 'rgba(0,0,0,0.65)'
                                 : stock.tone === 'gone' ? 'var(--gray)'
-                                : stock.tone === 'low' ? '#dc2626' : 'var(--gold)' }}>
+                                : stock.tone === 'low' ? '#dc2626'
+                                : stock.tone === 'have' ? 'var(--gray)' : 'var(--gold)' }}>
                               {stock.label}
                             </span>
                           )}
