@@ -12,6 +12,7 @@ import ErrorBoundary from '../../../components/ErrorBoundary';
 import { useAuth } from '@/contexts/AuthContext';
 import { uploadDesignFile } from '@/lib/orderRequestApi';
 import { formatPeso } from '@/lib/shopUtils';
+import { applyOffers, firstOrderLabel, freeDeliveryNudge } from '@/lib/shopOffers';
 import '@/app/shop/shop.css';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
@@ -94,6 +95,18 @@ export default function CartPage() {
   // Does this shopper already have somewhere to send things to? Signed out, the question does not
   // arise - they will be asked to sign in before checkout anyway.
   useEffect(() => {
+    if (!token) { setOfferRule(null); return; }
+    let cancelled = false;
+    fetchWithTimeout(`${API_URL}/api/shop/offers`, {
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+    }, 10000)
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => { if (!cancelled && d) setOfferRule(d?.data ?? null); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [token]);
+
+  useEffect(() => {
     if (!token) { setHasAddress(null); return; }
     let cancelled = false;
     fetchWithTimeout(`${API_URL}/api/addresses`, {
@@ -121,6 +134,10 @@ export default function CartPage() {
   const [storeDesignFee, setStoreDesignFee] = useState(0);
   // ...and the shipping mode, because "Calculated at checkout" is only true for two of the three.
   const [shippingMode, setShippingMode] = useState(null);
+  // The shop's standing offers, and whether this shopper has ordered here before. The nudge
+  // under the basket is the whole point of a free-delivery threshold - a bar nobody is told
+  // about changes nothing about what anyone buys.
+  const [offerRule, setOfferRule] = useState(null);
   const removeTimerRef = useRef(null);
 
   useEffect(() => {
@@ -225,7 +242,17 @@ export default function CartPage() {
   const selectedDesignFee = designLines.length > 0
     ? Math.max(storeDesignFee, ...designLines.map(i => Number(i.designFee) || 0))
     : 0;
-  const selectedTotal = selectedBaseTotal + selectedDesignFee;
+  // The shop's standing offers on what is ticked. Same arithmetic and same order as the server -
+  // lib/shopOffers mirrors App\Support\ShopOffers - so the basket, checkout and the charge agree.
+  const offers = applyOffers({
+    goods: selectedBaseTotal,
+    isFirst: !!offerRule?.isFirstOrder,
+    percent: offerRule?.firstOrderPercent ?? 0,
+    cap: offerRule?.firstOrderCap ?? null,
+    freeFrom: offerRule?.freeDeliveryFrom ?? null,
+  });
+  const firstOrderDiscount = offers.firstOrder;
+  const selectedTotal = Math.max(0, selectedBaseTotal - firstOrderDiscount) + selectedDesignFee;
 
   // The server's answer wins when it has one: it is live and it knows about the materials this
   // line shares with others. The snapshot cap is the fallback for a line nothing has checked yet.
@@ -792,6 +819,12 @@ export default function CartPage() {
                 <span style={{ color: 'var(--gray)' }}>Subtotal</span>
                 <span>{formatPeso(selectedBaseTotal)}</span>
               </div>
+              {firstOrderDiscount > 0 && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: '.8rem' }}>
+                  <span style={{ color: '#22c55e' }}>{firstOrderLabel(offers.firstOrderPercent, offers.firstOrderCap)}</span>
+                  <span style={{ color: '#22c55e', fontWeight: 700, whiteSpace: 'nowrap' }}>-{formatPeso(firstOrderDiscount)}</span>
+                </div>
+              )}
               {selectedDesignFee > 0 && (
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: '.8rem' }}>
                   <span style={{ color: 'var(--gray)' }}>
@@ -809,10 +842,19 @@ export default function CartPage() {
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: '.8rem' }}>
                 <span style={{ color: 'var(--gray)' }}>Shipping</span>
                 <span style={{ color: 'var(--gray)', textAlign: 'right' }}>
-                  {shippingMode === 'courier_booked' ? 'Arranged after order' : 'Calculated at checkout'}
+                  {offers.freeDelivery
+                    ? <span style={{ color: '#22c55e', fontWeight: 700 }}>FREE</span>
+                    : shippingMode === 'courier_booked' ? 'Arranged after order' : 'Calculated at checkout'}
                 </span>
               </div>
-              {shippingMode === 'courier_booked' && (
+              {/* What is still missing before delivery stops being charged. This is the line that
+                  makes a threshold worth having - it is read while there is still time to act. */}
+              {freeDeliveryNudge(offers) && (
+                <div style={{ fontSize: '.72rem', lineHeight: 1.5, color: offers.freeDelivery ? '#22c55e' : 'var(--gray)' }}>
+                  {freeDeliveryNudge(offers)}
+                </div>
+              )}
+              {shippingMode === 'courier_booked' && !offers.freeDelivery && (
                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 8, padding: '9px 11px', background: 'rgba(212,168,67,0.07)', border: '1px solid rgba(212,168,67,0.2)', borderRadius: 8 }}>
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#d4a843" strokeWidth="2" style={{ flexShrink: 0, marginTop: 2 }}>
                     <rect x="1" y="3" width="15" height="13"/><path d="M16 8h4l3 3v5h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/>

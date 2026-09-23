@@ -1799,7 +1799,19 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
               {/* Courier-booked delivery fee - paid by customer to the rider on delivery */}
               {(mayWork || seeMoney) && !(Number(lo.shippingFee) > 0) && (
                 <div style={{ marginTop:'10px', padding:'10px 12px', background:'var(--dark2)', border:'1px solid var(--border)', borderRadius:'8px' }}>
-                  <div style={{ fontSize:'11px', fontWeight:600, color:'var(--gray-light)', marginBottom:'2px' }}>Delivery fee (paid by customer to rider)</div>
+                  <div style={{ fontSize:'11px', fontWeight:600, color:'var(--gray-light)', marginBottom:'2px' }}>
+                    {lo.freeDelivery ? 'Delivery fee (on the shop - this order qualified for free delivery)' : 'Delivery fee (paid by customer to rider)'}
+                  </div>
+                  {/* Free delivery does not mean no courier: the shop still books one and still
+                      pays for it. Entering the fee here is how that cost gets recorded, and the
+                      customer is never told about it or asked for it. */}
+                  {lo.freeDelivery && (
+                    <div style={{ fontSize:'10.5px', color:'var(--st-green-fg)', marginBottom:'8px', lineHeight:1.5 }}>
+                      This order reached the free-delivery figure{lo.freeDeliveryFrom ? ` of \u20B1${fmt(lo.freeDeliveryFrom)}` : ''}.
+                      Enter what the courier costs so the shop has the record - nothing is billed to the customer,
+                      and the rider collects nothing.
+                    </div>
+                  )}
                   {/* Once it is settled, everything below this is an answer to a question nobody is
                       asking any more. The record of what was charged and how stays; the controls go. */}
                   {!lo.courierFeePaid && (
@@ -1813,7 +1825,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                       and the address can still change after approval. It is needed the moment the
                       customer is about to pay, because then it can ride on the same payment
                       instead of becoming a second one. */}
-                  {!(Number(lo.courierFee) > 0) && lo.paymentStatus !== 'paid'
+                  {!(Number(lo.courierFee) > 0) && lo.paymentStatus !== 'paid' && !lo.freeDelivery
                     && ['Awaiting Payment', 'awaiting_payment'].includes(String(lo.orderStatus)) && (
                     <div style={{ display:'flex', gap:'7px', alignItems:'flex-start', padding:'8px 10px', marginBottom:'8px', background:'rgba(245,158,11,0.08)', border:'1px solid rgba(245,158,11,0.3)', borderRadius:'7px' }}>
                       <span style={{ color:'var(--st-orange-fg)', fontWeight:900, fontSize:'11px', lineHeight:1.5 }}>!</span>
@@ -1827,7 +1839,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                   {/* An on-demand rider can take cash at the door; a parcel network is prepaid at
                       the branch. Getting this wrong on a provincial order means the shop pays the
                       courier and never collects. */}
-                  {mayWork && !lo.courierFeePaid && (
+                  {mayWork && !lo.courierFeePaid && !lo.freeDelivery && (
                   <div style={{ display:'flex', gap:'6px', marginBottom:'8px', flexWrap:'wrap' }}>
                     {[
                       { on:true,  label:'Rider collects it',      hint:'Lalamove, Grab, same-day' },
@@ -2975,8 +2987,11 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
           </div>
 
           <SectionLabel>Payment</SectionLabel>
-          {Number(lo.discountAmount) > 0 && (
-            <InfoRow label="Subtotal" value={`₱${fmt(Number(lo.totalAmount??0) + Number(lo.discountAmount))}`} />
+          {(Number(lo.discountAmount) > 0 || Number(lo.firstOrderDiscount) > 0) && (
+            <InfoRow
+              label="Subtotal"
+              value={`₱${fmt(Number(lo.totalAmount ?? 0) + Number(lo.discountAmount ?? 0) + Number(lo.firstOrderDiscount ?? 0))}`}
+            />
           )}
           {lo.voucherBenefit && (
             // Nothing was taken off: the customer was promised something to be given by hand.
@@ -2985,8 +3000,20 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
           {Number(lo.discountAmount) > 0 && (
             <InfoRow label={`Voucher${lo.voucherCode ? ` (${lo.voucherCode})` : ''}`} value={`−₱${fmt(lo.discountAmount)}`} />
           )}
+          {/* The shop's own welcome discount, on its own line. Nobody typed a code for this one,
+              so filing it under Voucher would send whoever reads it looking for a code that does
+              not exist. */}
+          {Number(lo.firstOrderDiscount) > 0 && (
+            <InfoRow
+              label={`First order${lo.firstOrderPercent ? ` (${lo.firstOrderPercent}%)` : ''}`}
+              value={`−₱${fmt(lo.firstOrderDiscount)}`}
+            />
+          )}
           {Number(lo.shippingFee) > 0 && (
             <InfoRow label="Shipping" value={`₱${fmt(lo.shippingFee)}`} />
+          )}
+          {lo.freeDelivery && !(Number(lo.shippingFee) > 0) && (
+            <InfoRow label="Shipping" value="FREE" />
           )}
           {Number(lo.designFee) > 0 && (
             <InfoRow
@@ -3019,24 +3046,29 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
             const feePaid = !!lo.courierFeePaid;
             const how     = String(lo.courierFeePaidMethod || '').toLowerCase();
             const ended   = ['returned', 'cancelled'].includes(normalizeStatus(lo.orderStatus));
-            const note    = !feePaid
-              ? (ended
-                  // Refused at the door or cancelled: nobody paid the rider, whatever the fee setting says.
-                  ? 'not collected - the order did not go through'
-                  : (lo.courierFeeOnDelivery ?? true) ? 'rider collects on arrival' : 'to be paid before we ship')
-              : how === 'manual' || how === 'rider_cash'
-                ? 'received - the rider was paid'
-                : 'paid online - you pay the courier';
+            // Free delivery: the fee is the shop's own cost, so "paid" and "unpaid" are the wrong
+            // pair of words for it entirely - nobody is going to collect it from the customer.
+            const note    = how === 'shop_free_delivery' || lo.freeDelivery
+              ? 'free delivery - the shop covers this, nothing to collect'
+              : !feePaid
+                ? (ended
+                    // Refused at the door or cancelled: nobody paid the rider, whatever the fee setting says.
+                    ? 'not collected - the order did not go through'
+                    : (lo.courierFeeOnDelivery ?? true) ? 'rider collects on arrival' : 'to be paid before we ship')
+                : how === 'manual' || how === 'rider_cash'
+                  ? 'received - the rider was paid'
+                  : 'paid online - you pay the courier';
+            const freeHere = how === 'shop_free_delivery' || !!lo.freeDelivery;
             return (
               <div style={{ display:'flex', justifyContent:'space-between', gap:'10px', fontSize:'11px', padding:'3px 0', color:'var(--gray)' }}>
                 <span>
                   Delivery fee{' '}
-                  <span style={{ color: feePaid ? '#16a34a' : 'var(--gray)', fontWeight: feePaid ? 700 : 400 }}>
-                    {feePaid ? '(paid)' : '(unpaid)'}
+                  <span style={{ color: freeHere || feePaid ? 'var(--st-green-fg)' : 'var(--gray)', fontWeight: freeHere || feePaid ? 700 : 400 }}>
+                    {freeHere ? '(free)' : feePaid ? '(paid)' : '(unpaid)'}
                   </span>
                   <span style={{ display:'block', fontSize:'10px' }}>{note}</span>
                 </span>
-                <span style={{ fontWeight:600, whiteSpace:'nowrap', color: feePaid ? '#16a34a' : 'var(--gray)' }}>₱{fmt(lo.courierFee)}</span>
+                <span style={{ fontWeight:600, whiteSpace:'nowrap', color: freeHere || feePaid ? 'var(--st-green-fg)' : 'var(--gray)' }}>₱{fmt(lo.courierFee)}</span>
               </div>
             );
           })()}
@@ -3215,7 +3247,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                 : '')
             /* Sending it out closes the customer's online payment for the delivery fee. Who
                collects it from here is a money question, and it is answered before, not after. */
-            + (isForDelivery(selStatus) && Number(lo.courierFee ?? 0) > 0 && !lo.courierFeePaid
+            + (isForDelivery(selStatus) && Number(lo.courierFee ?? 0) > 0 && !lo.courierFeePaid && !lo.freeDelivery
                 ? ((lo.courierFeeOnDelivery ?? true)
                     ? ` The ₱${fmt(lo.courierFee)} delivery fee is still unpaid. Once this is sent out the customer can no longer pay it online - the rider collects ₱${fmt(lo.courierFee)} in cash. Tick "Mark fee received" once you have it.`
                     : ` The ₱${fmt(lo.courierFee)} delivery fee is still unpaid, and a parcel courier cannot collect cash on arrival. Get it settled before you ship.`)

@@ -268,6 +268,25 @@ class PaymentController extends Controller
                 }
             }
 
+            // ── The shop's two standing offers ───────────────────────────
+            // Free delivery over a figure, and a welcome discount on a first order. Both off
+            // unless the owner set them; both worked out by App\Support\ShopOffers so every
+            // path that creates an order charges the same price. They land HERE, above the
+            // deposit below, because a deposit is a percentage of the price - and asking for a
+            // percentage of a price that is about to drop overcharges the first payment.
+            $offers    = \App\Support\ShopOffers::forCheckout($goodsSubtotal, $discountAmount, $user);
+            $offerSnap = \App\Support\ShopOffers::snapshot($offers);
+            if ($offers['firstOrder'] > 0) {
+                $totalAmount = max(0, round($totalAmount - $offers['firstOrder'], 2));
+            }
+            // Where delivery was priced at checkout it comes off here. Where the shop books a
+            // courier afterwards there is nothing to subtract yet - the flag is what stops that
+            // fee being billed to the customer when it is set.
+            if ($offers['freeDelivery'] && $shippingFee > 0) {
+                $totalAmount = max(0, round($totalAmount - $shippingFee, 2));
+                $shippingFee = 0.0;
+            }
+
             // ── Idempotency: check for existing unpaid order (same user, same items, last 5 min) ──
             $itemIds = collect($validated['items'])->pluck('productId')->sort()->values()->toArray();
             $recentOrder = Order::where('userId', (string) $user->_id)
@@ -396,6 +415,12 @@ class PaymentController extends Controller
                 'shippingMode'    => optional(\App\Support\ShopSettings::owner())->shippingMode ?? 'courier_booked',
                 'discountAmount'  => $discountAmount > 0 ? $discountAmount : null,
                 'voucherCode'     => $appliedVoucher?->code ?? null,
+                // What the standing offers took off, and the rule as it stood at the time - so a
+                // change to the setting can never rewrite a bill somebody has already paid.
+                'firstOrderDiscount'   => $offerSnap['firstOrderDiscount'],
+                'firstOrderPercent'    => $offerSnap['firstOrderPercent'],
+                'freeDelivery'         => $offerSnap['freeDelivery'],
+                'freeDeliveryFrom'     => $offerSnap['freeDeliveryFrom'],
                 // A benefit voucher (free item, free layout) takes nothing off - the shop honours it
                 // by hand, so the order has to say what was promised.
                 'voucherBenefit'  => ($appliedVoucher && ($appliedVoucher->benefitCategory ?? 'monetary') !== 'monetary')
@@ -522,9 +547,10 @@ class PaymentController extends Controller
             $amountInCentavos = (int) round($totalAmount * 100);
 
             // ── Build PayMongo line items ─────────────────────────────────
-            // Show per-product breakdown when no voucher discount (amounts must sum to total).
-            // Fall back to a single bundled item when a voucher reduces the total.
-            if ($discountAmount > 0) {
+            // Show per-product breakdown when nothing has come off (amounts must sum to total).
+            // Fall back to a single bundled item when a voucher OR a standing offer reduces the
+            // total - per-product lines would add up to more than the customer is being charged.
+            if ($discountAmount > 0 || $offers['firstOrder'] > 0) {
                 $pmLineItems = [[
                     'currency' => 'PHP',
                     'amount'   => $amountInCentavos,
@@ -999,6 +1025,25 @@ class PaymentController extends Controller
                 }
             }
 
+            // ── The shop's two standing offers ───────────────────────────
+            // Free delivery over a figure, and a welcome discount on a first order. Both off
+            // unless the owner set them; both worked out by App\Support\ShopOffers so every
+            // path that creates an order charges the same price. They land HERE, above the
+            // deposit below, because a deposit is a percentage of the price - and asking for a
+            // percentage of a price that is about to drop overcharges the first payment.
+            $offers    = \App\Support\ShopOffers::forCheckout($goodsSubtotal, $discountAmount, $user);
+            $offerSnap = \App\Support\ShopOffers::snapshot($offers);
+            if ($offers['firstOrder'] > 0) {
+                $totalAmount = max(0, round($totalAmount - $offers['firstOrder'], 2));
+            }
+            // Where delivery was priced at checkout it comes off here. Where the shop books a
+            // courier afterwards there is nothing to subtract yet - the flag is what stops that
+            // fee being billed to the customer when it is set.
+            if ($offers['freeDelivery'] && $shippingFee > 0) {
+                $totalAmount = max(0, round($totalAmount - $shippingFee, 2));
+                $shippingFee = 0.0;
+            }
+
 
             // ── Proof gate ────────────────────────────────────────────
             // A cart order derives these from its own lines. Read only from the request,
@@ -1053,6 +1098,12 @@ class PaymentController extends Controller
                 'shippingMode'    => optional(\App\Support\ShopSettings::owner())->shippingMode ?? 'courier_booked',
                 'discountAmount'  => $discountAmount > 0 ? $discountAmount : null,
                 'voucherCode'     => $appliedVoucher?->code ?? null,
+                // What the standing offers took off, and the rule as it stood at the time - so a
+                // change to the setting can never rewrite a bill somebody has already paid.
+                'firstOrderDiscount'   => $offerSnap['firstOrderDiscount'],
+                'firstOrderPercent'    => $offerSnap['firstOrderPercent'],
+                'freeDelivery'         => $offerSnap['freeDelivery'],
+                'freeDeliveryFrom'     => $offerSnap['freeDeliveryFrom'],
                 // A benefit voucher (free item, free layout) takes nothing off - the shop honours it
                 // by hand, so the order has to say what was promised.
                 'voucherBenefit'  => ($appliedVoucher && ($appliedVoucher->benefitCategory ?? 'monetary') !== 'monetary')
@@ -3093,6 +3144,12 @@ class PaymentController extends Controller
             if ($payCourierFee) {
                 if ($courierFee <= 0) {
                     return $this->errorResponse('There is no delivery fee on this order yet.', 422);
+                }
+                // The fee is on the order because the shop records what the courier cost it. On a
+                // free-delivery order that cost is the shop's, so there is nothing here to collect -
+                // and taking the money anyway would be charging for what was promised free.
+                if ($order->freeDelivery ?? false) {
+                    return $this->errorResponse('Delivery is free on this order - there is nothing to pay.', 422);
                 }
                 if ($order->courierFeePaid ?? false) {
                     return $this->errorResponse('The delivery fee on this order is already settled.', 422);

@@ -17,6 +17,7 @@ import useLockBodyScroll from '@/lib/useLockBodyScroll';
 import { compressImage } from '@/lib/compressImage';
 import { makeThumbnail } from '@/lib/thumbnail';
 import { DEFAULT_CUSTOM_ORDER_TERMS, renderTermsBody } from '@/lib/customOrderTerms';
+import { applyOffers, firstOrderLabel, freeDeliveryNudge } from '@/lib/shopOffers';
 
 const METRO_CITIES = ['Manila', 'Quezon City', 'Caloocan', 'Las Piñas', 'Makati', 'Malabon', 'Mandaluyong', 'Marikina', 'Muntinlupa', 'Navotas', 'Parañaque', 'Pasay', 'Pasig', 'Pateros', 'San Juan', 'Taguig', 'Valenzuela'];
 function isMetroManila(city, province) {
@@ -165,6 +166,9 @@ function CustomOrderInner() {
   const [requestSubmitted, setRequestSubmitted] = useState(false);
   const [storeSettings, setStoreSettings]     = useState(null);
   const [shippingFeeAmt, setShippingFeeAmt]   = useState(null);
+  // The shop's standing offers, and whether this customer is on their first order. Only the
+  // server can answer the second part, so it is asked rather than guessed.
+  const [offerRule, setOfferRule]             = useState(null);
   const [rush, setRush]                       = useState(false);
   const [agreedTerms, setAgreedTerms]         = useState(false);
   const [showTerms, setShowTerms]             = useState(false);
@@ -302,6 +306,17 @@ function CustomOrderInner() {
       .then(d => setStoreSettings(d.data ?? d))
       .catch(() => {});
   }, []);
+
+  // The standing offers. Signed in, because the answer says whether THIS customer is new here.
+  useEffect(() => {
+    if (!token) return;
+    let alive = true;
+    fetch(`${API_URL}/api/shop/offers`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.json())
+      .then(d => { if (alive) setOfferRule(d?.data ?? null); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [token]);
 
   // A shop can be set to Flat Rate or Courier Booked, and this page used to ignore that entirely -
   // charging a fabricated distance-based figure regardless. Mirrors the three-mode branch checkout
@@ -452,8 +467,19 @@ function CustomOrderInner() {
   // "Get by" date = today + (production + shipping) business days, skipping Sundays.
   // Matches the server: Sundays, national holidays and the shop's own closures.
 
+  // The shop's two standing offers. Same arithmetic, same order as the server's ShopOffers,
+  // via lib/shopOffers - so the figure quoted here is the figure that gets charged.
+  const offers = applyOffers({
+    goods: lineTotal,
+    isFirst: !!offerRule?.isFirstOrder,
+    percent: offerRule?.firstOrderPercent ?? 0,
+    cap: offerRule?.firstOrderCap ?? null,
+    freeFrom: offerRule?.freeDeliveryFrom ?? null,
+  });
+  const firstOrderDiscount = offers.firstOrder;
+  const deliveryCharge = offers.freeDelivery ? 0 : (shippingFeeAmt ?? 0);
   // Rush is chosen at checkout now, so the product-page total never includes a rush fee.
-  const grandTotal = lineTotal + designFee + (shippingFeeAmt ?? 0);
+  const grandTotal = lineTotal - firstOrderDiscount + designFee + deliveryCharge;
   const downpaymentRequired = product?.requiresDownpayment ?? false;
   const downpaymentPercent = product?.downpaymentPercent ?? 50;
   const amountDue = designMode === 'request'
@@ -833,7 +859,7 @@ function CustomOrderInner() {
           body: JSON.stringify({
             items: [orderItem],
             deliveryAddress,
-            shippingFee: shippingFeeAmt ?? 0,
+            shippingFee: deliveryCharge,
             isRush: rushActive,
             agreedToTerms: agreedTerms,
             termsVersion,
@@ -870,7 +896,7 @@ function CustomOrderInner() {
           body: JSON.stringify({
             items: [orderItem],
             deliveryAddress,
-            shippingFee: shippingFeeAmt ?? 0,
+            shippingFee: deliveryCharge,
             isRush: rushActive,
             agreedToTerms: agreedTerms,
             termsVersion,
@@ -888,7 +914,7 @@ function CustomOrderInner() {
       const commonFields = {
         items: [orderItem],
         deliveryAddress,
-        shippingFee: shippingFeeAmt ?? 0,
+        shippingFee: deliveryCharge,
         isRush: rushActive,
         agreedToTerms: agreedTerms,
         termsVersion,
@@ -1678,6 +1704,12 @@ function CustomOrderInner() {
                       <span style={{ color: 'var(--gold)' }}>+{fmt(o.priceAdd)}</span>
                     </div>
                   ))}
+                  {firstOrderDiscount > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
+                      <span style={{ color: '#22c55e' }}>{firstOrderLabel(offers.firstOrderPercent, offers.firstOrderCap)}</span>
+                      <span style={{ color: '#22c55e', fontWeight: 600 }}>-{fmt(firstOrderDiscount)}</span>
+                    </div>
+                  )}
                   {designMode === 'request' && designFee > 0 && (
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
                       <span style={{ color: 'var(--gray)' }}>Design fee</span>
@@ -1708,10 +1740,19 @@ function CustomOrderInner() {
                   })()}
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
                     <span style={{ color: 'var(--gray)' }}>Shipping</span>
-                    {shippingFeeAmt !== null
-                      ? <span>{fmt(shippingFeeAmt)}</span>
-                      : <span style={{ color: 'var(--gray)', fontStyle: 'italic', fontSize: '0.78rem' }}>Billed separately</span>}
+                    {offers.freeDelivery
+                      ? <span style={{ color: '#22c55e', fontWeight: 700 }}>FREE</span>
+                      : shippingFeeAmt !== null
+                        ? <span>{fmt(shippingFeeAmt)}</span>
+                        : <span style={{ color: 'var(--gray)', fontStyle: 'italic', fontSize: '0.78rem' }}>Billed separately</span>}
                   </div>
+                  {/* Either "delivery is free on this" or how much more it would take. A threshold
+                      nobody is told about buys the shop nothing. */}
+                  {freeDeliveryNudge(offers) && (
+                    <div style={{ fontSize: '0.74rem', lineHeight: 1.5, color: offers.freeDelivery ? '#22c55e' : 'var(--gray)' }}>
+                      {freeDeliveryNudge(offers)}
+                    </div>
+                  )}
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', fontWeight: 700, paddingTop: '0.5rem', borderTop: '1px solid var(--border)' }}>
                     <span>Total</span>
                     <span>{fmt(grandTotal)}</span>
@@ -1719,7 +1760,7 @@ function CustomOrderInner() {
                   {/* "Billed separately" above says shipping is missing; this says why and what to
                       expect, the same note checkout shows - so a customer who reads this on the
                       product page and checkout later is not told two different things. */}
-                  {courierBooked && (
+                  {courierBooked && !offers.freeDelivery && (
                     <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem', marginTop: '4px', padding: '10px 12px', background: 'rgba(212,168,67,0.07)', border: '1px solid rgba(212,168,67,0.2)', borderRadius: '8px' }}>
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="2" style={{ flexShrink: 0, marginTop: '2px' }}>
                         <rect x="1" y="3" width="15" height="13"/><path d="M16 8h4l3 3v5h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/>

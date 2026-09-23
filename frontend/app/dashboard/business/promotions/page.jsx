@@ -119,7 +119,10 @@ const lbl = { ...S.label, display: 'block', marginBottom: '6px' };
 function PromotionsInner() {
   const { token } = useAuth();
   const searchParams = useSearchParams();
-  const [tab, setTab] = useState(() => searchParams?.get('tab') === 'flash_sales' ? 'flash_sales' : 'vouchers');
+  const [tab, setTab] = useState(() => {
+    const t = searchParams?.get('tab');
+    return t === 'flash_sales' || t === 'first_order' ? t : 'vouchers';
+  });
 
   return (
     // The 1200px cap left a wide screen mostly empty while every other module runs full
@@ -127,7 +130,11 @@ function PromotionsInner() {
     <div style={{ ...S.page, padding: '24px' }}>
       <div style={{ marginBottom: '18px' }}>
         <TabBar
-          tabs={[{ id: 'vouchers', label: 'Vouchers' }, { id: 'flash_sales', label: 'Flash Sales' }]}
+          tabs={[
+            { id: 'vouchers',    label: 'Vouchers' },
+            { id: 'flash_sales', label: 'Flash Sales' },
+            { id: 'first_order', label: 'First order' },
+          ]}
           active={tab}
           onChange={setTab}
         />
@@ -135,7 +142,15 @@ function PromotionsInner() {
 
       {/* What each tool does to the money, said once where the tools are. */}
       <div style={{ ...S.card, padding: '12px 16px', marginBottom: 16, fontSize: 12.5, color: 'var(--gray-light)', lineHeight: 1.6 }}>
-        {tab === 'vouchers' ? (
+        {tab === 'first_order' ? (
+          <>
+            <b style={{ color: 'var(--white)' }}>The first-order discount</b> is the shop&apos;s welcome to
+            somebody who has never ordered here. Nobody types a code - it comes off the <b>goods only</b> at
+            checkout, on their first order and no other. It stacks with a voucher, but the two together can
+            only ever reach the goods, never past them into the design fee, the rush fee or delivery. It is
+            taken out of revenue in Sales like any other discount, and it never applies to a quotation.
+          </>
+        ) : tab === 'vouchers' ? (
           <>
             <b style={{ color: 'var(--white)' }}>Vouchers</b> are codes a customer types at checkout. A money voucher
             (percent or fixed peso) comes off the <b>goods only</b> - never the design fee, the rush fee or delivery -
@@ -154,6 +169,7 @@ function PromotionsInner() {
 
       {tab === 'vouchers'    && <VouchersTab    token={token} />}
       {tab === 'flash_sales' && <FlashSalesTab  token={token} />}
+      {tab === 'first_order' && <FirstOrderTab  token={token} />}
     </div>
   );
 }
@@ -165,6 +181,167 @@ export default function PromotionsPage() {
         <PromotionsInner />
       </Suspense>
     </ErrorBoundary>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// FIRST ORDER TAB
+// ════════════════════════════════════════════════════════════════════════════
+// One rule, two boxes, and a worked example that moves as they are typed. The footgun here is a
+// percent with no ceiling - 10% reads harmless until somebody places a P40,000 job - so the
+// example prices the case where the ceiling is the only thing doing any work.
+function FirstOrderTab({ token }) {
+  const mayWork = useAccess().can('promotions.work');
+  const [percent, setPercent]   = useState('');
+  const [cap, setCap]           = useState('');
+  const [freeFrom, setFreeFrom] = useState(null);
+  const [loading, setLoading]   = useState(true);
+  const [saving, setSaving]     = useState(false);
+  const [error, setError]       = useState(null);
+  const [saved, setSaved]       = useState(null);
+
+  useEffect(() => {
+    if (!token) { setLoading(false); return; }
+    let alive = true;
+    fetchWithTimeout(`${API_URL}/api/admin/settings`, {
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+    }, 15000)
+      .then(r => r.json())
+      .then(d => {
+        if (!alive) return;
+        const v = d?.data ?? d ?? {};
+        setPercent(v.firstOrderPercent ? String(v.firstOrderPercent) : '');
+        setCap(v.firstOrderCap ? String(v.firstOrderCap) : '');
+        setFreeFrom(v.freeDeliveryFrom ?? null);
+      })
+      .catch(err => { if (alive) setError(err.message); })
+      .finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
+  }, [token]);
+
+  const pctNum  = Number(percent) || 0;
+  const capNum  = Number(cap) || 0;
+  const running = pctNum > 0;
+
+  async function save() {
+    setSaving(true); setError(null); setSaved(null);
+    try {
+      const res = await fetchWithTimeout(`${API_URL}/api/admin/settings/offers`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          // Blank is off, and has to travel as null: a 0 would read as an offer that is running
+          // and gives nothing, which is the one state this pair must never be in.
+          firstOrderPercent: String(percent).trim() === '' ? null : (parseInt(percent, 10) || null),
+          firstOrderCap:     String(cap).trim()     === '' ? null : (parseFloat(cap)      || null),
+        }),
+      }, 15000);
+      const d = await res.json();
+      if (!res.ok) throw new Error(d?.message || 'Could not save.');
+      setSaved(pctNum > 0 ? 'The welcome discount is on.' : 'The welcome discount is off.');
+      setTimeout(() => setSaved(null), 3000);
+    } catch (err) { setError(err.message); }
+    finally { setSaving(false); }
+  }
+
+  const peso = (n) => `₱${Number(n).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  // A basket just big enough to reach the ceiling: the figure where the ceiling is the only thing
+  // standing between the shop and a large giveaway, which is the one worth looking at.
+  const sample = capNum > 0 && pctNum > 0 ? Math.max(2000, Math.ceil(capNum * 100 / pctNum)) : 2000;
+  const off    = pctNum > 0
+    ? Math.min(Math.round(sample * pctNum / 100 * 100) / 100, capNum > 0 ? capNum : Number.MAX_SAFE_INTEGER)
+    : 0;
+  const shipsFree = freeFrom != null && Number(freeFrom) > 0 && (sample - off) >= Number(freeFrom);
+
+  if (loading) {
+    return <div style={{ ...S.card, padding: 20, color: 'var(--gray-light)', fontSize: 13 }}>Loading...</div>;
+  }
+
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 16, alignItems: 'start' }}>
+      <div style={{ ...S.card, padding: 20 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+          <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--white)' }}>Welcome discount</span>
+          <span style={{
+            fontSize: 10.5, fontWeight: 800, letterSpacing: '0.04em', padding: '2px 8px', borderRadius: 999,
+            color: running ? '#4ade80' : 'var(--gray)',
+            background: running ? 'rgba(34,197,94,0.12)' : 'rgba(255,255,255,0.05)',
+            border: `1px solid ${running ? 'rgba(34,197,94,0.3)' : 'var(--border)'}`,
+          }}>{running ? 'ON' : 'OFF'}</span>
+        </div>
+
+        <div style={{ marginBottom: 14 }}>
+          <label style={lbl}>Percent off their first order</label>
+          <input
+            style={inp} type="text" inputMode="numeric" maxLength={3} value={percent} disabled={!mayWork}
+            onChange={e => setPercent(e.target.value.replace(/[^0-9]/g, ''))}
+            placeholder="Leave blank for no welcome discount"
+          />
+        </div>
+
+        <div style={{ marginBottom: 14 }}>
+          <label style={lbl}>Most it may take off (₱)</label>
+          <input
+            style={inp} type="text" inputMode="decimal" maxLength={7} value={cap} disabled={!mayWork}
+            onChange={e => setCap(e.target.value.replace(/[^0-9.]/g, ''))}
+            placeholder="Blank means no ceiling"
+          />
+          <div style={{ fontSize: 11.5, color: 'var(--gray-light)', marginTop: 6, lineHeight: 1.55 }}>
+            Without a ceiling the discount grows with the order. A 10% welcome on a ₱40,000 job is
+            ₱4,000 handed to somebody the shop has never served.
+          </div>
+        </div>
+
+        {error && <div style={{ fontSize: 12.5, color: '#f87171', marginBottom: 10 }}>{error}</div>}
+        {saved && <div style={{ fontSize: 12.5, color: '#4ade80', marginBottom: 10 }}>{saved}</div>}
+
+        {mayWork && (
+          <button type="button" onClick={save} disabled={saving} style={{ ...S.btnPrimary, opacity: saving ? 0.6 : 1 }}>
+            {saving ? 'Saving...' : 'Save'}
+          </button>
+        )}
+      </div>
+
+      <div style={{ ...S.card, padding: 20 }}>
+        <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--gray-light)', marginBottom: 12 }}>
+          What a first-time customer sees
+        </div>
+        {running ? (
+          <div style={{ fontSize: 13, lineHeight: 2 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ color: 'var(--gray-light)' }}>Goods</span>
+              <span style={{ color: 'var(--white)' }}>{peso(sample)}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ color: '#4ade80' }}>
+                First order ({pctNum}%{capNum > 0 ? `, max ${peso(capNum)}` : ''})
+              </span>
+              <span style={{ color: '#4ade80' }}>-{peso(off)}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ color: 'var(--gray-light)' }}>Delivery</span>
+              <span style={{ color: shipsFree ? '#4ade80' : 'var(--gray-light)' }}>
+                {shipsFree ? 'FREE' : 'as usual'}
+              </span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid var(--border)', marginTop: 6, paddingTop: 6, fontWeight: 800 }}>
+              <span style={{ color: 'var(--white)' }}>Total</span>
+              <span style={{ color: 'var(--white)' }}>{peso(sample - off)}</span>
+            </div>
+            <div style={{ fontSize: 11.5, color: 'var(--gray-light)', marginTop: 10, lineHeight: 1.6 }}>
+              {freeFrom != null && Number(freeFrom) > 0
+                ? `Free delivery starts at ${peso(freeFrom)} of goods, and it is judged on what is LEFT after this discount - which is how a discount can take the free delivery with it. That figure lives in Settings > Shipping.`
+                : 'Free delivery is not switched on. That one lives in Settings > Shipping.'}
+            </div>
+          </div>
+        ) : (
+          <div style={{ fontSize: 12.5, color: 'var(--gray-light)', lineHeight: 1.7 }}>
+            Nothing comes off a first order while this is blank. Put a percent in and this fills
+            with what a new customer would actually be charged.
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 

@@ -12,6 +12,7 @@ import { designFeeFor } from '@/lib/designFee';
 import { isNetworkError } from '@/lib/afterTimeout';
 import '@/app/shop/shop.css';
 import { applyVoucher } from '@/lib/voucherApi';
+import { applyOffers, firstOrderLabel, freeDeliveryNudge } from '@/lib/shopOffers';
 import { useTheme } from '@/contexts/ThemeContext';
 import { DEFAULT_CUSTOM_ORDER_TERMS } from '@/lib/customOrderTerms';
 import { makeThumbnail } from '@/lib/thumbnail';
@@ -117,6 +118,12 @@ export default function CheckoutPage() {
   const [voucherLoading, setVoucherLoading]   = useState(false);
   const [voucherError, setVoucherError]       = useState(null);
 
+  // The shop's two standing offers, plus the one part of them that is about this customer:
+  // whether they have ordered here before. Only the server can answer that, so it is asked
+  // rather than guessed - a checkout that promises a discount the server refuses is worse
+  // than no offer at all.
+  const [offerRule, setOfferRule] = useState(null);
+
   // Pay in full option for downpayment orders
   const [payFull, setPayFull] = useState(false);
   // Delivery speed is ONE order-level choice (one parcel = one speed). Rush costs more + is faster,
@@ -145,6 +152,17 @@ export default function CheckoutPage() {
       .then(d => setStoreSettings(d.data ?? d))
       .catch(() => {});
   }, []);
+
+  // ── EFFECT: Load the standing offers (free delivery over X, first-order discount) ──
+  useEffect(() => {
+    if (!token) return;
+    let alive = true;
+    fetch(`${API_URL}/api/shop/offers`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.json())
+      .then(d => { if (alive) setOfferRule(d?.data ?? null); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [token]);
 
   // ── EFFECT: Load owner-controlled payment method availability ──
   useEffect(() => {
@@ -325,7 +343,19 @@ export default function CheckoutPage() {
   // Custom item still needing a design file at checkout (not pre-uploaded and not design-service-requested)
   const hasCustomItem = items.some(i => i.isCustom === true && !i.designUrl && !i.designRequested);
   const voucherDiscount = appliedVoucher ? appliedVoucher.discountAmount : 0;
-  const total           = Math.max(0, subtotal - voucherDiscount);
+  // Worked out by lib/shopOffers, which is the same arithmetic in the same order as the server's
+  // App\Support\ShopOffers. The welcome discount comes off the goods beside the voucher, and free
+  // delivery is decided on what is left after both.
+  const offers = applyOffers({
+    goods: subtotal,
+    voucher: voucherDiscount,
+    isFirst: !!offerRule?.isFirstOrder,
+    percent: offerRule?.firstOrderPercent ?? 0,
+    cap: offerRule?.firstOrderCap ?? null,
+    freeFrom: offerRule?.freeDeliveryFrom ?? null,
+  });
+  const firstOrderDiscount = offers.firstOrder;
+  const total           = Math.max(0, subtotal - voucherDiscount - firstOrderDiscount);
   // ONE design fee for the order, not one per product. The fee buys the artwork, and one
   // artwork put on a mug and a totebag is still a single piece of work - so the highest
   // product's fee applies once rather than every fee being added up.
@@ -398,7 +428,11 @@ export default function CheckoutPage() {
   // are the whole choice; an occasion belongs in the order notes, where the shop reads it as
   // information rather than a deadline the system pretends to have verified.
 
-  const grandTotal      = total + designFee + rushCharge + (shippingFeeAmt ?? 0);
+  // What delivery actually costs the customer on this order. In courier-booked mode there is no
+  // fee here at all - the shop books the ride afterwards - and the free-delivery flag rides along
+  // on the order so that fee is never billed to them either.
+  const deliveryCharge  = offers.freeDelivery ? 0 : (shippingFeeAmt ?? 0);
+  const grandTotal      = total + designFee + rushCharge + deliveryCharge;
 
   // Order-level downpayment: if ANY item requires DP, apply the highest DP% to the full order total
   const downpaymentPercent = items
@@ -461,7 +495,7 @@ export default function CheckoutPage() {
 
   const amountDue = designFeeOnly
     ? Math.max(0, Math.round(designFee * 100) / 100)
-    : Math.max(0, Math.round((goodsPayNow + designFee + rushCharge + (shippingFeeAmt ?? 0) - voucherDiscount) * 100) / 100);
+    : Math.max(0, Math.round((goodsPayNow + designFee + rushCharge + deliveryCharge - voucherDiscount - firstOrderDiscount) * 100) / 100);
   const remainingBalance = Math.max(0, Math.round((grandTotal - amountDue) * 100) / 100);
   // "Downpayment" here means the CURRENT selection does not settle the whole order (drives the payload
   // + COD gating). It flips to false when Pay-in-Full clears the balance - correct, but the deposit UI
@@ -709,7 +743,7 @@ export default function CheckoutPage() {
         formData.append('deliveryAddress', JSON.stringify(deliveryAddress));
         formData.append('paymentMethod', paymentMethod);
         if (appliedVoucher?.code) formData.append('voucherCode', appliedVoucher.code);
-        formData.append('shippingFee', String(shippingFeeAmt ?? 0));
+        formData.append('shippingFee', String(deliveryCharge));
         formData.append('isRush', String(isRush));
         if (isRush) formData.append('rushFee', String(rushCharge));
         if (termsAgreed) {
@@ -728,7 +762,7 @@ export default function CheckoutPage() {
           deliveryAddress,
           design_notes: designNotes || null,
           paymentMethod,
-          shippingFee: shippingFeeAmt ?? 0,
+          shippingFee: deliveryCharge,
           isRush,
           ...(isRush ? { rushFee: rushCharge } : {}),
           ...(termsAgreed ? { agreedToTerms: true, termsVersion, agreedTermsSnapshot, ...(termsAgreedAt ? { agreedAt: termsAgreedAt } : {}) } : {}),
@@ -767,7 +801,7 @@ export default function CheckoutPage() {
           design_notes: designNotes || null,
           paymentType: paymentMethod,
           paymentMethodId,
-          shippingFee: shippingFeeAmt ?? 0,
+          shippingFee: deliveryCharge,
           isRush,
           ...(isRush ? { rushFee: rushCharge } : {}),
           ...(termsAgreed ? { agreedToTerms: true, termsVersion, agreedTermsSnapshot, ...(termsAgreedAt ? { agreedAt: termsAgreedAt } : {}) } : {}),
@@ -1486,6 +1520,21 @@ export default function CheckoutPage() {
           <span>Subtotal</span>
           <span>₱{subtotal.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
         </div>
+        {/* The shop's welcome discount. Same green as the voucher line below - both are money
+            coming off the goods, and reading them as one pair is the point. */}
+        {firstOrderDiscount > 0 && (
+          <div className="checkout-summary-row">
+            <span style={{ color: '#22c55e' }}>
+              {firstOrderLabel(offers.firstOrderPercent, offers.firstOrderCap)}
+              <span style={{ display: 'block', fontSize: '.7rem', opacity: .7, color: 'var(--gray)' }}>
+                Our welcome to a first-time customer
+              </span>
+            </span>
+            <span style={{ color: '#22c55e', fontWeight: 600 }}>
+              − ₱{firstOrderDiscount.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </span>
+          </div>
+        )}
         {designFee > 0 && (
           <div className="checkout-summary-row">
             <span>
@@ -1499,7 +1548,16 @@ export default function CheckoutPage() {
         )}
         <div className="checkout-summary-row">
           <span>Delivery</span>
-          {courierBooked ? (
+          {offers.freeDelivery ? (
+            <span style={{ color: '#22c55e', fontWeight: 700 }}>
+              {shippingFeeAmt > 0 && (
+                <span style={{ color: 'var(--gray)', fontWeight: 400, textDecoration: 'line-through', marginRight: 6 }}>
+                  ₱{shippingFeeAmt.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              )}
+              FREE
+            </span>
+          ) : courierBooked ? (
             <span className="checkout-shipping-note" style={{ textAlign: 'right' }}>Arranged after order</span>
           ) : shippingLoading ? (
             <span style={{ fontSize: '0.8rem', color: 'var(--gray)' }}>Calculating…</span>
@@ -1520,6 +1578,18 @@ export default function CheckoutPage() {
             return <span className="checkout-shipping-note">-</span>;
           })()}
         </div>
+        {/* What is still missing before delivery stops being charged, or that it already is.
+            Worth saying plainly: a threshold nobody is told about buys the shop nothing. */}
+        {freeDeliveryNudge(offers) && (
+          <div style={{
+            fontSize: '0.75rem',
+            lineHeight: 1.5,
+            margin: '-0.25rem 0 0.6rem',
+            color: offers.freeDelivery ? '#22c55e' : 'var(--gray)',
+          }}>
+            {freeDeliveryNudge(offers)}
+          </div>
+        )}
         {isRush && rushCharge > 0 && (
           <div className="checkout-summary-row">
             <span>
@@ -1606,7 +1676,7 @@ export default function CheckoutPage() {
           <span>Total</span>
           <span className="checkout-total-amount">₱{grandTotal.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
         </div>
-        {courierBooked && (
+        {courierBooked && !offers.freeDelivery && (
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem', marginTop: '8px', padding: '10px 12px', background: 'rgba(212,168,67,0.07)', border: '1px solid rgba(212,168,67,0.2)', borderRadius: '8px' }}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="2" style={{ flexShrink: 0, marginTop: '2px' }}>
               <rect x="1" y="3" width="15" height="13"/><path d="M16 8h4l3 3v5h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/>
@@ -1622,6 +1692,21 @@ export default function CheckoutPage() {
               amount in chat.{' '}
               <strong style={{ color: 'var(--white)' }}>You can add it to your next payment</strong>, or
               hand it to the rider in cash on arrival. Whichever you prefer.
+            </span>
+          </div>
+        )}
+        {/* The same box, for an order that reached the free-delivery figure. The shop still books
+            the ride and still pays for it - what changes is that nothing is billed on afterwards,
+            and saying so here is what stops the customer bracing for a fee that never comes. */}
+        {courierBooked && offers.freeDelivery && (
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem', marginTop: '8px', padding: '10px 12px', background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.25)', borderRadius: '8px' }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2" style={{ flexShrink: 0, marginTop: '2px' }}>
+              <rect x="1" y="3" width="15" height="13"/><path d="M16 8h4l3 3v5h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/>
+            </svg>
+            <span style={{ fontSize: '0.75rem', color: 'var(--gray-light)', lineHeight: 1.5 }}>
+              <strong style={{ color: '#22c55e' }}>Delivery is on us.</strong> Your order reached ₱
+              {Number(offers.freeDeliveryFrom).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })},
+              so we book the courier and cover the fare. Nothing to pay the rider, and nothing added later.
             </span>
           </div>
         )}
@@ -2019,7 +2104,9 @@ export default function CheckoutPage() {
       <p className="checkout-disclaimer">
         {paymentMethod === 'cod'
           ? courierBooked
-            ? 'By placing this order, you agree to our terms. You pay the item total on delivery; the courier fee is arranged by the seller after booking.'
+            ? offers.freeDelivery
+              ? 'By placing this order, you agree to our terms. You pay the item total on delivery; delivery itself is free on this order, so the rider collects nothing extra.'
+              : 'By placing this order, you agree to our terms. You pay the item total on delivery; the courier fee is arranged by the seller after booking.'
             : shippingFeeAmt !== null
               ? 'By placing this order, you agree to our terms. You will pay upon delivery including the estimated shipping fee.'
               : 'By placing this order, you agree to our terms. You will pay upon delivery. Exact delivery fee may vary.'
@@ -2028,8 +2115,11 @@ export default function CheckoutPage() {
             : paymentMethod === 'paymaya'
               ? 'By placing this order, you agree to our terms. You\'ll be redirected to Maya to complete payment.'
               : 'By placing this order, you agree to our terms. Your card details are processed securely by PayMongo.'}
-        {courierBooked && paymentMethod !== 'cod'
+        {courierBooked && paymentMethod !== 'cod' && !offers.freeDelivery
           ? ' Delivery is not included - once your order is confirmed the seller prices it in the courier app and sends you the exact fee in chat, to add to your next payment or hand to the rider in cash.'
+          : ''}
+        {courierBooked && paymentMethod !== 'cod' && offers.freeDelivery
+          ? ' Delivery is free on this order - the seller books the courier and covers the fare, so nothing is added afterwards.'
           : ''}
       </p>
 
