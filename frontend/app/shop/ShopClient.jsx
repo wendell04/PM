@@ -136,23 +136,6 @@ function QuickViewModal({ product, flashSale, onClose, onToast }) {
   const combo = resolveCombo(selVars);
   const comboId = combo?.id ?? null;
 
-  /**
-   * What one variant option is worth on its own, so the row can be read instead of clicked
-   * through. Same rule as the product page: sold out and a low count are said, plenty is not.
-   */
-  const optionStock = (groupId, optVal) => {
-    if (mode === 'inquiry' || !product.trackInventory) return null;
-    const id = resolveCombo({ ...selVars, [groupId]: optVal })?.id ?? null;
-    if (id == null) return null;
-    const qty = product.variantCanProduce?.[id] != null ? Number(product.variantCanProduce[id])
-      : product.variantStock?.[id] != null ? Number(product.variantStock[id])
-      : null;
-    if (qty == null) return null;
-    const backorder = product.variantPreorder?.[id] ?? product.variantBackorder?.[id] ?? product.allowPreorder;
-    if (qty <= 0) return { label: backorder ? 'Pre-order' : 'Sold out', tone: backorder ? 'wait' : 'gone' };
-    if (qty <= 10) return { label: `${qty} left`, tone: 'low' };
-    return { label: `${qty} pcs`, tone: 'have' };
-  };
 
   const unitPrice = (() => {
     if (mode === 'tiered') {
@@ -481,11 +464,10 @@ function QuickViewModal({ product, flashSale, onClose, onToast }) {
                     const optVal = typeof opt === 'string' ? opt : (opt.value ?? opt.label ?? String(opt));
                     const optKey = typeof opt === 'string' ? opt : (opt.id ?? oi);
                     const isSelected = selVars[group.id] === optVal;
-                    const stock = optionStock(group.id, optVal);
                     return (
                       <button
                         key={optKey}
-                        className={`shop-qv-variant-btn${isSelected ? ' active' : ''}${stock?.tone === 'gone' ? ' sold-out' : ''}`}
+                        className={`shop-qv-variant-btn${isSelected ? ' active' : ''}`}
                         onClick={() => {
                           const next = { ...selVars, [group.id]: optVal };
                           setSelVars(next);
@@ -496,7 +478,6 @@ function QuickViewModal({ product, flashSale, onClose, onToast }) {
                         }}
                       >
                         {optVal}
-                        {stock && <span className={`shop-qv-variant-stock ${stock.tone}`}>{stock.label}</span>}
                       </button>
                     );
                   })}
