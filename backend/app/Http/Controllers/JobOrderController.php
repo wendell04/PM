@@ -119,7 +119,7 @@ class JobOrderController extends Controller
     public function index(Request $request)
     {
         try {
-            if (!$this->hasAnyPermission($request, ['jobOrders', 'production'])) {
+            if (!$this->hasAnyPermission($request, ['jobOrders.view', 'production.view', 'qc.view'])) {
                 return $this->unauthorizedResponse();
             }
 
@@ -176,7 +176,7 @@ class JobOrderController extends Controller
     public function show(Request $request, $id)
     {
         try {
-            if (!$this->hasAnyPermission($request, ['jobOrders', 'production'])) {
+            if (!$this->hasAnyPermission($request, ['jobOrders.view', 'production.view', 'qc.view'])) {
                 return $this->unauthorizedResponse();
             }
 
@@ -195,7 +195,7 @@ class JobOrderController extends Controller
     public function store(Request $request)
     {
         try {
-            if (!$this->hasAnyPermission($request, ['jobOrders', 'production'])) {
+            if (!$this->hasPermission($request, 'jobOrders.create')) {
                 return $this->unauthorizedResponse();
             }
 
@@ -310,7 +310,7 @@ class JobOrderController extends Controller
     public function storeBatch(Request $request)
     {
         try {
-            if (!$this->hasAnyPermission($request, ['jobOrders', 'production'])) {
+            if (!$this->hasPermission($request, 'jobOrders.create')) {
                 return $this->unauthorizedResponse();
             }
 
@@ -542,7 +542,7 @@ class JobOrderController extends Controller
     public function update(Request $request, $id)
     {
         try {
-            if (!$this->hasAnyPermission($request, ['jobOrders', 'production'])) {
+            if (!$this->hasAnyPermission($request, ['production.work', 'jobOrders.edit'])) {
                 return $this->unauthorizedResponse();
             }
 
@@ -567,6 +567,20 @@ class JobOrderController extends Controller
                 'assignedTo'       => 'nullable|string|max:255',
                 'notes'            => 'nullable|string|max:2000',
             ]);
+
+            // Starting and finishing a job (and the materials that go with it) is Production work;
+            // dates, rush, who it is assigned to and cancelling the job are Job Orders work. Notes
+            // belong to both.
+            $statusWanted = $validated['joStatus'] ?? null;
+            $benchWork = ($statusWanted !== null && $statusWanted !== 'Cancelled')
+                || array_key_exists('materialsPulled', $validated) || array_key_exists('materialOverride', $validated);
+            $jobWork = $statusWanted === 'Cancelled'
+                || array_key_exists('targetCompletion', $validated) || array_key_exists('isRush', $validated)
+                || array_key_exists('assignedTo', $validated);
+            if (($benchWork && !$this->hasPermission($request, 'production.work'))
+                || ($jobWork && !$this->hasPermission($request, 'jobOrders.edit'))) {
+                return $this->unauthorizedResponse();
+            }
 
             if (isset($validated['notes'])) {
                 $validated['notes'] = htmlspecialchars(strip_tags(trim($validated['notes'])), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
@@ -663,7 +677,7 @@ class JobOrderController extends Controller
     public function destroy(Request $request, $id)
     {
         try {
-            if (!$this->hasAnyPermission($request, ['jobOrders', 'production'])) {
+            if (!$this->hasPermission($request, 'jobOrders.delete')) {
                 return $this->unauthorizedResponse();
             }
 
@@ -743,7 +757,7 @@ class JobOrderController extends Controller
     public function submitQC(Request $request, string $id)
     {
         try {
-            if (!$this->hasAnyPermission($request, ['jobOrders', 'qc'])) {
+            if (!$this->hasPermission($request, 'qc.work')) {
                 return $this->unauthorizedResponse();
             }
 
@@ -1277,7 +1291,7 @@ class JobOrderController extends Controller
     {
         try {
             $user = $request->user();
-            if (!$this->hasPermission($request, 'jobOrders.updateStatus')) {
+            if (!$this->hasPermission($request, 'production.work')) {
                 return $this->unauthorizedResponse();
             }
 

@@ -34,7 +34,7 @@ class WalkInOrderController extends Controller
             if (!$user) {
                 return response()->json(['message' => 'Unauthorized.'], 401);
             }
-            if (!$this->hasPermission($request, 'pos')) {
+            if (!$this->hasAnyPermission($request, ['pos.sell', 'orders.create'])) {
                 return $this->unauthorizedResponse();
             }
 

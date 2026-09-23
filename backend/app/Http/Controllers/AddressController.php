@@ -37,6 +37,10 @@ class AddressController extends Controller
      */
     public function adminIndex(Request $request, $id)
     {
+        // A customer's saved addresses - for taking an order for them. Was open to any staff.
+        if (!$this->hasAnyPermission($request, ['orders.view', 'pos.view'])) {
+            return $this->unauthorizedResponse();
+        }
         $customer = User::where('_id', $id)->first();
 
         if (!$customer) {

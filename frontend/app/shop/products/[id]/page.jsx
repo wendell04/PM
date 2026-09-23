@@ -8,6 +8,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCart } from '@/context/CartContext';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
+import { canGoBackInApp } from '@/lib/shopNavTrail';
 import { submitOrderRequest, uploadDesignFile } from '@/lib/orderRequestApi';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL
@@ -637,21 +638,16 @@ export default function ProductDetailPage() {
           came from - the landing page, a collection, a search, or a filtered shop they had scrolled
           halfway down. Going back through history restores all of that for free.
 
-          But history is only safe to walk when the step behind us is our own. A product link opened
-          from Google or a chat app has that site behind it, and "Back to Products" must never be the
-          control that ejects someone off the shop. So: same-origin referrer, or a referrer-less entry
-          that has since navigated in-app (the SPA case, where referrer stays empty), means go back.
-          A foreign referrer, or a cold deep link with nothing behind it, falls back to /shop. */}
+          But history is only safe to walk when the step behind us is our own, and neither
+          history.length nor the referrer proves that. Opening a product in a NEW TAB - how people
+          compare two of them - leaves the new-tab page behind it, same-origin referrer and all, and
+          Back landed the customer on a blank page instead of the shop. So the only evidence trusted
+          here is our own: the shop layout counts every move made inside the tab, and Back walks
+          history only when at least one of those steps is behind us. Otherwise it goes to /shop,
+          which is never wrong. */}
       <button
         onClick={() => {
-          const canGoBack = typeof window !== 'undefined' && window.history.length > 1;
-          const sameOrigin = typeof document !== 'undefined'
-            && document.referrer.startsWith(window.location.origin);
-          // An empty referrer with history behind it is the SPA case - referrer never updates on a
-          // soft navigation, so its absence is not evidence of a cold entry.
-          const inApp = typeof document !== 'undefined'
-            && (sameOrigin || document.referrer === '');
-          if (canGoBack && inApp) router.back();
+          if (canGoBackInApp()) router.back();
           else router.push('/shop');
         }}
         style={{
@@ -1260,11 +1256,25 @@ export default function ProductDetailPage() {
                   </div>
                 );
               }
-              // Plenty on the shelf: say so, without the number. "295 units available" reads as a
-              // promise, and for variants that share a material (three mug colours, one shelf of
-              // boxes) it is one the shop cannot keep three times over. A count is only printed
-              // when it is low, above, where it changes what the customer does.
-              // Made to order: no stock badge. The product type already says it is printed per order.
+              // The count itself, where there is one to give. A shop selling by the hundred is
+              // asked "can you do 300?" before anything else, and the buyer should not have to
+              // put a line in the cart to find out. The figure is for the VARIANT in front of
+              // them - never the variants added together, which is a number no one order can use.
+              //
+              // Made to order counts too. Printed-per-order says HOW it is made, not how many can
+              // be made: a mousepad with 140 blanks behind it can do 140 today, and skipping the
+              // badge for it left the one product that most needs the figure without any.
+              if (displayQty != null && displayQty > 0) {
+                return (
+                  <div style={{ display: 'flex' }}>
+                    <span style={{ fontSize: '0.8rem', fontWeight: 700, ...BADGE_GOLD, borderRadius: '999px', padding: '0.25rem 0.75rem' }}>
+                      {displayQty} pcs available
+                    </span>
+                  </div>
+                );
+              }
+              // No number at all: nothing counted constrains it. "In Stock" on a made-to-order
+              // product would be a claim about a shelf that does not exist, so it says nothing.
               if (product.isMadeToOrder) return null;
               return (
                 <div style={{ display: 'flex' }}>
@@ -1480,7 +1490,9 @@ export default function ProductDetailPage() {
                       {Math.max(0, readyNow)} ready now, {preorderQty} on pre-order.
                     </strong>{' '}
                     We have {Math.max(0, readyNow)} in stock and will restock the rest. The whole
-                    order ships together on the delivery date shown at checkout.
+                    order ships together{product.isCustom
+                      ? ', counted from the day your design is approved.'
+                      : ' on the delivery date shown at checkout.'}
                   </span>
                 </div>
               )}

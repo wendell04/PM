@@ -4,6 +4,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { cloudinaryThumb } from '@/lib/cloudinaryImage';
 import PhotoLightbox from './PhotoLightbox';
 import { useScrollToLatest } from '@/lib/useScrollToLatest';
+import OrderFormAnswers, { noteFromAnswers } from './OrderFormAnswers';
 
 const isRecentlySeen = (ts) => ts && Date.now() - new Date(ts).getTime() < 120_000;
 
@@ -243,7 +244,7 @@ const ChatWindow = ({ activeConversation, messages, user, isLoading, isAdmin, on
           <div className="quotation-card">
             <div className="quotation-header">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#d4a843" strokeWidth="2.5"><path d="M9 11l3 3L22 4" /><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" /></svg>
-              <span className="quotation-tag">Order form</span>
+              <span className="quotation-tag">{msg.metadata?.form?.name || 'Order form'}</span>
               <span style={{ marginLeft: 'auto', fontSize: '0.68rem', fontWeight: 700, color: filled ? '#1a7f3c' : 'var(--gray)' }}>{filled ? 'Filled in' : 'Waiting on the customer'}</span>
             </div>
             <div style={{ padding: '6px 12px 8px', fontSize: '0.82rem', color: 'var(--gray-light)', lineHeight: 1.5 }}>{msg.body}</div>
@@ -258,20 +259,7 @@ const ChatWindow = ({ activeConversation, messages, user, isLoading, isAdmin, on
     // The customer's answers. This is the card the shop quotes from.
     if (msg.type === 'order_form_reply' && msg.metadata?.answers) {
       const a = msg.metadata.answers;
-      const payLabel = { gcash: 'GCash', maya: 'Maya', card: 'Card', cash: 'Cash on pickup' }[a.payment] || a.payment;
-      const lines = Array.isArray(a.lines) ? a.lines : [];
-      const noteForQuote = [
-        lines.map(l => `${l.qty} x ${l.item}${l.details ? ` (${l.details})` : ''}`).join('\n'),
-        `${a.shipment === 'pickup' ? 'Pickup' : `Delivery - ${a.address || ''}`}`,
-        `Pays by ${payLabel}`,
-        a.instructions ? `Notes: ${a.instructions}` : '',
-      ].filter(Boolean).join('\n');
-      const row = (k, v) => v ? (
-        <div style={{ display: 'flex', gap: 8, fontSize: '0.78rem', lineHeight: 1.45 }}>
-          <span style={{ color: 'var(--gray)', flex: '0 0 72px' }}>{k}</span>
-          <span style={{ color: 'var(--white, #111)', whiteSpace: 'pre-wrap', minWidth: 0 }}>{v}</span>
-        </div>
-      ) : null;
+      const noteForQuote = noteFromAnswers(a);
       return (
         <div key={msgKey} style={{ display: 'flex', justifyContent: isMe ? 'flex-end' : 'flex-start', padding: '4px 12px' }}>
           <div className="quotation-card" style={{ maxWidth: 360 }}>
@@ -279,18 +267,7 @@ const ChatWindow = ({ activeConversation, messages, user, isLoading, isAdmin, on
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#d4a843" strokeWidth="2.5"><path d="M9 11l3 3L22 4" /><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" /></svg>
               <span className="quotation-tag">Order details</span>
             </div>
-            <div style={{ padding: '8px 12px', display: 'grid', gap: 5 }}>
-              {lines.map((l, i) => (
-                <div key={i} style={{ fontSize: '0.84rem', fontWeight: 700, color: 'var(--white, #111)' }}>
-                  {l.qty} x {l.item}{l.details ? <span style={{ fontWeight: 500, color: 'var(--gray)' }}> - {l.details}</span> : null}
-                </div>
-              ))}
-              <div style={{ height: 4 }} />
-              {row('For', [a.name, a.contact, a.email].filter(Boolean).join(' - '))}
-              {row(a.shipment === 'pickup' ? 'Pickup' : 'Deliver to', a.shipment === 'pickup' ? 'At the shop' : a.address)}
-              {row('Pays by', payLabel)}
-              {row('Notes', a.instructions)}
-            </div>
+            <OrderFormAnswers a={a} />
             {isAdmin && onQuoteFromForm && (
               <div style={{ padding: '0 12px 10px' }}>
                 <button type="button" onClick={() => onQuoteFromForm(noteForQuote)}

@@ -5,86 +5,135 @@ namespace App\Support;
 use App\Models\RolePermission;
 
 /**
- * What a person can be granted, grouped and labelled for human beings.
+ * What a person can be granted: one row per sidebar entry.
  *
- * The keys are the ones the app has always checked - this invents nothing. What it adds is a
- * single place that says which keys EXIST, what each one means in plain words, and which ones
- * belong together on screen. Before this, the answer was "whatever happens to be in the role
- * documents", so a permission nobody had ever ticked was invisible and unassignable.
+ * Each row has two levels - See and Work - and, where an action deserves its own decision, a few
+ * extra ticks (cancelling orders, refunds, deleting job orders). Work includes See; an extra needs
+ * at least See. That is the whole model: the owner picks Off / See / Work per page and ticks the
+ * risky extras, instead of reading forty checkboxes.
  *
- * Kept on the server on purpose: a permission list that lives in the frontend is a permission
- * list that can disagree with the checks.
+ * Before this, the rows did not match the sidebar - one "jobOrders" tick opened Job Orders,
+ * Production and Quality Control at once - and the server mostly asked "any tick in this module?".
+ * Now every row is one sidebar entry and every key is checked exactly by the action it names.
+ *
+ * Kept on the server on purpose: a permission list that lives in the frontend is a permission list
+ * that can disagree with the checks.
  */
 class PermissionCatalog
 {
     /**
-     * group => [label, permissions => [key => [label, hint]]]
+     * section, label, note; view/work = ['keys' => [...], 'hint' => '...'] (work keys exclude the
+     * view keys - the Work level grants both); extras = key => [label, hint].
      */
-    public static function groups(): array
+    public static function rows(): array
     {
+        $v = fn (string $k, string $hint) => ['keys' => [$k], 'hint' => $hint];
+
         return [
-            'orders' => ['label' => 'Orders', 'note' => 'Seeing an order shows the customer\'s name, phone and address.', 'items' => [
-                'orders.view'         => ['See orders', 'The order list and each order\'s details. Read only.'],
-                'orders.create'       => ['Take orders for customers', 'Enter an order someone placed by phone, chat or at the counter.'],
-                'orders.edit'         => ['Change orders', 'Edit items, delivery dates and notes, and do anything else an order allows. Includes design work if Designs is not ticked.'],
-                'orders.updateStatus' => ['Move orders along', 'Mark an order as in production, ready or delivered. The customer is emailed each time.'],
-                'orders.delete'       => ['Cancel and archive orders', 'Cancelling a paid order can mean money owed back.'],
-            ]],
-            'design' => ['label' => 'Designs and proofs', 'note' => 'For a designer who does not need the rest of the order screens.', 'items' => [
-                'design.view'    => ['Open customer designs', 'See the orders that carry artwork and open the files. Read only.'],
-                'design.proof'   => ['Send proofs', 'Upload the adjusted artwork and send it to the customer to approve.'],
-                'design.approve' => ['Approve or reject files', 'Approving an uploaded file releases the order to production and starts the delivery countdown.'],
-            ]],
-            'production' => ['label' => 'Production', 'note' => '', 'items' => [
-                'jobOrders.view'         => ['See job orders', 'The bench: what is queued, in progress and due. Read only.'],
-                'jobOrders.create'       => ['Create job orders', 'Put an approved, paid order on the bench.'],
-                'jobOrders.updateStatus' => ['Start and finish jobs', 'Starting a job takes its materials off the shelf.'],
-                'jobOrders.edit'         => ['Attach production files', 'Add or remove the print-ready files on a job.'],
-                'qc'                     => ['Quality control', 'Pass or fail finished work and record what was scrapped.'],
-            ]],
-            'inventory' => ['label' => 'Inventory', 'note' => '', 'items' => [
-                'inventory.view'   => ['See stock', 'Materials, stock levels, To Buy. Read only.'],
-                'inventory.create' => ['Add materials', 'Create new materials and recipes (BOMs).'],
-                'inventory.edit'   => ['Receive and adjust stock', 'Stock-ins and corrections - this changes what the shelf says.'],
-                'inventory.delete' => ['Archive materials', 'Retire a material; blocked while a recipe still uses it.'],
-                'vendors.view'     => ['See suppliers', 'Read only.'],
-                'vendors.edit'     => ['Manage suppliers', 'Add and edit suppliers and their prices.'],
-                'badOrders.view'   => ['See bad orders', 'Damaged, defective or wrong stock that came in. Read only.'],
-                'badOrders.create' => ['Record bad orders', 'Log a damaged or defective delivery for return or write-off.'],
-            ]],
-            'catalog' => ['label' => 'Catalog and storefront', 'note' => 'Everything here is what customers see.', 'items' => [
-                'products.view'   => ['See products', 'The catalog as the shop sees it. Read only.'],
-                'products.create' => ['Add products', 'New products and collections.'],
-                'products.edit'   => ['Edit products and prices', 'Prices are what customers pay. Also covers collections, reviews and homepage text.'],
-                'products.delete' => ['Remove products', 'Take a product off the shop.'],
-                'banners'         => ['Banners', 'The rotating banners on the shop and homepage.'],
-                'flashSales'      => ['Flash sales', 'Timed price cuts on products. Discounts come out of your margin.'],
-                'vouchers'        => ['Vouchers', 'Discount codes customers type at checkout. Discounts come out of your margin.'],
-            ]],
-            'quotes' => ['label' => 'Quotations', 'note' => '', 'items' => [
-                'orderRequests.view'    => ['See quotations', 'The quotations sent and what became of them. Read only.'],
-                'orderRequests.create'  => ['Send quotations', 'Put a price on a customer\'s request. The customer can pay it straight away.'],
-                'orderRequests.edit'    => ['Change quotations', 'Re-price, extend or cancel a quotation already sent.'],
-                'orderRequests.approve' => ['Close quotations', 'Mark a quotation answered or declined.'],
-            ]],
-            'counter' => ['label' => 'Counter (POS)', 'note' => '', 'items' => [
-                'pos.view' => ['Open the counter', 'See the POS screen. Read only.'],
-                'pos.sell' => ['Sell and take orders at the counter', 'Ring up a sale or take an order to produce.'],
-                'pos.void' => ['Void counter sales', 'Undo a counter sale.'],
-            ]],
-            'money' => ['label' => 'Money', 'note' => 'These show revenue and what customers owe.', 'items' => [
-                'sales.view'      => ['See sales', 'Revenue, profit and the sales list. Read only.'],
-                'sales.export'    => ['Export sales', 'Download the sales list as a file - it leaves the system.'],
-                'payments.view'   => ['See payments', 'Who paid, who still owes. Read only.'],
-                'payments.create' => ['Record payments', 'Log cash, GCash or bank money received for an order.'],
-                'payments.edit'   => ['Write off balances', 'Close what a customer owes without collecting it.'],
-                'payments.refund' => ['Refunds', 'Mark money as sent back to a customer, or waive a refund. Moves real money.'],
-                'reports.view'    => ['See reports', 'Sales, inventory and demand reports. Read only.'],
-                'reports.export'  => ['Export reports', 'Download a report as a file.'],
-            ]],
-            'admin' => ['label' => 'Records', 'note' => 'Staff, roles and shop settings are the owner\'s alone and cannot be granted.', 'items' => [
-                'auditLogs.view' => ['Audit logs', 'Who changed what, and when. Read only.'],
-            ]],
+            // ── Operations ──
+            'orders' => ['section' => 'Operations', 'label' => 'Orders',
+                'note'   => 'Seeing an order shows the customer\'s name, phone and address.',
+                'view'   => $v('orders.view', 'The order list and each order, read only.'),
+                'work'   => ['keys' => ['orders.edit', 'orders.updateStatus'], 'hint' => 'Move orders along and change delivery dates and notes. The customer is emailed at each stage.'],
+                'extras' => [
+                    'orders.create'  => ['Take orders for customers', 'Enter an order someone placed by phone, chat or at the counter.'],
+                    'design.proof'   => ['Send design proofs', 'Upload the adjusted artwork for the customer to approve.'],
+                    'design.approve' => ['Approve or reject files', 'Approving releases the order to production and starts the delivery countdown.'],
+                    'orders.delete'  => ['Cancel and archive orders', 'Cancelling a paid order can mean money owed back.'],
+                ]],
+            'pos' => ['section' => 'Operations', 'label' => 'Counter (POS)', 'note' => '',
+                'view'   => $v('pos.view', 'Open the counter screen, read only.'),
+                'work'   => $v('pos.sell', 'Ring up a sale or take an order to produce.'),
+                'extras' => ['pos.void' => ['Void counter sales', 'Undo a counter sale.']]],
+            'orderRequests' => ['section' => 'Operations', 'label' => 'Quotations', 'note' => '',
+                'view'   => $v('orderRequests.view', 'The quotations sent and what became of them.'),
+                'work'   => ['keys' => ['orderRequests.create', 'orderRequests.edit'], 'hint' => 'Send, re-price and extend quotations. The customer can pay one straight away.'],
+                'extras' => ['orderRequests.approve' => ['Close or decline quotations', 'Mark a quotation answered or declined.']]],
+
+            // ── Production ──
+            'jobOrders' => ['section' => 'Production', 'label' => 'Job Orders', 'note' => '',
+                'view'   => $v('jobOrders.view', 'Every job order, its due date and files, read only.'),
+                'work'   => ['keys' => ['jobOrders.create', 'jobOrders.edit'], 'hint' => 'Create job orders, change dates and rush, attach the print files.'],
+                'extras' => ['jobOrders.delete' => ['Delete job orders', 'Remove a job order that should not exist.']]],
+            'production' => ['section' => 'Production', 'label' => 'Production', 'note' => '',
+                'view'   => $v('production.view', 'The bench: what is queued and in progress.'),
+                'work'   => $v('production.work', 'Start and finish jobs, report spoilage. Starting a job takes its materials off the shelf.'),
+                'extras' => []],
+            'qc' => ['section' => 'Production', 'label' => 'Quality Control', 'note' => '',
+                'view'   => $v('qc.view', 'The jobs waiting on QC.'),
+                'work'   => $v('qc.work', 'Pass or fail finished work and record what was scrapped.'),
+                'extras' => []],
+
+            // ── Inventory ──
+            'masterData' => ['section' => 'Inventory', 'label' => 'Master Data', 'note' => '',
+                'view'   => $v('masterData.view', 'Materials, suppliers and product recipes (BOMs), read only.'),
+                'work'   => $v('masterData.work', 'Add and edit materials, suppliers, units and recipes.'),
+                'extras' => ['masterData.archive' => ['Archive materials and recipes', 'Retire a material or delete a recipe.']]],
+            'stock' => ['section' => 'Inventory', 'label' => 'Stock (Overview)', 'note' => '',
+                'view'   => $v('stock.view', 'Product stock, stock-ins, actual stock and stock-out history.'),
+                'work'   => $v('stock.work', 'Receive stock and record stock-outs - this changes what the shelf says.'),
+                'extras' => []],
+            'toBuy' => ['section' => 'Inventory', 'label' => 'To Buy', 'note' => '',
+                'view'   => $v('toBuy.view', 'What to buy for the orders already taken.'),
+                'work'   => ['keys' => [], 'hint' => ''],
+                'extras' => []],
+            'badOrders' => ['section' => 'Inventory', 'label' => 'Bad Orders', 'note' => '',
+                'view'   => $v('badOrders.view', 'Damaged, defective or wrong deliveries, read only.'),
+                'work'   => $v('badOrders.create', 'Record a bad delivery for return or write-off.'),
+                'extras' => []],
+
+            // ── Products ──
+            'products' => ['section' => 'Products', 'label' => 'Catalog', 'note' => 'Everything in Products is what customers see.',
+                'view'   => $v('products.view', 'The catalog as the shop sees it, read only.'),
+                'work'   => ['keys' => ['products.create', 'products.edit'], 'hint' => 'Add and edit products, prices and their recipes.'],
+                'extras' => ['products.delete' => ['Remove products', 'Take a product off the shop.']]],
+            'collections' => ['section' => 'Products', 'label' => 'Collections', 'note' => '',
+                'view'   => $v('collections.view', 'The collections, read only.'),
+                'work'   => $v('collections.work', 'Create, edit and publish collections.'),
+                'extras' => []],
+            'banners' => ['section' => 'Products', 'label' => 'Banners', 'note' => '',
+                'view'   => $v('banners.view', 'The banners, read only.'),
+                'work'   => $v('banners.work', 'Add, edit and publish the rotating banners.'),
+                'extras' => []],
+            'homepage' => ['section' => 'Products', 'label' => 'Homepage', 'note' => '',
+                'view'   => $v('homepage.view', 'The homepage text, read only.'),
+                'work'   => $v('homepage.work', 'Edit the homepage and landing page text.'),
+                'extras' => []],
+            'reviews' => ['section' => 'Products', 'label' => 'Reviews', 'note' => '',
+                'view'   => $v('reviews.view', 'Customer reviews, read only.'),
+                'work'   => $v('reviews.work', 'Hide, show and reply to reviews.'),
+                'extras' => []],
+            'promotions' => ['section' => 'Products', 'label' => 'Promotions', 'note' => 'Discounts come out of your margin.',
+                'view'   => $v('promotions.view', 'Flash sales and vouchers, read only.'),
+                'work'   => $v('promotions.work', 'Create and edit flash sales and vouchers.'),
+                'extras' => []],
+
+            // ── Finance ──
+            'sales' => ['section' => 'Finance', 'label' => 'Sales', 'note' => 'Finance rows show revenue and what customers owe.',
+                'view'   => $v('sales.view', 'Revenue, profit and the sales list, read only.'),
+                'work'   => ['keys' => [], 'hint' => ''],
+                'extras' => ['sales.export' => ['Export sales', 'Download the sales list - it leaves the system.']]],
+            'payments' => ['section' => 'Finance', 'label' => 'Payments', 'note' => '',
+                'view'   => $v('payments.view', 'Who paid and who still owes, read only.'),
+                'work'   => $v('payments.create', 'Record cash, GCash or bank money received, and send balance reminders.'),
+                'extras' => [
+                    'payments.edit'   => ['Write off balances', 'Close what a customer owes without collecting it.'],
+                    'payments.refund' => ['Refunds', 'Mark money as sent back, or waive a refund. Moves real money.'],
+                ]],
+            'reports' => ['section' => 'Finance', 'label' => 'Reports', 'note' => '',
+                'view'   => $v('reports.view', 'Sales, inventory and demand reports.'),
+                'work'   => ['keys' => [], 'hint' => ''],
+                'extras' => ['reports.export' => ['Export reports', 'Download a report as a file.']]],
+            'forecast' => ['section' => 'Finance', 'label' => 'Forecast', 'note' => '',
+                'view'   => $v('forecast.view', 'The sales forecast.'),
+                'work'   => ['keys' => [], 'hint' => ''],
+                'extras' => []],
+
+            // ── Admin ──
+            'auditLogs' => ['section' => 'Admin', 'label' => 'Audit Logs', 'note' => 'Staff, roles, customers, messages and shop settings are the owner\'s alone and cannot be granted.',
+                'view'   => $v('auditLogs.view', 'Who changed what, and when.'),
+                'work'   => ['keys' => [], 'hint' => ''],
+                'extras' => []],
         ];
     }
 
@@ -92,8 +141,25 @@ class PermissionCatalog
     public static function keys(): array
     {
         $out = [];
-        foreach (self::groups() as $g) {
-            foreach (array_keys($g['items']) as $k) $out[] = $k;
+        foreach (self::rows() as $r) {
+            foreach ([...$r['view']['keys'], ...$r['work']['keys'], ...array_keys($r['extras'])] as $k) $out[] = $k;
+        }
+        return $out;
+    }
+
+    /**
+     * The same rows in the older group/items shape (key => [label, hint]) - what the Access screen
+     * rendered before it learned levels. Kept so anything still reading `groups` keeps working.
+     */
+    public static function groups(): array
+    {
+        $out = [];
+        foreach (self::rows() as $id => $r) {
+            $items = [];
+            foreach ($r['view']['keys'] as $k) $items[$k] = ['See ' . strtolower($r['label']), $r['view']['hint']];
+            foreach ($r['work']['keys'] as $k) $items[$k] = ['Work in ' . strtolower($r['label']), $r['work']['hint']];
+            foreach ($r['extras'] as $k => $e) $items[$k] = $e;
+            $out[$id] = ['label' => $r['label'], 'note' => $r['note'], 'items' => $items];
         }
         return $out;
     }
@@ -106,13 +172,137 @@ class PermissionCatalog
         foreach ($grid as $k => $v) {
             if (isset($valid[$k]) && $v) $out[$k] = true;
         }
-        return $out;
+        return self::completeLevels($out);
     }
+
+    /**
+     * Keep every grid expressible as levels: part of a Work level becomes the whole level, and any
+     * grant in a row brings that row's See with it (you cannot act on a page you cannot open).
+     */
+    public static function completeLevels(array $grid): array
+    {
+        foreach (self::rows() as $r) {
+            $work = $r['work']['keys'];
+            if ($work && array_intersect($work, array_keys($grid))) {
+                foreach ($work as $k) $grid[$k] = true;
+            }
+            $rowKeys = [...$work, ...array_keys($r['extras'])];
+            if (array_intersect($rowKeys, array_keys($grid))) {
+                foreach ($r['view']['keys'] as $k) $grid[$k] = true;
+            }
+        }
+        return $grid;
+    }
+
+    /** Any stored grid, old or new, in today's keys. */
+    public static function normalize(array $grid): array
+    {
+        return self::isLegacy($grid) ? self::upgrade($grid) : self::sanitize($grid);
+    }
+
+    /** Does this grid still carry keys from before the row model? */
+    public static function isLegacy(array $grid): bool
+    {
+        $valid = array_flip(self::keys());
+        foreach ($grid as $k => $v) {
+            if ($v && !isset($valid[$k])) return true;
+        }
+        return false;
+    }
+
+    /**
+     * An older grid in today's keys. Used by the server as it reads a grid (so nobody is locked
+     * out between the deploy and the conversion) and by rbac:convert-grids, which saves the result.
+     *
+     * One deliberate difference from how the old grids behaved: a module switch sitting next to
+     * that module's own ticks ("inventory" beside "inventory.view") was the old editor's "module is
+     * visible" flag, and the server read it as FULL access to the module - so a production template
+     * ticked "See stock" could in fact receive and adjust stock. Here the ticks decide. A module
+     * switch with no ticks of its own still means the whole module, as it always did.
+     */
+    public static function upgrade(array $grid): array
+    {
+        $on = array_keys(array_filter($grid));
+        $valid = array_flip(self::keys());
+        $out = [];
+        foreach ($on as $k) {
+            if (!is_string($k)) continue;
+            if (isset($valid[$k]) && !isset(self::LEGACY[$k])) { $out[$k] = true; continue; }
+            if (!str_contains($k, '.')) {
+                $hasTicks = false;
+                foreach ($on as $o) if (is_string($o) && str_starts_with($o, $k . '.')) { $hasTicks = true; break; }
+                if ($hasTicks) continue;
+                foreach (self::LEGACY_MODULE[$k] ?? [] as $n) $out[$n] = true;
+                continue;
+            }
+            foreach (self::LEGACY[$k] ?? [] as $n) $out[$n] = true;
+        }
+        return self::completeLevels($out);
+    }
+
+    /** Old action keys that do not map one-to-one. Keys absent here and absent from the catalogue grant nothing. */
+    private const LEGACY = [
+        // "Change orders" included design work.
+        'orders.edit'            => ['orders.edit', 'orders.updateStatus', 'design.proof', 'design.approve'],
+        'design.view'            => ['orders.view'],
+        // One See tick used to open all three production pages.
+        'jobOrders.view'         => ['jobOrders.view', 'production.view', 'qc.view'],
+        'jobOrders.updateStatus' => ['production.view', 'production.work'],
+        'inventory.view'         => ['masterData.view', 'stock.view', 'toBuy.view'],
+        'inventory.create'       => ['masterData.work'],
+        'inventory.edit'         => ['stock.work', 'masterData.work'],
+        'inventory.delete'       => ['masterData.archive'],
+        'vendors.view'           => ['masterData.view'],
+        'vendors.create'         => ['masterData.work'],
+        'vendors.edit'           => ['masterData.work'],
+        'vendors.delete'         => ['masterData.work'],
+        'badOrders.edit'         => ['badOrders.create'],
+        'badOrders.delete'       => ['badOrders.create'],
+        'products.view'          => ['products.view', 'collections.view', 'homepage.view', 'reviews.view'],
+        'products.create'        => ['products.create', 'products.edit', 'collections.work'],
+        'products.edit'          => ['products.create', 'products.edit', 'collections.work', 'homepage.work', 'reviews.work'],
+        'banners.create'         => ['banners.work'],
+        'banners.edit'           => ['banners.work'],
+        'banners.delete'         => ['banners.work'],
+        'flashSales.view'        => ['promotions.view'],
+        'flashSales.create'      => ['promotions.work'],
+        'flashSales.edit'        => ['promotions.work'],
+        'flashSales.delete'      => ['promotions.work'],
+        'vouchers.view'          => ['promotions.view'],
+        'vouchers.create'        => ['promotions.work'],
+        'vouchers.edit'          => ['promotions.work'],
+        'vouchers.delete'        => ['promotions.work'],
+        // The Sales tick used to open Reports and Forecast in the sidebar too.
+        'sales.view'             => ['sales.view', 'forecast.view'],
+        'payments.confirm'       => ['payments.create'],
+    ];
+
+    /** A module switch with no ticks of its own: the whole module, as it always meant. */
+    private const LEGACY_MODULE = [
+        'orders'        => ['orders.view', 'orders.edit', 'orders.updateStatus', 'orders.create', 'orders.delete', 'design.proof', 'design.approve'],
+        'design'        => ['orders.view', 'design.proof', 'design.approve'],
+        'pos'           => ['pos.view', 'pos.sell', 'pos.void'],
+        'orderRequests' => ['orderRequests.view', 'orderRequests.create', 'orderRequests.edit', 'orderRequests.approve'],
+        'jobOrders'     => ['jobOrders.view', 'jobOrders.create', 'jobOrders.edit', 'jobOrders.delete', 'production.view', 'production.work', 'qc.view', 'qc.work'],
+        'production'    => ['jobOrders.view', 'production.view', 'production.work'],
+        'qc'            => ['qc.view', 'qc.work'],
+        'inventory'     => ['masterData.view', 'masterData.work', 'masterData.archive', 'stock.view', 'stock.work', 'toBuy.view'],
+        'vendors'       => ['masterData.view', 'masterData.work'],
+        'badOrders'     => ['badOrders.view', 'badOrders.create'],
+        'products'      => ['products.view', 'products.create', 'products.edit', 'products.delete', 'collections.view', 'collections.work', 'homepage.view', 'homepage.work', 'reviews.view', 'reviews.work'],
+        'banners'       => ['banners.view', 'banners.work'],
+        'flashSales'    => ['promotions.view', 'promotions.work'],
+        'vouchers'      => ['promotions.view', 'promotions.work'],
+        'sales'         => ['sales.view', 'forecast.view'],
+        'payments'      => ['payments.view', 'payments.create'],
+        'reports'       => ['reports.view'],
+        'auditLogs'     => ['auditLogs.view'],
+    ];
 
     /** A role template's grid, for pre-filling the ticks. */
     public static function template(string $role): array
     {
         $rec = RolePermission::where('role', $role)->first();
-        return $rec ? self::sanitize((array) ($rec->permissions ?? [])) : [];
+        return $rec ? self::upgrade((array) ($rec->permissions ?? [])) : [];
     }
 }

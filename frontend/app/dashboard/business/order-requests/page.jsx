@@ -9,12 +9,13 @@ import {
 import { useIsPhone, KpiStrip, PhoneFilterBar, PhoneList, PhoneRow } from '@/components/dashboard/phone';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import { loadInventory } from '../inventory-v2/api';
-import { S, EmptyState, SummaryCard, SearchBar, CustomSelect } from '../inventory-v2/shared';
+import { S, EmptyState, SummaryCard, SearchBar, CustomSelect, ConfirmModal } from '../inventory-v2/shared';
 import QuotationModal from '@/components/chat/QuotationModal';
 
 // Same base the request helpers use - the picker calls one endpoint directly.
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 import { createAdminQuotation } from '@/lib/orderRequestApi';
+import { useAccess } from '@/contexts/AccessContext';
 
 const STATUS_LABELS = {
   pending_review: 'Pending Review',
@@ -174,6 +175,11 @@ function StatusBadge({ status, size = 'sm', expired = false }) {
 }
 
 export default function OrderRequestsPage() {
+  // Quotations Work sends and re-prices; closing or declining one is its own tick. See only reads.
+  const { can, owner } = useAccess();
+  const mayQuote = can('orderRequests.create');
+  const mayClose = can('orderRequests.approve');
+  const [confirmClose, setConfirmClose] = useState(false);
   const { token } = useAuth();
   const [requests, setRequests] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -430,7 +436,7 @@ export default function OrderRequestsPage() {
       )}
       {/* Asks are answered in Messages, not here. But a count that lives only in Messages is a
           count nobody sees until they open Messages, so it is repeated where quotations live. */}
-      {(cardCounts.ask ?? 0) > 0 && (
+      {owner && (cardCounts.ask ?? 0) > 0 && (
         <a href="/dashboard/business/chat" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap',
           margin: '0 0 1rem', padding: '0.75rem 1rem', borderRadius: 10, textDecoration: 'none',
           background: 'rgba(212,168,67,0.08)', border: '1px solid rgba(212,168,67,0.35)' }}>
@@ -452,7 +458,7 @@ export default function OrderRequestsPage() {
           <PhoneFilterBar search={searchQuery} onSearch={setSearchQuery} placeholder="Search customer or product"
             filters={[{ key: 'status', label: 'Show', value: activeFilter, defaultValue: 'quoted', onChange: setActiveFilter,
               options: FILTER_OPTIONS.map(o => ({ value: o.key, label: o.label })) }]}
-            actions={<button onClick={openNewQuote} style={{ ...S.btnPrimary, minHeight: 36, whiteSpace: 'nowrap' }}>+ New quotation</button>}
+            actions={mayQuote ? <button onClick={openNewQuote} style={{ ...S.btnPrimary, minHeight: 36, whiteSpace: 'nowrap' }}>+ New quotation</button> : null}
             note={`${filteredRequests.length} quotation${filteredRequests.length === 1 ? '' : 's'}`} />
         </>
       ) : (<>
@@ -471,7 +477,7 @@ export default function OrderRequestsPage() {
           <CustomSelect value={activeFilter} onChange={setActiveFilter} style={{ width: '170px' }}
             options={FILTER_OPTIONS.map(o => ({ value: o.key, label: o.label }))} />
         </div>
-        <button onClick={openNewQuote} style={{ ...S.btnPrimary, whiteSpace: 'nowrap' }}>+ New quotation</button>
+        {mayQuote && (<button onClick={openNewQuote} style={{ ...S.btnPrimary, whiteSpace: 'nowrap' }}>+ New quotation</button>)}
       </div>
 
       </>)}
@@ -588,7 +594,7 @@ export default function OrderRequestsPage() {
                       </td>
                       <td data-label="Stage" style={{ padding: '0.75rem 1rem' }}><StageBadge stage={stage} /></td>
                       <td data-rt="actions" style={{ padding: '0.75rem 1rem', whiteSpace: 'nowrap' }}>
-                        {stage === 'accepted' && req.convertedOrderId ? (
+                        {stage === 'accepted' && req.convertedOrderId && can('orders') ? (
                           <a href={`/dashboard/business/orders?order=${req.convertedOrderId}`}
                             style={{ display: 'inline-block', background: 'var(--dark2)', color: 'var(--white)', border: '1px solid var(--border)', borderRadius: '6px', padding: '0.375rem 0.75rem', fontSize: '0.75rem', fontWeight: 700, textDecoration: 'none' }}>
                             {action}
@@ -823,7 +829,7 @@ export default function OrderRequestsPage() {
                         : STAGES[stageOf(selectedRequest)]?.hint}
                     </span>
                   </div>
-                  {stageOf(selectedRequest) === 'accepted' && selectedRequest.convertedOrderId && (
+                  {can('orders') && stageOf(selectedRequest) === 'accepted' && selectedRequest.convertedOrderId && (
                     <a href={`/dashboard/business/orders?order=${selectedRequest.convertedOrderId}`}
                       style={{ display: 'inline-block', marginTop: '0.6rem', fontSize: '0.8rem', color: 'var(--gold)', fontWeight: 700 }}>
                       Open the order
@@ -1040,20 +1046,20 @@ export default function OrderRequestsPage() {
                     {/* Send, or close. The send goes to the customer's chat and, for non-chat
                         requests, their email - there is no separate "notify" step. */}
                     <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                      <button
+                      {mayQuote && (<button
                         onClick={() => handleSubmitUpdate('quote')}
                         disabled={submitting}
                         style={{ flex: '2 1 180px', padding: '0.75rem', background: submitting ? 'var(--gray)' : 'var(--gold)', color: 'var(--black)', border: 'none', borderRadius: '8px', fontWeight: 700, fontSize: '0.875rem', cursor: submitting ? 'not-allowed' : 'pointer', opacity: submitting ? 0.6 : 1 }}
                       >
                         {submitting ? 'Sending...' : stageOf(selectedRequest) === 'ask' ? 'Send quotation' : stageOf(selectedRequest) === 'expired' ? 'Send again' : 'Update and re-send'}
-                      </button>
-                      <button
-                        onClick={() => { if (window.confirm('Close this request? The customer will not be able to pay it.')) handleSubmitUpdate('close'); }}
+                      </button>)}
+                      {mayClose && (<button
+                        onClick={() => setConfirmClose(true)}
                         disabled={submitting}
                         style={{ flex: '1 1 120px', padding: '0.75rem', background: 'transparent', color: 'var(--red)', border: '1px solid rgba(196,30,58,0.4)', borderRadius: '8px', fontWeight: 700, fontSize: '0.875rem', cursor: submitting ? 'not-allowed' : 'pointer' }}
                       >
                         {stageOf(selectedRequest) === 'ask' ? 'Decline' : 'Cancel quotation'}
-                      </button>
+                      </button>)}
                     </div>
                   </div>
                 ) : stageOf(selectedRequest) === 'accepted' ? (
@@ -1079,6 +1085,16 @@ export default function OrderRequestsPage() {
           </div>
         </div>
       )}
+
+      {/* The shop's own confirmation, over the quotation - not the browser's alert box. */}
+      <ConfirmModal
+        open={confirmClose && !!selectedRequest}
+        onClose={() => setConfirmClose(false)}
+        onConfirm={() => { setConfirmClose(false); handleSubmitUpdate('close'); }}
+        title={selectedRequest && stageOf(selectedRequest) === 'ask' ? 'Decline this request?' : 'Cancel this quotation?'}
+        message="The customer will not be able to pay it."
+        confirmLabel={selectedRequest && stageOf(selectedRequest) === 'ask' ? 'Decline' : 'Cancel quotation'}
+      />
     </div>
     </ErrorBoundary>
   );

@@ -179,7 +179,7 @@ class RolePermissionController extends Controller
             return $this->successResponse('Role permissions updated successfully.', [
                 'role'        => $role,
                 'label'       => $record->label ?? $this->labelFromRole($role),
-                'permissions' => RolePermission::forRole($role),
+                'permissions' => \App\Support\PermissionCatalog::normalize((array) ($record->permissions ?? [])),
             ]);
         } catch (\Exception $e) {
             return $this->serverErrorResponse($e, 'Failed to update role permissions.');

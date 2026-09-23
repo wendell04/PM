@@ -1751,8 +1751,10 @@ html.light .chat-box-switch { background: rgba(0, 0, 0, 0.04); }
    Dragging must not scroll the page under the finger, and a dragged bubble must not animate its
    way to where the finger already is. */
 .cw-launcher { touch-action: none; }
-/* Glides to where it was dropped and into a dock; dead still while a finger is on it. */
-.cw-launcher { transition: left 0.22s ease, top 0.22s ease, transform 0.22s ease; }
+/* Glides to where it was dropped and into a dock; dead still while a finger is on it. Opacity
+   rides along so coming back from tucked fades in - without it the bubble snapped to full opacity
+   and slid up across the tab bar. */
+.cw-launcher { transition: left 0.22s ease, top 0.22s ease, transform 0.22s ease, opacity 0.22s ease; }
 .cw-launcher--dragging {
   transition: none !important;
   cursor: grabbing;
@@ -1776,4 +1778,37 @@ html.light .chat-box-switch { background: rgba(0, 0, 0, 0.04); }
 }
 @media (prefers-reduced-motion: reduce) {
   .cw-launcher--tucked { transition: none; }
+}
+
+/* ── A sheet on a phone, a dialog on a desktop ────────────────────────────────
+   Bottom sheets are a phone idiom: the thumb is at the bottom of the screen and
+   the sheet rises to meet it. On a desktop the eye sits in the middle of a wide
+   screen, and a full-width slab welded to the bottom edge reads as a phone app
+   someone stretched. Same markup, two shapes. */
+.pmp-sheet-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 100001;
+  background: rgba(0, 0, 0, 0.72);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+.pmp-sheet {
+  width: 100%;
+  max-width: 560px;
+  max-height: 92vh;
+  overflow-y: auto;
+  border-radius: 16px 16px 0 0;
+  box-shadow: 0 -8px 40px rgba(0, 0, 0, 0.5);
+  padding: 18px 16px calc(18px + env(safe-area-inset-bottom, 0px));
+}
+@media (min-width: 768px) {
+  .pmp-sheet-scrim { align-items: center; padding: 24px; }
+  .pmp-sheet {
+    border-radius: 14px;
+    max-height: 86vh;
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.45);
+    padding: 20px 22px;
+  }
 }

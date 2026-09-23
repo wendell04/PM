@@ -1,5 +1,6 @@
 "use client";
 
+import { useAccess } from '@/contexts/AccessContext';
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -77,6 +78,7 @@ function buildMiniSsaChartData(ssaResult) {
 
 export default function SsaMiniChart({ ssaRevResult = null, ssaQtyResult = null, dailyRevenue = [] }) {
   const router = useRouter();
+  const canForecast = useAccess().can('forecast');
   const [miniSource, setMiniSource] = useState("revenue");
 
     const isInventory = miniSource === "inventory";
@@ -136,7 +138,7 @@ export default function SsaMiniChart({ ssaRevResult = null, ssaQtyResult = null,
           </div>
           <span
             style={{ fontSize: "0.65rem", color: "var(--gold)", fontWeight: 600, cursor: "pointer" }}
-            onClick={() => router.push("/dashboard/business/ssa-forecast")}
+            onClick={canForecast ? () => router.push("/dashboard/business/ssa-forecast") : undefined}
           >
             View Full Forecast →
           </span>
@@ -150,7 +152,7 @@ export default function SsaMiniChart({ ssaRevResult = null, ssaQtyResult = null,
         {isInventory ? (
           <div
             style={{ height: "180px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "0.75rem", background: "rgba(255,255,255,0.02)", borderRadius: "8px", border: "1px dashed rgba(255,255,255,0.1)", cursor: "pointer" }}
-            onClick={() => router.push("/dashboard/business/ssa-forecast")}
+            onClick={canForecast ? () => router.push("/dashboard/business/ssa-forecast") : undefined}
           >
             <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--gray)" strokeWidth="1.5"><path d="M3 3h18v18H3z" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
             <div style={{ textAlign: "center" }}>

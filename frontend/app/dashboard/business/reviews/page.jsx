@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useAccess } from '@/contexts/AccessContext';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import {
   S, ICONS, SummaryCard, CustomSelect, PaginationBar, EmptyState,
@@ -41,6 +42,8 @@ function Stars({ rating, size = 13 }) {
 
 export default function AdminReviewsPage() {
   const { token } = useAuth();
+  // Reviews Work hides, shows and deletes reviews; See only reads them.
+  const mayWork = useAccess().can('reviews.work');
   const { toasts, push, dismiss } = useToast();
 
   const [reviews, setReviews]       = useState([]);
@@ -200,7 +203,7 @@ export default function AdminReviewsPage() {
                   <th style={{ ...S.th, width: '42%' }}>Review</th>
                   <th style={S.th}>Date</th>
                   <th style={S.th}>Status</th>
-                  <th style={{ ...S.th, textAlign: 'right' }}>Actions</th>
+                  {mayWork && <th style={{ ...S.th, textAlign: 'right' }}>Actions</th>}
                 </tr>
               </thead>
               <tbody>
@@ -245,7 +248,7 @@ export default function AdminReviewsPage() {
                           {r.is_visible ? 'Visible' : 'Hidden'}
                         </span>
                       </td>
-                      <td data-rt="actions" style={{ ...S.td, textAlign: 'right', whiteSpace: 'nowrap' }}>
+                      {mayWork && (<td data-rt="actions" style={{ ...S.td, textAlign: 'right', whiteSpace: 'nowrap' }}>
                         <button type="button" onClick={() => handleToggle(r._id ?? r.id, r.is_visible)}
                           disabled={busyId === (r._id ?? r.id)}
                           style={{ ...S.btnSmGhost, marginRight: '6px', opacity: busyId === (r._id ?? r.id) ? 0.5 : 1 }}>
@@ -254,7 +257,7 @@ export default function AdminReviewsPage() {
                         <button type="button" onClick={() => setDeleteTarget(r)} style={S.btnSmDanger}>
                           {ICONS.trash} Delete
                         </button>
-                      </td>
+                      </td>)}
                     </tr>
                   );
                 })}

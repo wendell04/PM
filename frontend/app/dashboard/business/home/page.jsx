@@ -28,6 +28,7 @@ import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import { S, ICONS, SummaryCard, EmptyState, Note } from '../inventory-v2/shared';
 import { needsJobOrder } from '@/lib/jobOrderEligibility';
 import { orderNo } from '@/lib/orderNumber';
+import { statusLabel, statusColor } from '@/lib/orderStatus';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 const SSA_API_URL = process.env.NEXT_PUBLIC_SSA_API_URL || 'http://localhost:8001';
@@ -36,20 +37,25 @@ const peso = (v) => '₱' + Number(v || 0).toLocaleString('en-PH', { minimumFrac
 // Every module a person can be given, with the permission key the sidebar already uses. Kept in
 // one list so a tile can never appear for a module the API would refuse.
 const MODULES = [
-  { key: 'orders',      name: 'Orders',        href: '/dashboard/business/orders',        d: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2' },
-  { key: 'orderRequests', name: 'Order Requests', href: '/dashboard/business/order-requests', d: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z' },
-  { key: ['jobOrders', 'production'], name: 'Job Orders', href: '/dashboard/business/job-orders',    d: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z' },
-  { key: ['jobOrders', 'production'], name: 'Production', href: '/dashboard/business/production-preview',    d: 'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z' },
-  { key: ['jobOrders', 'qc'], name: 'Quality Control', href: '/dashboard/business/qc-preview', d: 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z' },
-  { key: 'inventory',   name: 'Inventory',     href: '/dashboard/business/inventory-v2',  d: 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4' },
-  { key: 'inventory',   name: 'To Buy',        href: '/dashboard/business/to-buy',        d: 'M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17' },
-  { key: 'products',    name: 'Catalog',       href: '/dashboard/business/products-v2',   d: 'M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10' },
-  { key: 'payments',    name: 'Payments',      href: '/dashboard/business/payments',      d: 'M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z' },
-  { key: 'sales',       name: 'Sales',         href: '/dashboard/business/sales',         d: 'M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z' },
-  { key: 'ownerOnly',   name: 'Messages',      href: '/dashboard/business/chat',          d: 'M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.86 9.86 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z' },
-  { key: 'ownerOnly',   name: 'Customers',     href: '/dashboard/business/customers',     d: 'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z' },
-  { key: 'reports',     name: 'Reports',       href: '/dashboard/business/reports',       d: 'M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z' },
-  { key: 'dashboard',   name: 'Settings',      href: '/dashboard/business/settings',      d: 'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z' },
+  // One tile per sidebar row, keyed exactly as the permission rows are.
+  { key: 'orders', name: 'Orders', href: '/dashboard/business/orders', d: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2' },
+  { key: 'pos', name: 'Counter (POS)', href: '/dashboard/business/pos', d: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2' },
+  { key: 'orderRequests', name: 'Quotations', href: '/dashboard/business/order-requests', d: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z' },
+  { key: 'jobOrders', name: 'Job Orders', href: '/dashboard/business/job-orders', d: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z' },
+  { key: 'production', name: 'Production', href: '/dashboard/business/production-preview', d: 'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z' },
+  { key: 'qc', name: 'Quality Control', href: '/dashboard/business/qc-preview', d: 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z' },
+  { key: 'masterData', name: 'Master Data', href: '/dashboard/business/inventory-v2?tab=materials', d: 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4' },
+  { key: 'stock', name: 'Stock', href: '/dashboard/business/inventory-v2?tab=productstock', d: 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4' },
+  { key: 'toBuy', name: 'To Buy', href: '/dashboard/business/to-buy', d: 'M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17' },
+  { key: 'badOrders', name: 'Bad Orders', href: '/dashboard/business/inventory-v2?tab=badorders', d: 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4' },
+  { key: 'products', name: 'Catalog', href: '/dashboard/business/products-v2', d: 'M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10' },
+  { key: 'promotions', name: 'Promotions', href: '/dashboard/business/promotions', d: 'M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10' },
+  { key: 'payments', name: 'Payments', href: '/dashboard/business/payments', d: 'M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z' },
+  { key: 'sales', name: 'Sales', href: '/dashboard/business/sales', d: 'M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z' },
+  { key: 'reports', name: 'Reports', href: '/dashboard/business/reports', d: 'M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z' },
+  { key: 'ownerOnly', name: 'Messages', href: '/dashboard/business/chat', d: 'M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.86 9.86 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z' },
+  { key: 'ownerOnly', name: 'Customers', href: '/dashboard/business/customers', d: 'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z' },
+  { key: 'dashboard', name: 'Settings', href: '/dashboard/business/settings', d: 'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z' },
 ];
 
 const SUPER = ['superAdmin', 'admin', 'owner'];
@@ -412,6 +418,28 @@ export default function StaffHome() {
     return { collectedToday, liveOrders, profit };
   }, [payments, orders, sales]);
 
+  // The two things the old Dashboard showed that had no other one-glance place. Its "Top products
+  // today" counted every order ever placed; this is the current month, and the title says so.
+  const topProducts = useMemo(() => {
+    const now = new Date();
+    const tally = {};
+    for (const o of orders) {
+      if (['cancelled', 'returned'].includes(String(o.orderStatus ?? o.status ?? '').toLowerCase())) continue;
+      const at = o.createdAt ? new Date(o.createdAt) : null;
+      if (!at || at.getFullYear() !== now.getFullYear() || at.getMonth() !== now.getMonth()) continue;
+      for (const it of (o.items || [])) {
+        const key = it.productId || it.productName || 'unknown';
+        if (!tally[key]) tally[key] = { key, name: it.productName || '-', qty: 0, revenue: 0 };
+        tally[key].qty += Number(it.qty ?? it.quantity ?? 0);
+        tally[key].revenue += Number(it.lineTotal ?? 0);
+      }
+    }
+    return Object.values(tally).sort((a, b) => b.qty - a.qty).slice(0, 5);
+  }, [orders]);
+  const recentOrders = useMemo(() => [...orders]
+    .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
+    .slice(0, 5), [orders]);
+
   useEffect(() => {
     if (loading || !Array.isArray(sales) || !sales.length) return undefined;
     const revMap = {}, qtyMap = {};
@@ -737,8 +765,8 @@ export default function StaffHome() {
                      render as a forecast of zero - that is a number somebody would act on. */
                   <div style={{ fontSize: 12, color: 'var(--gray)', lineHeight: 1.5 }}>
                     {ssa.unavailable}{' '}
-                    <span onClick={() => router.push('/dashboard/business/ssa-forecast')}
-                      style={{ color: 'var(--gold)', cursor: 'pointer', fontWeight: 600 }}>Open Forecast</span>
+                    {allows('forecast') && (<span onClick={() => router.push('/dashboard/business/ssa-forecast')}
+                      style={{ color: 'var(--gold)', cursor: 'pointer', fontWeight: 600 }}>Open Forecast</span>)}
                   </div>
                 ) : (
                   <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', alignItems: 'flex-end' }}>
@@ -758,8 +786,8 @@ export default function StaffHome() {
                         : ssa.accuracy?.mape != null
                           ? 'Backtested MAPE ' + Number(ssa.accuracy.mape).toFixed(1) + '%.'
                           : 'Projected from your own sales history.'}{' '}
-                      <span onClick={() => router.push('/dashboard/business/ssa-forecast')}
-                        style={{ color: 'var(--gold)', cursor: 'pointer', fontWeight: 600 }}>Full forecast</span>
+                      {allows('forecast') && (<span onClick={() => router.push('/dashboard/business/ssa-forecast')}
+                        style={{ color: 'var(--gold)', cursor: 'pointer', fontWeight: 600 }}>Full forecast</span>)}
                     </div>
                   </div>
                 )}
@@ -775,7 +803,7 @@ export default function StaffHome() {
           )}
 
           {/* ── Sales metrics - the figures the old Dashboard card carried, under the chart they
-                 belong with. The old Dashboard stays where it is; this is not a replacement. ── */}
+                 belong with. ── */}
           {isOwnerView && !loading && (
             <div style={{ ...S.card, marginBottom: 16 }}>
               <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', fontSize: 13, fontWeight: 700 }}>
@@ -827,6 +855,45 @@ export default function StaffHome() {
             })}
           </div>
 
+          {profile === 'owner' && !loading && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))', gap: 16, marginBottom: 18 }}>
+              <div style={{ ...S.card, padding: 0, overflow: 'hidden', minWidth: 0 }}>
+                <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', fontSize: 13, fontWeight: 700 }}>Top products this month</div>
+                {topProducts.length === 0 ? (
+                  <EmptyState message="No orders yet this month" sub="Products appear here as orders come in." />
+                ) : topProducts.map((p, i) => (
+                  <div key={p.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '11px 16px', borderTop: i === 0 ? 'none' : '1px solid var(--border)' }}>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--white)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
+                    <span style={{ textAlign: 'right', flexShrink: 0 }}>
+                      <span style={{ display: 'block', fontSize: 13, fontWeight: 700, color: 'var(--gold)' }}>{p.qty.toLocaleString()} pcs</span>
+                      <span style={{ display: 'block', fontSize: 11, color: 'var(--gray)' }}>{peso(p.revenue)}</span>
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <div style={{ ...S.card, padding: 0, overflow: 'hidden', minWidth: 0 }}>
+                <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', fontSize: 13, fontWeight: 700 }}>Recent orders</div>
+                {recentOrders.length === 0 ? (
+                  <EmptyState message="No orders yet" />
+                ) : recentOrders.map((o, i) => {
+                  const c = statusColor(o.orderStatus ?? o.status);
+                  return (
+                    <div key={o._id ?? o.id ?? i} onClick={() => router.push(`/dashboard/business/orders?order=${o._id ?? o.id}`)}
+                      style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', cursor: 'pointer', borderTop: i === 0 ? 'none' : '1px solid var(--border)' }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontFamily: 'monospace', fontSize: 12, fontWeight: 700, color: 'var(--white)' }}>{orderNo(o)}</div>
+                        <div style={{ fontSize: 11.5, color: 'var(--gray)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.customerName || '-'}</div>
+                      </div>
+                      <span style={{ fontSize: 10.5, fontWeight: 700, padding: '2px 8px', borderRadius: 999, whiteSpace: 'nowrap',
+                        color: c.color, background: c.bg, border: `1px solid ${c.border}` }}>{statusLabel(o.orderStatus ?? o.status)}</span>
+                      <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--gold)', whiteSpace: 'nowrap' }}>{peso(o.totalAmount)}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {/* ── The launchpad ── */}
           <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10 }}>
             Your modules
@@ -846,7 +913,7 @@ export default function StaffHome() {
             {tiles.length === 0 && (
               <div style={{ gridColumn: '1 / -1' }}>
                 <EmptyState icon={ICONS.warn} message="No modules are open to your role"
-                  sub="Ask an administrator to grant permissions in Role Permissions." />
+                  sub="Ask the owner to give you access in Staff and access." />
               </div>
             )}
           </div>

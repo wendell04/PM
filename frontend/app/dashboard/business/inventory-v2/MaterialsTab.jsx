@@ -3,6 +3,7 @@ import { useIsPhone, KpiStrip, PhoneFilterBar, PhoneList, PhoneRow } from '@/com
 import { useState, useMemo } from 'react';
 import { S, ICONS, Field, IntegerInput, DecimalInput, Modal, ConfirmModal, PaginationBar, SearchBar, StatusBadge, EmptyState, SummaryCard, usePagination, formatCurrency, uid, CustomSelect } from './shared';
 import { createMat, updateMat, deleteMat, createSupplier, loadMinStockSuggestions, loadArchivedMats, restoreMat } from './api';
+import { useAccess } from '@/contexts/AccessContext';
 
 function getSkuPrefix(category) {
   const KNOWN = { Garments:'GAR', 'Print Materials':'PRT', Drinkware:'DRW', Packaging:'PKG', Accessories:'ACC', Bags:'BAG', Office:'OFF', Other:'OTH' };
@@ -292,6 +293,13 @@ function CoverCell({ mat }) {
 }
 
 export default function MaterialsTab({ materials, setMaterials, vendors, setVendors, batches, boms, categories, setCategories, units, setUnits, token, onRefresh, toast }) {
+  // Master Data Work adds and edits materials; archiving is its own tick. Base cost shows to the
+  // Finance rows and to whoever edits materials (they enter it).
+  const { can } = useAccess();
+  const mayWork    = can('masterData.work');
+  const mayArchive = can('masterData.archive');
+  const seeCost    = mayWork || can(['sales', 'payments', 'reports']);
+  const hasActions = mayWork || mayArchive;
   const [search,       setSearch]     = useState('');
   const [catFilter,    setCat]        = useState('All');
   const [form,         setForm]       = useState({ name:'', category:'', unit:'', vendorId:'', baseCost:'', minStock:'', leadTime:'7', isOnDemand:false });
@@ -481,7 +489,7 @@ export default function MaterialsTab({ materials, setMaterials, vendors, setVend
     <div style={S.col}>
       {isPhone ? (
         <>
-          <button onClick={openAdd} style={{ ...S.btnPrimary, minHeight:44, justifyContent:'center' }}>{ICONS.plus} Add Material</button>
+          {mayWork && <button onClick={openAdd} style={{ ...S.btnPrimary, minHeight:44, justifyContent:'center' }}>{ICONS.plus} Add Material</button>}
           <KpiStrip items={[
             { key:'all', label:'Materials',    value: materials.length },
             { key:'in',  label:'In stock',     value: inStock,  color:'#2e7d32' },
@@ -491,7 +499,7 @@ export default function MaterialsTab({ materials, setMaterials, vendors, setVend
           <PhoneFilterBar search={search} onSearch={setSearch} placeholder="Search name or SKU"
             filters={[{ key:'cat', label:'Category', value:catFilter, defaultValue:'All', onChange:setCat,
               options:[{ value:'All', label:'All' }, ...categories.map(c => ({ value:c, label:c }))] }]}
-            actions={<><button onClick={openArchived} style={{ ...S.btnSmGhost, minHeight:36 }}>Archived</button><button onClick={() => setShowManage(true)} style={{ ...S.btnSmGhost, minHeight:36 }}>Manage lists</button></>}
+            actions={<><button onClick={openArchived} style={{ ...S.btnSmGhost, minHeight:36 }}>Archived</button>{mayWork && <button onClick={() => setShowManage(true)} style={{ ...S.btnSmGhost, minHeight:36 }}>Manage lists</button>}</>}
             note={`${total} material${total !== 1 ? 's' : ''}`} />
         </>
       ) : (<>
@@ -511,8 +519,8 @@ export default function MaterialsTab({ materials, setMaterials, vendors, setVend
         </div>
         <div style={{ display:'flex', gap:'8px' }}>
           <button onClick={openArchived} style={S.btnGhost} title="Materials taken out of circulation. Their stock and history are kept, and any of them can be put back.">Archived</button>
-          <button onClick={() => setShowManage(true)} style={S.btnGhost}>Manage Lists</button>
-          <button onClick={openAdd} style={S.btnPrimary}>{ICONS.plus} Add Material</button>
+          {mayWork && <button onClick={() => setShowManage(true)} style={S.btnGhost}>Manage Lists</button>}
+          {mayWork && <button onClick={openAdd} style={S.btnPrimary}>{ICONS.plus} Add Material</button>}
         </div>
       </div>
 
@@ -529,10 +537,10 @@ export default function MaterialsTab({ materials, setMaterials, vendors, setVend
                 const status = qty === 0 ? 'out_of_stock' : qty <= mat.minStock ? 'low_stock' : 'in_stock';
                 const vendor = vendors.find(v => v.id === mat.vendorId);
                 return (
-                  <PhoneRow key={mat.id} first={i === 0} onClick={() => openEdit(mat)}
+                  <PhoneRow key={mat.id} first={i === 0} onClick={mayWork ? () => openEdit(mat) : undefined}
                     title={mat.sku} chip={<StatusBadge status={status} />}
                     meta={mat.name}
-                    sub={[`${qty} ${mat.unit}`, `min ${mat.minStock}`, formatCurrency(mat.baseCost), mat.category, vendor?.name].filter(Boolean).join(' \u00b7 ')} />
+                    sub={[`${qty} ${mat.unit}`, `min ${mat.minStock}`, seeCost ? formatCurrency(mat.baseCost) : null, mat.category, vendor?.name].filter(Boolean).join(' \u00b7 ')} />
                 );
               })}
             </PhoneList>
@@ -547,14 +555,14 @@ export default function MaterialsTab({ materials, setMaterials, vendors, setVend
           <table className="pmp-rt" style={{ width:'100%', borderCollapse:'collapse' }}>
             <thead>
               <tr>
-                {['SKU','Material Name','Category','Unit','Vendor','Base Cost','Min Stock','Stock','Status',''].map((h, i) => (
+                {['SKU','Material Name','Category','Unit','Vendor',...(seeCost ? ['Base Cost'] : []),'Min Stock','Stock','Status',...(hasActions ? [''] : [])].map((h, i) => (
                   <th key={i} style={S.th}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {slice.length === 0 ? (
-                <tr><td colSpan={10}><EmptyState message="No materials found" sub="Add a material or adjust filters." /></td></tr>
+                <tr><td colSpan={8 + (seeCost ? 1 : 0) + (hasActions ? 1 : 0)}><EmptyState message="No materials found" sub={mayWork ? "Add a material or adjust filters." : "Adjust the filters."} /></td></tr>
               ) : slice.map(mat => {
                 const qty    = stockMap[mat.id] || 0;
                 const status = qty === 0 ? 'out_of_stock' : qty <= mat.minStock ? 'low_stock' : 'in_stock';
@@ -566,19 +574,19 @@ export default function MaterialsTab({ materials, setMaterials, vendors, setVend
                     <td style={S.td}><span style={{ background:'var(--dark2)', borderRadius:'5px', padding:'2px 8px', fontSize:'12px', color:'var(--gray-light)' }}>{mat.category}</span></td>
                     <td style={S.td}>{mat.unit}</td>
                     <td style={{ ...S.td, fontSize:'12px', color:'var(--gray)' }}>{vendor?.name}</td>
-                    <td style={S.td}>{formatCurrency(mat.baseCost)}</td>
+                    {seeCost && <td style={S.td}>{formatCurrency(mat.baseCost)}</td>}
                     <td style={S.td}>{mat.minStock} {mat.unit}</td>
                     <td style={S.td}>
                       <div style={{ fontWeight:600, marginBottom:3 }}>{qty} {mat.unit}</div>
                       <LevelBar have={qty} min={mat.minStock} uom={mat.unit} />
                     </td>
                     <td style={S.td}><StatusBadge status={status} /></td>
-                    <td style={{ ...S.td, textAlign:'right' }}>
+                    {hasActions && <td style={{ ...S.td, textAlign:'right' }}>
                       <div style={{ display:'flex', gap:'6px', justifyContent:'flex-end' }}>
-                        <button onClick={() => openEdit(mat)} style={S.btnSmGhost}>{ICONS.edit}</button>
-                        <button onClick={() => confirmDelete(mat)} style={S.btnSmDanger}>{ICONS.trash}</button>
+                        {mayWork && <button onClick={() => openEdit(mat)} style={S.btnSmGhost}>{ICONS.edit}</button>}
+                        {mayArchive && <button onClick={() => confirmDelete(mat)} style={S.btnSmDanger}>{ICONS.trash}</button>}
                       </div>
-                    </td>
+                    </td>}
                   </tr>
                 );
               })}
@@ -845,9 +853,9 @@ export default function MaterialsTab({ materials, setMaterials, vendors, setVend
                           {row.deletedAt ? new Date(row.deletedAt).toLocaleDateString('en-PH', { month:'short', day:'numeric', year:'numeric' }) : '-'}
                         </td>
                         <td style={{ ...S.td, textAlign:'right' }}>
-                          <button onClick={() => doRestore(row)} disabled={archBusy === id} style={S.btnSmGhost}>
+                          {mayArchive && <button onClick={() => doRestore(row)} disabled={archBusy === id} style={S.btnSmGhost}>
                             {archBusy === id ? 'Restoring...' : 'Restore'}
-                          </button>
+                          </button>}
                         </td>
                       </tr>
                     );

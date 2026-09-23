@@ -520,7 +520,7 @@ class ProductController extends Controller
     public function adminIndex(Request $request)
     {
         try {
-            if (!$this->hasPermission($request, 'products')) {
+            if (!$this->hasAnyPermission($request, ['products.view', 'pos.view', 'promotions.view', 'collections.view', 'masterData.view', 'stock.view', 'toBuy.view', 'badOrders.view', 'orders.view', 'orderRequests.view'])) {
                 return $this->unauthorizedResponse();
             }
 
@@ -541,7 +541,7 @@ class ProductController extends Controller
     public function adminShow(Request $request, $id)
     {
         try {
-            if (!$this->hasPermission($request, 'products')) {
+            if (!$this->hasAnyPermission($request, ['products.view', 'pos.view', 'promotions.view', 'collections.view', 'masterData.view', 'orders.view', 'orderRequests.view'])) {
                 return $this->unauthorizedResponse();
             }
 
@@ -572,7 +572,7 @@ class ProductController extends Controller
     public function bomComponents(Request $request, $id)
     {
         try {
-            if (!$this->hasPermission($request, 'products')) {
+            if (!$this->hasAnyPermission($request, ['products.view', 'masterData.view'])) {
                 return $this->unauthorizedResponse();
             }
 
@@ -708,7 +708,7 @@ class ProductController extends Controller
     public function availableInventory(Request $request)
     {
         try {
-            if (!$this->hasPermission($request, 'products')) {
+            if (!$this->hasAnyPermission($request, ['products.view', 'masterData.view'])) {
                 return $this->unauthorizedResponse();
             }
 
@@ -737,7 +737,7 @@ class ProductController extends Controller
     public function store(Request $request)
     {
         try {
-            if (!$this->hasPermission($request, 'products')) {
+            if (!$this->hasPermission($request, 'products.create')) {
                 return $this->unauthorizedResponse();
             }
 
@@ -933,7 +933,7 @@ class ProductController extends Controller
     public function update(Request $request, $id)
     {
         try {
-            if (!$this->hasPermission($request, 'products')) {
+            if (!$this->hasPermission($request, 'products.edit')) {
                 return $this->unauthorizedResponse();
             }
 
@@ -1103,7 +1103,7 @@ class ProductController extends Controller
     public function destroy(Request $request, $id)
     {
         try {
-            if (!$this->hasPermission($request, 'products')) {
+            if (!$this->hasPermission($request, 'products.delete')) {
                 return $this->unauthorizedResponse();
             }
 
@@ -1130,7 +1130,7 @@ class ProductController extends Controller
     public function togglePublish(Request $request, $id)
     {
         try {
-            if (!$this->hasPermission($request, 'products')) {
+            if (!$this->hasPermission($request, 'products.edit')) {
                 return $this->unauthorizedResponse();
             }
 
@@ -1187,7 +1187,7 @@ class ProductController extends Controller
     public function uploadImage(Request $request)
     {
         try {
-            if (!$this->hasPermission($request, 'products')) {
+            if (!$this->hasPermission($request, 'products.edit')) {
                 return $this->unauthorizedResponse();
             }
 
@@ -1242,7 +1242,7 @@ class ProductController extends Controller
     public function uploadFile(Request $request)
     {
         try {
-            if (!$this->hasPermission($request, 'products')) {
+            if (!$this->hasPermission($request, 'products.edit')) {
                 return $this->unauthorizedResponse();
             }
 

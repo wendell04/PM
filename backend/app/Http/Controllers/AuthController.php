@@ -688,11 +688,27 @@ class AuthController extends Controller
     public function resetPassword(Request $request)
     {
         try {
+            // Two ways to prove the request is yours, and exactly one is needed.
+            //
+            // The 6-digit CODE is what a reset from the login screen uses: the person typed an
+            // email address, so something has to prove they can read that inbox.
+            //
+            // The LINK TOKEN proves the same thing by itself - it was mailed to that inbox and
+            // nowhere else. A staff invite arrives as such a link, and asking for a code on top of
+            // it emails a second secret to the same inbox to prove the fact the first one already
+            // proved: two round trips through Gmail for no extra safety, since whoever can read
+            // one can read the other.
             $request->validate([
-                'email' => 'required|email',
-                'code' => 'required|string|size:6',
+                'email'    => 'required|email',
+                'code'     => 'nullable|string|size:6',
+                'token'    => 'nullable|string|min:20|max:128',
                 'password' => ['required', 'confirmed', Password::min(8)->mixedCase()->numbers()->symbols()],
             ]);
+
+            $byToken = $request->filled('token');
+            if (!$byToken && !$request->filled('code')) {
+                return $this->errorResponse('No reset code or link. Please request a new one.', 400);
+            }
 
             $user = User::emailIs($request->email)->first();
 
@@ -700,19 +716,33 @@ class AuthController extends Controller
                 return $this->errorResponse('Invalid or expired reset code. Please request a new one.', 400);
             }
 
-            if (!$user->reset_code || !$user->reset_code_expires_at) {
-                return $this->errorResponse('No reset request found. Please request a new code.', 400);
-            }
+            if ($byToken) {
+                if (!$user->reset_token || !$user->reset_token_expires_at) {
+                    return $this->errorResponse('This link has already been used. Please ask for a new one.', 400);
+                }
+                $linkExpires = \Carbon\Carbon::parse($user->reset_token_expires_at, 'UTC')->timezone('Asia/Manila');
+                if (\Carbon\Carbon::now('Asia/Manila')->gt($linkExpires)) {
+                    return $this->errorResponse('This link has expired. Please ask for a new one.', 400);
+                }
+                // Same comparison verifyResetToken makes: the column holds the hash, never the token.
+                if (!hash_equals((string) $user->reset_token, hash('sha256', (string) $request->token))) {
+                    return $this->errorResponse('Invalid or expired link.', 400);
+                }
+            } else {
+                if (!$user->reset_code || !$user->reset_code_expires_at) {
+                    return $this->errorResponse('No reset request found. Please request a new code.', 400);
+                }
 
-            // Convert expiration time to Asia/Manila timezone for comparison
-            $expiresAt = \Carbon\Carbon::parse($user->reset_code_expires_at, 'UTC')->timezone('Asia/Manila');
+                // Convert expiration time to Asia/Manila timezone for comparison
+                $expiresAt = \Carbon\Carbon::parse($user->reset_code_expires_at, 'UTC')->timezone('Asia/Manila');
 
-            if (\Carbon\Carbon::now('Asia/Manila')->gt($expiresAt)) {
-                return $this->errorResponse('Reset code has expired. Please request a new one.', 400);
-            }
+                if (\Carbon\Carbon::now('Asia/Manila')->gt($expiresAt)) {
+                    return $this->errorResponse('Reset code has expired. Please request a new one.', 400);
+                }
 
-            if (!Hash::check($request->code, $user->reset_code)) {
-                return $this->errorResponse('Invalid reset code.', 400);
+                if (!Hash::check($request->code, $user->reset_code)) {
+                    return $this->errorResponse('Invalid reset code.', 400);
+                }
             }
 
             $user->password = Hash::make($request->password);
@@ -725,6 +755,15 @@ class AuthController extends Controller
             $user->login_locked_until    = null;
             $user->failed_login_attempts = 0;
             $user->save();
+
+            // A changed password ends that person's other sessions - the standard answer to "it was
+            // changed because someone else had it". It touches only THIS user's tokens, so another
+            // account signed in on the same browser is left alone.
+            try {
+                $user->tokens()->delete();
+            } catch (\Throwable $e) {
+                Log::warning('Could not revoke sessions after password reset: ' . $e->getMessage());
+            }
 
             // Notify the owner that the password changed - alerts them if it wasn't them. Non-fatal.
             try {

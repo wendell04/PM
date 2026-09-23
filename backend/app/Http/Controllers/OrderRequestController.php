@@ -329,6 +329,9 @@ class OrderRequestController extends Controller
      */
     public function index(Request $request)
     {
+        if (!$this->hasPermission($request, 'orderRequests.view')) {
+            return $this->unauthorizedResponse();
+        }
         $limit = min((int) $request->query('limit', 50), 100);
         $status = $request->query('status', null);
 
@@ -350,8 +353,11 @@ class OrderRequestController extends Controller
     /**
      * GET /admin/order-requests/{id}
      */
-    public function show($id)
+    public function show(Request $request, $id)
     {
+        if (!$this->hasPermission($request, 'orderRequests.view')) {
+            return $this->unauthorizedResponse();
+        }
         $req = OrderRequest::find($id);
         if (!$req) {
             return response()->json([
@@ -367,6 +373,9 @@ class OrderRequestController extends Controller
      */
     public function updateStatus(Request $request, $id)
     {
+        if (!$this->hasPermission($request, 'orderRequests.approve')) {
+            return $this->unauthorizedResponse();
+        }
         $req = OrderRequest::find($id);
         if (!$req) {
             return response()->json([
@@ -1187,7 +1196,7 @@ class OrderRequestController extends Controller
     public function stats(Request $request)
     {
         try {
-            if (!$this->hasPermission($request, 'orderRequests')) {
+            if (!$this->hasPermission($request, 'orderRequests.view')) {
                 return $this->unauthorizedResponse();
             }
 

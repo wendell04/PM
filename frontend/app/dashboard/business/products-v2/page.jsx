@@ -7,10 +7,15 @@ import { loadProductsAndCollections, createProduct, updateProduct, deleteProduct
 import { loadBoms, loadInventory } from '../inventory-v2/api';
 import ProductAddEditPage from './ProductAddEditPage';
 import { useIsPhone, KpiStrip, PhoneFilterBar, PhoneList, PhoneRow, PhoneSheet } from '@/components/dashboard/phone';
+import { useAccess } from '@/contexts/AccessContext';
 
 
 export default function ProductsV2() {
   const { token } = useAuth();
+  // Catalog Work adds, edits and publishes products; removing one is its own tick.
+  const { can: canDo } = useAccess();
+  const mayWork   = canDo('products.edit');
+  const mayDelete = canDo('products.delete');
 
   const [products,      setProducts]      = useState([]);
   const [boms,          setBoms]          = useState([]);
@@ -407,7 +412,7 @@ export default function ProductsV2() {
 
       {isPhone ? (
         <>
-          <button onClick={openAdd} style={{ ...S.btnPrimary, minHeight:44, justifyContent:'center', width:'100%', marginBottom:12 }}>{ICONS.plus} Add Product</button>
+          {mayWork && (<button onClick={openAdd} style={{ ...S.btnPrimary, minHeight:44, justifyContent:'center', width:'100%', marginBottom:12 }}>{ICONS.plus} Add Product</button>)}
           <KpiStrip items={[
             { key:'all',       label:'All',       value: counts.all },
             { key:'published', label:'Published', value: counts.published, color:'#2e7d32' },
@@ -440,7 +445,7 @@ export default function ProductsV2() {
               <PhoneSheet open={!!p} onClose={() => setExpandedStock(null)} mono={false} title={p?.name ?? ''}
                 subtitle={p ? priceDisplay(p) : ''}
                 chip={p ? <span style={{ fontSize:11, fontWeight:700, borderRadius:20, padding:'3px 10px', background: p.isPublished ? '#e9f5ea' : 'var(--dark2)', color: p.isPublished ? '#2e7d32' : 'var(--gray)' }}>{p.isPublished ? 'Published' : 'Draft'}</span> : null}
-                footer={p && (
+                footer={p && mayWork && (
                   <div style={{ display:'flex', gap:8 }}>
                     <button onClick={() => togglePublish(p.id)} style={{ ...S.btnGhost, flex:1, minHeight:44, justifyContent:'center' }}>{p.isPublished ? 'Unpublish' : 'Publish'}</button>
                     <button onClick={() => { setExpandedStock(null); openEdit(p); }} style={{ ...S.btnPrimary, flex:2, minHeight:44, justifyContent:'center' }}>{ICONS.edit} Edit product</button>
@@ -458,7 +463,7 @@ export default function ProductsV2() {
         </>
       ) : (<>
       <div style={{ ...S.rowBetween, marginBottom: '20px' }}>
-        <button onClick={openAdd} style={S.btnPrimary}>{ICONS.plus} Add Product</button>
+        {mayWork && (<button onClick={openAdd} style={S.btnPrimary}>{ICONS.plus} Add Product</button>)}
       </div>
 
       <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginBottom: '20px' }}>
@@ -568,11 +573,11 @@ export default function ProductsV2() {
                   </td>
 
                   <td style={S.td}>
-                    <button onClick={() => togglePublish(p.id)}
-                      title={p.isPublished ? 'Click to unpublish' : 'Click to publish'}
+                    <button onClick={mayWork ? () => togglePublish(p.id) : undefined}
+                      title={mayWork ? (p.isPublished ? 'Click to unpublish' : 'Click to publish') : undefined}
                       style={{ background: p.isPublished ? '#e9f5ea' : 'var(--dark2)', color: p.isPublished ? '#2e7d32' : 'var(--gray)',
                         border: 'none', borderRadius: '20px', padding: '3px 12px', fontSize: '12px', fontWeight: 600,
-                        cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                        cursor: mayWork ? 'pointer' : 'default', display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
                       <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: p.isPublished ? '#2e7d32' : 'var(--gray)', flexShrink: 0 }} />
                       {p.isPublished ? 'Published' : 'Draft'}
                     </button>
@@ -590,8 +595,8 @@ export default function ProductsV2() {
                           <polyline points="6 9 12 15 18 9" />
                         </svg>
                       </button>
-                      <button onClick={() => openEdit(p)} style={S.btnSmGhost}>{ICONS.edit}</button>
-                      <button onClick={() => setDelTarget(p)} style={S.btnSmDanger}>{ICONS.trash}</button>
+                      {mayWork && (<button onClick={() => openEdit(p)} style={S.btnSmGhost}>{ICONS.edit}</button>)}
+                      {mayDelete && (<button onClick={() => setDelTarget(p)} style={S.btnSmDanger}>{ICONS.trash}</button>)}
                     </div>
                   </td>
 
@@ -632,6 +637,7 @@ export default function ProductsV2() {
 }
 
 function StockBreakdown({ product, boms, materials }) {
+  const { can } = useAccess();
   const matMap = useMemo(() => {
     const m = {};
     (materials || []).forEach(mat => { m[mat.id] = mat; });
@@ -787,9 +793,9 @@ function StockBreakdown({ product, boms, materials }) {
                     {shortMat.name} runs out first: enough for {shipComplete} of the {prod} you can
                     build - short by {prod - shipComplete}.
                   </b>
-                  <a href="/dashboard/business/to-buy" style={{ fontSize:'11px', fontWeight:700, color:'var(--gold)', textDecoration:'none' }}>
+                  {can('toBuy') && (<a href="/dashboard/business/to-buy" style={{ fontSize:'11px', fontWeight:700, color:'var(--gold)', textDecoration:'none' }}>
                     Open To Buy
-                  </a>
+                  </a>)}
                 </div>
               )}
             </div>

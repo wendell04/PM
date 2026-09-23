@@ -22,6 +22,7 @@ import {
 import ErrorBoundary from '@/components/ErrorBoundary';
 import HeroImagePositioner from '@/components/cms/HeroImagePositioner';
 import ImageCropper from '@/components/ImageCropper';
+import { useAccess } from '@/contexts/AccessContext';
 
 // UX limit - keeps carousel manageable regardless of storage backend
 // Safe to keep even after MongoDB migration (enforced at API level too)
@@ -348,6 +349,9 @@ function DateRangePicker({ startValue, endValue, onStartChange, onEndChange }) {
 
 // ── Main Component ──────────────────────────────────────────────────────────────
 export default function BannerManagementPage() {
+  const { can } = useAccess();
+  // Banners See reads the queue and each banner; Banners Work adds, edits, orders and publishes.
+  const mayWork = can('banners.work');
   const { token } = useAuth();
   const fileInputRef = useRef(null);
   const carouselIntervalRef = useRef(null);
@@ -910,14 +914,16 @@ export default function BannerManagementPage() {
           Shop Banners (/shop)
         </span>
         <span style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>
-          Editing the homepage hero? Go to <a href="/dashboard/business/homepage" style={{ color: 'var(--gold)' }}>Homepage</a>.
+          Editing the homepage hero? {can('homepage') ? <>Go to <a href="/dashboard/business/homepage" style={{ color: 'var(--gold)' }}>Homepage</a>.</> : 'That is the Homepage module.'}
         </span>
       </div>
 
       {/* Header */}
       <div className="banner-header">
         <div className="banner-actions">
-          {isLive ? (
+          {!mayWork ? (
+            <span style={{ fontSize: '0.8rem', color: 'var(--gold)', fontWeight: 600 }}>View only - changing banners needs Banners Work.</span>
+          ) : isLive ? (
             <button className="banner-btn banner-btn-secondary" onClick={unpublishBanner} disabled={isSubmitting} style={{ opacity: isSubmitting ? 0.6 : 1, cursor: isSubmitting ? 'not-allowed' : 'pointer' }}>
               {isSubmitting ? 'Unpublishing...' : 'Unpublish'}
             </button>
@@ -962,8 +968,8 @@ export default function BannerManagementPage() {
                   onClick={() => selectBanner(banner.id)}
                 >
                   <div className="banner-order-btns">
-                    <button className="banner-order-btn" onClick={(e) => { e.stopPropagation(); moveBanner(banners.indexOf(banner), -1); }} disabled={index === 0 || isSubmitting} title="Move up">▲</button>
-                    <button className="banner-order-btn" onClick={(e) => { e.stopPropagation(); moveBanner(banners.indexOf(banner), 1); }} disabled={index === filteredBanners.length - 1 || isSubmitting} title="Move down">▼</button>
+                    {mayWork && (<button className="banner-order-btn" onClick={(e) => { e.stopPropagation(); moveBanner(banners.indexOf(banner), -1); }} disabled={index === 0 || isSubmitting} title="Move up">▲</button>)}
+                    {mayWork && (<button className="banner-order-btn" onClick={(e) => { e.stopPropagation(); moveBanner(banners.indexOf(banner), 1); }} disabled={index === filteredBanners.length - 1 || isSubmitting} title="Move down">▼</button>)}
                   </div>
                   <div className="banner-item-thumbnail">
                     {banner.image ? <Image src={banner.image} alt={banner.name} width={48} height={48} style={{ objectFit: "cover" }} unoptimized /> : <NoImage size={22} />}
@@ -980,12 +986,12 @@ export default function BannerManagementPage() {
                     </p>
                   </div>
                   <div className="banner-item-actions">
-                    <button className="banner-item-action-btn delete" onClick={(e) => { e.stopPropagation(); deleteBanner(banner.id); }} title="Delete banner">
+                    {mayWork && (<button className="banner-item-action-btn delete" onClick={(e) => { e.stopPropagation(); deleteBanner(banner.id); }} title="Delete banner">
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                         <polyline points="3 6 5 6 21 6"/>
                         <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
                       </svg>
-                    </button>
+                    </button>)}
                   </div>
                 </div>
               ))}
@@ -995,7 +1001,7 @@ export default function BannerManagementPage() {
                 </div>
               )}
             </div>
-            <button
+            {mayWork && (<button
               className="banner-add-btn"
               onClick={createNewBanner}
               disabled={filteredBanners.length >= MAX_BANNERS || isSubmitting}
@@ -1008,7 +1014,7 @@ export default function BannerManagementPage() {
                   {filteredBanners.length}/{MAX_BANNERS}
                 </span>
               )}
-            </button>
+            </button>)}
           </div>
 
           {/* Image Upload */}
@@ -1030,7 +1036,7 @@ export default function BannerManagementPage() {
                   saved image is a URL the cropper can load directly - Cloudinary serves it with
                   CORS, and the cropper already sets crossOrigin - so there is nothing to fetch
                   from the operator a second time. */}
-              {!isLive && editedBanner?.image && (
+              {mayWork && !isLive && editedBanner?.image && (
                 <button
                   type="button"
                   className="banner-btn banner-btn-secondary"
@@ -1129,7 +1135,8 @@ export default function BannerManagementPage() {
             </div>
           </div>
 
-          {/* Editor Controls */}
+          {/* Editor Controls - read-only fields for Banners See */}
+          <fieldset disabled={!mayWork} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
           <div className="banner-editor-grid">
             {/* Content */}
             <div className="banner-editor-card">
@@ -1274,8 +1281,9 @@ export default function BannerManagementPage() {
               </div>
             </div>
           </div>
+          </fieldset>
 
-          {hasUnsavedChanges && (
+          {mayWork && hasUnsavedChanges && (
             <div className="banner-unsaved-indicator">
               <div className="banner-unsaved-dot"></div>
               <span>Unsaved changes - click "Publish Live" to save</span>

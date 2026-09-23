@@ -17,6 +17,7 @@ import { useAuth } from "../../../contexts/AuthContext";
 import { watchTableLabels } from "@/lib/tableCards";
 import { useTheme } from "../../../contexts/ThemeContext";
 import useLockBodyScroll from "@/lib/useLockBodyScroll";
+import { AccessProvider } from "@/contexts/AccessContext";
 import "./admin-dashboard.css";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
@@ -547,22 +548,15 @@ export default function BusinessDashboardLayout({ children }) {
   const itemAccessible = (item) => {
     if (item.adminOnly && !isAdminOwner) return false;
     if (isAdminOwner) return true;
-    return item.marketingGroup ? (can("flashSales") || can("vouchers")) : can(item.permKey ?? "dashboard");
+    return can(item.permKey ?? "dashboard");
   };
 
 
   const navItems = [
+    // One dashboard. The old one ran beside this while the two were compared; everything it showed
+    // is here now (the owner's view), and its address redirects here.
     {
-      name: "Dashboard",
-      href: "/dashboard/business/dashboardoverview",
-      permKey: "dashboard",
-      icon: "M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z",
-    },
-    // The replacement, carried alongside the original rather than swapped in, so the two can be
-    // compared on real data before anything is removed. Same permission key - it is the same
-    // page's job, done differently.
-    {
-      name: "Home (new)",
+      name: "Home",
       href: "/dashboard/business/home",
       permKey: "dashboard",
       icon: "M4 5a1 1 0 011-1h5a1 1 0 011 1v5a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM13 5a1 1 0 011-1h5a1 1 0 011 1v5a1 1 0 01-1 1h-5a1 1 0 01-1-1V5zM4 14a1 1 0 011-1h5a1 1 0 011 1v5a1 1 0 01-1 1H5a1 1 0 01-1-1v-5zM13 14a1 1 0 011-1h5a1 1 0 011 1v5a1 1 0 01-1 1h-5a1 1 0 01-1-1v-5z",
@@ -571,8 +565,7 @@ export default function BusinessDashboardLayout({ children }) {
     {
       name: "Orders",
       href: "/dashboard/business/orders",
-      // A designer reaches the orders that carry artwork through here.
-      permKey: ["orders", "design"],
+      permKey: "orders",
       icon: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2",
     },
     {
@@ -590,48 +583,47 @@ export default function BusinessDashboardLayout({ children }) {
     {
       name: "Job Orders",
       href: "/dashboard/business/job-orders",
-      // The role grid grants production work as "jobOrders"; the server accepts either key.
-      permKey: ["jobOrders", "production"],
+      permKey: "jobOrders",
       icon: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4",
     },
     { type: "divider", label: "Production" },
     {
       name: "Production",
       href: "/dashboard/business/production-preview",
-      permKey: ["jobOrders", "production"],
+      permKey: "production",
       icon: "M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z",
     },
     {
       name: "Quality Control",
       href: "/dashboard/business/qc-preview",
-      permKey: ["jobOrders", "qc"],
+      permKey: "qc",
       icon: "M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z",
     },
     { type: "divider", label: "Inventory" },
     {
       name: "Master Data",
       href: "/dashboard/business/inventory-v2?tab=materials",
-      permKey: "inventory",
+      permKey: "masterData",
       matchTabs: ["materials", "vendors", "bom"],
       icon: "M4 7c0-1.1 3.6-2 8-2s8 .9 8 2v2c0 1.1-3.6 2-8 2s-8-.9-8-2V7zm0 6c0 1.1 3.6 2 8 2s8-.9 8-2m-16 0v4c0 1.1 3.6 2 8 2s8-.9 8-2v-4",
     },
     {
       name: "Overview",
       href: "/dashboard/business/inventory-v2?tab=productstock",
-      permKey: "inventory",
-      matchTabs: ["productstock", "stockin", "goods", "actual"],
+      permKey: "stock",
+      matchTabs: ["productstock", "stockin", "goods", "actual", "stockout"],
       icon: "M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z",
     },
     {
       name: "To Buy",
       href: "/dashboard/business/to-buy",
-      permKey: "inventory",
+      permKey: "toBuy",
       icon: "M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.3 2.3A1 1 0 005.4 17H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z",
     },
     {
       name: "Bad Orders",
       href: "/dashboard/business/inventory-v2?tab=badorders",
-      permKey: "inventory",
+      permKey: "badOrders",
       matchTabs: ["badorders"],
       icon: "M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z",
     },
@@ -645,32 +637,31 @@ export default function BusinessDashboardLayout({ children }) {
     {
       name: "Collections",
       href: "/dashboard/business/collections",
-      permKey: "products",
+      permKey: "collections",
       icon: "M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z",
     },
     {
       name: "Banners",
       href: "/dashboard/business/banners",
-      permKey: "products",
+      permKey: "banners",
       icon: "M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z",
     },
     {
       name: "Homepage",
       href: "/dashboard/business/homepage",
-      permKey: "products",
+      permKey: "homepage",
       icon: "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6",
     },
     {
       name: "Reviews",
       href: "/dashboard/business/reviews",
-      permKey: "products",
+      permKey: "reviews",
       icon: "M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z",
     },
     {
       name: "Promotions",
       href: "/dashboard/business/promotions",
-      permKey: "flashSales",
-      marketingGroup: true,
+      permKey: "promotions",
       icon: "M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z",
     },
     { type: "divider", label: "Finance" },
@@ -683,20 +674,19 @@ export default function BusinessDashboardLayout({ children }) {
     {
       name: "Payments",
       href: "/dashboard/business/payments",
-      permKey: "sales",
-      adminOnly: true,
+      permKey: "payments",
       icon: "M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z",
     },
     {
       name: "Reports",
       href: "/dashboard/business/reports",
-      permKey: "sales",
+      permKey: "reports",
       icon: "M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z",
     },
     {
       name: "Forecast",
       href: "/dashboard/business/ssa-forecast",
-      permKey: "sales",
+      permKey: "forecast",
       icon: "M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z",
     },
     { type: "divider", label: "Users" },
@@ -747,15 +737,23 @@ export default function BusinessDashboardLayout({ children }) {
     // Compare on the path only: several items carry ?tab=... in their href, and the pathname
     // never does, so the inventory pages matched nothing and went unguarded.
     const pathOf = (href) => String(href).split("?")[0];
-    const item = navItems
+    const candidates = navItems
       .filter((i) => i.type !== "divider" && i.href && pathOf(i.href) !== HOME)
-      .sort((a, b) => pathOf(b.href).length - pathOf(a.href).length)
-      .find((i) => pathname === pathOf(i.href) || pathname.startsWith(pathOf(i.href) + "/"));
-    if (!item || itemAccessible(item)) return;
+      .sort((a, b) => pathOf(b.href).length - pathOf(a.href).length);
+    const first = candidates.find((i) => pathname === pathOf(i.href) || pathname.startsWith(pathOf(i.href) + "/"));
+    if (!first) return;
+    // Every entry on this same path (one page, several tab families); the tab picks among them.
+    const siblings = candidates.filter((i) => pathOf(i.href) === pathOf(first.href));
+    const item = siblings.find((i) => i.matchTabs && currentTab && i.matchTabs.includes(currentTab))
+      ?? siblings.find((i) => !i.matchTabs) ?? siblings[0];
+    if (itemAccessible(item)) return;
+    // A tab they cannot see, on a page where they can see another: go there, not all the way home.
+    const other = siblings.find(itemAccessible);
+    if (other) { router.replace(other.href); return; }
     setTurnedAway(item.name);
     router.replace(HOME);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pathname, currentUser, permissions, isAdminOwner]);
+  }, [pathname, currentTab, currentUser, permissions, isAdminOwner]);
 
 
   const getInitials = (user) => {
@@ -1142,19 +1140,9 @@ export default function BusinessDashboardLayout({ children }) {
               })}
           </nav>
 
-          <a
-            href="/"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="sidebar-nav-item"
-            title="Opens the storefront in a new tab"
-            style={{ margin: "0 8px 4px", borderTop: "1px solid var(--border)", borderRadius: 0, paddingTop: 10 }}
-          >
-            <svg className="nav-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-              <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6M15 3h6v6M10 14L21 3" />
-            </svg>
-            <span className="nav-text">View the store</span>
-          </a>
+          {/* The storefront link lives in the top bar, beside the theme and the bell. It was in
+              both places, and a rail of work modules is not where a link out of the dashboard
+              belongs - it pushed the person's own name and role down the sidebar. */}
           <div className="sidebar-footer">
             <div className="sidebar-footer-avatar">
               {currentUser?.avatar ? (
@@ -1535,7 +1523,7 @@ export default function BusinessDashboardLayout({ children }) {
             if (item.type === "divider") { cur = { label: item.label, items: [] }; sections.push(cur); continue; }
             if (!cur) { cur = { label: "", items: [] }; sections.push(cur); }
             if (item.adminOnly && !isAdminOwner) continue;
-            const ok = isAdminOwner || (item.marketingGroup ? (can("flashSales") || can("vouchers")) : can(item.permKey ?? "dashboard"));
+            const ok = isAdminOwner || can(item.permKey ?? "dashboard");
             if (ok && item.href) cur.items.push(item);
           }
           // The same test the sidebar uses: a plain path, or a path plus its ?tab= family.
@@ -1564,7 +1552,10 @@ export default function BusinessDashboardLayout({ children }) {
                   style={{ background: "none", border: "none", color: "var(--gray)", cursor: "pointer", fontSize: 18, lineHeight: 1 }}>&times;</button>
               </div>
             )}
-            {children}
+            {/* Every page asks the same can() the sidebar uses, so a button and the menu never disagree. */}
+            <AccessProvider value={{ can, owner: isAdminOwner, ready: isAdminOwner || permissions !== null }}>
+              {children}
+            </AccessProvider>
         </main>
 
         {/* The bottom tab bar, phone only (the stylesheet hides it above 700px). Shopify's admin
@@ -1575,14 +1566,17 @@ export default function BusinessDashboardLayout({ children }) {
           const tabs = [
             { name: "Home",       href: "/dashboard/business/home",               permKey: "dashboard", d: "M3 12l9-8 9 8M5 10v10h5v-6h4v6h5V10" },
             { name: "Orders",     href: "/dashboard/business/orders",             permKey: "orders",    d: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" },
-            { name: "Production", href: "/dashboard/business/production-preview", permKey: "jobOrders", alt: "production", d: "M12 8v4l3 3M21 12a9 9 0 11-18 0 9 9 0 0118 0z" },
-            { name: "Inventory",  href: "/dashboard/business/inventory-v2?tab=materials", permKey: "inventory", d: "M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" },
+            { name: "Production", href: "/dashboard/business/production-preview", permKey: "production", alt: "jobOrders", d: "M12 8v4l3 3M21 12a9 9 0 11-18 0 9 9 0 0118 0z" },
+            { name: "Inventory",  href: (isAdminOwner || can("masterData")) ? "/dashboard/business/inventory-v2?tab=materials" : can("stock") ? "/dashboard/business/inventory-v2?tab=productstock" : can("toBuy") ? "/dashboard/business/to-buy" : "/dashboard/business/inventory-v2?tab=badorders", permKey: ["masterData", "stock", "toBuy", "badOrders"], d: "M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" },
           ].filter(t => isAdminOwner || can(t.permKey) || (t.alt && can(t.alt)));
           // A tab is lit for its whole section, not only its landing module.
           const tabSection = { "/dashboard/business/home": ["/dashboard/business/home", "/dashboard/business/dashboardoverview"],
             "/dashboard/business/orders": ["/dashboard/business/orders", "/dashboard/business/pos", "/dashboard/business/job-orders", "/dashboard/business/order-requests"],
             "/dashboard/business/production-preview": ["/dashboard/business/production-preview", "/dashboard/business/qc-preview"],
-            "/dashboard/business/inventory-v2?tab=materials": ["/dashboard/business/inventory-v2", "/dashboard/business/to-buy"] };
+            "/dashboard/business/inventory-v2?tab=materials": ["/dashboard/business/inventory-v2", "/dashboard/business/to-buy"],
+            "/dashboard/business/inventory-v2?tab=productstock": ["/dashboard/business/inventory-v2", "/dashboard/business/to-buy"],
+            "/dashboard/business/inventory-v2?tab=badorders": ["/dashboard/business/inventory-v2", "/dashboard/business/to-buy"],
+            "/dashboard/business/to-buy": ["/dashboard/business/inventory-v2", "/dashboard/business/to-buy"] };
           const active = (t) => (tabSection[t.href] ?? [t.href.split("?")[0]]).some(pth => pathname === pth || pathname.startsWith(pth + "/"));
           return (
             <nav className="phone-tabbar" aria-label="Main">

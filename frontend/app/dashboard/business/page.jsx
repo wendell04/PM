@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 export default function BusinessRoot() {
   const router = useRouter();
   useEffect(() => {
-    router.replace("/dashboard/business/dashboardoverview");
+    router.replace("/dashboard/business/home");
   }, [router]);
   return (
     <div

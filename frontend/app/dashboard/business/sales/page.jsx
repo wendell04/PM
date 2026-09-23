@@ -15,6 +15,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useAccess } from '@/contexts/AccessContext';
 import { formatPrice } from '@/src/utils/format';
 import ErrorBoundary from '../../../../components/ErrorBoundary';
 import { S, ICONS, SummaryCard, SearchBar, PaginationBar, EmptyState, CustomSelect } from '../inventory-v2/shared';
@@ -373,6 +374,8 @@ function ReportsView({ reports, hasCostData }) {
 }
 
 export default function SalesListPage() {
+  // Exporting takes the list out of the system - its own tick (Export sales).
+  const mayExport = useAccess().can('sales.export');
   const { token } = useAuth();
   const [sales, setSales] = useState([]);
   const [saleLines, setSaleLines] = useState([]);   // Sale collection - carries cost + profit per line
@@ -878,14 +881,14 @@ export default function SalesListPage() {
             </div>
             {/* Two formats because they answer different needs: CSV is the portable one that any
                 tool can read, Excel is the one a person opens and looks at. */}
-            <button type="button" onClick={exportCsv}
+            {mayExport && (<button type="button" onClick={exportCsv}
               style={{ padding: '6px 12px', fontSize: '12px', fontWeight: 600, borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--dark)', color: 'var(--white)', cursor: 'pointer', whiteSpace: 'nowrap' }}>
               Export CSV
-            </button>
-            <button type="button" onClick={exportExcel} title="Same data, with the profit column colour-coded by margin"
+            </button>)}
+            {mayExport && (<button type="button" onClick={exportExcel} title="Same data, with the profit column colour-coded by margin"
               style={{ padding: '6px 12px', fontSize: '12px', fontWeight: 600, borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--dark)', color: 'var(--white)', cursor: 'pointer', whiteSpace: 'nowrap' }}>
               Export Excel
-            </button>
+            </button>)}
             <span style={{ fontSize: '12px', color: 'var(--gray)', whiteSpace: 'nowrap' }}>{filteredSales.length} sale{filteredSales.length !== 1 ? 's' : ''}</span>
           </div>
         </div>

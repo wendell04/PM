@@ -773,6 +773,34 @@ class ChatController extends Controller
                 return $this->notFoundResponse('Conversation');
             }
 
+            // Which form to send: the one that was picked, else the shop's default, else the
+            // starter. "Edit before sending" arrives as description/questions on this request and
+            // changes this send only - the template it came from is left alone.
+            $template = $request->filled('templateId')
+                ? \App\Models\OrderFormTemplate::find($request->input('templateId'))
+                : null;
+            if (!$template) {
+                $template = \App\Models\OrderFormTemplate::where('isDefault', true)->first()
+                    ?: \App\Models\OrderFormTemplate::orderBy('createdAt', 'asc')->first();
+            }
+            $base = $template
+                ? ['name' => $template->name, 'description' => $template->description, 'questions' => $template->questions ?? []]
+                : \App\Support\OrderFormSpec::starter();
+            if ($request->has('questions') || $request->has('description')) {
+                try {
+                    $base = \App\Support\OrderFormSpec::sanitizeTemplate([
+                        'name'        => $request->input('name', $base['name'] ?? 'Order form'),
+                        'description' => $request->has('description') ? $request->input('description') : ($base['description'] ?? ''),
+                        'questions'   => $request->has('questions')   ? $request->input('questions')   : ($base['questions'] ?? []),
+                    ]);
+                } catch (\InvalidArgumentException $e) {
+                    return response()->json(['message' => $e->getMessage()], 422);
+                }
+            }
+            // The copy. A template edited next month must not change a form sent today, and a
+            // customer halfway through filling one in must not watch the questions move.
+            $spec = \App\Support\OrderFormSpec::snapshot($base);
+
             $message = Message::create([
                 'conversation_id' => (string) $conversation->_id,
                 'sender_id'       => (string) ($user->_id ?? $user->id),
@@ -781,7 +809,9 @@ class ChatController extends Controller
                 'type'            => 'order_form',
                 'metadata'        => [
                     'status'      => 'sent',
-                    'formVersion' => 1,
+                    'formVersion' => \App\Support\OrderFormSpec::VERSION,
+                    'templateId'  => $template ? (string) $template->_id : null,
+                    'form'        => $spec,
                 ],
                 'is_read'         => false,
             ]);
@@ -840,60 +870,102 @@ class ChatController extends Controller
                 return response()->json(['message' => 'This form has already been filled in.'], 422);
             }
 
-            $v = $request->validate([
-                'name'            => 'required|string|max:120',
-                'contact'         => 'required|string|max:40',
-                'email'           => 'required|email|max:160',
-                'address'         => 'nullable|string|max:400',
-                'lines'           => 'required|array|min:1|max:10',
-                'lines.*.item'    => 'required|string|max:160',
-                'lines.*.details' => 'nullable|string|max:200',
-                'lines.*.qty'     => 'required|integer|min:1|max:100000',
-                'shipment'        => 'required|in:delivery,pickup',
-                'payment'         => 'required|in:gcash,maya,card,cash',
-                'instructions'    => 'nullable|string|max:2000',
-                'confirmDetails'  => 'accepted',
-                'agreeTerms'      => 'accepted',
-            ]);
-            if ($v['shipment'] === 'delivery' && trim((string) ($v['address'] ?? '')) === '') {
-                return response()->json(['message' => 'A delivery address is needed for delivery.'], 422);
+            // A form sent since templates exist carries its own questions; one sent before them
+            // does not, and is still read the way it was written.
+            $spec = is_array($form->metadata['form'] ?? null) ? $form->metadata['form'] : null;
+            $clean = fn ($x) => htmlspecialchars(strip_tags(trim((string) $x)), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+
+            if ($spec) {
+                $v = $request->validate([
+                    'name'           => 'required|string|max:120',
+                    'contact'        => 'required|string|max:40',
+                    'email'          => 'required|email|max:160',
+                    'address'        => 'nullable|string|max:400',
+                    'shipment'       => 'required|in:delivery,pickup',
+                    'answers'        => 'nullable|array',
+                    'confirmDetails' => 'accepted',
+                    'agreeTerms'     => 'accepted',
+                ]);
+                if ($v['shipment'] === 'delivery' && trim((string) ($v['address'] ?? '')) === '') {
+                    return response()->json(['message' => 'A delivery address is needed for delivery.'], 422);
+                }
+                [$missing, $given] = \App\Support\OrderFormSpec::checkAnswers($spec, (array) ($v['answers'] ?? []));
+                if ($missing) {
+                    return response()->json(['message' => 'Still needed: ' . implode(', ', $missing) . '.'], 422);
+                }
+                $answers = [
+                    'name'     => $clean($v['name']),
+                    'contact'  => $clean($v['contact']),
+                    'email'    => $clean($v['email']),
+                    'address'  => $clean($v['address'] ?? ''),
+                    'shipment' => $v['shipment'],
+                    // The questions ride along with the answers, so every card that draws them -
+                    // the chat, the ask, the quotation - reads one object and needs no lookup.
+                    'form'     => $spec,
+                    'answers'  => $given,
+                    'agreedAt' => now()->toIso8601String(),
+                ];
+                $summary     = \App\Support\OrderFormSpec::summarise($spec, $given);
+                $totalQty    = \App\Support\OrderFormSpec::totalQuantity($spec, $given);
+                $productName = \App\Support\OrderFormSpec::headline($spec, $given);
+                $designNotes = $summary;
+            } else {
+                $v = $request->validate([
+                    'name'            => 'required|string|max:120',
+                    'contact'         => 'required|string|max:40',
+                    'email'           => 'required|email|max:160',
+                    'address'         => 'nullable|string|max:400',
+                    'lines'           => 'required|array|min:1|max:10',
+                    'lines.*.item'    => 'required|string|max:160',
+                    'lines.*.details' => 'nullable|string|max:200',
+                    'lines.*.qty'     => 'required|integer|min:1|max:100000',
+                    'shipment'        => 'required|in:delivery,pickup',
+                    'payment'         => 'required|in:gcash,maya,card,cash',
+                    'instructions'    => 'nullable|string|max:2000',
+                    'confirmDetails'  => 'accepted',
+                    'agreeTerms'      => 'accepted',
+                ]);
+                if ($v['shipment'] === 'delivery' && trim((string) ($v['address'] ?? '')) === '') {
+                    return response()->json(['message' => 'A delivery address is needed for delivery.'], 422);
+                }
+                $answers = [
+                    'name'         => $clean($v['name']),
+                    'contact'      => $clean($v['contact']),
+                    'email'        => $clean($v['email']),
+                    'address'      => $clean($v['address'] ?? ''),
+                    'lines'        => array_values(array_map(fn ($l) => [
+                        'item'    => $clean($l['item']),
+                        'details' => $clean($l['details'] ?? ''),
+                        'qty'     => (int) $l['qty'],
+                    ], $v['lines'])),
+                    'shipment'     => $v['shipment'],
+                    'payment'      => $v['payment'],
+                    'instructions' => $clean($v['instructions'] ?? ''),
+                    'agreedAt'     => now()->toIso8601String(),
+                ];
+                $first       = $answers['lines'][0];
+                $totalQty    = array_sum(array_map(fn ($l) => $l['qty'], $answers['lines']));
+                $productName = count($answers['lines']) > 1
+                    ? "{$first['item']} + " . (count($answers['lines']) - 1) . ' more'
+                    : $first['item'];
+                $designNotes = $answers['instructions'];
+                $summary     = implode("\n", array_map(fn ($l) => "{$l['qty']} x {$l['item']}" . ($l['details'] !== '' ? " ({$l['details']})" : ''), $answers['lines']));
             }
 
-            $clean = fn ($x) => htmlspecialchars(strip_tags(trim((string) $x)), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-            $answers = [
-                'name'         => $clean($v['name']),
-                'contact'      => $clean($v['contact']),
-                'email'        => $clean($v['email']),
-                'address'      => $clean($v['address'] ?? ''),
-                'lines'        => array_values(array_map(fn ($l) => [
-                    'item'    => $clean($l['item']),
-                    'details' => $clean($l['details'] ?? ''),
-                    'qty'     => (int) $l['qty'],
-                ], $v['lines'])),
-                'shipment'     => $v['shipment'],
-                'payment'      => $v['payment'],
-                'instructions' => $clean($v['instructions'] ?? ''),
-                'agreedAt'     => now()->toIso8601String(),
-            ];
-
             // The ask, so it counts as waiting and the quotation can answer it.
-            $first = $answers['lines'][0];
-            $totalQty = array_sum(array_map(fn ($l) => $l['qty'], $answers['lines']));
             $ask = \App\Models\OrderRequest::create([
                 'customerId'       => $userId,
                 'customerName'     => $answers['name'],
                 'customerEmail'    => $answers['email'],
                 'productId'        => null,
-                'productName'      => count($answers['lines']) > 1
-                    ? "{$first['item']} + " . (count($answers['lines']) - 1) . ' more'
-                    : $first['item'],
+                'productName'      => $productName,
                 'productThumbnail' => null,
                 'category'         => 'Order form',
                 'priceType'        => 'inquiry',
                 'isOpenRequest'    => true,
                 'selectedVariants' => [],
                 'quantity'         => $totalQty,
-                'designNotes'      => $answers['instructions'],
+                'designNotes'      => $designNotes,
                 'designType'       => 'request',
                 'designFee'        => 0,
                 'isCustom'         => true,
@@ -916,7 +988,6 @@ class ChatController extends Controller
             $form->metadata = $meta;
             $form->save();
 
-            $summary = implode("\n", array_map(fn ($l) => "{$l['qty']} x {$l['item']}" . ($l['details'] !== '' ? " ({$l['details']})" : ''), $answers['lines']));
             $reply = Message::create([
                 'conversation_id' => (string) $conversation->_id,
                 'sender_id'       => $userId,

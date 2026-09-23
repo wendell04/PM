@@ -4566,3 +4566,55 @@ html.light .skeleton-table-header {
   min-height: 44px;
   justify-content: center;
 }
+
+/* ── Order form builder ───────────────────────────────────────────────────────
+   A question is written the way it will be read: the card carries the real
+   answer control - radio circles, tick boxes, the item rows - so the owner sees
+   the customer's form while typing it, instead of a settings table that has to
+   be imagined into a form. */
+.pmp-q-card {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--dark2);
+  padding: 14px 16px;
+  transition: border-color .15s, box-shadow .15s;
+}
+.pmp-q-card.is-active {
+  border-color: var(--gold);
+  box-shadow: inset 3px 0 0 var(--gold);
+}
+.pmp-q-title,
+.pmp-q-help,
+.pmp-q-opt {
+  width: 100%;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid transparent;
+  color: var(--white);
+  padding: 6px 2px;
+  outline: none;
+  box-sizing: border-box;
+  font-family: inherit;
+}
+.pmp-q-title { font-size: 14.5px; font-weight: 600; border-bottom-color: var(--border); }
+.pmp-q-help  { font-size: 12.5px; color: var(--gray); }
+.pmp-q-opt   { font-size: 13px; }
+.pmp-q-title:hover, .pmp-q-help:hover, .pmp-q-opt:hover { border-bottom-color: var(--border); }
+.pmp-q-title:focus, .pmp-q-help:focus, .pmp-q-opt:focus { border-bottom-color: var(--gold); }
+
+/* The answer control as the customer will meet it, not fillable here. */
+.pmp-q-ghost {
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  color: var(--gray);
+  font-size: 12.5px;
+  background: transparent;
+}
+.pmp-q-mark {
+  width: 15px; height: 15px;
+  border: 1.5px solid var(--gray);
+  flex-shrink: 0;
+}
+.pmp-q-mark.round { border-radius: 50%; }
+.pmp-q-mark.square { border-radius: 3px; }

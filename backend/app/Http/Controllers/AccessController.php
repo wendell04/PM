@@ -7,6 +7,7 @@ use App\Models\User;
 use App\Support\PermissionCatalog;
 use App\Support\Rbac;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 
 /**
  * Access: who works here and what each of them may do.
@@ -31,11 +32,14 @@ class AccessController extends Controller
         $templates = RolePermission::all()->map(fn ($r) => [
             'role'        => $r->role,
             'label'       => $r->label ?: $this->humanRole($r->role),
-            'permissions' => PermissionCatalog::sanitize((array) ($r->permissions ?? [])),
+            'permissions' => PermissionCatalog::normalize((array) ($r->permissions ?? [])),
         ])->values();
 
         return $this->successResponse('Catalog fetched.', [
             'groups'    => PermissionCatalog::groups(),
+            // The same catalogue as rows (one per sidebar entry, See / Work / extras) - what the
+            // Access editor draws.
+            'rows'      => PermissionCatalog::rows(),
             'templates' => $templates,
         ]);
     }
@@ -49,7 +53,7 @@ class AccessController extends Controller
 
         $rows = User::where('role', '!=', 'customer')->orderBy('firstName')->get()
             ->map(function (User $u) {
-                $own = is_array($u->permissions ?? null) ? PermissionCatalog::sanitize($u->permissions) : [];
+                $own = is_array($u->permissions ?? null) ? PermissionCatalog::normalize($u->permissions) : [];
                 // Owner and Super Admin are not grantable - saying so on screen is better than
                 // showing a grid of ticks that the resolver ignores anyway.
                 $unlimited = Rbac::isOwner($u) || Rbac::isSuperAdmin($u);
@@ -164,6 +168,8 @@ class AccessController extends Controller
         if (array_key_exists('role', $validated) && $validated['role']) $user->role = $validated['role'];
         if (array_key_exists('isActive', $validated) && $validated['isActive'] !== null) $user->isActive = (bool) $validated['isActive'];
         $user->save();
+        // Their sidebar reads a 60-second cache; without this the change showed up to a minute late.
+        Cache::forget('admin_permissions_' . (string) $user->_id);
 
         return $this->successResponse('Permissions saved.', [
             'id'          => (string) $user->_id,

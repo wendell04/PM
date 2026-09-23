@@ -42,7 +42,7 @@ class InventoryReturnController extends Controller
     public function index(Request $request)
     {
         try {
-            if (!$this->hasPermission($request, 'badOrders')) {
+            if (!$this->hasAnyPermission($request, ['masterData.view', 'stock.view', 'toBuy.view', 'badOrders.view'])) {
                 return $this->unauthorizedResponse();
             }
 
@@ -71,7 +71,7 @@ class InventoryReturnController extends Controller
     public function stats(Request $request)
     {
         try {
-            if (!$this->hasPermission($request, 'badOrders')) {
+            if (!$this->hasAnyPermission($request, ['masterData.view', 'stock.view', 'toBuy.view', 'badOrders.view'])) {
                 return $this->unauthorizedResponse();
             }
 
@@ -100,7 +100,7 @@ class InventoryReturnController extends Controller
     public function store(Request $request)
     {
         try {
-            if (!$this->hasPermission($request, 'badOrders')) {
+            if (!$this->hasPermission($request, 'badOrders.create')) {
                 return $this->unauthorizedResponse();
             }
 
@@ -163,7 +163,7 @@ class InventoryReturnController extends Controller
     public function update(Request $request, $id)
     {
         try {
-            if (!$this->hasPermission($request, 'badOrders')) {
+            if (!$this->hasPermission($request, 'badOrders.create')) {
                 return $this->unauthorizedResponse();
             }
 

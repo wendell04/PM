@@ -6,6 +6,7 @@ import { useScrollToLatest } from '@/lib/useScrollToLatest';
 import { cloudinaryThumb } from '@/lib/cloudinaryImage';
 import PhotoLightbox from './PhotoLightbox';
 import OrderFormModal from './OrderFormModal';
+import OrderFormAnswers from './OrderFormAnswers';
 import { getMessages, sendMessage, markAsRead, sendHeartbeat, getConversations } from '../../lib/chatApi';
 import { getEcho } from '../../lib/echo';
 import './chat.css';
@@ -949,7 +950,7 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
                             <div className="quotation-card">
                               <div className="quotation-header">
                                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#d4a843" strokeWidth="2.5"><path d="M9 11l3 3L22 4" /><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" /></svg>
-                                <span className="quotation-tag">Order form</span>
+                                <span className="quotation-tag">{msg.metadata?.form?.name || 'Order form'}</span>
                               </div>
                               <div style={{ padding: '6px 12px 8px', fontSize: '0.84rem', color: 'var(--gray-light)', lineHeight: 1.5 }}>{msg.body}</div>
                               <div style={{ padding: '0 12px 10px' }}>
@@ -971,8 +972,6 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
                       // Their own answers, as sent.
                       if (msg.type === 'order_form_reply' && msg.metadata?.answers) {
                         const a = msg.metadata.answers;
-                        const lines = Array.isArray(a.lines) ? a.lines : [];
-                        const payLabel = { gcash: 'GCash', maya: 'Maya', card: 'Card', cash: 'Cash on pickup' }[a.payment] || a.payment;
                         return (
                           <div key={msgKey} style={{ display: 'flex', justifyContent: isMe ? 'flex-end' : 'flex-start' }}>
                             <div className="quotation-card">
@@ -980,17 +979,7 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
                                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#d4a843" strokeWidth="2.5"><path d="M9 11l3 3L22 4" /><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" /></svg>
                                 <span className="quotation-tag">Your order details</span>
                               </div>
-                              <div style={{ padding: '8px 12px', display: 'grid', gap: 4, fontSize: '0.82rem' }}>
-                                {lines.map((l, i) => (
-                                  <div key={i} style={{ fontWeight: 700, color: 'var(--white, #111)' }}>
-                                    {l.qty} x {l.item}{l.details ? <span style={{ fontWeight: 500, color: 'var(--gray)' }}> - {l.details}</span> : null}
-                                  </div>
-                                ))}
-                                <div style={{ color: 'var(--gray)', marginTop: 4 }}>
-                                  {a.shipment === 'pickup' ? 'Pickup at the shop' : `Deliver to ${a.address || ''}`} - pays by {payLabel}
-                                </div>
-                                {a.instructions ? <div style={{ color: 'var(--gray)', whiteSpace: 'pre-wrap' }}>{a.instructions}</div> : null}
-                              </div>
+                              <OrderFormAnswers a={a} />
                               <div className="quotation-timestamp">{formatTime(msg.created_at)}</div>
                             </div>
                           </div>

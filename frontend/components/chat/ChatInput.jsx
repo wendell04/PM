@@ -3,6 +3,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { containsProfanity } from '../../lib/profanity';
 import QuotationModal from './QuotationModal';
+import OrderFormSendModal from './OrderFormSendModal';
 import { createAdminQuotation } from '../../lib/orderRequestApi';
 import { compressImage, formatBytes } from '../../lib/compressImage';
 
@@ -22,7 +23,7 @@ const ChatInput = ({ onSendMessage, isSending, activeConversation, token, onTypi
   const [quotationSending, setQuotationSending] = useState(false);
   const [quotationError, setQuotationError] = useState('');
   const [quoteNote, setQuoteNote] = useState('');
-  const [formSending, setFormSending] = useState(false);
+  const [showFormPicker, setShowFormPicker] = useState(false);
   const fileInputRef = useRef(null);
 
   // "Send quotation" pressed on a filled order form card: open the modal with the answers in.
@@ -33,24 +34,6 @@ const ChatInput = ({ onSendMessage, isSending, activeConversation, token, onTypi
     setShowQuotation(true);
   }, [quotePrefill]);
 
-  const handleSendOrderForm = async () => {
-    const convId = activeConversation?._id;
-    if (!convId || formSending) return;
-    setFormSending(true);
-    try {
-      const res = await fetch(`${API_URL}/api/chat/conversations/${convId}/order-form`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
-      });
-      const d = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(d.message || 'Could not send the order form.');
-      onOrderFormSent?.(d.data ?? d);
-    } catch (err) {
-      setQuotationError(err.message || 'Could not send the order form.');
-    } finally {
-      setFormSending(false);
-    }
-  };
   const typingThrottleRef = useRef(null);
   const profanityTimerRef = useRef(null);
 
@@ -429,23 +412,31 @@ const ChatInput = ({ onSendMessage, isSending, activeConversation, token, onTypi
         {canQuote && (
           <button
             type="button"
-            disabled={isSending || isUploading || formSending}
-            onClick={handleSendOrderForm}
+            disabled={isSending || isUploading}
+            onClick={() => setShowFormPicker(true)}
             title="Send order form"
             style={{
               height: '34px', flexShrink: 0, padding: '0 12px',
               display: 'inline-flex', alignItems: 'center', gap: '6px',
               background: 'transparent', border: '1px solid rgba(255,255,255,0.18)', borderRadius: '999px',
               color: 'var(--gray-light, #ccc)', fontSize: '0.78rem', fontWeight: 700, whiteSpace: 'nowrap',
-              cursor: isSending || isUploading || formSending ? 'not-allowed' : 'pointer',
+              cursor: isSending || isUploading ? 'not-allowed' : 'pointer',
             }}
           >
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M9 11l3 3L22 4" /><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
             </svg>
-            {formSending ? 'Sending...' : 'Send order form'}
+            Send order form
           </button>
         )}
+
+        <OrderFormSendModal
+          open={showFormPicker}
+          onClose={() => setShowFormPicker(false)}
+          token={token}
+          conversationId={activeConversation?._id}
+          onSent={(m) => onOrderFormSent?.(m)}
+        />
 
         <input
           type="file"

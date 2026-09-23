@@ -296,7 +296,8 @@ class ReviewController extends Controller
     public function adminIndex(Request $request)
     {
         try {
-            if (!$this->isAdmin($request)) return $this->unauthorizedResponse();
+            // The Reviews row: reading needs See, hiding and deleting need Work.
+            if (!$this->hasPermission($request, 'reviews')) return $this->unauthorizedResponse();
 
             $perPage   = min((int) ($request->query('per_page', 20)), 100);
             $page      = max((int) ($request->query('page', 1)), 1);
@@ -365,7 +366,8 @@ class ReviewController extends Controller
     public function toggleVisibility(Request $request, $id)
     {
         try {
-            if (!$this->isAdmin($request)) return $this->unauthorizedResponse();
+            // The Reviews row: reading needs See, hiding and deleting need Work.
+            if (!$this->hasPermission($request, 'reviews')) return $this->unauthorizedResponse();
 
             $review = Review::find($id);
             if (!$review) return $this->notFoundResponse('Review');
@@ -387,7 +389,8 @@ class ReviewController extends Controller
     public function destroy(Request $request, $id)
     {
         try {
-            if (!$this->isAdmin($request)) return $this->unauthorizedResponse();
+            // The Reviews row: reading needs See, hiding and deleting need Work.
+            if (!$this->hasPermission($request, 'reviews')) return $this->unauthorizedResponse();
 
             $review = Review::find($id);
             if (!$review) return $this->notFoundResponse('Review');

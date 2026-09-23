@@ -10,10 +10,35 @@
  *
  * Built beside the old screens so they can be deleted once this is proven on real staff.
  */
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { S, ICONS, SummaryCard, EmptyState, CustomSelect, SearchBar, ToastContainer, useToast } from '../inventory-v2/shared';
+import { S, ICONS, SummaryCard, EmptyState, CustomSelect, SearchBar, ToastContainer, useToast, ConfirmModal } from '../inventory-v2/shared';
 import { useIsPhone, PhoneList, PhoneRow, PhoneSheet } from '@/components/dashboard/phone';
+
+// A long list cut to a few lines, with "Show all" only when something is actually hidden. An
+// administrator's access ran to twelve lines and pushed every other row off the screen.
+function Clamp({ lines = 3, children }) {
+  const ref = useRef(null);
+  const [open, setOpen] = useState(false);
+  const [over, setOver] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (el && !open) setOver(el.scrollHeight > el.clientHeight + 1);
+  }, [children, open]);
+  return (
+    <div>
+      <div ref={ref} style={open ? undefined : { display: '-webkit-box', WebkitLineClamp: lines, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+        {children}
+      </div>
+      {(over || open) && (
+        <button type="button" onClick={() => setOpen(o => !o)}
+          style={{ background: 'none', border: 'none', padding: 0, marginTop: 4, color: 'var(--gold)', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+          {open ? 'Show less' : 'Show all'}
+        </button>
+      )}
+    </div>
+  );
+}
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
@@ -21,7 +46,11 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 // Names: letters in any language, spaces, hyphens, apostrophes, periods - "Ma. Clara", "O'Neil",
 // "Dela Cruz-Santos". Anything else is dropped as it is typed rather than refused on save. The
 // server holds the same rule. Email: one real address, checked before it is sent.
-const NAME_MAX  = 50;
+// A name field has no standard to point at, so it is sized against real names: the longest
+// Filipino given names run to the mid-twenties, and 40 leaves room without letting the field be
+// typed into as if it were a notes box. The email cap is a different question - RFC 5321 allows
+// 254 characters, so trimming it to a name-sized number would refuse valid addresses.
+const NAME_MAX  = 40;
 const EMAIL_MAX = 100;
 const cleanName = (v) => String(v).replace(/[^\p{L}\s.'\-]/gu, '').replace(/\s{2,}/g, ' ').slice(0, NAME_MAX);
 const EMAIL_RE  = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
@@ -40,7 +69,11 @@ export default function AccessPage() {
   const isPhone = useIsPhone();
   const { toasts, push: toast, dismiss } = useToast();
 
-  const [groups,    setGroups]    = useState({});
+  // The same catalogue as rows - one per sidebar entry, each Off / See / Work plus a few extras.
+  const [rows,      setRows]      = useState({});
+  // One confirm for the whole page, opened by confirmAsk() and resolved by its two buttons.
+  const [ask, setAsk] = useState(null);
+  const confirmAsk = (opts) => new Promise(resolve => setAsk({ ...opts, resolve }));
   const [templates, setTemplates] = useState([]);
   const [staff,     setStaff]     = useState([]);
   const [loading,   setLoading]   = useState(true);
@@ -69,7 +102,7 @@ export default function AccessPage() {
       ]);
       if (!c.ok || !s.ok) throw new Error('Could not load access settings.');
       const cd = await c.json(), sd = await s.json();
-      setGroups(cd?.data?.groups ?? {});
+      setRows(cd?.data?.rows ?? {});
       setTemplates(cd?.data?.templates ?? []);
       setStaff(sd?.data ?? []);
     } catch (e) {
@@ -131,6 +164,23 @@ export default function AccessPage() {
 
   const save = async () => {
     if (!editing) return;
+    // A permission change alters what someone can do in the shop, so it is confirmed - with the
+    // change spelled out, not "Are you sure?".
+    if (!isNew) {
+      const { gains, losses } = describeChange(editing.permissions ?? {}, draft);
+      const renamed = editingRole && (editingRole.label || '').trim() !== (templates.find(t => t.role === editingRole.role)?.label ?? '');
+      if (!gains.length && !losses.length && !renamed) { toast?.('Nothing changed.', 'info'); return; }
+      const who = editingRole
+        ? `Everyone on ${editingRole.label || 'this template'}`
+        : editing.firstName;
+      const lines = [
+        ...(gains.length ? [`${who} will now have:`, ...gains.map(g => `- ${g}`)] : []),
+        ...(losses.length ? [`${gains.length ? '\n' : ''}${who} will no longer have:`, ...losses.map(l => `- ${l}`)] : []),
+        ...(renamed && !gains.length && !losses.length ? [`The role is renamed to "${(editingRole.label || '').trim()}".`] : []),
+      ];
+      if (!(await confirmAsk({ title: editingRole ? 'Save this role?' : `Save ${editing.firstName}'s access?`,
+        message: lines.join('\n'), confirmLabel: 'Save', confirmStyle: 'primary' }))) return;
+    }
     if (editingRole) { await saveRoleEdit(); return; }
     if (isNew) {
       const { firstName, lastName, email, role } = newFields;
@@ -157,7 +207,11 @@ export default function AccessPage() {
       // account back as a customer. Asked, never assumed.
       let promoted = false;
       if (res.status === 409 && d.code === 'customer_account') {
-        const ok = window.confirm(`${newFields.email} already has a customer account here.\n\nGive that same account staff access? They keep their password, their orders and can still shop. Removing them from staff later turns it back into a customer account.`);
+        const ok = await confirmAsk({
+          title: 'This email already shops here',
+          message: `${newFields.email} already has a customer account.\n\nGive that same account staff access? They keep their password and their orders, and can still shop. Removing them from staff later turns it back into a customer account.`,
+          confirmLabel: 'Give staff access', confirmStyle: 'primary',
+        });
         if (!ok) { setSaving(false); return; }
         res = await send(true);
         d = await res.json().catch(() => ({}));
@@ -182,7 +236,7 @@ export default function AccessPage() {
     const msg = row.fromCustomer
       ? `Remove ${row.firstName} from staff? Their account goes back to being a customer - they keep their orders and can still shop.`
       : `Remove ${row.firstName} from staff? Their dashboard login is closed.`;
-    if (!window.confirm(msg)) return;
+    if (!(await confirmAsk({ title: 'Remove from staff?', message: msg, confirmLabel: 'Remove' }))) return;
     try {
       const res = await fetchWithTimeout(`${API_URL}/api/admin/staff/${row.id}`, {
         method: 'DELETE', headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
@@ -219,7 +273,7 @@ export default function AccessPage() {
   const deleteRole = async (t) => {
     const who = holders(t.role);
     if (who.length) { toast?.(`${t.label} is still held by ${who.map(w => w.firstName).join(', ')}. Move them first.`, 'error'); return; }
-    if (!window.confirm(`Delete the role "${t.label}"? Nobody holds it.`)) return;
+    if (!(await confirmAsk({ title: 'Delete this role?', message: `"${t.label}" will be gone. Nobody holds it.`, confirmLabel: 'Delete role' }))) return;
     setRoleBusy(t.role);
     try {
       const res = await fetchWithTimeout(`${API_URL}/api/admin/role-permissions/${encodeURIComponent(t.role)}`, {
@@ -233,17 +287,73 @@ export default function AccessPage() {
     finally { setRoleBusy(''); }
   };
 
+  // A row's level, read from the grid: Work when every Work key is on, See when its See keys are,
+  // otherwise Off. The server keeps saved grids in whole levels, so nothing is "half Work".
+  const levelOf = (r, grid) => {
+    const on = (k) => !!(grid || {})[k];
+    if (r.work.keys.length && r.work.keys.every(on)) return 'work';
+    if (r.view.keys.length && r.view.keys.every(on)) return 'see';
+    return 'off';
+  };
+  const setLevel = (r, lvl) => setDraft(p => {
+    const n = { ...p };
+    if (lvl === 'off') {
+      [...r.view.keys, ...r.work.keys, ...Object.keys(r.extras || {})].forEach(k => { delete n[k]; });
+    } else {
+      r.view.keys.forEach(k => { n[k] = true; });
+      r.work.keys.forEach(k => { if (lvl === 'work') n[k] = true; else delete n[k]; });
+    }
+    return n;
+  });
+  // An extra needs its row open - ticking one turns See on with it.
+  const toggleExtra = (r, k, checked) => setDraft(p => {
+    const n = { ...p };
+    if (checked) { n[k] = true; r.view.keys.forEach(v => { n[v] = true; }); } else delete n[k];
+    return n;
+  });
+
+  // What a save would change, row by row, in words: "Orders: See to Work", "Refunds".
+  const describeChange = (before, after) => {
+    const rank = { off: 0, see: 1, work: 2 };
+    const word = { off: 'Off', see: 'See', work: 'Work' };
+    const gains = [], losses = [];
+    for (const r of Object.values(rows)) {
+      const lb = levelOf(r, before), la = levelOf(r, after);
+      if (lb !== la) (rank[la] > rank[lb] ? gains : losses).push(`${r.label}: ${word[lb]} to ${word[la]}`);
+      for (const [k, [label]] of Object.entries(r.extras || {})) {
+        if (after[k] && !before[k]) gains.push(label);
+        if (before[k] && !after[k]) losses.push(label);
+      }
+    }
+    return { gains, losses };
+  };
+
+  // One short line for a list: "Work in 14 · See in 6 · 9 extra".
+  const headline = (grid) => {
+    let work = 0, see = 0, extras = 0;
+    for (const r of Object.values(rows)) {
+      const l = levelOf(r, grid);
+      if (l === 'work') work++; else if (l === 'see') see++;
+      extras += Object.keys(r.extras || {}).filter(k => (grid || {})[k]).length;
+    }
+    const parts = [];
+    if (work) parts.push(`Work in ${work}`);
+    if (see) parts.push(`See in ${see}`);
+    if (extras) parts.push(`${extras} extra`);
+    return parts.length ? parts.join(' \u00b7 ') : 'Home and their own Settings only';
+  };
+
   // The plain-words summary. A grid of ticks tells you what was configured; this tells you what
   // the person can actually do, which is the question being asked.
   const summarise = (grid) => {
-    const on = Object.keys(grid || {}).filter(k => grid[k]);
-    if (!on.length) return 'Nothing yet - they can sign in and see nothing.';
-    const byGroup = [];
-    for (const [gk, g] of Object.entries(groups)) {
-      const hits = Object.keys(g.items || {}).filter(k => grid[k]);
-      if (hits.length) byGroup.push(`${g.label.toLowerCase()} (${hits.length})`);
+    const parts = [];
+    for (const r of Object.values(rows)) {
+      const lvl = levelOf(r, grid);
+      const ex = Object.keys(r.extras || {}).filter(k => (grid || {})[k]).map(k => r.extras[k][0].toLowerCase());
+      if (lvl === 'off' && !ex.length) continue;
+      parts.push(`${r.label} (${lvl === 'work' ? 'work' : 'see'}${ex.length ? ' + ' + ex.join(', ') : ''})`);
     }
-    return byGroup.join(', ');
+    return parts.length ? parts.join(', ') : 'Nothing yet - Home and their own Settings only.';
   };
 
   const filtered = useMemo(() => {
@@ -263,8 +373,8 @@ export default function AccessPage() {
   // type on every render, unmounted the form on each keystroke, and the box lost focus.
   const renderEditor = () => {
     if (!editing) return null;
-    const total = Object.values(groups).reduce((n, g) => n + Object.keys(g.items || {}).length, 0);
-    const on = Object.keys(draft).filter(k => draft[k]).length;
+    const total = Object.keys(rows).length;
+    const on = Object.values(rows).filter(r => levelOf(r, draft) !== 'off').length;
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         <div style={{ ...S.card, padding: '12px 14px' }}>
@@ -329,45 +439,71 @@ export default function AccessPage() {
               style={{ width: 190 }} />
             )}
             <button onClick={() => setDraft({})} style={S.btnSmGhost}>Clear all</button>
-            <span style={{ fontSize: 12, color: 'var(--gray)', marginLeft: 'auto' }}>{on} of {total} granted</span>
+            <span style={{ fontSize: 12, color: 'var(--gray)', marginLeft: 'auto' }}>{on} of {total} areas open</span>
           </div>
         </div>
 
-        {Object.entries(groups).map(([gk, g]) => {
-          const keys = Object.keys(g.items || {});
-          const allOn = keys.every(k => draft[k]);
-          return (
-            <div key={gk} style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
-              <div style={{ ...S.rowBetween, padding: '10px 14px', borderBottom: '1px solid var(--border)' }}>
-                <span style={{ minWidth: 0 }}>
-                  <span style={{ fontWeight: 700, fontSize: 13 }}>{g.label}</span>
-                  {g.note && <span style={{ display: 'block', fontSize: 11, color: 'var(--gray)', marginTop: 2 }}>{g.note}</span>}
-                </span>
-                <button onClick={() => setDraft(p => {
-                  const next = { ...p };
-                  keys.forEach(k => { if (allOn) delete next[k]; else next[k] = true; });
-                  return next;
-                })} style={S.btnSmGhost}>{allOn ? 'None' : 'All'}</button>
-              </div>
-              <div style={{ padding: '6px 14px 12px' }}>
-                {keys.map(k => {
-                  const [label, hint] = g.items[k];
-                  return (
-                    <label key={k} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '7px 0', cursor: 'pointer' }}>
-                      <input type="checkbox" checked={!!draft[k]}
-                        onChange={e => setDraft(p => { const n = { ...p }; if (e.target.checked) n[k] = true; else delete n[k]; return n; })}
-                        style={{ marginTop: 3, width: 16, height: 16, flexShrink: 0, accentColor: 'var(--gold)' }} />
-                      <span style={{ minWidth: 0 }}>
-                        <span style={{ fontSize: 13, color: 'var(--white)' }}>{label}</span>
-                        {hint && <span style={{ display: 'block', fontSize: 11, color: 'var(--gray)' }}>{hint}</span>}
+        {(() => {
+          // Sections in sidebar order; rows keep the order the server sends (the sidebar's).
+          const sections = [];
+          for (const [id, r] of Object.entries(rows)) {
+            let sec = sections.find(x => x.name === r.section);
+            if (!sec) { sec = { name: r.section, rows: [] }; sections.push(sec); }
+            sec.rows.push([id, r]);
+          }
+          const seg = (active) => ({
+            padding: '6px 12px', fontSize: 12, fontWeight: 700, border: 'none', cursor: 'pointer', minHeight: 32,
+            background: active ? 'var(--gold)' : 'transparent', color: active ? '#111' : 'var(--gray-light)',
+          });
+          return sections.map(sec => (
+            <div key={sec.name} style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
+              <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--border)', fontWeight: 700, fontSize: 12,
+                textTransform: 'uppercase', letterSpacing: '.6px', color: 'var(--gray)' }}>{sec.name}</div>
+              {sec.rows.map(([id, r], i) => {
+                const lvl = levelOf(r, draft);
+                const levels = r.work.keys.length ? ['off', 'see', 'work'] : ['off', 'see'];
+                const extras = Object.entries(r.extras || {});
+                return (
+                  <div key={id} style={{ padding: '10px 14px', borderTop: i === 0 ? 'none' : '1px solid var(--border)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                      <span style={{ flex: '1 1 160px', minWidth: 0 }}>
+                        <span style={{ fontWeight: 700, fontSize: 13, color: 'var(--white)' }}>{r.label}</span>
+                        {r.note && <span style={{ display: 'block', fontSize: 11, color: 'var(--gray)', marginTop: 2 }}>{r.note}</span>}
                       </span>
-                    </label>
-                  );
-                })}
-              </div>
+                      <div role="radiogroup" aria-label={r.label}
+                        style={{ display: 'inline-flex', border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden', flexShrink: 0 }}>
+                        {levels.map(l => (
+                          <button key={l} type="button" role="radio" aria-checked={lvl === l} onClick={() => setLevel(r, l)} style={seg(lvl === l)}>
+                            {l === 'off' ? 'Off' : l === 'see' ? 'See' : 'Work'}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    {lvl !== 'off' && (
+                      <div style={{ fontSize: 11.5, color: 'var(--gray)', marginTop: 5, lineHeight: 1.45 }}>
+                        {lvl === 'work' ? r.work.hint : r.view.hint}
+                      </div>
+                    )}
+                    {lvl !== 'off' && extras.length > 0 && (
+                      <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                        {extras.map(([k, [label, hint]]) => (
+                          <label key={k} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '5px 0', cursor: 'pointer' }}>
+                            <input type="checkbox" checked={!!draft[k]} onChange={e => toggleExtra(r, k, e.target.checked)}
+                              style={{ marginTop: 2, width: 16, height: 16, flexShrink: 0, accentColor: 'var(--gold)' }} />
+                            <span style={{ minWidth: 0 }}>
+                              <span style={{ fontSize: 12.5, color: 'var(--white)' }}>{label}</span>
+                              {hint && <span style={{ display: 'block', fontSize: 11, color: 'var(--gray)' }}>{hint}</span>}
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
-          );
-        })}
+          ));
+        })()}
 
         <div style={{ ...S.card, padding: '12px 14px', background: 'var(--dark2)' }}>
           <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 4 }}>What this means</div>
@@ -375,7 +511,8 @@ export default function AccessPage() {
             {editingRole ? 'Anyone on this template' : (editing.firstName || 'This person')} will be able to reach: <b>{summarise(draft)}</b>
           </div>
           <div style={{ fontSize: 11.5, color: 'var(--gray)', marginTop: 6, lineHeight: 1.55 }}>
-            A "See" tick is read only. To change anything in an area, tick one of that area's other boxes.
+            See is read only. Work is the everyday job on that page. The ticks under a row are the
+            risky actions - cancelling, refunds, deleting - and each is its own decision.
           </div>
         </div>
 
@@ -391,6 +528,15 @@ export default function AccessPage() {
 
   return (
     <div style={{ padding: isPhone ? '10px 0' : '0' }}>
+      <ConfirmModal
+        open={!!ask}
+        onClose={() => { ask?.resolve(false); setAsk(null); }}
+        onConfirm={() => { ask?.resolve(true); setAsk(null); }}
+        title={ask?.title}
+        message={ask?.message}
+        confirmLabel={ask?.confirmLabel ?? 'Confirm'}
+        confirmStyle={ask?.confirmStyle ?? 'danger'}
+      />
       <ToastContainer toasts={toasts} dismiss={dismiss} />
 
       {!editing && (
@@ -424,7 +570,7 @@ export default function AccessPage() {
                     {r.unlimited ? 'Unlimited' : r.source === 'person' ? 'Per person' : 'Template'}
                   </span>}
                   meta={<RoleBadge label={r.roleLabel} />}
-                  sub={r.unlimited ? 'Cannot be limited' : summarise(r.permissions)} />
+                  sub={r.unlimited ? 'Cannot be limited' : headline(r.permissions)} />
               ))}
             </PhoneList>
           ) : (
@@ -440,7 +586,12 @@ export default function AccessPage() {
                       </td>
                       <td style={S.td}><RoleBadge label={r.roleLabel} /></td>
                       <td style={{ ...S.td, fontSize: 12, color: 'var(--gray-light)', maxWidth: 340 }}>
-                        {r.unlimited ? <i style={{ color: 'var(--gold)' }}>Everything - the owner and super admin cannot be limited</i> : summarise(r.permissions)}
+                        {r.unlimited ? <i style={{ color: 'var(--gold)' }}>Everything - the owner and super admin cannot be limited</i> : (
+                          <>
+                            <div style={{ fontWeight: 700, color: 'var(--white)', marginBottom: 2 }}>{headline(r.permissions)}</div>
+                            <Clamp lines={3}>{summarise(r.permissions)}</Clamp>
+                          </>
+                        )}
                       </td>
                       <td style={{ ...S.td, fontSize: 11.5 }}>
                         <span style={{ padding: '2px 7px', borderRadius: 4, fontWeight: 700,
@@ -488,7 +639,6 @@ export default function AccessPage() {
               <div style={{ display: 'grid', gridTemplateColumns: isPhone ? '1fr' : 'repeat(auto-fill, minmax(260px, 1fr))', gap: 10, padding: 12 }}>
                 {templates.map(t => {
                   const who = holders(t.role);
-                  const n = Object.keys(t.permissions || {}).filter(k => t.permissions[k]).length;
                   return (
                     <div key={t.role} style={{ border: '1px solid var(--border)', borderRadius: 10, padding: '10px 12px', background: 'var(--dark)' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
@@ -502,7 +652,8 @@ export default function AccessPage() {
                         </button>
                         </span>
                       </div>
-                      <div style={{ fontSize: 11.5, color: 'var(--gray)', marginTop: 6 }}>{n} permission{n === 1 ? '' : 's'} - {summarise(t.permissions)}</div>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--white)', marginTop: 8 }}>{headline(t.permissions)}</div>
+                      <div style={{ fontSize: 11.5, color: 'var(--gray)', marginTop: 2 }}><Clamp lines={3}>{summarise(t.permissions)}</Clamp></div>
                       <div style={{ fontSize: 11.5, color: who.length ? 'var(--white)' : 'var(--gray)', marginTop: 4 }}>
                         {who.length ? `Held by ${who.map(w => w.firstName).join(', ')}` : 'Nobody holds it'}
                       </div>

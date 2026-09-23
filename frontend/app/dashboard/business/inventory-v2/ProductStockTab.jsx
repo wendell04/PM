@@ -2,6 +2,7 @@
 import { useMemo, useState } from 'react';
 import { useIsPhone, KpiStrip, PhoneFilterBar, PhoneList, PhoneRow, PhoneSheet } from '@/components/dashboard/phone';
 import { S, SearchBar, EmptyState, SummaryCard, StatusBadge, PaginationBar, usePagination, CustomSelect } from './shared';
+import { useAccess } from '@/contexts/AccessContext';
 
 // Availability is stock MINUS what open orders already hold. Counting raw stockQty made this screen
 // say "100 can build" while the storefront said "Only 10 left" off the same materials, with nothing on
@@ -335,6 +336,7 @@ function shipCompleteAcross(variants, matMap) {
 }
 
 function DetailPanel({ variants, matMap }) {
+  const { can } = useAccess();
   const pooled = shipCompleteAcross(variants, matMap);
   const buildable = variants.reduce((s, v) => s + (v.producible ?? 0), 0);
   // Never more than the blanks allow: a shelf of 344 sheets does not make 344 mugs, it covers
@@ -354,7 +356,7 @@ function DetailPanel({ variants, matMap }) {
           <div style={{ fontSize:'11px', color:'var(--gray)' }}>
             <b style={{ color:'var(--gray-light)' }}>{pooled.name}</b> is short
             {pooled.toCoverAll > 0 && <> by <b style={{ color:'var(--gray-light)' }}>{pooled.toCoverAll} {pooled.uom}</b></>}.
-            {' '}<a href="/dashboard/business/to-buy" style={{ color:'var(--gold)', fontWeight:700, textDecoration:'none' }}>Open To Buy</a>
+            {can('toBuy') && <>{' '}<a href="/dashboard/business/to-buy" style={{ color:'var(--gold)', fontWeight:700, textDecoration:'none' }}>Open To Buy</a></>}
           </div>
         </div>
       )}

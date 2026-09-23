@@ -878,7 +878,7 @@ class OrderController extends Controller
     public function remindBalance(Request $request, $id)
     {
         try {
-            if (!$this->hasPermission($request, 'orders.edit')) {
+            if (!$this->hasAnyPermission($request, ['payments.create', 'orders.edit'])) {
                 return $this->forbiddenResponse();
             }
 
@@ -1069,7 +1069,7 @@ class OrderController extends Controller
     public function orderCostOfGoods(Request $request)
     {
         try {
-            if (!$this->hasPermission($request, 'orders')) {
+            if (!$this->hasAnyPermission($request, ['orders.view', 'payments.view'])) {
                 return $this->forbiddenResponse();
             }
 
@@ -1103,7 +1103,7 @@ class OrderController extends Controller
     public function adminIndex(Request $request)
     {
         try {
-            if (!$this->hasAnyPermission($request, ['orders', 'design.view'])) {
+            if (!$this->hasAnyPermission($request, ['orders.view', 'payments.view', 'jobOrders.view'])) {
                 return $this->unauthorizedResponse();
             }
 
@@ -1751,7 +1751,7 @@ class OrderController extends Controller
     public function stats(Request $request)
     {
         try {
-            if (!$this->hasPermission($request, 'orders')) {
+            if (!$this->hasPermission($request, 'orders.view')) {
                 return $this->unauthorizedResponse();
             }
 
@@ -2113,7 +2113,7 @@ class OrderController extends Controller
     public function unarchive(Request $request, $id)
     {
         try {
-            if (!$this->hasPermission($request, 'orders.edit')) {
+            if (!$this->hasPermission($request, 'orders.delete')) {
                 return response()->json(['error' => 'Forbidden'], 403);
             }
 
@@ -2225,7 +2225,7 @@ class OrderController extends Controller
                 return response()->json(['error' => 'Unauthorized'], 401);
             }
 
-            if (!$this->hasAnyPermission($request, ['orders', 'design.view'])) {
+            if (!$this->hasAnyPermission($request, ['orders.view', 'payments.view', 'jobOrders.view'])) {
                 return $this->unauthorizedResponse();
             }
 
@@ -2288,6 +2288,13 @@ class OrderController extends Controller
             $newRaw    = $validated['orderStatus'];
             $oldStatus = OrderStatus::normalize($order->orderStatus);
             $newStatus = OrderStatus::normalize($newRaw);
+
+            // Cancelling is its own decision ("Cancel and archive orders"), not part of moving an
+            // order along - a paid order cancelled is money owed back.
+            if (in_array($newStatus, ['cancelled', 'returned'], true) && $newStatus !== $oldStatus
+                && !$this->hasPermission($request, 'orders.delete')) {
+                return response()->json(['message' => 'Cancelling an order needs the "Cancel and archive orders" permission.'], 403);
+            }
 
             if (!in_array($newStatus, OrderStatus::all(), true)) {
                 return response()->json([
@@ -2632,7 +2639,7 @@ class OrderController extends Controller
     public function cancelSettlement(Request $request, $id)
     {
         try {
-            if (!$this->hasPermission($request, 'orders.edit')) {
+            if (!$this->hasPermission($request, 'orders.delete')) {
                 return $this->unauthorizedResponse();
             }
             $order = Order::find($id);
@@ -3679,6 +3686,9 @@ class OrderController extends Controller
     public function convertToDesignJob(Request $request, $id)
     {
         try {
+            if (!$this->hasAnyPermission($request, ['orders.edit'])) {
+                return $this->unauthorizedResponse();
+            }
             $user = $request->user();
             if (!in_array($user->role ?? null, ['admin', 'owner', 'superAdmin'], true)) {
                 return $this->unauthorizedResponse();
@@ -3831,7 +3841,7 @@ class OrderController extends Controller
             // Design work no longer requires the right to run the whole order. A designer needed
             // orders.edit, which also grants cancelling orders and touching refunds.
             // orders.edit stays accepted so nobody who can do this today loses it.
-            if (!$this->hasAnyPermission($request, ['design.approve', 'orders.edit'])) {
+            if (!$this->hasPermission($request, 'design.approve')) {
                 return $this->unauthorizedResponse();
             }
 
@@ -3955,7 +3965,7 @@ class OrderController extends Controller
             // Design work no longer requires the right to run the whole order. A designer needed
             // orders.edit, which also grants cancelling orders and touching refunds.
             // orders.edit stays accepted so nobody who can do this today loses it.
-            if (!$this->hasAnyPermission($request, ['design.approve', 'orders.edit'])) {
+            if (!$this->hasPermission($request, 'design.approve')) {
                 return $this->unauthorizedResponse();
             }
 
@@ -4031,7 +4041,7 @@ class OrderController extends Controller
             // Design work no longer requires the right to run the whole order. A designer needed
             // orders.edit, which also grants cancelling orders and touching refunds.
             // orders.edit stays accepted so nobody who can do this today loses it.
-            if (!$this->hasAnyPermission($request, ['design.approve', 'orders.edit'])) {
+            if (!$this->hasPermission($request, 'design.approve')) {
                 return $this->unauthorizedResponse();
             }
 
@@ -4780,7 +4790,7 @@ class OrderController extends Controller
     {
         try {
             $user = $request->user();
-            if (!$this->hasAnyPermission($request, ['design.proof', 'orders.edit'])) {
+            if (!$this->hasPermission($request, 'design.proof')) {
                 return $this->unauthorizedResponse();
             }
 
@@ -5054,7 +5064,7 @@ class OrderController extends Controller
     {
         try {
             $user = $request->user();
-            if (!$this->hasAnyPermission($request, ['design.approve', 'orders.edit'])) {
+            if (!$this->hasPermission($request, 'design.approve')) {
                 return $this->unauthorizedResponse();
             }
 

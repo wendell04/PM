@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useAccess } from '@/contexts/AccessContext';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import { remainingDue, paidSoFar } from '@/lib/orderBalance';
 import ErrorBoundary from '@/components/ErrorBoundary';
@@ -93,6 +94,8 @@ function StatusBadge({ status }) {
 
 export default function PaymentsPage() {
   const { token } = useAuth();
+  // Payments Work records money received; See reads who paid and who owes.
+  const mayRecord = useAccess().can('payments.create');
 
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -184,7 +187,11 @@ export default function PaymentsPage() {
       : statusFilter === 'outstanding' ? balanceOf(o) > 0
       : st === statusFilter;
 
-    const matchAge = ageFilter === 'all' || (balanceOf(o) > 0 && bucketOf(o).key === ageFilter);
+    // How old the ORDER is, not how old the debt is. Requiring a balance here meant "Paid" and an
+    // age together could never match anything - a paid order owes nothing, so it fell out of every
+    // bucket and the table sat empty over a page reporting 19,116.78 collected. The ageing cards
+    // above still count receivables only; they filter by status as well, so they are unaffected.
+    const matchAge = ageFilter === 'all' || bucketOf(o).key === ageFilter;
     return matchSearch && matchStatus && matchAge;
   }).sort((a, b) => {
     if (sortBy === 'balance') return balanceOf(b) - balanceOf(a);
@@ -194,6 +201,18 @@ export default function PaymentsPage() {
   });
 
   const { slice, page, perPage, total, setPage, setPerPage } = usePagination(filtered, 15);
+
+  // "Nothing outstanding" is only true when outstanding is what was asked for. Under any other
+  // filter it reads as a fact about the shop's money rather than about the filters, which is how
+  // an empty table under "Paid" looked like lost orders.
+  const emptyMessage = search.trim() !== '' ? 'No match'
+    : statusFilter === 'outstanding' ? 'Nothing outstanding'
+    : statusFilter === 'paid' ? 'No fully paid orders here'
+    : 'No orders here';
+  const emptySub = search.trim() !== '' ? 'No order number or customer matches that search.'
+    : statusFilter === 'outstanding' ? 'Orders with an unpaid balance appear here.'
+    : ageFilter !== 'all' ? 'Nothing in this age range. Try Any age.'
+    : 'Try a different filter.';
 
   const totalValue     = orders.reduce((s, o) => s + Number(o.totalAmount ?? 0), 0);
   const totalCollected = orders.reduce((s, o) => s + paidSoFar(o), 0);
@@ -288,14 +307,14 @@ export default function PaymentsPage() {
             {loading ? (
               <div style={{ ...S.card, padding: '28px 16px', textAlign: 'center', color: 'var(--gray)', fontSize: 13 }}>Loading</div>
             ) : slice.length === 0 ? (
-              <div style={{ ...S.card, padding: 0 }}><EmptyState message="Nothing outstanding" sub="Orders with an unpaid balance appear here." /></div>
+              <div style={{ ...S.card, padding: 0 }}><EmptyState message={emptyMessage} sub={emptySub} /></div>
             ) : (
               <PhoneList>
                 {slice.map((o, i) => {
                   const bal = balanceOf(o);
                   return (
                     <PhoneRow key={o._id || o.id} first={i === 0}
-                      onClick={() => bal > 0 ? openRecordPayment(o) : (o.paymentHistory?.length > 0 ? setHistoryOrder(o) : null)}
+                      onClick={() => (bal > 0 && mayRecord) ? openRecordPayment(o) : (o.paymentHistory?.length > 0 ? setHistoryOrder(o) : null)}
                       title={orderNo(o)}
                       chip={<span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>{o.isArchived && <ArchivedTag />}<StatusBadge status={o.paymentStatus || 'unpaid'} /></span>}
                       meta={customerOf(o)}
@@ -330,7 +349,7 @@ export default function PaymentsPage() {
                   ))}
                 </>
               ) : slice.length === 0 ? (
-                <tr><td colSpan={8} data-rt="full" style={{ padding: 0 }}><EmptyState message="Nothing outstanding" sub="Orders with an unpaid balance appear here." /></td></tr>
+                <tr><td colSpan={8} data-rt="full" style={{ padding: 0 }}><EmptyState message={emptyMessage} sub={emptySub} /></td></tr>
               ) : slice.map(o => {
                 const bal = balanceOf(o);
                 const bk = bucketOf(o);
@@ -354,7 +373,7 @@ export default function PaymentsPage() {
                       {(o.paymentHistory?.length > 0) && (
                         <button onClick={() => setHistoryOrder(o)} style={S.btnSmGhost}>History</button>
                       )}
-                      {bal > 0 && (
+                      {mayRecord && bal > 0 && (
                         <button onClick={() => openRecordPayment(o)} style={{ ...S.btnSm, marginLeft: 6 }}>Record</button>
                       )}
                     </td>

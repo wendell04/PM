@@ -4758,6 +4758,7 @@ html.light .shop-active-clear:hover { color: #111; }
 .shop-qv-variant-oos { color: #ef4444; font-size: 0.75rem; }
 .shop-qv-variant-low { color: #f59e0b; font-size: 0.75rem; }
 
+
 .shop-qv-qty { display: flex; align-items: center; width: fit-content; }
 .shop-qv-qty button {
   width: 38px;
@@ -5742,9 +5743,13 @@ html.light .shop-search-suggest-name { color: #111; }
 
 /* A phone page never scrolls sideways. Anything wider than the screen is a bug in that element,
    and it is contained there instead of dragging the header and every card out with it. Long
-   unbroken strings (filenames, URLs, codes) wrap rather than widen. */
+   unbroken strings (filenames, URLs, codes) wrap rather than widen.
+   `clip`, on body only - never `hidden` on html and body together. That pair turns body into its
+   own scroll box, and with the global `overscroll-behavior: none` on body the page could not
+   scroll at all: every swipe and wheel landed on a box with nothing to scroll and was not passed
+   on. `clip` cuts the overflow without making a scroll box. */
 @media (max-width: 768px) {
-  html, body { overflow-x: hidden; }
+  body { overflow-x: clip; }
   p, span, a, li, td, th { overflow-wrap: anywhere; }
 }
 
