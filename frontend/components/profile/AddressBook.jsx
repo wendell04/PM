@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import { useAuth } from '../../contexts/AuthContext';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
@@ -201,8 +201,14 @@ export default function AddressBook({ onSaved, initialEditAddress }) {
     return () => { cancelled = true; };
   }, []);
 
-  // Device location (best-effort) → shows the Grab-style distance next to each search result. Silent if denied.
-  useEffect(() => {
+  // Device location, asked for only when the search it serves is actually used. It buys one
+  // thing - the distance beside each result - and asking on page load put a permission prompt in
+  // front of people who had not typed anything yet, for a feature they could not see. It does not
+  // fill the address: that comes from the search result or the dropdowns below.
+  const askedForLocation = useRef(false);
+  const askForLocation = useCallback(() => {
+    if (askedForLocation.current) return;
+    askedForLocation.current = true;
     if (typeof navigator === 'undefined' || !navigator.geolocation) return;
     navigator.geolocation.getCurrentPosition(
       pos => setUserLoc({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
@@ -791,7 +797,7 @@ export default function AddressBook({ onSaved, initialEditAddress }) {
               <input
                 type="text"
                 value={addressSearch}
-                onChange={e => handleSearchChange(e.target.value.slice(0, 200))}
+                onChange={e => { askForLocation(); handleSearchChange(e.target.value.slice(0, 200)); }}
                 maxLength={200}
                 onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}
                 onBlur={() => setTimeout(() => setShowSuggestions(false), 160)}

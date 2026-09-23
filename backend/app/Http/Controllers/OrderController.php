@@ -3559,7 +3559,26 @@ class OrderController extends Controller
      *  itemIndex is present but invalid. Leaves order-level handling to the caller when null. */
     private function applyItemDesignStatus(Order $order, $itemIndex, string $status, array $extra = []): bool
     {
-        if ($itemIndex === null || !is_numeric($itemIndex)) return true; // order-level path
+        // Order-level: the customer answered the proof that was sent them, so every line still
+        // waiting on that answer takes it. Returning here left the lines at proof_sent, and the
+        // screens that ask for a decision read the line, not the order.
+        if ($itemIndex === null || !is_numeric($itemIndex)) {
+            $items = $order->items ?? [];
+            $touched = false;
+            foreach ($items as $i => $it) {
+                $cur = (string) ($it['designStatus'] ?? '');
+                if (in_array($cur, ['draft_ready', 'proof_sent'], true)) {
+                    $items[$i]['designStatus'] = $status;
+                    foreach ($extra as $k => $v) { $items[$i][$k] = $v; }
+                    $touched = true;
+                }
+            }
+            if ($touched) {
+                $order->items = array_values($items);
+                $this->syncDesignAggregate($order);
+            }
+            return true;
+        }
         $items = $order->items ?? [];
         $idx   = (int) $itemIndex;
         if (!isset($items[$idx])) return false;
