@@ -9,7 +9,7 @@ import {
 import { useIsPhone, KpiStrip, PhoneFilterBar, PhoneList, PhoneRow } from '@/components/dashboard/phone';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import { loadInventory } from '../inventory-v2/api';
-import { S, EmptyState, SummaryCard, SearchBar, CustomSelect } from '../inventory-v2/shared';
+import { S, EmptyState, SummaryCard, SearchBar, CustomSelect, ConfirmModal } from '../inventory-v2/shared';
 import QuotationModal from '@/components/chat/QuotationModal';
 
 // Same base the request helpers use - the picker calls one endpoint directly.
@@ -179,6 +179,7 @@ export default function OrderRequestsPage() {
   const { can, owner } = useAccess();
   const mayQuote = can('orderRequests.create');
   const mayClose = can('orderRequests.approve');
+  const [confirmClose, setConfirmClose] = useState(false);
   const { token } = useAuth();
   const [requests, setRequests] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -1053,7 +1054,7 @@ export default function OrderRequestsPage() {
                         {submitting ? 'Sending...' : stageOf(selectedRequest) === 'ask' ? 'Send quotation' : stageOf(selectedRequest) === 'expired' ? 'Send again' : 'Update and re-send'}
                       </button>)}
                       {mayClose && (<button
-                        onClick={() => { if (window.confirm('Close this request? The customer will not be able to pay it.')) handleSubmitUpdate('close'); }}
+                        onClick={() => setConfirmClose(true)}
                         disabled={submitting}
                         style={{ flex: '1 1 120px', padding: '0.75rem', background: 'transparent', color: 'var(--red)', border: '1px solid rgba(196,30,58,0.4)', borderRadius: '8px', fontWeight: 700, fontSize: '0.875rem', cursor: submitting ? 'not-allowed' : 'pointer' }}
                       >
@@ -1084,6 +1085,16 @@ export default function OrderRequestsPage() {
           </div>
         </div>
       )}
+
+      {/* The shop's own confirmation, over the quotation - not the browser's alert box. */}
+      <ConfirmModal
+        open={confirmClose && !!selectedRequest}
+        onClose={() => setConfirmClose(false)}
+        onConfirm={() => { setConfirmClose(false); handleSubmitUpdate('close'); }}
+        title={selectedRequest && stageOf(selectedRequest) === 'ask' ? 'Decline this request?' : 'Cancel this quotation?'}
+        message="The customer will not be able to pay it."
+        confirmLabel={selectedRequest && stageOf(selectedRequest) === 'ask' ? 'Decline' : 'Cancel quotation'}
+      />
     </div>
     </ErrorBoundary>
   );

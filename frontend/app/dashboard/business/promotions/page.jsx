@@ -729,8 +729,14 @@ function FlashSalesTab({ token }) {
       // A loss leader is a real tactic - it just must never happen by accident.
       if (res.status === 422 && data.code === 'below_cost') {
         setSaving(false);
-        if (window.confirm(data.message)) return handleSubmit(true);
-        setFormError(data.message);
+        // The shop's own modal, not the browser's: it names the loss and waits for a yes.
+        setConfirmModal({
+          title: 'Sell below cost?',
+          message: data.message,
+          confirmLabel: 'Yes, sell below cost',
+          onConfirm: () => { setConfirmModal(null); handleSubmit(true); },
+          onCancel: () => { setConfirmModal(null); setFormError(data.message); },
+        });
         return;
       }
       if (!res.ok) { setFormError(data.message || 'Something went wrong.'); return; }
@@ -918,11 +924,11 @@ function FlashSalesTab({ token }) {
       {confirmModal && (
         <ConfirmModal
           open
-          onClose={() => setConfirmModal(null)}
+          onClose={confirmModal.onCancel ?? (() => setConfirmModal(null))}
           onConfirm={confirmModal.onConfirm}
-          title="Delete this flash sale?"
+          title={confirmModal.title ?? 'Delete this flash sale?'}
           message={confirmModal.message}
-          confirmLabel="Delete"
+          confirmLabel={confirmModal.confirmLabel ?? 'Delete'}
         />
       )}
     </>

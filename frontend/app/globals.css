@@ -112,9 +112,14 @@
 
    Note the @supports guard: in Chrome 121+ setting `scrollbar-width` switches to
    the native scrollbar and every ::-webkit rule below is ignored, arrows included.
-   So the standard property is only applied where the pseudo-elements do not exist. */
+   So the standard property is only applied where the pseudo-elements do not exist.
+
+   The thumb had the border colour - 8 to 10 percent - and on a long page it was hard to see where
+   you were. A half-transparent mid grey reads on light and dark grounds alike, so one value
+   serves both themes. */
+:root { --scroll-thumb: rgba(128, 128, 128, 0.42); --scroll-thumb-hover: rgba(128, 128, 128, 0.7); }
 @supports not selector(::-webkit-scrollbar) {
-  * { scrollbar-width: thin; scrollbar-color: var(--border, #d8dbe0) transparent; }
+  * { scrollbar-width: thin; scrollbar-color: var(--scroll-thumb) transparent; }
 }
 
 ::-webkit-scrollbar { width: 10px; height: 10px; }
@@ -122,14 +127,14 @@
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-corner { background: transparent; }
 ::-webkit-scrollbar-thumb {
-  background: var(--border, #d8dbe0);
+  background: var(--scroll-thumb);
   border-radius: 6px;
   border: 3px solid transparent;
   background-clip: content-box;
   min-height: 40px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--gray, #8a9099);
+  background: var(--scroll-thumb-hover);
   background-clip: content-box;
 }
 

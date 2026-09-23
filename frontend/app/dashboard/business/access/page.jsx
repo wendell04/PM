@@ -10,10 +10,35 @@
  *
  * Built beside the old screens so they can be deleted once this is proven on real staff.
  */
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { S, ICONS, SummaryCard, EmptyState, CustomSelect, SearchBar, ToastContainer, useToast } from '../inventory-v2/shared';
+import { S, ICONS, SummaryCard, EmptyState, CustomSelect, SearchBar, ToastContainer, useToast, ConfirmModal } from '../inventory-v2/shared';
 import { useIsPhone, PhoneList, PhoneRow, PhoneSheet } from '@/components/dashboard/phone';
+
+// A long list cut to a few lines, with "Show all" only when something is actually hidden. An
+// administrator's access ran to twelve lines and pushed every other row off the screen.
+function Clamp({ lines = 3, children }) {
+  const ref = useRef(null);
+  const [open, setOpen] = useState(false);
+  const [over, setOver] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (el && !open) setOver(el.scrollHeight > el.clientHeight + 1);
+  }, [children, open]);
+  return (
+    <div>
+      <div ref={ref} style={open ? undefined : { display: '-webkit-box', WebkitLineClamp: lines, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+        {children}
+      </div>
+      {(over || open) && (
+        <button type="button" onClick={() => setOpen(o => !o)}
+          style={{ background: 'none', border: 'none', padding: 0, marginTop: 4, color: 'var(--gold)', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+          {open ? 'Show less' : 'Show all'}
+        </button>
+      )}
+    </div>
+  );
+}
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
@@ -42,6 +67,9 @@ export default function AccessPage() {
 
   // The same catalogue as rows - one per sidebar entry, each Off / See / Work plus a few extras.
   const [rows,      setRows]      = useState({});
+  // One confirm for the whole page, opened by confirmAsk() and resolved by its two buttons.
+  const [ask, setAsk] = useState(null);
+  const confirmAsk = (opts) => new Promise(resolve => setAsk({ ...opts, resolve }));
   const [templates, setTemplates] = useState([]);
   const [staff,     setStaff]     = useState([]);
   const [loading,   setLoading]   = useState(true);
@@ -132,6 +160,23 @@ export default function AccessPage() {
 
   const save = async () => {
     if (!editing) return;
+    // A permission change alters what someone can do in the shop, so it is confirmed - with the
+    // change spelled out, not "Are you sure?".
+    if (!isNew) {
+      const { gains, losses } = describeChange(editing.permissions ?? {}, draft);
+      const renamed = editingRole && (editingRole.label || '').trim() !== (templates.find(t => t.role === editingRole.role)?.label ?? '');
+      if (!gains.length && !losses.length && !renamed) { toast?.('Nothing changed.', 'info'); return; }
+      const who = editingRole
+        ? `Everyone on ${editingRole.label || 'this template'}`
+        : editing.firstName;
+      const lines = [
+        ...(gains.length ? [`${who} will now have:`, ...gains.map(g => `- ${g}`)] : []),
+        ...(losses.length ? [`${gains.length ? '\n' : ''}${who} will no longer have:`, ...losses.map(l => `- ${l}`)] : []),
+        ...(renamed && !gains.length && !losses.length ? [`The role is renamed to "${(editingRole.label || '').trim()}".`] : []),
+      ];
+      if (!(await confirmAsk({ title: editingRole ? 'Save this role?' : `Save ${editing.firstName}'s access?`,
+        message: lines.join('\n'), confirmLabel: 'Save', confirmStyle: 'primary' }))) return;
+    }
     if (editingRole) { await saveRoleEdit(); return; }
     if (isNew) {
       const { firstName, lastName, email, role } = newFields;
@@ -158,7 +203,11 @@ export default function AccessPage() {
       // account back as a customer. Asked, never assumed.
       let promoted = false;
       if (res.status === 409 && d.code === 'customer_account') {
-        const ok = window.confirm(`${newFields.email} already has a customer account here.\n\nGive that same account staff access? They keep their password, their orders and can still shop. Removing them from staff later turns it back into a customer account.`);
+        const ok = await confirmAsk({
+          title: 'This email already shops here',
+          message: `${newFields.email} already has a customer account.\n\nGive that same account staff access? They keep their password and their orders, and can still shop. Removing them from staff later turns it back into a customer account.`,
+          confirmLabel: 'Give staff access', confirmStyle: 'primary',
+        });
         if (!ok) { setSaving(false); return; }
         res = await send(true);
         d = await res.json().catch(() => ({}));
@@ -183,7 +232,7 @@ export default function AccessPage() {
     const msg = row.fromCustomer
       ? `Remove ${row.firstName} from staff? Their account goes back to being a customer - they keep their orders and can still shop.`
       : `Remove ${row.firstName} from staff? Their dashboard login is closed.`;
-    if (!window.confirm(msg)) return;
+    if (!(await confirmAsk({ title: 'Remove from staff?', message: msg, confirmLabel: 'Remove' }))) return;
     try {
       const res = await fetchWithTimeout(`${API_URL}/api/admin/staff/${row.id}`, {
         method: 'DELETE', headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
@@ -220,7 +269,7 @@ export default function AccessPage() {
   const deleteRole = async (t) => {
     const who = holders(t.role);
     if (who.length) { toast?.(`${t.label} is still held by ${who.map(w => w.firstName).join(', ')}. Move them first.`, 'error'); return; }
-    if (!window.confirm(`Delete the role "${t.label}"? Nobody holds it.`)) return;
+    if (!(await confirmAsk({ title: 'Delete this role?', message: `"${t.label}" will be gone. Nobody holds it.`, confirmLabel: 'Delete role' }))) return;
     setRoleBusy(t.role);
     try {
       const res = await fetchWithTimeout(`${API_URL}/api/admin/role-permissions/${encodeURIComponent(t.role)}`, {
@@ -258,6 +307,37 @@ export default function AccessPage() {
     if (checked) { n[k] = true; r.view.keys.forEach(v => { n[v] = true; }); } else delete n[k];
     return n;
   });
+
+  // What a save would change, row by row, in words: "Orders: See to Work", "Refunds".
+  const describeChange = (before, after) => {
+    const rank = { off: 0, see: 1, work: 2 };
+    const word = { off: 'Off', see: 'See', work: 'Work' };
+    const gains = [], losses = [];
+    for (const r of Object.values(rows)) {
+      const lb = levelOf(r, before), la = levelOf(r, after);
+      if (lb !== la) (rank[la] > rank[lb] ? gains : losses).push(`${r.label}: ${word[lb]} to ${word[la]}`);
+      for (const [k, [label]] of Object.entries(r.extras || {})) {
+        if (after[k] && !before[k]) gains.push(label);
+        if (before[k] && !after[k]) losses.push(label);
+      }
+    }
+    return { gains, losses };
+  };
+
+  // One short line for a list: "Work in 14 · See in 6 · 9 extra".
+  const headline = (grid) => {
+    let work = 0, see = 0, extras = 0;
+    for (const r of Object.values(rows)) {
+      const l = levelOf(r, grid);
+      if (l === 'work') work++; else if (l === 'see') see++;
+      extras += Object.keys(r.extras || {}).filter(k => (grid || {})[k]).length;
+    }
+    const parts = [];
+    if (work) parts.push(`Work in ${work}`);
+    if (see) parts.push(`See in ${see}`);
+    if (extras) parts.push(`${extras} extra`);
+    return parts.length ? parts.join(' \u00b7 ') : 'Home and their own Settings only';
+  };
 
   // The plain-words summary. A grid of ticks tells you what was configured; this tells you what
   // the person can actually do, which is the question being asked.
@@ -444,6 +524,15 @@ export default function AccessPage() {
 
   return (
     <div style={{ padding: isPhone ? '10px 0' : '0' }}>
+      <ConfirmModal
+        open={!!ask}
+        onClose={() => { ask?.resolve(false); setAsk(null); }}
+        onConfirm={() => { ask?.resolve(true); setAsk(null); }}
+        title={ask?.title}
+        message={ask?.message}
+        confirmLabel={ask?.confirmLabel ?? 'Confirm'}
+        confirmStyle={ask?.confirmStyle ?? 'danger'}
+      />
       <ToastContainer toasts={toasts} dismiss={dismiss} />
 
       {!editing && (
@@ -477,7 +566,7 @@ export default function AccessPage() {
                     {r.unlimited ? 'Unlimited' : r.source === 'person' ? 'Per person' : 'Template'}
                   </span>}
                   meta={<RoleBadge label={r.roleLabel} />}
-                  sub={r.unlimited ? 'Cannot be limited' : summarise(r.permissions)} />
+                  sub={r.unlimited ? 'Cannot be limited' : headline(r.permissions)} />
               ))}
             </PhoneList>
           ) : (
@@ -493,7 +582,12 @@ export default function AccessPage() {
                       </td>
                       <td style={S.td}><RoleBadge label={r.roleLabel} /></td>
                       <td style={{ ...S.td, fontSize: 12, color: 'var(--gray-light)', maxWidth: 340 }}>
-                        {r.unlimited ? <i style={{ color: 'var(--gold)' }}>Everything - the owner and super admin cannot be limited</i> : summarise(r.permissions)}
+                        {r.unlimited ? <i style={{ color: 'var(--gold)' }}>Everything - the owner and super admin cannot be limited</i> : (
+                          <>
+                            <div style={{ fontWeight: 700, color: 'var(--white)', marginBottom: 2 }}>{headline(r.permissions)}</div>
+                            <Clamp lines={3}>{summarise(r.permissions)}</Clamp>
+                          </>
+                        )}
                       </td>
                       <td style={{ ...S.td, fontSize: 11.5 }}>
                         <span style={{ padding: '2px 7px', borderRadius: 4, fontWeight: 700,
@@ -541,7 +635,6 @@ export default function AccessPage() {
               <div style={{ display: 'grid', gridTemplateColumns: isPhone ? '1fr' : 'repeat(auto-fill, minmax(260px, 1fr))', gap: 10, padding: 12 }}>
                 {templates.map(t => {
                   const who = holders(t.role);
-                  const n = Object.keys(t.permissions || {}).filter(k => t.permissions[k]).length;
                   return (
                     <div key={t.role} style={{ border: '1px solid var(--border)', borderRadius: 10, padding: '10px 12px', background: 'var(--dark)' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
@@ -555,7 +648,8 @@ export default function AccessPage() {
                         </button>
                         </span>
                       </div>
-                      <div style={{ fontSize: 11.5, color: 'var(--gray)', marginTop: 6 }}>{n} permission{n === 1 ? '' : 's'} - {summarise(t.permissions)}</div>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--white)', marginTop: 8 }}>{headline(t.permissions)}</div>
+                      <div style={{ fontSize: 11.5, color: 'var(--gray)', marginTop: 2 }}><Clamp lines={3}>{summarise(t.permissions)}</Clamp></div>
                       <div style={{ fontSize: 11.5, color: who.length ? 'var(--white)' : 'var(--gray)', marginTop: 4 }}>
                         {who.length ? `Held by ${who.map(w => w.firstName).join(', ')}` : 'Nobody holds it'}
                       </div>

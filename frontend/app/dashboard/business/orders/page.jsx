@@ -1224,6 +1224,8 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
   const [cancelOther,    setCancelOther]    = useState('');
   const [refundAmt,      setRefundAmt]      = useState('');
   const [payingRefund,   setPayingRefund]   = useState(false);
+  // "Keep it" asks why in the shop's own modal - the reason goes to the audit log.
+  const [waiveAsk,       setWaiveAsk]       = useState(null);   // null = closed, string = the reason being typed
   const [refundMethod,   setRefundMethod]   = useState('gcash');
   const [refundErr,      setRefundErr]      = useState('');
 
@@ -1281,9 +1283,8 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
     return { back, off, offValue };
   })();
 
-  const handleWaiveRefund = async () => {
-    const reason = window.prompt('Why is this kept? (shown in the audit log)', lo.designFeePaid ? 'Design fee - non-refundable once the designer started' : '');
-    if (reason == null || !reason.trim()) return;
+  const handleWaiveRefund = async (reason) => {
+    if (!reason || !reason.trim()) return;
     setPayingRefund(true); setRefundErr('');
     try {
       const res = await fetchWithTimeout(`${API_URL}/api/admin/orders/${lo.id}/waive-refund`, {
@@ -3094,7 +3095,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                       </button>
                       {/* For money the shop is entitled to keep - a design fee for delivered work, a deposit
                           on goods that cannot be resold. Closes the debt with a reason, sends nothing. */}
-                      <button type="button" onClick={handleWaiveRefund} disabled={payingRefund}
+                      <button type="button" onClick={() => setWaiveAsk(lo.designFeePaid ? 'Design fee - non-refundable once the designer started' : '')} disabled={payingRefund}
                         style={{ ...S.btnSmGhost, opacity: payingRefund ? 0.6 : 1 }}>
                         Keep it - not refundable
                       </button>
@@ -3166,6 +3167,25 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
         )}
         {expireErr && <span style={{ fontSize:'11px', color:'#991b1b' }}>{expireErr}</span>}
       </div>
+
+      {waiveAsk !== null && (
+        <Modal onClose={() => setWaiveAsk(null)} maxWidth={420}>
+          <ModalHeader title="Keep this money?" onClose={() => setWaiveAsk(null)} />
+          <p style={{ fontSize: '13px', color: 'var(--gray-light)', lineHeight: 1.6, margin: '0 0 8px' }}>
+            Nothing is sent back and the refund is closed. Say why - it is kept in the audit log.
+          </p>
+          <textarea value={waiveAsk} onChange={e => setWaiveAsk(e.target.value.slice(0, 300))} maxLength={300} rows={3}
+            placeholder="Why is this kept?" style={{ ...S.input, width: '100%', resize: 'vertical', fontFamily: 'inherit' }} />
+          <div style={{ fontSize: 11, color: 'var(--gray)', textAlign: 'right' }}>{waiveAsk.length}/300</div>
+          <ModalFooter>
+            <button onClick={() => setWaiveAsk(null)} disabled={payingRefund} style={S.btnGhost}>Cancel</button>
+            <button onClick={() => { const r = waiveAsk; setWaiveAsk(null); handleWaiveRefund(r); }}
+              disabled={payingRefund || !waiveAsk.trim()} style={{ ...S.btnPrimary, opacity: waiveAsk.trim() ? 1 : 0.5 }}>
+              Keep it
+            </button>
+          </ModalFooter>
+        </Modal>
+      )}
 
       <ConfirmModal
         open={confirmSt && selStatus !== lo.orderStatus}
