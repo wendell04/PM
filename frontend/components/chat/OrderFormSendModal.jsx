@@ -3,29 +3,37 @@
 import React, { useEffect, useState } from 'react';
 import useLockBodyScroll from '@/lib/useLockBodyScroll';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
+import OrderFormBuilder, { FORM_LIMITS, blankForm } from '@/components/dashboard/OrderFormBuilder';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
 /**
- * Which order form to send, and whether to change it for this one customer.
+ * Which order form to send - and, when the one this customer needs does not exist yet, writing it
+ * here rather than leaving the conversation to go and make it.
  *
- * The shop asks a shirt order different questions than a tarpaulin order, so the forms are the
- * owner's to write in Settings and this picks one. An edit here travels with this send only: the
- * template is not touched, and neither is any form already sitting in somebody else's chat.
+ * Three things can happen in this sheet:
+ *   pick one       - send a saved form as it stands
+ *   edit it        - change the wording for THIS send only; the saved form is untouched
+ *   write a new one- the full builder, saved to the shop's forms and sent straightaway
+ *
+ * The builder is the same component Settings uses, so a form written in a hurry here is the same
+ * object, with the same rules, as one written there.
  */
 export default function OrderFormSendModal({ open, onClose, token, conversationId, onSent }) {
   const [templates, setTemplates] = useState(null);
+  const [types, setTypes] = useState({});
+  const [limits, setLimits] = useState(FORM_LIMITS);
   const [pickedId, setPickedId] = useState('');
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(null);       // { description, questions } for this send only
+  const [mode, setMode] = useState('pick');      // pick | edit | new
+  const [draft, setDraft] = useState(null);      // the form being written or edited
   const [err, setErr] = useState('');
-  const [sending, setSending] = useState(false);
+  const [busy, setBusy] = useState('');          // '', 'sending', 'saving'
 
   useLockBodyScroll(open);
 
   useEffect(() => {
     if (!open || !token) return;
-    setErr(''); setEditing(false); setDraft(null);
+    setErr(''); setMode('pick'); setDraft(null);
     let dead = false;
     (async () => {
       try {
@@ -35,6 +43,8 @@ export default function OrderFormSendModal({ open, onClose, token, conversationI
         if (!res.ok) throw new Error(d.message || 'Could not load the order forms.');
         const list = d?.data?.templates ?? [];
         setTemplates(list);
+        setTypes(d?.data?.types ?? {});
+        setLimits({ ...FORM_LIMITS, ...(d?.data?.limits ?? {}) });
         const def = list.find(t => t.isDefault) ?? list[0];
         setPickedId(String(def?._id ?? ''));
       } catch (e) {
@@ -47,24 +57,60 @@ export default function OrderFormSendModal({ open, onClose, token, conversationI
   if (!open) return null;
 
   const picked = (templates ?? []).find(t => String(t._id) === pickedId) ?? null;
-  const shown = draft ?? { description: picked?.description ?? '', questions: picked?.questions ?? [] };
+  const shown = draft ?? picked;
 
-  const startEditing = () => {
-    setDraft({ description: picked?.description ?? '', questions: (picked?.questions ?? []).map(q => ({ ...q })) });
-    setEditing(true);
+  const startEdit = () => {
+    if (!picked) return;
+    setErr('');
+    setDraft({ ...picked, questions: (picked.questions ?? []).map(q => ({ ...q, options: [...(q.options ?? [])] })) });
+    setMode('edit');
   };
-  const stopEditing = () => { setDraft(null); setEditing(false); };
+  const startNew = () => {
+    if ((templates ?? []).length >= limits.templates) { setErr(`That is the ${limits.templates}-form limit. Delete one in Settings first.`); return; }
+    setErr('');
+    setDraft(blankForm());
+    setMode('new');
+  };
+  const backToPick = () => { setDraft(null); setMode('pick'); setErr(''); };
 
-  const send = async () => {
-    if (!conversationId || sending) return;
-    setSending(true); setErr('');
+  /** Write the form into the shop's list, so the next customer can be sent it by name. */
+  const saveForm = async () => {
+    if (!draft || busy) return;
+    setBusy('saving'); setErr('');
     try {
-      const body = { templateId: pickedId };
-      if (draft) { body.description = draft.description; body.questions = draft.questions; }
+      const isNew = !draft._id;
+      const res = await fetchWithTimeout(`${API_URL}/api/admin/order-forms${isNew ? '' : `/${draft._id}`}`, {
+        method: isNew ? 'POST' : 'PUT',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ name: draft.name, description: draft.description, questions: draft.questions, isDefault: !!draft.isDefault }),
+      }, 20000);
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.message || 'Could not save this form.');
+      const saved = d?.data ?? null;
+      // Refresh the list so the new form is in it, and pick it.
+      const list = await fetchWithTimeout(`${API_URL}/api/admin/order-forms`, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } }, 15000)
+        .then(r => r.json()).then(j => j?.data?.templates ?? []).catch(() => []);
+      setTemplates(list);
+      setPickedId(String(saved?._id ?? draft._id ?? ''));
+      setDraft(null);
+      setMode('pick');
+      return true;
+    } catch (e) {
+      setErr(e.message || 'Could not save this form.');
+      return false;
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const send = async (payload) => {
+    if (!conversationId || busy) return;
+    setBusy('sending'); setErr('');
+    try {
       const res = await fetchWithTimeout(`${API_URL}/api/chat/conversations/${conversationId}/order-form`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(body),
+        body: JSON.stringify(payload),
       }, 20000);
       const d = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(d.message || 'Could not send the order form.');
@@ -73,19 +119,26 @@ export default function OrderFormSendModal({ open, onClose, token, conversationI
     } catch (e) {
       setErr(e.message || 'Could not send the order form.');
     } finally {
-      setSending(false);
+      setBusy('');
     }
   };
 
-  const field = { width: '100%', padding: '9px 11px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.14)', background: 'rgba(255,255,255,0.05)', color: 'var(--white, #fff)', fontSize: '0.85rem', outline: 'none', boxSizing: 'border-box' };
+  const sendPicked = () => send({ templateId: pickedId });
+  const sendEdited = () => send({ templateId: draft?._id ?? pickedId, name: draft?.name, description: draft?.description, questions: draft?.questions });
+  const saveAndSend = async () => { const ok = await saveForm(); if (ok !== false) { /* pickedId now points at it */ } };
+
   const cap = { fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--gray)' };
+  const primary = { width: '100%', padding: '12px', borderRadius: 10, border: 'none', background: '#d4a843', color: '#111', fontWeight: 800, fontSize: '0.9rem', cursor: 'pointer' };
+  const ghost = { width: '100%', padding: '11px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.18)', background: 'transparent', color: 'inherit', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer' };
 
   return (
     <div onClick={onClose} className="pmp-sheet-scrim" style={{ zIndex: 100002 }}>
       <div onClick={e => e.stopPropagation()} role="dialog" aria-label="Send an order form"
-        className="pmp-sheet" style={{ background: 'var(--dark, #151515)', color: 'var(--white, #fff)' }}>
+        className="pmp-sheet" style={{ background: 'var(--dark, #151515)', color: 'var(--white, #fff)', maxWidth: mode === 'pick' ? 520 : 720 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-          <div style={{ fontSize: '1rem', fontWeight: 800 }}>Send an order form</div>
+          <div style={{ fontSize: '1rem', fontWeight: 800 }}>
+            {mode === 'new' ? 'New order form' : mode === 'edit' ? 'Edit before sending' : 'Send an order form'}
+          </div>
           <button type="button" onClick={onClose} aria-label="Close" style={{ background: 'none', border: 'none', color: 'var(--gray)', fontSize: '1.4rem', lineHeight: 1, cursor: 'pointer' }}>&times;</button>
         </div>
 
@@ -93,18 +146,46 @@ export default function OrderFormSendModal({ open, onClose, token, conversationI
           <div style={{ display: 'grid', gap: 8 }}>
             {[0, 1].map(i => <div key={i} className="pmPulse" style={{ height: 52, borderRadius: 10, background: 'rgba(255,255,255,0.06)' }} />)}
           </div>
-        ) : templates.length === 0 ? (
-          <div style={{ fontSize: '0.85rem', color: 'var(--gray)', lineHeight: 1.6 }}>
-            No order forms yet. Settings has an Order forms tab where the questions are written.
-          </div>
+        ) : mode !== 'pick' ? (
+          <>
+            {mode === 'edit' && (
+              <div style={{ fontSize: '0.78rem', color: 'var(--gray)', marginBottom: 10, lineHeight: 1.5 }}>
+                Send it changed for this customer only, or save the change to the form so every
+                customer gets it from now on.
+              </div>
+            )}
+            <OrderFormBuilder value={draft} onChange={setDraft} types={types} limits={limits} compact />
+
+            {err && <div style={{ margin: '12px 0 0', padding: '9px 12px', borderRadius: 8, background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.35)', color: '#f87171', fontSize: '0.8rem' }}>{err}</div>}
+
+            <div style={{ display: 'grid', gap: 8, marginTop: 14 }}>
+              {mode === 'edit' ? (
+                <>
+                  <button type="button" onClick={sendEdited} disabled={!!busy} style={{ ...primary, opacity: busy ? 0.7 : 1 }}>
+                    {busy === 'sending' ? 'Sending...' : 'Send to this customer only'}
+                  </button>
+                  <button type="button" onClick={saveForm} disabled={!!busy} style={ghost}>
+                    {busy === 'saving' ? 'Saving...' : 'Save the change to this form'}
+                  </button>
+                </>
+              ) : (
+                <button type="button" onClick={saveAndSend} disabled={!!busy} style={{ ...primary, opacity: busy ? 0.7 : 1 }}>
+                  {busy === 'saving' ? 'Saving...' : 'Save this form'}
+                </button>
+              )}
+              <button type="button" onClick={backToPick} disabled={!!busy} style={{ ...ghost, border: 'none', color: 'var(--gray)' }}>
+                Back
+              </button>
+            </div>
+          </>
         ) : (
           <>
             <div style={{ ...cap, marginBottom: 6 }}>Which form</div>
-            <div style={{ display: 'grid', gap: 6, marginBottom: 14 }}>
-              {templates.map(t => {
+            <div style={{ display: 'grid', gap: 6, marginBottom: 12 }}>
+              {(templates ?? []).map(t => {
                 const on = String(t._id) === pickedId;
                 return (
-                  <button key={t._id} type="button" onClick={() => { setPickedId(String(t._id)); stopEditing(); }}
+                  <button key={t._id} type="button" onClick={() => setPickedId(String(t._id))}
                     style={{ textAlign: 'left', padding: '10px 12px', borderRadius: 10, cursor: 'pointer',
                       border: `1px solid ${on ? '#d4a843' : 'rgba(255,255,255,0.14)'}`, background: on ? 'rgba(212,168,67,0.12)' : 'transparent', color: 'inherit' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -117,64 +198,54 @@ export default function OrderFormSendModal({ open, onClose, token, conversationI
                   </button>
                 );
               })}
-            </div>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-              <span style={cap}>What they will see</span>
-              <button type="button" onClick={editing ? stopEditing : startEditing}
-                style={{ marginLeft: 'auto', background: 'none', border: 'none', padding: 0, color: '#d4a843', fontSize: '0.76rem', fontWeight: 700, cursor: 'pointer' }}>
-                {editing ? 'Use the saved form' : 'Edit before sending'}
+              {/* The form this customer needs may not exist yet, and going to Settings to make it
+                  means leaving the conversation you are in the middle of. */}
+              <button type="button" onClick={startNew}
+                style={{ textAlign: 'left', padding: '10px 12px', borderRadius: 10, cursor: 'pointer',
+                  border: '1px dashed rgba(212,168,67,0.55)', background: 'transparent', color: '#d4a843', fontWeight: 700, fontSize: '0.86rem' }}>
+                + New form
               </button>
             </div>
-            {editing && (
-              <div style={{ fontSize: '0.74rem', color: 'var(--gray)', marginBottom: 8, lineHeight: 1.5 }}>
-                Changes here go to this customer only. The saved form stays as it is.
-              </div>
-            )}
 
-            {editing ? (
-              <textarea style={{ ...field, minHeight: 84, resize: 'vertical', marginBottom: 10 }} maxLength={2000}
-                placeholder="What the form says at the top - file formats, artwork rules, anything they should read first."
-                value={shown.description} onChange={e => setDraft(d => ({ ...d, description: e.target.value }))} />
-            ) : (
-              String(shown.description ?? '').trim() !== '' && (
-                <div style={{ padding: '10px 12px', borderRadius: 10, background: 'rgba(212,168,67,0.08)', border: '1px solid rgba(212,168,67,0.25)',
-                  fontSize: '0.78rem', color: 'var(--gray-light, #ddd)', lineHeight: 1.5, whiteSpace: 'pre-wrap', marginBottom: 10 }}>
-                  {shown.description}
+            {picked && (
+              <>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                  <span style={cap}>What they will see</span>
+                  <button type="button" onClick={startEdit}
+                    style={{ marginLeft: 'auto', background: 'none', border: 'none', padding: 0, color: '#d4a843', fontSize: '0.76rem', fontWeight: 700, cursor: 'pointer' }}>
+                    Edit
+                  </button>
                 </div>
-              )
-            )}
 
-            <div style={{ display: 'grid', gap: 6, marginBottom: 14 }}>
-              {(shown.questions ?? []).map((q, i) => (
-                <div key={q.id ?? i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', padding: '8px 10px', borderRadius: 8, background: 'rgba(255,255,255,0.04)' }}>
-                  <span style={{ color: 'var(--gray)', fontSize: '0.78rem', flexShrink: 0, paddingTop: editing ? 9 : 0 }}>{i + 1}.</span>
-                  <div style={{ minWidth: 0, flex: 1 }}>
-                    {editing ? (
-                      <input style={{ ...field, fontSize: '0.82rem' }} maxLength={120} value={q.label}
-                        onChange={e => setDraft(d => ({ ...d, questions: d.questions.map((x, j) => j === i ? { ...x, label: e.target.value } : x) }))} />
-                    ) : (
-                      <div style={{ fontSize: '0.82rem', fontWeight: 600 }}>{q.label}</div>
-                    )}
-                    {q.help ? <div style={{ fontSize: '0.72rem', color: 'var(--gray)', marginTop: 3 }}>{q.help}</div> : null}
+                {String(shown?.description ?? '').trim() !== '' && (
+                  <div style={{ padding: '10px 12px', borderRadius: 10, background: 'rgba(212,168,67,0.08)', border: '1px solid rgba(212,168,67,0.25)',
+                    fontSize: '0.78rem', color: 'var(--gray-light, #ddd)', lineHeight: 1.5, whiteSpace: 'pre-wrap', marginBottom: 10 }}>
+                    {shown.description}
                   </div>
-                  {editing && (shown.questions ?? []).length > 1 && (
-                    <button type="button" aria-label="Take this question out"
-                      onClick={() => setDraft(d => ({ ...d, questions: d.questions.filter((_, j) => j !== i) }))}
-                      style={{ background: 'none', border: 'none', color: 'var(--gray)', fontSize: '1.1rem', cursor: 'pointer', padding: '0 2px', flexShrink: 0 }}>&times;</button>
-                  )}
+                )}
+
+                <div style={{ display: 'grid', gap: 6, marginBottom: 14 }}>
+                  {(shown?.questions ?? []).map((q, i) => (
+                    <div key={q.id ?? i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', padding: '8px 10px', borderRadius: 8, background: 'rgba(255,255,255,0.04)' }}>
+                      <span style={{ color: 'var(--gray)', fontSize: '0.78rem', flexShrink: 0 }}>{i + 1}.</span>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: '0.82rem', fontWeight: 600 }}>{q.label}</div>
+                        {q.help ? <div style={{ fontSize: '0.72rem', color: 'var(--gray)', marginTop: 3 }}>{q.help}</div> : null}
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+              </>
+            )}
+
+            {err && <div style={{ marginBottom: 10, padding: '9px 12px', borderRadius: 8, background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.35)', color: '#f87171', fontSize: '0.8rem' }}>{err}</div>}
+
+            <button type="button" onClick={sendPicked} disabled={!!busy || !pickedId}
+              style={{ ...primary, background: busy || !pickedId ? 'var(--gray)' : '#d4a843', cursor: busy || !pickedId ? 'not-allowed' : 'pointer' }}>
+              {busy === 'sending' ? 'Sending...' : 'Send this form'}
+            </button>
           </>
         )}
-
-        {err && <div style={{ marginBottom: 10, padding: '9px 12px', borderRadius: 8, background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.35)', color: '#f87171', fontSize: '0.8rem' }}>{err}</div>}
-
-        <button type="button" onClick={send} disabled={sending || !pickedId}
-          style={{ width: '100%', padding: '12px', borderRadius: 10, border: 'none', background: sending || !pickedId ? 'var(--gray)' : '#d4a843', color: '#111', fontWeight: 800, fontSize: '0.9rem', cursor: sending || !pickedId ? 'not-allowed' : 'pointer' }}>
-          {sending ? 'Sending...' : 'Send this form'}
-        </button>
       </div>
     </div>
   );
