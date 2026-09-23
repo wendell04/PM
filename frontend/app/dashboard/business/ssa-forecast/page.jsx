@@ -1852,6 +1852,13 @@ export default function SSAForecastPage() {
 
   const activeMother = (taxonomy?.motherItems ?? []).find((m) => m.productId === selectedMotherId) ?? null;
 
+  // The label the picker is showing, spelled out in full for the line beneath it.
+  // Only worth repeating when the select would actually have cut it off.
+  const selectedMotherLabel = (() => {
+    const hit = motherOptions.flatMap((g) => g.items).find((m) => m.id === selectedMotherId);
+    return hit && hit.label.length > 28 ? hit.label : "";
+  })();
+
   // Materials shown for the current mother item, narrowed by the variant filter.
   const visibleMaterials = (() => {
     // On-demand materials used to be hidden here. They are bought per order
@@ -2319,6 +2326,17 @@ export default function SSAForecastPage() {
                       </optgroup>
                     ))}
                   </select>
+                  {/* A closed <select> truncates to its own width, and this sidebar
+                      is 256px while the longest product name needs about 454px at
+                      this size - so "Custom Vinyl Sticker Laminated Scratchproof
+                      (Kisscut/Diecut)" and "...Waterproof..." cut to the same
+                      visible text. Repeat the full name underneath, where it can
+                      wrap, so the choice is readable without hovering. */}
+                  {selectedMotherLabel && (
+                    <p style={{ margin: "0.3rem 0 0", fontSize: "0.72rem", lineHeight: 1.4, color: "var(--gray)" }}>
+                      {selectedMotherLabel}
+                    </p>
+                  )}
                 </div>
 
                 {/* Variant filter - only where the mother item actually has variants */}
