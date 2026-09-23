@@ -31,6 +31,7 @@ use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\RolePermissionController;
 use App\Http\Controllers\StaffController;
 use App\Http\Controllers\SettingsController;
+use App\Http\Controllers\OrderFormTemplateController;
 use App\Http\Controllers\ActivityLogController;
 use App\Http\Controllers\BillOfMaterialController;
 use App\Http\Controllers\VoucherController;
@@ -186,6 +187,13 @@ Route::middleware(['auth:sanctum', 'isAdmin:owner,admin'])->group(function () {
     Route::put('/admin/settings/shipping',          [SettingsController::class, 'shippingUpdate']);
     Route::post('/admin/settings/mail-test',        [SettingsController::class, 'mailTest'])->middleware('throttle:6,1');
     Route::put('/admin/settings/terms',             [SettingsController::class, 'termsUpdate']);
+
+    // Settings > Order forms. The questions the shop asks before it quotes; the chat picks one to
+    // send. Owner and admin only, like the rest of Settings.
+    Route::get('/admin/order-forms',          [OrderFormTemplateController::class, 'index']);
+    Route::post('/admin/order-forms',         [OrderFormTemplateController::class, 'store'])->middleware('throttle:60,1');
+    Route::put('/admin/order-forms/{id}',     [OrderFormTemplateController::class, 'update'])->middleware('throttle:60,1');
+    Route::delete('/admin/order-forms/{id}',  [OrderFormTemplateController::class, 'destroy'])->middleware('throttle:30,1');
 
     Route::get('/admin/role-permissions',            [RolePermissionController::class, 'index']);
     Route::post('/admin/role-permissions',           [RolePermissionController::class, 'store']);
