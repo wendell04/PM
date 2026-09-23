@@ -176,7 +176,7 @@ class AuthController extends Controller
                 // Kept even though no account matched. Somebody working through addresses is the
                 // pattern this log exists to make visible, and it is invisible if only the
                 // successful attempts are written down.
-                self::logAuthEvent($request, 'login_failed', null,
+                self::logAuthEvent($request, 'auth.login_failed', null,
                     'Sign-in refused - no account with that email', ['email' => $request->email]);
                 return $this->errorResponse('The email or password you entered is incorrect. Please try again.', 401);
             }
@@ -187,7 +187,7 @@ class AuthController extends Controller
             ) {
                 $minutesLeft = (int) ceil(now()->diffInSeconds($user->login_locked_until) / 60);
                 Log::warning('Login blocked: account locked', ['email' => $user->email, 'ip' => $ip]);
-                self::logAuthEvent($request, 'login_failed', $user,
+                self::logAuthEvent($request, 'auth.login_failed', $user,
                     'Sign-in refused - the account is locked', ['reason' => 'locked']);
                 return $this->errorResponse(
                     "Account temporarily locked. Try again in {$minutesLeft} minute(s).",
@@ -203,7 +203,7 @@ class AuthController extends Controller
                     $user->login_locked_until = now()->addMinutes(self::LOGIN_LOCKOUT_MINUTES);
                     $user->failed_login_attempts = 0;
                     Log::warning('Login failed: account locked after max attempts', ['email' => $user->email, 'ip' => $ip]);
-                    self::logAuthEvent($request, 'login_locked', $user,
+                    self::logAuthEvent($request, 'auth.login_locked', $user,
                         'Account locked after too many wrong passwords', ['attempts' => $attempts]);
 
                     // Alert the owner in case this was someone else attacking the account. Non-fatal.
@@ -292,7 +292,7 @@ class AuthController extends Controller
             // The entry the whole log was missing. "Who was in the system, from where, and when"
             // could not be answered at all before this - the only record of a sign-in was a line
             // in a server log file nobody can reach from the dashboard.
-            self::logAuthEvent($request, 'login', $user,
+            self::logAuthEvent($request, 'auth.login', $user,
                 $requires2fa
                     ? 'Signed in - waiting on the 2FA code'
                     : 'Signed in',
@@ -784,7 +784,7 @@ class AuthController extends Controller
 
             // A password change is the single most useful line in a security log: it is what an
             // account takeover looks like from the outside, and it ends every other session.
-            self::logAuthEvent($request, 'password_reset', $user,
+            self::logAuthEvent($request, 'auth.password_reset', $user,
                 'Password reset - every other session was signed out');
 
             // Notify the owner that the password changed - alerts them if it wasn't them. Non-fatal.
@@ -947,7 +947,7 @@ class AuthController extends Controller
         $user = $request->user();
         if ($user) {
             // Written before the token goes: afterwards there is no session to attribute it to.
-            self::logAuthEvent($request, 'logout', $user, 'Signed out');
+            self::logAuthEvent($request, 'auth.logout', $user, 'Signed out');
             $user->currentAccessToken()->delete();
         }
         return $this->successResponse('Logged out successfully.');

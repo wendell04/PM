@@ -115,7 +115,13 @@ class SessionController extends Controller
             $currentId = $user->currentAccessToken()->id;
 
             $revokedCount = $user->tokens()->where('id', '!=', $currentId)->count();
+            $revoked = $user->tokens()->where('id', '!=', $currentId)->count();
             $user->tokens()->where('id', '!=', $currentId)->delete();
+
+            // Ending somebody else's session is worth a line, whether it was the person
+            // protecting themselves or somebody locking them out.
+            $this->logActivity($request, 'auth.session_revoked', 'auth', (string) $user->_id,
+                'Signed every other device out', ['sessions' => $revoked]);
 
             Log::info('security.sessions_revoked_all', [
                 'user_id'       => (string) $user->_id,

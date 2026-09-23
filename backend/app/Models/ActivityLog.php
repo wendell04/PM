@@ -30,41 +30,63 @@ class ActivityLog extends Model
     ];
 
     /**
-     * What a log entry can be. The label is what a person reads; the group is how the screen
-     * files it. Anything not listed here still records - this decides how it READS, never
-     * whether it is kept.
+     * Every action name this system actually writes, with the words a person reads and the
+     * group the screen files it under.
+     *
+     * Two naming conventions live here, and deliberately so. The dotted ones are the convention
+     * going forward; the flat ones (order_status_changed, payment_received, the design_* set)
+     * were already being written before this list existed and are left exactly as they are -
+     * renaming them would orphan every row already in the database, which for an audit log is
+     * the one thing you must never do.
+     *
+     * An action missing from this list still records. It just reads as its own raw name and
+     * files under "other", which is how you notice a new event was added and never listed.
      */
     public const KINDS = [
         // Getting in, and failing to
-        'login'              => ['Signed in',             'access'],
-        'login_failed'       => ['Sign-in refused',       'access'],
-        'login_locked'       => ['Account locked out',    'access'],
-        'logout'             => ['Signed out',            'access'],
-        'two_factor_passed'  => ['Passed 2FA',            'access'],
-        'two_factor_failed'  => ['Failed 2FA',            'access'],
-        'session_revoked'    => ['Signed a device out',   'access'],
-        // The account itself
-        'password_changed'   => ['Changed a password',    'account'],
-        'password_reset'     => ['Reset a password',      'account'],
-        'two_factor_enabled' => ['Turned 2FA on',         'account'],
-        'two_factor_disabled'=> ['Turned 2FA off',        'account'],
+        'auth.login'            => ['Signed in',              'access'],
+        'auth.login_failed'     => ['Sign-in refused',        'access'],
+        'auth.login_locked'     => ['Account locked out',     'access'],
+        'auth.logout'           => ['Signed out',             'access'],
+        'auth.2fa_passed'       => ['Passed 2FA',             'access'],
+        'auth.2fa_failed'       => ['Failed 2FA',             'access'],
+        'auth.password_reset'   => ['Reset a password',       'access'],
+        'auth.password_changed' => ['Changed their password', 'access'],
+        'auth.2fa_enabled'      => ['Turned 2FA on',          'access'],
+        'auth.2fa_disabled'     => ['Turned 2FA off',         'access'],
+        'auth.session_revoked'  => ['Signed a device out',    'access'],
+        'audit.viewed'          => ['Opened the audit log',   'access'],
+
         // Who is allowed to do what
-        'staff_invited'      => ['Invited a staff member', 'people'],
-        'staff_updated'      => ['Changed a staff member', 'people'],
-        'staff_removed'      => ['Removed a staff member', 'people'],
-        'permissions_changed'=> ['Changed permissions',    'people'],
-        // Money and goods
-        'order_status'       => ['Moved an order',        'orders'],
-        'order_cancelled'    => ['Cancelled an order',    'orders'],
-        'payment_recorded'   => ['Recorded a payment',    'money'],
-        'refund'             => ['Refunded',              'money'],
-        'price_changed'      => ['Changed a price',       'catalog'],
-        'product_deleted'    => ['Deleted a product',     'catalog'],
-        'stock_adjusted'     => ['Adjusted stock',        'stock'],
-        'settings_changed'   => ['Changed a setting',     'settings'],
-        // Reading things that are somebody else's business
-        'viewed_audit_log'   => ['Opened the audit log',  'access'],
-        'exported'           => ['Exported data',         'access'],
+        'user.created'             => ['Added a staff member',    'people'],
+        'user.owner_created'       => ['Created the Owner',       'people'],
+        'user.updated'             => ['Changed an account',      'people'],
+        'user.role_changed'        => ['Changed a role',          'people'],
+        'user.deleted'             => ['Deleted an account',      'people'],
+        'user.unlocked'            => ['Unlocked an account',     'people'],
+        'role.created'             => ['Created a role',          'people'],
+        'role.deleted'             => ['Deleted a role',          'people'],
+        'role.permissions_changed' => ['Changed permissions',     'people'],
+
+        // Orders and the work behind them
+        'order_status_changed'                => ['Moved an order',            'orders'],
+        'order_cancelled_by_customer'         => ['Customer cancelled',        'orders'],
+        'order_request_cancelled_by_customer' => ['Customer cancelled a quote', 'orders'],
+        'job_order_deleted'                   => ['Deleted a job order',       'orders'],
+        'design_approved'                     => ['Approved a design',         'orders'],
+        'design_rejected'                     => ['Rejected a design',         'orders'],
+        'design_draft_uploaded'               => ['Sent a proof',              'orders'],
+        'design_resubmitted'                  => ['Customer re-sent a design', 'orders'],
+        'design_approval_reverted'            => ['Reopened an approval',      'orders'],
+
+        // Money
+        'payment_received'    => ['Recorded a payment',  'money'],
+        'order.refund_waived' => ['Waived a refund',     'money'],
+
+        // The catalogue and the shop's own rules
+        'product_publish_toggled' => ['Published or hid a product', 'catalog'],
+        'review_submitted'        => ['A customer left a review',    'catalog'],
+        'settings.changed'        => ['Changed a setting',          'settings'],
     ];
 
     public static function label(?string $action): string

@@ -68,7 +68,7 @@ class ActivityLogController extends Controller
             // including me looking at it" is exactly the question it exists to answer. Only the
             // first page, so paging through a long list does not write an entry per scroll.
             if (!$request->filled('page') && !$request->filled('q')) {
-                $this->logActivity($request, 'viewed_audit_log', 'audit', null, 'Opened the audit log');
+                $this->logActivity($request, 'audit.viewed', 'audit', null, 'Opened the audit log');
             }
 
             return $this->successResponse('Activity logs fetched.', [

@@ -252,12 +252,6 @@ class StaffController extends Controller
                 );
             }
 
-            // Who changed whose account, and what about it. A role quietly widened is the
-            // change nobody notices and everybody needs to be able to find afterwards.
-            $this->logActivity($request, 'staff_updated', 'user', (string) $staff->_id,
-                'Changed the staff account for ' . ($staff->email ?? 'a staff member'),
-                ['role' => $staff->role ?? null]);
-
             return $this->successResponse('Staff account updated successfully.', [
                 '_id'       => (string) $staff->_id,
                 'firstName' => $staff->firstName,
@@ -321,8 +315,6 @@ class StaffController extends Controller
                     "Removed {$staff->email} from staff ({$oldRole}); kept as a customer",
                     ['email' => $staff->email, 'from' => $oldRole, 'to' => 'customer']
                 );
-                $this->logActivity($request, 'staff_removed', 'user', (string) $staff->_id,
-                    'Removed staff access from ' . ($staff->email ?? 'an account') . ' - the customer account was kept');
                 return $this->successResponse('Removed from staff. Their customer account and orders are kept.');
             }
 
@@ -337,8 +329,6 @@ class StaffController extends Controller
                 ['email' => $deletedEmail, 'role' => $deletedRole]
             );
 
-            $this->logActivity($request, 'staff_removed', 'user', (string) $staff->_id,
-                'Deleted the staff account ' . ($staff->email ?? ''));
             return $this->successResponse('Staff account deleted successfully.');
         } catch (\Exception $e) {
             return $this->serverErrorResponse($e, 'Failed to delete staff account.');
@@ -414,7 +404,7 @@ class StaffController extends Controller
             $user->unlock_requested_at   = null;
             $user->save();
 
-            $this->logActivity($request, 'staff_updated', 'user', (string) $id, 'Unlocked a locked-out account');
+            $this->logActivity($request, 'user.unlocked', 'user', (string) $id, 'Unlocked a locked-out account');
             return $this->successResponse('Account unlocked successfully.');
         } catch (\Exception $e) {
             return $this->serverErrorResponse($e, 'Failed to unlock account.');
@@ -471,7 +461,7 @@ class StaffController extends Controller
             $user->unlock_requested_at   = null;
             $user->save();
 
-            $this->logActivity($request, 'staff_updated', 'user', (string) $id, 'Unlocked a locked-out account');
+            $this->logActivity($request, 'user.unlocked', 'user', (string) $id, 'Unlocked a locked-out account');
             return $this->successResponse('Account unlocked successfully.');
         } catch (\Exception $e) {
             return $this->serverErrorResponse($e, 'Failed to unlock account.');

@@ -398,7 +398,7 @@ class SettingsController extends Controller
 
             // Rates, turnaround promises and the free-delivery figure all change what customers
             // are charged. Who moved them, and when, is a question that gets asked later.
-            $this->logActivity($request, 'settings_changed', 'settings', null,
+            $this->logActivity($request, 'settings.changed', 'settings', null,
                 'Changed the shipping and delivery settings',
                 ['fields' => array_values(array_intersect(array_keys($request->all()), [
                     'shippingMode', 'shippingBaseRate', 'shippingPerKmRate', 'flatRateInsideMetro',
@@ -499,7 +499,7 @@ class SettingsController extends Controller
             }
             $owner->save();
 
-            $this->logActivity($request, 'settings_changed', 'settings', null,
+            $this->logActivity($request, 'settings.changed', 'settings', null,
                 'Changed the first-order discount',
                 ['percent' => $owner->firstOrderPercent, 'cap' => $owner->firstOrderCap]);
 

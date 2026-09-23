@@ -176,11 +176,6 @@ class RolePermissionController extends Controller
                 ['role' => $role, 'affectedUsers' => $affected->count()]
             );
 
-            // The change that widens what a whole role can reach. It belongs in the log more
-            // than almost anything else here.
-            $this->logActivity($request, 'permissions_changed', 'role', (string) $role,
-                'Changed what the ' . $role . ' role can do');
-
             return $this->successResponse('Role permissions updated successfully.', [
                 'role'        => $role,
                 'label'       => $record->label ?? $this->labelFromRole($role),
@@ -227,7 +222,6 @@ class RolePermissionController extends Controller
                 ['role' => $role]
             );
 
-            $this->logActivity($request, 'permissions_changed', 'role', (string) $role, 'Deleted the ' . $role . ' role');
             return $this->successResponse('Role deleted successfully.');
         } catch (\Exception $e) {
             return $this->serverErrorResponse($e, 'Failed to delete role.');

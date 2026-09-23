@@ -38,24 +38,40 @@ const GROUPS = [
   { id: 'settings', label: 'Settings' },
 ];
 
+// Keyed on the action names the server actually writes. Anything not named here falls back to
+// its GROUP, so a new kind of entry arrives in a sensible colour instead of grey - and the map
+// cannot silently go stale the way a per-action list does.
 const TONE = {
-  login:               { fg: 'var(--st-green-fg)',  bg: 'var(--st-green-bg)' },
-  logout:              { fg: 'var(--st-gray-fg)',   bg: 'var(--st-gray-bg)' },
-  login_failed:        { fg: 'var(--st-red-fg)',    bg: 'var(--st-red-bg)' },
-  login_locked:        { fg: 'var(--st-red-fg)',    bg: 'var(--st-red-bg)' },
-  two_factor_failed:   { fg: 'var(--st-red-fg)',    bg: 'var(--st-red-bg)' },
-  two_factor_passed:   { fg: 'var(--st-green-fg)',  bg: 'var(--st-green-bg)' },
-  password_changed:    { fg: 'var(--st-amber-fg)',  bg: 'var(--st-amber-bg)' },
-  password_reset:      { fg: 'var(--st-amber-fg)',  bg: 'var(--st-amber-bg)' },
-  permissions_changed: { fg: 'var(--st-amber-fg)',  bg: 'var(--st-amber-bg)' },
-  staff_invited:       { fg: 'var(--st-blue-fg)',   bg: 'var(--st-blue-bg)' },
-  staff_updated:       { fg: 'var(--st-blue-fg)',   bg: 'var(--st-blue-bg)' },
-  staff_removed:       { fg: 'var(--st-red-fg)',    bg: 'var(--st-red-bg)' },
-  refund:              { fg: 'var(--st-orange-fg)', bg: 'var(--st-orange-bg)' },
-  settings_changed:    { fg: 'var(--st-purple-fg)', bg: 'var(--st-purple-bg)' },
-  viewed_audit_log:    { fg: 'var(--st-gray-fg)',   bg: 'var(--st-gray-bg)' },
+  'auth.login':           { fg: 'var(--st-green-fg)',  bg: 'var(--st-green-bg)' },
+  'auth.2fa_passed':      { fg: 'var(--st-green-fg)',  bg: 'var(--st-green-bg)' },
+  'auth.logout':          { fg: 'var(--st-gray-fg)',   bg: 'var(--st-gray-bg)' },
+  'audit.viewed':         { fg: 'var(--st-gray-fg)',   bg: 'var(--st-gray-bg)' },
+  'auth.login_failed':    { fg: 'var(--st-red-fg)',    bg: 'var(--st-red-bg)' },
+  'auth.login_locked':    { fg: 'var(--st-red-fg)',    bg: 'var(--st-red-bg)' },
+  'auth.2fa_failed':      { fg: 'var(--st-red-fg)',    bg: 'var(--st-red-bg)' },
+  'auth.2fa_disabled':    { fg: 'var(--st-red-fg)',    bg: 'var(--st-red-bg)' },
+  'auth.password_reset':  { fg: 'var(--st-amber-fg)',  bg: 'var(--st-amber-bg)' },
+  'auth.password_changed':{ fg: 'var(--st-amber-fg)',  bg: 'var(--st-amber-bg)' },
+  'auth.session_revoked': { fg: 'var(--st-amber-fg)',  bg: 'var(--st-amber-bg)' },
+  'auth.2fa_enabled':     { fg: 'var(--st-green-fg)',  bg: 'var(--st-green-bg)' },
+  'user.deleted':         { fg: 'var(--st-red-fg)',    bg: 'var(--st-red-bg)' },
+  'role.deleted':         { fg: 'var(--st-red-fg)',    bg: 'var(--st-red-bg)' },
+  'job_order_deleted':    { fg: 'var(--st-red-fg)',    bg: 'var(--st-red-bg)' },
+  'design_rejected':      { fg: 'var(--st-red-fg)',    bg: 'var(--st-red-bg)' },
 };
-const toneFor = (action) => TONE[action] ?? { fg: 'var(--st-gray-fg)', bg: 'var(--st-gray-bg)' };
+
+// The fallback: colour by what KIND of thing it was, so nothing lands as an unexplained grey.
+const GROUP_TONE = {
+  access:   { fg: 'var(--st-gray-fg)',   bg: 'var(--st-gray-bg)' },
+  people:   { fg: 'var(--st-amber-fg)',  bg: 'var(--st-amber-bg)' },
+  orders:   { fg: 'var(--st-blue-fg)',   bg: 'var(--st-blue-bg)' },
+  money:    { fg: 'var(--st-orange-fg)', bg: 'var(--st-orange-bg)' },
+  catalog:  { fg: 'var(--st-blue-fg)',   bg: 'var(--st-blue-bg)' },
+  settings: { fg: 'var(--st-purple-fg)', bg: 'var(--st-purple-bg)' },
+};
+
+const toneFor = (action, group) =>
+  TONE[action] ?? GROUP_TONE[group] ?? { fg: 'var(--st-gray-fg)', bg: 'var(--st-gray-bg)' };
 
 /** "Chrome on Windows" out of a user-agent string nobody should have to read. */
 function readDevice(ua) {
@@ -249,7 +265,7 @@ export default function AuditLogsPage() {
             </div>
           ) : (
             paged.map((l, i) => {
-              const tone = toneFor(l.action);
+              const tone = toneFor(l.action, l.group);
               const open = openId === l.id;
               const device = readDevice(l.device);
               return (
