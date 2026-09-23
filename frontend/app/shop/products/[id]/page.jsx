@@ -1480,7 +1480,9 @@ export default function ProductDetailPage() {
                       {Math.max(0, readyNow)} ready now, {preorderQty} on pre-order.
                     </strong>{' '}
                     We have {Math.max(0, readyNow)} in stock and will restock the rest. The whole
-                    order ships together on the delivery date shown at checkout.
+                    order ships together{product.isCustom
+                      ? ', counted from the day your design is approved.'
+                      : ' on the delivery date shown at checkout.'}
                   </span>
                 </div>
               )}

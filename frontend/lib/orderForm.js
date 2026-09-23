@@ -75,9 +75,11 @@ export function validateForm(s, form) {
 
   let total = 0;
   let asksQty = false;
+  let qtyNamed = false;   // a quantity question that already reported itself missing
   for (const q of form?.questions ?? []) {
     const v = s.answers?.[q.id];
     const qty = ['number', 'size_grid', 'item_list'].includes(q.type);
+    const before = errs.length;
     if (qty && q.required) asksQty = true;
     total += answerQty(q, v);
     if (!q.required) continue;
@@ -100,8 +102,11 @@ export function validateForm(s, form) {
       default:
         if (!String(v ?? '').trim()) errs.push(q.label);
     }
+    if (errs.length > before && qty) qtyNamed = true;
   }
-  if (asksQty && total < 1) errs.push('How many you want made');
+  // Only when no quantity question already named itself: "Sizes (put a quantity on at least one
+  // size), How many you want made" says the same thing twice.
+  if (asksQty && total < 1 && !qtyNamed) errs.push('How many you want made');
 
   if (!s.confirmDetails) errs.push('The "details are correct" tick');
   if (!s.agreeTerms)     errs.push('The "I agree to the terms" tick');

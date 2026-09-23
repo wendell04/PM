@@ -191,6 +191,7 @@ class OrderFormSpec
         $qty    = self::quantityTypes();
         $total  = 0;
         $asksQty = false;
+        $qtyNamed = false;   // a quantity question that already reported itself missing
 
         foreach ($form['questions'] ?? [] as $q) {
             $id    = (string) ($q['id'] ?? '');
@@ -198,6 +199,7 @@ class OrderFormSpec
             $label = (string) ($q['label'] ?? 'Question');
             $req   = (bool) ($q['required'] ?? false);
             $v     = $in[$id] ?? null;
+            $before = count($errors);
             if (in_array($type, $qty, true) && $req) $asksQty = true;
 
             switch ($type) {
@@ -284,9 +286,12 @@ class OrderFormSpec
                     break;
                 }
             }
+            if (count($errors) > $before && in_array($type, $qty, true)) $qtyNamed = true;
         }
 
-        if ($asksQty && $total < 1) $errors[] = 'How many you want made';
+        // Only when no quantity question already named itself: "Sizes (put a quantity on at least
+        // one size), How many you want made" says the same thing twice.
+        if ($asksQty && $total < 1 && !$qtyNamed) $errors[] = 'How many you want made';
 
         return [array_values(array_unique($errors)), $clean];
     }

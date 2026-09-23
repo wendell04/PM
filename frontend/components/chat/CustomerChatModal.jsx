@@ -950,7 +950,7 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
                             <div className="quotation-card">
                               <div className="quotation-header">
                                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#d4a843" strokeWidth="2.5"><path d="M9 11l3 3L22 4" /><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" /></svg>
-                                <span className="quotation-tag">Order form</span>
+                                <span className="quotation-tag">{msg.metadata?.form?.name || 'Order form'}</span>
                               </div>
                               <div style={{ padding: '6px 12px 8px', fontSize: '0.84rem', color: 'var(--gray-light)', lineHeight: 1.5 }}>{msg.body}</div>
                               <div style={{ padding: '0 12px 10px' }}>
