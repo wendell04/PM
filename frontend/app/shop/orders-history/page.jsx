@@ -2077,6 +2077,14 @@ export default function OrdersHistoryPage() {
                           <span style={{ fontSize: '12px', color: '#d4a843' }}>{formatPeso(selectedOrder.rushFee)}</span>
                         </div>
                       )}
+                      {/* Named charges from a counter order - the customer has to be able to see
+                          what the figure on their receipt was for. */}
+                      {Array.isArray(selectedOrder.extraFees) && selectedOrder.extraFees.map((f, i) => (
+                        <div key={'fee' + i} style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span style={{ fontSize: '12px', color: 'var(--gray)' }}>{f.label || 'Additional fee'}</span>
+                          <span style={{ fontSize: '12px', color: 'var(--white)' }}>{formatPeso(f.amount)}</span>
+                        </div>
+                      ))}
                       {selectedOrder.discountAmount > 0 && (
                         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                           <span style={{ fontSize: '12px', color: 'var(--gray)' }}>Discount</span>

@@ -3009,6 +3009,11 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
               value={`−₱${fmt(lo.firstOrderDiscount)}`}
             />
           )}
+          {/* What was charged at the counter beyond the catalogue lines, each under its own
+              name. A figure with no label is the one a customer comes back to argue about. */}
+          {Array.isArray(lo.extraFees) && lo.extraFees.map((f, i) => (
+            <InfoRow key={'fee' + i} label={f.label || 'Additional fee'} value={`₱${fmt(f.amount)}`} />
+          ))}
           {Number(lo.shippingFee) > 0 && (
             <InfoRow label="Shipping" value={`₱${fmt(lo.shippingFee)}`} />
           )}

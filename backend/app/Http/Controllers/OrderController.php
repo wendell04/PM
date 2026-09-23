@@ -1314,6 +1314,10 @@ class OrderController extends Controller
             'firstOrderPercent',
             'freeDelivery',
             'freeDeliveryFrom',
+            // Named charges added at the counter - a design fee, a layout charge, a delivery being
+            // passed on. Left off the projection they would be money the shop took with nothing on
+            // any screen saying what for.
+            'extraFees',
         ];
     }
 
@@ -1327,6 +1331,7 @@ class OrderController extends Controller
             // is not - it tells whoever packs and books the courier that the fee is the shop's,
             // and they need that without being shown a single peso figure.
             'firstOrderDiscount',
+            'extraFees',
             'refunds', 'refundOwed',
             'designFee', 'designFeePaid', 'designFeePaidAmount', 'rushFee', 'revisionFees',
         ];

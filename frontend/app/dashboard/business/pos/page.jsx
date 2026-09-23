@@ -192,6 +192,12 @@ export default function PosPage() {
 
   const [discountMode, setDiscountMode] = useState('peso');
   const [discountInput, setDiscountInput] = useState('');
+  // Anything charged on this order that is not a catalogue line - a design fee, a layout charge,
+  // a delivery being passed on. Each one carries its own name: a figure with no label on a
+  // receipt is what a customer comes back to argue about. [{ label, amount }]
+  const [fees, setFees] = useState([]);
+  const [feeLabel, setFeeLabel] = useState('');
+  const [feeAmount, setFeeAmount] = useState('');
 
   // What kind of transaction this is. 'collected' is a counter sale finished on the spot;
   // 'production' is work taken in (Messenger, phone, walk-in enquiry) that still has to be made and
@@ -287,6 +293,13 @@ export default function PosPage() {
   const [svcPrice, setSvcPrice] = useState('');
   const [svcQty, setSvcQty] = useState(1);
   const [svcMaterials, setSvcMaterials] = useState([]);   // [{ inventoryId, name, uom, qty, stockQty }]
+  // The same sheet now opens for ANY product with no recipe behind it, not only a quoted service.
+  // A product with no BOM takes nothing off the shelf when it is sold, so unless somebody says
+  // what the job eats, stock silently never moves - which is how a counter ends up selling from
+  // materials it ran out of last week. svcVariant carries the option already chosen; svcLocked
+  // means the price came from the catalogue and is not the staff member's to retype.
+  const [svcVariant, setSvcVariant] = useState(null);     // { id, label } or null
+  const [svcLocked, setSvcLocked]   = useState(false);
   const [matSearch, setMatSearch] = useState('');
   const [inventoryList, setInventoryList] = useState([]);
 
@@ -330,13 +343,29 @@ export default function PosPage() {
     setMatSearch('');
   }
 
+  /** Open the job sheet for a product, with whatever is already known filled in. */
+  function openJobSheet(product, { variant = null, price = null, qty = 1, locked = false } = {}) {
+    setServiceModal(product);
+    setSvcVariant(variant);
+    setSvcLocked(locked);
+    setSvcPrice(price === null || price === undefined ? '' : String(price));
+    setSvcQty(qty);
+    setSvcMaterials([]);
+    setMatSearch('');
+  }
+
+  function closeJobSheet() {
+    setServiceModal(null); setSvcVariant(null); setSvcLocked(false);
+    setSvcPrice(''); setSvcQty(1); setSvcMaterials([]); setMatSearch('');
+  }
+
   function confirmService() {
     if (!serviceModal) return;
     const price = parseFloat(String(svcPrice).replace(/,/g, ''));
-    if (isNaN(price) || price <= 0) { setSubmitError('Enter the agreed price for this service.'); return; }
+    if (isNaN(price) || price <= 0) { setSubmitError('Enter the agreed price for this line.'); return; }
     const qty = Number(svcQty) || 1;
-    addToCart(serviceModal, null, null, qty, price, svcMaterials);
-    setServiceModal(null); setSvcPrice(''); setSvcQty(1); setSvcMaterials([]); setMatSearch('');
+    addToCart(serviceModal, svcVariant?.id ?? null, svcVariant?.label ?? null, qty, price, svcMaterials);
+    closeJobSheet();
   }
 
   async function handleAddProduct(product) {
@@ -345,8 +374,7 @@ export default function PosPage() {
     // A quotation-priced service: the price was agreed elsewhere and the materials are not in a
     // recipe, so both are captured here rather than guessed.
     if (isService(product)) {
-      setServiceModal(product);
-      setSvcPrice(''); setSvcQty(1); setSvcMaterials([]); setMatSearch('');
+      openJobSheet(product);
       return;
     }
 
@@ -366,6 +394,12 @@ export default function PosPage() {
     // Check before it reaches the cart: selling stock that is not there is the one mistake a counter
     // screen must not let through.
     const entry = await loadAvailability(product);
+    // No recipe and it still has to be made: ask what the job eats, or it will come off no
+    // shelf at all. A collected sale skips this - the goods are already made and already counted.
+    if (saleType === 'production' && !entry?.hasBom) {
+      openJobSheet(product, { price, locked: true });
+      return;
+    }
     const canBuild = entry?.hasBom ? entry.map[Object.keys(entry.map)[0]] : null;
     const already = cart.find(c => c.key === `${product.id || product._id}__`)?.qty ?? 0;
     if (canBuild !== null && canBuild !== undefined && already + 1 > canBuild) {
@@ -381,6 +415,15 @@ export default function PosPage() {
     const price = resolvePrice(variantModal, qty, selectedVariant.id);
     if (price === null) {
       setSubmitError(`No price is set for that option of "${variantModal.name}".`);
+      return;
+    }
+    // Same as above, with the option already chosen: carry it into the job sheet rather than
+    // making the staff member pick it twice.
+    if (saleType === 'production' && !availability[String(variantModal.id || variantModal._id)]?.hasBom) {
+      const prod = variantModal;
+      const variant = { id: selectedVariant.id, label: selectedVariant.label };
+      setVariantModal(null); setSelectedVariant(null); setVariantQty(1);
+      openJobSheet(prod, { variant, price, qty, locked: true });
       return;
     }
     const canBuild = buildableFor(variantModal, selectedVariant.id);
@@ -453,6 +496,9 @@ export default function PosPage() {
     setSaleType('collected');
     setPaymentMode('full');
     setAmountPaid('');
+    setFees([]);
+    setFeeLabel('');
+    setFeeAmount('');
     setFulfillment('collected');
     setCustomerPhone('');
     setDeliveryAddress('');
@@ -472,7 +518,15 @@ export default function PosPage() {
     return Math.min(subtotal, raw);
   }, [discountInput, discountMode, subtotal]);
 
-  const netTotal = Math.max(0, Math.round((subtotal - discountPeso) * 100) / 100);
+  // Added after the discount and never discounted: the discount the counter gives is off the
+  // goods, and taking it off a delivery the shop is paying a rider for would be giving away
+  // somebody else's money. Mirrors WalkInOrderController.
+  const feeTotal = useMemo(
+    () => Math.round(fees.reduce((t, f) => t + (Number(f.amount) || 0), 0) * 100) / 100,
+    [fees],
+  );
+
+  const netTotal = Math.max(0, Math.round((subtotal - discountPeso + feeTotal) * 100) / 100);
 
   // How much is changing hands right now, and what is left owing. A counter sale settles in full; an
   // order taken in may be a downpayment, or nothing yet.
@@ -547,6 +601,7 @@ export default function PosPage() {
       items,
       paymentMethod,
       discount: discountPeso,
+      fees: fees.length ? fees.map(f => ({ label: f.label, amount: Number(f.amount) || 0 })) : undefined,
       notes: notes.trim() || undefined,
       amountTendered: paymentMethod === 'cash' ? tenderNum : paidNow,
       saleType,
@@ -613,6 +668,20 @@ export default function PosPage() {
                   <span>{formatPrice(item.lineTotal)}</span>
                 </div>
               ))}
+              {/* What else was charged, by name. A receipt whose lines do not add up to its total
+                  is the one that comes back to the counter. */}
+              {(receipt.extraFees ?? []).map((f, i) => (
+                <div key={`fee-${i}`} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: 'var(--gold)', marginBottom: '0.25rem' }}>
+                  <span>{f.label || 'Additional fee'}</span>
+                  <span>+{formatPrice(f.amount)}</span>
+                </div>
+              ))}
+              {Number(receipt.discountAmount) > 0 && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: 'var(--st-green-fg)', marginBottom: '0.25rem' }}>
+                  <span>Discount</span>
+                  <span>-{formatPrice(receipt.discountAmount)}</span>
+                </div>
+              )}
             </div>
           </div>
 
@@ -835,6 +904,69 @@ export default function PosPage() {
             )}
           </div>
 
+          {/* Anything charged that is not a catalogue line. It has a name because a receipt with
+              an unexplained figure on it is the one a customer comes back to argue about, and
+              because the shop has to be able to see later what it actually charged for. */}
+          <div style={{ marginBottom: '0.75rem' }}>
+            <label style={{ ...S.label, display: 'block', marginBottom: '0.375rem' }}>Additional fee</label>
+            {fees.length > 0 && (
+              <div style={{ display: 'grid', gap: 5, marginBottom: '0.5rem' }}>
+                {fees.map((f, i) => (
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 9px', background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: 8 }}>
+                    <span style={{ flex: 1, minWidth: 0, fontSize: '0.8rem', color: 'var(--white)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.label}</span>
+                    <span style={{ fontSize: '0.8rem', color: 'var(--gold)', fontWeight: 700, whiteSpace: 'nowrap' }}>+{formatPrice(f.amount)}</span>
+                    <button type="button" onClick={() => setFees(prev => prev.filter((_, j) => j !== i))}
+                      style={{ background: 'none', border: 'none', color: 'var(--gray)', cursor: 'pointer', fontSize: '1rem', lineHeight: 1 }}
+                      aria-label={`Remove ${f.label}`}>&times;</button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {fees.length < 10 && (() => {
+              const amt = parseFloat(String(feeAmount).replace(/,/g, ''));
+              const ready = feeLabel.trim() !== '' && !isNaN(amt) && amt > 0;
+              const add = () => {
+                if (!ready) return;
+                setFees(prev => [...prev, { label: feeLabel.trim(), amount: Math.round(amt * 100) / 100 }]);
+                setFeeLabel(''); setFeeAmount('');
+              };
+              return (
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <input
+                    value={feeLabel}
+                    onChange={e => setFeeLabel(e.target.value.slice(0, 60))}
+                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); add(); } }}
+                    placeholder="What for, e.g. Design fee"
+                    style={{ ...inputStyle, flex: 1 }}
+                    maxLength={60} />
+                  <input
+                    inputMode="decimal"
+                    value={feeAmount}
+                    onChange={e => setFeeAmount(sanitiseAmount(e.target.value, 999999))}
+                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); add(); } }}
+                    placeholder="0.00"
+                    style={{ ...inputStyle, flex: '0 0 96px', textAlign: 'right' }}
+                    maxLength={12} />
+                  <button type="button" onClick={add} disabled={!ready}
+                    style={{ ...btnGhost, flex: '0 0 auto', padding: '0 14px', opacity: ready ? 1 : 0.45, cursor: ready ? 'pointer' : 'not-allowed' }}>
+                    Add
+                  </button>
+                </div>
+              );
+            })()}
+            <div style={{ fontSize: '0.72rem', color: 'var(--gray)', marginTop: 5, lineHeight: 1.5 }}>
+              Added on top, after the discount - a discount comes off the goods, not off a delivery
+              you are paying a rider for.
+            </div>
+          </div>
+
+          {feeTotal > 0 && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.4rem 0' }}>
+              <span style={{ color: 'var(--gray)', fontSize: '0.85rem' }}>Additional fees</span>
+              <span style={{ color: 'var(--gold)', fontWeight: 600, fontSize: '0.9rem' }}>+{formatPrice(feeTotal)}</span>
+            </div>
+          )}
+
           <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0 1rem', borderTop: '1px solid var(--border)' }}>
             <span style={{ color: 'var(--gray)', fontSize: '0.875rem' }}>Total</span>
             <span style={{ color: 'var(--gold)', fontWeight: 700, fontSize: '1.1rem' }}>{formatPrice(netTotal)}</span>
@@ -1019,20 +1151,33 @@ export default function PosPage() {
       {serviceModal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
           <div className="pos-scroll" style={{ ...cardStyle, padding: '1.5rem', width: '100%', maxWidth: '460px', maxHeight: '90vh', overflowY: 'auto' }}>
-            <h3 style={{ margin: '0 0 4px', fontSize: '1rem', fontWeight: 700, color: 'var(--white)' }}>{serviceModal.name}</h3>
+            <h3 style={{ margin: '0 0 2px', fontSize: '1rem', fontWeight: 700, color: 'var(--white)' }}>{serviceModal.name}</h3>
+            {svcVariant && (
+              <div style={{ fontSize: '0.8rem', color: 'var(--gold)', marginBottom: 4 }}>{svcVariant.label}</div>
+            )}
             <p style={{ margin: '0 0 1.25rem', fontSize: '0.75rem', color: 'var(--gray)', lineHeight: 1.5 }}>
-              Priced by quotation, so there is no catalogue price and no recipe. Enter what was agreed
-              and pick what the job will actually consume.
+              {svcLocked
+                ? 'This one has no recipe, so nothing comes off the shelf when it is sold. Pick what the job will actually consume - otherwise the stock never moves and the counter keeps selling material that ran out.'
+                : 'Priced by quotation, so there is no catalogue price and no recipe. Enter what was agreed and pick what the job will actually consume.'}
             </p>
 
-            <label style={{ ...S.label, display: 'block', marginBottom: '0.375rem' }}>Agreed price (per unit)</label>
+            <label style={{ ...S.label, display: 'block', marginBottom: '0.375rem' }}>
+              {svcLocked ? 'Price (per unit)' : 'Agreed price (per unit)'}
+            </label>
             <input
               inputMode="decimal"
               value={svcPrice}
+              readOnly={svcLocked}
               onChange={e => setSvcPrice(sanitiseAmount(e.target.value, MAX_TENDERED))}
               placeholder="0.00"
-              style={inputStyle}
+              style={{ ...inputStyle, ...(svcLocked ? { opacity: 0.7, cursor: 'not-allowed' } : null) }}
              maxLength={12}/>
+            {svcLocked && (
+              <div style={{ fontSize: '0.7rem', color: 'var(--gray)', marginTop: 4 }}>
+                From the catalogue. Change it in Products, not here - a price typed at the counter
+                is a price nothing else in the shop knows about.
+              </div>
+            )}
 
             <label style={{ ...S.label, display: 'block', margin: '0.9rem 0 0.375rem' }}>Quantity</label>
             <input
@@ -1112,7 +1257,7 @@ export default function PosPage() {
             )}
 
             <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.25rem' }}>
-              <button type="button" onClick={() => setServiceModal(null)} style={{ ...btnGhost, flex: 1 }}>Cancel</button>
+              <button type="button" onClick={closeJobSheet} style={{ ...btnGhost, flex: 1 }}>Cancel</button>
               <button type="button" onClick={confirmService} style={{ ...btnGold, flex: 2 }}>Add to order</button>
             </div>
           </div>
