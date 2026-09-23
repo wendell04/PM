@@ -42,53 +42,19 @@ function CatIcon({ type, size = 16, style }) {
 }
 
 // ─── Benefit catalogue ──────────────────────────────────────────────────────
+// What a voucher may promise, which is exactly what checkout can take off a bill.
+//
+// There were six categories and eighteen types here - free design, rush fee waiver, bonus points,
+// VIP pricing and the rest. None of them reached the money: the discount came out zero, the code
+// was consumed at checkout anyway, and nothing was written on the order to tell the shop what the
+// customer had been promised. A voucher the system cannot honour is worse than no voucher, so the
+// list is now the two the system does honour. Anything else is a conversation in chat, not a code.
 const BENEFIT_CATEGORIES = [
   {
-    key: 'monetary', label: 'Monetary',
+    key: 'monetary', label: 'Discount',
     types: [
-      { key: 'percentage',  label: 'Percentage Discount' },
-      { key: 'fixed',       label: 'Fixed Amount Off' },
-      { key: 'tiered',      label: 'Tiered Savings' },
-    ],
-  },
-  {
-    key: 'product', label: 'Product / Quantity',
-    types: [
-      { key: 'free_item',    label: 'Free Item With Order' },
-      { key: 'buy_x_get_y', label: 'Buy X, Get X Free' },
-      { key: 'upgrade',     label: 'Free Product Upgrade' },
-    ],
-  },
-  {
-    key: 'service', label: 'Service',
-    types: [
-      { key: 'rush_fee_waiver', label: 'Rush Fee Waiver' },
-      { key: 'free_design',     label: 'Free Design Service' },
-      { key: 'free_reprint',    label: 'Free Reprint' },
-      { key: 'priority_queue',  label: 'Priority Production Queue' },
-    ],
-  },
-  {
-    key: 'production', label: 'Production',
-    types: [
-      { key: 'extended_payment', label: 'Deferred Payment Terms' },
-      { key: 'free_proof',       label: 'Free Sample Proof' },
-    ],
-  },
-  {
-    key: 'loyalty', label: 'Loyalty',
-    types: [
-      { key: 'bonus_points',   label: 'Bonus Points Multiplier' },
-      { key: 'points_to_peso', label: 'Points-to-Peso Redemption' },
-      { key: 'early_access',   label: 'Early Sale Access' },
-    ],
-  },
-  {
-    key: 'experiential', label: 'Exclusive',
-    types: [
-      { key: 'birthday_discount',  label: 'Birthday Month Discount' },
-      { key: 'anniversary_reward', label: 'Order Anniversary Reward' },
-      { key: 'vip_badge',          label: 'VIP Permanent Pricing' },
+      { key: 'percentage', label: 'Percentage off' },
+      { key: 'fixed',      label: 'Fixed amount off' },
     ],
   },
 ];
@@ -427,6 +393,13 @@ function VouchersTab({ token }) {
                         </span>
                       ) : (
                         <span style={{ color: 'var(--gray)' }}>{typeMeta?.label || v.benefitType || '-'}</span>
+                      )}
+                      {/* Written before the categories were cut back. Checkout refuses it rather
+                          than taking the code and giving nothing, so say so where it is read. */}
+                      {cat !== 'monetary' && (
+                        <div style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--st-orange-fg)', marginTop: 3 }}>
+                          Cannot be used online
+                        </div>
                       )}
                       {v.benefitDescription && (
                         <div style={{ fontSize: '0.72rem', color: 'var(--gray)', marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '200px' }}>
@@ -960,13 +933,18 @@ function FlashSaleModal({ form, setForm, formError, saving, editTarget, products
             <CustomSelect value={form.productId}
               onChange={v => setForm(f => ({ ...f, productId: v }))}
               placeholder="Select a product" searchable
-              options={products.map(p => {
-                const price = p.flatPrice ?? p.price;
-                return {
-                  value: p._id || p.id,
-                  label: `${p.subCategoryName || p.name || 'Unnamed'}${price != null ? ` - P${price}` : ''}`,
-                };
-              })} />
+              // A price-on-request product has no price to take a percentage off, and the
+              // label used to lead with the SUBCATEGORY, so the list read as categories rather
+              // than as the products it was actually offering.
+              options={products
+                .filter(p => (p.priceType || p.pricingMode || 'fixed') !== 'inquiry')
+                .map(p => {
+                  const price = p.flatPrice ?? p.price;
+                  return {
+                    value: p._id || p.id,
+                    label: `${p.name || p.subCategoryName || 'Unnamed'}${price != null ? ` - P${price}` : ''}`,
+                  };
+                })} />
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>

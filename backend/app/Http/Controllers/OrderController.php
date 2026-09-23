@@ -521,10 +521,25 @@ class OrderController extends Controller
                     && !in_array($userId, $voucher->usedBy ?? [], true)
                     && ($voucher->minOrderAmount === null || $goodsSubtotal >= $voucher->minOrderAmount);
 
+                // A voucher that takes nothing off must not be spent. Five of the six benefit
+                // categories never reached this arithmetic - discountValue was null, the discount
+                // came out zero, and the code was consumed anyway: the customer paid in full and
+                // lost their one use of it, with nothing on the order saying what they were owed.
+                if ($preValid && (string) ($voucher->benefitCategory ?? 'monetary') !== 'monetary') {
+                    $preValid = false;
+                }
+
                 if ($preValid) {
                     $discountAmount = $voucher->discountType === 'percentage'
                         ? round($goodsSubtotal * $voucher->discountValue / 100, 2)
                         : min((float) $voucher->discountValue, $goodsSubtotal);
+                    if ($discountAmount <= 0) {
+                        $discountAmount = 0.0;
+                        $preValid = false;
+                    }
+                }
+
+                if ($preValid) {
 
                     $filter = [
                         'code'     => $voucherCode,

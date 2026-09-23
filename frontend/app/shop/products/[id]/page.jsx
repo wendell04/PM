@@ -176,8 +176,15 @@ export default function ProductDetailPage() {
     if (!id) return;
     let active = true;
     const shuffle = (list) => [...list].sort(() => Math.random() - 0.5);
+    // The page is reached by SLUG, so comparing the route's id against a product's _id never
+    // matched and every product recommended itself: "You may also like: Custom Mug 11oz" on the
+    // Custom Mug 11oz page. Match on everything this product answers to.
+    const self = new Set([id, product?._id, product?.id, product?.slug]
+      .filter(Boolean).map(x => String(x).toLowerCase()));
+    const isSelf = (p) => [p._id, p.id, p.slug, p.name ? toSlug(p.name) : null]
+      .filter(Boolean).some(x => self.has(String(x).toLowerCase()));
     const apply = (list) => {
-      const pool = list.filter(p => String(p._id || p.id) !== String(id));
+      const pool = list.filter(p => !isSelf(p));
       if (active && pool.length) setRecommendations(shuffle(pool).slice(0, 6));
     };
     let hasCache = false;
@@ -196,7 +203,10 @@ export default function ProductDetailPage() {
       } catch {}
     })();
     return () => { active = false; };
-  }, [id]);
+    // product joins the deps because it arrives after the first pass, and it carries the ids the
+    // route's slug cannot.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, product?._id, product?.slug]);
 
   // Helpers
   function getTiers(p) {

@@ -143,8 +143,10 @@ class FlashSaleController extends Controller
         }
 
         // Overlap check
-        $start = new \DateTime($validated['startDate']);
-        $end = new \DateTime($validated['endDate']);
+        // Carbon in the app timezone, the same clock these dates are stored and compared on.
+        // new DateTime() reads PHP's default zone, which on the server is not Manila.
+        $start = \Carbon\Carbon::parse($validated['startDate']);
+        $end   = \Carbon\Carbon::parse($validated['endDate']);
         $overlap = FlashSale::where('productId', $validated['productId'])
             ->where('isActive', true)
             ->where('startDate', '<', $end)
@@ -256,8 +258,10 @@ class FlashSaleController extends Controller
         }
 
         // Overlap check (exclude current sale)
-        $start = new \DateTime($validated['startDate']);
-        $end = new \DateTime($validated['endDate']);
+        // Carbon in the app timezone, the same clock these dates are stored and compared on.
+        // new DateTime() reads PHP's default zone, which on the server is not Manila.
+        $start = \Carbon\Carbon::parse($validated['startDate']);
+        $end   = \Carbon\Carbon::parse($validated['endDate']);
         $overlap = FlashSale::where('productId', $validated['productId'])
             ->where('_id', '!=', $id)
             ->where('isActive', true)
