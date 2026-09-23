@@ -16,7 +16,7 @@ import { useCart } from '@/context/CartContext';
 import useLockBodyScroll from '@/lib/useLockBodyScroll';
 import { compressImage } from '@/lib/compressImage';
 import { makeThumbnail } from '@/lib/thumbnail';
-import { DEFAULT_CUSTOM_ORDER_TERMS, renderTermsBody } from '@/lib/customOrderTerms';
+import { DEFAULT_CUSTOM_ORDER_TERMS, renderTermsBody, clauseApplies } from '@/lib/customOrderTerms';
 import { applyOffers, firstOrderLabel, freeDeliveryNudge } from '@/lib/shopOffers';
 
 const METRO_CITIES = ['Manila', 'Quezon City', 'Caloocan', 'Las Piñas', 'Makati', 'Malabon', 'Mandaluyong', 'Marikina', 'Muntinlupa', 'Navotas', 'Parañaque', 'Pasay', 'Pasig', 'Pateros', 'San Juan', 'Taguig', 'Valenzuela'];
@@ -459,7 +459,7 @@ function CustomOrderInner() {
       : CUSTOM_ORDER_TERMS;
     return base.map(c => ({ ...c, body: renderTermsBody(c.body, storeSettings) }));
   })();
-  const activeClauses = rawTerms.filter(t => !t.mode || t.mode === 'both' || t.mode === activeTermsMode);
+  const activeClauses = rawTerms.filter(t => clauseApplies(t, activeTermsMode));
   const terms = activeClauses.map(t => [t.title, t.body]);
   // The exact clauses for THIS mode - carried with the cart line as the acceptance snapshot/proof.
   const termsSnapshot = activeClauses.map(t => ({ title: t.title, body: t.body, mode: t.mode || 'both' }));

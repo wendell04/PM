@@ -180,7 +180,7 @@ export async function createAdminQuotation(token, { recipientId, items, designFe
   return data.data ?? data;
 }
 
-export async function createOrderRequestPaymentLink(token, orderRequestId, type, deliveryAddress = null, terms = null, payment = null) {
+export async function createOrderRequestPaymentLink(token, orderRequestId, type, deliveryAddress = null, terms = null, payment = null, extra = null) {
   const res = await fetchWithTimeout(`${API_URL}/api/payment/order-request-link`, {
     method: 'POST',
     headers: {
@@ -196,6 +196,9 @@ export async function createOrderRequestPaymentLink(token, orderRequestId, type,
       // directly; without one it falls back to PayMongo's hosted page, which is what every
       // older client will keep doing.
       ...(payment ? payment : {}),
+      // The delivery speed the customer picked. It is not part of the quoted price - the goods
+      // were agreed, the speed was not - so the server charges it on top and records it.
+      ...(extra ? extra : {}),
     }),
   }, 30000);
   const data = await res.json();

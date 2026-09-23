@@ -67,8 +67,10 @@ const QuotationModal = ({ onClose, onSubmit, isSending, token, customerId, custo
 
   // Owner attaches the agreed artwork here; it rides the quote into the order and skips the
   // proof-approval gate (the design was already settled in chat).
-  const [design, setDesign] = useState(null); // { url } once uploaded
-  const [designName, setDesignName] = useState('');
+  // A list. A job has a front and a back, a shirt has a mockup and a print-ready file, and one
+  // slot meant the second file had to go in chat as a loose image with nothing tying it to
+  // the quote. [{ url, name }]
+  const [designs, setDesigns] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
 
@@ -440,16 +442,24 @@ const QuotationModal = ({ onClose, onSubmit, isSending, token, customerId, custo
 
   const nameOf = (productId) => products.find(p => String(p.id ?? p._id) === String(productId))?.name ?? '';
 
+  const MAX_DESIGNS = 10;
+
   const handleDesignPick = async (e) => {
-    const file = e.target.files?.[0];
+    const picked = Array.from(e.target.files || []);
     e.target.value = ''; // allow re-picking the same file after a remove
-    if (!file) return;
+    if (!picked.length) return;
     setUploadError('');
+    const room = MAX_DESIGNS - designs.length;
+    if (room <= 0) { setUploadError(`You can attach at most ${MAX_DESIGNS} files.`); return; }
     setUploading(true);
     try {
-      const { url } = await uploadDesignFile(token, file);
-      setDesign({ url });
-      setDesignName(file.name);
+      // One at a time on purpose: the upload endpoint is rate limited, and a partial failure
+      // should leave the files that did land attached rather than losing the lot.
+      for (const file of picked.slice(0, room)) {
+        const { url } = await uploadDesignFile(token, file);
+        setDesigns(list => [...list, { url, name: file.name }]);
+      }
+      if (picked.length > room) setUploadError(`Only the first ${room} were attached - ${MAX_DESIGNS} is the limit.`);
     } catch (err) {
       setUploadError(err.message || 'Upload failed. Try again.');
     } finally {
@@ -522,7 +532,9 @@ const QuotationModal = ({ onClose, onSubmit, isSending, token, customerId, custo
       expiresInDays: Math.min(90, Math.max(1, parseInt(form.expiresInDays) || 7)),
       note: form.note.trim(),
       total,
-      ...(design?.url ? { designUrl: design.url } : {}),
+      // designUrl stays as the first of them, because every screen written before the list reads
+      // that one field and there is no reason to break them.
+      ...(designs.length ? { designUrl: designs[0].url, designUrls: designs } : {}),
     });
   };
 
@@ -961,23 +973,50 @@ const QuotationModal = ({ onClose, onSubmit, isSending, token, customerId, custo
           </div>
         </Field>
 
-        <Field label="Design / Mockup (optional)">
-          {design ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '6px', padding: '8px 10px' }}>
-              <img src={design.url} alt="" style={{ width: 40, height: 40, borderRadius: 5, objectFit: 'cover', flexShrink: 0 }} />
-              <span style={{ flex: 1, minWidth: 0, fontSize: '13px', color: 'var(--gray-light)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{designName || 'Attached design'}</span>
-              <button type="button" onClick={() => { setDesign(null); setDesignName(''); }} style={{ background: 'none', border: 'none', color: '#e05252', cursor: 'pointer', display: 'flex', flexShrink: 0 }}>{ICONS.trash}</button>
+        <Field label="Design / Mockups (optional)">
+          {designs.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: designs.length < MAX_DESIGNS ? 8 : 0 }}>
+              {designs.map((f, i) => {
+                // A PDF or an AI file has no thumbnail to show. A generic file mark says what it
+                // is; an <img> pointed at it just renders as broken.
+                const isImg = /\.(png|jpe?g|webp|gif|bmp|avif)(\?|$)/i.test(f.url);
+                return (
+                  <div key={f.url + i} style={{ display: 'flex', alignItems: 'center', gap: '10px', background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '6px', padding: '8px 10px' }}>
+                    {isImg ? (
+                      /* eslint-disable-next-line @next/next/no-img-element */
+                      <img src={f.url} alt="" style={{ width: 40, height: 40, borderRadius: 5, objectFit: 'cover', flexShrink: 0 }} />
+                    ) : (
+                      <span style={{ width: 40, height: 40, borderRadius: 5, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--dark3)', color: 'var(--gold)' }}>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/>
+                        </svg>
+                      </span>
+                    )}
+                    <span style={{ flex: 1, minWidth: 0, fontSize: '13px', color: 'var(--gray-light)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {f.name || 'Attached design'}
+                      {i === 0 && designs.length > 1 && (
+                        <span style={{ marginLeft: 6, fontSize: '10px', fontWeight: 700, color: 'var(--gold)' }}>MAIN</span>
+                      )}
+                    </span>
+                    <button type="button" onClick={() => setDesigns(list => list.filter((_, j) => j !== i))}
+                      style={{ background: 'none', border: 'none', color: '#e05252', cursor: 'pointer', display: 'flex', flexShrink: 0 }}>{ICONS.trash}</button>
+                  </div>
+                );
+              })}
             </div>
-          ) : (
+          )}
+          {designs.length < MAX_DESIGNS && (
             <label style={{ ...S.btnGhost, display: 'inline-flex', cursor: uploading ? 'wait' : 'pointer', opacity: uploading ? 0.6 : 1 }}>
               {ICONS.plus}
-              {uploading ? 'Uploading…' : 'Attach design file'}
-              <input type="file" accept="image/*,.pdf,.ai" onChange={handleDesignPick} disabled={uploading} style={{ display: 'none' }} />
+              {uploading ? 'Uploading…' : designs.length ? 'Attach another' : 'Attach design file'}
+              <input type="file" multiple accept="image/*,.pdf,.ai,.psd,.svg" onChange={handleDesignPick} disabled={uploading} style={{ display: 'none' }} />
             </label>
           )}
           {uploadError && <span style={S.errText}>{uploadError}</span>}
           <span style={{ fontSize: '11px', color: 'var(--gray)', marginTop: '2px' }}>
-            Attaching the agreed artwork sends it straight into production - no separate proof step for the customer.
+            Attaching the agreed artwork sends it straight into production - no separate proof step
+            for the customer. The first file is the one shown on the quote card; all of them reach
+            the order and production.
           </span>
         </Field>
 

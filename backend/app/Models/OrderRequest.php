@@ -52,6 +52,11 @@ class OrderRequest extends Model
         'selectedVariants',
         'quantity',
         'designUrl',
+        // Several mockups, and files that are not images. One `designUrl` rendered as an <img>
+        // meant a PDF or an AI file showed as a broken picture, and a job with a front and a back
+        // could only ever show one of them. designUrl stays as the first of these, so every screen
+        // written before this keeps working.
+        'designUrls',
         'designNotes',
         'designType',
         'designApproved',
@@ -83,6 +88,11 @@ class OrderRequest extends Model
         // Stock at payment time: the owner's per-quote pre-order permission, and the record of a
         // payment refused because the shelf no longer covered the quote (shown in To Buy).
         'allowPreorder',
+        // The speed the customer chose when they paid. A quotation prices the goods; how fast the
+        // shop jumps the queue for them is a separate charge, and it is decided here rather than
+        // baked into a price that was agreed days earlier.
+        'isRush',
+        'rushFee',
         'stockBlock',
         'stockBlockNotifiedAt',
         'createdAt',
@@ -99,6 +109,9 @@ class OrderRequest extends Model
         'materialsCost'    => 'float',
         'designApproved'   => 'boolean',
         'allowPreorder'    => 'boolean',
+        'isRush'           => 'boolean',
+        'rushFee'          => 'float',
+        'designUrls'       => 'array',
         'deliveryAddress'  => 'array',
         'shippingFee'      => 'float',
         'designFee'        => 'float',

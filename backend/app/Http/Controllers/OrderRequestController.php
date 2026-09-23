@@ -698,6 +698,12 @@ class OrderRequestController extends Controller
             'downPayment'       => 'nullable|numeric|min:0',
             'note'              => 'nullable|string|max:1000',
             'designUrl'         => 'nullable|string|max:1000',
+            // A job has a front and a back, a shirt has a mockup and a print-ready file, and a
+            // layout arrives as a PDF as often as a PNG. One url could show one image; this takes
+            // the set, and designUrl stays as the first of them for every screen written before.
+            'designUrls'        => 'nullable|array|max:10',
+            'designUrls.*.url'  => 'required_with:designUrls|string|max:1000',
+            'designUrls.*.name' => 'nullable|string|max:200',
             'designNotes'       => 'nullable|string|max:1000',
             'expiresInDays'     => 'nullable|integer|min:1|max:90',
         ]);
@@ -768,6 +774,12 @@ class OrderRequestController extends Controller
                     return $product->thumbnail ?? ($product->images[0] ?? null);
                 })(),
                 'category'     => $product->category ?? null,
+                // What KIND of thing this line is, read off the catalogue at quote time. The
+                // conversion works this out again on payment; carrying it here is what lets the
+                // checkout screen know whether it is selling bespoke work - which needs the custom
+                // order terms agreed - or something off a shelf, which does not.
+                'isCustom'      => (bool) ($product->isCustom ?? false),
+                'isMadeToOrder' => (bool) ($product->isMadeToOrder ?? false) || (bool) ($product->isCustom ?? false),
                 'variantId'    => $row['variantId'] ?? null,
                 'variantName'  => $row['variantName'] ?? null,
                 'qty'          => $qty,
@@ -789,7 +801,21 @@ class OrderRequestController extends Controller
         // chat), so it is marked approved - the converted order skips the proof-approval gate
         // and goes straight to production. (Customer-uploaded custom designs are NOT approved
         // here; those still route through review on the product-page custom-order flow.)
-        $designUrl   = !empty($validated['designUrl']) ? $validated['designUrl'] : null;
+        $designFiles = array_values(array_filter(
+            array_map(fn ($f) => [
+                'url'  => trim((string) ($f['url'] ?? '')),
+                'name' => trim((string) ($f['name'] ?? '')) ?: null,
+            ], (array) ($validated['designUrls'] ?? [])),
+            fn ($f) => $f['url'] !== ''
+        ));
+        // The single field still decides everything downstream that predates the list, so the
+        // first attachment fills it whether it arrived alone or as one of several.
+        $designUrl   = !empty($validated['designUrl'])
+            ? $validated['designUrl']
+            : ($designFiles[0]['url'] ?? null);
+        if ($designUrl && empty($designFiles)) {
+            $designFiles = [['url' => $designUrl, 'name' => null]];
+        }
         $designNotes = $designUrl ? ($validated['designNotes'] ?? null) : null;
 
         $first = $lineItems[0];
@@ -819,6 +845,7 @@ class OrderRequestController extends Controller
             'costBasis'             => 'estimated',
             'adminComment'  => $validated['note'] ?? null,
             'designUrl'     => $designUrl,
+            'designUrls'    => $designFiles ?: null,
             'designNotes'   => $designNotes,
             'designType'    => $designUrl ? 'upload' : null,
             'designApproved'=> $designUrl ? true : false,

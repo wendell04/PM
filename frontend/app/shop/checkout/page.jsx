@@ -145,6 +145,11 @@ export default function CheckoutPage() {
   // an explicit fee-based mode (flat / distance).
   const courierBooked = !storeSettings?.shippingMode || storeSettings.shippingMode === 'courier_booked';
 
+  // Buy it now is a button near the bottom of a long product page, so the browser carries that
+  // scroll position across and checkout opened halfway down - past the breakdown the customer is
+  // here to check before paying.
+  useEffect(() => { window.scrollTo(0, 0); }, []);
+
   // ── EFFECT: Load store settings for shipping calculation ──
   useEffect(() => {
     fetch(`${API_URL}/api/public/settings`)

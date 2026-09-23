@@ -3017,7 +3017,12 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
           )}
           {Number(lo.designFee) > 0 && (
             <InfoRow
-              label={`Design fee${lo.designFeePaid ? '' : ' (unpaid)'}`}
+              /* On a quotation the design fee is inside the quoted price and was collected with
+                 the rest, so "(unpaid)" was wrong on every one of them - there is no separate
+                 design-fee payment on this route and there never will be. */
+              label={lo.orderSource === 'inquiry'
+                ? 'Design fee (in the quote)'
+                : `Design fee${lo.designFeePaid ? '' : ' (unpaid)'}`}
               value={`₱${fmt(lo.designFee)}`}
             />
           )}

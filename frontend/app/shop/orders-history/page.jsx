@@ -2094,6 +2094,18 @@ export default function OrdersHistoryPage() {
                           <span style={{ fontSize: '12px', color: '#22c55e' }}>-{formatPeso(selectedOrder.firstOrderDiscount)}</span>
                         </div>
                       )}
+                      {/* An order that came from a quotation has its design fee inside the
+                          quoted price - collected with everything else, never as a separate
+                          payment. designFeePaid is false there (it means "a separate design-fee
+                          payment landed"), so the line simply vanished and the breakdown did not
+                          add up to the total sitting under it. */}
+                      {!selectedOrder.designFeePaid && Number(selectedOrder.designFee ?? 0) > 0
+                        && selectedOrder.orderSource === 'inquiry' && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span style={{ fontSize: '12px', color: 'var(--gray)' }}>Design fee</span>
+                          <span style={{ fontSize: '12px', color: 'var(--white)' }}>{formatPeso(selectedOrder.designFee)}</span>
+                        </div>
+                      )}
                       {selectedOrder.designFeePaid && (() => {
                         // ONE fee for the order however many products the artwork goes on. Summing the
                         // per-line copies of that same fee showed double what was charged.

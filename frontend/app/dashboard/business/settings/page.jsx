@@ -7,7 +7,7 @@ import Image from 'next/image';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
-import { DEFAULT_CUSTOM_ORDER_TERMS } from '@/lib/customOrderTerms';
+import { DEFAULT_CUSTOM_ORDER_TERMS, TERMS_MODES } from '@/lib/customOrderTerms';
 import { DEFAULT_REGISTRATION_TERMS } from '@/lib/registrationTerms';
 import { CustomSelect } from './../inventory-v2/shared';
 import OrderForms from './OrderForms';
@@ -2688,16 +2688,17 @@ export default function SettingsPage() {
                           />
                           {/* Which design flow the clause applies to. A file-quality warning is
                               meaningless to someone who asked US to draw it. */}
-                          <select
-                            value={t.mode || 'both'}
-                            onChange={e => setTermsRows(rows => rows.map((x, j) => j === i ? { ...x, mode: e.target.value } : x))}
-                            style={{ padding: '0.5rem 0.65rem', borderRadius: '7px', border: '1px solid var(--border)', background: 'var(--dark2)', color: 'var(--white)', fontSize: '0.78rem' }}
-                          >
-                            <option value="both">Both flows</option>
-                            <option value="upload">Uploaded design only</option>
-                            <option value="request">Design request only</option>
-                            <option value="quote">Quotation only</option>
-                          </select>
+                          {/* The app's own dropdown. A bare <select> renders in the browser's
+                              chrome - white on white in dark mode on Windows - and was the only
+                              one left on this screen. */}
+                          <div style={{ flex: '0 1 200px', minWidth: 170 }}>
+                            <CustomSelect
+                              value={t.mode || 'all'}
+                              onChange={v => setTermsRows(rows => rows.map((x, j) => j === i ? { ...x, mode: v } : x))}
+                              options={TERMS_MODES}
+                              placeholder="Where it applies"
+                            />
+                          </div>
                           <button
                             type="button"
                             onClick={() => setTermsRows(rows => rows.filter((_, j) => j !== i))}
