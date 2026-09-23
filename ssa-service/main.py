@@ -4,9 +4,13 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List
+import logging
+
 import pandas as pd
 import numpy as np
 from ssa import SSA, dominant_period
+
+logger = logging.getLogger("ssa-service")
 
 app = FastAPI()
 
@@ -73,6 +77,18 @@ class ComparativePeriod(BaseModel):
 class ComparativeRequest(BaseModel):
     series: List[ComparativePeriod]
     threshold_pct: float = 20.0
+
+
+def _server_error(where: str, e: Exception) -> HTTPException:
+    """Log the detail, return a message that gives nothing away.
+
+    Every endpoint used to put str(e) plus the full traceback in the HTTP
+    detail, so a failure handed the browser the stack and the absolute
+    paths of this machine. The forecast page shows response detail to the
+    user, so that reached the screen too.
+    """
+    logger.exception("%s failed", where)
+    return HTTPException(status_code=500, detail=f"{where} failed. See the service log for details.")
 
 
 # ── MAPE: computed only on weeks with actual sales ───────────────────────────
@@ -198,6 +214,12 @@ async def forecast(req: ForecastRequest):
         is_sparse        = is_stock or is_demand   # zeros are real; route intermittent to SBA
         if forecast_type not in ("weekly", "monthly", "annually"):
             raise HTTPException(status_code=400, detail="Invalid forecast_type.")
+
+        # Nothing to build from. Checked before the DataFrame, because an empty
+        # one has no columns at all and the first ["Date"] raises a KeyError -
+        # which surfaced as a 500 rather than the 400 this is.
+        if not req.rows:
+            raise HTTPException(status_code=400, detail="No data rows provided.")
 
         # Build a clean daily DataFrame from the raw rows
         df_raw = pd.DataFrame([{"Date": r.date, "Value": r.value} for r in req.rows])
@@ -816,11 +838,7 @@ async def forecast(req: ForecastRequest):
     except HTTPException:
         raise
     except Exception as e:
-        import traceback
-        raise HTTPException(
-            status_code=500,
-            detail=str(e) + "\n" + traceback.format_exc(),
-        )
+        raise _server_error("/api/forecast", e)
 
 
 # ── RFM Customer Segmentation ─────────────────────────────────────────────
@@ -1054,8 +1072,7 @@ async def inventory_plan(req: InventoryPlanRequest):
     except HTTPException:
         raise
     except Exception as e:
-        import traceback
-        raise HTTPException(status_code=500, detail=str(e) + "\n" + traceback.format_exc())
+        raise _server_error("/api/inventory-plan", e)
 
 
 @app.post("/api/customer-segments")
@@ -1124,8 +1141,7 @@ async def customer_segments(req: RFMRequest):
     except HTTPException:
         raise
     except Exception as e:
-        import traceback
-        raise HTTPException(status_code=500, detail=str(e) + "\n" + traceback.format_exc())
+        raise _server_error("/api/customer-segments", e)
 
 
 # ── Service Segmentation ──────────────────────────────────────────────────
@@ -1193,8 +1209,7 @@ async def service_segments(req: ServiceSegmentRequest):
     except HTTPException:
         raise
     except Exception as e:
-        import traceback
-        raise HTTPException(status_code=500, detail=str(e) + "\n" + traceback.format_exc())
+        raise _server_error("/api/service-segments", e)
 
 
 # ── Comparative Analysis ──────────────────────────────────────────────────
@@ -1267,5 +1282,4 @@ async def comparative_analysis(req: ComparativeRequest):
     except HTTPException:
         raise
     except Exception as e:
-        import traceback
-        raise HTTPException(status_code=500, detail=str(e) + "\n" + traceback.format_exc())
+        raise _server_error("/api/comparative", e)

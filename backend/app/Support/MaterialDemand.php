@@ -105,17 +105,40 @@ class MaterialDemand
 
     // ── ledger ────────────────────────────────────────────────────────────
 
-    private function isConsumption(StockHistory $h): bool
+    /**
+     * Was this deduction actually consumed?
+     *
+     * The single definition, shared with MaterialUsage so the forecast's demand
+     * and To Buy's days-of-cover never disagree about what left the shelf.
+     *
+     *   production     material used to make an order - always consumption
+     *   sale_reserved  a hold placed when a ready-made item is ordered. It is
+     *                  the consumption event for stock sold as-is, but only if
+     *                  the order went through; a cancelled or returned order
+     *                  releases the hold and the stock comes back as its own
+     *                  addition row
+     *   qc_scrap       shrinkage, not demand
+     *   damaged        shrinkage, not demand
+     *
+     * @param  string|null  $orderStatus  normalised, or null when there is no order
+     */
+    public static function countsAsConsumption(?string $reason, ?string $orderStatus): bool
     {
-        $reason = (string) ($h->reason ?? '');
         if ($reason === 'production') {
             return true;
         }
         if ($reason === 'sale_reserved') {
-            $st = $this->orderStatus[(string) ($h->orderId ?? '')] ?? null;
-            return $st !== 'cancelled' && $st !== 'returned';
+            return $orderStatus !== 'cancelled' && $orderStatus !== 'returned';
         }
         return false;
+    }
+
+    private function isConsumption(StockHistory $h): bool
+    {
+        return self::countsAsConsumption(
+            $h->reason ?? null,
+            $this->orderStatus[(string) ($h->orderId ?? '')] ?? null,
+        );
     }
 
     /** @return array<int, array{date:string,value:float}> */
