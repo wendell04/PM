@@ -7,6 +7,7 @@ import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import {
   S, ICONS, CustomSelect, EmptyState, PaginationBar, SearchBar, SummaryCard,
 } from '../inventory-v2/shared';
+import { useIsPhone, KpiStrip, PhoneList, PhoneRow, PhoneSheet } from '@/components/dashboard/phone';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
@@ -123,6 +124,10 @@ export default function AuditLogsPage() {
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(25);
   const [openId, setOpenId] = useState(null);
+  // The dashboard's phone kit, the same one Orders, Payments and the inventory tabs use. A row
+  // that is a person, a badge, a time and an address does not survive being squeezed to 360px -
+  // on a phone it becomes a list and a full-screen sheet instead.
+  const isPhone = useIsPhone();
 
   const startDate = useMemo(() => {
     if (range === 'all') return '';
@@ -197,14 +202,26 @@ export default function AuditLogsPage() {
               Showing {logs.length} entr{logs.length === 1 ? 'y' : 'ies'} from {rangeLabel}
             </div>
           </div>
-          <button type="button" onClick={load} disabled={isLoading} style={{ ...S.btnGhost, opacity: isLoading ? 0.6 : 1 }}>
+          <button type="button" onClick={load} disabled={isLoading} aria-label="Reload the audit trail"
+            style={{ ...S.btnGhost, opacity: isLoading ? 0.6 : 1 }}>
             {ICONS.refresh ?? null}
             {isLoading ? 'Refreshing…' : 'Refresh'}
           </button>
         </div>
 
         {/* The four figures a security screen is actually for. Access and change - not stock. */}
-        {summary && (
+        {summary && isPhone && (
+          <KpiStrip items={[
+            { key: 'in',      value: summary.signIns ?? 0, label: 'Sign-ins' },
+            { key: 'people',  value: summary.people ?? 0,  label: 'People' },
+            { key: 'refused', value: summary.refused ?? 0, label: 'Refused',
+              color: summary.refused > 0 ? 'var(--st-red-fg)' : undefined,
+              title: summary.refused > 0 ? `from ${summary.refusedFrom} address(es)` : 'nothing turned away' },
+            { key: 'changes', value: summary.changes ?? 0, label: 'Changes' },
+          ]} />
+        )}
+
+        {summary && !isPhone && (
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
             <SummaryCard label="Sign-ins" value={summary.signIns ?? 0} sub={`in ${rangeLabel}`} accent />
             <SummaryCard label="People who signed in" value={summary.people ?? 0} sub="separate accounts" />
@@ -249,7 +266,10 @@ export default function AuditLogsPage() {
           </div>
         )}
 
-        <div style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
+        {/* Announced, so a screen reader is told when the list reloads under a filter rather
+            than silently showing something else. */}
+        <div role="feed" aria-busy={isLoading} aria-label="Audit trail entries"
+          style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
           {isLoading ? (
             <div style={{ padding: 20, display: 'grid', gap: 10 }}>
               {[0, 1, 2, 3, 4, 5].map(i => (
@@ -263,6 +283,29 @@ export default function AuditLogsPage() {
                 sub={query || group !== 'all' ? 'Try a wider date range, or clear the filters.' : 'Entries appear here as people sign in and change things.'}
               />
             </div>
+          ) : isPhone ? (
+            // A row here is a person, a badge, a time and an IP address. Squeezed to 360px that
+            // becomes four things fighting for one line, so on a phone it is a list and the
+            // detail opens full screen - the same shape Orders and Payments use.
+            <PhoneList>
+              {paged.map((l, i) => (
+                <PhoneRow
+                  key={l.id}
+                  first={i === 0}
+                  mono={false}
+                  title={l.actorName}
+                  chip={(
+                    <span style={{
+                      fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 999,
+                      background: toneFor(l.action, l.group).bg, color: toneFor(l.action, l.group).fg,
+                    }}>{l.label}</span>
+                  )}
+                  meta={l.description}
+                  sub={`${whenText(l.at)}${l.ip ? ' \u00b7 ' + l.ip : ''}`}
+                  onClick={() => setOpenId(l.id)}
+                />
+              ))}
+            </PhoneList>
           ) : (
             paged.map((l, i) => {
               const tone = toneFor(l.action, l.group);
@@ -273,12 +316,14 @@ export default function AuditLogsPage() {
                   <button
                     type="button"
                     onClick={() => setOpenId(open ? null : l.id)}
+                    aria-expanded={open}
+                    aria-label={`${l.actorName}: ${l.label}. ${l.description}`}
                     style={{
                       width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '11px 14px',
                       background: 'none', border: 'none', textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit',
                     }}>
                     {/* Who, not what - a security log is read by looking for a person first. */}
-                    <span style={{
+                    <span aria-hidden="true" style={{
                       width: 32, height: 32, borderRadius: '50%', flexShrink: 0, display: 'flex',
                       alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800,
                       background: tone.bg, color: tone.fg,
@@ -336,6 +381,47 @@ export default function AuditLogsPage() {
             })
           )}
         </div>
+
+        {/* The detail of one entry, full screen. The inline expansion the desktop uses has no
+            room on a phone, and a modal has less. */}
+        {isPhone && (() => {
+          const l = paged.find(x => x.id === openId);
+          if (!l) return null;
+          const device = readDevice(l.device);
+          const line = (label, value) => value ? (
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, padding: '9px 0', borderBottom: '1px solid var(--border)', fontSize: 13 }}>
+              <span style={{ color: 'var(--gray)', flexShrink: 0 }}>{label}</span>
+              <span style={{ color: 'var(--white)', textAlign: 'right', wordBreak: 'break-word' }}>{value}</span>
+            </div>
+          ) : null;
+          return (
+            <PhoneSheet
+              open
+              mono={false}
+              title={l.actorName}
+              subtitle={l.label}
+              onClose={() => setOpenId(null)}
+            >
+              <div style={{ padding: '0 14px' }}>
+                <div style={{ fontSize: 13, color: 'var(--gray-light)', lineHeight: 1.6, padding: '10px 0' }}>{l.description}</div>
+                {line('Account', l.actorEmail)}
+                {line('Role', l.actorRole)}
+                {line('When', l.at ? new Date(l.at).toLocaleString('en-PH') : null)}
+                {line('From', l.ip)}
+                {line('Device', device)}
+                {line('About', l.entityType ? `${l.entityType}${l.entityId ? ' ' + l.entityId : ''}` : null)}
+                {l.metadata && Object.keys(l.metadata).length > 0 && (
+                  <div style={{ padding: '10px 0' }}>
+                    <div style={{ fontSize: 12, color: 'var(--gray)', marginBottom: 5 }}>Details</div>
+                    <div style={{ padding: '8px 10px', background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: 8, fontFamily: 'monospace', fontSize: 11.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                      {JSON.stringify(l.metadata, null, 2)}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </PhoneSheet>
+          );
+        })()}
 
         {logs.length > perPage && (
           <div style={{ marginTop: 12 }}>
