@@ -79,8 +79,8 @@ class OrderFormSpec
             // customers do email, and this whole block is the owner's to rewrite in Settings.
             'description' => "LAYOUT / DESIGN\n"
                 . "Send your layout as PNG, JPG or PDF at 300 dpi. Vector files (AI, EPS, SVG) print sharpest.\n"
-                . "Attach it here in the chat so it lands on your order, or e-mail it to\n"
-                . "personalizemeprints.admin@gmail.com with the subject: DESIGN (your full name).\n"
+                . "E-mail your files to personalizemeprints.admin@gmail.com with Subject: DESIGN (your full name).\n"
+                . "You can also attach the file here in the chat, which puts it straight on your order.\n"
                 . "No artwork yet? Say so below and our designer will draw it for you.",
             'questions'   => [
                 ['id' => 'items', 'type' => 'item_list', 'label' => 'What do you want made?', 'help' => 'One row per item. Put the size, colour and where the print goes in the details.', 'required' => true, 'options' => []],
