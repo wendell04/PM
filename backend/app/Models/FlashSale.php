@@ -11,6 +11,9 @@ class FlashSale extends Model
 
     protected $fillable = [
         'productId',
+        // Which variants the sale covers. Empty or absent means the whole product, which is
+        // what every sale written before this meant and still means.
+        'variantIds',
         'productName',
         'productThumbnail',
         'discountType',
@@ -26,6 +29,7 @@ class FlashSale extends Model
     ];
 
     protected $casts = [
+        'variantIds'    => 'array',
         'discountValue' => 'float',
         'isActive'      => 'boolean',
         'startDate'     => 'datetime',

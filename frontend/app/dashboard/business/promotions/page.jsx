@@ -68,7 +68,7 @@ const EMPTY_VOUCHER = {
 };
 
 const EMPTY_FLASH = {
-  productId: '', discountType: 'percentage', discountValue: '',
+  productId: '', variantIds: [], discountType: 'percentage', discountValue: '',
   startDate: '', endDate: '', isActive: true, stockLimit: '',
 };
 
@@ -667,7 +667,9 @@ function FlashSalesTab({ token }) {
   function openEdit(sale) {
     setEditTarget(sale);
     setForm({
-      productId: sale.productId || '', discountType: sale.discountType || 'percentage',
+      productId: sale.productId || '',
+      variantIds: Array.isArray(sale.variantIds) ? sale.variantIds.map(String) : [],
+      discountType: sale.discountType || 'percentage',
       discountValue: String(sale.discountValue || ''), startDate: toDatetimeLocal(sale.startDate),
       endDate: toDatetimeLocal(sale.endDate), isActive: sale.isActive !== false,
       stockLimit: sale.stockLimit != null ? String(sale.stockLimit) : '',
@@ -962,6 +964,55 @@ function FlashSaleModal({ form, setForm, formError, saving, editTarget, products
               <input type="number" min="0.01" step="0.01" max={form.discountType === 'percentage' ? 90 : 100000} value={form.discountValue} onChange={e => { const raw = e.target.value; const cap = form.discountType === 'percentage' ? 90 : 100000; setForm(f => ({ ...f, discountValue: raw === '' ? '' : String(Math.min(cap, Number(raw))) })); }} onKeyDown={e => ['e','E','+','-'].includes(e.key) && e.preventDefault()} placeholder={form.discountType === 'percentage' ? 'e.g. 20 (max 90)' : 'e.g. 50'} style={inp} />
             </div>
           </div>
+
+          {(() => {
+            // A sale can cover the whole product or only some of its variants - "20% off Magic
+            // Mug" is a real campaign, and before this the discount had to hit every colour.
+            const prod = products.find(p => String(p._id || p.id) === String(form.productId));
+            const combos = prod?.combinations ?? [];
+            if (!prod || combos.length < 2) return null;
+            const all = (form.variantIds ?? []).length === 0;
+            return (
+              <div>
+                <label style={lbl}>Applies to</label>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
+                  <label style={{ display: 'flex', gap: 9, alignItems: 'center', fontSize: '0.84rem', cursor: 'pointer' }}>
+                    <input type="radio" checked={all} onChange={() => setForm(f => ({ ...f, variantIds: [] }))}
+                      style={{ accentColor: 'var(--gold)' }} />
+                    All {combos.length} variants
+                  </label>
+                  <label style={{ display: 'flex', gap: 9, alignItems: 'center', fontSize: '0.84rem', cursor: 'pointer' }}>
+                    <input type="radio" checked={!all}
+                      onChange={() => setForm(f => ({ ...f, variantIds: [String(combos[0].id)] }))}
+                      style={{ accentColor: 'var(--gold)' }} />
+                    Only the ones I pick
+                  </label>
+                  {!all && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, paddingLeft: 26 }}>
+                      {combos.map(c => {
+                        const id = String(c.id);
+                        const on = (form.variantIds ?? []).includes(id);
+                        return (
+                          <button key={id} type="button"
+                            onClick={() => setForm(f => {
+                              const list = f.variantIds ?? [];
+                              const next = on ? list.filter(x => x !== id) : [...list, id];
+                              return { ...f, variantIds: next.length ? next : [id] };
+                            })}
+                            style={{ padding: '5px 11px', borderRadius: 999, fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer',
+                              border: `1px solid ${on ? 'var(--gold)' : 'var(--border)'}`,
+                              background: on ? 'var(--gold-subtle)' : 'transparent',
+                              color: on ? 'var(--gold)' : 'var(--gray)' }}>
+                            {c.name || c.label || id}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
             <div>

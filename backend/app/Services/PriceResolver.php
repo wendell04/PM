@@ -78,7 +78,12 @@ class PriceResolver
             $price = (float) $product->flatPrice;
         }
 
-        if ($price !== null && $flashSale !== null) {
+        // A sale that names variants covers only those. A line for any other variant is priced
+        // as if there were no sale at all.
+        $covers = empty($flashSale?->variantIds)
+            || ($variantId !== null && in_array((string) $variantId, array_map('strval', (array) $flashSale->variantIds), true));
+
+        if ($price !== null && $flashSale !== null && $covers) {
             $discounted = $flashSale->discountType === 'percentage'
                 ? $price * (1 - $flashSale->discountValue / 100)
                 : $price - $flashSale->discountValue;
