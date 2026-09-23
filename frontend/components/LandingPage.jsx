@@ -359,18 +359,27 @@ const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=
 
     if (resetToken && email) {
       // Verify the token automatically
+      const invited = params.get('invite') === '1';
       handleResetLinkClick(resetToken, email).then(result => {
         if (result.valid) {
           setForgotEmail(email);
           setForgotLinkToken(resetToken);
           setForgotModal(true);
-          // Auto-send the 6-digit verification code after link verification
-          setForgotStep(3);
-          fetch(`${API_URL}/api/send-reset-code`, {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ email, token: resetToken }),
-          }).catch(() => {});
+          if (invited) {
+            // Straight to the password. The link itself is the proof - it went to this inbox and
+            // nowhere else - so a 6-digit code mailed to the same inbox only sends the new staff
+            // back to Gmail a second time to learn what they already demonstrated by arriving.
+            setForgotStep(4);
+          } else {
+            // A reset started from the login screen still takes the code: there, all anyone typed
+            // was an address, and the link alone could have been forwarded.
+            setForgotStep(3);
+            fetch(`${API_URL}/api/send-reset-code`, {
+              method: 'POST',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify({ email, token: resetToken }),
+            }).catch(() => {});
+          }
           // Clean up URL
           window.history.replaceState({}, document.title, window.location.pathname);
         } else {
@@ -1001,17 +1010,21 @@ const handleForgotResetPassword = async () => {
     const response = await fetchWithTimeout(`${API_URL}/api/reset-password`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({email: forgotEmail, code: forgotCode, password: forgotNewPassword, password_confirmation: forgotConfirmPassword}),
+      // The code when one was typed, otherwise the link token the invite arrived with.
+      body: JSON.stringify(forgotCode
+        ? {email: forgotEmail, code: forgotCode, password: forgotNewPassword, password_confirmation: forgotConfirmPassword}
+        : {email: forgotEmail, token: forgotLinkToken, password: forgotNewPassword, password_confirmation: forgotConfirmPassword}),
     });
     const data = await response.json();
     if (!response.ok) { setForgotError(data.message || 'Failed to reset password.'); return; }
-    // Success - close and go to login
-    setForgotModal(false);
-    setForgotStep(1);
+    // Say it worked, and only then ask what to do next. Closing straight into a login form left
+    // the person to infer from a sign-in box that their password had been set - and it opened that
+    // box even when somebody was already signed in on this browser, which is how a staff invite
+    // ended up showing a login screen to an account that was not the one being set up.
     setForgotCode('');
     setForgotNewPassword('');
     setForgotConfirmPassword('');
-    openModal('login');
+    setForgotStep(5);
   } catch (err) {
     setForgotError('Network error. Make sure the backend server is running.');
   } finally {
@@ -2923,10 +2936,13 @@ const handleForgotResetPassword = async () => {
                 <h2>{isInvite ? 'Set your password' : 'Forgot Password'}</h2>
                 <p>
                   {isInvite
-                    ? (forgotStep === 3 ? "Welcome to the team - confirm it's your email" : 'Choose the password you will sign in with')
+                    ? (forgotStep === 3 ? "Welcome to the team - confirm it's your email"
+                      : forgotStep === 5 ? 'You are ready to sign in'
+                      : 'Choose the password you will sign in with')
                     : (forgotStep === 1 ? "We'll send you a reset link" :
                        forgotStep === 2 ? "Confirm it's you" :
-                       forgotStep === 3 ? "Enter verification code" : "Set a new password")}
+                       forgotStep === 3 ? "Enter verification code" :
+                       forgotStep === 5 ? "All done" : "Set a new password")}
                 </p>
               </div>
               <button className="auth-close" onClick={() => { setForgotModal(false); setForgotStep(1); setForgotPasswordFocused(false); setForgotConfirmTouched(false); }}>✕</button>
@@ -3140,6 +3156,69 @@ const handleForgotResetPassword = async () => {
                   </button>
                 </div>
               )}
+
+              {/* STEP 5 - it worked, and what happens next depends on who is already signed in
+                  HERE. Three cases, and only one of them is the plain sign-in form the old code
+                  always showed: nobody signed in, the same account signed in, or - the case a
+                  staff invite usually meets - somebody else's account signed in on the browser
+                  the new person happened to open the email on. */}
+              {forgotStep === 5 && (() => {
+                const sameAccount = !!user && String(user.email ?? '').toLowerCase() === forgotEmail.trim().toLowerCase();
+                const otherName = [user?.firstName, user?.lastName].filter(Boolean).join(' ') || user?.email;
+                const finish = () => { setForgotModal(false); setForgotStep(1); setIsInvite(false); };
+                return (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', textAlign: 'center' }}>
+                    <div style={{ width: 62, height: 62, borderRadius: '50%', margin: '0 auto',
+                      background: 'rgba(34,197,94,0.12)', border: '2px solid #22c55e',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="20 6 9 17 4 12" />
+                      </svg>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--white)' }}>
+                        {isInvite ? 'Your password is set' : 'Your password has been changed'}
+                      </div>
+                      <div style={{ fontSize: '0.85rem', color: 'var(--gray)', marginTop: 6, lineHeight: 1.55 }}>
+                        {forgotEmail} can sign in with it now. Anywhere that account was already
+                        signed in has been signed out.
+                      </div>
+                    </div>
+
+                    {!user && (
+                      <button className="btn-auth-submit" onClick={() => { finish(); setLoginForm(f => ({ ...f, email: forgotEmail })); openModal('login'); }}>
+                        Sign in
+                      </button>
+                    )}
+
+                    {user && sameAccount && (
+                      <button className="btn-auth-submit" onClick={finish}>Done</button>
+                    )}
+
+                    {user && !sameAccount && (
+                      <>
+                        <div style={{ fontSize: '0.82rem', color: 'var(--gray)', background: 'rgba(212,168,67,0.10)',
+                          border: '1px solid rgba(212,168,67,0.35)', borderRadius: 10, padding: '10px 12px', lineHeight: 1.5 }}>
+                          This browser is signed in as <b style={{ color: 'var(--white)' }}>{otherName}</b>.
+                          Signing in as {forgotEmail} will sign {otherName} out here.
+                        </div>
+                        <button className="btn-auth-submit" onClick={async () => {
+                          try { await logout(); } catch { /* signing out locally is enough */ }
+                          finish();
+                          setLoginForm(f => ({ ...f, email: forgotEmail }));
+                          openModal('login');
+                        }}>
+                          Sign in as {forgotEmail}
+                        </button>
+                        <button type="button" className="btn-auth-secondary" onClick={finish}
+                          style={{ background: 'transparent', border: '1px solid var(--border)', borderRadius: 10, padding: '11px', fontWeight: 600, cursor: 'pointer' }}>
+                          Stay signed in as {otherName}
+                        </button>
+                      </>
+                    )}
+                  </div>
+                );
+              })()}
 
             </div>
           </div>
