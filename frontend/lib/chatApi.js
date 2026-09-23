@@ -9,6 +9,9 @@ export async function getConversations(token) {
   try {
     const response = await fetchWithTimeout(`${API_URL}/api/chat/conversations`, {
       method: 'GET',
+      // Belt and braces with the API's own no-store: the inbox is the one list where a stale
+      // empty answer looks exactly like having no customers.
+      cache: 'no-store',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`,
