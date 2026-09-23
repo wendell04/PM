@@ -73,9 +73,14 @@ class OrderFormSpec
     {
         return [
             'name'        => 'Custom order form',
-            'description' => "ARTWORK\n"
+            // The shop's own wording, carried over from the old site. The chat is listed first on
+            // purpose: a file sent here lands ON the order, where production picks it up, while an
+            // emailed file has to be found and re-attached by hand. Both are offered because
+            // customers do email, and this whole block is the owner's to rewrite in Settings.
+            'description' => "LAYOUT / DESIGN\n"
                 . "Send your layout as PNG, JPG or PDF at 300 dpi. Vector files (AI, EPS, SVG) print sharpest.\n"
-                . "Send the file here in this chat or attach it to the order. We do not take files by email.\n"
+                . "Attach it here in the chat so it lands on your order, or e-mail it to\n"
+                . "personalizemeprints.admin@gmail.com with the subject: DESIGN (your full name).\n"
                 . "No artwork yet? Say so below and our designer will draw it for you.",
             'questions'   => [
                 ['id' => 'items', 'type' => 'item_list', 'label' => 'What do you want made?', 'help' => 'One row per item. Put the size, colour and where the print goes in the details.', 'required' => true, 'options' => []],
