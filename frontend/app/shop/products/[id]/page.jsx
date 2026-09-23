@@ -8,6 +8,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCart } from '@/context/CartContext';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
+import { canGoBackInApp } from '@/lib/shopNavTrail';
 import { submitOrderRequest, uploadDesignFile } from '@/lib/orderRequestApi';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL
@@ -608,6 +609,28 @@ export default function ProductDetailPage() {
   const preorderQty = (product?.allowPreorder && readyNow != null && quantity > readyNow)
     ? quantity - Math.max(0, readyNow)
     : 0;
+  /**
+   * What one variant option is worth on its own, so a customer can read the row instead of
+   * clicking every option to find out. Sold out is the decisive one; a low count is the one that
+   * changes what they do. Plenty says nothing - a public count is a promise the shop cannot keep
+   * when three variants draw on the same shelf, and it is stale the moment it is drawn.
+   */
+  const optionStock = (groupId, optVal) => {
+    if (!product || isInquiry) return null;
+    const comboId = resolveCombinationId({ ...selectedVariants, [groupId]: optVal });
+    if (comboId == null) return null;
+    const qty = product.variantCanProduce?.[comboId] != null ? Number(product.variantCanProduce[comboId])
+      : product.variantStock?.[comboId] != null ? Number(product.variantStock[comboId])
+      : null;
+    if (qty == null) return null;
+    // variantPreorder is the server's own answer to "can this variant still be ordered when the
+    // shelf is short" - it already folds in the product switch and the per-variant one.
+    const backorder = product.variantPreorder?.[comboId] ?? product.variantBackorder?.[comboId] ?? product.allowPreorder;
+    if (qty <= 0) return backorder ? { label: 'Pre-order', tone: 'wait' } : { label: 'Sold out', tone: 'gone' };
+    if (qty <= 10) return { label: `${qty} left`, tone: 'low' };
+    return null;
+  };
+
   const variantImage = (() => {
     if (!activeComboId || !product?.variantImageUrls) return null;
     return product.variantImageUrls[activeComboId]
@@ -637,21 +660,16 @@ export default function ProductDetailPage() {
           came from - the landing page, a collection, a search, or a filtered shop they had scrolled
           halfway down. Going back through history restores all of that for free.
 
-          But history is only safe to walk when the step behind us is our own. A product link opened
-          from Google or a chat app has that site behind it, and "Back to Products" must never be the
-          control that ejects someone off the shop. So: same-origin referrer, or a referrer-less entry
-          that has since navigated in-app (the SPA case, where referrer stays empty), means go back.
-          A foreign referrer, or a cold deep link with nothing behind it, falls back to /shop. */}
+          But history is only safe to walk when the step behind us is our own, and neither
+          history.length nor the referrer proves that. Opening a product in a NEW TAB - how people
+          compare two of them - leaves the new-tab page behind it, same-origin referrer and all, and
+          Back landed the customer on a blank page instead of the shop. So the only evidence trusted
+          here is our own: the shop layout counts every move made inside the tab, and Back walks
+          history only when at least one of those steps is behind us. Otherwise it goes to /shop,
+          which is never wrong. */}
       <button
         onClick={() => {
-          const canGoBack = typeof window !== 'undefined' && window.history.length > 1;
-          const sameOrigin = typeof document !== 'undefined'
-            && document.referrer.startsWith(window.location.origin);
-          // An empty referrer with history behind it is the SPA case - referrer never updates on a
-          // soft navigation, so its absence is not evidence of a cold entry.
-          const inApp = typeof document !== 'undefined'
-            && (sameOrigin || document.referrer === '');
-          if (canGoBack && inApp) router.back();
+          if (canGoBackInApp()) router.back();
           else router.push('/shop');
         }}
         style={{
@@ -1293,6 +1311,7 @@ export default function ProductDetailPage() {
                       const optVal = typeof opt === 'string' ? opt : (opt.value ?? opt.label ?? String(opt));
                       const optKey = typeof opt === 'string' ? opt : (opt.id ?? oi);
                       const isSelected = selectedVariants[group.id] === optVal;
+                      const stock = optionStock(group.id, optVal);
                       return (
                         <button
                           key={optKey}
@@ -1305,15 +1324,27 @@ export default function ProductDetailPage() {
                             setFrameOnOption(false);
                           }}
                           style={{
-                            padding: '0.4rem 0.875rem',
+                            padding: stock ? '0.35rem 0.875rem' : '0.4rem 0.875rem',
                             borderRadius: '8px', cursor: 'pointer',
                             fontSize: '0.875rem', fontWeight: 600,
                             border: isSelected ? '2px solid var(--gold)' : '1px solid var(--border)',
                             background: isSelected ? 'var(--gold)' : 'var(--dark2)',
                             color: isSelected ? '#000' : 'var(--white)',
+                            // Sold out is still pressable: the page below it says what can be done
+                            // about it, and a button that cannot be pressed cannot explain itself.
+                            opacity: stock?.tone === 'gone' && !isSelected ? 0.55 : 1,
                             transition: 'all 0.15s',
+                            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1px',
                           }}>
-                          {optVal}
+                          <span style={{ textDecoration: stock?.tone === 'gone' ? 'line-through' : 'none' }}>{optVal}</span>
+                          {stock && (
+                            <span style={{ fontSize: '0.65rem', fontWeight: 700, letterSpacing: '0.02em',
+                              color: isSelected ? 'rgba(0,0,0,0.65)'
+                                : stock.tone === 'gone' ? 'var(--gray)'
+                                : stock.tone === 'low' ? '#dc2626' : 'var(--gold)' }}>
+                              {stock.label}
+                            </span>
+                          )}
                         </button>
                       );
                     })}

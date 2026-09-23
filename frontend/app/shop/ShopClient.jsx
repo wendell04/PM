@@ -136,6 +136,24 @@ function QuickViewModal({ product, flashSale, onClose, onToast }) {
   const combo = resolveCombo(selVars);
   const comboId = combo?.id ?? null;
 
+  /**
+   * What one variant option is worth on its own, so the row can be read instead of clicked
+   * through. Same rule as the product page: sold out and a low count are said, plenty is not.
+   */
+  const optionStock = (groupId, optVal) => {
+    if (mode === 'inquiry' || !product.trackInventory) return null;
+    const id = resolveCombo({ ...selVars, [groupId]: optVal })?.id ?? null;
+    if (id == null) return null;
+    const qty = product.variantCanProduce?.[id] != null ? Number(product.variantCanProduce[id])
+      : product.variantStock?.[id] != null ? Number(product.variantStock[id])
+      : null;
+    if (qty == null) return null;
+    const backorder = product.variantPreorder?.[id] ?? product.variantBackorder?.[id] ?? product.allowPreorder;
+    if (qty <= 0) return { label: backorder ? 'Pre-order' : 'Sold out', tone: backorder ? 'wait' : 'gone' };
+    if (qty <= 10) return { label: `${qty} left`, tone: 'low' };
+    return null;
+  };
+
   const unitPrice = (() => {
     if (mode === 'tiered') {
       const tier = getTierForQty(qty);
@@ -461,10 +479,11 @@ function QuickViewModal({ product, flashSale, onClose, onToast }) {
                     const optVal = typeof opt === 'string' ? opt : (opt.value ?? opt.label ?? String(opt));
                     const optKey = typeof opt === 'string' ? opt : (opt.id ?? oi);
                     const isSelected = selVars[group.id] === optVal;
+                    const stock = optionStock(group.id, optVal);
                     return (
                       <button
                         key={optKey}
-                        className={`shop-qv-variant-btn${isSelected ? ' active' : ''}`}
+                        className={`shop-qv-variant-btn${isSelected ? ' active' : ''}${stock?.tone === 'gone' ? ' sold-out' : ''}`}
                         onClick={() => {
                           const next = { ...selVars, [group.id]: optVal };
                           setSelVars(next);
@@ -475,6 +494,7 @@ function QuickViewModal({ product, flashSale, onClose, onToast }) {
                         }}
                       >
                         {optVal}
+                        {stock && <span className={`shop-qv-variant-stock ${stock.tone}`}>{stock.label}</span>}
                       </button>
                     );
                   })}
@@ -827,15 +847,19 @@ function ProductCard({ product, onAddToCart, onQuickView, flashSale }) {
               }
               return product.stock ?? null;
             })();
-            const hasAnyBackorder = product.variantBackorder && Object.values(product.variantBackorder).some(v => !!v);
-            if (!hasAnyBackorder && totalStock === 0) return (
-              <div className="shop-stock-img-badge out-stock">Out of Stock</div>
-            );
+            const hasAnyBackorder = (product.variantPreorder && Object.values(product.variantPreorder).some(v => !!v))
+              || (product.variantBackorder && Object.values(product.variantBackorder).some(v => !!v))
+              || !!product.allowPreorder;
+            if (totalStock === 0) return hasAnyBackorder
+              ? <div className="shop-stock-img-badge on-order">Pre-order</div>
+              : <div className="shop-stock-img-badge out-stock">Out of Stock</div>;
+            // A count only where it changes what the customer does. The card used to print the
+            // shelf ("474 pcs") while the product page it opens said "In Stock", so the shop
+            // answered the same question two ways; and a printed count is a promise that three
+            // variants sharing one shelf cannot keep, that competitors can read, and that is out
+            // of date the moment somebody else checks out. Scarcity is the part worth saying.
             if (totalStock != null && totalStock <= 10) return (
-              <div className="shop-stock-img-badge low-stock">{totalStock} pcs left</div>
-            );
-            if (totalStock != null) return (
-              <div className="shop-stock-img-badge in-stock">{totalStock} pcs</div>
+              <div className="shop-stock-img-badge low-stock">Only {totalStock} left!</div>
             );
             if (product.isMadeToOrder) return null;   // the Print to order badge covers it
             return (

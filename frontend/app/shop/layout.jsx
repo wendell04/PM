@@ -16,6 +16,7 @@ import Link from 'next/link';
 import { useCart as useGlobalCart } from '../../context/CartContext';
 import { syncCart, mergeCart } from '@/lib/cartApi';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
+import { markShopNav } from '@/lib/shopNavTrail';
 import SessionExpiryWarning from '@/components/SessionExpiryWarning';
 import { forgotPassword, getCurrentUser } from '@/lib/authApi';
 import {
@@ -377,6 +378,15 @@ export default function ShopLayout({ children }) {
   // the receipt, 2FA) got both, which pushed Register off the right edge of a phone.
   const isBrowsing = pathname === '/shop' || pathname.startsWith('/shop/products') || pathname.startsWith('/shop/collections') || pathname.startsWith('/shop/search');
   const showSearch = isBrowsing;
+  // Every move inside the shop is counted, so a page's own Back button knows whether the step
+  // behind it belongs to us. The first pathname is the one the tab opened on, not a step.
+  const trailFrom = useRef(null);
+  useEffect(() => {
+    if (trailFrom.current === pathname) return;
+    const first = trailFrom.current === null;
+    trailFrom.current = pathname;
+    if (!first) markShopNav();
+  }, [pathname]);
   const { theme, toggleTheme } = useTheme();
   const { setCartItems, cartItems: globalCartItems, cartCount: globalCartCount, addToCart: globalAddToCart, removeFromCart: globalRemoveFromCart } = useGlobalCart();
   const [user, setUser]       = useState(null);
