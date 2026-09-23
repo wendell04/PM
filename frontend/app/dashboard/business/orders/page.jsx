@@ -3650,7 +3650,8 @@ export default function OrdersPage() {
                     meta={[o.customerName, o.productName].filter(Boolean).join(' - ')}
                     sub={[
                       `${o.quantity} pc${o.quantity === 1 ? '' : 's'}`,
-                      `₱${fmt(o.totalAmount ?? o.totalPrice)}`,
+                      // Same on the phone card: an absent figure is left out rather than read as zero.
+                      (o.totalAmount ?? o.totalPrice) == null ? null : `₱${fmt(o.totalAmount ?? o.totalPrice)}`,
                       o.paymentStatus ? String(o.paymentStatus).replace(/_/g, ' ') : null,
                       o.createdAt ? new Date(o.createdAt).toLocaleDateString('en-PH', { month:'short', day:'numeric' }) : null,
                       o.isArchived ? 'archived' : null,
@@ -3755,7 +3756,12 @@ export default function OrdersPage() {
                         </td>
                         <td data-label="Qty" style={{ ...S.td, textAlign:'center', color:'var(--gray)', fontSize:'12px' }}>{o.quantity}</td>
                         <td data-label="Total" style={{ ...S.td, textAlign:'center', fontWeight:700, fontFamily:'monospace', fontSize:'12px', color:'var(--gold)', whiteSpace:'nowrap' }}>
-                          ₱{fmt(o.totalAmount ?? o.totalPrice)}
+                          {/* The server removes the money fields for anyone without a finance row,
+                              so an absent figure means "not yours to see" - not zero. Printing
+                              P0.00 told Production Staff every order was worth nothing. */}
+                          {(o.totalAmount ?? o.totalPrice) == null
+                            ? <span style={{ color:'var(--gray)', fontWeight:400 }} title="Order money is not part of your access">-</span>
+                            : `₱${fmt(o.totalAmount ?? o.totalPrice)}`}
                         </td>
                         <td data-label="Status" style={{ ...S.td, textAlign:'center' }}>
                           <StatusBadge status={o.orderStatus} />

@@ -1,6 +1,7 @@
 'use client';
 
 import AddressPicker from '@/components/shop/AddressPicker';
+import PhotoLightbox from '@/components/chat/PhotoLightbox';
 import { optionGroupsOf, defaultOptionSelection, selectedOptionList, optionsUnitAdd, optionsOrderAdd, withOptionSuffix, optionKey, groupKey } from '@/lib/shopUtils';
 import NoImage from '@/components/NoImage';
 
@@ -659,6 +660,20 @@ function CustomOrderInner() {
     (designMode === 'request' && briefOk) ||
     (designMode === 'upload' && uploadOk)
   );
+
+  // Nowhere to send it is a reason to stop here, not at checkout: by then the artwork, the brief
+  // and the reference photos have all been filled in, and a redirect to the address book loses
+  // them. The block for it is already on this page, a few centimetres up.
+  const needsAddress = !addressLoading && addresses.length === 0;
+
+  // Every image on this page, in the order they appear, so the viewer can move between them the
+  // way it does in chat. A 40px square is enough to know a file is attached and not enough to see
+  // whether it is the right one.
+  const [lightboxAt, setLightboxAt] = useState(null);
+  const lightboxUrls = [
+    ...designFiles.filter(f => f.preview).map(f => f.preview),
+    ...uploadedFiles.filter(f => /\.(jpe?g|png|webp|gif)$/i.test(f.url)).map(f => f.url),
+  ];
 
   // Puts the configured item - artwork and all - into the ordinary cart. From here it is a
   // normal line that happens to carry a design, which is what makes a mug and a totebag
@@ -1329,8 +1344,12 @@ function CustomOrderInner() {
                               <div style={{ width: 18, height: 18, border: '2px solid rgba(212,168,67,0.2)', borderTopColor: '#D4A843', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
                             </div>
                           ) : f.preview ? (
-                            /* eslint-disable-next-line @next/next/no-img-element */
-                            <img src={f.preview} alt="" style={{ width: 40, height: 40, borderRadius: 8, objectFit: 'cover', flexShrink: 0, background: 'var(--dark)' }} />
+                            <button type="button" title="See it full size"
+                              onClick={() => setLightboxAt(lightboxUrls.indexOf(f.preview))}
+                              style={{ padding: 0, border: 'none', background: 'none', cursor: 'zoom-in', flexShrink: 0, lineHeight: 0 }}>
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img src={f.preview} alt="" style={{ width: 52, height: 52, borderRadius: 8, objectFit: 'cover', background: 'var(--dark)' }} />
+                            </button>
                           ) : (
                             <span style={{ width: 40, height: 40, borderRadius: 8, flexShrink: 0, background: 'rgba(212,168,67,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#D4A843" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1502,7 +1521,9 @@ function CustomOrderInner() {
                             display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                             {/* eslint-disable-next-line @next/next/no-img-element */}
                             {/\.(jpe?g|png|webp|gif)$/i.test(f.url)
-                              ? <img src={f.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                              ? <img src={f.url} alt="" title="See it full size"
+                                  onClick={() => setLightboxAt(lightboxUrls.indexOf(f.url))}
+                                  style={{ width: '100%', height: '100%', objectFit: 'cover', cursor: 'zoom-in' }} />
                               : <span style={{ fontSize: 9, fontWeight: 800, color: 'var(--gold)' }}>
                                   {(f.name || 'FILE').split('.').pop().toUpperCase().slice(0, 4)}
                                 </span>}
@@ -1522,7 +1543,7 @@ function CustomOrderInner() {
             </section>
 
             {/* Step 3: Delivery - shown for both upload and request */}
-            {(designMode === 'upload' || designMode === 'request') && !isInquiry && <section style={{ background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '12px', padding: '1.15rem' }}>
+            {(designMode === 'upload' || designMode === 'request') && !isInquiry && <section id="pmp-delivery-address" style={{ background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '12px', padding: '1.15rem' }}>
               {/* One picker for both screens - see components/shop/AddressPicker. Adding an
                   address used to send people to /shop/profile, and coming back meant a reload,
                   which threw away every reference photo they had just attached. */}
@@ -1814,10 +1835,10 @@ function CustomOrderInner() {
                   file. A spent "Added to cart" button that stayed clickable was inviting a second,
                   silently duplicate line instead of saying what to do next. */}
               {canOrder && !addedToCart && (
-                <button onClick={handleAddToCart} disabled={placing || addingToCart || !agreedTerms}
+                <button onClick={handleAddToCart} disabled={placing || addingToCart || !agreedTerms || needsAddress}
                   style={{ width: '100%', padding: '0.9rem', background: addingToCart ? 'rgba(212,168,67,0.55)' : 'var(--gold)',
                     color: '#000', border: 'none', borderRadius: '10px', fontWeight: 800, fontSize: '0.95rem',
-                    cursor: (addingToCart ? 'wait' : (!agreedTerms ? 'not-allowed' : 'pointer')), fontFamily: "Arial, Arimo, Helvetica, sans-serif", opacity: !agreedTerms ? 0.5 : 1 }}>
+                    cursor: (addingToCart ? 'wait' : (!agreedTerms || needsAddress ? 'not-allowed' : 'pointer')), fontFamily: "Arial, Arimo, Helvetica, sans-serif", opacity: (!agreedTerms || needsAddress) ? 0.5 : 1 }}>
                   {addingToCart ? 'Adding...' : 'Add to cart'}
                 </button>
               )}
@@ -1825,11 +1846,22 @@ function CustomOrderInner() {
               {/* Buy it now - the single-item shortcut that lands in the SAME checkout as the cart.
                   Works for upload and request alike; the checkout charges each line by its own rule. */}
               {canOrder && !addedToCart && (
-                <button onClick={handleBuyNow} disabled={placing || addingToCart || !agreedTerms}
+                <button onClick={handleBuyNow} disabled={placing || addingToCart || !agreedTerms || needsAddress}
                   style={{ width: '100%', padding: '0.85rem', marginTop: '0.6rem', background: 'transparent',
                     color: 'var(--gold)', border: '1.5px solid var(--gold)', borderRadius: '10px', fontWeight: 800,
-                    fontSize: '0.9rem', cursor: !agreedTerms ? 'not-allowed' : 'pointer', fontFamily: "Arial, Arimo, Helvetica, sans-serif", opacity: !agreedTerms ? 0.5 : 1 }}>
+                    fontSize: '0.9rem', cursor: (!agreedTerms || needsAddress) ? 'not-allowed' : 'pointer', fontFamily: "Arial, Arimo, Helvetica, sans-serif", opacity: (!agreedTerms || needsAddress) ? 0.5 : 1 }}>
                   Buy it now
+                </button>
+              )}
+
+              {/* Why they are greyed, with the way out beside it. */}
+              {canOrder && !addedToCart && needsAddress && (
+                <button type="button"
+                  onClick={() => document.getElementById('pmp-delivery-address')?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
+                  style={{ width: '100%', marginTop: '0.6rem', padding: '0.7rem', background: 'transparent',
+                    border: '1px dashed rgba(212,168,67,0.5)', borderRadius: '10px', color: 'var(--gold)',
+                    fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer', lineHeight: 1.5 }}>
+                  Add a delivery address to order
                 </button>
               )}
 
@@ -1898,6 +1930,10 @@ function CustomOrderInner() {
 
         </div>
       </div>
+      {lightboxAt != null && lightboxUrls.length > 0 && (
+        <PhotoLightbox urls={lightboxUrls} index={Math.max(0, lightboxAt)}
+          onIndexChange={setLightboxAt} onClose={() => setLightboxAt(null)} />
+      )}
     </div>
   );
 }
