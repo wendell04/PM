@@ -117,7 +117,7 @@ export function DecimalInput({ value, onChange, placeholder = '0.00', style, ...
 }
 
 // ── Field wrapper ─────────────────────────────────────────────────────────────
-export function Field({ label, error, required, children, style }) {
+export function Field({ label, error, required, hint, children, style }) {
   return (
     <div style={{ display:'flex', flexDirection:'column', gap:'4px', ...style }}>
       {label && (
@@ -127,6 +127,7 @@ export function Field({ label, error, required, children, style }) {
       )}
       {children}
       {error && <span style={S.errText}>{error}</span>}
+      {!error && hint && <span style={{ fontSize:'11px', color:'var(--gray)', lineHeight:1.4 }}>{hint}</span>}
     </div>
   );
 }

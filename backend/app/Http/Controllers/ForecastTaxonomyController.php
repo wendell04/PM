@@ -31,6 +31,56 @@ use Illuminate\Support\Carbon;
  */
 class ForecastTaxonomyController extends Controller
 {
+    /**
+     * Receipts a supplier needs before its measured lead time outranks the
+     * typed one on the material. A dozen deliveries a year gives a dozen
+     * points; a mean and a spread are the honest estimator, not a model.
+     */
+    const LEAD_TIME_MIN_RECEIPTS = 10;
+
+    /**
+     * Measured lead time per supplier, from stock-in rows that recorded both
+     * the order date and the receipt date. Computed on read rather than stored
+     * on the supplier, so it is never stale and there is no second write path
+     * to keep honest.
+     *
+     * Per supplier and not per material, because one supplier ships the mug
+     * and the box together: one delivery is one observation for both.
+     */
+    private function supplierLeadTimes(): array
+    {
+        $rows = \App\Models\StockHistory::where('type', 'addition')
+            ->whereNotNull('leadTimeDays')
+            ->get(['supplierId', 'supplierName', 'leadTimeDays']);
+
+        $samples = [];
+        foreach ($rows as $r) {
+            $sid = (string) ($r->supplierId ?? '');
+            if ($sid === '') {
+                continue;
+            }
+            $samples[$sid]['name']   = $r->supplierName ?? $samples[$sid]['name'] ?? null;
+            $samples[$sid]['days'][] = (float) $r->leadTimeDays;
+        }
+
+        $out = [];
+        foreach ($samples as $sid => $s) {
+            $d = $s['days'];
+            $n = count($d);
+            $mean = array_sum($d) / $n;
+            $var  = $n > 1 ? array_sum(array_map(fn ($x) => ($x - $mean) ** 2, $d)) / ($n - 1) : 0.0;
+            $out[$sid] = [
+                'name'       => $s['name'],
+                'receipts'   => $n,
+                'meanDays'   => round($mean, 1),
+                'sigmaDays'  => round(sqrt($var), 1),
+                'sufficient' => $n >= self::LEAD_TIME_MIN_RECEIPTS,
+            ];
+        }
+
+        return $out;
+    }
+
     public function index(Request $request)
     {
         try {
@@ -38,6 +88,20 @@ class ForecastTaxonomyController extends Controller
                 return $this->unauthorizedResponse();
             }
 
+            return $this->successResponse('Forecast taxonomy built.', $this->build());
+        } catch (\Exception $e) {
+            return $this->serverErrorResponse($e, 'Could not build the forecast taxonomy.');
+        }
+    }
+
+    /**
+     * The taxonomy itself, with no request attached, so the nightly
+     * inventory:forecast command can use the same resolution the page does
+     * rather than carrying a second copy of the name map and the BOM walk.
+     */
+    public function build(): array
+    {
+        {
             $cfg         = config('forecast');
             $legacyMap   = $cfg['legacy_map'] ?? [];
             $legacyVar   = $cfg['legacy_variant'] ?? [];
@@ -229,16 +293,19 @@ class ForecastTaxonomyController extends Controller
                 ];
             }
 
-            return $this->successResponse('Forecast taxonomy built.', [
-                'motherItems'    => $motherItems,
-                'materialIndex'  => $materialIndex,
-                'unlinked'       => $unlinked,
-                'saleResolution' => $resolution,
-                'variantShares'  => $variantShares,
-                'config'         => ['windowDays' => $windowDays, 'minOrders' => $minOrders],
-            ]);
-        } catch (\Exception $e) {
-            return $this->serverErrorResponse($e, 'Could not build the forecast taxonomy.');
+            return [
+                'motherItems'       => $motherItems,
+                'materialIndex'     => $materialIndex,
+                'unlinked'          => $unlinked,
+                'saleResolution'    => $resolution,
+                'variantShares'     => $variantShares,
+                'supplierLeadTimes' => $this->supplierLeadTimes(),
+                'config'            => [
+                    'windowDays'          => $windowDays,
+                    'minOrders'           => $minOrders,
+                    'leadTimeMinReceipts' => self::LEAD_TIME_MIN_RECEIPTS,
+                ],
+            ];
         }
     }
 

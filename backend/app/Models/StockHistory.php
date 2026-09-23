@@ -21,6 +21,8 @@ class StockHistory extends Model
         'batchId',
         'invoiceNumber',
         'deliveryDate',
+        'orderedAt',      // when the order was placed with the supplier
+        'leadTimeDays',   // deliveryDate - orderedAt, one observed lead time
         'sellingPrice',
         'saleDate',
         'customerName',

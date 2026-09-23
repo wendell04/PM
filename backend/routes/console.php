@@ -27,6 +27,11 @@ Schedule::call(function () {
 
 Schedule::command('db:backup')->dailyAt('02:00')->name('db-backup')->withoutOverlapping();
 
+// The restock plan for every material with a recipe, stored on the material so
+// To Buy, Home and the SSA page read one number with one computedAt. After the
+// backup, before the shop opens; never touches minStockLevel.
+Schedule::command('inventory:forecast')->dailyAt('02:30')->name('inventory-forecast')->withoutOverlapping();
+
 // Approved proofs that were never paid for hold stock the shop cannot sell. Swept once a day rather
 // than hourly: the window is measured in days, and a customer paying an hour late should still land.
 Schedule::command('orders:expire-unpaid-proofs')->dailyAt('03:00')->name('expire-unpaid-proofs')->withoutOverlapping();

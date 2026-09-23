@@ -140,8 +140,9 @@ function buildMaterialDemand(inventoryId, taxonomy, sales, ledger = []) {
   const entry = taxonomy?.materialIndex?.[inventoryId];
   if (!entry) return { rows: [], linked: false, basis: null };
 
-  const variantCountFor = (productId) =>
-    (taxonomy.motherItems ?? []).find((m) => m.productId === productId)?.variants?.length ?? 0;
+  const variantNamesFor = (productId) =>
+    (taxonomy.motherItems ?? []).find((m) => m.productId === productId)?.variants ?? [];
+  const variantCountFor = (productId) => variantNamesFor(productId).length;
 
   // Per product, how does this material relate to that product's variants?
   const planByProduct = {};
@@ -155,8 +156,18 @@ function buildMaterialDemand(inventoryId, taxonomy, sales, ledger = []) {
   sales.forEach((s) => {
     // Sales written since the productId/variantName fix resolve directly; older
     // rows still go through the name map the taxonomy endpoint built.
+    //
+    // The direct path still has to pin the variant. OrderController writes the
+    // combination label as the customer chose it - "Glossy · Diecut" - while
+    // only one part of that names a BOM-bearing variant. The taxonomy pins
+    // names it resolves; this path must do the same or a sale that carries the
+    // new link is dropped for not matching any BOM line, which is exactly what
+    // happened to the first seven-sheet sticker order.
     const r = s.productId
-      ? { productId: String(s.productId), variant: s.variantName ?? null }
+      ? {
+          productId: String(s.productId),
+          variant: pinVariantTo(s.variantName ?? null, variantNamesFor(String(s.productId))),
+        }
       : taxonomy.saleResolution?.[s.productName];
     if (!r) { basis.unmatched += 1; return; }
 
@@ -239,12 +250,65 @@ function buildMaterialDemand(inventoryId, taxonomy, sales, ledger = []) {
   };
 }
 
-/** Daily material demand straight from stock-ledger deductions. */
+/**
+ * Daily material demand straight from stock-ledger deductions.
+ *
+ * Not every deduction is consumption. The ledger records four reasons:
+ *
+ *   production     material used to make an order - always demand
+ *   sale_reserved  a hold placed when a ready-made item is ordered. It is the
+ *                  consumption event for stock that is sold as-is, but only if
+ *                  the order went through; a cancelled order releases the hold
+ *                  and the stock comes back. Counting those made 53 units of
+ *                  phantom demand on two materials, every one of them a test
+ *                  order cancelled the same week.
+ *   qc_scrap       shrinkage, not demand
+ *   damaged        shrinkage, not demand
+ *
+ * The history endpoint annotates each row with the order's normalised status
+ * so this can be decided here without a second request.
+ */
+/**
+ * Reduce a sale's variant label to one of the product's real combination
+ * names. Mirrors ForecastTaxonomyController::pinVariant so the direct
+ * productId path and the name-map path pin the same way.
+ */
+function pinVariantTo(variant, known) {
+  if (variant == null || variant === "" || known.length === 0) return variant ?? null;
+  const norm = (s) => String(s).trim().toLowerCase();
+  const v = norm(variant);
+  const exact = known.find((k) => norm(k) === v);
+  if (exact) return exact;
+  // Combination labels join variant groups with a middle dot or slash
+  const parts = String(variant).split(/\s*[·•/,]\s*/).map(norm).filter(Boolean);
+  for (const part of parts) {
+    const hit = known.find((k) => norm(k) === part);
+    if (hit) return hit;
+  }
+  // A shorthand against a fuller label ("Medium" vs "Medium (12x14\")")
+  for (const part of parts) {
+    const hit = known.find((k) => norm(k).startsWith(part));
+    if (hit) return hit;
+  }
+  return variant;
+}
+
+function isConsumption(h) {
+  const reason = h?.reason ?? "";
+  if (reason === "production") return true;
+  if (reason === "sale_reserved") {
+    const st = h?.orderStatus ?? null;
+    return st !== "cancelled" && st !== "returned";
+  }
+  return false;
+}
+
 function buildLedgerDemand(ledger) {
   if (!Array.isArray(ledger) || ledger.length === 0) return [];
   const byDay = {};
   ledger.forEach((h) => {
     if ((h?.type ?? "") !== "deduction") return;
+    if (!isConsumption(h)) return;
     const d = h.createdAt ? new Date(h.createdAt) : null;
     if (!d || isNaN(d)) return;
     const qty = Math.abs(Number(h.quantity ?? 0));
@@ -257,15 +321,28 @@ function buildLedgerDemand(ledger) {
     .map(([date, value]) => ({ date, value: Math.round(value * 100) / 100 }));
 }
 
-/** Weekly rate from each source over the window the ledger covers. */
+/**
+ * Weekly rate from each source over the window the ledger covers.
+ *
+ * The two sources date the same event differently: a sale carries the date
+ * the order was placed, the ledger carries the date the material was taken
+ * for production - a week apart in the data. Windowing sales to the ledger's
+ * own dates therefore dropped every order placed before the first deduction,
+ * and reported "sales 0" for seven materials whose sales were simply dated
+ * earlier. The sales window opens PRODUCTION_LAG_DAYS before the ledger's.
+ */
+const PRODUCTION_LAG_DAYS = 14;
+
 function compareRates(ledgerRows, salesRows) {
   if (ledgerRows.length === 0) return null;
   const from = ledgerRows[0].date;
   const to = ledgerRows[ledgerRows.length - 1].date;
   const weeks = Math.max(1, (new Date(to) - new Date(from)) / 604800000 + 1 / 7);
-  const sum = (rs) => rs.filter((r) => r.date >= from && r.date <= to).reduce((s, r) => s + r.value, 0);
-  const ledgerRate = sum(ledgerRows) / weeks;
-  const salesRate = sum(salesRows) / weeks;
+  const salesFrom = new Date(new Date(from).getTime() - PRODUCTION_LAG_DAYS * 86400000)
+    .toISOString().split("T")[0];
+  const sum = (rs, lo) => rs.filter((r) => r.date >= lo && r.date <= to).reduce((s, r) => s + r.value, 0);
+  const ledgerRate = sum(ledgerRows, from) / weeks;
+  const salesRate = sum(salesRows, salesFrom) / weeks;
   const denom = Math.max(ledgerRate, salesRate);
   return {
     ledgerRate: Math.round(ledgerRate * 100) / 100,
@@ -945,7 +1022,7 @@ function bucketDemand(rows, periodType) {
   return series;
 }
 
-function computeInventoryPolicy({ rawRows, currentStock, leadTimeDays, periodType, forecastValues }) {
+function computeInventoryPolicy({ rawRows, currentStock, leadTimeDays, supplierLead, periodType, forecastValues }) {
   const series = bucketDemand(rawRows, periodType);
   const n = series.length;
   const nz = series.filter((v) => v > 0);
@@ -956,8 +1033,15 @@ function computeInventoryPolicy({ rawRows, currentStock, leadTimeDays, periodTyp
   // the stockout date on the same screen subtracted the forecast - so a rising
   // forecast never moved the reorder point. Take the forward rate from the
   // forecast when there is one; keep the historical mean as the fallback.
+  // ...but only once there is enough history for the forecast's rate to mean
+  // something. Croston/SBA at alpha 0.1 stays anchored to its first
+  // observation for twenty-odd periods; on four weeks of 10, 0, 50, 30 it
+  // returns 13.6 against a mean of 22.5 and would under-order by forty
+  // percent. Eight weeks is the confidence line the restock proposal draws,
+  // and /api/inventory-plan applies the same rule, so page and service agree.
   const fc = Array.isArray(forecastValues) ? forecastValues.filter((v) => Number.isFinite(v)) : [];
-  const mean = fc.length > 0 ? fc.reduce((a, b) => a + b, 0) / fc.length : histMean;
+  const weeksOfHistory = (n * (PERIOD_DAYS[periodType] ?? 7)) / 7;
+  const mean = fc.length > 0 && weeksOfHistory >= 8 ? fc.reduce((a, b) => a + b, 0) / fc.length : histMean;
   // Spread stays measured around the historical mean. Variability is an
   // observed property of past demand; centring it on a forward rate would
   // inflate it by however far the forecast has moved.
@@ -978,26 +1062,41 @@ function computeInventoryPolicy({ rawRows, currentStock, leadTimeDays, periodTyp
   else cls = "lumpy";
 
   const daysPerPeriod = PERIOD_DAYS[periodType] ?? 7;
-  const hasLead = leadTimeDays != null && leadTimeDays > 0;
-  const leadDays = hasLead ? leadTimeDays : DEFAULT_LEAD_DAYS;
+
+  // Lead time, in order of how much it is worth: measured from this supplier's
+  // own receipts once there are enough of them; the number typed on the
+  // material; and finally an assumed week, flagged wherever it is used.
+  // Measured comes with a spread; the other two do not.
+  let leadDays, leadSource, sigmaLeadDays = 0;
+  if (supplierLead?.sufficient) {
+    leadDays = supplierLead.meanDays; sigmaLeadDays = supplierLead.sigmaDays ?? 0; leadSource = "measured";
+  } else if (leadTimeDays != null && leadTimeDays > 0) {
+    leadDays = leadTimeDays; leadSource = "typed";
+  } else {
+    leadDays = DEFAULT_LEAD_DAYS; leadSource = "assumed";
+  }
+  const hasLead = leadSource !== "assumed";
   const L = leadDays / daysPerPeriod;            // lead time in periods
+  const sigmaL = sigmaLeadDays / daysPerPeriod;  // its spread, in periods
   const R = REVIEW_DAYS / daysPerPeriod;         // buying cycle in periods
   const d = mean;                                 // demand rate (units/period)
-  const SS = Math.max(0, SERVICE_Z * sigma * Math.sqrt(L));
+  // Safety stock with both spreads: z * sqrt(L*sigma_d^2 + d^2*sigma_L^2).
+  // With no measured lead time sigmaL is 0 and this is the plain z*sigma*sqrt(L).
+  const SS = Math.max(0, SERVICE_Z * Math.sqrt(L * sigma ** 2 + d ** 2 * sigmaL ** 2));
   const ROP = d * L + SS;
   // Order-up-to must cover the wait for delivery AND the gap until the next
   // buying trip, and its safety margin scales with that whole window. The old
   // form used d*(L+L) with the lead-time safety stock, which silently assumed
   // the shop reorders exactly as often as the supplier takes to deliver, and
   // under-protected the review gap.
-  const orderUpTo = d * (L + R) + Math.max(0, SERVICE_Z * sigma * Math.sqrt(L + R));
+  const orderUpTo = d * (L + R) + Math.max(0, SERVICE_Z * Math.sqrt((L + R) * sigma ** 2 + d ** 2 * sigmaL ** 2));
   const orderQty = Math.max(0, orderUpTo - (currentStock ?? 0));
   const cov = currentStock ?? 0;
   const coverage = d > 0 ? cov / d : null;        // periods of cover (null ≈ unlimited)
   const periodsToROP = d > 0 && cov > ROP ? (cov - ROP) / d : 0;
 
   return {
-    d, sigma, adi, cv2, cls, L, R, leadDays, reviewDays: REVIEW_DAYS, daysPerPeriod,
+    d, sigma, adi, cv2, cls, L, R, leadDays, leadSource, sigmaLeadDays, reviewDays: REVIEW_DAYS, daysPerPeriod,
     usingDefaultLead: !hasLead,
     SS: Math.round(SS), ROP: Math.round(ROP), orderUpTo: Math.round(orderUpTo),
     orderQty: Math.round(orderQty),
@@ -1832,6 +1931,11 @@ export default function SSAForecastPage() {
           rawRows,
           currentStock: availableQty,
           leadTimeDays: inventoryList.find((i) => (i._id ?? i.id) === selectedInventoryId)?.leadTimeDays,
+          // This material's supplier, and what its receipts say the lead time is
+          supplierLead: (() => {
+            const sid = inventoryList.find((i) => (i._id ?? i.id) === selectedInventoryId)?.supplierId;
+            return sid ? taxonomy?.supplierLeadTimes?.[String(sid)] ?? null : null;
+          })(),
           periodType: submittedConfig?.period?.type ?? forecastPeriod.type,
           // Same numbers the depletion line uses, so the two cannot disagree.
           forecastValues: result?.forecast?.values,
@@ -2565,7 +2669,11 @@ export default function SSAForecastPage() {
                         {reorderByLabel}
                       </div>
                       <div style={{ fontSize: "0.72rem", color: "var(--gray)", marginTop: "0.2rem" }}>
-                        lead time {policy.leadDays}d{policy.usingDefaultLead ? " (default)" : ""}
+                        {policy.leadSource === "measured"
+                          ? `lead time ${policy.leadDays}d ± ${policy.sigmaLeadDays}d, measured from this vendor's deliveries`
+                          : policy.leadSource === "typed"
+                            ? `lead time ${policy.leadDays}d, as typed on the material`
+                            : `lead time ${policy.leadDays}d assumed - record "Ordered On" at stock-in to measure it`}
                       </div>
                     </>
                   )}

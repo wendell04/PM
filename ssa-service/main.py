@@ -847,6 +847,217 @@ def _rfm_label(r: int, f: int, m: int) -> str:
     return "Need Attention"
 
 
+# ── Inventory plan: forecast + policy + decision in one response ──────────
+#
+# The forecast page computed its reorder point from one demand number and
+# depleted its chart with another, and the shop's To Buy list computed a
+# third from orders in hand. This endpoint returns all three layers from the
+# same figures so nothing downstream can disagree: the shop's backend calls
+# it nightly and stores the result on the material; the page reads the same
+# stored plan.
+#
+# Contract and rules are the restock proposal's:
+#   no linked demand   -> demand.per_week null, decision null, basis says so
+#   lead_time_assumed  -> carried into policy, shown beside every derived number
+#   n_weeks < 8        -> low_confidence true
+#   reorder_point      -> suggested; minStockLevel is never written by a job
+
+Z_FOR_SERVICE_LEVEL = {0.80: 0.842, 0.85: 1.036, 0.90: 1.282, 0.95: 1.645, 0.975: 1.960, 0.99: 2.326}
+
+def _z_for(service_level: float) -> float:
+    """Nearest tabulated z. A handful of service levels cover every real choice here."""
+    keys = sorted(Z_FOR_SERVICE_LEVEL)
+    nearest = min(keys, key=lambda k: abs(k - service_level))
+    return Z_FOR_SERVICE_LEVEL[nearest]
+
+
+class PlanMaterial(BaseModel):
+    id: str
+    name: str = ""
+    uom: str = ""
+
+class InventoryPlanRequest(BaseModel):
+    material: PlanMaterial
+    rows: List[DataRow]                 # daily demand in material units; zeros allowed
+    on_hand: float = 0.0
+    reserved: float = 0.0
+    on_order: float = 0.0
+    lead_time_days: float = 7.0
+    lead_time_assumed: bool = True
+    lead_time_sigma_days: float = 0.0  # measured spread of the lead time, 0 when unknown
+    review_days: float = 7.0
+    service_level: float = 0.95
+    bucket: str = "weekly"             # "weekly" | "monthly"
+    history_used: str = "ledger"       # what the caller built rows from; echoed back
+
+
+@app.post("/api/inventory-plan")
+async def inventory_plan(req: InventoryPlanRequest):
+    try:
+        if req.bucket not in ("weekly", "monthly"):
+            raise HTTPException(status_code=400, detail="bucket must be weekly or monthly")
+        days_per_period = 7.0 if req.bucket == "weekly" else 30.44
+        z = _z_for(req.service_level)
+        available = max(0.0, req.on_hand - req.reserved + req.on_order)
+        position = {
+            "on_hand": req.on_hand, "reserved": req.reserved,
+            "on_order": req.on_order, "available": available,
+        }
+
+        # ── No linked demand: say so, never draw a flat green line ────────
+        rows = [r for r in req.rows if r.value is not None]
+        total_units = float(sum(max(0.0, r.value) for r in rows))
+        if len(rows) == 0 or total_units <= 0:
+            return {
+                "demand":   {"per_day": None, "per_week": None, "sigma_week": None,
+                             "class": "none", "method": None, "n_weeks": 0,
+                             "low_confidence": True, "history_used": req.history_used},
+                "forecast": None,
+                "policy":   {"z": z, "lead_time_days": req.lead_time_days,
+                             "lead_time_assumed": req.lead_time_assumed,
+                             "review_days": req.review_days,
+                             "safety_stock": None, "reorder_point": None, "order_up_to": None},
+                "position": position,
+                "decision": None,
+                "basis":    "No demand recorded for " + (req.material.name or req.material.id)
+                            + ": nothing has consumed it, so there is nothing to plan from.",
+            }
+
+        # ── Forecast: reuse the forecast endpoint as a function ───────────
+        # Ask for one review cycle beyond the lead time; the service clamps
+        # to its own safe horizon, and a thin series is retried at one period
+        # so it still yields a rate rather than an error.
+        want_periods = max(1, int(round((req.lead_time_days + req.review_days) / days_per_period)))
+        fc = None
+        fc_error = None
+        for periods in (want_periods, 1):
+            try:
+                fc = await forecast(ForecastRequest(
+                    rows=rows, forecast_periods=periods,
+                    forecast_type=req.bucket, data_type="demand",
+                ))
+                fc_error = None
+                break
+            except HTTPException as e:
+                fc_error = str(e.detail).split("\n")[0]
+                if "exceeds the safe forecast horizon" not in fc_error:
+                    break
+
+        # ── Rate and spread, from the same figures the chart would use ────
+        if fc is not None:
+            fc_vals = [float(v) for v in (fc.get("forecast", {}).get("values") or []) if v is not None]
+            train   = [float(v) for v in (fc.get("training_data", {}).get("values") or []) if v is not None]
+            method = fc.get("method") or "ssa"
+            demand_cls = fc.get("demand_class") or "new"
+            n_periods = int(fc.get("training_n") or len(train))
+            forecast_block = fc.get("forecast")
+            # The rate to plan against. The forecast's own rate once there is
+            # enough history for it to mean something; the plain mean before
+            # that. Croston/SBA at alpha 0.1 is still anchored to its first
+            # observation for twenty-odd periods - on four weeks of 10, 0, 50,
+            # 30 it returns 13.6 against a mean of 22.5 and would under-order
+            # by forty percent. Eight weeks is the proposal's own confidence
+            # line, and below it the mean is the better estimator.
+            fc_rate   = (sum(fc_vals) / len(fc_vals)) if fc_vals else None
+            mean_rate = (sum(train) / len(train)) if train else 0.0
+            n_weeks_est = n_periods * days_per_period / 7.0
+            use_mean = (fc_rate is None) or (n_weeks_est < 8)
+            d_period = mean_rate if use_mean else fc_rate
+            rate_source = "mean" if use_mean else method
+        else:
+            # Average-demand fallback, the same one the page uses when the
+            # service cannot run: total over the span the rows cover.
+            first = pd.to_datetime(rows[0].date); last = pd.to_datetime(rows[-1].date)
+            span_days = max(1.0, (last - first).days + 1.0)
+            d_period = total_units / max(1.0, span_days / days_per_period)
+            df = pd.DataFrame([{"Date": pd.to_datetime(r.date), "Value": r.value} for r in rows])
+            rule = "W-MON" if req.bucket == "weekly" else "MS"
+            train = df.set_index("Date").resample(rule)["Value"].sum().tolist()
+            method = "average"
+            rate_source = "mean"
+            demand_cls = demand_profile(np.asarray(train, dtype=float))[0] if len(train) >= 3 else "new"
+            n_periods = len(train)
+            forecast_block = None
+
+        if len(train) > 1:
+            mean_t = sum(train) / len(train)
+            sigma_period = float(np.sqrt(sum((v - mean_t) ** 2 for v in train) / (len(train) - 1)))
+        else:
+            sigma_period = 0.0
+
+        per_day  = d_period / days_per_period
+        per_week = per_day * 7.0
+        sigma_week = sigma_period * float(np.sqrt(7.0 / days_per_period))
+        n_weeks = int(round(n_periods * days_per_period / 7.0))
+        low_confidence = n_weeks < 8 or method == "average"
+
+        # ── Policy: reorder point and order-up-to, both spreads ───────────
+        L  = req.lead_time_days / days_per_period
+        R  = req.review_days / days_per_period
+        sL = req.lead_time_sigma_days / days_per_period
+        d  = d_period
+        ss   = max(0.0, z * float(np.sqrt(L * sigma_period ** 2 + d ** 2 * sL ** 2)))
+        rop  = d * L + ss
+        s_up = d * (L + R) + max(0.0, z * float(np.sqrt((L + R) * sigma_period ** 2 + d ** 2 * sL ** 2)))
+
+        # ── Decision ──────────────────────────────────────────────────────
+        restock = max(0.0, s_up - available)
+        reorder_now = available <= rop
+        days_to_reorder = 0.0 if (reorder_now or per_day <= 0) else (available - rop) / per_day
+        stockout_days = None if per_day <= 0 else available / per_day
+        today = pd.Timestamp.now().normalize()
+        stockout_date = (today + pd.Timedelta(days=float(stockout_days))).strftime("%Y-%m-%d") \
+            if stockout_days is not None else None
+
+        lead_note = ("lead time %gd assumed" % req.lead_time_days) if req.lead_time_assumed \
+            else ("lead time %gd" % req.lead_time_days)
+        rate_note = ("the mean (too few weeks for the smoother)" if rate_source == "mean" and method != "average"
+                     else "Croston/SBA" if rate_source == "sba" else rate_source)
+        basis = "%d week%s of %s; %s demand, rate from %s; %s%s" % (
+            n_weeks, "" if n_weeks == 1 else "s", req.history_used,
+            demand_cls, rate_note, lead_note,
+            "; band is wide" if low_confidence else "",
+        )
+        if fc_error and fc is None:
+            basis += "; forecast service declined (%s), using the average instead" % fc_error
+
+        return {
+            "demand": {
+                "per_day":        round(per_day, 3),
+                "per_week":       round(per_week, 2),
+                "sigma_week":     round(sigma_week, 2),
+                "class":          demand_cls,
+                "method":         "croston_sba" if method == "sba" else method,
+                "n_weeks":        n_weeks,
+                "low_confidence": bool(low_confidence),
+                "history_used":   req.history_used,
+            },
+            "forecast": forecast_block,
+            "policy": {
+                "z":                 z,
+                "lead_time_days":    req.lead_time_days,
+                "lead_time_assumed": req.lead_time_assumed,
+                "review_days":       req.review_days,
+                "safety_stock":      int(round(ss)),
+                "reorder_point":     int(round(rop)),
+                "order_up_to":       int(round(s_up)),
+            },
+            "position": position,
+            "decision": {
+                "restock_qty":     int(round(restock)),
+                "reorder_now":     bool(reorder_now),
+                "days_to_reorder": int(round(days_to_reorder)),
+                "stockout_date":   stockout_date,
+                "basis":           basis,
+            },
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        raise HTTPException(status_code=500, detail=str(e) + "\n" + traceback.format_exc())
+
+
 @app.post("/api/customer-segments")
 async def customer_segments(req: RFMRequest):
     try:
