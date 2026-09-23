@@ -10,6 +10,7 @@ import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import { DEFAULT_CUSTOM_ORDER_TERMS } from '@/lib/customOrderTerms';
 import { DEFAULT_REGISTRATION_TERMS } from '@/lib/registrationTerms';
 import { CustomSelect } from './../inventory-v2/shared';
+import OrderForms from './OrderForms';
 import { fetchRegions, fetchProvinces, fetchCities, fetchBarangays, isNCR } from '@/lib/psgc';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import ImageCropper from '@/components/ImageCropper';
@@ -166,12 +167,12 @@ export default function SettingsPage() {
   // Shipping, Chat, Integrations and Terms configure the shop, and their APIs are Owner / Super Admin
   // only. Staff keep the tabs about themselves: profile, password and 2FA, notifications, theme.
   const ownsShop = ['superAdmin', 'admin', 'owner'].includes(currentUser?.role);
-  const SHOP_TABS = ['shipping', 'chat', 'integrations', 'terms'];
+  const SHOP_TABS = ['shipping', 'chat', 'orderforms', 'integrations', 'terms'];
 
   // Other modules link straight to a tab (Messages -> ?tab=chat), so the owner never has to hunt for it.
   useEffect(() => {
     const wanted = new URLSearchParams(window.location.search).get('tab');
-    if (['profile', 'security', 'shipping', 'chat', 'integrations', 'terms', 'notifications', 'appearance'].includes(wanted)
+    if (['profile', 'security', 'shipping', 'chat', 'orderforms', 'integrations', 'terms', 'notifications', 'appearance'].includes(wanted)
         && (ownsShop || !SHOP_TABS.includes(wanted))) {
       setActiveTab(wanted);
     }
@@ -1187,6 +1188,9 @@ export default function SettingsPage() {
               { id: 'security', label: 'Security' },
               { id: 'shipping', label: 'Shipping' },
               { id: 'chat', label: 'Chat' },
+              // The questions asked before a price is given. They are configuration the whole
+              // shop shares, not one conversation, so they live here and not in the chat.
+              { id: 'orderforms', label: 'Order forms' },
               { id: 'integrations', label: 'Integrations' },
               // Its own tab, not a sidebar entry: the sidebar is the daily work rail (orders, POS,
               // production) and putting rarely-touched configuration in it dilutes the things people
@@ -1768,6 +1772,8 @@ export default function SettingsPage() {
     )}
   </div>
 )}
+
+          {activeTab === 'orderforms' && <OrderForms token={token} />}
 
           {activeTab === 'integrations' && (
   <div style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden' }}>
