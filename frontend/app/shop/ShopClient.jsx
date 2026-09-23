@@ -237,11 +237,12 @@ function QuickViewModal({ product, flashSale, onClose, onToast }) {
     const n = readyNow != null ? Number(readyNow)
       : (product.availableQty != null && Number(product.availableQty) > 0 ? Number(product.availableQty) : null);
     if (n != null && n > 0 && n <= 10) return { label: `Only ${n} left!`, type: 'gold' };
-    // Nothing counted constrains it. A made-to-order product gets no stock badge at all - the
-    // Print to order badge on the card already says it, and two badges for one fact is noise.
-    if (product.isMadeToOrder) return null;
-    // The count for the variant showing, which is the figure an order can use.
+    // The count for the variant showing, which is the figure an order can use. Made to order gets
+    // it too: printed-per-order says how it is made, not how many can be made.
     if (n != null && n > 0) return { label: `${n} pcs available`, type: 'gold' };
+    // No number at all: nothing counted constrains it. A made-to-order product then says nothing
+    // rather than claiming a shelf it does not have - the Print to order badge already speaks.
+    if (product.isMadeToOrder) return null;
     return { label: 'In Stock', type: 'gold' };
   })();
 

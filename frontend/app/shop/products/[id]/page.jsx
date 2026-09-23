@@ -1256,16 +1256,30 @@ export default function ProductDetailPage() {
                   </div>
                 );
               }
-              // Made to order: no stock badge. The product type already says it is printed per order.
-              if (product.isMadeToOrder) return null;
               // The count itself, where there is one to give. A shop selling by the hundred is
               // asked "can you do 300?" before anything else, and the buyer should not have to
               // put a line in the cart to find out. The figure is for the VARIANT in front of
               // them - never the variants added together, which is a number no one order can use.
+              //
+              // Made to order counts too. Printed-per-order says HOW it is made, not how many can
+              // be made: a mousepad with 140 blanks behind it can do 140 today, and skipping the
+              // badge for it left the one product that most needs the figure without any.
+              if (displayQty != null && displayQty > 0) {
+                return (
+                  <div style={{ display: 'flex' }}>
+                    <span style={{ fontSize: '0.8rem', fontWeight: 700, ...BADGE_GOLD, borderRadius: '999px', padding: '0.25rem 0.75rem' }}>
+                      {displayQty} pcs available
+                    </span>
+                  </div>
+                );
+              }
+              // No number at all: nothing counted constrains it. "In Stock" on a made-to-order
+              // product would be a claim about a shelf that does not exist, so it says nothing.
+              if (product.isMadeToOrder) return null;
               return (
                 <div style={{ display: 'flex' }}>
                   <span style={{ fontSize: '0.8rem', fontWeight: 700, ...BADGE_GOLD, borderRadius: '999px', padding: '0.25rem 0.75rem' }}>
-                    {displayQty != null && displayQty > 0 ? `${displayQty} pcs available` : 'In Stock'}
+                    In Stock
                   </span>
                 </div>
               );
