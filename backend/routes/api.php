@@ -322,6 +322,8 @@ Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
 
     // ─── Activity Logs ────────────────────────────────────────────────────────
     Route::get('/admin/activity-logs',           [ActivityLogController::class, 'index']);
+    Route::get('/admin/activity-logs/summary',   [ActivityLogController::class, 'summary']);
+    Route::get('/admin/activity-logs/kinds',     [ActivityLogController::class, 'kinds']);
     // ─── Design Approval ──────────────────────────────────────────────────────
     Route::post('/admin/orders/{id}/approve-design', [OrderController::class, 'approveDesign']);
     Route::post('/admin/orders/{id}/unarchive',       [OrderController::class, 'unarchive']);

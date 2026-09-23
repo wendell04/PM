@@ -396,6 +396,16 @@ class SettingsController extends Controller
             }
             $owner->save();
 
+            // Rates, turnaround promises and the free-delivery figure all change what customers
+            // are charged. Who moved them, and when, is a question that gets asked later.
+            $this->logActivity($request, 'settings_changed', 'settings', null,
+                'Changed the shipping and delivery settings',
+                ['fields' => array_values(array_intersect(array_keys($request->all()), [
+                    'shippingMode', 'shippingBaseRate', 'shippingPerKmRate', 'flatRateInsideMetro',
+                    'flatRateOutsideMetro', 'freeDeliveryFrom', 'rushFee', 'rushEnabled',
+                    'productionLeadDays', 'designRequestFee',
+                ]))]);
+
             return $this->successResponse('Shipping settings saved.', [
                 'storeAddress'         => $owner->storeAddress          ?? '',
                 'storeAddressParts'    => $owner->storeAddressParts     ?? null,
@@ -488,6 +498,10 @@ class SettingsController extends Controller
                 $owner->firstOrderCap = ($raw === null || $raw === '' || (float) $raw <= 0) ? null : (float) $raw;
             }
             $owner->save();
+
+            $this->logActivity($request, 'settings_changed', 'settings', null,
+                'Changed the first-order discount',
+                ['percent' => $owner->firstOrderPercent, 'cap' => $owner->firstOrderCap]);
 
             return $this->successResponse('Offers saved.', [
                 'firstOrderPercent' => \App\Support\ShopOffers::firstOrderPercent(),
