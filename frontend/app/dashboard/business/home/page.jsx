@@ -718,7 +718,7 @@ export default function StaffHome() {
                   <span style={{ fontSize: 13, fontWeight: 700 }}>Money collected</span>
                   {trend && (
                     <span style={{ fontSize: 11.5, marginLeft: 8,
-                      color: trend.dir === 'down' ? '#e05252' : trend.dir === 'up' ? '#2e7d32' : 'var(--gray)' }}>
+                      color: trend.dir === 'down' ? '#e05252' : trend.dir === 'up' ? 'var(--st-green-fg)' : 'var(--gray)' }}>
                       {trend.dir === 'flat'
                         ? 'holding steady'
                         : `trending ${trend.dir} ${Math.abs(trend.pct).toFixed(0)}% vs the earlier months`}

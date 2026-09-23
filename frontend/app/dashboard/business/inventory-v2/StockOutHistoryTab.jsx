@@ -202,7 +202,7 @@ function ByOrderTab({ stockOuts, materials }) {
     <div style={S.col}>
       <div style={{ display:'flex', gap:'12px', flexWrap:'wrap' }}>
         <SummaryCard label="Orders with Deductions" value={orders.length} accent />
-        <SummaryCard label="Manual / Adjustments"   value={manualCount} color="#b45309" />
+        <SummaryCard label="Manual / Adjustments"   value={manualCount} color="var(--st-orange-fg)" />
         <SummaryCard label="Total Cost of Goods"
           value={`₱${totalSaleValue.toLocaleString('en-PH', { minimumFractionDigits:2, maximumFractionDigits:2 })}`}
           color="#166534" />
@@ -292,7 +292,7 @@ function ByOrderTab({ stockOuts, materials }) {
                                               <td style={{ padding:'7px 14px', fontSize:'12px', color:'var(--gray-light)', fontWeight:500 }}>
                                                 {so.matName || mat?.name || '-'}
                                               </td>
-                                              <td style={{ padding:'7px 14px', fontSize:'12px', color:'#c62828', fontWeight:600 }}>
+                                              <td style={{ padding:'7px 14px', fontSize:'12px', color:'var(--st-red-fg)', fontWeight:600 }}>
                                                 -{outQty(so.qty)} {mat?.unit ?? 'pcs'}
                                               </td>
                                               <td style={{ padding:'7px 14px', fontSize:'12px', color:'var(--gray)' }}>
@@ -357,7 +357,7 @@ function ByOrderTab({ stockOuts, materials }) {
                   >
                     <td style={{ ...S.td, color:'var(--gray)', fontSize:'12px', whiteSpace:'nowrap' }}>{so.date}</td>
                     <td style={{ ...S.td, fontWeight:500 }}>{so.matName || mat?.name || '-'}</td>
-                    <td style={{ ...S.td, color:'#c62828', fontWeight:600 }}>-{outQty(so.qty)} {mat?.unit ?? 'pcs'}</td>
+                    <td style={{ ...S.td, color:'var(--st-red-fg)', fontWeight:600 }}>-{outQty(so.qty)} {mat?.unit ?? 'pcs'}</td>
                     <td style={{ ...S.td, fontFamily:'monospace', fontSize:'12px' }}>₱{so.unitCost.toFixed(2)}</td>
                     <td style={{ ...S.td }}><ReasonBadge reason={so.reason} /></td>
                     <td style={{ ...S.td, color:'var(--gray)', fontSize:'12px', maxWidth:'200px', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{so.notes || '-'}</td>
@@ -419,7 +419,7 @@ function ByMaterialTab({ stockOuts, materials }) {
         <SummaryCard label="Materials Tracked" value={groups.length} accent />
         <SummaryCard label="Total Qty Deducted"
           value={groups.reduce((s, g) => s + g.totalQty, 0).toLocaleString()}
-          color="#c62828" />
+          color="var(--st-red-fg)" />
         <SummaryCard label="Total Cost of Goods"
           value={`₱${groups.reduce((s, g) => s + g.totalCost, 0).toLocaleString('en-PH', { minimumFractionDigits:2 })}`}
           color="#166534" />
@@ -460,7 +460,7 @@ function ByMaterialTab({ stockOuts, materials }) {
                       <td style={{ ...S.td, textAlign:'center', fontFamily:'monospace', fontSize:'12px', color:'var(--gray-light)' }}>
                         {g.stockQty} {g.unit}
                       </td>
-                      <td style={{ ...S.td, textAlign:'center', color:'#c62828', fontWeight:600, fontFamily:'monospace', fontSize:'12px' }}>
+                      <td style={{ ...S.td, textAlign:'center', color:'var(--st-red-fg)', fontWeight:600, fontFamily:'monospace', fontSize:'12px' }}>
                         -{outQty(g.totalQty)} {g.unit}
                       </td>
                       <td style={{ ...S.td, textAlign:'center', fontWeight:600, color:'#166534', fontFamily:'monospace', fontSize:'12px' }}>
@@ -490,7 +490,7 @@ function ByMaterialTab({ stockOuts, materials }) {
                                   <td style={{ padding:'7px 14px', fontSize:'11px', fontFamily:'monospace', color:'var(--gray-light)' }}>{so.ref}</td>
                                   <td style={{ padding:'7px 14px', fontSize:'12px', color:'var(--gray-light)' }}>{so.productName || '-'}</td>
                                   <td style={{ padding:'7px 14px', fontSize:'12px', color:'var(--gray)' }}>{so.customerName || '-'}</td>
-                                  <td style={{ padding:'7px 14px', fontSize:'12px', color:'#c62828', fontWeight:600 }}>-{outQty(so.qty)} {g.unit}</td>
+                                  <td style={{ padding:'7px 14px', fontSize:'12px', color:'var(--st-red-fg)', fontWeight:600 }}>-{outQty(so.qty)} {g.unit}</td>
                                   <td style={{ padding:'7px 14px', fontSize:'12px', fontFamily:'monospace', color:'#166534' }}>₱{so.totalCost.toFixed(2)}</td>
                                   <td style={{ padding:'7px 14px' }}><ReasonBadge reason={so.reason} /></td>
                                 </tr>

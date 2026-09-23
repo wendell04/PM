@@ -369,8 +369,8 @@ function InventoryReport({ token }) {
   const kpis = [
     { key: 'val', label: 'Stock value', value: isPhone ? pesoShort(t.stockValue) : peso(t.stockValue), title: peso(t.stockValue) },
     { key: 'mat', label: 'Materials', value: num(t.materials) },
-    { key: 'low', label: 'Below minimum', value: num(t.belowMin), color: t.belowMin > 0 ? '#b45309' : undefined },
-    { key: 'out', label: 'Out of stock', value: num(t.out), color: t.out > 0 ? '#c62828' : undefined },
+    { key: 'low', label: 'Below minimum', value: num(t.belowMin), color: t.belowMin > 0 ? 'var(--st-orange-fg)' : undefined },
+    { key: 'out', label: 'Out of stock', value: num(t.out), color: t.out > 0 ? 'var(--st-red-fg)' : undefined },
   ];
   const exportRows = () => exportCSV(
     ['Category', 'Items', 'Units', 'Stock value'],
@@ -417,7 +417,7 @@ function InventoryReport({ token }) {
             { key: 'name', label: 'Material', strong: true },
             { key: 'onHand', label: 'On hand', right: true, render: r => `${num(r.onHand)} ${r.uom ?? ''}` },
             { key: 'minimum', label: 'Minimum', right: true, muted: true, wide: true, render: r => num(r.minimum) },
-            { key: 'status', label: 'Status', render: r => <span style={{ fontSize: 11, fontWeight: 700, color: r.status === 'out' ? '#c62828' : '#b45309' }}>{r.status === 'out' ? 'Out of stock' : 'Low'}</span> },
+            { key: 'status', label: 'Status', render: r => <span style={{ fontSize: 11, fontWeight: 700, color: r.status === 'out' ? 'var(--st-red-fg)' : 'var(--st-orange-fg)' }}>{r.status === 'out' ? 'Out of stock' : 'Low'}</span> },
           ]} rows={data.attention} empty="Every stocked material is above its minimum." />
         </Card>
         <Card title="Left the shelf in the last 30 days" sub="Production, sales, quotes and scrap, from the stock ledger.">

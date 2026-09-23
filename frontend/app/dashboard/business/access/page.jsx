@@ -596,7 +596,7 @@ export default function AccessPage() {
                       <td style={{ ...S.td, fontSize: 11.5 }}>
                         <span style={{ padding: '2px 7px', borderRadius: 4, fontWeight: 700,
                           background: r.unlimited ? 'rgba(212,168,67,0.14)' : r.source === 'person' ? 'rgba(46,125,50,0.12)' : 'var(--dark2)',
-                          color: r.unlimited ? 'var(--gold)' : r.source === 'person' ? '#2e7d32' : 'var(--gray)' }}>
+                          color: r.unlimited ? 'var(--gold)' : r.source === 'person' ? 'var(--st-green-fg)' : 'var(--gray)' }}>
                           {r.unlimited ? 'Unlimited' : r.source === 'person' ? 'Per person' : 'Template'}
                         </span>
                       </td>

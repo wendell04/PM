@@ -164,7 +164,7 @@ export default function AdminReviewsPage() {
       </div>
 
       {error && (
-        <div style={{ ...S.card, borderColor: '#c62828', color: '#e05252', fontSize: '13px', marginBottom: '14px' }}>
+        <div style={{ ...S.card, borderColor: 'var(--st-red-fg)', color: '#e05252', fontSize: '13px', marginBottom: '14px' }}>
           {error}{' '}
           <button type="button" onClick={() => load(page)}
             style={{ background: 'none', border: 'none', color: 'var(--gold)', cursor: 'pointer', fontWeight: 700 }}>

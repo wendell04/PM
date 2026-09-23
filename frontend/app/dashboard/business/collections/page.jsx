@@ -495,7 +495,7 @@ export default function CollectionsPage() {
           {mayWork && (<button onClick={openAdd} style={{ ...S.btnPrimary, minHeight:44, justifyContent:'center', width:'100%', marginBottom:12 }}>{ICONS.plus} New Collection</button>)}
           <KpiStrip items={[
             { key:'all',       label:'All',       value: counts.all },
-            { key:'published', label:'Published', value: counts.published, color:'#2e7d32' },
+            { key:'published', label:'Published', value: counts.published, color:'var(--st-green-fg)' },
             { key:'draft',     label:'Draft',     value: counts.draft, color:'var(--gray)' },
           ].map(k => ({ ...k, active: tab === k.key, onClick: () => setTab(k.key) }))} />
           <PhoneFilterBar search={search} onSearch={setSearch} placeholder="Search collections" note={`${total} collection${total !== 1 ? 's' : ''}`} />
@@ -506,7 +506,7 @@ export default function CollectionsPage() {
               {slice.map((col, i) => (
                 <PhoneRow key={col.id} first={i === 0} mono={false} onClick={mayWork ? () => openEdit(col) : undefined}
                   title={col.title}
-                  chip={<button onClick={mayWork ? e => { e.stopPropagation(); togglePublish(col.id); } : undefined} style={{ fontSize:11, fontWeight:700, borderRadius:20, padding:'4px 10px', border:'none', cursor: mayWork ? 'pointer' : 'default', background: col.isPublished ? '#e9f5ea' : 'var(--dark2)', color: col.isPublished ? '#2e7d32' : 'var(--gray)' }}>{col.isPublished ? 'Published' : 'Draft'}</button>}
+                  chip={<button onClick={mayWork ? e => { e.stopPropagation(); togglePublish(col.id); } : undefined} style={{ fontSize:11, fontWeight:700, borderRadius:20, padding:'4px 10px', border:'none', cursor: mayWork ? 'pointer' : 'default', background: col.isPublished ? '#e9f5ea' : 'var(--dark2)', color: col.isPublished ? 'var(--st-green-fg)' : 'var(--gray)' }}>{col.isPublished ? 'Published' : 'Draft'}</button>}
                   meta={`${col.productIds?.length ?? 0} product${(col.productIds?.length ?? 0) === 1 ? '' : 's'} \u00b7 /${col.slug}`}
                   sub={col.description || 'No description'} />
               ))}
@@ -523,7 +523,7 @@ export default function CollectionsPage() {
 
       <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginBottom: '20px' }}>
         <SummaryCard label="Total"     value={counts.all}       accent />
-        <SummaryCard label="Published" value={counts.published} color="#2e7d32" />
+        <SummaryCard label="Published" value={counts.published} color="var(--st-green-fg)" />
         <SummaryCard label="Draft"     value={counts.draft}     color="var(--gray)" />
       </div>
 
@@ -620,11 +620,11 @@ export default function CollectionsPage() {
                     <button onClick={mayWork ? () => togglePublish(col.id) : undefined}
                       title={mayWork ? (col.isPublished ? 'Click to unpublish' : 'Click to publish') : undefined}
                       style={{ background: col.isPublished ? '#e9f5ea' : 'var(--dark2)',
-                        color: col.isPublished ? '#2e7d32' : 'var(--gray)',
+                        color: col.isPublished ? 'var(--st-green-fg)' : 'var(--gray)',
                         border: 'none', borderRadius: '20px', padding: '3px 12px', fontSize: '12px', fontWeight: 600,
                         cursor: mayWork ? 'pointer' : 'default', display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
                       <span style={{ width: '6px', height: '6px', borderRadius: '50%',
-                        background: col.isPublished ? '#2e7d32' : 'var(--gray)', flexShrink: 0 }} />
+                        background: col.isPublished ? 'var(--st-green-fg)' : 'var(--gray)', flexShrink: 0 }} />
                       {col.isPublished ? 'Published' : 'Draft'}
                     </button>
                   </td>

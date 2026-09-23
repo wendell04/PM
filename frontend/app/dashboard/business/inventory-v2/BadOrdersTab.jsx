@@ -131,9 +131,9 @@ export default function BadOrdersTab({ badOrders, setBadOrders, materials, batch
       {/* summary */}
       <div style={{ display:'flex', gap:'12px', flexWrap:'wrap' }}>
         <SummaryCard label="Pending"     value={pending}    color="#e65100" accent />
-        <SummaryCard label="Replaced"    value={replaced}   color="#2e7d32" />
+        <SummaryCard label="Replaced"    value={replaced}   color="var(--st-green-fg)" />
         <SummaryCard label="Written Off" value={writtenOff} color="var(--gray)" />
-        <SummaryCard label="Total Loss"  value={formatCurrency(totalLoss)} color="#c62828" />
+        <SummaryCard label="Total Loss"  value={formatCurrency(totalLoss)} color="var(--st-red-fg)" />
       </div>
 
       {/* toolbar */}
@@ -172,7 +172,7 @@ export default function BadOrdersTab({ badOrders, setBadOrders, materials, batch
                     <td style={{ ...S.td, whiteSpace:'nowrap' }}>{formatDate(b.date)}</td>
                     <td style={{ ...S.td, fontFamily:'monospace', fontSize:'12px', color:'var(--gray)' }}>{b.invoiceNo}</td>
                     <td style={{ ...S.td, fontWeight:500 }}>{b.matName}</td>
-                    <td style={{ ...S.td, textAlign:'right', fontWeight:600, color:'#c62828' }}>{b.qty} {mat?.unit}</td>
+                    <td style={{ ...S.td, textAlign:'right', fontWeight:600, color:'var(--st-red-fg)' }}>{b.qty} {mat?.unit}</td>
                     <td style={S.td}><StatusBadge status={b.type} /></td>
                     <td style={{ ...S.td, fontSize:'12px', color:'var(--gray)', maxWidth:'180px' }}>{b.notes}</td>
                     <td style={S.td}><StatusBadge status={b.status} /></td>

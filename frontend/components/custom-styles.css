@@ -18,7 +18,9 @@
     --dark:        #1a1a1a;
     --dark2:       #222;
     --dark3:       #2a2a2a;
-    --gray:        #888;
+    /* #888 measured 4.49:1 on --dark2, just under the readable floor, and it is the colour
+       of every table header in the dashboard. One step lighter clears the lot. */
+    --gray:        #8f8f8f;
     --gray-light:  #aaa;
     --blue:        #3b82f6;
     --indigo:      #6366f1;

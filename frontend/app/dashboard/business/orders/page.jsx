@@ -1816,8 +1816,8 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                   {!(Number(lo.courierFee) > 0) && lo.paymentStatus !== 'paid'
                     && ['Awaiting Payment', 'awaiting_payment'].includes(String(lo.orderStatus)) && (
                     <div style={{ display:'flex', gap:'7px', alignItems:'flex-start', padding:'8px 10px', marginBottom:'8px', background:'rgba(245,158,11,0.08)', border:'1px solid rgba(245,158,11,0.3)', borderRadius:'7px' }}>
-                      <span style={{ color:'#b45309', fontWeight:900, fontSize:'11px', lineHeight:1.5 }}>!</span>
-                      <span style={{ fontSize:'10.5px', color:'#b45309', lineHeight:1.5 }}>
+                      <span style={{ color:'var(--st-orange-fg)', fontWeight:900, fontSize:'11px', lineHeight:1.5 }}>!</span>
+                      <span style={{ fontSize:'10.5px', color:'var(--st-orange-fg)', lineHeight:1.5 }}>
                         No delivery fee set. The customer is about to pay - set it now and they can
                         settle both in one go. Leave it and they will have to pay the delivery separately later.
                       </span>
@@ -1908,7 +1908,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                               </span>
                             );
                             return (
-                              <span style={{ fontSize:'11px', fontWeight:700, color:'#b45309', lineHeight:1.5 }}>
+                              <span style={{ fontSize:'11px', fontWeight:700, color:'var(--st-orange-fg)', lineHeight:1.5 }}>
                                 Paid ₱{fmt(paid)}, fee is now ₱{fmt(now)} - ₱{fmt(short)} short.
                                 <span style={{ display:'block', fontWeight:500, color:'var(--gray)' }}>
                                   Ask for it in chat, or absorb it. Nothing is billed automatically.
@@ -2104,7 +2104,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                         // the format is, say what the customer called it, and open it on click.
                         <a key={i} href={url} target="_blank" rel="noopener noreferrer" title={`Open ${fname}`}
                           style={{ display:'block', textDecoration:'none' }}>
-                          <div style={{ width:'120px', height:'120px', borderRadius:'8px', border:'1px solid var(--border)', background:'#f9fafb', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:'4px', padding:'8px', boxSizing:'border-box' }}>
+                          <div style={{ width:'120px', height:'120px', borderRadius:'8px', border:'1px solid var(--border)', background:'var(--dark2)', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:'4px', padding:'8px', boxSizing:'border-box' }}>
                             <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#d4a843" strokeWidth="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
                             <span style={{ fontSize:'11px', fontWeight:800, color:'#d4a843', letterSpacing:'0.04em' }}>{ext || 'FILE'}</span>
                             <span style={{ fontSize:'10px', color:'var(--gray)', textAlign:'center', lineHeight:1.3, wordBreak:'break-word', display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical', overflow:'hidden' }}>{fname}</span>
@@ -2134,7 +2134,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
 
               {/* Printing instructions the customer left - the printer needs these next to the file. */}
               {aiNotes && (
-                <div style={{ padding:'8px 10px', background:'#f9fafb', border:'1px solid var(--border)', borderRadius:'6px', fontSize:'12px', color:'var(--gray)', marginBottom:'8px', lineHeight:1.5 }}>
+                <div style={{ padding:'8px 10px', background:'var(--dark2)', border:'1px solid var(--border)', borderRadius:'6px', fontSize:'12px', color:'var(--gray)', marginBottom:'8px', lineHeight:1.5 }}>
                   <span style={{ fontWeight:600, color:'var(--white)' }}>Instructions: </span>{aiNotes}
                 </div>
               )}
@@ -2150,13 +2150,13 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                 <div style={{ marginBottom: '10px', padding: '10px 12px', borderRadius: 8,
                   background: 'rgba(212,168,67,0.07)', border: '1px solid rgba(212,168,67,0.3)' }}>
                   <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#b45309"
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--st-orange-fg)"
                       strokeWidth="2" style={{ flexShrink: 0, marginTop: 1 }}>
                       <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
                       <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
                     </svg>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 12.5, fontWeight: 700, color: '#b45309' }}>No printing instructions</div>
+                      <div style={{ fontSize: 12.5, fontWeight: 700, color:'var(--st-orange-fg)' }}>No printing instructions</div>
                       <div style={{ fontSize: 11.5, color: 'var(--gray)', marginTop: 3, lineHeight: 1.5 }}>
                         The customer sent a file and said nothing about it - which side, what size,
                         whether it is even finished artwork. Ask before producing.
@@ -2471,7 +2471,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
               </span>
               {readySince !== null && (
                 <span style={{ fontSize:'11px', fontWeight:700,
-                  color: readySince >= 14 ? '#c2410c' : readySince >= 7 ? '#b45309' : 'var(--gray)' }}>
+                  color: readySince >= 14 ? '#c2410c' : readySince >= 7 ? 'var(--st-orange-fg)' : 'var(--gray)' }}>
                   Finished goods held for {readySince} day{readySince === 1 ? '' : 's'}
                   {readySince >= 14 && ' - these cannot be resold. Decide whether to keep holding them.'}
                 </span>
@@ -2792,7 +2792,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                           </span>
                           {rushTag}
                         </div>
-                        <div style={{ fontSize:'11.5px', color:'#b45309' }}>
+                        <div style={{ fontSize:'11.5px', color:'var(--st-orange-fg)' }}>
                           Countdown not started. If that happened today it would land {range}; it moves out by however long it takes.
                         </div>
                       </>
@@ -2897,7 +2897,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                 const clauses = (Array.isArray(lo.agreedTermsSnapshot) && lo.agreedTermsSnapshot.length) ? lo.agreedTermsSnapshot : DEFAULT_CUSTOM_ORDER_TERMS;
                 const snapshotted = Array.isArray(lo.agreedTermsSnapshot) && lo.agreedTermsSnapshot.length;
                 return (
-                  <div style={{ marginTop:'8px', padding:'10px 12px', background:'#f0fdf4', border:'1px solid #bbf7d0', borderRadius:'8px', fontSize:'11px', color:'var(--gray)' }}>
+                  <div style={{ marginTop:'8px', padding:'10px 12px', background:'var(--st-green-bg)', border:'1px solid rgba(34,197,94,0.35)', borderRadius:'8px', fontSize:'11px', color:'var(--gray)' }}>
                     <div style={{ display:'grid', gridTemplateColumns:'auto 1fr', gap:'2px 10px', marginBottom:'8px' }}>
                       <span style={{ fontWeight:700, color:'var(--white)' }}>Customer:</span><span>{lo.customerName || lo.userSnapshot?.name || '-'}{(lo.customerEmail || lo.userSnapshot?.email) ? ` (${lo.customerEmail || lo.userSnapshot?.email})` : ''}</span>
                       <span style={{ fontWeight:700, color:'var(--white)' }}>Accepted:</span><span>{lo.agreedAt ? new Date(lo.agreedAt).toLocaleString('en-PH',{year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '-'}</span>
@@ -3268,7 +3268,10 @@ export default function OrdersPage() {
 
   const [orders,       setOrders]       = useState([]);
   const [search,       setSearch]       = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
+  // Opens on the work, not on the archive. All orders is the report you go to; Open - not yet
+  // delivered - is the list somebody came here to act on, and starting on All meant 50 rows to
+  // scroll before finding the 6 that needed anything.
+  const [statusFilter, setStatusFilter] = useState('open');
   const [payFilter,    setPayFilter]    = useState('all');
   const [typeFilter,   setTypeFilter]   = useState('all');
   const [dateFilter,   setDateFilter]   = useState('all-time');

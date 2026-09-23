@@ -92,7 +92,7 @@ function StockOutModal({ open, onClose, material, currentStock, materialBatches,
 
         <div style={{ ...S.cardSm, background:'var(--dark2)', display:'flex', justifyContent:'space-between' }}>
           <span style={{ fontSize:'13px', color:'var(--gray)' }}>Current Stock</span>
-          <span style={{ fontWeight:700, fontSize:'15px', color: currentStock <= (material?.minStock || 0) ? '#c62828' : 'var(--white)' }}>{currentStock} {material?.unit}</span>
+          <span style={{ fontWeight:700, fontSize:'15px', color: currentStock <= (material?.minStock || 0) ? 'var(--st-red-fg)' : 'var(--white)' }}>{currentStock} {material?.unit}</span>
         </div>
 
         {/* Batch picker toggle */}
@@ -115,7 +115,7 @@ function StockOutModal({ open, onClose, material, currentStock, materialBatches,
               <label key={b.id} style={{ display:'grid', gridTemplateColumns:'1fr auto auto auto', gap:'8px', alignItems:'center', padding:'9px 12px', cursor:'pointer', borderTop:'1px solid var(--border)', background: batchId === b.id ? 'var(--gold-subtle)' : 'var(--dark)', transition:'background .1s' }}>
                 <span style={{ fontSize:'12px', fontFamily:'monospace', color:'var(--gray-light)' }}>{b.invoiceNo || '-'}</span>
                 <span style={{ fontSize:'12px', color:'var(--gray)' }}>{b.date}</span>
-                <span style={{ fontSize:'12px', fontWeight:600, textAlign:'right', color: b.remainingQty <= 10 ? '#b45309' : '#2e7d32' }}>{b.remainingQty} {material?.unit}</span>
+                <span style={{ fontSize:'12px', fontWeight:600, textAlign:'right', color: b.remainingQty <= 10 ? 'var(--st-orange-fg)' : 'var(--st-green-fg)' }}>{b.remainingQty} {material?.unit}</span>
                 <input type="radio" name="batchPick" value={b.id} checked={batchId === b.id}
                   onChange={() => { setBatchId(b.id); setQty(''); setErrors({}); }}
                   style={{ accentColor:'var(--gold)' }} />
@@ -141,7 +141,7 @@ function StockOutModal({ open, onClose, material, currentStock, materialBatches,
             {useBatch && selectedBatch && <div style={{ fontSize:'12px', color:'var(--gray)', marginBottom:'4px' }}>Batch {selectedBatch.invoiceNo || 'no invoice'} · {selectedBatch.remainingQty - Number(qty)} remaining after</div>}
             Remaining stock: <b>{currentStock - Number(qty)} {material?.unit}</b>
             {currentStock - Number(qty) <= (material?.minStock || 0) && (
-              <span style={{ color:'#c62828', marginLeft:'8px' }}>(below min stock!)</span>
+              <span style={{ color:'var(--st-red-fg)', marginLeft:'8px' }}>(below min stock!)</span>
             )}
           </div>
         )}
@@ -256,9 +256,9 @@ export default function ActualStockTab({ materials, batches, setBatches, badOrde
       {isPhone ? (
         <>
           <KpiStrip items={[
-            { key:'In Stock',     label:'In stock', value: inStock,  color:'#2e7d32', active: statusFilter === 'In Stock',     onClick: () => setStatus(statusFilter === 'In Stock' ? 'All' : 'In Stock') },
-            { key:'Low Stock',    label:'Low',      value: lowStock, color:'#b45309', active: statusFilter === 'Low Stock',    onClick: () => setStatus(statusFilter === 'Low Stock' ? 'All' : 'Low Stock') },
-            { key:'Out of Stock', label:'Out',      value: outStock, color:'#c62828', active: statusFilter === 'Out of Stock', onClick: () => setStatus(statusFilter === 'Out of Stock' ? 'All' : 'Out of Stock') },
+            { key:'In Stock',     label:'In stock', value: inStock,  color:'var(--st-green-fg)', active: statusFilter === 'In Stock',     onClick: () => setStatus(statusFilter === 'In Stock' ? 'All' : 'In Stock') },
+            { key:'Low Stock',    label:'Low',      value: lowStock, color:'var(--st-orange-fg)', active: statusFilter === 'Low Stock',    onClick: () => setStatus(statusFilter === 'Low Stock' ? 'All' : 'Low Stock') },
+            { key:'Out of Stock', label:'Out',      value: outStock, color:'var(--st-red-fg)', active: statusFilter === 'Out of Stock', onClick: () => setStatus(statusFilter === 'Out of Stock' ? 'All' : 'Out of Stock') },
             ...(seeMoney ? [{ key:'val',  label:'Value',    value: pesoShort(totalVal), title: formatCurrency(totalVal) }] : []),
           ]} />
           <PhoneFilterBar search={search} onSearch={setSearch} placeholder="Search name or SKU"
@@ -271,9 +271,9 @@ export default function ActualStockTab({ materials, batches, setBatches, badOrde
       ) : (<>
       {/* summary */}
       <div style={{ display:'flex', gap:'12px', flexWrap:'wrap' }}>
-        <SummaryCard label="In Stock"     value={inStock}  color="#2e7d32" accent />
-        <SummaryCard label="Low Stock"    value={lowStock} color="#b45309" />
-        <SummaryCard label="Out of Stock" value={outStock} color="#c62828" />
+        <SummaryCard label="In Stock"     value={inStock}  color="var(--st-green-fg)" accent />
+        <SummaryCard label="Low Stock"    value={lowStock} color="var(--st-orange-fg)" />
+        <SummaryCard label="Out of Stock" value={outStock} color="var(--st-red-fg)" />
         {seeMoney && <SummaryCard label="Actual Value" value={formatCurrency(totalVal)} />}
       </div>
 
@@ -344,20 +344,20 @@ export default function ActualStockTab({ materials, batches, setBatches, badOrde
                 <tr key={d.mat.id} style={S.tr} onMouseEnter={e => e.currentTarget.style.background='var(--dark2)'} onMouseLeave={e => e.currentTarget.style.background=''}>
                   <td style={{ ...S.td, fontFamily:'monospace', fontSize:'12px', color:'var(--gray)' }}>{d.mat.sku}</td>
                   <td style={{ ...S.td, fontWeight:500 }}>{d.mat.name}</td>
-                  <td style={{ ...S.td, textAlign:'right', fontWeight:700, fontSize:'15px', color: d.status === 'out_of_stock' ? '#c62828' : d.status === 'low_stock' ? '#b45309' : '#2e7d32' }}>
+                  <td style={{ ...S.td, textAlign:'right', fontWeight:700, fontSize:'15px', color: d.status === 'out_of_stock' ? 'var(--st-red-fg)' : d.status === 'low_stock' ? 'var(--st-orange-fg)' : 'var(--st-green-fg)' }}>
                     {d.actualQty} {d.mat.unit}
                   </td>
                   <td style={{ ...S.td, textAlign:'right', color: d.pendingBOQty > 0 ? '#e05252' : 'var(--gray)' }}>
                     {d.pendingBOQty > 0 ? `−${d.pendingBOQty}` : '0'} {d.mat.unit}
                   </td>
-                  <td style={{ ...S.td, textAlign:'right', color: d.reductionQty > 0 ? '#b45309' : 'var(--gray)' }}>
+                  <td style={{ ...S.td, textAlign:'right', color: d.reductionQty > 0 ? 'var(--st-orange-fg)' : 'var(--gray)' }}>
                     {d.reductionQty > 0 ? `−${d.reductionQty}` : '0'} {d.mat.unit}
                   </td>
-                  <td style={{ ...S.td, textAlign:'right', color: d.reservedQty > 0 ? '#b45309' : 'var(--gray)' }}
+                  <td style={{ ...S.td, textAlign:'right', color: d.reservedQty > 0 ? 'var(--st-orange-fg)' : 'var(--gray)' }}
                     title={d.reservedQty > 0 ? 'Held by open orders. Released when the order is cancelled or the material is consumed at QC.' : undefined}>
                     {d.reservedQty > 0 ? `\u2212${d.reservedQty}` : '0'} {d.mat.unit}
                   </td>
-                  <td style={{ ...S.td, textAlign:'right', fontWeight:700, color: d.availableQty === 0 ? '#c62828' : d.availableQty <= d.mat.minStock ? '#b45309' : '#2e7d32' }}
+                  <td style={{ ...S.td, textAlign:'right', fontWeight:700, color: d.availableQty === 0 ? 'var(--st-red-fg)' : d.availableQty <= d.mat.minStock ? 'var(--st-orange-fg)' : 'var(--st-green-fg)' }}
                     title="What the storefront can still sell.">
                     {d.availableQty} {d.mat.unit}
                   </td>
@@ -423,9 +423,9 @@ export default function ActualStockTab({ materials, batches, setBatches, badOrde
                       </span>
                     </td>
                     <td style={{ ...S.td, fontWeight:500 }}>{s.matName}</td>
-                    <td style={{ ...S.td, textAlign:'right', color:'#c62828', fontWeight:600 }}>−{Math.abs(Number(s.qty) || 0)} {mat?.unit}</td>
+                    <td style={{ ...S.td, textAlign:'right', color:'var(--st-red-fg)', fontWeight:600 }}>−{Math.abs(Number(s.qty) || 0)} {mat?.unit}</td>
                     <td style={S.td}><StatusBadge status={s.reason} label={outReasonLabel(s.reason)} /></td>
-                    {seeMoney && <td style={{ ...S.td, textAlign:'right', fontWeight:600, color: isProduction ? 'var(--gray-light)' : '#c62828' }}>{formatCurrency(s.totalCost)}</td>}
+                    {seeMoney && <td style={{ ...S.td, textAlign:'right', fontWeight:600, color: isProduction ? 'var(--gray-light)' : 'var(--st-red-fg)' }}>{formatCurrency(s.totalCost)}</td>}
                     <td style={{ ...S.td, fontSize:'12px', color:'var(--gray-light)' }}>{performedByLabel(s.performedBy)}</td>
                     {/* One line, hover for the rest. The note is an audit record and has to stay whole
                         in the data, but a row that grows to four lines because of it pushes every

@@ -418,7 +418,7 @@ export default function CustomersPage() {
                       const days = Math.floor((Date.now() - new Date(c.last_login_at).getTime()) / 86400000);
                       const label = days === 0 ? 'today' : days === 1 ? 'yesterday' : `${days} days ago`;
                       return (
-                        <span style={{ color: days >= 365 ? '#c2410c' : days >= 90 ? '#b45309' : 'var(--gray)' }}>
+                        <span style={{ color: days >= 365 ? '#c2410c' : days >= 90 ? 'var(--st-orange-fg)' : 'var(--gray)' }}>
                           Last seen {label}
                         </span>
                       );

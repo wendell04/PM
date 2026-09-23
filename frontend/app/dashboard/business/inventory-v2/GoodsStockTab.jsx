@@ -63,9 +63,9 @@ export default function GoodsStockTab({ materials, batches, badOrders }) {
       {isPhone ? (
         <>
           <KpiStrip items={[
-            { key:'In Stock',     label:'In stock',     value: inStock,  color:'#2e7d32', active: statusFilter === 'In Stock',     onClick: () => setStatus(statusFilter === 'In Stock' ? 'All' : 'In Stock') },
-            { key:'Low Stock',    label:'Low',          value: lowStock, color:'#b45309', active: statusFilter === 'Low Stock',    onClick: () => setStatus(statusFilter === 'Low Stock' ? 'All' : 'Low Stock') },
-            { key:'Out of Stock', label:'Out',          value: outStock, color:'#c62828', active: statusFilter === 'Out of Stock', onClick: () => setStatus(statusFilter === 'Out of Stock' ? 'All' : 'Out of Stock') },
+            { key:'In Stock',     label:'In stock',     value: inStock,  color:'var(--st-green-fg)', active: statusFilter === 'In Stock',     onClick: () => setStatus(statusFilter === 'In Stock' ? 'All' : 'In Stock') },
+            { key:'Low Stock',    label:'Low',          value: lowStock, color:'var(--st-orange-fg)', active: statusFilter === 'Low Stock',    onClick: () => setStatus(statusFilter === 'Low Stock' ? 'All' : 'Low Stock') },
+            { key:'Out of Stock', label:'Out',          value: outStock, color:'var(--st-red-fg)', active: statusFilter === 'Out of Stock', onClick: () => setStatus(statusFilter === 'Out of Stock' ? 'All' : 'Out of Stock') },
             ...(seeMoney ? [{ key:'val', label:'Value',        value: pesoShort(totalVal), title: formatCurrency(totalVal) }] : []),
           ]} />
           <PhoneFilterBar search={search} onSearch={setSearch} placeholder="Search name or SKU"
@@ -78,9 +78,9 @@ export default function GoodsStockTab({ materials, batches, badOrders }) {
       ) : (<>
       {/* summary */}
       <div style={{ display:'flex', gap:'12px', flexWrap:'wrap' }}>
-        <SummaryCard label="In Stock"      value={inStock}  color="#2e7d32" accent />
-        <SummaryCard label="Low Stock"     value={lowStock} color="#b45309" />
-        <SummaryCard label="Out of Stock"  value={outStock} color="#c62828" />
+        <SummaryCard label="In Stock"      value={inStock}  color="var(--st-green-fg)" accent />
+        <SummaryCard label="Low Stock"     value={lowStock} color="var(--st-orange-fg)" />
+        <SummaryCard label="Out of Stock"  value={outStock} color="var(--st-red-fg)" />
         {seeMoney && <SummaryCard label="Total Value"   value={formatCurrency(totalVal)} />}
       </div>
 
@@ -138,7 +138,7 @@ export default function GoodsStockTab({ materials, batches, badOrders }) {
                         {d.batches.map((b, i) => (
                           <PhoneRow key={b.id} first={i === 0} mono={false}
                             title={formatDate(b.date)}
-                            chip={<span style={{ fontSize:12, fontWeight:700, color: b.remainingQty < b.qtyReceived ? '#b45309' : '#2e7d32' }}>{b.remainingQty}/{b.qtyReceived} left</span>}
+                            chip={<span style={{ fontSize:12, fontWeight:700, color: b.remainingQty < b.qtyReceived ? 'var(--st-orange-fg)' : 'var(--st-green-fg)' }}>{b.remainingQty}/{b.qtyReceived} left</span>}
                             meta={[b.invoiceNo, b.vendorName].filter(Boolean).join(' \u00b7 ')}
                             sub={[seeMoney ? `${b.qtyReceived} ${d.mat.unit} at ${formatCurrency(b.unitCost)}` : `${b.qtyReceived} ${d.mat.unit}`, b.notes].filter(Boolean).join(' \u00b7 ')} />
                         ))}
@@ -184,7 +184,7 @@ export default function GoodsStockTab({ materials, batches, badOrders }) {
                     <td style={{ ...S.td, fontFamily:'monospace', fontSize:'12px', color:'var(--gray)' }}>{d.mat.sku}</td>
                     <td style={{ ...S.td, fontWeight:500 }}>{d.mat.name}</td>
                     <td style={S.td}><span style={{ background:'var(--dark2)', borderRadius:'5px', padding:'2px 8px', fontSize:'12px' }}>{d.mat.category}</span></td>
-                    <td style={{ ...S.td, textAlign:'right', fontWeight:700, color: d.status === 'out_of_stock' ? '#c62828' : d.status === 'low_stock' ? '#b45309' : '#2e7d32' }}>{d.goodsStock} {d.mat.unit}</td>
+                    <td style={{ ...S.td, textAlign:'right', fontWeight:700, color: d.status === 'out_of_stock' ? 'var(--st-red-fg)' : d.status === 'low_stock' ? 'var(--st-orange-fg)' : 'var(--st-green-fg)' }}>{d.goodsStock} {d.mat.unit}</td>
                     <td style={{ ...S.td, textAlign:'right', color:'var(--gray)', fontSize:'12px' }}>{d.mat.minStock} {d.mat.unit}</td>
                     {seeMoney && <td style={{ ...S.td, textAlign:'right' }}>{formatCurrency(d.unitCost)}</td>}
                     {seeMoney && <td style={{ ...S.td, textAlign:'right', fontWeight:600 }}>{formatCurrency(d.stockValue)}</td>}
@@ -215,7 +215,7 @@ export default function GoodsStockTab({ materials, batches, badOrders }) {
                                 <td style={{ ...S.td, padding:'6px 10px', fontSize:'12px', color:'var(--gray)' }}>{b.vendorName}</td>
                                 <td style={{ ...S.td, padding:'6px 10px', fontSize:'12px', textAlign:'right' }}>{b.qtyReceived} {d.mat.unit}</td>
                                 {seeMoney && <td style={{ ...S.td, padding:'6px 10px', fontSize:'12px', textAlign:'right' }}>{formatCurrency(b.unitCost)}</td>}
-                                <td style={{ ...S.td, padding:'6px 10px', fontSize:'12px', textAlign:'right', fontWeight:600, color: b.remainingQty < b.qtyReceived ? '#b45309' : '#2e7d32' }}>
+                                <td style={{ ...S.td, padding:'6px 10px', fontSize:'12px', textAlign:'right', fontWeight:600, color: b.remainingQty < b.qtyReceived ? 'var(--st-orange-fg)' : 'var(--st-green-fg)' }}>
                                   {b.remainingQty} {d.mat.unit}
                                 </td>
                                 <td style={{ ...S.td, padding:'6px 10px', fontSize:'11px', color:'var(--gray)' }}>{b.notes}</td>

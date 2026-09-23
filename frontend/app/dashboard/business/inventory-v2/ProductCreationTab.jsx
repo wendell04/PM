@@ -195,7 +195,7 @@ export default function ProductCreationTab({ boms, setBoms, materials, batches, 
                           const canMake = stock >= it.qty;
                           return (
                             <span key={it.matId} title={canMake ? undefined : 'Insufficient stock'}
-                              style={{ background: canMake ? '#f0f4ff' : '#fde8e8', color: canMake ? '#1e40af' : '#c62828', borderRadius:'5px', padding:'2px 8px', fontSize:'11px', fontWeight:500 }}>
+                              style={{ background: canMake ? '#f0f4ff' : '#fde8e8', color: canMake ? '#1e40af' : 'var(--st-red-fg)', borderRadius:'5px', padding:'2px 8px', fontSize:'11px', fontWeight:500 }}>
                               {mat?.name || it.matId} ×{it.qty}
                             </span>
                           );
@@ -234,7 +234,7 @@ export default function ProductCreationTab({ boms, setBoms, materials, batches, 
         }
       >
         <div style={{ display:'flex', flexDirection:'column', gap:'14px' }}>
-          {errors._api && <div style={{ color:'#c62828', fontSize:'12px', padding:'8px 12px', background:'#fff5f5', borderRadius:'6px' }}>{errors._api}</div>}
+          {errors._api && <div style={{ color:'var(--st-red-fg)', fontSize:'12px', padding:'8px 12px', background:'#fff5f5', borderRadius:'6px' }}>{errors._api}</div>}
           <Field label="Product Name" required error={errors.productName}>
             <input
               value={form.productName}
@@ -287,7 +287,7 @@ export default function ProductCreationTab({ boms, setBoms, materials, batches, 
                             {errors[`qty_${i}`] && <span style={S.errText}>{errors[`qty_${i}`]}</span>}
                           </div>
                         </td>
-                        <td style={{ ...S.td, padding:'8px 12px', fontSize:'12px', color: stock < Number(it.qty || 1) ? '#c62828' : '#2e7d32' }}>
+                        <td style={{ ...S.td, padding:'8px 12px', fontSize:'12px', color: stock < Number(it.qty || 1) ? 'var(--st-red-fg)' : 'var(--st-green-fg)' }}>
                           {stock} {mat?.unit}
                         </td>
                         <td style={{ ...S.td, padding:'8px 12px' }}>

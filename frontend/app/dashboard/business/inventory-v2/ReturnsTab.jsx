@@ -152,7 +152,7 @@ function ReceiveReplacementModal({ open, onClose, returnRecord, material, onConf
       footer={
         <>
           <button onClick={handleClose} style={S.btnGhost}>Cancel</button>
-          <button onClick={submit} style={{ ...S.btnPrimary, background:'#2e7d32', color:'#fff' }}>{ICONS.check} Add to Stock</button>
+          <button onClick={submit} style={{ ...S.btnPrimary, background:'var(--st-green-fg)', color:'#fff' }}>{ICONS.check} Add to Stock</button>
         </>
       }
     >
@@ -247,8 +247,8 @@ export default function ReturnsTab({ returns, setReturns, materials, vendors, ba
       {/* summary */}
       <div style={{ display:'flex', gap:'12px', flexWrap:'wrap' }}>
         <SummaryCard label="Pending"       value={pending}                 color="#e65100" accent />
-        <SummaryCard label="Completed"     value={completed}               color="#2e7d32" />
-        <SummaryCard label="Pending Value" value={formatCurrency(pendingVal)} color="#c62828" />
+        <SummaryCard label="Completed"     value={completed}               color="var(--st-green-fg)" />
+        <SummaryCard label="Pending Value" value={formatCurrency(pendingVal)} color="var(--st-red-fg)" />
         <SummaryCard label="Total Value"   value={formatCurrency(totalVal)} />
       </div>
 
@@ -290,7 +290,7 @@ export default function ReturnsTab({ returns, setReturns, materials, vendors, ba
                     <td style={{ ...S.td, fontSize:'12px', color:'var(--gray)' }}>{r.vendorName}</td>
                     <td style={{ ...S.td, textAlign:'right', fontWeight:600 }}>{r.qty} {mat?.unit}</td>
                     <td style={{ ...S.td, textAlign:'right' }}>{formatCurrency(r.unitCost)}</td>
-                    <td style={{ ...S.td, textAlign:'right', fontWeight:600, color:'#c62828' }}>{formatCurrency(r.totalValue)}</td>
+                    <td style={{ ...S.td, textAlign:'right', fontWeight:600, color:'var(--st-red-fg)' }}>{formatCurrency(r.totalValue)}</td>
                     <td style={{ ...S.td, fontSize:'12px', color:'var(--gray)', maxWidth:'160px' }}>{r.reason}</td>
                     <td style={S.td}><StatusBadge status={r.resolutionType} /></td>
                     <td style={S.td}><StatusBadge status={r.status} /></td>

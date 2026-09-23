@@ -168,9 +168,9 @@ export default function ProductStockTab({ boms, materials, products }) {
         <>
           <KpiStrip items={[
             { key:'All', label:'Products',     value: rows.length, active: statFilter === 'All', onClick: () => { setStatFilter('All'); setExpanded(null); } },
-            { key:'out', label:'Out of stock', value: outCount, color:'#c62828', active: statFilter === 'out', onClick: () => { setStatFilter('out'); setExpanded(null); } },
-            { key:'low', label:'Low stock',    value: lowCount, color:'#b45309', active: statFilter === 'low', onClick: () => { setStatFilter('low'); setExpanded(null); } },
-            { key:'restock', label:'To fulfil', value: restockCount, color: restockCount > 0 ? '#b45309' : undefined, active: statFilter === 'restock', onClick: () => { setStatFilter('restock'); setExpanded(null); } },
+            { key:'out', label:'Out of stock', value: outCount, color:'var(--st-red-fg)', active: statFilter === 'out', onClick: () => { setStatFilter('out'); setExpanded(null); } },
+            { key:'low', label:'Low stock',    value: lowCount, color:'var(--st-orange-fg)', active: statFilter === 'low', onClick: () => { setStatFilter('low'); setExpanded(null); } },
+            { key:'restock', label:'To fulfil', value: restockCount, color: restockCount > 0 ? 'var(--st-orange-fg)' : undefined, active: statFilter === 'restock', onClick: () => { setStatFilter('restock'); setExpanded(null); } },
           ]} />
           <PhoneFilterBar search={search} onSearch={setSearch} placeholder="Search product"
             filters={[
@@ -184,9 +184,9 @@ export default function ProductStockTab({ boms, materials, products }) {
       ) : (<>
       <div style={{ display:'flex', gap:'12px', flexWrap:'wrap' }}>
         <SummaryCard label="Total Products"  value={rows.length} accent />
-        <SummaryCard label="Out of Stock"    value={outCount}    color="#c62828" />
-        <SummaryCard label="Low Stock"       value={lowCount}    color="#b45309" />
-        <SummaryCard label="Needs restocking to fulfil" value={restockCount} color={restockCount > 0 ? '#b45309' : undefined} sub="a material covers less than the blanks" />
+        <SummaryCard label="Out of Stock"    value={outCount}    color="var(--st-red-fg)" />
+        <SummaryCard label="Low Stock"       value={lowCount}    color="var(--st-orange-fg)" />
+        <SummaryCard label="Needs restocking to fulfil" value={restockCount} color={restockCount > 0 ? 'var(--st-orange-fg)' : undefined} sub="a material covers less than the blanks" />
       </div>
 
       <div style={{ ...S.card, ...S.rowBetween }}>
@@ -264,9 +264,9 @@ export default function ProductStockTab({ boms, materials, products }) {
                       {row.coverage < 1 && (
                         <div title={`Restock to fulfil: ${row.shortNames.join(', ')}`} style={{ marginTop: 4 }}>
                           <div style={{ height: 4, borderRadius: 2, background: 'var(--dark2)', overflow: 'hidden', maxWidth: 140, margin: '0 auto' }}>
-                            <div style={{ width: `${Math.max(3, row.coverage * 100)}%`, height: '100%', background: row.coverage < 0.25 ? '#c62828' : '#b45309' }} />
+                            <div style={{ width: `${Math.max(3, row.coverage * 100)}%`, height: '100%', background: row.coverage < 0.25 ? 'var(--st-red-fg)' : 'var(--st-orange-fg)' }} />
                           </div>
-                          <div style={{ fontSize: 10.5, color: '#b45309', marginTop: 2 }}>{Math.round(row.coverage * 100)}% fulfillable - {row.shortNames.join(', ')}</div>
+                          <div style={{ fontSize: 10.5, color:'var(--st-orange-fg)', marginTop: 2 }}>{Math.round(row.coverage * 100)}% fulfillable - {row.shortNames.join(', ')}</div>
                         </div>
                       )}
                     </td>
@@ -350,7 +350,7 @@ function DetailPanel({ variants, matMap }) {
           padding:'9px 12px', borderRadius:8, border:'1px solid var(--border)',
           background: pooled.can < buildable ? 'rgba(212,168,67,0.08)' : 'var(--dark)' }}>
           <div style={{ fontSize:'12px', color:'var(--gray-light)' }}>
-            <b style={{ color: readyToShip === 0 ? '#c62828' : '#b45309' }}>{readyToShip} ready to ship</b>
+            <b style={{ color: readyToShip === 0 ? 'var(--st-red-fg)' : 'var(--st-orange-fg)' }}>{readyToShip} ready to ship</b>
             {' '}of {buildable} you can sell {variants.length > 1 ? `- all ${variants.length} variants share the same packaging` : ''}
           </div>
           <div style={{ fontSize:'11px', color:'var(--gray)' }}>
@@ -381,7 +381,7 @@ function DetailPanel({ variants, matMap }) {
             {v.label && (
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'8px' }}>
                 <span style={{ fontSize:'12px', fontWeight:700, color:'var(--gray-light)' }}>{v.label}</span>
-                <span style={{ fontSize:'12px', fontWeight:700, color: prod===0?'#c62828':prod<=10?'#b45309':'#1a7f3c' }}>{prod} can build</span>
+                <span style={{ fontSize:'12px', fontWeight:700, color: prod===0?'var(--st-red-fg)':prod<=10?'var(--st-orange-fg)':'#1a7f3c' }}>{prod} can build</span>
               </div>
             )}
             <table className="pmp-rt" style={{ width:'100%', borderCollapse:'collapse' }}>
@@ -404,24 +404,24 @@ function DetailPanel({ variants, matMap }) {
                     <tr key={ii} style={{ opacity: counted ? 1 : 0.62 }}>
                       <td style={{ padding:'4px 8px', fontSize:'12px', color:'var(--gray-light)', fontWeight: isBottleneck ? 600 : 400 }}>
                         <span style={{ color: counted ? '#1a7f3c' : 'var(--gray)', marginRight:5, fontSize:'10px' }}>{counted ? '●' : '○'}</span>
-                        {isBottleneck && <span style={{ fontSize:'9px', fontWeight:700, background:'#fde8e8', color:'#c62828', border:'1px solid #fca5a5', borderRadius:3, padding:'1px 4px', marginRight:5, textTransform:'uppercase' }}>limit</span>}
+                        {isBottleneck && <span style={{ fontSize:'9px', fontWeight:700, background:'#fde8e8', color:'var(--st-red-fg)', border:'1px solid #fca5a5', borderRadius:3, padding:'1px 4px', marginRight:5, textTransform:'uppercase' }}>limit</span>}
                         {mat.name}
                       </td>
                       <td style={{ padding:'4px 8px', fontSize:'12px', color:'var(--gray-light)' }}>
                         {mat.stockQty} {mat.unit}
                         {Number(mat.reservedQty ?? 0) > 0 && (
-                          <span style={{ color:'#b45309', fontSize:'11px' }}> ({mat.reservedQty} held)</span>
+                          <span style={{ color:'var(--st-orange-fg)', fontSize:'11px' }}> ({mat.reservedQty} held)</span>
                         )}
                       </td>
                       <td style={{ padding:'4px 8px', fontSize:'12px', color:'var(--gray)' }}>{item.qty} {mat.unit}</td>
                       {/* A number here on a cost-only row answers a question it was never asked.
                           The dash says the row does not decide anything. */}
-                      <td style={{ padding:'4px 8px', fontSize:'12px', fontWeight:600, color: !counted ? 'var(--gray)' : can===0?'#c62828':can<=10?'#b45309':'#1a7f3c' }}>
+                      <td style={{ padding:'4px 8px', fontSize:'12px', fontWeight:600, color: !counted ? 'var(--gray)' : can===0?'var(--st-red-fg)':can<=10?'var(--st-orange-fg)':'#1a7f3c' }}>
                         {counted ? can : '-'}
                         {!counted && <span style={{ marginLeft:6, fontSize:'10px', color:'var(--gray)' }}>cost only</span>}
                         {cov && (() => {
                           const ok = cov.ratio >= 1;
-                          const tone = ok ? '#2e7d32' : cov.ratio < 0.25 ? '#c62828' : '#b45309';
+                          const tone = ok ? 'var(--st-green-fg)' : cov.ratio < 0.25 ? 'var(--st-red-fg)' : 'var(--st-orange-fg)';
                           return (
                             <div style={{ marginTop: 4, minWidth: 120 }}
                               title={`${cov.have} of ${cov.need} ${cov.uom ?? ''} needed to make all ${prod}.${ok ? '' : ' What to buy now is on To Buy.'}`}>
@@ -443,7 +443,7 @@ function DetailPanel({ variants, matMap }) {
             <div style={{ padding:'6px 8px 0', fontSize:'11px', color:'var(--gray)', lineHeight:1.5 }}>
               {countedNames.length
                 ? <>Counted: <b style={{ color:'var(--gray-light)' }}>{countedNames.join(', ')}</b>.</>
-                : <b style={{ color:'#b45309' }}>Nothing is counted - every material here is cost only, so this cannot say when it runs out.</b>}
+                : <b style={{ color:'var(--st-orange-fg)' }}>Nothing is counted - every material here is cost only, so this cannot say when it runs out.</b>}
               {hasCostOnly && countedNames.length > 0 &&
                 ' Packaging and consumables are costed and appear in To Buy, but do not cap what you can sell.'}
             </div>

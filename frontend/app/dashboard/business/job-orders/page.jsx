@@ -20,6 +20,10 @@ import { fetchAllOrders } from '@/lib/ordersApi';
 import { normalizeStatus } from '@/lib/orderStatus';
 import { orderNo } from '@/lib/orderNumber';
 import { joRisk, RISK_STYLE } from '@/lib/deliveryRisk';
+// The default view: everything that is not finished. A sentinel rather than '' so "All Statuses"
+// stays available as its own choice.
+const UNFINISHED = 'unfinished';
+
 import { JO_BADGE, JO_STATUSES, JO_EDITABLE_STATUSES, JobOrderStatusBadge as StatusBadge, RushBadge, DesignPreview, designUrl, joDocId, fmtJODate, TableSkeleton, WaitingBadge } from '@/components/dashboard/JobOrderBits';
 import { S, ICONS, SearchBar, SummaryCard, PaginationBar, EmptyState, usePagination, CustomSelect, ConfirmModal } from '../inventory-v2/shared';
 import { useIsPhone, KpiStrip, PhoneFilterBar, PhoneList, PhoneRow } from '@/components/dashboard/phone';
@@ -458,7 +462,10 @@ export default function JobOrdersPage() {
   const [error, setError] = useState(null);
   // Opens on the queue - the job orders waiting to be started - rather than every one ever made,
   // where finished work buries what is new. All Statuses is still one click away.
-  const [statusFilter, setStatusFilter] = useState('Queued');
+  // Same rule as Orders: open on what still needs doing. Queued alone hid the jobs already being
+  // made or waiting on QC - work in hand, and work the tile above counted but the table did not
+  // show, which reads as missing rows rather than as a filter.
+  const [statusFilter, setStatusFilter] = useState(UNFINISHED);
   const isPhone = useIsPhone();
   const [rushFilter, setRushFilter] = useState('');
   const [search, setSearch] = useState('');
@@ -596,7 +603,9 @@ export default function JobOrdersPage() {
   const filtered = jobOrders.filter(jo => {
     // Status is filtered here, not in the fetch. Filtering in the fetch made the tiles above count
     // only the filtered rows, so a Queued default would have read "Completed 0" every time.
-    if (statusFilter && jo.joStatus !== statusFilter) return false;
+    if (statusFilter === UNFINISHED) {
+      if (['Completed', 'Cancelled'].includes(jo.joStatus)) return false;
+    } else if (statusFilter && jo.joStatus !== statusFilter) return false;
     const q = search.toLowerCase();
     return !q || prodName(jo).toLowerCase().includes(q) || (jo.joId || '').toLowerCase().includes(q) || (jo.orderId || '').toLowerCase().includes(q);
   });
@@ -645,7 +654,8 @@ export default function JobOrdersPage() {
               <div className="pmp-filters" style={{ ...S.row, gap: '8px', flex: 1 }}>
                 <SearchBar value={search} onChange={v => { setSearch(v); setPage(1); }} placeholder="Search JO, product, order…" style={{ width: '240px' }} />
                 <CustomSelect value={statusFilter} onChange={setStatusFilter} style={{ width: '150px' }}
-                  options={[{ value: '', label: 'All Statuses' }, ...JO_STATUSES.map(s => ({ value: s, label: JO_BADGE[s]?.label ?? s }))]} />
+                  options={[{ value: UNFINISHED, label: 'Still to do' }, { value: '', label: 'All Statuses' },
+                    ...JO_STATUSES.map(s => ({ value: s, label: JO_BADGE[s]?.label ?? s }))]} />
                 <CustomSelect value={rushFilter} onChange={setRushFilter} style={{ width: '140px' }}
                   options={[{ value: '', label: 'All Types' }, { value: 'true', label: 'Rush Only' }, { value: 'false', label: 'Standard Only' }]} />
               </div>
