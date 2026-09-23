@@ -13,9 +13,15 @@ use App\Models\StockHistory;
  *
  *     cover = free stock / usage per day
  *
- * Usage comes from the stock ledger, every `deduction` row (production, sales, quotes, scrap) over
- * the last 90 days, or since the material's first movement if it is younger than that - with a
- * floor of 14 days so a material three days old does not report a wild rate off one busy morning.
+ * Usage comes from the stock ledger over the last 90 days, or since the material's first movement
+ * if it is younger than that - with a floor of 14 days so a material three days old does not
+ * report a wild rate off one busy morning.
+ *
+ * Only deductions that were actually consumed count: production always, and a sale's hold when the
+ * order stood. Scrap, damage and holds against cancelled orders are excluded - the last of those
+ * comes back on the shelf as its own addition row, so counting it made stock look like it was
+ * emptying faster than it is. The rule lives in MaterialDemand::countsAsConsumption, shared so
+ * this figure and the forecast's demand cannot disagree about what left the shelf.
  *
  * Deliberately NOT a forecast. This is what has happened, divided by the days it happened over.
  * A forecast belongs in the SSA service, and when it lands it replaces the rate here, not the
@@ -41,15 +47,27 @@ class MaterialUsage
         $first = [];
 
         $rows = StockHistory::where('createdAt', '>=', now()->subDays(400))
-            ->get(['inventoryId', 'type', 'quantity', 'createdAt']);
+            ->get(['inventoryId', 'type', 'quantity', 'createdAt', 'reason', 'orderId']);
+
+        // Not every deduction is usage. Scrap and damage are shrinkage, and a
+        // hold placed against an order that was then cancelled comes straight
+        // back as an addition row - counting it made the shelf look like it was
+        // emptying faster than it is. On the current ledger that was 56 of 500
+        // units, an eleven per cent over-statement of every days-of-cover
+        // figure on the To Buy screen. Same rule the forecast uses.
+        $statusByOrder = self::orderStatuses($rows);
 
         foreach ($rows as $r) {
             $id = (string) $r->inventoryId;
             if ($id === '' || !$r->createdAt) continue;
             if (!isset($first[$id]) || $r->createdAt < $first[$id]) $first[$id] = $r->createdAt;
-            if ($r->type === 'deduction' && $r->createdAt >= $since) {
-                $used[$id] = ($used[$id] ?? 0) + abs((float) $r->quantity);
+            if ($r->type !== 'deduction' || $r->createdAt < $since) continue;
+
+            $oid = (string) ($r->orderId ?? '');
+            if (! MaterialDemand::countsAsConsumption($r->reason ?? null, $oid !== '' ? ($statusByOrder[$oid] ?? null) : null)) {
+                continue;
             }
+            $used[$id] = ($used[$id] ?? 0) + abs((float) $r->quantity);
         }
 
         $out = [];
@@ -61,6 +79,42 @@ class MaterialUsage
                 'days'   => $days,
                 'used'   => $qty,
             ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * Normalised status for every order the given ledger rows point at, in one
+     * query. Returns an empty map when there are no order ids to look up.
+     *
+     * @param  iterable  $rows  stock-history rows carrying an orderId
+     * @return array<string, string>
+     */
+    private static function orderStatuses(iterable $rows): array
+    {
+        $ids = [];
+        foreach ($rows as $r) {
+            $oid = (string) ($r->orderId ?? '');
+            if ($oid !== '') {
+                $ids[$oid] = true;
+            }
+        }
+        if (! $ids) {
+            return [];
+        }
+
+        $objectIds = [];
+        foreach (array_keys($ids) as $oid) {
+            try { $objectIds[] = new \MongoDB\BSON\ObjectId($oid); } catch (\Throwable $e) {}
+        }
+        if (! $objectIds) {
+            return [];
+        }
+
+        $out = [];
+        foreach (\App\Models\Order::whereIn('_id', $objectIds)->get(['_id', 'orderStatus']) as $o) {
+            $out[(string) $o->_id] = (string) OrderStatus::normalize($o->orderStatus);
         }
 
         return $out;
