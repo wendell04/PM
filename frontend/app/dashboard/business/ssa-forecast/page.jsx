@@ -51,13 +51,13 @@ const FORECAST_PERIODS = [
 const DEFAULT_COUNTS = { weekly: 4, monthly: 3, annually: 2 };
 
 const RFM_COLORS = {
-  "Champions":           { bg: "rgba(74,222,128,0.15)",  color: "#4ade80" },
+  "Champions":           { bg: "var(--st-green-bg)",  color: "var(--st-green-fg)" },
   "Loyal Customers":     { bg: "rgba(96,165,250,0.15)",  color: "#60a5fa" },
   "Potential Loyalists": { bg: "rgba(167,139,250,0.15)", color: "#a78bfa" },
   "New Customers":       { bg: "rgba(52,211,153,0.15)",  color: "#34d399" },
-  "Promising":           { bg: "rgba(251,191,36,0.15)",  color: "#fbbf24" },
+  "Promising":           { bg: "rgba(251,191,36,0.15)",  color: "var(--st-amber-fg)" },
   "At Risk":             { bg: "rgba(251,146,60,0.15)",  color: "#fb923c" },
-  "Can't Lose Them":     { bg: "rgba(248,113,113,0.15)", color: "#f87171" },
+  "Can't Lose Them":     { bg: "var(--st-red-bg)", color: "var(--st-red-fg)" },
   "Hibernating":         { bg: "rgba(156,163,175,0.15)", color: "#9ca3af" },
   "Lost":                { bg: "rgba(107,114,128,0.15)", color: "#6b7280" },
   "Need Attention":      { bg: "rgba(212,168,67,0.15)",  color: "#d4a843" },
@@ -462,6 +462,21 @@ const pageStyles = `
   .ssa-forecast-day-row:nth-child(even) {
     background: rgba(255,255,255,0.015);
   }
+  /* Keyboard focus. The page had two focus styles for ~30 controls, so
+     tabbing through it gave no sign of where you were. :focus-visible keeps
+     the ring off mouse clicks. */
+  .ssa-toggle-btn:focus-visible,
+  .ssa-seg-btn:focus-visible,
+  .ssa-icon-btn:focus-visible,
+  .ssa-run-btn:focus-visible,
+  .ssa-primary-btn:focus-visible,
+  .ssa-export-btn:focus-visible,
+  .ssa-select:focus-visible,
+  .ssa-lookahead:focus-visible {
+    outline: 2px solid var(--gold);
+    outline-offset: 2px;
+  }
+
   .ssa-toggle-btn {
     padding: 0.35rem 0.85rem;
     border-radius: 4px;
@@ -846,7 +861,7 @@ const pageStyles = `
     border-radius: 4px;
     background: rgba(74,222,128,0.12);
     border: 1px solid rgba(74,222,128,0.35);
-    color: #4ade80;
+    color: var(--st-green-fg);
     font-size: 0.7rem;
     font-weight: 700;
     text-transform: uppercase;
@@ -1112,10 +1127,10 @@ function computeInventoryPolicy({ rawRows, currentStock, leadTimeDays, supplierL
 // reading this wants to know how the thing sells, so the label says that and
 // the note underneath says what it means for planning.
 const DEMAND_CLASS = {
-  steady:       { label: "Sells steadily",   color: "#4ade80", note: "regular orders, similar sizes - easiest to plan for" },
-  variable:     { label: "Uneven sizes",     color: "#fbbf24", note: "orders come regularly, but the amounts jump around" },
-  intermittent: { label: "Sells now and then", color: "#fbbf24", note: "quiet stretches, then an order of a fairly usual size" },
-  lumpy:        { label: "Hard to predict",  color: "#f87171", note: "long quiet stretches, then an order of any size - keep a bigger buffer" },
+  steady:       { label: "Sells steadily",   color: "var(--st-green-fg)", note: "regular orders, similar sizes - easiest to plan for" },
+  variable:     { label: "Uneven sizes",     color: "var(--st-amber-fg)", note: "orders come regularly, but the amounts jump around" },
+  intermittent: { label: "Sells now and then", color: "var(--st-amber-fg)", note: "quiet stretches, then an order of a fairly usual size" },
+  lumpy:        { label: "Hard to predict",  color: "var(--st-red-fg)", note: "long quiet stretches, then an order of any size - keep a bigger buffer" },
   new:          { label: "Too new to tell",  color: "#9ca3af", note: "not enough history yet to see a pattern" },
 };
 
@@ -1175,10 +1190,10 @@ function resolveAccuracy(accuracy, isHighVolatility = false) {
       : isHighVolatility
         ? "var(--gray)"
         : mape < 30
-          ? "#4ade80"
+          ? "var(--st-green-fg)"
           : mape < 60
-            ? "#fbbf24"
-            : "#f87171";
+            ? "var(--st-amber-fg)"
+            : "var(--st-red-fg)";
 
     return {
       value: mape,
@@ -1199,7 +1214,7 @@ function resolveAccuracy(accuracy, isHighVolatility = false) {
   }
 
   if (maeRatio != null) {
-    const color = maeRatio < 50 ? "#fbbf24" : "#f87171";
+    const color = maeRatio < 50 ? "var(--st-amber-fg)" : "var(--st-red-fg)";
     return {
       value: maeRatio,
       display: `~${maeRatio.toFixed(1)}%`,
@@ -2368,6 +2383,7 @@ export default function SSAForecastPage() {
                         key={p.type}
                         type="button"
                         className={`ssa-seg-btn ${forecastPeriod.type === p.type ? "active" : ""}`}
+                        aria-pressed={forecastPeriod.type === p.type}
                         onClick={() => {
                           setForecastPeriod(p);
                           setDynamicMaxCount(p.maxCount);
@@ -2544,7 +2560,7 @@ export default function SSAForecastPage() {
                 {[
                   { label: "Materials", value: tracked.length, color: "var(--white)" },
                   { label: "Low Stock", value: lowItems.length, color: "#eab308", hint: "at/below reorder point" },
-                  { label: "Out of Stock", value: outItems.length, color: "#f87171", hint: "zero on hand" },
+                  { label: "Out of Stock", value: outItems.length, color: "var(--st-red-fg)", hint: "zero on hand" },
                 ].map(({ label, value, color, hint }) => (
                   <div key={label} className="ssa-metric-card">
                     <div className="ssa-stat-label">{label}</div>
@@ -2609,10 +2625,10 @@ export default function SSAForecastPage() {
             const stockStatus = isInvCard && currentStockQty != null
               ? (currentStockQty === 0 ? "out" : (reorderPt != null && reorderPt > 0 && availableQty <= reorderPt ? "low" : "ok"))
               : "ok";
-            const stockColor = stockStatus === "out" ? "#f87171" : stockStatus === "low" ? "#fbbf24" : "var(--gold)";
+            const stockColor = stockStatus === "out" ? "var(--st-red-fg)" : stockStatus === "low" ? "var(--st-amber-fg)" : "var(--gold)";
             const policy = invPolicy;
             const belowROP = policy && availableQty != null && availableQty <= policy.ROP;
-            const invColor = currentStockQty === 0 ? "#f87171" : belowROP ? "#fbbf24" : "var(--gold)";
+            const invColor = currentStockQty === 0 ? "var(--st-red-fg)" : belowROP ? "var(--st-amber-fg)" : "var(--gold)";
             let reorderByLabel = "-";
             if (policy && currentStockQty != null) {
               if (currentStockQty === 0 || belowROP) reorderByLabel = "Now";
@@ -2662,9 +2678,9 @@ export default function SSAForecastPage() {
                   <div className="ssa-stat-label">Reorder By</div>
                   {firstLoad || !policy ? <div className="ssa-skeleton" /> : (
                     <>
-                      <div className="ssa-stat-value" style={{ color: reorderByLabel === "Now" ? "#f87171" : "var(--white)", fontSize: reorderByLabel === "Now" ? "1.5rem" : "1.25rem" }}>
+                      <div className="ssa-stat-value" style={{ color: reorderByLabel === "Now" ? "var(--st-red-fg)" : "var(--white)", fontSize: reorderByLabel === "Now" ? "1.5rem" : "1.25rem" }}>
                         {reorderByLabel === "Now" && (
-                          <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: "50%", background: "#f87171", marginRight: 7, verticalAlign: "middle" }} />
+                          <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: "50%", background: "var(--st-red-fg)", marginRight: 7, verticalAlign: "middle" }} />
                         )}
                         {reorderByLabel}
                       </div>
@@ -2775,7 +2791,7 @@ export default function SSAForecastPage() {
                       <div className="ssa-stat-value" style={{ color: acc.color, fontSize: "1.5rem" }}>
                         {acc.display ?? "N/A"}
                         {result?.forecast_dampened && (
-                          <span style={{ fontSize: "0.65rem", color: "#fbbf24", marginLeft: "6px", fontWeight: 400, verticalAlign: "middle" }}>
+                          <span style={{ fontSize: "0.65rem", color: "var(--st-amber-fg)", marginLeft: "6px", fontWeight: 400, verticalAlign: "middle" }}>
                             dampened ⚡
                           </span>
                         )}
@@ -2870,13 +2886,13 @@ export default function SSAForecastPage() {
             {/* ── Inventory depletion status banners ─────────────────────── */}
             {isInvMode && stockoutDate && parseInt(forecastCount, 10) > 0 && (
               <div style={{ display: "flex", alignItems: "flex-start", gap: "0.75rem", background: "rgba(248,113,113,0.08)", border: "1px solid rgba(248,113,113,0.25)", borderRadius: "10px", padding: "0.875rem 1.25rem", fontSize: "0.85rem", color: "var(--gray)", lineHeight: 1.6, marginBottom: "1.5rem" }}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#f87171" strokeWidth="2" style={{ flexShrink: 0, marginTop: 2 }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--st-red-fg)" strokeWidth="2" style={{ flexShrink: 0, marginTop: 2 }}>
                   <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
                   <line x1="12" y1="9" x2="12" y2="13" />
                   <line x1="12" y1="17" x2="12.01" y2="17" />
                 </svg>
                 <span>
-                  <strong style={{ color: "#f87171" }}>Predicted stockout -</strong>{" "}
+                  <strong style={{ color: "var(--st-red-fg)" }}>Predicted stockout -</strong>{" "}
                   Based on current demand trends, <strong style={{ color: "var(--white)" }}>{selectedItemName}</strong> is projected to run out around{" "}
                   <strong style={{ color: "var(--white)" }}>{formatDateLabel(stockoutDate, submittedConfig?.period?.type)}</strong>.{" "}
                   Consider restocking soon.
@@ -2889,7 +2905,7 @@ export default function SSAForecastPage() {
                 Profile instead of being stacked in notices above the chart. */}
             {isInvMode && (depletionMethod === "unlinked" || depletionMethod === "nodemand") && parseInt(forecastCount, 10) > 0 && (
               <div className="ssa-warning-banner">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" strokeWidth="2" style={{ flexShrink: 0, marginTop: 1 }}>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--st-amber-fg)" strokeWidth="2" style={{ flexShrink: 0, marginTop: 1 }}>
                   <circle cx="12" cy="12" r="10" />
                   <line x1="12" y1="8" x2="12" y2="12" />
                   <line x1="12" y1="16" x2="12.01" y2="16" />
@@ -2897,13 +2913,13 @@ export default function SSAForecastPage() {
                 <span>
                   {depletionMethod === "unlinked" ? (
                     <>
-                      <strong style={{ color: "#fbbf24" }}>Nothing uses this material -</strong>{" "}
+                      <strong style={{ color: "var(--st-amber-fg)" }}>Nothing uses this material -</strong>{" "}
                       no product recipe includes <strong style={{ color: "var(--white)" }}>{selectedItemName}</strong>,
                       so there are no sales to work from. Add it to a product's recipe to see when it will run out.
                     </>
                   ) : (
                     <>
-                      <strong style={{ color: "#fbbf24" }}>Not sold yet -</strong>{" "}
+                      <strong style={{ color: "var(--st-amber-fg)" }}>Not sold yet -</strong>{" "}
                       <strong style={{ color: "var(--white)" }}>{selectedItemName}</strong> is part of a product,
                       but none of those products have sold, so there is nothing to project from.
                     </>
@@ -2918,13 +2934,13 @@ export default function SSAForecastPage() {
                 not pass unnoticed when it happens. */}
             {salesTruncated && (
               <div className="ssa-warning-banner">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" strokeWidth="2" style={{ flexShrink: 0, marginTop: 1 }}>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--st-amber-fg)" strokeWidth="2" style={{ flexShrink: 0, marginTop: 1 }}>
                   <circle cx="12" cy="12" r="10" />
                   <line x1="12" y1="8" x2="12" y2="12" />
                   <line x1="12" y1="16" x2="12.01" y2="16" />
                 </svg>
                 <span>
-                  <strong style={{ color: "#fbbf24" }}>Not all sales were read -</strong>{" "}
+                  <strong style={{ color: "var(--st-amber-fg)" }}>Not all sales were read -</strong>{" "}
                   the sales list stopped at its 10,000-row limit, and the rows left out are the
                   oldest ones. The forecast is training on a shortened history.
                 </span>
@@ -2957,7 +2973,7 @@ export default function SSAForecastPage() {
                     height="18"
                     viewBox="0 0 24 24"
                     fill="none"
-                    stroke="#fbbf24"
+                    stroke="var(--st-amber-fg)"
                     strokeWidth="2"
                     style={{ flexShrink: 0, marginTop: 2 }}
                   >
@@ -2966,7 +2982,7 @@ export default function SSAForecastPage() {
                     <line x1="12" y1="17" x2="12.01" y2="17" />
                   </svg>
                   <span>
-                    <strong style={{ color: "#fbbf24" }}>
+                    <strong style={{ color: "var(--st-amber-fg)" }}>
                       Limited historical data -
                     </strong>{" "}
                     This forecast is based on only{" "}
@@ -2986,7 +3002,7 @@ export default function SSAForecastPage() {
                   height="15"
                   viewBox="0 0 24 24"
                   fill="none"
-                  stroke="#fbbf24"
+                  stroke="var(--st-amber-fg)"
                   strokeWidth="2"
                   style={{ flexShrink: 0, marginTop: 1 }}
                 >
@@ -3009,7 +3025,7 @@ export default function SSAForecastPage() {
                   height="15"
                   viewBox="0 0 24 24"
                   fill="none"
-                  stroke="#fbbf24"
+                  stroke="var(--st-amber-fg)"
                   strokeWidth="2"
                   style={{ flexShrink: 0, marginTop: 1 }}
                 >
@@ -3018,7 +3034,7 @@ export default function SSAForecastPage() {
                   <line x1="12" y1="17" x2="12.01" y2="17" />
                 </svg>
                 <span>
-                  <strong style={{ color: "#fbbf24" }}>
+                  <strong style={{ color: "var(--st-amber-fg)" }}>
                     High demand volatility detected -{" "}
                   </strong>
                   Sales follow an irregular spike pattern (variability:{" "}
@@ -3044,7 +3060,7 @@ export default function SSAForecastPage() {
                   height="15"
                   viewBox="0 0 24 24"
                   fill="none"
-                  stroke="#fbbf24"
+                  stroke="var(--st-amber-fg)"
                   strokeWidth="2"
                   style={{ flexShrink: 0, marginTop: 1 }}
                 >
@@ -3053,7 +3069,7 @@ export default function SSAForecastPage() {
                   <line x1="12" y1="16" x2="12.01" y2="16" />
                 </svg>
                 <span>
-                  <strong style={{ color: "#fbbf24" }}>
+                  <strong style={{ color: "var(--st-amber-fg)" }}>
                     Forecast was dampened -
                   </strong>{" "}
                   The model projected values significantly above your recent
@@ -3082,12 +3098,12 @@ export default function SSAForecastPage() {
                       {parseInt(forecastCount, 10) > 0 && (
                         <span className="lg"><span className="swatch" style={{ background: "var(--gold)" }} />Projected Stock</span>
                       )}
-                      <span className="lg"><span className="swatch" style={{ background: "#4ade80" }} />Today</span>
+                      <span className="lg"><span className="swatch" style={{ background: "var(--st-green-fg)" }} />Today</span>
                       {invPolicy && invPolicy.ROP > 0 && (
-                        <span className="lg"><span className="swatch" style={{ background: "#fbbf24" }} />Reorder point</span>
+                        <span className="lg"><span className="swatch" style={{ background: "var(--st-amber-fg)" }} />Reorder point</span>
                       )}
                       {stockoutDate && (
-                        <span className="lg"><span className="swatch" style={{ background: "#f87171" }} />Stockout</span>
+                        <span className="lg"><span className="swatch" style={{ background: "var(--st-red-fg)" }} />Stockout</span>
                       )}
                     </div>
                   ) : (
@@ -3113,6 +3129,7 @@ export default function SSAForecastPage() {
                       <button
                         type="button"
                         className={`ssa-toggle-btn ${showConfidence ? "active" : ""}`}
+                        aria-pressed={showConfidence}
                         onClick={() => setShowConfidence((v) => !v)}
                       >
                         Confidence
@@ -3120,6 +3137,7 @@ export default function SSAForecastPage() {
                       <button
                         type="button"
                         className={`ssa-toggle-btn ${showTrend ? "active" : ""}`}
+                        aria-pressed={showTrend}
                         onClick={() => setShowTrend((v) => !v)}
                       >
                         Trend
@@ -3127,6 +3145,7 @@ export default function SSAForecastPage() {
                       <button
                         type="button"
                         className={`ssa-toggle-btn ${showSeasonality ? "active" : ""}`}
+                        aria-pressed={showSeasonality}
                         onClick={() => setShowSeasonality((v) => !v)}
                       >
                         Seasonality
@@ -3135,6 +3154,7 @@ export default function SSAForecastPage() {
                         <button
                           type="button"
                           className={`ssa-toggle-btn ${showBacktest ? "active" : ""}`}
+                        aria-pressed={showBacktest}
                           onClick={() => setShowBacktest((v) => !v)}
                         >
                           Backtest
@@ -3153,6 +3173,7 @@ export default function SSAForecastPage() {
                     <button
                       type="button"
                       className={`ssa-toggle-btn ${showDecomp ? "active" : ""}`}
+                        aria-pressed={showDecomp}
                       onClick={() => setShowDecomp((v) => !v)}
                     >
                       Decomposition
@@ -3162,6 +3183,7 @@ export default function SSAForecastPage() {
                     <button
                       type="button"
                       className={`ssa-toggle-btn ${showAllHistory ? "active" : ""}`}
+                        aria-pressed={showAllHistory}
                       onClick={() => setShowAllHistory((v) => !v)}
                       title="Show all historical training data instead of just the recent slice"
                     >
@@ -3221,7 +3243,7 @@ export default function SSAForecastPage() {
                     borderRadius: "6px",
                   }}
                 >
-                  <span style={{ color: "#4ade80", fontWeight: 600 }}>
+                  <span style={{ color: "var(--st-green-fg)", fontWeight: 600 }}>
                     ● Backtest Actual
                   </span>
                   {" - real sales during the held-out test window. "}
@@ -3380,7 +3402,7 @@ export default function SSAForecastPage() {
                                 type="monotone"
                                 dataKey="BacktestActual"
                                 name="Backtest Actual"
-                                stroke="#4ade80"
+                                stroke="var(--st-green-fg)"
                                 strokeWidth={2}
                                 strokeDasharray="4 2"
                                 dot={false}
@@ -3404,19 +3426,19 @@ export default function SSAForecastPage() {
                         {!isInvMode && (todayRefDate || todayPeriodStart) && (
                           <ReferenceLine
                             x={todayRefDate || todayPeriodStart}
-                            stroke="#4ade80"
+                            stroke="var(--st-green-fg)"
                             strokeWidth={1.5}
                             strokeDasharray="4 3"
-                            label={{ value: `Today · ${todayDisplay}`, position: "insideTopLeft", fill: "#4ade80", fontSize: 10 }}
+                            label={{ value: `Today · ${todayDisplay}`, position: "insideTopLeft", fill: "var(--st-green-fg)", fontSize: 10 }}
                           />
                         )}
                         {isInvMode && (
                           <ReferenceLine
                             x={todayIso}
-                            stroke="#4ade80"
+                            stroke="var(--st-green-fg)"
                             strokeWidth={1.5}
                             strokeDasharray="4 3"
-                            label={{ value: `Today · ${todayDisplay}`, position: "insideTopLeft", fill: "#4ade80", fontSize: 10 }}
+                            label={{ value: `Today · ${todayDisplay}`, position: "insideTopLeft", fill: "var(--st-green-fg)", fontSize: 10 }}
                           />
                         )}
                         {pickerMatchDate && (
@@ -3433,7 +3455,7 @@ export default function SSAForecastPage() {
                             x={stockoutDate}
                             stroke="rgba(248,113,113,0.65)"
                             strokeDasharray="4 4"
-                            label={{ value: "Stockout", position: "insideTopLeft", fill: "#f87171", fontSize: 10 }}
+                            label={{ value: "Stockout", position: "insideTopLeft", fill: "var(--st-red-fg)", fontSize: 10 }}
                           />
                         )}
                         {isInvMode && invPolicy && invPolicy.ROP > 0 && (
@@ -3441,7 +3463,7 @@ export default function SSAForecastPage() {
                             y={invPolicy.ROP}
                             stroke="rgba(251,191,36,0.6)"
                             strokeDasharray="4 4"
-                            label={{ value: `Reorder pt (${invPolicy.ROP})`, position: "insideBottomLeft", fill: "#fbbf24", fontSize: 10 }}
+                            label={{ value: `Reorder pt (${invPolicy.ROP})`, position: "insideBottomLeft", fill: "var(--st-amber-fg)", fontSize: 10 }}
                           />
                         )}
                       </LineChart>
@@ -3587,7 +3609,7 @@ export default function SSAForecastPage() {
                                   {formatDateLabel(fcDates[i], submittedConfig.period.type)}
                                 </td>
                                 <td>
-                                  <span style={{ color: isOut ? "#f87171" : isLow ? "#fbbf24" : "var(--gold)", fontWeight: 600 }}>
+                                  <span style={{ color: isOut ? "var(--st-red-fg)" : isLow ? "var(--st-amber-fg)" : "var(--gold)", fontWeight: 600 }}>
                                     {Math.round(remaining).toLocaleString()} units
                                   </span>
                                 </td>
@@ -3598,7 +3620,7 @@ export default function SSAForecastPage() {
                                   {fmtDemand(cumDemand)} units
                                 </td>
                                 <td>
-                                  <span style={{ fontSize: "0.75rem", fontWeight: 600, color: isOut ? "#f87171" : isLow ? "#fbbf24" : "#4ade80" }}>
+                                  <span style={{ fontSize: "0.75rem", fontWeight: 600, color: isOut ? "var(--st-red-fg)" : isLow ? "var(--st-amber-fg)" : "var(--st-green-fg)" }}>
                                     {isOut ? "Out of Stock" : isLow ? (reorderPt > 0 ? "Reorder" : "Low Stock") : "In Stock"}
                                   </span>
                                 </td>
@@ -3905,7 +3927,7 @@ export default function SSAForecastPage() {
                       <div key={cls} style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.35rem 0.75rem",borderRadius:"8px",background:"var(--dark)",border:"1px solid var(--border)"}}>
                         <span className="ssa-rfm-badge" style={{
                           background: cls === "A" ? "rgba(74,222,128,0.12)" : cls === "B" ? "rgba(251,191,36,0.12)" : "rgba(248,113,113,0.12)",
-                          color:      cls === "A" ? "#4ade80"               : cls === "B" ? "#fbbf24"               : "#f87171",
+                          color:      cls === "A" ? "var(--st-green-fg)"               : cls === "B" ? "var(--st-amber-fg)"               : "var(--st-red-fg)",
                         }}>{cls}</span>
                         <span style={{fontSize:"0.78rem"}}>
                           <span style={{color:"var(--white)",fontWeight:600}}>{info.label}</span>
@@ -3961,7 +3983,7 @@ export default function SSAForecastPage() {
                                 <td>
                                   <span className="ssa-rfm-badge" style={{
                                     background: svc.abc_class === "A" ? "rgba(74,222,128,0.12)" : svc.abc_class === "B" ? "rgba(251,191,36,0.12)" : "rgba(248,113,113,0.12)",
-                                    color:      svc.abc_class === "A" ? "#4ade80"               : svc.abc_class === "B" ? "#fbbf24"               : "#f87171",
+                                    color:      svc.abc_class === "A" ? "var(--st-green-fg)"               : svc.abc_class === "B" ? "var(--st-amber-fg)"               : "var(--st-red-fg)",
                                   }}>
                                     {svc.abc_class} - {ABC_DESC[svc.abc_class]?.label.split("-")[0].trim()}
                                   </span>
@@ -3971,7 +3993,7 @@ export default function SSAForecastPage() {
                                   <div style={{display:"flex",alignItems:"center",gap:"0.5rem",justifyContent:"flex-end"}}>
                                     <span style={{color:"var(--gray)"}}>{((svc.revenue_share ?? 0) * 100).toFixed(1)}%</span>
                                     <div style={{width:"50px",height:"5px",borderRadius:"3px",background:"var(--border)",overflow:"hidden",flexShrink:0}}>
-                                      <div style={{height:"100%",width:`${((svc.revenue_share ?? 0) * 100).toFixed(1)}%`,borderRadius:"3px",background: svc.abc_class === "A" ? "#4ade80" : svc.abc_class === "B" ? "#fbbf24" : "#f87171"}} />
+                                      <div style={{height:"100%",width:`${((svc.revenue_share ?? 0) * 100).toFixed(1)}%`,borderRadius:"3px",background: svc.abc_class === "A" ? "var(--st-green-fg)" : svc.abc_class === "B" ? "var(--st-amber-fg)" : "var(--st-red-fg)"}} />
                                     </div>
                                   </div>
                                 </td>

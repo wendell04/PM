@@ -228,6 +228,38 @@ class JobOrderController extends Controller
                 return $this->errorResponse('Linked order not found.', 404);
             }
 
+            // Gate 0 - quantity: the job orders for one order line cannot add up to more than
+            // was ordered. Nothing stopped a line being job-ordered twice, so a double-click or
+            // a retried request produced two jobs for the same ten pieces, each of which took a
+            // full set of materials at QC. Order 6aa22689 consumed twenty Inner Color mugs for a
+            // ten-mug order that way.
+            //
+            // Deliberately a quantity rule and not "one job per line": splitting a run of twenty
+            // into two of ten is legitimate and stays legitimate. Only the total is capped, and
+            // cancelled jobs release their share.
+            $itemIndex = $validated['itemIndex'] ?? null;
+            if ($itemIndex !== null) {
+                $orderedQty = (int) ($linkedOrder->items[$itemIndex]['qty'] ?? 0);
+                if ($orderedQty > 0) {
+                    $alreadyJobbed = JobOrder::where('orderId', $validated['orderId'])
+                        ->where('itemIndex', $itemIndex)
+                        ->get()
+                        ->reject(fn ($j) => ($j->joStatus ?? '') === 'Cancelled')
+                        ->sum(fn ($j) => (int) (((array) $j->product)['quantity'] ?? 0));
+
+                    $wanted = (int) $validated['product']['quantity'];
+                    if ($alreadyJobbed + $wanted > $orderedQty) {
+                        $remaining = max(0, $orderedQty - $alreadyJobbed);
+                        return $this->errorResponse(
+                            $remaining === 0
+                                ? "This item is already fully job-ordered ({$alreadyJobbed} of {$orderedQty}). Cancel an existing job order first if you need to redo it."
+                                : "Only {$remaining} of {$orderedQty} left to job-order on this item - {$alreadyJobbed} already has a job order.",
+                            422
+                        );
+                    }
+                }
+            }
+
             // Gate 1 - payment: a downpayment (or COD) is required before production. Mirrors the
             // gate in OrderController@updateStatus so creating a JO can't bypass it.
             $payMethod  = strtolower((string) ($linkedOrder->paymentMethod ?? ''));
