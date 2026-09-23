@@ -17,6 +17,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAccess } from '@/contexts/AccessContext';
 import { formatPrice } from '@/src/utils/format';
+import { remainingDue, paidSoFar } from '@/lib/orderBalance';
 import ErrorBoundary from '../../../../components/ErrorBoundary';
 import { S, ICONS, SummaryCard, SearchBar, PaginationBar, EmptyState, CustomSelect } from '../inventory-v2/shared';
 
@@ -40,8 +41,12 @@ function orderToRow(o) {
   const id = o._id || o.id;
   const ps = o.paymentStatus || 'unpaid';
   const total = Number(o.totalAmount ?? o.totalPrice ?? 0);
-  const dp    = Number(o.downPayment ?? 0);
-  const bal   = Number(o.balance ?? total);
+  // The stored `balance` is written only when a payment lands, so falling back to the total
+  // reported a fully-settled order as owing everything - and the row's paid/partial/pending
+  // status was then derived from that same wrong figure. These two helpers are what Orders and
+  // Payments already count with.
+  const dp    = paidSoFar(o) || Number(o.downPayment ?? 0);
+  const bal   = remainingDue(o);
   const shipping = Number(o.shippingFee ?? 0);
   // ONE design fee per order, not one per line. Every requested line carries the same fee for
   // display, so summing them charged the order twice over: a 2-item request showed P200 and, because
