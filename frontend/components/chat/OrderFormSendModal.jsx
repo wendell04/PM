@@ -129,7 +129,7 @@ export default function OrderFormSendModal({ open, onClose, token, conversationI
 
   const cap = { fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--gray)' };
   const primary = { width: '100%', padding: '12px', borderRadius: 10, border: 'none', background: '#d4a843', color: '#111', fontWeight: 800, fontSize: '0.9rem', cursor: 'pointer' };
-  const ghost = { width: '100%', padding: '11px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.18)', background: 'transparent', color: 'inherit', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer' };
+  const ghost = { width: '100%', padding: '11px', borderRadius: 10, border: '1px solid var(--border)', background: 'transparent', color: 'inherit', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer' };
 
   return (
     <div onClick={onClose} className="pmp-sheet-scrim" style={{ zIndex: 100002 }}>
@@ -144,7 +144,7 @@ export default function OrderFormSendModal({ open, onClose, token, conversationI
 
         {templates === null ? (
           <div style={{ display: 'grid', gap: 8 }}>
-            {[0, 1].map(i => <div key={i} className="pmPulse" style={{ height: 52, borderRadius: 10, background: 'rgba(255,255,255,0.06)' }} />)}
+            {[0, 1].map(i => <div key={i} className="pmPulse" style={{ height: 52, borderRadius: 10, background: 'var(--dark2)' }} />)}
           </div>
         ) : mode !== 'pick' ? (
           <>
@@ -187,7 +187,7 @@ export default function OrderFormSendModal({ open, onClose, token, conversationI
                 return (
                   <button key={t._id} type="button" onClick={() => setPickedId(String(t._id))}
                     style={{ textAlign: 'left', padding: '10px 12px', borderRadius: 10, cursor: 'pointer',
-                      border: `1px solid ${on ? '#d4a843' : 'rgba(255,255,255,0.14)'}`, background: on ? 'rgba(212,168,67,0.12)' : 'transparent', color: 'inherit' }}>
+                      border: `1px solid ${on ? 'var(--gold)' : 'var(--border)'}`, background: on ? 'var(--gold-subtle)' : 'transparent', color: 'inherit' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       <span style={{ fontWeight: 700, fontSize: '0.88rem' }}>{t.name}</span>
                       {t.isDefault && <span style={{ fontSize: '0.64rem', fontWeight: 700, color: '#d4a843', border: '1px solid rgba(212,168,67,0.45)', borderRadius: 999, padding: '1px 7px' }}>DEFAULT</span>}
@@ -226,7 +226,7 @@ export default function OrderFormSendModal({ open, onClose, token, conversationI
 
                 <div style={{ display: 'grid', gap: 6, marginBottom: 14 }}>
                   {(shown?.questions ?? []).map((q, i) => (
-                    <div key={q.id ?? i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', padding: '8px 10px', borderRadius: 8, background: 'rgba(255,255,255,0.04)' }}>
+                    <div key={q.id ?? i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', padding: '8px 10px', borderRadius: 8, background: 'var(--dark2)' }}>
                       <span style={{ color: 'var(--gray)', fontSize: '0.78rem', flexShrink: 0 }}>{i + 1}.</span>
                       <div style={{ minWidth: 0 }}>
                         <div style={{ fontSize: '0.82rem', fontWeight: 600 }}>{q.label}</div>

@@ -262,7 +262,7 @@ const ChatInput = ({ onSendMessage, isSending, activeConversation, token, onTypi
                         <img src={q.url} alt="" style={{
                           width: '68px', height: '68px', objectFit: 'cover',
                           borderRadius: '10px', display: 'block',
-                          border: sent ? '1px solid rgba(125,216,125,0.5)' : '1px solid rgba(255,255,255,0.14)',
+                          border: sent ? '1px solid rgba(125,216,125,0.5)' : '1px solid var(--border)',
                           opacity: sent ? 0.4 : 1,
                         }} />
                       ) : (
@@ -270,8 +270,8 @@ const ChatInput = ({ onSendMessage, isSending, activeConversation, token, onTypi
                           width: '68px', height: '68px', borderRadius: '10px',
                           display: 'flex', flexDirection: 'column', alignItems: 'center',
                           justifyContent: 'center', gap: '3px',
-                          background: 'rgba(255,255,255,0.05)',
-                          border: sent ? '1px solid rgba(125,216,125,0.5)' : '1px solid rgba(255,255,255,0.14)',
+                          background: 'var(--dark2)',
+                          border: sent ? '1px solid rgba(125,216,125,0.5)' : '1px solid var(--border)',
                           opacity: sent ? 0.4 : 1,
                         }}>
                           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#d4a843" strokeWidth="1.8">
@@ -418,7 +418,7 @@ const ChatInput = ({ onSendMessage, isSending, activeConversation, token, onTypi
             style={{
               height: '34px', flexShrink: 0, padding: '0 12px',
               display: 'inline-flex', alignItems: 'center', gap: '6px',
-              background: 'transparent', border: '1px solid rgba(255,255,255,0.18)', borderRadius: '999px',
+              background: 'transparent', border: '1px solid var(--border)', borderRadius: '999px',
               color: 'var(--gray-light, #ccc)', fontSize: '0.78rem', fontWeight: 700, whiteSpace: 'nowrap',
               cursor: isSending || isUploading ? 'not-allowed' : 'pointer',
             }}

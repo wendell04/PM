@@ -74,8 +74,10 @@ export default function OrderFormModal({ open, onClose, token, user, message, on
 
   if (!open) return null;
 
-  const set = (k, v) => setA(prev => ({ ...prev, [k]: v }));
-  const setAns = (id, v) => setA(prev => ({ ...prev, answers: { ...prev.answers, [id]: v } }));
+  // The "still needed" list answers a press of Send, so it goes stale the moment they start
+  // fixing it. It sat there in red under a form that was already complete.
+  const set = (k, v) => { setErr(''); setA(prev => ({ ...prev, [k]: v })); };
+  const setAns = (id, v) => { setErr(''); setA(prev => ({ ...prev, answers: { ...prev.answers, [id]: v } })); };
   const answer = (q) => {
     const v = a.answers?.[q.id];
     // A choice that has left the list is no answer: cash on pickup stops being one the moment
@@ -146,12 +148,21 @@ export default function OrderFormModal({ open, onClose, token, user, message, on
     }
   };
 
-  const field = { width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.14)', background: 'rgba(255,255,255,0.05)', color: 'var(--white, #fff)', fontSize: '0.9rem', outline: 'none', boxSizing: 'border-box' };
+  // --dark2 and --border, the same pair every other form in the shop uses (AddressBook, the
+  // profile, the dashboard). They were written here as rgba(255,255,255,...) instead, which is a
+  // colour that only exists on a dark surface: in light mode the sheet is white, so a 14% white
+  // border and a 5% white fill are white on white. Every box on this form - the name, the address,
+  // the quantities, the sizes - had no edge at all, and read as text somebody had typed rather
+  // than something you can type in.
+  const field = { width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--dark2)', color: 'var(--white, #fff)', fontSize: '0.9rem', outline: 'none', boxSizing: 'border-box' };
   const label = { display: 'block', fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--gray)', margin: '0 0 6px' };
   const help = { display: 'block', fontSize: '0.74rem', color: 'var(--gray)', margin: '-2px 0 6px', lineHeight: 1.45 };
   const section = { marginBottom: 18 };
   const pill = (on) => ({ flex: '1 1 140px', padding: '9px 10px', borderRadius: 8, fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer',
-    border: `1px solid ${on ? '#d4a843' : 'rgba(255,255,255,0.14)'}`, background: on ? 'rgba(212,168,67,0.14)' : 'transparent', color: on ? '#d4a843' : 'var(--white, #fff)' });
+    // Same again: an unticked colour had an invisible border on a white sheet, so Navy, Red,
+    // Maroon and Sand read as bare words while White and Black - the two that were ticked - were
+    // the only ones that looked like buttons.
+    border: `1px solid ${on ? 'var(--gold)' : 'var(--border)'}`, background: on ? 'var(--gold-subtle)' : 'transparent', color: on ? 'var(--gold)' : 'var(--white, #fff)' });
 
   const digits = (s, max) => String(s ?? '').replace(/[^0-9]/g, '').slice(0, max);
 
@@ -165,7 +176,7 @@ export default function OrderFormModal({ open, onClose, token, user, message, on
       case 'number':
         return <input style={{ ...field, maxWidth: 160 }} inputMode="numeric" value={v} onChange={e => setAns(q.id, digits(e.target.value, 7))} />;
       case 'date':
-        return <input type="date" style={{ ...field, maxWidth: 200, colorScheme: 'dark' }} value={v}
+        return <input type="date" style={{ ...field, maxWidth: 200, colorScheme: 'light dark' }} value={v}
           min={new Date().toISOString().slice(0, 10)} onChange={e => setAns(q.id, e.target.value)} />;
       case 'choice_one':
         return (
@@ -264,7 +275,7 @@ export default function OrderFormModal({ open, onClose, token, user, message, on
             ))}
             {rows.length < MAX_ORDER_LINES && (
               <button type="button" onClick={() => setAns(q.id, [...rows, blankOrderLine()])}
-                style={{ background: 'none', border: '1px dashed rgba(255,255,255,0.2)', color: 'var(--gray)', borderRadius: 8, padding: '8px 12px', fontSize: '0.8rem', cursor: 'pointer', width: '100%' }}>
+                style={{ background: 'none', border: '1px dashed var(--border)', color: 'var(--gray)', borderRadius: 8, padding: '8px 12px', fontSize: '0.8rem', cursor: 'pointer', width: '100%' }}>
                 + Add another item
               </button>
             )}
@@ -282,7 +293,12 @@ export default function OrderFormModal({ open, onClose, token, user, message, on
         className="pmp-sheet" style={{ background: 'var(--dark, #151515)', color: 'var(--white, #fff)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
           <div style={{ fontSize: '1.05rem', fontWeight: 800 }}>{form.name || 'Order form'}</div>
-          <button type="button" onClick={onClose} aria-label="Close" style={{ background: 'none', border: 'none', color: 'var(--gray)', fontSize: '1.4rem', lineHeight: 1, cursor: 'pointer' }}>&times;</button>
+          {/* 36px, not the 22px the glyph happened to measure: on a phone this is the control
+              somebody hits by accident when they meant the form, or misses when they meant it. */}
+          <button type="button" onClick={onClose} aria-label="Close"
+            style={{ background: 'none', border: 'none', color: 'var(--gray)', fontSize: '1.4rem', lineHeight: 1,
+              cursor: 'pointer', width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center',
+              flexShrink: 0, marginRight: -8 }}>&times;</button>
         </div>
         <p style={{ margin: '0 0 16px', fontSize: '0.82rem', color: 'var(--gray)', lineHeight: 1.5 }}>
           Tell us exactly what you want made and we will send an exact price here in the chat.

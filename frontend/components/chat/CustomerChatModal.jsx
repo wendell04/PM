@@ -706,7 +706,7 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
                   </div>
                 ) : conversations.length === 0 ? (
                   <div className="cw-no-msgs">
-                    <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="1.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>
+                    <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="var(--gray)" strokeWidth="1.5" opacity="0.45"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>
                     <div style={{ fontWeight: 700, color: 'var(--white)', fontSize: '0.95rem' }}>No messages</div>
                     <div style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>Messages from the team will be shown here</div>
                   </div>
@@ -1170,7 +1170,7 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
           <button type="button" onClick={() => setPreview(null)} aria-label="Close preview"
             style={{
               position: 'absolute', top: 16, right: 18, width: 34, height: 34, borderRadius: '50%',
-              border: 'none', background: 'rgba(255,255,255,0.15)', color: 'var(--dark)', fontSize: 18,
+              border: 'none', background: 'rgba(255,255,255,0.18)', color: '#fff', fontSize: 18,
               cursor: 'pointer', lineHeight: 1,
             }}>
             &times;
