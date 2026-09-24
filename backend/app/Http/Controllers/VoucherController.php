@@ -74,8 +74,10 @@ class VoucherController extends Controller
 
         $v = Validator::make($request->all(), [
             'code'               => ['required', 'string', 'min:3', 'max:30', 'regex:/^[A-Za-z0-9-]+$/'],
-            'benefitCategory'    => 'required|in:monetary,product,service,production,loyalty,experiential',
-            'benefitType'        => 'required|string|max:50',
+            // Only what checkout can honour. The other five categories were accepted, stored
+            // and then ignored by every path that charges money.
+            'benefitCategory'    => 'required|in:monetary',
+            'benefitType'        => 'required|in:percentage,fixed',
             'benefitDescription' => 'nullable|string|max:500',
             'discountType'       => 'nullable|in:percentage,fixed,tiered',
             'discountValue'      => ['nullable', 'numeric', 'min:0', 'max:100000', function ($a, $v, $fail) use ($request) { if ($request->input('discountType') === 'percentage' && (float) $v > 90) $fail('A percentage voucher can take at most 90% off.'); }],
@@ -142,8 +144,8 @@ class VoucherController extends Controller
 
         $v = Validator::make($request->all(), [
             'code'               => ['sometimes', 'string', 'min:3', 'max:30', 'regex:/^[A-Za-z0-9-]+$/'],
-            'benefitCategory'    => 'sometimes|in:monetary,product,service,production,loyalty,experiential',
-            'benefitType'        => 'sometimes|string|max:50',
+            'benefitCategory'    => 'sometimes|in:monetary',
+            'benefitType'        => 'sometimes|in:percentage,fixed',
             'benefitDescription' => 'nullable|string|max:500',
             'discountType'       => 'nullable|in:percentage,fixed,tiered',
             'discountValue'      => ['nullable', 'numeric', 'min:0', 'max:100000', function ($a, $v, $fail) use ($request) { if ($request->input('discountType') === 'percentage' && (float) $v > 90) $fail('A percentage voucher can take at most 90% off.'); }],
@@ -279,6 +281,14 @@ class VoucherController extends Controller
         $benefitCategory = (string) ($raw['benefitCategory'] ?? 'monetary');
         $isMonetary      = $benefitCategory === 'monetary';
         $discountAmount  = 0.0;
+
+        // "Voucher applied" over a zero discount is worse than refusing it: the customer believes
+        // something happened, and at checkout the code would have been spent for nothing.
+        if (!$isMonetary) {
+            return response()->json([
+                'message' => 'This voucher cannot be used online. Ask the shop in chat to apply it.',
+            ], 422);
+        }
 
         if ($isMonetary) {
             $dtype = $raw['discountType'] ?? null;

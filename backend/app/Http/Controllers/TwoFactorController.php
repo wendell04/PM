@@ -162,6 +162,11 @@ class TwoFactorController extends Controller
                     'attempts' => $otp->attempts,
                     'ip'       => $request->ip(),
                 ]);
+                // Somebody holding the password but not the phone. That is the shape of a
+                // stolen password, and it was written only to a server log file nobody here
+                // can reach.
+                self::logAuthEvent($request, 'auth.2fa_failed', $user,
+                    'Wrong 2FA code from the email', ['attempts' => $otp->attempts]);
 
                 return response()->json([
                     'message'   => 'Invalid code.',
@@ -175,6 +180,7 @@ class TwoFactorController extends Controller
             $fullToken = $this->promoteToFullSession($request, $user);
 
             Log::info('2FA verified', ['user' => $user->email, 'ip' => $request->ip()]);
+            self::logAuthEvent($request, 'auth.2fa_passed', $user, 'Passed 2FA with an emailed code');
 
             return response()->json([
                 'message'  => 'OTP verified.',
@@ -343,6 +349,11 @@ class TwoFactorController extends Controller
 
                 $user->save();
 
+                // Same signal as the emailed code: the password worked and the authenticator
+                // did not.
+                self::logAuthEvent($request, 'auth.2fa_failed', $user,
+                    'Wrong code from the authenticator app', ['attempts' => $attempts]);
+
                 return response()->json([
                     'message'   => 'Invalid code.',
                     'remaining' => 5 - $attempts,
@@ -353,6 +364,8 @@ class TwoFactorController extends Controller
             $user->totp_failed_attempts = 0;
             $user->otp_locked_until     = null;
             $user->save();
+
+            self::logAuthEvent($request, 'auth.2fa_passed', $user, 'Passed 2FA with the authenticator app');
 
             $fullToken = $this->promoteToFullSession($request, $user);
 
@@ -458,6 +471,18 @@ class TwoFactorController extends Controller
             }
 
             $user->save();
+
+            // Somebody turning their own second factor OFF is the single most useful warning a
+            // security log can carry, and it was recorded nowhere.
+            $this->logActivity(
+                $request,
+                $user->two_factor_enabled ? 'auth.2fa_enabled' : 'auth.2fa_disabled',
+                'auth',
+                (string) $user->_id,
+                $user->two_factor_enabled
+                    ? 'Turned two-factor authentication on'
+                    : 'Turned two-factor authentication off'
+            );
 
             return response()->json([
                 'two_factor_enabled' => $user->two_factor_enabled,

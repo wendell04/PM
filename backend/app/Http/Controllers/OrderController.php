@@ -521,10 +521,25 @@ class OrderController extends Controller
                     && !in_array($userId, $voucher->usedBy ?? [], true)
                     && ($voucher->minOrderAmount === null || $goodsSubtotal >= $voucher->minOrderAmount);
 
+                // A voucher that takes nothing off must not be spent. Five of the six benefit
+                // categories never reached this arithmetic - discountValue was null, the discount
+                // came out zero, and the code was consumed anyway: the customer paid in full and
+                // lost their one use of it, with nothing on the order saying what they were owed.
+                if ($preValid && (string) ($voucher->benefitCategory ?? 'monetary') !== 'monetary') {
+                    $preValid = false;
+                }
+
                 if ($preValid) {
                     $discountAmount = $voucher->discountType === 'percentage'
                         ? round($goodsSubtotal * $voucher->discountValue / 100, 2)
                         : min((float) $voucher->discountValue, $goodsSubtotal);
+                    if ($discountAmount <= 0) {
+                        $discountAmount = 0.0;
+                        $preValid = false;
+                    }
+                }
+
+                if ($preValid) {
 
                     $filter = [
                         'code'     => $voucherCode,
@@ -553,6 +568,26 @@ class OrderController extends Controller
                         $discountAmount = 0.0;
                     }
                 }
+            }
+
+            // ── The shop's two standing offers ───────────────────────────
+            // A welcome discount and free delivery, both off unless the owner set them, both
+            // worked out by App\Support\ShopOffers so this path, the two paid paths and the
+            // screens that quote them cannot drift. They come off the goods, after the voucher,
+            // and BEFORE the deposit below - nobody should be asked for a percentage of a price
+            // that is about to drop.
+            $offers = \App\Support\ShopOffers::forCheckout($goodsSubtotal, $discountAmount, $user);
+            $offerSnap = \App\Support\ShopOffers::snapshot($offers);
+            if ($offers['firstOrder'] > 0) {
+                $totalAmount = max(0, round($totalAmount - $offers['firstOrder'], 2));
+            }
+            // Free delivery means the customer is not charged for delivery on this order. Where
+            // the fee was priced at checkout it comes off here; where the shop books a courier
+            // afterwards there is nothing to subtract yet, and the flag is what stops the fee
+            // being billed to them when it is set.
+            if ($offers['freeDelivery'] && $shippingFee > 0) {
+                $totalAmount = max(0, round($totalAmount - $shippingFee, 2));
+                $shippingFee = 0.0;
             }
 
 
@@ -594,6 +629,12 @@ class OrderController extends Controller
                 'shippingMode'    => \App\Support\ShopSettings::owner()->shippingMode ?? 'courier_booked',
                 'discountAmount'  => $discountAmount > 0 ? $discountAmount : null,
                 'voucherCode'     => $appliedVoucher?->code ?? null,
+                // What the standing offers took off, and the rule as it stood today - so a
+                // change to the setting can never rewrite a bill somebody has already paid.
+                'firstOrderDiscount'   => $offerSnap['firstOrderDiscount'],
+                'firstOrderPercent'    => $offerSnap['firstOrderPercent'],
+                'freeDelivery'         => $offerSnap['freeDelivery'],
+                'freeDeliveryFrom'     => $offerSnap['freeDeliveryFrom'],
                 // A benefit voucher (free item, free layout) takes nothing off - the shop honours it
                 // by hand, so the order has to say what was promised.
                 'voucherBenefit'  => ($appliedVoucher && ($appliedVoucher->benefitCategory ?? 'monetary') !== 'monetary')
@@ -1246,6 +1287,10 @@ class OrderController extends Controller
             // screen said where it came from, and there was no way back to the quotation whose
             // prices and terms the customer actually agreed to.
             'orderRequestId',
+            // The form the customer filled in and agreed to, carried from the quotation. Left off
+            // this list it exists on the order and reaches no screen at all, which is exactly how
+            // orderFormAnswers spent its whole life.
+            'orderForms',
             'designRejectionReason',
             'designFiles',
             'adminDesignUrl',
@@ -1266,6 +1311,17 @@ class OrderController extends Controller
             'agreedToTerms',
             'agreedAt',
             'termsVersion',
+            // The two standing offers as they stood when the order was placed. Without these on
+            // the projection the discount exists in the database and on no screen anyone reads,
+            // and the delivery team has no way to know the courier is on the shop.
+            'firstOrderDiscount',
+            'firstOrderPercent',
+            'freeDelivery',
+            'freeDeliveryFrom',
+            // Named charges added at the counter - a design fee, a layout charge, a delivery being
+            // passed on. Left off the projection they would be money the shop took with nothing on
+            // any screen saying what for.
+            'extraFees',
         ];
     }
 
@@ -1275,6 +1331,11 @@ class OrderController extends Controller
         return [
             'subtotal', 'shippingFee', 'courierFee', 'totalAmount', 'total', 'totalPrice',
             'downPayment', 'balance', 'paymentMethod', 'paymentHistory', 'discountAmount',
+            // What the welcome discount took off is money. Whether the order earned free delivery
+            // is not - it tells whoever packs and books the courier that the fee is the shop's,
+            // and they need that without being shown a single peso figure.
+            'firstOrderDiscount',
+            'extraFees',
             'refunds', 'refundOwed',
             'designFee', 'designFeePaid', 'designFeePaidAmount', 'rushFee', 'revisionFees',
         ];
@@ -1541,9 +1602,28 @@ class OrderController extends Controller
                 // telling them a delivery fee is due reads as being charged twice. The field
                 // stays writable either way - it is also how the shop records what the courier
                 // actually cost it.
-                $shippingAlreadyCharged = (float) ($order->shippingFee ?? 0) > 0;
+                // Two reasons the customer owes nothing for delivery: shipping was already priced
+                // into the total they paid, or the order earned the shop's free-delivery offer. In
+                // both cases the fee is still recorded - it is how the shop knows what the courier
+                // cost it - but announcing it would be billing somebody twice, or billing them for
+                // the delivery they were promised free.
+                $customerOwesDelivery = (float) ($order->shippingFee ?? 0) <= 0
+                    && !(bool) ($order->freeDelivery ?? false);
 
-                if ($newFee > 0 && abs($newFee - $prevFee) > 0.001 && !$shippingAlreadyCharged) {
+                // On a free-delivery order the fee is settled the moment it is entered, against the
+                // shop rather than the customer. Doing it here and not at delivery is what keeps
+                // every later screen quiet: an unpaid courier fee is chased in the order row, in
+                // the ship-out warning and in My Orders, and none of those should ever fire for a
+                // delivery the customer was promised free.
+                if ($newFee > 0 && ($order->freeDelivery ?? false) && !($order->courierFeePaid ?? false)) {
+                    $order->courierFeePaid       = true;
+                    $order->courierFeePaidAmount = $newFee;
+                    $order->courierFeePaidAt     = now();
+                    $order->courierFeePaidMethod = 'shop_free_delivery';
+                    $order->save();
+                }
+
+                if ($newFee > 0 && abs($newFee - $prevFee) > 0.001 && $customerOwesDelivery) {
                     try {
                         $isCOD    = PaymentMethod::isCod($order->paymentMethod);
                         $stillDue = max(0.0, round((float) ($order->totalAmount ?? $order->totalPrice ?? 0) - $this->paidSoFar($order), 2));
@@ -1833,8 +1913,12 @@ class OrderController extends Controller
         }
 
         $fee = (float) ($order->courierFee ?? 0);
+        // Not on a free-delivery order: the rider collected nothing from the customer there, and
+        // recording it as cash taken at the door would put the shop's own cost in the customer's
+        // payment record. That one is settled when the fee is entered, in update().
         if ($fee > 0.009
             && !($order->courierFeePaid ?? false)
+            && !($order->freeDelivery ?? false)
             && ($order->courierFeeOnDelivery ?? true)) {
             $order->courierFeePaid       = true;
             $order->courierFeePaidAmount = $fee;
@@ -1856,8 +1940,12 @@ class OrderController extends Controller
                 return;
             }
 
-            // The voucher, shared across the lines by value, so revenue and profit are what was taken.
-            $discShares = \App\Support\DiscountAllocator::shares(array_values($order->items ?? []), (float) ($order->discountAmount ?? 0));
+            // Everything taken off the goods, shared across the lines by value, so revenue and
+            // profit are what the shop was actually paid. The welcome discount belongs in here with
+            // the voucher: left out, Sales would report the full price on an order that was billed
+            // less, and the profit on every one of those lines would be overstated.
+            $goodsOff   = (float) ($order->discountAmount ?? 0) + (float) ($order->firstOrderDiscount ?? 0);
+            $discShares = \App\Support\DiscountAllocator::shares(array_values($order->items ?? []), $goodsOff);
             foreach (array_values($order->items) as $lineIdx => $item) {
                 $product = Product::find($item['productId']);
                 if (!$product) continue;
@@ -1902,7 +1990,8 @@ class OrderController extends Controller
                     'quantity'        => $item['qty'],
                     'unitPrice'       => $item['unitPrice'],
                     'totalPrice'      => $netLine,
-                    // What the voucher took off this line; totalPrice is already net of it.
+                    // What came off this line - voucher, welcome discount, or both together;
+                    // totalPrice is already net of it.
                     'discount'        => $discShare > 0 ? $discShare : null,
                     'voucherCode'     => $discShare > 0 ? ($order->voucherCode ?? null) : null,
                     'cost'            => $cost,
@@ -3544,7 +3633,26 @@ class OrderController extends Controller
      *  itemIndex is present but invalid. Leaves order-level handling to the caller when null. */
     private function applyItemDesignStatus(Order $order, $itemIndex, string $status, array $extra = []): bool
     {
-        if ($itemIndex === null || !is_numeric($itemIndex)) return true; // order-level path
+        // Order-level: the customer answered the proof that was sent them, so every line still
+        // waiting on that answer takes it. Returning here left the lines at proof_sent, and the
+        // screens that ask for a decision read the line, not the order.
+        if ($itemIndex === null || !is_numeric($itemIndex)) {
+            $items = $order->items ?? [];
+            $touched = false;
+            foreach ($items as $i => $it) {
+                $cur = (string) ($it['designStatus'] ?? '');
+                if (in_array($cur, ['draft_ready', 'proof_sent'], true)) {
+                    $items[$i]['designStatus'] = $status;
+                    foreach ($extra as $k => $v) { $items[$i][$k] = $v; }
+                    $touched = true;
+                }
+            }
+            if ($touched) {
+                $order->items = array_values($items);
+                $this->syncDesignAggregate($order);
+            }
+            return true;
+        }
         $items = $order->items ?? [];
         $idx   = (int) $itemIndex;
         if (!isset($items[$idx])) return false;

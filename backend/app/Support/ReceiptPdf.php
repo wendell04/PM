@@ -114,6 +114,14 @@ class ReceiptPdf
             'address'   => implode(', ', $addr),
             'items'     => $items,
             'subtotal'  => $sub,
+            // Everything that came off the goods. Without these the receipt printed a sub-total
+            // and a total that did not reconcile on any discounted order, and the customer was
+            // left to work out the difference themselves.
+            'discount'  => (float) ($order->discountAmount ?? 0),
+            'voucher'   => (string) ($order->voucherCode ?? ''),
+            'firstOrder'        => (float) ($order->firstOrderDiscount ?? 0),
+            'firstOrderPercent' => (int) ($order->firstOrderPercent ?? 0),
+            'freeDelivery'      => (bool) ($order->freeDelivery ?? false),
             'designFee' => (float) ($order->designFee ?? 0),
             'rushFee'   => (float) ($order->rushFee ?? 0),
             'shipping'  => (float) ($order->shippingFee ?? 0),

@@ -31,10 +31,10 @@ const num  = (n) => Number(n) % 1 === 0 ? String(Number(n)) : String(Math.round(
 // Urgency is set against the supplier's lead time, not a round number of days: three days of
 // cover is fine for a same-day supplier and already late for a week-long one.
 const COVER_TONE = {
-  out:      { bg: 'rgba(198,40,40,0.16)',  fg: '#c62828', label: 'out of stock' },
-  critical: { bg: 'rgba(198,40,40,0.14)',  fg: '#c62828', label: null },
-  soon:     { bg: 'rgba(224,168,82,0.16)', fg: '#b45309', label: null },
-  ok:       { bg: 'rgba(46,125,50,0.12)',  fg: '#2e7d32', label: null },
+  out:      { bg: 'rgba(198,40,40,0.16)',  fg: 'var(--st-red-fg)', label: 'out of stock' },
+  critical: { bg: 'rgba(198,40,40,0.14)',  fg: 'var(--st-red-fg)', label: null },
+  soon:     { bg: 'rgba(224,168,82,0.16)', fg: 'var(--st-orange-fg)', label: null },
+  ok:       { bg: 'rgba(46,125,50,0.12)',  fg: 'var(--st-green-fg)', label: null },
 };
 
 // The simplest possible read: how full is this material against the line the owner drew for it.
@@ -49,7 +49,7 @@ function LevelBar({ have, min, uom, width = 120 }) {
     return <span style={{ fontSize: 10.5, color: 'var(--gray)' }} title="No minimum set for this material.">no level set</span>;
   }
   const pct  = Math.min(100, Math.round((h / m) * 100));
-  const tone = pct === 0 ? '#c62828' : pct < 50 ? '#c62828' : pct < 100 ? '#b45309' : '#2e7d32';
+  const tone = pct === 0 ? 'var(--st-red-fg)' : pct < 50 ? 'var(--st-red-fg)' : pct < 100 ? 'var(--st-orange-fg)' : 'var(--st-green-fg)';
   return (
     <span title={`${h} ${uom ?? ''} on hand against a minimum of ${m}`}
       style={{ display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}>
@@ -355,7 +355,7 @@ export default function ToBuyPage() {
       </div>
 
       {error && (
-        <div style={{ ...S.card, borderColor: '#c62828', color: '#e05252', fontSize: '13px' }}>
+        <div style={{ ...S.card, borderColor: 'var(--st-red-fg)', color: '#e05252', fontSize: '13px' }}>
           {error} <button type="button" onClick={load} style={{ background: 'none', border: 'none', color: 'var(--gold)', cursor: 'pointer', fontWeight: 700 }}>Retry</button>
         </div>
       )}
@@ -480,7 +480,7 @@ export default function ToBuyPage() {
                   {(r.reasons ?? ['orders']).map(w => (
                     <span key={w} style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: '.3px', textTransform: 'uppercase', padding: '2px 6px', borderRadius: 4,
                       background: w === 'orders' ? 'rgba(224,168,82,0.16)' : w === 'forecast' ? 'rgba(139,92,246,0.14)' : 'rgba(59,130,246,0.14)',
-                      color: w === 'orders' ? '#b45309' : w === 'forecast' ? '#6d28d9' : '#1d4ed8' }}>
+                      color: w === 'orders' ? 'var(--st-orange-fg)' : w === 'forecast' ? 'var(--st-purple-fg)' : 'var(--st-blue-fg)' }}>
                       {w === 'orders' ? 'short for orders' : w === 'forecast' ? 'forecast says reorder' : 'below minimum'}
                     </span>
                   ))}
@@ -500,9 +500,9 @@ export default function ToBuyPage() {
                   return (
                     <div style={{ fontSize: '11px', color: 'var(--gray-light)', marginTop: '2px' }}>
                       {who.length > 0 && <>For {who.join(', ')}</>}
-                      {first && <span style={{ color: '#b45309' }}>{` — only ${first.canShip} of ${first.canBuild} can ship`}</span>}
+                      {first && <span style={{ color: 'var(--st-orange-fg)' }}>{` — only ${first.canShip} of ${first.canBuild} can ship`}</span>}
                       {fc && (
-                        <div style={{ color: '#6d28d9', marginTop: who.length ? 2 : 0 }}>
+                        <div style={{ color: 'var(--st-purple-fg)', marginTop: who.length ? 2 : 0 }}>
                           {fc.ratePerWeek != null ? `Using about ${fc.ratePerWeek} ${r.uom ?? ''} a week` : 'Forecast'}
                           {fc.stockoutDate ? ` — runs out around ${fc.stockoutDate}` : ''}
                           {fc.lowConfidence ? ' (thin history, treat as a guide)' : ''}

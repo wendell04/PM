@@ -1,651 +1,499 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
-import { S, ICONS, CustomSelect, EmptyState, PaginationBar } from '../inventory-v2/shared';
+import {
+  S, ICONS, CustomSelect, EmptyState, PaginationBar, SearchBar, SummaryCard,
+} from '../inventory-v2/shared';
+import { useIsPhone, KpiStrip, PhoneList, PhoneRow, PhoneSheet } from '@/components/dashboard/phone';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL
-  || 'http://127.0.0.1:8000';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
+
+/**
+ * The audit trail.
+ *
+ * This page used to read /api/admin/audit-logs, which despite its name is the INVENTORY movement
+ * log - so the security screen was showing Total Stock In, Total Stock Out, Total Sales and Total
+ * Restocks, four figures that belong to the inventory module and say nothing whatever about who
+ * has been in the system. It reads activity_logs now, which is the record of who did what, from
+ * where, and when: sign-ins and the ones that were refused, password changes, permission changes,
+ * staff added and removed, settings moved, orders and money touched - and this page being opened,
+ * because "who had access, including me looking at it" is exactly what an audit trail is for.
+ */
+
+// How each kind of entry reads at a glance. Colour carries the same meaning as everywhere else in
+// the dashboard: red is a refusal, amber is a change to who can do what, green is ordinary access.
+// 'all' rather than an empty string: CustomSelect shows its placeholder when the value is empty,
+// so the filter read "Select..." while it was in fact showing everything.
+const GROUPS = [
+  { id: 'all',      label: 'Everything' },
+  { id: 'access',   label: 'Getting in' },
+  { id: 'account',  label: 'Accounts' },
+  { id: 'people',   label: 'Staff and permissions' },
+  { id: 'orders',   label: 'Orders' },
+  { id: 'money',    label: 'Money' },
+  { id: 'catalog',  label: 'Catalogue' },
+  { id: 'stock',    label: 'Stock' },
+  { id: 'settings', label: 'Settings' },
+];
+
+// Keyed on the action names the server actually writes. Anything not named here falls back to
+// its GROUP, so a new kind of entry arrives in a sensible colour instead of grey - and the map
+// cannot silently go stale the way a per-action list does.
+const TONE = {
+  'auth.login':           { fg: 'var(--st-green-fg)',  bg: 'var(--st-green-bg)' },
+  'auth.2fa_passed':      { fg: 'var(--st-green-fg)',  bg: 'var(--st-green-bg)' },
+  'auth.logout':          { fg: 'var(--st-gray-fg)',   bg: 'var(--st-gray-bg)' },
+  'audit.viewed':         { fg: 'var(--st-gray-fg)',   bg: 'var(--st-gray-bg)' },
+  'auth.login_failed':    { fg: 'var(--st-red-fg)',    bg: 'var(--st-red-bg)' },
+  'auth.login_locked':    { fg: 'var(--st-red-fg)',    bg: 'var(--st-red-bg)' },
+  'auth.2fa_failed':      { fg: 'var(--st-red-fg)',    bg: 'var(--st-red-bg)' },
+  'auth.2fa_disabled':    { fg: 'var(--st-red-fg)',    bg: 'var(--st-red-bg)' },
+  'auth.password_reset':  { fg: 'var(--st-amber-fg)',  bg: 'var(--st-amber-bg)' },
+  'auth.password_changed':{ fg: 'var(--st-amber-fg)',  bg: 'var(--st-amber-bg)' },
+  'auth.session_revoked': { fg: 'var(--st-amber-fg)',  bg: 'var(--st-amber-bg)' },
+  'auth.2fa_enabled':     { fg: 'var(--st-green-fg)',  bg: 'var(--st-green-bg)' },
+  'user.deleted':         { fg: 'var(--st-red-fg)',    bg: 'var(--st-red-bg)' },
+  'role.deleted':         { fg: 'var(--st-red-fg)',    bg: 'var(--st-red-bg)' },
+  'job_order_deleted':    { fg: 'var(--st-red-fg)',    bg: 'var(--st-red-bg)' },
+  'design_rejected':      { fg: 'var(--st-red-fg)',    bg: 'var(--st-red-bg)' },
+};
+
+// The fallback: colour by what KIND of thing it was, so nothing lands as an unexplained grey.
+const GROUP_TONE = {
+  access:   { fg: 'var(--st-gray-fg)',   bg: 'var(--st-gray-bg)' },
+  people:   { fg: 'var(--st-amber-fg)',  bg: 'var(--st-amber-bg)' },
+  orders:   { fg: 'var(--st-blue-fg)',   bg: 'var(--st-blue-bg)' },
+  money:    { fg: 'var(--st-orange-fg)', bg: 'var(--st-orange-bg)' },
+  catalog:  { fg: 'var(--st-blue-fg)',   bg: 'var(--st-blue-bg)' },
+  settings: { fg: 'var(--st-purple-fg)', bg: 'var(--st-purple-bg)' },
+};
+
+const toneFor = (action, group) =>
+  TONE[action] ?? GROUP_TONE[group] ?? { fg: 'var(--st-gray-fg)', bg: 'var(--st-gray-bg)' };
+
+/** "Chrome on Windows" out of a user-agent string nobody should have to read. */
+function readDevice(ua) {
+  if (!ua) return '';
+  const browser = /Edg\//.test(ua) ? 'Edge'
+    : /OPR\//.test(ua) ? 'Opera'
+    : /Chrome\//.test(ua) ? 'Chrome'
+    : /Firefox\//.test(ua) ? 'Firefox'
+    : /Safari\//.test(ua) ? 'Safari'
+    : 'Browser';
+  const os = /Windows NT/.test(ua) ? 'Windows'
+    : /Macintosh/.test(ua) ? 'Mac'
+    : /iPhone/.test(ua) ? 'iPhone'
+    : /iPad/.test(ua) ? 'iPad'
+    : /Android/.test(ua) ? 'Android'
+    : /Linux/.test(ua) ? 'Linux'
+    : '';
+  return os ? `${browser} on ${os}` : browser;
+}
+
+function whenText(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  const mins = Math.round((Date.now() - d.getTime()) / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins} min ago`;
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24) return `${hrs} hour${hrs === 1 ? '' : 's'} ago`;
+  return d.toLocaleString('en-PH', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+}
+
+function initialsOf(name) {
+  const parts = String(name || '?').trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return '?';
+  return (parts[0][0] + (parts[1]?.[0] ?? '')).toUpperCase();
+}
 
 export default function AuditLogsPage() {
   const { token } = useAuth();
 
-  // Data
   const [logs, setLogs] = useState([]);
+  // How many MATCH, which is not how many came back. The pager needs the first to know how many
+  // pages there are; the screen only ever holds one page.
+  const [total, setTotal] = useState(0);
   const [summary, setSummary] = useState(null);
-
-  // Loading/error
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
 
-  // Filters
-  const [filterReason, setFilterReason] = useState('');
-  // Paging state for the new pager. Reset to page 1 whenever a filter changes, otherwise the
-  // reader narrows a search and lands on an empty page 7 of the old result set.
+  const [group, setGroup] = useState('all');
+  const [range, setRange] = useState('7');       // days, or 'all'
+  const [query, setQuery] = useState('');
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(25);
-  const [filterStartDate, setFilterStartDate] = useState('');
-  const [filterEndDate, setFilterEndDate] = useState('');
-  const [searchQuery, setSearchQuery] = useState('');
+  const [openId, setOpenId] = useState(null);
+  // The dashboard's phone kit, the same one Orders, Payments and the inventory tabs use. A row
+  // that is a person, a badge, a time and an address does not survive being squeezed to 360px -
+  // on a phone it becomes a list and a full-screen sheet instead.
+  const isPhone = useIsPhone();
+  const [exporting, setExporting] = useState(false);
 
-  // Fetch
-  const fetchLogs = useCallback(async () => {
+  const startDate = useMemo(() => {
+    if (range === 'all') return '';
+    const d = new Date();
+    d.setDate(d.getDate() - Number(range));
+    d.setHours(0, 0, 0, 0);
+    return d.toISOString();
+  }, [range]);
+
+  const load = useCallback(async () => {
+    if (!token) return;
     setIsLoading(true);
     setError('');
     try {
-      const params = new URLSearchParams();
-      params.set('limit', '50');
-      if (filterReason) params.set('reason', filterReason);
-      if (filterStartDate) params.set('startDate', filterStartDate);
-      if (filterEndDate) params.set('endDate', filterEndDate);
+      const p = new URLSearchParams();
+      p.set('page', String(page));
+      p.set('perPage', String(perPage));
+      if (group && group !== 'all') p.set('group', group);
+      if (startDate) p.set('startDate', startDate);
+      if (query.trim()) p.set('q', query.trim());
 
-      const [logsRes, summaryRes] = await Promise.all([
-        fetchWithTimeout(
-          `${API_URL}/api/admin/audit-logs?${params}`,
-          { headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          }},
-          30000
-        ),
-        fetchWithTimeout(
-          `${API_URL}/api/admin/audit-logs/summary?${params}`,
-          { headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          }},
-          30000
-        ),
+      const sp = new URLSearchParams();
+      if (startDate) sp.set('startDate', startDate);
+
+      const [logsRes, sumRes] = await Promise.all([
+        fetchWithTimeout(`${API_URL}/api/admin/activity-logs?${p}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }, 20000),
+        fetchWithTimeout(`${API_URL}/api/admin/activity-logs/summary?${sp}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }, 20000),
       ]);
 
       const logsData = await logsRes.json();
-      const summaryData = await summaryRes.json();
+      if (!logsRes.ok) throw new Error(logsData.message || 'Could not load the audit trail.');
+      setLogs(logsData.data?.data ?? []);
+      setTotal(Number(logsData.data?.total ?? 0));
 
-      if (!logsRes.ok) throw new Error(
-        logsData.message || 'Failed to fetch audit logs');
-
-      setLogs(logsData.data || logsData || []);
-      setSummary(summaryData.data || summaryData || null);
-    } catch (err) {
-      setError(err.message || 'Failed to load audit logs');
+      if (sumRes.ok) {
+        const sumData = await sumRes.json();
+        setSummary(sumData.data ?? null);
+      }
+    } catch (e) {
+      setError(e.message || 'Could not load the audit trail.');
     } finally {
       setIsLoading(false);
     }
-  }, [token, filterReason, filterStartDate, filterEndDate]);
+  }, [token, group, startDate, query, page, perPage]);
 
-  useEffect(() => {
-    if (token) fetchLogs();
-  }, [fetchLogs, token]);
+  // The file has to be fetched rather than linked: the endpoint wants the bearer token, and an
+  // <a href> carries no headers. Same filters as the screen, so the file IS what is on it.
+  const exportCsv = useCallback(async () => {
+    if (!token || exporting) return;
+    setExporting(true);
+    setError('');
+    try {
+      const p = new URLSearchParams();
+      if (group && group !== 'all') p.set('group', group);
+      if (startDate) p.set('startDate', startDate);
+      const res = await fetchWithTimeout(`${API_URL}/api/admin/activity-logs/export?${p}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      }, 60000);
+      if (!res.ok) throw new Error('The export was refused.');
+      const blob = await res.blob();
+      // The filename the server chose, so the date in it is the server's clock and not the
+      // browser's - an audit file argued over later should not carry a time nobody can check.
+      const named = /filename="?([^"]+)"?/.exec(res.headers.get('content-disposition') || '');
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = named?.[1] || 'audit-log.csv';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setError(e.message || 'Could not export the audit log.');
+    } finally {
+      setExporting(false);
+    }
+  }, [token, exporting, group, startDate]);
 
-  // Helpers
-  const getReasonLabel = (reason) => {
-    const labels = {
-      'restock':           'Restock',
-      'correction-add':    'Correction (Add)',
-      'correction-deduct': 'Correction (Deduct)',
-      'sale':              'Sale',
-      'return':            'Return',
-      'sales-outside':     'Manual Sale',
-    };
-    return labels[reason] || reason;
-  };
+  useEffect(() => { load(); }, [load]);
+  useEffect(() => { setPage(1); }, [group, range, query]);
 
-  const getReasonStyle = (reason) => {
-    const styles = {
-      'restock': {
-        background: 'rgba(74,222,128,0.12)',
-        color: 'var(--green)',
-        border: '1px solid rgba(74,222,128,0.3)',
-      },
-      'correction-add': {
-        background: 'rgba(99,102,241,0.12)',
-        color: 'var(--indigo)',
-        border: '1px solid rgba(99,102,241,0.3)',
-      },
-      'correction-deduct': {
-        background: 'rgba(251,191,36,0.12)',
-        color: 'var(--gold)',
-        border: '1px solid rgba(251,191,36,0.3)',
-      },
-      'sale': {
-        background: 'rgba(212,168,67,0.12)',
-        color: 'var(--gold)',
-        border: '1px solid rgba(212,168,67,0.3)',
-      },
-      'return': {
-        background: 'rgba(156,163,175,0.12)',
-        color: 'var(--gray)',
-        border: '1px solid rgba(156,163,175,0.3)',
-      },
-      'sales-outside': {
-        background: 'rgba(251,146,60,0.12)',
-        color: 'var(--orange)',
-        border: '1px solid rgba(251,146,60,0.3)',
-      },
-    };
-    return styles[reason] || {
-      background: 'rgba(255,255,255,0.05)',
-      color: 'var(--gray)',
-      border: '1px solid var(--border)',
-    };
-  };
-
-  const formatDate = (dateStr) => {
-    if (!dateStr) return '-';
-    return new Date(dateStr).toLocaleDateString('en-PH', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
-
-  // Client-side search filter
-  const filtered = logs.filter(log => {
-    if (!searchQuery.trim()) return true;
-    const q = searchQuery.toLowerCase();
-    return (
-      (log.productName || '').toLowerCase().includes(q) ||
-      (log.category || '').toLowerCase().includes(q) ||
-      (log.performedBy || '').toLowerCase().includes(q)
-    );
-  });
-
-  // Narrowing a search while sitting on page 7 would otherwise leave the reader on an empty page
-  // of a result set that no longer exists.
-  useEffect(() => { setPage(1); }, [filterReason, filterStartDate, filterEndDate, searchQuery, perPage]);
+  // The server already cut the page. Slicing again here is what made the pager page through a
+  // 200-row window while everything older than that was unreachable.
+  const paged = logs;
+  const rangeLabel = range === 'all' ? 'all time' : range === '1' ? 'today' : `the last ${range} days`;
 
   return (
     <ErrorBoundary>
-      {/* page-content-wrapper is this module's own width and padding; every module converted
-          so far runs off S.page, so this one sat visibly different from its neighbours. */}
       <div style={{ ...S.page, padding: '24px' }}>
 
-        {/* Page Header */}
-        <div className="page-header">
-          <div className="page-header-content">
-            <button
-              onClick={fetchLogs}
-              disabled={isLoading}
-              style={{
-                padding: '0.625rem 1.25rem',
-                background: isLoading ? 'var(--dark3)' : 'var(--gold)',
-                border: 'none',
-                borderRadius: '8px',
-                color: isLoading ? 'var(--gray)' : 'var(--black)',
-                fontWeight: 600,
-                fontSize: '0.875rem',
-                cursor: isLoading ? 'not-allowed' : 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.5rem',
-              }}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24"
-                fill="none" stroke="currentColor" strokeWidth="2">
-                <polyline points="23 4 23 10 17 10"/>
-                <polyline points="1 20 1 14 7 14"/>
-                <path d="M3.51 9a9 9 0 0 1 14.85-3.36 L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
-              </svg>
-              {isLoading ? 'Refreshing...' : 'Refresh'}
-            </button>
-          </div>
+        {/* What this screen is, said once. It is easy to mistake for the inventory log next to
+            it in the sidebar - which is exactly the mistake this page itself used to make. */}
+        <div style={{ ...S.card, padding: '12px 16px', marginBottom: 16, fontSize: 12.5, color: 'var(--gray-light)', lineHeight: 1.6 }}>
+          <b style={{ color: 'var(--white)' }}>The audit trail</b> is who did what in this system, from
+          where, and when: every sign-in and every one that was refused, passwords and 2FA, staff added
+          or removed, permissions widened, settings moved, orders and money touched. Opening this page
+          is recorded too. For where the <i>material</i> went - stock in, stock out, corrections -
+          that is Inventory, not here.
+        </div>
 
-          {/* Summary Cards */}
-          {summary && (
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
-              gap: '1rem',
-              marginTop: '1.5rem',
-            }}>
-              {[
-                {
-                  label: 'Total Stock In',
-                  value: summary.totalStockIn ?? 0,
-                  color: 'var(--green)',
-                  bg: 'rgba(74,222,128,0.08)',
-                  border: 'rgba(74,222,128,0.2)',
-                  icon: 'M12 5v14M5 12l7-7 7 7',
-                },
-                {
-                  label: 'Total Stock Out',
-                  value: summary.totalStockOut ?? 0,
-                  color: 'var(--red)',
-                  bg: 'rgba(248,113,113,0.08)',
-                  border: 'rgba(248,113,113,0.2)',
-                  icon: 'M12 19V5M5 12l7 7 7-7',
-                },
-                {
-                  label: 'Total Sales',
-                  value: summary.totalSales ?? 0,
-                  color: 'var(--gold)',
-                  bg: 'rgba(212,168,67,0.08)',
-                  border: 'rgba(212,168,67,0.2)',
-                  icon: 'M13 10V3L4 14h7v7l9-11h-7z',
-                },
-                {
-                  label: 'Total Restocks',
-                  value: summary.totalRestocks ?? 0,
-                  color: 'var(--indigo)',
-                  bg: 'rgba(99,102,241,0.08)',
-                  border: 'rgba(99,102,241,0.2)',
-                  icon: 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10',
-                },
-              ].map(card => (
-                <div key={card.label} style={{
-                  padding: '1.25rem',
-                  background: card.bg,
-                  border: `1px solid ${card.border}`,
-                  borderRadius: '12px',
-                }}>
-                  <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.5rem',
-                    marginBottom: '0.75rem',
-                  }}>
-                    <svg width="16" height="16"
-                      viewBox="0 0 24 24" fill="none"
-                      stroke={card.color} strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round">
-                      <path d={card.icon}/>
-                    </svg>
-                    <span style={{
-                      fontSize: '0.75rem',
-                      color: 'var(--gray)',
-                      fontWeight: 600,
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.04em',
-                    }}>
-                      {card.label}
-                    </span>
-                  </div>
-                  <div style={{
-                    fontSize: '1.75rem',
-                    fontWeight: 700,
-                    color: card.color,
-                  }}>
-                    {card.value.toLocaleString()}
-                  </div>
-                </div>
-              ))}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>
+          <div>
+            <h1 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: 'var(--white)' }}>Audit Logs</h1>
+            <div style={{ fontSize: 12, color: 'var(--gray)', marginTop: 2 }}>
+              {total === 0
+                ? `Nothing from ${rangeLabel}`
+                : `${total} entr${total === 1 ? 'y' : 'ies'} from ${rangeLabel}${total > perPage ? ` - showing ${logs.length}` : ''}`}
             </div>
-          )}
-        </div>
-
-        {/* Filters */}
-        <div style={{
-          display: 'flex',
-          gap: '0.75rem',
-          flexWrap: 'wrap',
-          marginBottom: '1.25rem',
-          alignItems: 'center',
-        }}>
-          {/* Search */}
-          <div className="search-wrapper" style={{ flex: 1, minWidth: '200px' }}>
-            <span className="search-icon">
-              <svg width="16" height="16"
-                viewBox="0 0 24 24" fill="none"
-                stroke="currentColor" strokeWidth="2">
-                <circle cx="11" cy="11" r="8"/>
-                <path d="M21 21l-4.35-4.35"/>
-              </svg>
-            </span>
-            <input
-              type="text"
-              className="search-input"
-              placeholder="Search product, category, or performed by..."
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-             maxLength={100}/>
-            {searchQuery && (
-              <button
-                className="search-clear"
-                onClick={() => setSearchQuery('')}
-              >×</button>
-            )}
           </div>
-
-          {/* Reason filter */}
-          <CustomSelect
-            value={filterReason}
-            onChange={v => setFilterReason(v)}
-            placeholder="All Reasons"
-            options={[
-              { value: '', label: 'All Reasons' },
-              { value: 'restock', label: 'Restock' },
-              { value: 'correction-add', label: 'Correction (Add)' },
-              { value: 'correction-deduct', label: 'Correction (Deduct)' },
-              { value: 'sale', label: 'Sale' },
-              { value: 'return', label: 'Return' },
-              { value: 'sales-outside', label: 'Manual Sale' },
-            ]}
-            style={{ minWidth: '170px' }}
-          />
-
-          {/* Start date */}
-          <input
-            type="date"
-            value={filterStartDate}
-            onChange={e => setFilterStartDate(e.target.value)}
-            style={{
-              padding: '0.625rem 0.875rem',
-              background: 'var(--dark2)',
-              border: '1px solid var(--border)',
-              borderRadius: '8px',
-              color: filterStartDate ? 'var(--white)' : 'var(--gray)',
-              fontSize: '0.875rem',
-            }}
-          />
-
-          {/* End date */}
-          <input
-            type="date"
-            value={filterEndDate}
-            onChange={e => setFilterEndDate(e.target.value)}
-            style={{
-              padding: '0.625rem 0.875rem',
-              background: 'var(--dark2)',
-              border: '1px solid var(--border)',
-              borderRadius: '8px',
-              color: filterEndDate ? 'var(--white)' : 'var(--gray)',
-              fontSize: '0.875rem',
-            }}
-          />
-
-          {/* Clear filters */}
-          {(filterReason || filterStartDate || filterEndDate || searchQuery) && (
-            <button
-              onClick={() => {
-                setFilterReason('');
-                setFilterStartDate('');
-                setFilterEndDate('');
-                setSearchQuery('');
-              }}
-              style={{
-                padding: '0.625rem 0.875rem',
-                background: 'transparent',
-                border: '1px solid var(--border)',
-                borderRadius: '8px',
-                color: 'var(--gray)',
-                fontSize: '0.875rem',
-                cursor: 'pointer',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              Clear Filters
+          <div style={{ display: 'flex', gap: 8 }}>
+            {/* Taking a copy out of the system is itself recorded - the export writes its own
+                entry before the file is built. */}
+            <button type="button" onClick={exportCsv} disabled={exporting || isLoading}
+              aria-label="Download these entries as a CSV file"
+              title="Downloads exactly what the filters above are showing"
+              style={{ ...S.btnGhost, opacity: exporting || isLoading ? 0.6 : 1 }}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+              {exporting ? 'Preparing…' : 'Export'}
             </button>
-          )}
+            <button type="button" onClick={load} disabled={isLoading} aria-label="Reload the audit trail"
+              style={{ ...S.btnGhost, opacity: isLoading ? 0.6 : 1 }}>
+              {ICONS.refresh ?? null}
+              {isLoading ? 'Refreshing…' : 'Refresh'}
+            </button>
+          </div>
         </div>
 
-        {/* Error state */}
+        {/* The four figures a security screen is actually for. Access and change - not stock. */}
+        {summary && isPhone && (
+          <KpiStrip items={[
+            { key: 'in',      value: summary.signIns ?? 0, label: 'Sign-ins' },
+            { key: 'people',  value: summary.people ?? 0,  label: 'People' },
+            { key: 'refused', value: summary.refused ?? 0, label: 'Refused',
+              color: summary.refused > 0 ? 'var(--st-red-fg)' : undefined,
+              title: summary.refused > 0 ? `from ${summary.refusedFrom} address(es)` : 'nothing turned away' },
+            { key: 'changes', value: summary.changes ?? 0, label: 'Changes' },
+          ]} />
+        )}
+
+        {summary && !isPhone && (
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
+            <SummaryCard label="Sign-ins" value={summary.signIns ?? 0} sub={`in ${rangeLabel}`} accent />
+            <SummaryCard label="People who signed in" value={summary.people ?? 0} sub="separate accounts" />
+            <SummaryCard
+              label="Refused"
+              value={summary.refused ?? 0}
+              sub={summary.refused > 0 ? `from ${summary.refusedFrom} address${summary.refusedFrom === 1 ? '' : 'es'}` : 'nothing turned away'}
+              color={summary.refused > 0 ? 'var(--st-red-fg)' : 'var(--white)'}
+            />
+            <SummaryCard label="Changes made" value={summary.changes ?? 0} sub="not counting sign-ins" />
+          </div>
+        )}
+
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginBottom: 14 }}>
+          <div style={{ flex: '1 1 240px', minWidth: 200 }}>
+            <SearchBar value={query} onChange={setQuery} placeholder="Search a person, an action, an address…" style={{ width: '100%' }} />
+          </div>
+          <CustomSelect
+            value={group}
+            onChange={setGroup}
+            options={GROUPS.map(g => ({ value: g.id, label: g.label }))}
+            style={{ flex: '0 0 200px' }}
+          />
+          <CustomSelect
+            value={range}
+            onChange={setRange}
+            options={[
+              { value: '1',  label: 'Today' },
+              { value: '7',  label: 'Last 7 days' },
+              { value: '30', label: 'Last 30 days' },
+              { value: '90', label: 'Last 90 days' },
+              { value: 'all', label: 'All time' },
+            ]}
+            style={{ flex: '0 0 160px' }}
+          />
+        </div>
+
         {error && (
-          <div style={{
-            padding: '1rem',
-            background: 'rgba(239,68,68,0.1)',
-            border: '1px solid rgba(239,68,68,0.3)',
-            borderRadius: '8px',
-            color: 'var(--red)',
-            marginBottom: '1rem',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.5rem',
-          }}>
-            <svg width="18" height="18"
-              viewBox="0 0 24 24" fill="none"
-              stroke="currentColor" strokeWidth="2">
-              <circle cx="12" cy="12" r="10"/>
-              <line x1="12" y1="8" x2="12" y2="12"/>
-              <line x1="12" y1="16" x2="12.01" y2="16"/>
-            </svg>
+          <div style={{ padding: '10px 14px', borderRadius: 8, marginBottom: 12, fontSize: 13,
+            background: 'var(--st-red-bg)', color: 'var(--st-red-fg)', border: '1px solid var(--st-red-fg)' }}>
             {error}
           </div>
         )}
 
-        {/* Loading state */}
-        {isLoading && (
-          <>
-            <style>{`@keyframes pmPulse { 0%,100% { opacity: 1 } 50% { opacity: .45 } }`}</style>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '1rem' }}>
-              {[...Array(5)].map((_, i) => (
-                <div
-                  key={i}
-                  style={{
-                    height: '56px',
-                    borderRadius: '8px',
-                    background: 'var(--dark2)',
-                    border: '1px solid var(--border)',
-                    animation: 'pmPulse 1.5s ease-in-out infinite',
-                  }}
-                />
+        {/* Announced, so a screen reader is told when the list reloads under a filter rather
+            than silently showing something else. */}
+        <div role="feed" aria-busy={isLoading} aria-label="Audit trail entries"
+          style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
+          {isLoading ? (
+            <div style={{ padding: 20, display: 'grid', gap: 10 }}>
+              {[0, 1, 2, 3, 4, 5].map(i => (
+                <div key={i} style={{ height: 46, borderRadius: 8, background: 'var(--dark2)', animation: 'pmPulse 1.5s ease-in-out infinite' }} />
               ))}
             </div>
-          </>
-        )}
-
-        {/* Table */}
-        {!isLoading && (
-          <div style={{
-            border: '1px solid var(--border)',
-            borderRadius: '10px',
-            overflow: 'hidden',
-          }}>
-            {filtered.length === 0 ? (
+          ) : paged.length === 0 ? (
+            <div style={{ padding: 28 }}>
               <EmptyState
-                icon={ICONS.info}
-                message="No audit logs found"
-                sub={filterReason || filterStartDate || filterEndDate || searchQuery
-                  ? 'Try widening or clearing a filter.'
-                  : 'Stock movements appear here once inventory is updated.'}
+                message="Nothing recorded in this window"
+                sub={query || group !== 'all' ? 'Try a wider date range, or clear the filters.' : 'Entries appear here as people sign in and change things.'}
               />
-            ) : (
-              <div style={{ overflowX: 'auto' }}>
-                <table className="pmp-rt" style={{
-                  width: '100%',
-                  borderCollapse: 'collapse',
-                  fontSize: '0.875rem',
-                }}>
-                  <thead>
-                    <tr style={{
-                      background: 'rgba(0,0,0,0.2)',
-                      borderBottom: '2px solid var(--border)',
+            </div>
+          ) : isPhone ? (
+            // A row here is a person, a badge, a time and an IP address. Squeezed to 360px that
+            // becomes four things fighting for one line, so on a phone it is a list and the
+            // detail opens full screen - the same shape Orders and Payments use.
+            <PhoneList>
+              {paged.map((l, i) => (
+                <PhoneRow
+                  key={l.id}
+                  first={i === 0}
+                  mono={false}
+                  title={l.actorName}
+                  chip={(
+                    <span style={{
+                      fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 999,
+                      background: toneFor(l.action, l.group).bg, color: toneFor(l.action, l.group).fg,
+                    }}>{l.label}</span>
+                  )}
+                  meta={l.description}
+                  sub={`${whenText(l.at)}${l.ip ? ' \u00b7 ' + l.ip : ''}`}
+                  onClick={() => setOpenId(l.id)}
+                />
+              ))}
+            </PhoneList>
+          ) : (
+            paged.map((l, i) => {
+              const tone = toneFor(l.action, l.group);
+              const open = openId === l.id;
+              const device = readDevice(l.device);
+              return (
+                <div key={l.id} style={{ borderTop: i === 0 ? 'none' : '1px solid var(--border)' }}>
+                  <button
+                    type="button"
+                    onClick={() => setOpenId(open ? null : l.id)}
+                    aria-expanded={open}
+                    aria-label={`${l.actorName}: ${l.label}. ${l.description}`}
+                    style={{
+                      width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '11px 14px',
+                      background: 'none', border: 'none', textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit',
                     }}>
-                      {[
-                        'Date',
-                        'Product',
-                        'Category',
-                        'Reason',
-                        'Qty Change',
-                        'Stock Before',
-                        'Stock After',
-                        'Unit Cost',
-                        'Performed By',
-                        'Remarks',
-                      ].map(h => (
-                        <th key={h} style={{
-                          padding: '0.875rem 1rem',
-                          textAlign: h === 'Qty Change'
-                            || h === 'Stock Before'
-                            || h === 'Stock After'
-                            || h === 'Unit Cost'
-                            ? 'center' : 'left',
-                          color: 'var(--gray)',
-                          fontWeight: 600,
-                          fontSize: '0.75rem',
-                          textTransform: 'uppercase',
-                          letterSpacing: '0.04em',
-                          whiteSpace: 'nowrap',
-                        }}>
-                          {h}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filtered.slice((page - 1) * perPage, page * perPage).map((log, i) => {
-                      const isPositive = log.quantity > 0;
-                      return (
-                        <tr key={log._id || i} style={{
-                          borderBottom: '1px solid rgba(255,255,255,0.05)',
-                          background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.01)',
-                        }}>
-                          {/* Date */}
-                          <td data-rt="head" style={{
-                            padding: '0.875rem 1rem',
-                            color: 'var(--gray)',
-                            whiteSpace: 'nowrap',
-                            fontSize: '0.8rem',
-                          }}>
-                            {formatDate(log.createdAt)}
-                          </td>
+                    {/* Who, not what - a security log is read by looking for a person first. */}
+                    <span aria-hidden="true" style={{
+                      width: 32, height: 32, borderRadius: '50%', flexShrink: 0, display: 'flex',
+                      alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800,
+                      background: tone.bg, color: tone.fg,
+                    }}>{initialsOf(l.actorName)}</span>
 
-                          {/* Product */}
-                          <td data-label="Product" style={{
-                            padding: '0.875rem 1rem',
-                            fontWeight: 600,
-                            color: 'var(--white)',
-                            maxWidth: '180px',
-                          }}>
-                            <div style={{
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                              whiteSpace: 'nowrap',
-                            }}>
-                              {log.productName || '-'}
-                            </div>
-                          </td>
+                    <span style={{ flex: 1, minWidth: 0 }}>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--white)' }}>{l.actorName}</span>
+                        {l.actorRole && (
+                          <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--gray)' }}>
+                            {l.actorRole}
+                          </span>
+                        )}
+                        <span style={{
+                          fontSize: 10.5, fontWeight: 700, padding: '1px 7px', borderRadius: 999,
+                          background: tone.bg, color: tone.fg,
+                        }}>{l.label}</span>
+                      </span>
+                      <span style={{ display: 'block', fontSize: 12, color: 'var(--gray-light)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {l.description}
+                      </span>
+                    </span>
 
-                          {/* Category */}
-                          <td data-label="Category" style={{
-                            padding: '0.875rem 1rem',
-                            color: 'var(--gray)',
-                            fontSize: '0.8rem',
-                          }}>
-                            <span style={{
-                              padding: '0.2rem 0.6rem',
-                              background: 'rgba(255,255,255,0.06)',
-                              border: '1px solid var(--border)',
-                              borderRadius: '4px',
-                              fontSize: '0.75rem',
-                            }}>
-                              {log.category || '-'}
-                            </span>
-                          </td>
+                    <span style={{ flexShrink: 0, textAlign: 'right' }}>
+                      <span style={{ display: 'block', fontSize: 11.5, color: 'var(--gray)', whiteSpace: 'nowrap' }}>{whenText(l.at)}</span>
+                      {l.ip && (
+                        <span style={{ display: 'block', fontSize: 10.5, color: 'var(--gray)', fontFamily: 'monospace' }}>{l.ip}</span>
+                      )}
+                    </span>
+                  </button>
 
-                          {/* Reason badge */}
-                          <td data-label="Reason" style={{ padding: '0.875rem 1rem' }}>
-                            <span style={{
-                              ...getReasonStyle(log.reason),
-                              padding: '0.2rem 0.7rem',
-                              borderRadius: '999px',
-                              fontSize: '0.72rem',
-                              fontWeight: 700,
-                              whiteSpace: 'nowrap',
-                              display: 'inline-block',
-                            }}>
-                              {getReasonLabel(log.reason)}
-                            </span>
-                          </td>
+                  {open && (
+                    <div style={{ padding: '0 14px 12px 58px', display: 'grid', gap: 5, fontSize: 11.5, color: 'var(--gray-light)' }}>
+                      {l.actorEmail && <div><span style={{ color: 'var(--gray)' }}>Account:</span> {l.actorEmail}</div>}
+                      <div><span style={{ color: 'var(--gray)' }}>When:</span> {l.at ? new Date(l.at).toLocaleString('en-PH') : 'unknown'}</div>
+                      {l.ip && <div><span style={{ color: 'var(--gray)' }}>From:</span> {l.ip}{device ? ` - ${device}` : ''}</div>}
+                      {l.entityType && (
+                        <div>
+                          <span style={{ color: 'var(--gray)' }}>About:</span> {l.entityType}
+                          {l.entityId ? ` ${l.entityId}` : ''}
+                        </div>
+                      )}
+                      {l.metadata && Object.keys(l.metadata).length > 0 && (
+                        <div style={{ marginTop: 3 }}>
+                          <span style={{ color: 'var(--gray)' }}>Details:</span>
+                          <div style={{ marginTop: 3, padding: '7px 9px', background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: 7, fontFamily: 'monospace', fontSize: 11, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                            {JSON.stringify(l.metadata, null, 2)}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
 
-                          {/* Qty Change */}
-                          <td data-label="Qty Change" style={{
-                            padding: '0.875rem 1rem',
-                            textAlign: 'center',
-                            fontWeight: 700,
-                            color: isPositive ? 'var(--green)' : 'var(--red)',
-                            fontSize: '0.9rem',
-                          }}>
-                            {isPositive ? '+' : ''}{log.quantity}
-                          </td>
-
-                          {/* Stock Before */}
-                          <td data-label="Stock Before" style={{
-                            padding: '0.875rem 1rem',
-                            textAlign: 'center',
-                            color: 'var(--gray)',
-                          }}>
-                            {log.stockBefore ?? '-'}
-                          </td>
-
-                          {/* Stock After */}
-                          <td data-label="Stock After" style={{
-                            padding: '0.875rem 1rem',
-                            textAlign: 'center',
-                            color: 'var(--gold)',
-                            fontWeight: 600,
-                          }}>
-                            {log.stockAfter ?? '-'}
-                          </td>
-
-                          {/* Unit Cost */}
-                          <td data-label="Unit Cost" style={{
-                            padding: '0.875rem 1rem',
-                            textAlign: 'center',
-                            color: 'var(--gray)',
-                            fontSize: '0.8rem',
-                          }}>
-                            {log.unitCost
-                              ? `₱${Number(log.unitCost).toLocaleString('en-PH', {
-                                  minimumFractionDigits: 2,
-                                  maximumFractionDigits: 2 })}`
-                              : '-'}
-                          </td>
-
-                          {/* Performed By */}
-                          <td data-label="Performed By" style={{
-                            padding: '0.875rem 1rem',
-                            color: 'var(--gray)',
-                            fontSize: '0.8rem',
-                          }}>
-                            {log.performedBy || '-'}
-                          </td>
-
-                          {/* Remarks */}
-                          <td data-label="Remarks" style={{
-                            padding: '0.875rem 1rem',
-                            color: 'var(--gray)',
-                            fontSize: '0.78rem',
-                            maxWidth: '200px',
-                          }}>
-                            <div style={{
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                              whiteSpace: 'nowrap',
-                            }} title={log.remarks || ''}>
-                              {log.remarks || '-'}
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+        {/* The detail of one entry, full screen. The inline expansion the desktop uses has no
+            room on a phone, and a modal has less. */}
+        {isPhone && (() => {
+          const l = paged.find(x => x.id === openId);
+          if (!l) return null;
+          const device = readDevice(l.device);
+          const line = (label, value) => value ? (
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, padding: '9px 0', borderBottom: '1px solid var(--border)', fontSize: 13 }}>
+              <span style={{ color: 'var(--gray)', flexShrink: 0 }}>{label}</span>
+              <span style={{ color: 'var(--white)', textAlign: 'right', wordBreak: 'break-word' }}>{value}</span>
+            </div>
+          ) : null;
+          return (
+            <PhoneSheet
+              open
+              mono={false}
+              title={l.actorName}
+              subtitle={l.label}
+              onClose={() => setOpenId(null)}
+            >
+              <div style={{ padding: '0 14px' }}>
+                <div style={{ fontSize: 13, color: 'var(--gray-light)', lineHeight: 1.6, padding: '10px 0' }}>{l.description}</div>
+                {line('Account', l.actorEmail)}
+                {line('Role', l.actorRole)}
+                {line('When', l.at ? new Date(l.at).toLocaleString('en-PH') : null)}
+                {line('From', l.ip)}
+                {line('Device', device)}
+                {line('About', l.entityType ? `${l.entityType}${l.entityId ? ' ' + l.entityId : ''}` : null)}
+                {l.metadata && Object.keys(l.metadata).length > 0 && (
+                  <div style={{ padding: '10px 0' }}>
+                    <div style={{ fontSize: 12, color: 'var(--gray)', marginBottom: 5 }}>Details</div>
+                    <div style={{ padding: '8px 10px', background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: 8, fontFamily: 'monospace', fontSize: 11.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                      {JSON.stringify(l.metadata, null, 2)}
+                    </div>
+                  </div>
+                )}
               </div>
-            )}
+            </PhoneSheet>
+          );
+        })()}
+
+        {total > perPage && (
+          <div style={{ marginTop: 12 }}>
+            <PaginationBar
+              total={total}
+              page={page}
+              perPage={perPage}
+              onPage={setPage}
+              onPerPage={(n) => { setPerPage(n); setPage(1); }}
+            />
           </div>
         )}
-
-        {/* Row count */}
-        {/* There was no pager at all - the page simply printed however many rows came back and
-            told the reader to narrow the dates. An audit log is the one screen where scanning
-            backwards is the whole job, so it gets a real pager and a rows-per-page control. */}
-        {!isLoading && filtered.length > 0 && (
-          <>
-            <PaginationBar total={filtered.length} page={page} perPage={perPage}
-              onPage={setPage} onPerPage={setPerPage} />
-            {logs.length === 100 && (
-              <div style={{ marginTop: '0.5rem', fontSize: '0.78rem', color: 'var(--gold)', textAlign: 'right' }}>
-                The server returns the 100 most recent movements. Use the date filters to reach older ones.
-              </div>
-            )}
-          </>
-        )}
-
+        {/* The skeleton's own keyframes - the dashboard declares them per page rather than
+            globally, and a missing @keyframes is a skeleton that simply does not move. */}
+        <style>{`@keyframes pmPulse { 0%, 100% { opacity: 1 } 50% { opacity: .45 } }`}</style>
       </div>
     </ErrorBoundary>
   );

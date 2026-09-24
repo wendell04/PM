@@ -1799,7 +1799,19 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
               {/* Courier-booked delivery fee - paid by customer to the rider on delivery */}
               {(mayWork || seeMoney) && !(Number(lo.shippingFee) > 0) && (
                 <div style={{ marginTop:'10px', padding:'10px 12px', background:'var(--dark2)', border:'1px solid var(--border)', borderRadius:'8px' }}>
-                  <div style={{ fontSize:'11px', fontWeight:600, color:'var(--gray-light)', marginBottom:'2px' }}>Delivery fee (paid by customer to rider)</div>
+                  <div style={{ fontSize:'11px', fontWeight:600, color:'var(--gray-light)', marginBottom:'2px' }}>
+                    {lo.freeDelivery ? 'Delivery fee (on the shop - this order qualified for free delivery)' : 'Delivery fee (paid by customer to rider)'}
+                  </div>
+                  {/* Free delivery does not mean no courier: the shop still books one and still
+                      pays for it. Entering the fee here is how that cost gets recorded, and the
+                      customer is never told about it or asked for it. */}
+                  {lo.freeDelivery && (
+                    <div style={{ fontSize:'10.5px', color:'var(--st-green-fg)', marginBottom:'8px', lineHeight:1.5 }}>
+                      This order reached the free-delivery figure{lo.freeDeliveryFrom ? ` of \u20B1${fmt(lo.freeDeliveryFrom)}` : ''}.
+                      Enter what the courier costs so the shop has the record - nothing is billed to the customer,
+                      and the rider collects nothing.
+                    </div>
+                  )}
                   {/* Once it is settled, everything below this is an answer to a question nobody is
                       asking any more. The record of what was charged and how stays; the controls go. */}
                   {!lo.courierFeePaid && (
@@ -1813,11 +1825,11 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                       and the address can still change after approval. It is needed the moment the
                       customer is about to pay, because then it can ride on the same payment
                       instead of becoming a second one. */}
-                  {!(Number(lo.courierFee) > 0) && lo.paymentStatus !== 'paid'
+                  {!(Number(lo.courierFee) > 0) && lo.paymentStatus !== 'paid' && !lo.freeDelivery
                     && ['Awaiting Payment', 'awaiting_payment'].includes(String(lo.orderStatus)) && (
                     <div style={{ display:'flex', gap:'7px', alignItems:'flex-start', padding:'8px 10px', marginBottom:'8px', background:'rgba(245,158,11,0.08)', border:'1px solid rgba(245,158,11,0.3)', borderRadius:'7px' }}>
-                      <span style={{ color:'#b45309', fontWeight:900, fontSize:'11px', lineHeight:1.5 }}>!</span>
-                      <span style={{ fontSize:'10.5px', color:'#b45309', lineHeight:1.5 }}>
+                      <span style={{ color:'var(--st-orange-fg)', fontWeight:900, fontSize:'11px', lineHeight:1.5 }}>!</span>
+                      <span style={{ fontSize:'10.5px', color:'var(--st-orange-fg)', lineHeight:1.5 }}>
                         No delivery fee set. The customer is about to pay - set it now and they can
                         settle both in one go. Leave it and they will have to pay the delivery separately later.
                       </span>
@@ -1827,7 +1839,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                   {/* An on-demand rider can take cash at the door; a parcel network is prepaid at
                       the branch. Getting this wrong on a provincial order means the shop pays the
                       courier and never collects. */}
-                  {mayWork && !lo.courierFeePaid && (
+                  {mayWork && !lo.courierFeePaid && !lo.freeDelivery && (
                   <div style={{ display:'flex', gap:'6px', marginBottom:'8px', flexWrap:'wrap' }}>
                     {[
                       { on:true,  label:'Rider collects it',      hint:'Lalamove, Grab, same-day' },
@@ -1908,7 +1920,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                               </span>
                             );
                             return (
-                              <span style={{ fontSize:'11px', fontWeight:700, color:'#b45309', lineHeight:1.5 }}>
+                              <span style={{ fontSize:'11px', fontWeight:700, color:'var(--st-orange-fg)', lineHeight:1.5 }}>
                                 Paid ₱{fmt(paid)}, fee is now ₱{fmt(now)} - ₱{fmt(short)} short.
                                 <span style={{ display:'block', fontWeight:500, color:'var(--gray)' }}>
                                   Ask for it in chat, or absorb it. Nothing is billed automatically.
@@ -2104,7 +2116,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                         // the format is, say what the customer called it, and open it on click.
                         <a key={i} href={url} target="_blank" rel="noopener noreferrer" title={`Open ${fname}`}
                           style={{ display:'block', textDecoration:'none' }}>
-                          <div style={{ width:'120px', height:'120px', borderRadius:'8px', border:'1px solid var(--border)', background:'#f9fafb', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:'4px', padding:'8px', boxSizing:'border-box' }}>
+                          <div style={{ width:'120px', height:'120px', borderRadius:'8px', border:'1px solid var(--border)', background:'var(--dark2)', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:'4px', padding:'8px', boxSizing:'border-box' }}>
                             <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#d4a843" strokeWidth="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
                             <span style={{ fontSize:'11px', fontWeight:800, color:'#d4a843', letterSpacing:'0.04em' }}>{ext || 'FILE'}</span>
                             <span style={{ fontSize:'10px', color:'var(--gray)', textAlign:'center', lineHeight:1.3, wordBreak:'break-word', display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical', overflow:'hidden' }}>{fname}</span>
@@ -2134,7 +2146,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
 
               {/* Printing instructions the customer left - the printer needs these next to the file. */}
               {aiNotes && (
-                <div style={{ padding:'8px 10px', background:'#f9fafb', border:'1px solid var(--border)', borderRadius:'6px', fontSize:'12px', color:'var(--gray)', marginBottom:'8px', lineHeight:1.5 }}>
+                <div style={{ padding:'8px 10px', background:'var(--dark2)', border:'1px solid var(--border)', borderRadius:'6px', fontSize:'12px', color:'var(--gray)', marginBottom:'8px', lineHeight:1.5 }}>
                   <span style={{ fontWeight:600, color:'var(--white)' }}>Instructions: </span>{aiNotes}
                 </div>
               )}
@@ -2150,13 +2162,13 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                 <div style={{ marginBottom: '10px', padding: '10px 12px', borderRadius: 8,
                   background: 'rgba(212,168,67,0.07)', border: '1px solid rgba(212,168,67,0.3)' }}>
                   <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#b45309"
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--st-orange-fg)"
                       strokeWidth="2" style={{ flexShrink: 0, marginTop: 1 }}>
                       <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
                       <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
                     </svg>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 12.5, fontWeight: 700, color: '#b45309' }}>No printing instructions</div>
+                      <div style={{ fontSize: 12.5, fontWeight: 700, color:'var(--st-orange-fg)' }}>No printing instructions</div>
                       <div style={{ fontSize: 11.5, color: 'var(--gray)', marginTop: 3, lineHeight: 1.5 }}>
                         The customer sent a file and said nothing about it - which side, what size,
                         whether it is even finished artwork. Ask before producing.
@@ -2471,7 +2483,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
               </span>
               {readySince !== null && (
                 <span style={{ fontSize:'11px', fontWeight:700,
-                  color: readySince >= 14 ? '#c2410c' : readySince >= 7 ? '#b45309' : 'var(--gray)' }}>
+                  color: readySince >= 14 ? '#c2410c' : readySince >= 7 ? 'var(--st-orange-fg)' : 'var(--gray)' }}>
                   Finished goods held for {readySince} day{readySince === 1 ? '' : 's'}
                   {readySince >= 14 && ' - these cannot be resold. Decide whether to keep holding them.'}
                 </span>
@@ -2792,7 +2804,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                           </span>
                           {rushTag}
                         </div>
-                        <div style={{ fontSize:'11.5px', color:'#b45309' }}>
+                        <div style={{ fontSize:'11.5px', color:'var(--st-orange-fg)' }}>
                           Countdown not started. If that happened today it would land {range}; it moves out by however long it takes.
                         </div>
                       </>
@@ -2897,7 +2909,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                 const clauses = (Array.isArray(lo.agreedTermsSnapshot) && lo.agreedTermsSnapshot.length) ? lo.agreedTermsSnapshot : DEFAULT_CUSTOM_ORDER_TERMS;
                 const snapshotted = Array.isArray(lo.agreedTermsSnapshot) && lo.agreedTermsSnapshot.length;
                 return (
-                  <div style={{ marginTop:'8px', padding:'10px 12px', background:'#f0fdf4', border:'1px solid #bbf7d0', borderRadius:'8px', fontSize:'11px', color:'var(--gray)' }}>
+                  <div style={{ marginTop:'8px', padding:'10px 12px', background:'var(--st-green-bg)', border:'1px solid rgba(34,197,94,0.35)', borderRadius:'8px', fontSize:'11px', color:'var(--gray)' }}>
                     <div style={{ display:'grid', gridTemplateColumns:'auto 1fr', gap:'2px 10px', marginBottom:'8px' }}>
                       <span style={{ fontWeight:700, color:'var(--white)' }}>Customer:</span><span>{lo.customerName || lo.userSnapshot?.name || '-'}{(lo.customerEmail || lo.userSnapshot?.email) ? ` (${lo.customerEmail || lo.userSnapshot?.email})` : ''}</span>
                       <span style={{ fontWeight:700, color:'var(--white)' }}>Accepted:</span><span>{lo.agreedAt ? new Date(lo.agreedAt).toLocaleString('en-PH',{year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '-'}</span>
@@ -2975,8 +2987,11 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
           </div>
 
           <SectionLabel>Payment</SectionLabel>
-          {Number(lo.discountAmount) > 0 && (
-            <InfoRow label="Subtotal" value={`₱${fmt(Number(lo.totalAmount??0) + Number(lo.discountAmount))}`} />
+          {(Number(lo.discountAmount) > 0 || Number(lo.firstOrderDiscount) > 0) && (
+            <InfoRow
+              label="Subtotal"
+              value={`₱${fmt(Number(lo.totalAmount ?? 0) + Number(lo.discountAmount ?? 0) + Number(lo.firstOrderDiscount ?? 0))}`}
+            />
           )}
           {lo.voucherBenefit && (
             // Nothing was taken off: the customer was promised something to be given by hand.
@@ -2985,12 +3000,34 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
           {Number(lo.discountAmount) > 0 && (
             <InfoRow label={`Voucher${lo.voucherCode ? ` (${lo.voucherCode})` : ''}`} value={`−₱${fmt(lo.discountAmount)}`} />
           )}
+          {/* The shop's own welcome discount, on its own line. Nobody typed a code for this one,
+              so filing it under Voucher would send whoever reads it looking for a code that does
+              not exist. */}
+          {Number(lo.firstOrderDiscount) > 0 && (
+            <InfoRow
+              label={`First order${lo.firstOrderPercent ? ` (${lo.firstOrderPercent}%)` : ''}`}
+              value={`−₱${fmt(lo.firstOrderDiscount)}`}
+            />
+          )}
+          {/* What was charged at the counter beyond the catalogue lines, each under its own
+              name. A figure with no label is the one a customer comes back to argue about. */}
+          {Array.isArray(lo.extraFees) && lo.extraFees.map((f, i) => (
+            <InfoRow key={'fee' + i} label={f.label || 'Additional fee'} value={`₱${fmt(f.amount)}`} />
+          ))}
           {Number(lo.shippingFee) > 0 && (
             <InfoRow label="Shipping" value={`₱${fmt(lo.shippingFee)}`} />
           )}
+          {lo.freeDelivery && !(Number(lo.shippingFee) > 0) && (
+            <InfoRow label="Shipping" value="FREE" />
+          )}
           {Number(lo.designFee) > 0 && (
             <InfoRow
-              label={`Design fee${lo.designFeePaid ? '' : ' (unpaid)'}`}
+              /* On a quotation the design fee is inside the quoted price and was collected with
+                 the rest, so "(unpaid)" was wrong on every one of them - there is no separate
+                 design-fee payment on this route and there never will be. */
+              label={lo.orderSource === 'inquiry'
+                ? 'Design fee (in the quote)'
+                : `Design fee${lo.designFeePaid ? '' : ' (unpaid)'}`}
               value={`₱${fmt(lo.designFee)}`}
             />
           )}
@@ -3019,24 +3056,29 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
             const feePaid = !!lo.courierFeePaid;
             const how     = String(lo.courierFeePaidMethod || '').toLowerCase();
             const ended   = ['returned', 'cancelled'].includes(normalizeStatus(lo.orderStatus));
-            const note    = !feePaid
-              ? (ended
-                  // Refused at the door or cancelled: nobody paid the rider, whatever the fee setting says.
-                  ? 'not collected - the order did not go through'
-                  : (lo.courierFeeOnDelivery ?? true) ? 'rider collects on arrival' : 'to be paid before we ship')
-              : how === 'manual' || how === 'rider_cash'
-                ? 'received - the rider was paid'
-                : 'paid online - you pay the courier';
+            // Free delivery: the fee is the shop's own cost, so "paid" and "unpaid" are the wrong
+            // pair of words for it entirely - nobody is going to collect it from the customer.
+            const note    = how === 'shop_free_delivery' || lo.freeDelivery
+              ? 'free delivery - the shop covers this, nothing to collect'
+              : !feePaid
+                ? (ended
+                    // Refused at the door or cancelled: nobody paid the rider, whatever the fee setting says.
+                    ? 'not collected - the order did not go through'
+                    : (lo.courierFeeOnDelivery ?? true) ? 'rider collects on arrival' : 'to be paid before we ship')
+                : how === 'manual' || how === 'rider_cash'
+                  ? 'received - the rider was paid'
+                  : 'paid online - you pay the courier';
+            const freeHere = how === 'shop_free_delivery' || !!lo.freeDelivery;
             return (
               <div style={{ display:'flex', justifyContent:'space-between', gap:'10px', fontSize:'11px', padding:'3px 0', color:'var(--gray)' }}>
                 <span>
                   Delivery fee{' '}
-                  <span style={{ color: feePaid ? '#16a34a' : 'var(--gray)', fontWeight: feePaid ? 700 : 400 }}>
-                    {feePaid ? '(paid)' : '(unpaid)'}
+                  <span style={{ color: freeHere || feePaid ? 'var(--st-green-fg)' : 'var(--gray)', fontWeight: freeHere || feePaid ? 700 : 400 }}>
+                    {freeHere ? '(free)' : feePaid ? '(paid)' : '(unpaid)'}
                   </span>
                   <span style={{ display:'block', fontSize:'10px' }}>{note}</span>
                 </span>
-                <span style={{ fontWeight:600, whiteSpace:'nowrap', color: feePaid ? '#16a34a' : 'var(--gray)' }}>₱{fmt(lo.courierFee)}</span>
+                <span style={{ fontWeight:600, whiteSpace:'nowrap', color: freeHere || feePaid ? 'var(--st-green-fg)' : 'var(--gray)' }}>₱{fmt(lo.courierFee)}</span>
               </div>
             );
           })()}
@@ -3215,7 +3257,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                 : '')
             /* Sending it out closes the customer's online payment for the delivery fee. Who
                collects it from here is a money question, and it is answered before, not after. */
-            + (isForDelivery(selStatus) && Number(lo.courierFee ?? 0) > 0 && !lo.courierFeePaid
+            + (isForDelivery(selStatus) && Number(lo.courierFee ?? 0) > 0 && !lo.courierFeePaid && !lo.freeDelivery
                 ? ((lo.courierFeeOnDelivery ?? true)
                     ? ` The ₱${fmt(lo.courierFee)} delivery fee is still unpaid. Once this is sent out the customer can no longer pay it online - the rider collects ₱${fmt(lo.courierFee)} in cash. Tick "Mark fee received" once you have it.`
                     : ` The ₱${fmt(lo.courierFee)} delivery fee is still unpaid, and a parcel courier cannot collect cash on arrival. Get it settled before you ship.`)
@@ -3268,7 +3310,10 @@ export default function OrdersPage() {
 
   const [orders,       setOrders]       = useState([]);
   const [search,       setSearch]       = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
+  // Opens on the work, not on the archive. All orders is the report you go to; Open - not yet
+  // delivered - is the list somebody came here to act on, and starting on All meant 50 rows to
+  // scroll before finding the 6 that needed anything.
+  const [statusFilter, setStatusFilter] = useState('open');
   const [payFilter,    setPayFilter]    = useState('all');
   const [typeFilter,   setTypeFilter]   = useState('all');
   const [dateFilter,   setDateFilter]   = useState('all-time');
@@ -3647,7 +3692,8 @@ export default function OrdersPage() {
                     meta={[o.customerName, o.productName].filter(Boolean).join(' - ')}
                     sub={[
                       `${o.quantity} pc${o.quantity === 1 ? '' : 's'}`,
-                      `₱${fmt(o.totalAmount ?? o.totalPrice)}`,
+                      // Same on the phone card: an absent figure is left out rather than read as zero.
+                      (o.totalAmount ?? o.totalPrice) == null ? null : `₱${fmt(o.totalAmount ?? o.totalPrice)}`,
                       o.paymentStatus ? String(o.paymentStatus).replace(/_/g, ' ') : null,
                       o.createdAt ? new Date(o.createdAt).toLocaleDateString('en-PH', { month:'short', day:'numeric' }) : null,
                       o.isArchived ? 'archived' : null,
@@ -3752,7 +3798,12 @@ export default function OrdersPage() {
                         </td>
                         <td data-label="Qty" style={{ ...S.td, textAlign:'center', color:'var(--gray)', fontSize:'12px' }}>{o.quantity}</td>
                         <td data-label="Total" style={{ ...S.td, textAlign:'center', fontWeight:700, fontFamily:'monospace', fontSize:'12px', color:'var(--gold)', whiteSpace:'nowrap' }}>
-                          ₱{fmt(o.totalAmount ?? o.totalPrice)}
+                          {/* The server removes the money fields for anyone without a finance row,
+                              so an absent figure means "not yours to see" - not zero. Printing
+                              P0.00 told Production Staff every order was worth nothing. */}
+                          {(o.totalAmount ?? o.totalPrice) == null
+                            ? <span style={{ color:'var(--gray)', fontWeight:400 }} title="Order money is not part of your access">-</span>
+                            : `₱${fmt(o.totalAmount ?? o.totalPrice)}`}
                         </td>
                         <td data-label="Status" style={{ ...S.td, textAlign:'center' }}>
                           <StatusBadge status={o.orderStatus} />

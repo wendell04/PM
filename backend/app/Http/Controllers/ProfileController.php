@@ -100,6 +100,12 @@ class ProfileController extends Controller
                 'ip'      => request()->ip(),
             ]);
 
+            // The other half of the reset already recorded in AuthController. A password moving
+            // is what an account takeover looks like from the outside, whichever door it went
+            // through, so both doors have to write it down.
+            $this->logActivity($request, 'auth.password_changed', 'auth', (string) $user->_id,
+                'Changed their own password');
+
             return $this->successResponse('Password changed successfully.');
         } catch (\Illuminate\Validation\ValidationException $e) {
             return $this->validationErrorResponse($e);

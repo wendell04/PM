@@ -268,6 +268,25 @@ class PaymentController extends Controller
                 }
             }
 
+            // ── The shop's two standing offers ───────────────────────────
+            // Free delivery over a figure, and a welcome discount on a first order. Both off
+            // unless the owner set them; both worked out by App\Support\ShopOffers so every
+            // path that creates an order charges the same price. They land HERE, above the
+            // deposit below, because a deposit is a percentage of the price - and asking for a
+            // percentage of a price that is about to drop overcharges the first payment.
+            $offers    = \App\Support\ShopOffers::forCheckout($goodsSubtotal, $discountAmount, $user);
+            $offerSnap = \App\Support\ShopOffers::snapshot($offers);
+            if ($offers['firstOrder'] > 0) {
+                $totalAmount = max(0, round($totalAmount - $offers['firstOrder'], 2));
+            }
+            // Where delivery was priced at checkout it comes off here. Where the shop books a
+            // courier afterwards there is nothing to subtract yet - the flag is what stops that
+            // fee being billed to the customer when it is set.
+            if ($offers['freeDelivery'] && $shippingFee > 0) {
+                $totalAmount = max(0, round($totalAmount - $shippingFee, 2));
+                $shippingFee = 0.0;
+            }
+
             // ── Idempotency: check for existing unpaid order (same user, same items, last 5 min) ──
             $itemIds = collect($validated['items'])->pluck('productId')->sort()->values()->toArray();
             $recentOrder = Order::where('userId', (string) $user->_id)
@@ -396,6 +415,12 @@ class PaymentController extends Controller
                 'shippingMode'    => optional(\App\Support\ShopSettings::owner())->shippingMode ?? 'courier_booked',
                 'discountAmount'  => $discountAmount > 0 ? $discountAmount : null,
                 'voucherCode'     => $appliedVoucher?->code ?? null,
+                // What the standing offers took off, and the rule as it stood at the time - so a
+                // change to the setting can never rewrite a bill somebody has already paid.
+                'firstOrderDiscount'   => $offerSnap['firstOrderDiscount'],
+                'firstOrderPercent'    => $offerSnap['firstOrderPercent'],
+                'freeDelivery'         => $offerSnap['freeDelivery'],
+                'freeDeliveryFrom'     => $offerSnap['freeDeliveryFrom'],
                 // A benefit voucher (free item, free layout) takes nothing off - the shop honours it
                 // by hand, so the order has to say what was promised.
                 'voucherBenefit'  => ($appliedVoucher && ($appliedVoucher->benefitCategory ?? 'monetary') !== 'monetary')
@@ -522,9 +547,10 @@ class PaymentController extends Controller
             $amountInCentavos = (int) round($totalAmount * 100);
 
             // ── Build PayMongo line items ─────────────────────────────────
-            // Show per-product breakdown when no voucher discount (amounts must sum to total).
-            // Fall back to a single bundled item when a voucher reduces the total.
-            if ($discountAmount > 0) {
+            // Show per-product breakdown when nothing has come off (amounts must sum to total).
+            // Fall back to a single bundled item when a voucher OR a standing offer reduces the
+            // total - per-product lines would add up to more than the customer is being charged.
+            if ($discountAmount > 0 || $offers['firstOrder'] > 0) {
                 $pmLineItems = [[
                     'currency' => 'PHP',
                     'amount'   => $amountInCentavos,
@@ -999,6 +1025,25 @@ class PaymentController extends Controller
                 }
             }
 
+            // ── The shop's two standing offers ───────────────────────────
+            // Free delivery over a figure, and a welcome discount on a first order. Both off
+            // unless the owner set them; both worked out by App\Support\ShopOffers so every
+            // path that creates an order charges the same price. They land HERE, above the
+            // deposit below, because a deposit is a percentage of the price - and asking for a
+            // percentage of a price that is about to drop overcharges the first payment.
+            $offers    = \App\Support\ShopOffers::forCheckout($goodsSubtotal, $discountAmount, $user);
+            $offerSnap = \App\Support\ShopOffers::snapshot($offers);
+            if ($offers['firstOrder'] > 0) {
+                $totalAmount = max(0, round($totalAmount - $offers['firstOrder'], 2));
+            }
+            // Where delivery was priced at checkout it comes off here. Where the shop books a
+            // courier afterwards there is nothing to subtract yet - the flag is what stops that
+            // fee being billed to the customer when it is set.
+            if ($offers['freeDelivery'] && $shippingFee > 0) {
+                $totalAmount = max(0, round($totalAmount - $shippingFee, 2));
+                $shippingFee = 0.0;
+            }
+
 
             // ── Proof gate ────────────────────────────────────────────
             // A cart order derives these from its own lines. Read only from the request,
@@ -1053,6 +1098,12 @@ class PaymentController extends Controller
                 'shippingMode'    => optional(\App\Support\ShopSettings::owner())->shippingMode ?? 'courier_booked',
                 'discountAmount'  => $discountAmount > 0 ? $discountAmount : null,
                 'voucherCode'     => $appliedVoucher?->code ?? null,
+                // What the standing offers took off, and the rule as it stood at the time - so a
+                // change to the setting can never rewrite a bill somebody has already paid.
+                'firstOrderDiscount'   => $offerSnap['firstOrderDiscount'],
+                'firstOrderPercent'    => $offerSnap['firstOrderPercent'],
+                'freeDelivery'         => $offerSnap['freeDelivery'],
+                'freeDeliveryFrom'     => $offerSnap['freeDeliveryFrom'],
                 // A benefit voucher (free item, free layout) takes nothing off - the shop honours it
                 // by hand, so the order has to say what was promised.
                 'voucherBenefit'  => ($appliedVoucher && ($appliedVoucher->benefitCategory ?? 'monetary') !== 'monetary')
@@ -1365,6 +1416,10 @@ class PaymentController extends Controller
                 'orderRequestId'  => 'required|string|size:24',
                 'type'            => 'required|in:downpayment,balance,full',
                 'deliveryAddress' => 'nullable|array',
+                // Rush is the one thing about a quote the customer still decides. It buys priority
+                // in the production queue, so it is charged on TOP of the quoted price rather than
+                // folded into it - the goods were agreed, the speed was not.
+                'isRush'          => 'nullable|boolean',
                 // Chosen on our own screen, the way the cart checkout does it, instead of handing
                 // the customer to PayMongo's hosted page to choose again. Absent, the hosted
                 // session below still runs, so an older client keeps working.
@@ -1483,11 +1538,30 @@ class PaymentController extends Controller
                 }
             }
 
-            $finalPrice  = (float) $orderRequest->finalPrice;
-            // Use the downpayment the admin set on the quote; fall back to 50% if none was set.
+            // ── Rush, if the customer picked it and the shop offers it ──
+            // Recorded on the quote rather than added to finalPrice: finalPrice is what the shop
+            // quoted, and a retry of this endpoint must not be able to inflate it a second time.
+            // Writing it only on the FIRST payment keeps the balance payment charging what the
+            // downpayment was worked out against.
+            if (in_array($validated['type'], ['downpayment', 'full'], true) && empty($orderRequest->convertedOrderId)) {
+                $wantsRush = filter_var($request->input('isRush', false), FILTER_VALIDATE_BOOLEAN);
+                $offered   = (bool) \App\Support\ShopSettings::get('rushEnabled', true);
+                $fee       = round((float) \App\Support\ShopSettings::get('rushFee', 0), 2);
+                $orderRequest->isRush  = $wantsRush && $offered && $fee > 0;
+                $orderRequest->rushFee = $orderRequest->isRush ? $fee : 0.0;
+                $orderRequest->save();
+            }
+
+            $quotedPrice = (float) $orderRequest->finalPrice;
+            $rushFee     = round((float) ($orderRequest->rushFee ?? 0), 2);
+            // What the customer actually owes: the quote, plus the speed they chose.
+            $finalPrice  = round($quotedPrice + $rushFee, 2);
+            // Use the downpayment the admin set on the quote; fall back to 50% if none was set. A
+            // rush fee is work the shop starts immediately, so it rides on the first payment in
+            // full rather than being split across a deposit and a balance.
             $downPayment = ($orderRequest->downPayment !== null && (float) $orderRequest->downPayment > 0)
-                ? round((float) $orderRequest->downPayment, 2)
-                : round($finalPrice * 0.5, 2);
+                ? round((float) $orderRequest->downPayment + $rushFee, 2)
+                : round($quotedPrice * 0.5 + $rushFee, 2);
             $balance     = round($finalPrice - $downPayment, 2);
             $dpPct       = $finalPrice > 0 ? (int) round($downPayment / $finalPrice * 100) : 50;
             $type        = $validated['type'];
@@ -1835,12 +1909,16 @@ class PaymentController extends Controller
             return Order::find($orderRequest->convertedOrderId);
         }
 
-        $customer   = User::find($orderRequest->customerId);
-        $finalPrice = round((float) $orderRequest->finalPrice, 2);
+        $customer    = User::find($orderRequest->customerId);
+        $quotedPrice = round((float) $orderRequest->finalPrice, 2);
+        // Same arithmetic as createOrderRequestLink, and it has to stay that way: this is the
+        // record of what was charged, and the two disagreeing is a balance nobody can settle.
+        $rushFee     = round((float) ($orderRequest->rushFee ?? 0), 2);
+        $finalPrice  = round($quotedPrice + $rushFee, 2);
 
         $downPayment = ($orderRequest->downPayment !== null && (float) $orderRequest->downPayment > 0)
-            ? round((float) $orderRequest->downPayment, 2)
-            : round($finalPrice * 0.5, 2);
+            ? round((float) $orderRequest->downPayment + $rushFee, 2)
+            : round($quotedPrice * 0.5 + $rushFee, 2);
 
         $paidInFull = $paymentType === 'full';
         $paidAmount = $paidInFull ? $finalPrice : $downPayment;
@@ -1874,7 +1952,16 @@ class PaymentController extends Controller
         // customer still has to approve - the same state as a Request Design line from the normal
         // checkout, so it goes through the same proof step before production.
         $hasQuoteDesign = !empty($orderRequest->designUrl);
-        $items = array_map(function ($line) use ($lineFlags, $orderRequest, $hasQuoteDesign) {
+        // Every file the quote carried, in the shape the order screens already read. Sending only
+        // designUrl through meant a two-sided job arrived at production showing one side.
+        $quoteFiles = array_values(array_filter(array_map(fn ($f) => [
+            'url'  => (string) ($f['url'] ?? ''),
+            'name' => $f['name'] ?? null,
+        ], (array) ($orderRequest->designUrls ?? [])), fn ($f) => $f['url'] !== ''));
+        if (empty($quoteFiles) && $hasQuoteDesign) {
+            $quoteFiles = [['url' => (string) $orderRequest->designUrl, 'name' => null]];
+        }
+        $items = array_map(function ($line) use ($lineFlags, $orderRequest, $hasQuoteDesign, $quoteFiles) {
             $flags    = $lineFlags($line);
             $produced = $flags['isCustom'] || $flags['isMadeToOrder'];
             return [
@@ -1896,6 +1983,7 @@ class PaymentController extends Controller
                     'qty'         => (float) ($m['qty'] ?? 0),
                 ], array_filter($line['materials'] ?? [], fn ($m) => !empty($m['inventoryId'])))),
                 'designUrl'       => $produced && $hasQuoteDesign ? $orderRequest->designUrl : null,
+                'designFiles'     => $produced && $quoteFiles ? $quoteFiles : null,
                 'designNotes'     => $produced ? $orderRequest->designNotes : null,
                 'designRequested' => $produced && !$hasQuoteDesign,
                 'designStatus'    => !$produced ? null
@@ -1932,6 +2020,23 @@ class PaymentController extends Controller
             ],
             'items'                => $items,
             'totalAmount'          => $finalPrice,
+            // What the total is MADE OF. Only the delivery fee was carried before, so My Orders
+            // and the admin screens showed a quote's goods and its shipping and nothing else -
+            // a design fee the customer had paid appeared nowhere, and the lines did not add up
+            // to the total they sat under.
+            'subtotal'             => round(array_sum(array_map(
+                fn ($i) => (float) ($i['lineTotal'] ?? 0),
+                $items
+            )), 2),
+            'designFee'            => round((float) ($orderRequest->designFee ?? 0), 2) ?: null,
+            // NOT designFeePaid. On a normal custom order that flag means "a separate design-fee
+            // payment has landed", and the balance screens subtract it from what has been paid
+            // towards the goods. On a quote the fee is simply part of the quoted price, collected
+            // with the rest - flagging it would take it out of the goods twice. The screens tell
+            // the two apart by orderSource.
+            'isRush'               => (bool) ($orderRequest->isRush ?? false),
+            'rushFee'              => $rushFee > 0 ? $rushFee : null,
+            'rushStatus'           => ($orderRequest->isRush ?? false) ? 'confirmed' : null,
             // Informational - the delivery fee the admin set on the quote is already inside finalPrice.
             'shippingFee'          => round((float) ($orderRequest->shippingFee ?? 0), 2),
             'orderStatus'          => $initialStatus,
@@ -1954,10 +2059,14 @@ class PaymentController extends Controller
             'orderSource'          => 'inquiry',
             'designType'           => $anyProduced ? ($orderRequest->designType ?: ($hasQuoteDesign ? 'upload' : 'request')) : null,
             'designFilePath'       => $orderRequest->designUrl,
+            'designFiles'          => $quoteFiles ?: null,
             'designNotes'          => $orderRequest->designNotes,
             // An owner-attached quote design is pre-approved (agreed in chat) → no proof gate.
             // A customer-uploaded design still needs the store to review it.
             'designStatus'         => $orderDesignStatus,
+            // What the customer filled in and agreed to, carried from the quotation so the order
+            // itself holds the record rather than pointing back at a chat thread.
+            'orderForms'           => $orderRequest->orderForms ?: null,
             'materials'            => $orderRequest->materials,
             'materialsCost'        => $orderRequest->materialsCost,
             'orderRequestId'       => (string) $orderRequest->_id,
@@ -3093,6 +3202,12 @@ class PaymentController extends Controller
             if ($payCourierFee) {
                 if ($courierFee <= 0) {
                     return $this->errorResponse('There is no delivery fee on this order yet.', 422);
+                }
+                // The fee is on the order because the shop records what the courier cost it. On a
+                // free-delivery order that cost is the shop's, so there is nothing here to collect -
+                // and taking the money anyway would be charging for what was promised free.
+                if ($order->freeDelivery ?? false) {
+                    return $this->errorResponse('Delivery is free on this order - there is nothing to pay.', 422);
                 }
                 if ($order->courierFeePaid ?? false) {
                     return $this->errorResponse('The delivery fee on this order is already settled.', 422);

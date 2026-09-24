@@ -83,9 +83,20 @@ export default function OrderReceipt({ order }) {
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
         <table><tbody>
           {tot('Sub-Total:', peso(rSubtotal))}
+          {/* Everything that came off the goods. Without these the sub-total and the total did not
+              reconcile on any discounted order - mirrors emails/receipt-pdf.blade.php. */}
+          {Number(order.firstOrderDiscount) > 0 && tot(
+            `First order${order.firstOrderPercent ? ` (${order.firstOrderPercent}%)` : ''}:`,
+            `-${peso(order.firstOrderDiscount)}`,
+          )}
+          {Number(order.discountAmount) > 0 && tot(
+            `Voucher${order.voucherCode ? ` (${order.voucherCode})` : ''}:`,
+            `-${peso(order.discountAmount)}`,
+          )}
           {Number(order.designFee) > 0 && tot('Design fee:', peso(order.designFee))}
           {Number(order.rushFee) > 0 && tot('Rush fee:', peso(order.rushFee))}
           {Number(order.shippingFee) > 0 && tot('Delivery:', peso(order.shippingFee))}
+          {order.freeDelivery && !(Number(order.shippingFee) > 0) && tot('Delivery:', 'FREE')}
           {tot('Total:', peso(order.totalAmount ?? order.finalPrice), true)}
         </tbody></table>
       </div>

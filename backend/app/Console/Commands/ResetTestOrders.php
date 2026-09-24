@@ -171,10 +171,23 @@ class ResetTestOrders extends Command
         $n = Notification::whereNotNull('orderId')->delete();
         $this->info("Deleted {$n} order notification(s).");
 
-        $n = ActivityLog::whereIn('action', [
+        // The audit log is append-only; this is the one place allowed through, and it has to say
+        // why. The entry recording the purge is written FIRST, so the trail keeps a line saying
+        // that a hole was made in it and who made it - which is the whole point of the exception.
+        ActivityLog::create([
+            'action'          => 'audit.purged',
+            'entityType'      => 'audit',
+            'description'     => 'Test-data reset removed the order-related audit entries',
+            'performedByName' => 'console',
+            'performedByRole' => 'system',
+            'metadata'        => ['command' => 'orders:reset-test'],
+            'createdAt'       => now(),
+        ]);
+
+        $n = ActivityLog::purging('orders:reset-test', fn () => ActivityLog::whereIn('action', [
             'order_created', 'order_status_updated', 'design_draft_uploaded',
             'job_order_created', 'job_order_deleted',
-        ])->delete();
+        ])->delete());
         $this->info("Deleted {$n} order activity log(s).");
 
         $this->newLine();

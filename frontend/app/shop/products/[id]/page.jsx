@@ -176,8 +176,15 @@ export default function ProductDetailPage() {
     if (!id) return;
     let active = true;
     const shuffle = (list) => [...list].sort(() => Math.random() - 0.5);
+    // The page is reached by SLUG, so comparing the route's id against a product's _id never
+    // matched and every product recommended itself: "You may also like: Custom Mug 11oz" on the
+    // Custom Mug 11oz page. Match on everything this product answers to.
+    const self = new Set([id, product?._id, product?.id, product?.slug]
+      .filter(Boolean).map(x => String(x).toLowerCase()));
+    const isSelf = (p) => [p._id, p.id, p.slug, p.name ? toSlug(p.name) : null]
+      .filter(Boolean).some(x => self.has(String(x).toLowerCase()));
     const apply = (list) => {
-      const pool = list.filter(p => String(p._id || p.id) !== String(id));
+      const pool = list.filter(p => !isSelf(p));
       if (active && pool.length) setRecommendations(shuffle(pool).slice(0, 6));
     };
     let hasCache = false;
@@ -196,7 +203,10 @@ export default function ProductDetailPage() {
       } catch {}
     })();
     return () => { active = false; };
-  }, [id]);
+    // product joins the deps because it arrives after the first pass, and it carries the ids the
+    // route's slug cannot.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, product?._id, product?.slug]);
 
   // Helpers
   function getTiers(p) {
@@ -330,15 +340,15 @@ export default function ProductDetailPage() {
     try {
       const comboId = resolveCombinationId(selectedVariants);
       const basePrice = unitPrice ?? product.flatPrice ?? product.price ?? 0;
-      const effectivePrice = flashSale
-        ? applyFlashDiscount(basePrice, flashSale)
+      const effectivePrice = saleForVariant
+        ? applyFlashDiscount(basePrice, saleForVariant)
         : basePrice;
       await addToCart(
         { ...product, flatPrice: effectivePrice, thumbnail: variantImage ?? product.thumbnail },
         quantity,
         comboId,
         withOptionSuffix(resolveVariantName(selectedVariants), product, selectedOptions),
-        flashSale ? (flashSale.id ?? flashSale._id ?? null) : null,
+        saleForVariant ? (saleForVariant.id ?? saleForVariant._id ?? null) : null,
         null
       );
       setAddedToCart(true);
@@ -409,12 +419,12 @@ export default function ProductDetailPage() {
     if (!product) return;
     try {
       const basePrice = unitPrice ?? product.flatPrice ?? product.price ?? 0;
-      const resolvedPrice = flashSale ? applyFlashDiscount(basePrice, flashSale) : basePrice;
+      const resolvedPrice = saleForVariant ? applyFlashDiscount(basePrice, saleForVariant) : basePrice;
       const comboId = resolveCombinationId(selectedVariants);
       // Prefer the selected variant's own image so the cart/checkout thumbnail matches the chosen
       // variant (e.g. Yellow), not the generic product photo.
       const variantImg = comboId ? (product.variantImageUrls?.[comboId] ?? product.variantImageUrls?.[String(comboId)] ?? null) : null;
-      const fsId = flashSale ? (flashSale.id ?? flashSale._id ?? null) : null;
+      const fsId = saleForVariant ? (saleForVariant.id ?? saleForVariant._id ?? null) : null;
       // Direct checkout (Buy Now): go straight to checkout with only this item - do NOT add it to
       // the cart, otherwise a leftover item is left behind after the purchase or a cancel.
       const payload = {
@@ -609,6 +619,16 @@ export default function ProductDetailPage() {
   const preorderQty = (product?.allowPreorder && readyNow != null && quantity > readyNow)
     ? quantity - Math.max(0, readyNow)
     : 0;
+  // A flash sale may cover the whole product or only some of its variants. Everything below asks
+  // this, not the raw sale, so the badge, the cart line and the id sent to checkout agree - and
+  // the server prices the line the same way from its own copy of the rule.
+  const saleForVariant = (() => {
+    if (!flashSale) return null;
+    const ids = (flashSale.variantIds ?? []).map(String);
+    if (!ids.length) return flashSale;
+    return activeComboId != null && ids.includes(String(activeComboId)) ? flashSale : null;
+  })();
+
   const variantImage = (() => {
     if (!activeComboId || !product?.variantImageUrls) return null;
     return product.variantImageUrls[activeComboId]
@@ -791,9 +811,9 @@ export default function ProductDetailPage() {
                   }}
                   onPointerCancel={() => { swipeRef.current = null; }}
                   style={{ position: 'absolute', inset: 0, cursor: 'zoom-in', zIndex: 1, touchAction: 'pan-y' }} />
-                {flashSale && (
-                  <div style={{ position: 'absolute', top: '0.75rem', left: '0.75rem', zIndex: 3, background: flashSale.discountType === 'percentage' ? '#ef4444' : 'var(--gold)', color: flashSale.discountType === 'percentage' ? '#fff' : '#000', fontWeight: 800, fontSize: '0.8rem', padding: '0.3rem 0.75rem', borderRadius: '999px' }}>
-                    {flashSale.discountType === 'percentage' ? `${flashSale.discountValue}% OFF` : `₱${flashSale.discountValue} OFF`}
+                {saleForVariant && (
+                  <div style={{ position: 'absolute', top: '0.75rem', left: '0.75rem', zIndex: 3, background: saleForVariant.discountType === 'percentage' ? '#ef4444' : 'var(--gold)', color: saleForVariant.discountType === 'percentage' ? '#fff' : '#000', fontWeight: 800, fontSize: '0.8rem', padding: '0.3rem 0.75rem', borderRadius: '999px' }}>
+                    {saleForVariant.discountType === 'percentage' ? `${saleForVariant.discountValue}% OFF` : `₱${saleForVariant.discountValue} OFF`}
                   </div>
                 )}
                 {product.isCustom && (

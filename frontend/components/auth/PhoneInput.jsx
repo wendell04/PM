@@ -46,11 +46,18 @@ export default function PhoneInput({ value = '', onChange, error, defaultCountry
   // Keep local state in sync when the parent resets the form.
   useEffect(() => {
     if (!value) { setNational(''); return; }
-    const parsed = parsePhoneNumberFromString(value);
-    if (parsed) {
-      if (parsed.country) setCountry(parsed.country);
-      setNational(parsed.nationalNumber || '');
-    }
+    // A number saved the way people write it here - 09171234567, no country on it - cannot be
+    // parsed on its own, and the box came up EMPTY with the customer's own number sitting in the
+    // state behind it. It looked like a field they still had to fill in. Read against the selected
+    // country it parses fine; anything already in E.164 still wins on the first attempt.
+    const parsed = parsePhoneNumberFromString(value) || parsePhoneNumberFromString(value, country);
+    if (!parsed) { setNational(''); return; }
+    if (parsed.country) setCountry(parsed.country);
+    setNational(new AsYouType(parsed.country || country).input(parsed.nationalNumber || ''));
+    // Shown, not rewritten. Handing the E.164 form back up from here raced the parent's own reset
+    // - a form that sets its state after its children have mounted swallowed the correction, and
+    // whether the number was normalised came down to render order. The stored shape is what the
+    // server has always taken; the moment the customer types, onChange emits E.164 as before.
   }, [value]);
 
   useEffect(() => {

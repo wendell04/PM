@@ -31,7 +31,9 @@ export const LIMITS = {
 /** One empty answer, shaped the way its question type expects. */
 export function blankAnswer(q) {
   switch (q?.type) {
-    case 'choice_many': return [];
+    case 'choice_many':
+    // Ticked areas, so a list - the same shape Pick any answers in.
+    case 'print_area':  return [];
     case 'size_grid':   return (q.options || []).map(size => ({ size, qty: '' }));
     case 'item_list':   return [blankOrderLine()];
     default:            return '';
@@ -71,7 +73,10 @@ export function validateForm(s, form) {
   if (!String(s.name ?? '').trim())    errs.push('Your name');
   if (!String(s.contact ?? '').trim()) errs.push('A contact number');
   if (!String(s.email ?? '').trim())   errs.push('Your email');
-  if (s.shipment === 'delivery' && !String(s.address ?? '').trim()) errs.push('A delivery address');
+  // Always required. It hung off a pickup-or-deliver choice that no longer exists, so with
+  // shipment sitting at anything but 'delivery' the address was never checked at all and a form
+  // could be sent with nowhere to send the goods.
+  if (!String(s.address ?? '').trim()) errs.push('A complete shipping address');
 
   let total = 0;
   let asksQty = false;
@@ -85,6 +90,10 @@ export function validateForm(s, form) {
     if (!q.required) continue;
     switch (q.type) {
       case 'choice_many':
+      // A print area answers as a list of ticked areas, exactly like Pick any. It reached the
+      // default branch and passed only because String([]) is empty - true by accident, and the
+      // kind of accident that stops being true the moment the shape changes.
+      case 'print_area':
         if (!(Array.isArray(v) && v.length)) errs.push(q.label);
         break;
       case 'size_grid':
@@ -125,7 +134,9 @@ export function summariseForm(form, answers) {
     } else if (q.type === 'size_grid') {
       const bits = (Array.isArray(v) ? v : []).filter(r => Number(r?.qty) > 0).map(r => `${r.size} x ${r.qty}`);
       if (bits.length) out.push({ label: q.label, value: bits.join(', ') });
-    } else if (q.type === 'choice_many') {
+    } else if (q.type === 'choice_many' || q.type === 'print_area') {
+      // Written out properly instead of falling to String(array), which printed the areas jammed
+      // together on one comma with no space.
       if (Array.isArray(v) && v.length) out.push({ label: q.label, value: v.join(', ') });
     } else if (v !== null && v !== undefined && String(v).trim() !== '') {
       out.push({ label: q.label, value: String(v) });
@@ -133,11 +144,6 @@ export function summariseForm(form, answers) {
   }
   return out;
 }
-
-export const SHIPMENT_OPTIONS = [
-  { value: 'delivery', label: 'Deliver to my address' },
-  { value: 'pickup',   label: 'I will pick it up' },
-];
 
 export const PAYMENT_OPTIONS = [
   { value: 'gcash', label: 'GCash' },
@@ -151,47 +157,11 @@ export const MAX_ORDER_LINES = 10;
 /** One empty line of the "what do you want made" table. */
 export const blankOrderLine = () => ({ item: '', details: '', qty: '' });
 
-/** Everything the customer fills in, blank, with what the account already knows filled. */
-export function blankAnswers(user = {}) {
-  return {
-    name:     [user?.firstName, user?.lastName].filter(Boolean).join(' ').trim(),
-    contact:  user?.phoneNumber || user?.phone || '',
-    email:    user?.email || '',
-    address:  '',
-    lines:    [blankOrderLine()],
-    shipment: 'delivery',
-    payment:  'gcash',
-    instructions: '',
-    confirmDetails: false,
-    agreeTerms: false,
-  };
-}
-
-/** What is still missing, in the order the form shows it. Empty means it can be sent. */
-export function validateAnswers(a) {
-  const errs = [];
-  if (!String(a.name ?? '').trim())    errs.push('Your name');
-  if (!String(a.contact ?? '').trim()) errs.push('A contact number');
-  if (!String(a.email ?? '').trim())   errs.push('Your email');
-  const lines = (a.lines ?? []).filter(l => String(l.item ?? '').trim());
-  if (lines.length === 0) errs.push('At least one item');
-  if (lines.some(l => !(Number(l.qty) > 0))) errs.push('A quantity on every item');
-  if (a.shipment === 'delivery' && !String(a.address ?? '').trim()) errs.push('A delivery address');
-  if (!a.confirmDetails) errs.push('The "details are correct" tick');
-  if (!a.agreeTerms)     errs.push('The "I agree to the terms" tick');
-  return errs;
-}
-
-/** The answers as a few lines of text - for the quotation note, and for a plain card. */
-export function summariseAnswers(a) {
-  if (!a) return '';
-  const lines = (a.lines ?? []).filter(l => String(l.item ?? '').trim())
-    .map(l => `${l.qty || '?'} x ${l.item}${l.details ? ` (${l.details})` : ''}`);
-  const out = [];
-  if (lines.length) out.push(lines.join('\n'));
-  out.push(`${a.shipment === 'pickup' ? 'Pickup' : 'Delivery'}${a.shipment !== 'pickup' && a.address ? ` - ${a.address}` : ''}`);
-  const pay = PAYMENT_OPTIONS.find(p => p.value === a.payment)?.label;
-  if (pay) out.push(`Pays by ${pay}`);
-  if (String(a.instructions ?? '').trim()) out.push(`Notes: ${a.instructions.trim()}`);
-  return out.join('\n');
-}
+/*
+ * Three functions stood here - blankAnswers, validateAnswers and summariseAnswers - the form as it
+ * was before the owner could write their own questions. Nothing has imported them since; they were
+ * kept in case something still did. What they actually were was a trap: validateAnswers carried the
+ * old rule word for word, address only checked when a pickup-or-deliver choice said "delivery", so
+ * the next person to reach for the obvious-sounding name would have put the hole straight back.
+ * blankFormState, validateForm and summariseForm above are the live ones.
+ */

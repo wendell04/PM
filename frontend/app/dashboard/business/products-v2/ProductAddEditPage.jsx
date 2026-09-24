@@ -1067,7 +1067,7 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
                       <div style={{ display: 'flex', gap: '20px', padding: '8px 12px', background: 'var(--dark2)', borderRadius: '7px', fontSize: '12px', color: 'var(--gray)' }}>
                         <span>Floor cost: <b style={{ color: 'var(--gray-light)' }}>{floorCostMap[form.bomId] > 0 ? formatCurrency(floorCostMap[form.bomId]) : '--'}</b></span>
                         {form.pricingMode !== 'inquiry' && (
-                          <span>Can produce: <b style={{ color: (maxProducibleMap[form.bomId] || 0) > 0 ? '#2e7d32' : '#dc2626' }}>
+                          <span>Can produce: <b style={{ color: (maxProducibleMap[form.bomId] || 0) > 0 ? 'var(--st-green-fg)' : '#dc2626' }}>
                             {(maxProducibleMap[form.bomId] || 0) > 0 ? `${maxProducibleMap[form.bomId]} units` : 'Out of stock'}
                           </b></span>
                         )}
@@ -1204,7 +1204,7 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
                               borderTop: '1px solid var(--border)', fontSize: '11px', color: 'var(--gray)' }}>
                               <span>Floor cost: <b style={{ color: 'var(--gray-light)' }}>{cost > 0 ? formatCurrency(cost) : '--'}</b></span>
                               {units !== null && (
-                                <span>Can produce: <b style={{ color: units > 0 ? '#2e7d32' : '#dc2626' }}>
+                                <span>Can produce: <b style={{ color: units > 0 ? 'var(--st-green-fg)' : '#dc2626' }}>
                                   {units > 0 ? `${units} units` : 'Out of stock'}
                                 </b></span>
                               )}
@@ -1399,7 +1399,7 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
                               </td>
                               <td style={{ ...S.td, textAlign: 'right', fontWeight: 700 }}>
                                 {margin !== null
-                                  ? <span style={{ color: margin >= 0 ? '#2e7d32' : '#dc2626' }}>{margin >= 0 ? '+' : ''}{formatCurrency(margin)}</span>
+                                  ? <span style={{ color: margin >= 0 ? 'var(--st-green-fg)' : '#dc2626' }}>{margin >= 0 ? '+' : ''}{formatCurrency(margin)}</span>
                                   : '--'}
                               </td>
                             </tr>
@@ -1699,7 +1699,7 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
                     <span style={{ fontSize: '11px', color: 'var(--gray)' }}>units minimum per order</span>
                   </div>
                   {form.isCustomizable && Number(form.minOrderQty) <= 1 && (
-                    <div style={{ marginTop: '6px', fontSize: '11px', color: '#b45309', background: '#fef9c3', border: '1px solid #fcd34d', borderRadius: '4px', padding: '5px 8px' }}>
+                    <div style={{ marginTop: '6px', fontSize: '11px', color:'var(--st-orange-fg)', background: '#fef9c3', border: '1px solid #fcd34d', borderRadius: '4px', padding: '5px 8px' }}>
                       Warning: customizable products typically require a minimum order. Set an MOQ to protect against unprofitable single-unit orders.
                     </div>
                   )}

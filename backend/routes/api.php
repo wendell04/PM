@@ -166,6 +166,10 @@ Route::middleware('auth:sanctum')->group(function () {
     // ─── My Permissions (any authenticated staff) ────────────────────────────
     Route::get('/my/permissions',         [RolePermissionController::class, 'myPermissions']);
 
+    // ─── Standing offers (free delivery over X, first-order discount) ────────
+    // Signed in, because the answer includes whether THIS customer has ordered before.
+    Route::get('/shop/offers',            [SettingsController::class, 'shopOffers']);
+
     // ─── Chat ────────────────────────────────────────────────────────────────
     Route::get('/chat/conversations',             [ChatController::class, 'index']);
     Route::get('/chat/conversations/{id}',        [ChatController::class, 'show']);
@@ -187,6 +191,9 @@ Route::middleware(['auth:sanctum', 'isAdmin:owner,admin'])->group(function () {
     Route::put('/admin/settings/shipping',          [SettingsController::class, 'shippingUpdate']);
     Route::post('/admin/settings/mail-test',        [SettingsController::class, 'mailTest'])->middleware('throttle:6,1');
     Route::put('/admin/settings/terms',             [SettingsController::class, 'termsUpdate']);
+    // Promotions > First order. The welcome discount lives with the other offers, not with the
+    // shipping rates; the free-delivery threshold is written by the shipping endpoint above.
+    Route::put('/admin/settings/offers',            [SettingsController::class, 'offersUpdate']);
 
     // Settings > Order forms. The questions the shop asks before it quotes; the chat picks one to
     // send. Owner and admin only, like the rest of Settings.
@@ -315,6 +322,9 @@ Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
 
     // ─── Activity Logs ────────────────────────────────────────────────────────
     Route::get('/admin/activity-logs',           [ActivityLogController::class, 'index']);
+    Route::get('/admin/activity-logs/summary',   [ActivityLogController::class, 'summary']);
+    Route::get('/admin/activity-logs/kinds',     [ActivityLogController::class, 'kinds']);
+    Route::get('/admin/activity-logs/export',    [ActivityLogController::class, 'export'])->middleware('throttle:10,1');
     // ─── Design Approval ──────────────────────────────────────────────────────
     Route::post('/admin/orders/{id}/approve-design', [OrderController::class, 'approveDesign']);
     Route::post('/admin/orders/{id}/unarchive',       [OrderController::class, 'unarchive']);
@@ -375,6 +385,8 @@ Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
     Route::patch('/admin/order-requests/{id}/status', [OrderRequestController::class, 'updateStatus']);
     // Create a quotation straight from the chat → confirmed OrderRequest + posts the View & Pay card.
     Route::post('/admin/quotations',                  [OrderRequestController::class, 'adminQuote']);
+    // The filled-in forms waiting on a price, for the attach row on a new quotation.
+    Route::get('/admin/customers/{customerId}/order-forms', [OrderRequestController::class, 'customerOrderForms']);
     // A quote refused at payment because stock ran short: let it be paid as a pre-order, or confirm
     // the stock is back. Both tell the customer in the chat.
     Route::post('/admin/quotations/{id}/allow-preorder', [OrderRequestController::class, 'allowPreorder']);

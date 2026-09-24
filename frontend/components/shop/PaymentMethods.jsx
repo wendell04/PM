@@ -37,10 +37,25 @@ export const ONLINE_METHODS = [
     sub: 'Pay securely with Visa or Mastercard.',
     accent: '#9C7BE8',
     accentBg: 'rgba(156,123,232,0.07)',
-    logo: '/logos/credit-card.svg',
-    filterImg: true,
+    // Drawn rather than fetched. The file is a black SVG, so it had to be re-coloured by a CSS
+    // filter chosen from a `theme` prop - and every caller that forgot to pass one got the
+    // dark-mode filter, painting the icon white on a white card. An inline icon in currentColor
+    // takes its colour from the tile it is sitting on and cannot be got wrong by a caller.
+    icon: true,
   },
 ];
+
+/** The card mark, in currentColor so it reads on whichever surface it lands on. */
+function CardIcon() {
+  return (
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="2" y="5" width="20" height="14" rx="2.5" />
+      <line x1="2" y1="10" x2="22" y2="10" />
+      <line x1="6" y1="15" x2="10" y2="15" />
+    </svg>
+  );
+}
 
 const input = {
   width: '100%', padding: '0.65rem 0.8rem', borderRadius: 9,
@@ -52,7 +67,6 @@ export default function PaymentMethods({
   value,
   onChange,
   enabled = {},
-  theme = 'dark',
   eWalletPhone = '',
   onEWalletPhone,
   card = {},
@@ -93,14 +107,15 @@ export default function PaymentMethods({
                 border: `1px solid ${on ? opt.accent : 'var(--border)'}`,
                 display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
               }}>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={opt.logo} alt={opt.label}
-                  style={{
-                    width: 30, height: 30, objectFit: 'contain',
-                    ...(opt.filterImg
-                      ? { filter: theme === 'light' ? 'brightness(0) opacity(0.55)' : 'brightness(0) invert(1)', opacity: on ? 1 : 0.45 }
-                      : { borderRadius: 6 }),
-                  }} />
+                {opt.icon ? (
+                  <span style={{ color: on ? opt.accent : 'var(--gray)', display: 'flex' }}>
+                    <CardIcon />
+                  </span>
+                ) : (
+                  /* eslint-disable-next-line @next/next/no-img-element */
+                  <img src={opt.logo} alt={opt.label}
+                    style={{ width: 30, height: 30, objectFit: 'contain', borderRadius: 6 }} />
+                )}
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: '0.875rem', fontWeight: 700, color: 'var(--white)' }}>{opt.label}</div>

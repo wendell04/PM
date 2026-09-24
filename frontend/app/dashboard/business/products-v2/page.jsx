@@ -350,7 +350,7 @@ export default function ProductsV2() {
     }
     if (units === null) return <span style={{ color: 'var(--gray)', fontSize: '12px' }}>--</span>;
     return (
-      <span style={{ fontSize: '12px', fontWeight: 700, color: units > 0 ? '#2e7d32' : '#dc2626' }}>
+      <span style={{ fontSize: '12px', fontWeight: 700, color: units > 0 ? 'var(--st-green-fg)' : '#dc2626' }}>
         {units > 0 ? `${units} units` : 'Out of stock'}
       </span>
     );
@@ -415,7 +415,7 @@ export default function ProductsV2() {
           {mayWork && (<button onClick={openAdd} style={{ ...S.btnPrimary, minHeight:44, justifyContent:'center', width:'100%', marginBottom:12 }}>{ICONS.plus} Add Product</button>)}
           <KpiStrip items={[
             { key:'all',       label:'All',       value: counts.all },
-            { key:'published', label:'Published', value: counts.published, color:'#2e7d32' },
+            { key:'published', label:'Published', value: counts.published, color:'var(--st-green-fg)' },
             { key:'draft',     label:'Draft',     value: counts.draft, color:'var(--gray)' },
           ].map(k => ({ ...k, active: tab === k.key, onClick: () => setTab(k.key) }))} />
           <PhoneFilterBar search={search} onSearch={setSearch} placeholder="Search products"
@@ -429,7 +429,7 @@ export default function ProductsV2() {
               {slice.map((p, i) => (
                 <PhoneRow key={p.id} first={i === 0} mono={false} onClick={() => setExpandedStock(p.id)}
                   title={p.name}
-                  chip={<span style={{ fontSize:11, fontWeight:700, borderRadius:20, padding:'3px 10px', background: p.isPublished ? '#e9f5ea' : 'var(--dark2)', color: p.isPublished ? '#2e7d32' : 'var(--gray)' }}>{p.isPublished ? 'Published' : 'Draft'}</span>}
+                  chip={<span style={{ fontSize:11, fontWeight:700, borderRadius:20, padding:'3px 10px', background: p.isPublished ? '#e9f5ea' : 'var(--dark2)', color: p.isPublished ? 'var(--st-green-fg)' : 'var(--gray)' }}>{p.isPublished ? 'Published' : 'Draft'}</span>}
                   meta={[(p.type === 'multi-variant' || p.combinations?.length) ? `${(p.combinations || p.variants)?.length || 0} variants` : 'Standalone', priceDisplay(p),
                     (() => { const l = shipLimit(p); return l ? `only ${l.ship} can ship - ${l.who} short` : null; })()].filter(Boolean).join(' \u00b7 ')}
                   sub={[p.isCustomizable ? 'custom' : null, p.isMadeToOrder ? 'made to order' : null, p.allowCOD ? 'COD' : 'no COD', p.downpaymentPct > 0 ? `${p.downpaymentPct}% DP` : null].filter(Boolean).join(' \u00b7 ')} />
@@ -444,7 +444,7 @@ export default function ProductsV2() {
             return (
               <PhoneSheet open={!!p} onClose={() => setExpandedStock(null)} mono={false} title={p?.name ?? ''}
                 subtitle={p ? priceDisplay(p) : ''}
-                chip={p ? <span style={{ fontSize:11, fontWeight:700, borderRadius:20, padding:'3px 10px', background: p.isPublished ? '#e9f5ea' : 'var(--dark2)', color: p.isPublished ? '#2e7d32' : 'var(--gray)' }}>{p.isPublished ? 'Published' : 'Draft'}</span> : null}
+                chip={p ? <span style={{ fontSize:11, fontWeight:700, borderRadius:20, padding:'3px 10px', background: p.isPublished ? '#e9f5ea' : 'var(--dark2)', color: p.isPublished ? 'var(--st-green-fg)' : 'var(--gray)' }}>{p.isPublished ? 'Published' : 'Draft'}</span> : null}
                 footer={p && mayWork && (
                   <div style={{ display:'flex', gap:8 }}>
                     <button onClick={() => togglePublish(p.id)} style={{ ...S.btnGhost, flex:1, minHeight:44, justifyContent:'center' }}>{p.isPublished ? 'Unpublish' : 'Publish'}</button>
@@ -468,7 +468,7 @@ export default function ProductsV2() {
 
       <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginBottom: '20px' }}>
         <SummaryCard label="Total"     value={counts.all}       accent />
-        <SummaryCard label="Published" value={counts.published} color="#2e7d32" />
+        <SummaryCard label="Published" value={counts.published} color="var(--st-green-fg)" />
         <SummaryCard label="Draft"     value={counts.draft}     color="var(--gray)" />
       </div>
 
@@ -541,7 +541,7 @@ export default function ProductsV2() {
                           return (
                             <div title={`${lim.who} runs out first: enough for ${lim.ship} of the ${lim.build} this product can build. Expand the row to see every material.`}
                               style={{ marginTop: 3, fontSize: '10px', fontWeight: 700, letterSpacing: '.2px',
-                                color: '#b45309', background: 'rgba(224,168,82,0.14)', border: '1px solid rgba(224,168,82,0.35)',
+                                color:'var(--st-orange-fg)', background: 'rgba(224,168,82,0.14)', border: '1px solid rgba(224,168,82,0.35)',
                                 borderRadius: 4, padding: '1px 6px', display: 'inline-block' }}>
                               only {lim.ship} can ship - {lim.who} short
                             </div>
@@ -568,17 +568,17 @@ export default function ProductsV2() {
                       {p.isMadeToOrder  && <span style={{ fontSize: '10px', background: 'var(--dark2)', color: 'var(--gray-light)', borderRadius: '4px', padding: '2px 6px', fontWeight: 600 }}>MTO</span>}
                       {p.allowCOD       && <span style={{ fontSize: '10px', background: '#f0fdf4', color: '#15803d', borderRadius: '4px', padding: '2px 6px', fontWeight: 600 }}>COD</span>}
                       {!p.allowCOD      && <span style={{ fontSize: '10px', background: '#fef2f2', color: '#dc2626', borderRadius: '4px', padding: '2px 6px', fontWeight: 600 }}>Online</span>}
-                      {p.downpaymentPct > 0 && <span style={{ fontSize: '10px', background: '#fff8e1', color: '#b45309', borderRadius: '4px', padding: '2px 6px', fontWeight: 600 }}>{p.downpaymentPct}% DP</span>}
+                      {p.downpaymentPct > 0 && <span style={{ fontSize: '10px', background: '#fff8e1', color:'var(--st-orange-fg)', borderRadius: '4px', padding: '2px 6px', fontWeight: 600 }}>{p.downpaymentPct}% DP</span>}
                     </div>
                   </td>
 
                   <td style={S.td}>
                     <button onClick={mayWork ? () => togglePublish(p.id) : undefined}
                       title={mayWork ? (p.isPublished ? 'Click to unpublish' : 'Click to publish') : undefined}
-                      style={{ background: p.isPublished ? '#e9f5ea' : 'var(--dark2)', color: p.isPublished ? '#2e7d32' : 'var(--gray)',
+                      style={{ background: p.isPublished ? '#e9f5ea' : 'var(--dark2)', color: p.isPublished ? 'var(--st-green-fg)' : 'var(--gray)',
                         border: 'none', borderRadius: '20px', padding: '3px 12px', fontSize: '12px', fontWeight: 600,
                         cursor: mayWork ? 'pointer' : 'default', display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
-                      <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: p.isPublished ? '#2e7d32' : 'var(--gray)', flexShrink: 0 }} />
+                      <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: p.isPublished ? 'var(--st-green-fg)' : 'var(--gray)', flexShrink: 0 }} />
                       {p.isPublished ? 'Published' : 'Draft'}
                     </button>
                   </td>
@@ -702,7 +702,7 @@ function StockBreakdown({ product, boms, materials }) {
           .map(i => matMap[i.matId]).filter(counts).map(m => m.name);
         const hasCostOnly = (bom.items || []).some(i => matMap[i.matId] && matMap[i.matId].isOnDemand);
 
-        const prodColor = prod === 0 ? '#c62828' : prod <= 10 ? '#b45309' : '#1a7f3c';
+        const prodColor = prod === 0 ? 'var(--st-red-fg)' : prod <= 10 ? 'var(--st-orange-fg)' : '#1a7f3c';
 
         return (
           <div key={vi}>
@@ -714,7 +714,7 @@ function StockBreakdown({ product, boms, materials }) {
               <span style={{ fontSize:'12px', fontWeight:700, color:prodColor }}>
                 {prod} can sell
                 {shipComplete < prod && (
-                  <span style={{ color:'#b45309', fontWeight:700 }}>
+                  <span style={{ color:'var(--st-orange-fg)', fontWeight:700 }}>
                     {' · '}{shipComplete} ready to ship
                   </span>
                 )}
@@ -735,18 +735,18 @@ function StockBreakdown({ product, boms, materials }) {
                   const counted = counts(mat);
                   const can    = item.qty > 0 ? Math.floor(freeStock(mat) / item.qty) : Infinity;
                   const isLimit = counted && item.matId === bottleneckId;
-                  const c      = !counted ? 'var(--gray)' : can === 0 ? '#c62828' : can <= 10 ? '#b45309' : '#1a7f3c';
+                  const c      = !counted ? 'var(--gray)' : can === 0 ? 'var(--st-red-fg)' : can <= 10 ? 'var(--st-orange-fg)' : '#1a7f3c';
                   return (
                     <tr key={ii} style={{ opacity: counted ? 1 : 0.62 }}>
                       <td style={{ padding:'4px 8px', fontSize:'12px', color:'var(--gray-light)', fontWeight: isLimit ? 600 : 400 }}>
                         <span style={{ color: counted ? '#1a7f3c' : 'var(--gray)', marginRight:'5px', fontSize:'10px' }}>{counted ? '●' : '○'}</span>
-                        {isLimit && <span style={{ fontSize:'9px', fontWeight:700, background:'#fde8e8', color:'#c62828', border:'1px solid #fca5a5', borderRadius:'3px', padding:'1px 4px', marginRight:'5px', textTransform:'uppercase' }}>limit</span>}
+                        {isLimit && <span style={{ fontSize:'9px', fontWeight:700, background:'#fde8e8', color:'var(--st-red-fg)', border:'1px solid #fca5a5', borderRadius:'3px', padding:'1px 4px', marginRight:'5px', textTransform:'uppercase' }}>limit</span>}
                         {mat.name}
                       </td>
                       <td style={{ padding:'4px 8px', fontSize:'12px', color:'var(--gray-light)' }}>
                         {freeStock(mat)} {mat.unit}
                         {Number(mat.reservedQty ?? 0) > 0 && (
-                          <span style={{ color:'#b45309', fontSize:'11px' }}> ({mat.reservedQty} held)</span>
+                          <span style={{ color:'var(--st-orange-fg)', fontSize:'11px' }}> ({mat.reservedQty} held)</span>
                         )}
                       </td>
                       <td style={{ padding:'4px 8px', fontSize:'12px', color:'var(--gray)' }}>{item.qty} {mat.unit}</td>
@@ -758,7 +758,7 @@ function StockBreakdown({ product, boms, materials }) {
                           const covers = Math.min(can, prod);
                           const short  = Math.max(0, prod - covers);
                           const pct    = prod > 0 ? Math.min(100, Math.round((covers / prod) * 100)) : 100;
-                          const tone   = short <= 0 ? '#2e7d32' : pct < 25 ? '#c62828' : '#b45309';
+                          const tone   = short <= 0 ? 'var(--st-green-fg)' : pct < 25 ? 'var(--st-red-fg)' : 'var(--st-orange-fg)';
                           const title  = `${freeStock(mat)} ${mat.unit} on hand, ${item.qty} per unit - enough for ${covers} of ${prod}.`;
                           return (
                             <div title={title}>
@@ -786,10 +786,10 @@ function StockBreakdown({ product, boms, materials }) {
                 ? `What caps a sale: ${countedNames.join(', ')}. Packaging and consumables are costed and appear in To Buy, but do not cap what you can sell.`
                 : undefined}>
               {countedNames.length === 0 &&
-                <b style={{ color:'#b45309' }}>Nothing is counted - every material here is cost only, so this cannot say when it runs out.</b>}
+                <b style={{ color:'var(--st-orange-fg)' }}>Nothing is counted - every material here is cost only, so this cannot say when it runs out.</b>}
               {shortMat && shipComplete < prod && (
                 <div style={{ marginTop:5, display:'flex', alignItems:'center', gap:10, flexWrap:'wrap' }}>
-                  <b style={{ color:'#b45309' }}>
+                  <b style={{ color:'var(--st-orange-fg)' }}>
                     {shortMat.name} runs out first: enough for {shipComplete} of the {prod} you can
                     build - short by {prod - shipComplete}.
                   </b>

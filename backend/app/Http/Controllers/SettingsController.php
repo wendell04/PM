@@ -71,6 +71,12 @@ class SettingsController extends Controller
                 'contactClosedMessage' => $owner->contactClosedMessage  ?: null,
                 'rushLeadDays'         => (int)   ($owner->rushLeadDays         ?? 1),
                 'rushFee'              => (float) ($owner->rushFee              ?? 150),
+                // Two standing offers, off until the owner fills the box in. They are public
+                // because the storefront advertises them; whether a given customer is on their
+                // FIRST order is not public, and is answered by GET /api/shop/offers.
+                'freeDeliveryFrom'     => \App\Support\ShopOffers::freeDeliveryFrom(),
+                'firstOrderPercent'    => \App\Support\ShopOffers::firstOrderPercent(),
+                'firstOrderCap'        => \App\Support\ShopOffers::firstOrderCap(),
                 // Custom-order T&C the storefront gates ordering on (owner-editable; version is
                 // recorded on the order when the customer accepts).
                 'customOrderTerms'     => $owner->customOrderTerms ?? null,
@@ -279,6 +285,12 @@ class SettingsController extends Controller
                 'contactClosedMessage' => $owner->contactClosedMessage  ?: null,
                 'rushLeadDays'         => (int)   ($owner->rushLeadDays         ?? 1),
                 'rushFee'              => (float) ($owner->rushFee              ?? 150),
+                // Two standing offers, off until the owner fills the box in. They are public
+                // because the storefront advertises them; whether a given customer is on their
+                // FIRST order is not public, and is answered by GET /api/shop/offers.
+                'freeDeliveryFrom'     => \App\Support\ShopOffers::freeDeliveryFrom(),
+                'firstOrderPercent'    => \App\Support\ShopOffers::firstOrderPercent(),
+                'firstOrderCap'        => \App\Support\ShopOffers::firstOrderCap(),
                 // Custom-order T&C the storefront gates ordering on (owner-editable; version is
                 // recorded on the order when the customer accepts).
                 'customOrderTerms'     => $owner->customOrderTerms ?? null,
@@ -340,6 +352,9 @@ class SettingsController extends Controller
                 'contactClosedMessage' => 'nullable|string|max:300',
                 'rushLeadDays'         => 'nullable|integer|min:0|max:120',
                 'rushFee'              => 'nullable|numeric|min:0|max:99999',
+                // Blank switches it off. Stored as null rather than 0 so "free from P0" - which
+                // would make every order free - cannot be typed by accident.
+                'freeDeliveryFrom'     => 'nullable|numeric|min:1|max:999999',
             ]);
 
             if ($request->has('storeAddress'))         $owner->storeAddress         = $request->storeAddress ?? '';
@@ -375,7 +390,21 @@ class SettingsController extends Controller
             if ($request->has('contactClosedMessage')) $owner->contactClosedMessage = trim((string) $request->contactClosedMessage) ?: null;
             if ($request->has('rushLeadDays'))         $owner->rushLeadDays         = (int) $request->rushLeadDays;
             if ($request->has('rushFee'))              $owner->rushFee              = (float) $request->rushFee;
+            if ($request->has('freeDeliveryFrom')) {
+                $raw = $request->input('freeDeliveryFrom');
+                $owner->freeDeliveryFrom = ($raw === null || $raw === '' || (float) $raw <= 0) ? null : (float) $raw;
+            }
             $owner->save();
+
+            // Rates, turnaround promises and the free-delivery figure all change what customers
+            // are charged. Who moved them, and when, is a question that gets asked later.
+            $this->logActivity($request, 'settings.changed', 'settings', null,
+                'Changed the shipping and delivery settings',
+                ['fields' => array_values(array_intersect(array_keys($request->all()), [
+                    'shippingMode', 'shippingBaseRate', 'shippingPerKmRate', 'flatRateInsideMetro',
+                    'flatRateOutsideMetro', 'freeDeliveryFrom', 'rushFee', 'rushEnabled',
+                    'productionLeadDays', 'designRequestFee',
+                ]))]);
 
             return $this->successResponse('Shipping settings saved.', [
                 'storeAddress'         => $owner->storeAddress          ?? '',
@@ -421,11 +450,91 @@ class SettingsController extends Controller
                 'contactClosedMessage' => $owner->contactClosedMessage  ?: null,
                 'rushLeadDays'         => (int)   ($owner->rushLeadDays         ?? 1),
                 'rushFee'              => (float) ($owner->rushFee              ?? 150),
+                // Two standing offers, off until the owner fills the box in. They are public
+                // because the storefront advertises them; whether a given customer is on their
+                // FIRST order is not public, and is answered by GET /api/shop/offers.
+                'freeDeliveryFrom'     => \App\Support\ShopOffers::freeDeliveryFrom(),
+                'firstOrderPercent'    => \App\Support\ShopOffers::firstOrderPercent(),
+                'firstOrderCap'        => \App\Support\ShopOffers::firstOrderCap(),
             ]);
         } catch (\Illuminate\Validation\ValidationException $e) {
             return $this->validationErrorResponse($e);
         } catch (\Exception $e) {
             return $this->serverErrorResponse($e, 'Failed to save shipping settings.');
+        }
+    }
+
+    /**
+     * PUT /api/admin/settings/offers  {firstOrderPercent, firstOrderCap}
+     *
+     * The welcome discount, edited from Promotions where the owner already manages vouchers and
+     * flash sales - a customer-acquisition offer belongs beside the other offers, not buried in
+     * the shipping rates. The free-delivery threshold stays on Settings > Shipping, because it is
+     * a shipping rate rule and only makes sense next to the mode that decides whether delivery is
+     * charged at all.
+     *
+     * Blank means off. It is stored as null rather than zero so "0% off, capped at P0" - which
+     * silently gives nothing while the screen says an offer is running - is not a state that exists.
+     */
+    public function offersUpdate(Request $request)
+    {
+        try {
+            if (!$this->ownsShop($request)) return $this->unauthorizedResponse();
+
+            $owner = $this->getOwner();
+            if (!$owner) return $this->serverErrorResponse(new \Exception('No owner'), 'Store owner not found.');
+
+            $request->validate([
+                'firstOrderPercent' => 'nullable|integer|min:1|max:100',
+                'firstOrderCap'     => 'nullable|numeric|min:1|max:999999',
+            ]);
+
+            if ($request->has('firstOrderPercent')) {
+                $raw = $request->input('firstOrderPercent');
+                $owner->firstOrderPercent = ($raw === null || $raw === '' || (int) $raw <= 0) ? null : (int) $raw;
+            }
+            if ($request->has('firstOrderCap')) {
+                $raw = $request->input('firstOrderCap');
+                $owner->firstOrderCap = ($raw === null || $raw === '' || (float) $raw <= 0) ? null : (float) $raw;
+            }
+            $owner->save();
+
+            $this->logActivity($request, 'settings.changed', 'settings', null,
+                'Changed the first-order discount',
+                ['percent' => $owner->firstOrderPercent, 'cap' => $owner->firstOrderCap]);
+
+            return $this->successResponse('Offers saved.', [
+                'firstOrderPercent' => \App\Support\ShopOffers::firstOrderPercent(),
+                'firstOrderCap'     => \App\Support\ShopOffers::firstOrderCap(),
+                'freeDeliveryFrom'  => \App\Support\ShopOffers::freeDeliveryFrom(),
+            ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return $this->validationErrorResponse($e);
+        } catch (\Exception $e) {
+            return $this->serverErrorResponse($e, 'Failed to save offers.');
+        }
+    }
+
+    /**
+     * GET /api/shop/offers  (signed in)
+     *
+     * What the cart and checkout screens need to show the two standing offers honestly: the rule
+     * itself, plus the one part of it that is about THIS customer - whether they have ordered here
+     * before. The storefront cannot work that out on its own, and guessing it would mean promising
+     * a discount at checkout that the server then refuses.
+     */
+    public function shopOffers(Request $request)
+    {
+        try {
+            $user = $request->user();
+            return $this->successResponse('Offers retrieved.', [
+                'freeDeliveryFrom'  => \App\Support\ShopOffers::freeDeliveryFrom(),
+                'firstOrderPercent' => \App\Support\ShopOffers::firstOrderPercent(),
+                'firstOrderCap'     => \App\Support\ShopOffers::firstOrderCap(),
+                'isFirstOrder'      => \App\Support\ShopOffers::isFirstOrder($user),
+            ]);
+        } catch (\Exception $e) {
+            return $this->serverErrorResponse($e, 'Failed to retrieve offers.');
         }
     }
 

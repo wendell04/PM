@@ -92,11 +92,53 @@ abstract class Controller
                 'description'      => $description,
                 'performedBy'      => $actor ? (string) ($actor->_id ?? $actor->id) : null,
                 'performedByEmail' => $actor->email ?? null,
+                // Snapshotted, not looked up later: a staff member's name and role can both
+                // change, and resolving them at read time would rewrite the history.
+                'performedByName'  => $actor ? trim(($actor->firstName ?? '') . ' ' . ($actor->lastName ?? '')) : null,
+                'performedByRole'  => $actor->role ?? null,
+                'ip'               => $request->ip(),
+                'device'           => substr((string) $request->userAgent(), 0, 255),
                 'metadata'         => $metadata,
                 'createdAt'        => now(),
             ]);
         } catch (\Throwable $e) {
             \Illuminate\Support\Facades\Log::warning('Activity log write failed', [
+                'action' => $action, 'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * The same record, for the moments when nobody is signed in yet.
+     *
+     * A refused sign-in is precisely the entry a security log exists for, and at that point
+     * $request->user() is null - so the actor has to be handed in. Static, because AuthController
+     * writes these before any session exists.
+     */
+    public static function logAuthEvent(
+        \Illuminate\Http\Request $request,
+        string $action,
+        ?\App\Models\User $user,
+        string $description,
+        array $metadata = []
+    ): void {
+        try {
+            \App\Models\ActivityLog::create([
+                'action'           => $action,
+                'entityType'       => 'auth',
+                'entityId'         => $user ? (string) ($user->_id ?? $user->id) : null,
+                'description'      => $description,
+                'performedBy'      => $user ? (string) ($user->_id ?? $user->id) : null,
+                'performedByEmail' => $user->email ?? ($metadata['email'] ?? null),
+                'performedByName'  => $user ? trim(($user->firstName ?? '') . ' ' . ($user->lastName ?? '')) : null,
+                'performedByRole'  => $user->role ?? null,
+                'ip'               => $request->ip(),
+                'device'           => substr((string) $request->userAgent(), 0, 255),
+                'metadata'         => $metadata,
+                'createdAt'        => now(),
+            ]);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('Auth activity log write failed', [
                 'action' => $action, 'error' => $e->getMessage(),
             ]);
         }

@@ -21,9 +21,15 @@ class SecurityHeaders
     {
         $response = $next($request);
 
-        if ($this->isAuthPath($request)) {
+        // Nothing this API answers may be stored. Only the auth paths said so, and the rest went
+        // out as "no-cache, private", which lets a browser keep the body and reuse it: the chat
+        // inbox came back empty on an ordinary visit and filled only on a hard reload, because the
+        // empty answer from a first call had been kept. The same caching holds customer names,
+        // phone numbers and addresses in the disk cache of whatever machine opened the dashboard.
+        if ($this->isApiPath($request) || $this->isAuthPath($request)) {
             $response->headers->set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
             $response->headers->set('Pragma', 'no-cache');
+            $response->headers->set('Expires', '0');
         }
 
         $response->headers->set('X-Content-Type-Options', 'nosniff');
@@ -48,6 +54,12 @@ class SecurityHeaders
         );
 
         return $response;
+    }
+
+    /** Every answer this API gives is about somebody's live data, and none of it may be stored. */
+    private function isApiPath(Request $request): bool
+    {
+        return str_starts_with(ltrim($request->path(), '/'), 'api/');
     }
 
     private function isAuthPath(Request $request): bool

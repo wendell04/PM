@@ -107,9 +107,11 @@ export default function CustomersPage() {
 
   const filtered = customers.filter(c => {
     const q = search.toLowerCase();
+    // A customer row with no email threw here and took the whole list down with it - a missing
+    // field should cost that row a search hit, not the page.
     const matchSearch = !q ||
-      `${c.firstName} ${c.lastName}`.toLowerCase().includes(q) ||
-      c.email.toLowerCase().includes(q);
+      `${c.firstName ?? ''} ${c.lastName ?? ''}`.toLowerCase().includes(q) ||
+      String(c.email ?? '').toLowerCase().includes(q);
     // The two new options answer questions the owner actually has: who still has not verified, and
     // whose consent was never captured. Both were only findable by eye before.
     const matchFilter =
@@ -418,7 +420,7 @@ export default function CustomersPage() {
                       const days = Math.floor((Date.now() - new Date(c.last_login_at).getTime()) / 86400000);
                       const label = days === 0 ? 'today' : days === 1 ? 'yesterday' : `${days} days ago`;
                       return (
-                        <span style={{ color: days >= 365 ? '#c2410c' : days >= 90 ? '#b45309' : 'var(--gray)' }}>
+                        <span style={{ color: days >= 365 ? '#c2410c' : days >= 90 ? 'var(--st-orange-fg)' : 'var(--gray)' }}>
                           Last seen {label}
                         </span>
                       );

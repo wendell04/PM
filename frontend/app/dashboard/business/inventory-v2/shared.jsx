@@ -370,12 +370,12 @@ export function WarnModal({ open, onClose, onProceed, title, message, proceedLab
       footer={
         <>
           <button onClick={onClose} style={S.btnGhost}>Cancel</button>
-          <button onClick={onProceed} style={{ ...S.btnPrimary, background:'#b45309', color:'#fff' }}>{proceedLabel}</button>
+          <button onClick={onProceed} style={{ ...S.btnPrimary, background:'var(--st-orange-fg)', color:'#fff' }}>{proceedLabel}</button>
         </>
       }
     >
       <div style={{ display:'flex', gap:'12px', alignItems:'flex-start' }}>
-        <span style={{ color:'#b45309', marginTop:'2px', flexShrink:0 }}>{ICONS.warn}</span>
+        <span style={{ color:'var(--st-orange-fg)', marginTop:'2px', flexShrink:0 }}>{ICONS.warn}</span>
         <p style={{ margin:0, fontSize:'14px', color:'var(--gray-light)', lineHeight:1.6 }}>{message}</p>
       </div>
     </Modal>
@@ -401,8 +401,8 @@ export function ToastContainer({ toasts, dismiss }) {
   if (!toasts.length) return null;
   const colors = {
     success: { bg:'#1a7f3c', icon:ICONS.check },
-    error:   { bg:'#c62828', icon:ICONS.x },
-    warn:    { bg:'#b45309', icon:ICONS.warn },
+    error:   { bg:'var(--st-red-fg)', icon:ICONS.x },
+    warn:    { bg:'var(--st-orange-fg)', icon:ICONS.warn },
     info:    { bg:'#1e40af', icon:ICONS.info },
   };
   return (

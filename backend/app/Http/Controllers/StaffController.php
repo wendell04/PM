@@ -404,6 +404,7 @@ class StaffController extends Controller
             $user->unlock_requested_at   = null;
             $user->save();
 
+            $this->logActivity($request, 'user.unlocked', 'user', (string) $id, 'Unlocked a locked-out account');
             return $this->successResponse('Account unlocked successfully.');
         } catch (\Exception $e) {
             return $this->serverErrorResponse($e, 'Failed to unlock account.');
@@ -460,6 +461,7 @@ class StaffController extends Controller
             $user->unlock_requested_at   = null;
             $user->save();
 
+            $this->logActivity($request, 'user.unlocked', 'user', (string) $id, 'Unlocked a locked-out account');
             return $this->successResponse('Account unlocked successfully.');
         } catch (\Exception $e) {
             return $this->serverErrorResponse($e, 'Failed to unlock account.');

@@ -155,7 +155,20 @@ export async function uploadDesignFile(token, file) {
 
 // Admin creates a quotation straight from the chat → confirmed OrderRequest + posts the View & Pay card.
 // `items` is a list so one quote can cover several products and be paid in a single transaction.
-export async function createAdminQuotation(token, { recipientId, items, designFee, deliveryFee, downPayment, expiresInDays, note, designUrl, designNotes }) {
+/**
+ * The forms this customer filled in that nobody has quoted yet, for the attach row on a new
+ * quotation. Ids and summaries - the content is copied by the server from the ask itself.
+ */
+export async function fetchCustomerOrderForms(token, customerId) {
+  const res = await fetchWithTimeout(`${API_URL}/api/admin/customers/${customerId}/order-forms`, {
+    headers: { Authorization: `Bearer ${token}`, Accept: 'application/json', ...ngrokHeader },
+  }, 15000);
+  if (!res.ok) return [];
+  const data = await res.json().catch(() => ({}));
+  return Array.isArray(data?.data) ? data.data : [];
+}
+
+export async function createAdminQuotation(token, { recipientId, items, designFee, deliveryFee, downPayment, expiresInDays, note, designUrl, designNotes, orderFormAskIds }) {
   const res = await fetchWithTimeout(`${API_URL}/api/admin/quotations`, {
     method: 'POST',
     headers: {
@@ -173,6 +186,8 @@ export async function createAdminQuotation(token, { recipientId, items, designFe
       note: note || '',
       ...(designUrl ? { designUrl } : {}),
       ...(designNotes ? { designNotes } : {}),
+      // Which filled-in forms this quotation answers. Ids only - the server copies the content.
+      ...(orderFormAskIds?.length ? { orderFormAskIds } : {}),
     }),
   }, 30000);
   const data = await res.json();
@@ -180,7 +195,7 @@ export async function createAdminQuotation(token, { recipientId, items, designFe
   return data.data ?? data;
 }
 
-export async function createOrderRequestPaymentLink(token, orderRequestId, type, deliveryAddress = null, terms = null, payment = null) {
+export async function createOrderRequestPaymentLink(token, orderRequestId, type, deliveryAddress = null, terms = null, payment = null, extra = null) {
   const res = await fetchWithTimeout(`${API_URL}/api/payment/order-request-link`, {
     method: 'POST',
     headers: {
@@ -196,6 +211,9 @@ export async function createOrderRequestPaymentLink(token, orderRequestId, type,
       // directly; without one it falls back to PayMongo's hosted page, which is what every
       // older client will keep doing.
       ...(payment ? payment : {}),
+      // The delivery speed the customer picked. It is not part of the quoted price - the goods
+      // were agreed, the speed was not - so the server charges it on top and records it.
+      ...(extra ? extra : {}),
     }),
   }, 30000);
   const data = await res.json();

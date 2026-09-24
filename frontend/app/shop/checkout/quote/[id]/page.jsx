@@ -8,10 +8,13 @@ import { useAuth } from '@/contexts/AuthContext';
 import { fetchMyOrderRequest, createOrderRequestPaymentLink } from '@/lib/orderRequestApi';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import { formatPeso } from '@/lib/shopUtils';
-import { DEFAULT_CUSTOM_ORDER_TERMS, renderTermsBody } from '@/lib/customOrderTerms';
+import OrderFormSnapshot from '@/components/orders/OrderFormSnapshot';
+import { DEFAULT_CUSTOM_ORDER_TERMS, renderTermsBody, clauseApplies } from '@/lib/customOrderTerms';
 import '@/app/shop/shop.css';
 
 import AddressPicker from '@/components/shop/AddressPicker';
+import PhotoLightbox from '@/components/chat/PhotoLightbox';
+import useLockBodyScroll from '@/lib/useLockBodyScroll';
 import PaymentMethods, { ONLINE_METHODS, tokenizeCard } from '@/components/shop/PaymentMethods';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
@@ -48,8 +51,16 @@ export default function QuoteCheckoutPage() {
   const [settings, setSettings]     = useState(null);
   const [agreed, setAgreed]         = useState(false);
   const [showTerms, setShowTerms]   = useState(false);
+  // Agreeing to something nobody opened is not agreement. The tick lives INSIDE the terms now,
+  // at the end of them, so the only way to reach it is to have scrolled past what it covers.
+  const [termsSeen, setTermsSeen]   = useState(false);
+  // Rush is the one thing about a quote the customer still chooses: the goods were priced by
+  // hand, the speed was not.
+  const [rush, setRush]             = useState(false);
+  const [lightbox, setLightbox]     = useState(null);
   const [payType, setPayType] = useState('downpayment');
   const [paying, setPaying] = useState(false);
+  useLockBodyScroll(showTerms);
 
   const fetchAddresses = useCallback(async (keepSelection = false) => {
     if (!token) return;
@@ -106,18 +117,65 @@ export default function QuoteCheckoutPage() {
     if (offered.length && !offered.includes(payMethod)) setPayMethod(offered[0]);
   }, [offered.join(','), payMethod]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const finalPrice = Number(quote?.finalPrice) || 0;
+  // Arriving mid-page. The customer came from a chat card or from My Orders, and the browser
+  // keeps the scroll position of the page they left - so checkout opened somewhere in the middle
+  // of the payment methods, below the breakdown they are here to read.
+  useEffect(() => { window.scrollTo(0, 0); }, []);
+
+  const quotedPrice = Number(quote?.finalPrice) || 0;
   const isExpired = quote?.expiresAt ? new Date(quote.expiresAt).getTime() < Date.now() : false;
   const daysLeft = quote?.expiresAt ? Math.ceil((new Date(quote.expiresAt).getTime() - Date.now()) / 86400000) : null;
   const alreadyPaid = quote ? (quote.paymentStatus && quote.paymentStatus !== 'unpaid') || !!quote.convertedOrderId : false;
+  // ── Delivery speed ────────────────────────────────────────────────────────
+  // Rush buys priority in the production queue, so it is charged on TOP of the quoted price
+  // rather than folded into it. Same arithmetic as the server's createOrderRequestLink; the two
+  // disagreeing would be a balance nobody could settle.
+  const rushEnabled  = !!(settings?.rushEnabled ?? false);
+  const rushFeeAmt   = Number(settings?.rushFee ?? 0);
+  const prodLead     = Number(settings?.productionLeadDays ?? 3);
+  const rushLead     = Number(settings?.rushLeadDays ?? 1);
+  const shipMin      = Number(settings?.shippingDaysMin ?? 1);
+  const shipMax      = Number(settings?.shippingDaysMax ?? 2);
+  const rushOffered  = rushEnabled && rushFeeAmt > 0;
+  const rushCharge   = rush && rushOffered ? rushFeeAmt : 0;
+  // Working days, counted from payment: a quote has no proof step, so the clock starts the moment
+  // the money lands rather than at an approval that never happens.
+  const daysText = (lead) => {
+    const a = lead + shipMin;
+    const b = lead + shipMax;
+    return a === b ? `${a} working day${a === 1 ? '' : 's'}` : `${a}-${b} working days`;
+  };
+
+  const finalPrice = Math.round((quotedPrice + rushCharge) * 100) / 100;
+  // The deposit the shop set covers the goods; the rush fee is work that starts at once, so it
+  // rides on the first payment in full instead of being split across a deposit and a balance.
   const down = quote && quote.downPayment != null && Number(quote.downPayment) > 0
-    ? Number(quote.downPayment)
-    : Math.round(finalPrice * 0.5 * 100) / 100;
+    ? Math.round((Number(quote.downPayment) + rushCharge) * 100) / 100
+    : Math.round((quotedPrice * 0.5 + rushCharge) * 100) / 100;
   const dpPct = finalPrice > 0 ? Math.round((down / finalPrice) * 100) : 50;
   const lines = quote?.lineItems ?? [];
   const designFee = Number(quote?.designFee) || 0;
   const deliveryFee = Number(quote?.shippingFee) || 0;
   const amountDue = payType === 'full' ? finalPrice : down;
+
+  // ── What is actually being sold ───────────────────────────────────────────
+  // A quotation for goods off a shelf is a purchase, not a commission: there is no artwork, no
+  // proof, no revisions and no design fee, so asking the customer to accept the custom order
+  // terms before paying is asking them to agree to a contract about none of their order.
+  const isBespoke = lines.some(l => l.isCustom || l.isMadeToOrder)
+    || designFee > 0
+    || !!quote?.designUrl;
+
+  // Every file the shop attached, whatever kind it is. A single url rendered as an <img> showed a
+  // PDF or an AI file as a broken picture, and a job with a front and a back could only show one.
+  const designFiles = (() => {
+    const list = Array.isArray(quote?.designUrls) ? quote.designUrls : [];
+    const out = list.map(f => ({ url: f?.url || '', name: f?.name || '' })).filter(f => f.url);
+    if (!out.length && quote?.designUrl) out.push({ url: quote.designUrl, name: '' });
+    return out;
+  })();
+  const isImage = (u) => /\.(png|jpe?g|webp|gif|bmp|avif)(\?|$)/i.test(String(u || ''));
+  const fileLabel = (f) => f.name || (String(f.url).split('/').pop() || 'attachment').split('?')[0];
 
   const payable = quote
     && ['confirmed', 'processing', 'ready'].includes(quote.status)
@@ -146,13 +204,20 @@ export default function QuoteCheckoutPage() {
       : DEFAULT_CUSTOM_ORDER_TERMS;
     return base.map(c => ({ ...c, body: renderTermsBody(c.body, settings) }));
   })();
-  const activeClauses = rawTerms.filter(t => !t.mode || t.mode === 'both' || t.mode === 'quote');
+  // Only what a quotation is actually governed by. 'both' means the two CUSTOM flows - a warning
+  // about the resolution of a file you never sent, or a design fee you were never charged, was
+  // being shown to somebody paying a price the shop worked out by hand.
+  const activeClauses = rawTerms.filter(t => clauseApplies(t, 'quote'));
   const termsSnapshot = activeClauses.map(t => ({ title: t.title, body: t.body, mode: t.mode || 'both' }));
   const termsVersion  = settings?.termsVersion ?? 1;
 
   async function handlePay() {
     setError(null);
-    if (!agreed) { setError('Please read and agree to the Custom Order Terms before paying.'); return; }
+    if (isBespoke && !agreed) {
+      setShowTerms(true);
+      setError('Please read the Custom Order Terms and tick the box at the end before paying.');
+      return;
+    }
     if (!selectedAddress) { setError('Please select a delivery address first.'); return; }
     if (!selectedAddress.lat || !selectedAddress.lng) {
       // The picker shows "No map pin yet - pin it" on the address itself, which opens the form
@@ -176,12 +241,14 @@ export default function QuoteCheckoutPage() {
         payment.eWalletPhone = `+63${eWalletPhone.trim()}`;
       }
 
-      const res = await createOrderRequestPaymentLink(token, id, payType, buildAddressPayload(selectedAddress), {
+      // A ready-made quote records no agreement, because it was shown none. Writing
+      // agreedToTerms: true there would put a signature on a contract nobody read.
+      const res = await createOrderRequestPaymentLink(token, id, payType, buildAddressPayload(selectedAddress), isBespoke ? {
         agreedToTerms: true,
         termsVersion,
         termsAgreedAt: new Date().toISOString(),
         termsSnapshot,
-      }, payment);
+      } : {}, payment, { isRush: rush && rushOffered });
 
       // An intent that needs authorising hands back a redirect; one that cleared outright (a saved
       // card, no 3DS) is already done. checkoutUrl is the hosted-page fallback.
@@ -280,8 +347,11 @@ export default function QuoteCheckoutPage() {
                     style={{
                       display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10,
                       textAlign: 'left', width: '100%', padding: '11px 12px', borderRadius: 10, cursor: 'pointer',
-                      border: active ? '2px solid var(--white)' : '1px solid var(--border)',
-                      background: active ? 'var(--dark2)' : 'var(--dark)',
+                      // Gold, like the selected address directly above it and like every other
+                      // chosen thing in this app. A black ring here was the only one of its kind
+                      // on the page, and read as disabled rather than as chosen.
+                      border: active ? '2px solid var(--gold)' : '1px solid var(--border)',
+                      background: active ? 'rgba(212,168,67,0.08)' : 'var(--dark)',
                     }}
                   >
                     <span>
@@ -293,6 +363,68 @@ export default function QuoteCheckoutPage() {
                 );
               })}
             </div>
+          </section>
+
+          {/* How fast, and what that actually promises. The quote said what it costs and never
+              said when it arrives; "sends it straight into production" was the only hint, and a
+              customer paying five figures deserves a date they can hold the shop to. Counted in
+              WORKING days from payment - a quote has no proof step, so the clock starts here. */}
+          <section style={{ background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: 12, padding: 14 }}>
+            <span style={{ display: 'block', fontSize: '.74rem', fontWeight: 800, letterSpacing: '.03em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 10 }}>
+              Delivery speed
+            </span>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {[
+                { key: false, label: 'Standard', lead: prodLead, fee: 0 },
+                ...(rushOffered ? [{ key: true, label: 'Rush', lead: rushLead, fee: rushFeeAmt }] : []),
+              ].map(opt => {
+                const active = rush === opt.key;
+                return (
+                  <button key={String(opt.key)} type="button" onClick={() => setRush(opt.key)}
+                    style={{
+                      display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10,
+                      padding: '11px 14px', borderRadius: 10, cursor: 'pointer', textAlign: 'left',
+                      border: `1.5px solid ${active ? 'var(--gold)' : 'var(--border)'}`,
+                      background: active ? 'rgba(212,168,67,0.08)' : 'transparent',
+                    }}>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <span style={{ width: 16, height: 16, borderRadius: '50%', border: `2px solid ${active ? 'var(--gold)' : 'var(--border)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        {active && <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--gold)' }} />}
+                      </span>
+                      <span style={{ display: 'flex', flexDirection: 'column' }}>
+                        <span style={{ fontSize: '.88rem', fontWeight: 700, color: active ? 'var(--gold)' : 'var(--white)' }}>{opt.label}</span>
+                        <span style={{ fontSize: '.74rem', color: 'var(--gray)' }}>{daysText(opt.lead)} after payment</span>
+                      </span>
+                    </span>
+                    {opt.fee > 0 && (
+                      <span style={{ fontSize: '.85rem', fontWeight: 800, color: 'var(--gold)', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                        +{formatPeso(opt.fee)}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginTop: 10 }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#166534" strokeWidth="2" style={{ flexShrink: 0, marginTop: 2 }}>
+                <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+              </svg>
+              {/* A ceiling, said as a range, so an early arrival reads as expected rather than
+                  as a surprise. Word for word what the cart checkout promises. */}
+              <span style={{ fontSize: '.75rem', color: 'var(--gray)', lineHeight: 1.55 }}>
+                This is the longest you should wait.{' '}
+                <strong style={{ color: '#166534' }}>Orders often arrive earlier</strong> when our
+                production queue is light - we message you as soon as yours is ready.
+              </span>
+            </div>
+            {rush && rushOffered && (
+              <div style={{ marginTop: 8, padding: '9px 12px', borderRadius: 9, background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.3)' }}>
+                <span style={{ fontSize: '.75rem', color: 'var(--st-amber-fg)', lineHeight: 1.5 }}>
+                  Rush is <strong>subject to our confirmation</strong>. If other orders are still in
+                  production ahead of yours it may take longer - we will tell you either way.
+                </span>
+              </div>
+            )}
           </section>
 
           <section style={{ background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: 12, padding: 14 }}>
@@ -321,29 +453,43 @@ export default function QuoteCheckoutPage() {
           </span>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 12 }}>
+            {/* Same shape as the custom-order page's summary: the name on its own line, the
+                variant under it rather than trailing off the end of it, then the maths. Run
+                together on one line, a long product name pushed the variant into a third row
+                and the price into a column of its own. */}
             {lines.map((li, i) => (
-              <div key={li.productId ?? i} style={{ display: 'flex', gap: 10 }}>
-                <div style={{ width: 44, height: 44, borderRadius: 8, overflow: 'hidden', background: 'var(--dark2)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div key={li.productId ?? i} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                <div style={{ width: 48, height: 48, borderRadius: 8, overflow: 'hidden', background: 'var(--dark2)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   {li.thumbnail
                     /* eslint-disable-next-line @next/next/no-img-element */
                     ? <img src={li.thumbnail} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                     : <NoImage size={22} />}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 700, fontSize: '.84rem', lineHeight: 1.3 }}>
+                  <div style={{ fontWeight: 700, fontSize: '.86rem', lineHeight: 1.35, color: 'var(--white)' }}>
                     {li.productName}
-                    {li.variantName && (
-                      <span style={{ fontWeight: 500, color: 'var(--gray)' }}> - {li.variantName}</span>
-                    )}
                   </div>
-                  <div style={{ color: 'var(--gray)', fontSize: '.74rem', marginTop: 1 }}>
-                    {li.qty} &times; {formatPeso(li.unitPrice)}
+                  {li.variantName && (
+                    <div style={{ fontSize: '.76rem', color: 'var(--gray)', marginTop: 1 }}>{li.variantName}</div>
+                  )}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginTop: 4 }}>
+                    <span style={{ color: 'var(--gray)', fontSize: '.76rem' }}>
+                      {formatPeso(li.unitPrice)} &times; {li.qty} pc{li.qty === 1 ? '' : 's'}
+                    </span>
+                    <span style={{ fontWeight: 700, fontSize: '.82rem', whiteSpace: 'nowrap' }}>{formatPeso(li.lineTotal)}</span>
                   </div>
                 </div>
-                <div style={{ fontWeight: 700, fontSize: '.82rem', whiteSpace: 'nowrap' }}>{formatPeso(li.lineTotal)}</div>
               </div>
             ))}
           </div>
+
+          {/* Their own answers, above the store's note: this is the price for THAT, and the
+              moment to check it is before paying, not after the shirts are printed. */}
+          {Array.isArray(quote.orderForms) && quote.orderForms.length > 0 && (
+            <div style={{ marginBottom: 12 }}>
+              <OrderFormSnapshot forms={quote.orderForms} compact />
+            </div>
+          )}
 
           {quote.adminComment && (
             <div style={{ fontSize: '.78rem', color: 'var(--gray-light)', background: 'var(--dark2)', border: '1px solid #f0f1f3', borderRadius: 8, padding: '7px 9px', marginBottom: 12 }}>
@@ -355,20 +501,43 @@ export default function QuoteCheckoutPage() {
               approval. Showing the artwork as a 44px thumbnail labelled "Your design" asked
               the customer to approve something they could not actually see. It is the size of
               the decision now, and says plainly what paying means. */}
-          {quote.designUrl && (
+          {designFiles.length > 0 && (
             <div style={{ marginBottom: 12, border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden', background: 'var(--dark2)' }}>
-              <a href={quote.designUrl} target="_blank" rel="noopener noreferrer" style={{ display: 'block', textDecoration: 'none' }}>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={quote.designUrl} alt="Mockup for this quote"
-                  style={{ display: 'block', width: '100%', maxHeight: 320, objectFit: 'contain', background: 'var(--dark3)' }} />
-              </a>
-              <div style={{ padding: '9px 11px' }}>
-                <div style={{ fontSize: '.8rem', fontWeight: 700, color: 'var(--white)' }}>This is what we will print</div>
+              {designFiles.map((f, i) => (
+                isImage(f.url) ? (
+                  // Tapping opens it properly, the way an attachment opens everywhere else here,
+                  // instead of handing the browser a new tab to render however it likes.
+                  <button key={i} type="button"
+                    onClick={() => setLightbox({ urls: designFiles.filter(x => isImage(x.url)).map(x => x.url), index: designFiles.filter(x => isImage(x.url)).findIndex(x => x.url === f.url) })}
+                    style={{ display: 'block', width: '100%', padding: 0, border: 'none', background: 'none', cursor: 'zoom-in' }}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={f.url} alt={fileLabel(f)}
+                      style={{ display: 'block', width: '100%', maxHeight: 320, objectFit: 'contain', background: 'var(--dark3)',
+                        borderTop: i > 0 ? '1px solid var(--border)' : 'none' }} />
+                  </button>
+                ) : (
+                  // A PDF, an AI file, a PSD. There is nothing to show inline, and showing it as a
+                  // broken image is worse than saying plainly what it is and letting them open it.
+                  <a key={i} href={f.url} target="_blank" rel="noopener noreferrer"
+                    style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 12px', textDecoration: 'none',
+                      borderTop: i > 0 ? '1px solid var(--border)' : 'none', color: 'var(--white)' }}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="1.8" style={{ flexShrink: 0 }}>
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/>
+                    </svg>
+                    <span style={{ flex: 1, minWidth: 0 }}>
+                      <span style={{ display: 'block', fontSize: '.8rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{fileLabel(f)}</span>
+                      <span style={{ display: 'block', fontSize: '.72rem', color: 'var(--gray)' }}>Opens in a new tab</span>
+                    </span>
+                  </a>
+                )
+              ))}
+              <div style={{ padding: '9px 11px', borderTop: '1px solid var(--border)' }}>
+                <div style={{ fontSize: '.8rem', fontWeight: 700, color: 'var(--white)' }}>
+                  {designFiles.length === 1 ? 'This is what we will print' : `This is what we will print (${designFiles.length} files)`}
+                </div>
                 <div style={{ fontSize: '.72rem', color: 'var(--gray)', lineHeight: 1.5, marginTop: 2 }}>
                   There is no separate approval step on a quote - paying it approves this artwork.
-                  Check it first, and{' '}
-                  <a href={quote.designUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--gold)', fontWeight: 600 }}>open it full size</a>
-                  {' '}if you need a closer look. Message us if anything is wrong.
+                  Check it first{designFiles.length > 1 ? ', all of it,' : ''} and message us if anything is wrong.
                 </div>
               </div>
             </div>
@@ -398,28 +567,53 @@ export default function QuoteCheckoutPage() {
             )}
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '.86rem', marginTop: 2 }}>
               <span style={{ color: 'var(--gray)' }}>Quoted total</span>
-              <span style={{ fontWeight: 800 }}>{formatPeso(finalPrice)}</span>
+              <span style={{ fontWeight: rushCharge > 0 ? 600 : 800 }}>{formatPeso(quotedPrice)}</span>
             </div>
+            {/* On its own line, outside the quoted total, because that is exactly what it is: the
+                quote priced the goods, this is what the customer added afterwards. */}
+            {rushCharge > 0 && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '.86rem' }}>
+                <span style={{ color: 'var(--gray)' }}>Rush</span>
+                <span style={{ color: 'var(--gold)', fontWeight: 700 }}>+{formatPeso(rushCharge)}</span>
+              </div>
+            )}
+            {rushCharge > 0 && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '.86rem' }}>
+                <span style={{ color: 'var(--gray)' }}>Total</span>
+                <span style={{ fontWeight: 800 }}>{formatPeso(finalPrice)}</span>
+              </div>
+            )}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--border)', marginTop: 8, paddingTop: 8 }}>
               <span style={{ fontWeight: 800, fontSize: '.9rem' }}>Pay now</span>
               <span style={{ fontWeight: 900, fontSize: '1.05rem' }}>{formatPeso(amountDue)}</span>
             </div>
           </div>
 
-          {!alreadyPaid && !isExpired && (
-            <div style={{ marginTop: 12, display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-              <input id="quote-terms" type="checkbox" checked={agreed}
-                onChange={e => { setAgreed(e.target.checked); if (e.target.checked) setError(null); }}
-                style={{ marginTop: 2, width: 15, height: 15, accentColor: 'var(--gold)', cursor: 'pointer', flexShrink: 0 }} />
-              <label htmlFor="quote-terms" style={{ fontSize: '.8rem', lineHeight: 1.5, color: 'var(--gray-light)', cursor: 'pointer' }}>
-                I have read and agree to the{' '}
-                <button type="button" onClick={e => { e.preventDefault(); setShowTerms(true); }}
-                  style={{ background: 'none', border: 'none', padding: 0, color: 'var(--gold)', fontWeight: 700, textDecoration: 'underline', cursor: 'pointer', fontSize: '.8rem', fontFamily: 'inherit' }}>
-                  Custom Order Terms
-                </button>{' '}
-                for this quotation.
-              </label>
-            </div>
+          {/* There is no tick out here any more. A checkbox beside a link is agreement to
+              something nobody opened - the box is at the END of the terms now, so reaching it
+              means having scrolled past what it covers. A ready-made quote shows none of this:
+              there is no artwork, no proof and no revisions to agree about. */}
+          {isBespoke && !alreadyPaid && !isExpired && (
+            <button type="button" onClick={() => setShowTerms(true)}
+              style={{
+                width: '100%', marginTop: 12, padding: '10px 12px', borderRadius: 10, cursor: 'pointer',
+                textAlign: 'left', display: 'flex', alignItems: 'center', gap: 9, fontFamily: 'inherit',
+                border: `1px solid ${agreed ? 'rgba(34,197,94,0.35)' : 'var(--gold)'}`,
+                background: agreed ? 'rgba(34,197,94,0.08)' : 'rgba(212,168,67,0.08)',
+              }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                stroke={agreed ? '#22c55e' : 'var(--gold)'} strokeWidth="2" style={{ flexShrink: 0 }}>
+                {agreed
+                  ? <><circle cx="12" cy="12" r="10"/><polyline points="8 12 11 15 16 9"/></>
+                  : <><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></>}
+              </svg>
+              <span style={{ fontSize: '.8rem', lineHeight: 1.45, color: agreed ? '#22c55e' : 'var(--white)', fontWeight: 700 }}>
+                {agreed ? 'You agreed to the Custom Order Terms' : 'Read the Custom Order Terms'}
+                <span style={{ display: 'block', fontWeight: 400, fontSize: '.72rem', color: 'var(--gray)', marginTop: 1 }}>
+                  {agreed ? 'Tap to read them again' : 'Required before you can pay this quotation'}
+                </span>
+              </span>
+            </button>
           )}
 
           {/* The exact clauses being agreed to, so the acceptance means something. The same set is
@@ -432,19 +626,52 @@ export default function QuoteCheckoutPage() {
                 <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)', fontWeight: 800, fontSize: '.95rem' }}>
                   Custom Order Terms
                 </div>
-                <div style={{ padding: '14px 18px', overflowY: 'auto' }}>
+                <div
+                  onScroll={e => {
+                    // Reached the bottom. The tick below stays out of reach until then, so
+                    // "I have read this" is at least true of the scrollbar.
+                    const el = e.currentTarget;
+                    if (el.scrollTop + el.clientHeight >= el.scrollHeight - 24) setTermsSeen(true);
+                  }}
+                  ref={el => {
+                    // Short enough not to scroll at all - then there was nothing to reach and the
+                    // tick would have stayed locked forever.
+                    if (el && el.scrollHeight <= el.clientHeight + 24) setTermsSeen(true);
+                  }}
+                  style={{ padding: '14px 18px', overflowY: 'auto' }}>
                   {activeClauses.map((c, i) => (
                     <div key={i} style={{ marginBottom: 14 }}>
                       <div style={{ fontWeight: 700, fontSize: '.84rem', marginBottom: 3 }}>{c.title}</div>
                       <div style={{ fontSize: '.8rem', color: 'var(--gray)', lineHeight: 1.6 }}>{c.body}</div>
                     </div>
                   ))}
+
+                  {/* The tick is here, at the end of what it covers, rather than on the page
+                      outside the modal where it could be ticked without any of this being seen. */}
+                  <label htmlFor="quote-terms"
+                    style={{
+                      display: 'flex', alignItems: 'flex-start', gap: 9, padding: '11px 12px', borderRadius: 10,
+                      border: '1px solid var(--gold)', background: 'rgba(212,168,67,0.08)',
+                      cursor: termsSeen ? 'pointer' : 'not-allowed', opacity: termsSeen ? 1 : 0.55,
+                    }}>
+                    <input id="quote-terms" type="checkbox" checked={agreed} disabled={!termsSeen}
+                      onChange={e => { setAgreed(e.target.checked); if (e.target.checked) setError(null); }}
+                      style={{ marginTop: 2, width: 16, height: 16, accentColor: 'var(--gold)', cursor: 'inherit', flexShrink: 0 }} />
+                    <span style={{ fontSize: '.8rem', lineHeight: 1.5, color: 'var(--white)' }}>
+                      I have read and agree to these Custom Order Terms for this quotation.
+                      {!termsSeen && (
+                        <span style={{ display: 'block', fontSize: '.72rem', color: 'var(--gray)', marginTop: 2 }}>
+                          Scroll to the end of the terms first.
+                        </span>
+                      )}
+                    </span>
+                  </label>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 18px', borderTop: '1px solid var(--border)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, padding: '12px 18px', borderTop: '1px solid var(--border)' }}>
                   <span style={{ fontSize: '.72rem', color: 'var(--gray)' }}>Terms v{termsVersion}</span>
-                  <button onClick={() => { setAgreed(true); setShowTerms(false); setError(null); }}
-                    style={{ padding: '8px 18px', background: 'var(--gold)', border: 'none', borderRadius: 8, color: '#000', fontWeight: 700, cursor: 'pointer', fontSize: '.85rem' }}>
-                    I agree
+                  <button onClick={() => setShowTerms(false)}
+                    style={{ padding: '8px 18px', background: agreed ? 'var(--gold)' : 'transparent', border: agreed ? 'none' : '1px solid var(--border)', borderRadius: 8, color: agreed ? '#000' : 'var(--white)', fontWeight: 700, cursor: 'pointer', fontSize: '.85rem' }}>
+                    {agreed ? 'Done' : 'Close'}
                   </button>
                 </div>
               </div>
@@ -465,25 +692,49 @@ export default function QuoteCheckoutPage() {
                 : `Quote valid - expires in ${daysLeft} day${daysLeft === 1 ? '' : 's'} (${new Date(quote.expiresAt).toLocaleDateString()}).`}
             </div>
           )}
-          {!alreadyPaid && (
-            <button
-              onClick={handlePay}
-              disabled={paying || !selectedAddress || isExpired}
-              style={{
-                width: '100%', marginTop: 12, padding: '11px 12px', borderRadius: 10, border: 'none',
-                background: 'var(--white)', color: 'var(--dark)', fontWeight: 800, fontSize: '.88rem',
-                cursor: (paying || !selectedAddress || isExpired) ? 'not-allowed' : 'pointer',
-                opacity: (paying || !selectedAddress || isExpired) ? 0.6 : 1,
-              }}
-            >
-              {isExpired ? 'Quote expired' : paying ? 'Opening payment…' : `Pay ${formatPeso(amountDue)}`}
-            </button>
-          )}
+          {!alreadyPaid && (() => {
+            // Paying is blocked until the terms are agreed, not merely scolded afterwards - and
+            // the button says which of the three things is in the way rather than going grey
+            // and leaving the customer to guess.
+            const needsTerms = isBespoke && !agreed;
+            const blocked = paying || !selectedAddress || isExpired || needsTerms;
+            const label = isExpired ? 'Quote expired'
+              : paying ? 'Opening payment…'
+              : !selectedAddress ? 'Choose a delivery address'
+              : needsTerms ? 'Read the terms to continue'
+              : `Pay ${formatPeso(amountDue)}`;
+            return (
+              <button
+                onClick={handlePay}
+                disabled={paying || !selectedAddress || isExpired}
+                style={{
+                  // The same gold as Add to cart and Place custom order. This was the one paying
+                  // button in the shop wearing a different colour, on the screen where the money
+                  // actually leaves.
+                  width: '100%', marginTop: 12, padding: '12px 14px', borderRadius: 10, border: 'none',
+                  background: 'var(--gold)', color: '#1a1a1a', fontWeight: 800, fontSize: '.92rem',
+                  cursor: blocked ? 'not-allowed' : 'pointer',
+                  opacity: blocked ? 0.6 : 1,
+                }}
+              >
+                {label}
+              </button>
+            );
+          })()}
           <Link href="/shop/orders-history" style={{ display: 'block', textAlign: 'center', marginTop: 10, fontSize: '.78rem', color: 'var(--gray)', textDecoration: 'none' }}>
             Back to My Orders
           </Link>
         </aside>
       </div>
+
+      {lightbox && (
+        <PhotoLightbox
+          urls={lightbox.urls}
+          index={lightbox.index}
+          onIndexChange={i => setLightbox(l => ({ ...l, index: i }))}
+          onClose={() => setLightbox(null)}
+        />
+      )}
 
       <style jsx>{`
         @media (max-width: 820px) {

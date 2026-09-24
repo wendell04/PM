@@ -39,6 +39,11 @@ class Order extends Model
         'designType'           => 'string',
         'isArchived'           => 'boolean',
         'archivedAt'           => 'datetime',
+        // The shop's two standing offers, as they stood when this order was placed.
+        'firstOrderDiscount'   => 'float',
+        'firstOrderPercent'    => 'integer',
+        'freeDelivery'         => 'boolean',
+        'freeDeliveryFrom'     => 'float',
     ];
 
     protected $indexes = [

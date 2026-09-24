@@ -415,7 +415,7 @@ const ChatModule = ({ user, token, addToCart }) => {
           addToCart={addToCart}
           onlineUsers={onlineUsers}
           typingUsers={typingUsers}
-          onQuoteFromForm={(note) => setQuotePrefill({ note, at: Date.now() })}
+          onQuoteFromForm={({ note, askId }) => setQuotePrefill({ note, askId, at: Date.now() })}
         />
 
         {/* A guest thread has only the shop in it, so anything typed here reaches nobody.

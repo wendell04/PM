@@ -384,7 +384,7 @@ class OrderRequestController extends Controller
         }
 
         $validated = Validator::make($request->all(), [
-            'status'     => 'required|in:pending_review,confirmed,processing,ready,delivered,cancelled',
+            'status'     => 'required|in:pending_review,confirmed,processing,ready,delivered,cancelled,answered',
             'finalPrice' => 'nullable|numeric|min:0',
             'downPayment' => 'nullable|numeric|min:0',
             // How long the customer has to pay it. Same default the chat path uses.
@@ -425,6 +425,9 @@ class OrderRequestController extends Controller
             'ready'          => ['delivered', 'cancelled'],
             'delivered'      => [],
             'cancelled'      => [],
+            // Terminal, like cancelled: the quotation that answered it is the live record now,
+            // and moving this one on would put the same job in the pipeline twice.
+            'answered'       => [],
         ];
         $currentStatus = $req->status ?? 'pending_review';
         $allowed = $transitions[$currentStatus] ?? [];
@@ -698,13 +701,44 @@ class OrderRequestController extends Controller
             'downPayment'       => 'nullable|numeric|min:0',
             'note'              => 'nullable|string|max:1000',
             'designUrl'         => 'nullable|string|max:1000',
+            // A job has a front and a back, a shirt has a mockup and a print-ready file, and a
+            // layout arrives as a PDF as often as a PNG. One url could show one image; this takes
+            // the set, and designUrl stays as the first of them for every screen written before.
+            'designUrls'        => 'nullable|array|max:10',
+            'designUrls.*.url'  => 'required_with:designUrls|string|max:1000',
+            'designUrls.*.name' => 'nullable|string|max:200',
             'designNotes'       => 'nullable|string|max:1000',
             'expiresInDays'     => 'nullable|integer|min:1|max:90',
+            // Which filled-in order forms this quotation answers. IDS ONLY - the content is read
+            // from the ask on this side, so nothing the browser sends can change what the
+            // customer is later shown they agreed to.
+            'orderFormAskIds'   => 'nullable|array|max:5',
+            'orderFormAskIds.*' => 'string|size:24',
         ]);
 
         $customer = User::where('_id', $validated['recipientId'])->first();
         if (!$customer) {
             return $this->errorResponse('Customer not found.', 404);
+        }
+
+        // The forms this quotation answers, copied whole from the asks they were filled into.
+        // Each one carries the questions as they were sent, the answers as they were given, and
+        // when it was agreed - so the quote, the checkout and the order all show the same thing
+        // however the template changes afterwards.
+        $attachedForms = [];
+        $attachedAsks  = [];
+        foreach (array_unique((array) ($validated['orderFormAskIds'] ?? [])) as $askId) {
+            $ask = OrderRequest::find($askId);
+            if (!$ask || (string) $ask->customerId !== (string) $customer->_id) continue;
+            $snap = $ask->orderFormAnswers;
+            if (!is_array($snap) || $snap === []) continue;
+            $attachedForms[] = [
+                'askId'       => (string) $ask->_id,
+                'formName'    => (string) ($snap['form']['name'] ?? 'Order form'),
+                'submittedAt' => (string) ($snap['agreedAt'] ?? ''),
+                'answers'     => $snap,
+            ];
+            $attachedAsks[] = (string) $ask->_id;
         }
 
         // Every line is resolved against the real catalog item so the quote - and the Order it
@@ -768,6 +802,12 @@ class OrderRequestController extends Controller
                     return $product->thumbnail ?? ($product->images[0] ?? null);
                 })(),
                 'category'     => $product->category ?? null,
+                // What KIND of thing this line is, read off the catalogue at quote time. The
+                // conversion works this out again on payment; carrying it here is what lets the
+                // checkout screen know whether it is selling bespoke work - which needs the custom
+                // order terms agreed - or something off a shelf, which does not.
+                'isCustom'      => (bool) ($product->isCustom ?? false),
+                'isMadeToOrder' => (bool) ($product->isMadeToOrder ?? false) || (bool) ($product->isCustom ?? false),
                 'variantId'    => $row['variantId'] ?? null,
                 'variantName'  => $row['variantName'] ?? null,
                 'qty'          => $qty,
@@ -789,7 +829,21 @@ class OrderRequestController extends Controller
         // chat), so it is marked approved - the converted order skips the proof-approval gate
         // and goes straight to production. (Customer-uploaded custom designs are NOT approved
         // here; those still route through review on the product-page custom-order flow.)
-        $designUrl   = !empty($validated['designUrl']) ? $validated['designUrl'] : null;
+        $designFiles = array_values(array_filter(
+            array_map(fn ($f) => [
+                'url'  => trim((string) ($f['url'] ?? '')),
+                'name' => trim((string) ($f['name'] ?? '')) ?: null,
+            ], (array) ($validated['designUrls'] ?? [])),
+            fn ($f) => $f['url'] !== ''
+        ));
+        // The single field still decides everything downstream that predates the list, so the
+        // first attachment fills it whether it arrived alone or as one of several.
+        $designUrl   = !empty($validated['designUrl'])
+            ? $validated['designUrl']
+            : ($designFiles[0]['url'] ?? null);
+        if ($designUrl && empty($designFiles)) {
+            $designFiles = [['url' => $designUrl, 'name' => null]];
+        }
         $designNotes = $designUrl ? ($validated['designNotes'] ?? null) : null;
 
         $first = $lineItems[0];
@@ -817,8 +871,10 @@ class OrderRequestController extends Controller
             // is stored as such and re-stated with the real purchase cost later.
             'estimatedMaterialCost' => round($materialTotal, 2),
             'costBasis'             => 'estimated',
+            'orderForms'    => $attachedForms ?: null,
             'adminComment'  => $validated['note'] ?? null,
             'designUrl'     => $designUrl,
+            'designUrls'    => $designFiles ?: null,
             'designNotes'   => $designNotes,
             'designType'    => $designUrl ? 'upload' : null,
             'designApproved'=> $designUrl ? true : false,
@@ -833,16 +889,35 @@ class OrderRequestController extends Controller
 
         // The quotation answers whatever this customer was still asking. Left open, the ask would
         // sit in the "waiting" count after the shop had already replied to it.
+        //
+        // But only what it ACTUALLY answered. This closed every waiting ask the customer had, so a
+        // shop quoting the shirts silently closed the request for the mugs - no notice, and
+        // recorded as cancelled. A filled-in form is a specific job with a price of its own, so it
+        // is closed only by a quotation that attached it. A plain inquiry carries no form and no
+        // such claim, so a quotation still answers those.
         try {
             $answered = OrderRequest::where('customerId', (string) $validated['recipientId'])
                 ->where('status', 'pending_review')
                 ->where(function ($q) { $q->whereNull('finalPrice')->orWhere('finalPrice', 0); })
                 ->get();
+            $closing = \App\Support\QuoteAnswering::toClose(
+                $answered->map(fn ($a) => [
+                    'id'       => (string) $a->_id,
+                    'fromForm' => is_array($a->orderFormAnswers) && $a->orderFormAnswers !== [],
+                ])->all(),
+                $attachedAsks
+            );
+            $answered = $answered->filter(fn ($a) => in_array((string) $a->_id, $closing, true));
             foreach ($answered as $ask) {
                 $h   = $ask->statusHistory ?? [];
                 $h[] = ['status' => 'answered', 'at' => now()->toISOString(), 'by' => 'admin',
                         'note' => 'Answered with quotation ' . (string) $orderRequest->_id . '.'];
-                $ask->status            = 'cancelled';
+                // Answered, not cancelled. A quotation is a reply; cancelling is what
+                // happens when work is called off, and the two were being recorded as the same
+                // thing - so every count of cancelled work included every ask the shop had
+                // actually replied to. Rows written before this stay 'cancelled' with
+                // answeredByQuoteId beside them, and both are read as answered.
+                $ask->status            = 'answered';
                 $ask->answeredByQuoteId = (string) $orderRequest->_id;
                 $ask->statusHistory     = $h;
                 $ask->save();
@@ -858,6 +933,47 @@ class OrderRequestController extends Controller
         ]);
 
         return $this->successResponse('Quotation sent.', $orderRequest);
+    }
+
+    /**
+     * The forms this customer has filled in and nobody has quoted yet.
+     *
+     * For the attach row on the quotation: what it was called, when it was sent in, and enough of
+     * the answers to tell two apart at a glance ("30 shirts" against "12 mugs"). Ids and summaries
+     * only - the quotation copies the content itself, from this side.
+     */
+    public function customerOrderForms(Request $request, $customerId)
+    {
+        if (!$this->hasPermission($request, 'orderRequests.create')) {
+            return $this->unauthorizedResponse();
+        }
+        $rows = OrderRequest::where('customerId', (string) $customerId)
+            ->where('status', 'pending_review')
+            ->orderBy('createdAt', 'desc')
+            ->limit(20)
+            ->get()
+            ->filter(fn ($a) => is_array($a->orderFormAnswers) && $a->orderFormAnswers !== [])
+            ->map(function ($a) {
+                $snap = $a->orderFormAnswers;
+                $form = is_array($snap['form'] ?? null) ? $snap['form'] : null;
+                return [
+                    'askId'       => (string) $a->_id,
+                    'formName'    => (string) ($form['name'] ?? 'Order form'),
+                    'submittedAt' => (string) ($snap['agreedAt'] ?? ($a->createdAt ? $a->createdAt->toIso8601String() : '')),
+                    'quantity'    => (int) ($a->quantity ?? 0),
+                    // What they typed as the address when they asked. The courier is booked from a
+                    // pinned address the customer picks at checkout, but the delivery fee is priced
+                    // on this screen, and a customer who wrote somewhere else meant it.
+                    'address'     => (string) ($snap['address'] ?? ''),
+                    'headline'    => (string) ($a->productName ?? ''),
+                    'summary'     => $form
+                        ? \App\Support\OrderFormSpec::summarise($form, (array) ($snap['answers'] ?? []))
+                        : (string) ($a->designNotes ?? ''),
+                ];
+            })
+            ->values();
+
+        return $this->successResponse('Order forms.', $rows);
     }
 
     /**
@@ -1211,9 +1327,15 @@ class OrderRequestController extends Controller
             $ready     = (clone $query)->where('status', 'ready')->count();
             $delivered = (clone $query)->where('status', 'delivered')->count();
             $cancelled = (clone $query)->where('status', 'cancelled')->count();
+            // Asks the shop replied to with a quotation. They used to be counted as cancelled,
+            // which made cancelled work look worse than it was, and they sit in the denominator
+            // below as if they were a separate deal that never closed - they are not, the
+            // quotation they became is already counted in its own right.
+            $answered  = (clone $query)->where('status', 'answered')->count();
+            $deals     = max(0, $total - $answered);
 
-            $conversionRate = $total > 0
-                ? round((($confirmed + $processing + $ready + $delivered) / $total) * 100, 2)
+            $conversionRate = $deals > 0
+                ? round((($confirmed + $processing + $ready + $delivered) / $deals) * 100, 2)
                 : 0;
 
             return $this->successResponse('Order request stats fetched successfully.', [
@@ -1224,6 +1346,7 @@ class OrderRequestController extends Controller
                 'ready'          => $ready,
                 'delivered'      => $delivered,
                 'cancelled'      => $cancelled,
+                'answered'       => $answered,
                 'conversionRate' => $conversionRate,
             ]);
         } catch (\Exception $e) {

@@ -282,9 +282,38 @@ export function CartProvider({ children }) {
     setCartItems(items);
   }, []);
 
+  /**
+   * Put finished lines back in the cart.
+   *
+   * addToCart builds a line FROM a product; these are already lines - they came out of a checkout
+   * that was started and walked away from, carrying an uploaded design, the notes typed with it
+   * and the terms the customer accepted. Rebuilding them from the product would drop exactly the
+   * part that is expensive to redo.
+   *
+   * Matched on lineId, so leaving checkout twice does not leave two of the same thing.
+   */
+  const returnToCart = useCallback(async (lines) => {
+    const incoming = (lines || []).filter(l => l && (l.productId || l.product?._id));
+    if (!incoming.length) return 0;
+
+    let added = 0;
+    const next = [...cartItems];
+    for (const l of incoming) {
+      const lineId = l.lineId || `line_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+      if (next.some(c => c.lineId === lineId)) continue;
+      next.push({ ...l, lineId });
+      added += 1;
+    }
+    if (!added) return 0;
+
+    await saveCart(next);
+    return added;
+  }, [cartItems, saveCart]);
+
   const value = {
     cartItems,
     setCartItems: setCartItemsSafe,
+    returnToCart,
     isCartLoading,
     addToCart,
     removeFromCart,

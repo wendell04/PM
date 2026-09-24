@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import OrderFormSnapshot from '@/components/orders/OrderFormSnapshot';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
@@ -1853,6 +1854,14 @@ export default function OrdersHistoryPage() {
 
                     })()}
 
+                    {/* What they filled in, so they can check the shirts against their own
+                        answers without going back through the chat. */}
+                    {Array.isArray(selectedOrder.orderForms) && selectedOrder.orderForms.length > 0 && (
+                      <div style={{ borderTop: '1px solid var(--border)', paddingTop: '16px' }}>
+                        <OrderFormSnapshot forms={selectedOrder.orderForms} />
+                      </div>
+                    )}
+
                     {/* Delivery Address */}
                     {selectedOrder.deliveryAddress && Object.keys(selectedOrder.deliveryAddress).length > 0 && (
                       <div style={{ borderTop: '1px solid var(--border)', paddingTop: '16px' }}>
@@ -2077,10 +2086,41 @@ export default function OrdersHistoryPage() {
                           <span style={{ fontSize: '12px', color: '#d4a843' }}>{formatPeso(selectedOrder.rushFee)}</span>
                         </div>
                       )}
+                      {/* Named charges from a counter order - the customer has to be able to see
+                          what the figure on their receipt was for. */}
+                      {Array.isArray(selectedOrder.extraFees) && selectedOrder.extraFees.map((f, i) => (
+                        <div key={'fee' + i} style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span style={{ fontSize: '12px', color: 'var(--gray)' }}>{f.label || 'Additional fee'}</span>
+                          <span style={{ fontSize: '12px', color: 'var(--white)' }}>{formatPeso(f.amount)}</span>
+                        </div>
+                      ))}
                       {selectedOrder.discountAmount > 0 && (
                         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                           <span style={{ fontSize: '12px', color: 'var(--gray)' }}>Discount</span>
                           <span style={{ fontSize: '12px', color: '#22c55e' }}>-{formatPeso(selectedOrder.discountAmount)}</span>
+                        </div>
+                      )}
+                      {/* The shop's welcome discount. Its own line, not folded into Discount:
+                          a customer reading an old order should be able to see which of the two
+                          they were given, and a voucher they still hold is not this. */}
+                      {Number(selectedOrder.firstOrderDiscount ?? 0) > 0 && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span style={{ fontSize: '12px', color: 'var(--gray)' }}>
+                            First order{selectedOrder.firstOrderPercent ? ` (${selectedOrder.firstOrderPercent}%)` : ''}
+                          </span>
+                          <span style={{ fontSize: '12px', color: '#22c55e' }}>-{formatPeso(selectedOrder.firstOrderDiscount)}</span>
+                        </div>
+                      )}
+                      {/* An order that came from a quotation has its design fee inside the
+                          quoted price - collected with everything else, never as a separate
+                          payment. designFeePaid is false there (it means "a separate design-fee
+                          payment landed"), so the line simply vanished and the breakdown did not
+                          add up to the total sitting under it. */}
+                      {!selectedOrder.designFeePaid && Number(selectedOrder.designFee ?? 0) > 0
+                        && selectedOrder.orderSource === 'inquiry' && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span style={{ fontSize: '12px', color: 'var(--gray)' }}>Design fee</span>
+                          <span style={{ fontSize: '12px', color: 'var(--white)' }}>{formatPeso(selectedOrder.designFee)}</span>
                         </div>
                       )}
                       {selectedOrder.designFeePaid && (() => {
@@ -2119,6 +2159,22 @@ export default function OrdersHistoryPage() {
                         const cf = Number(selectedOrder.courierFee ?? 0);
                         const sf = Number(selectedOrder.shippingFee ?? 0);
                         if (cf <= 0 && sf > 0) return null;
+                        // Free delivery: the fee on the order is what the courier cost the SHOP, and
+                        // none of the notes below apply - there is nothing for this customer to hand
+                        // a rider, settle before shipping, or wait on a figure for.
+                        if (selectedOrder.freeDelivery) {
+                          return (
+                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px' }}>
+                              <span style={{ fontSize: '12px', color: 'var(--gray)' }}>Delivery</span>
+                              <span style={{ fontSize: '12px', color: '#22c55e', textAlign: 'right', fontWeight: 700 }}>
+                                FREE
+                                <span style={{ display: 'block', fontSize: '10.5px', color: 'var(--gray)', fontWeight: 400, marginTop: '1px' }}>
+                                  Nothing to pay the rider
+                                </span>
+                              </span>
+                            </div>
+                          );
+                        }
                         // A cancelled or returned order has no delivery fee to settle - asking for cash
                         // for a rider who is not coming would only confuse.
                         if (['returned', 'cancelled'].includes(normalizeStatus(selectedOrder.orderStatus)) && !selectedOrder.courierFeePaid) return null;
@@ -2181,6 +2237,7 @@ export default function OrdersHistoryPage() {
                         'for_delivery' kept the online fee payment open after the parcel had left. */}
                     {Number(selectedOrder.courierFee) > 0
                       && !selectedOrder.courierFeePaid
+                      && !selectedOrder.freeDelivery
                       && selectedOrder.paymentMethod !== 'cod'
                       && (selectedOrder.courierFeeOnDelivery ?? true)
                       && ['for_delivery', 'shipped', 'ready_for_pickup', 'out_for_delivery'].includes(normalizeStatus(selectedOrder.orderStatus))
@@ -2205,6 +2262,7 @@ export default function OrdersHistoryPage() {
                         because there the fee is already bundled into what the rider collects. */}
                     {Number(selectedOrder.courierFee) > 0
                       && !selectedOrder.courierFeePaid
+                      && !selectedOrder.freeDelivery
                       && selectedOrder.paymentStatus === 'paid'
                       && selectedOrder.paymentMethod !== 'cod'
                       && !['cancelled', 'delivered', 'completed'].includes(normalizeStatus(selectedOrder.orderStatus))
@@ -2326,6 +2384,14 @@ export default function OrdersHistoryPage() {
                               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem' }}>
                                 <span style={{ color: 'var(--gray)' }}>Discount</span>
                                 <span style={{ color: '#22c55e' }}>-{formatPeso(selectedOrder.discountAmount)}</span>
+                              </div>
+                            )}
+                            {Number(selectedOrder.firstOrderDiscount ?? 0) > 0 && (
+                              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem' }}>
+                                <span style={{ color: 'var(--gray)' }}>
+                                  First order{selectedOrder.firstOrderPercent ? ` (${selectedOrder.firstOrderPercent}%)` : ''}
+                                </span>
+                                <span style={{ color: '#22c55e' }}>-{formatPeso(selectedOrder.firstOrderDiscount)}</span>
                               </div>
                             )}
                             {feeCredit > 0 && (

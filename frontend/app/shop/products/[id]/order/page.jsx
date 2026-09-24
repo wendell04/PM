@@ -1,6 +1,7 @@
 'use client';
 
 import AddressPicker from '@/components/shop/AddressPicker';
+import PhotoLightbox from '@/components/chat/PhotoLightbox';
 import { optionGroupsOf, defaultOptionSelection, selectedOptionList, optionsUnitAdd, optionsOrderAdd, withOptionSuffix, optionKey, groupKey } from '@/lib/shopUtils';
 import NoImage from '@/components/NoImage';
 
@@ -15,7 +16,8 @@ import { useCart } from '@/context/CartContext';
 import useLockBodyScroll from '@/lib/useLockBodyScroll';
 import { compressImage } from '@/lib/compressImage';
 import { makeThumbnail } from '@/lib/thumbnail';
-import { DEFAULT_CUSTOM_ORDER_TERMS, renderTermsBody } from '@/lib/customOrderTerms';
+import { DEFAULT_CUSTOM_ORDER_TERMS, renderTermsBody, clauseApplies } from '@/lib/customOrderTerms';
+import { applyOffers, firstOrderLabel, freeDeliveryNudge } from '@/lib/shopOffers';
 
 const METRO_CITIES = ['Manila', 'Quezon City', 'Caloocan', 'Las Piñas', 'Makati', 'Malabon', 'Mandaluyong', 'Marikina', 'Muntinlupa', 'Navotas', 'Parañaque', 'Pasay', 'Pasig', 'Pateros', 'San Juan', 'Taguig', 'Valenzuela'];
 function isMetroManila(city, province) {
@@ -164,6 +166,9 @@ function CustomOrderInner() {
   const [requestSubmitted, setRequestSubmitted] = useState(false);
   const [storeSettings, setStoreSettings]     = useState(null);
   const [shippingFeeAmt, setShippingFeeAmt]   = useState(null);
+  // The shop's standing offers, and whether this customer is on their first order. Only the
+  // server can answer the second part, so it is asked rather than guessed.
+  const [offerRule, setOfferRule]             = useState(null);
   const [rush, setRush]                       = useState(false);
   const [agreedTerms, setAgreedTerms]         = useState(false);
   const [showTerms, setShowTerms]             = useState(false);
@@ -301,6 +306,17 @@ function CustomOrderInner() {
       .then(d => setStoreSettings(d.data ?? d))
       .catch(() => {});
   }, []);
+
+  // The standing offers. Signed in, because the answer says whether THIS customer is new here.
+  useEffect(() => {
+    if (!token) return;
+    let alive = true;
+    fetch(`${API_URL}/api/shop/offers`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.json())
+      .then(d => { if (alive) setOfferRule(d?.data ?? null); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [token]);
 
   // A shop can be set to Flat Rate or Courier Booked, and this page used to ignore that entirely -
   // charging a fabricated distance-based figure regardless. Mirrors the three-mode branch checkout
@@ -443,7 +459,7 @@ function CustomOrderInner() {
       : CUSTOM_ORDER_TERMS;
     return base.map(c => ({ ...c, body: renderTermsBody(c.body, storeSettings) }));
   })();
-  const activeClauses = rawTerms.filter(t => !t.mode || t.mode === 'both' || t.mode === activeTermsMode);
+  const activeClauses = rawTerms.filter(t => clauseApplies(t, activeTermsMode));
   const terms = activeClauses.map(t => [t.title, t.body]);
   // The exact clauses for THIS mode - carried with the cart line as the acceptance snapshot/proof.
   const termsSnapshot = activeClauses.map(t => ({ title: t.title, body: t.body, mode: t.mode || 'both' }));
@@ -451,8 +467,19 @@ function CustomOrderInner() {
   // "Get by" date = today + (production + shipping) business days, skipping Sundays.
   // Matches the server: Sundays, national holidays and the shop's own closures.
 
+  // The shop's two standing offers. Same arithmetic, same order as the server's ShopOffers,
+  // via lib/shopOffers - so the figure quoted here is the figure that gets charged.
+  const offers = applyOffers({
+    goods: lineTotal,
+    isFirst: !!offerRule?.isFirstOrder,
+    percent: offerRule?.firstOrderPercent ?? 0,
+    cap: offerRule?.firstOrderCap ?? null,
+    freeFrom: offerRule?.freeDeliveryFrom ?? null,
+  });
+  const firstOrderDiscount = offers.firstOrder;
+  const deliveryCharge = offers.freeDelivery ? 0 : (shippingFeeAmt ?? 0);
   // Rush is chosen at checkout now, so the product-page total never includes a rush fee.
-  const grandTotal = lineTotal + designFee + (shippingFeeAmt ?? 0);
+  const grandTotal = lineTotal - firstOrderDiscount + designFee + deliveryCharge;
   const downpaymentRequired = product?.requiresDownpayment ?? false;
   const downpaymentPercent = product?.downpaymentPercent ?? 50;
   const amountDue = designMode === 'request'
@@ -660,6 +687,20 @@ function CustomOrderInner() {
     (designMode === 'upload' && uploadOk)
   );
 
+  // Nowhere to send it is a reason to stop here, not at checkout: by then the artwork, the brief
+  // and the reference photos have all been filled in, and a redirect to the address book loses
+  // them. The block for it is already on this page, a few centimetres up.
+  const needsAddress = !addressLoading && addresses.length === 0;
+
+  // Every image on this page, in the order they appear, so the viewer can move between them the
+  // way it does in chat. A 40px square is enough to know a file is attached and not enough to see
+  // whether it is the right one.
+  const [lightboxAt, setLightboxAt] = useState(null);
+  const lightboxUrls = [
+    ...designFiles.filter(f => f.preview).map(f => f.preview),
+    ...uploadedFiles.filter(f => /\.(jpe?g|png|webp|gif)$/i.test(f.url)).map(f => f.url),
+  ];
+
   // Puts the configured item - artwork and all - into the ordinary cart. From here it is a
   // normal line that happens to carry a design, which is what makes a mug and a totebag
   // shippable as one order instead of two.
@@ -818,7 +859,7 @@ function CustomOrderInner() {
           body: JSON.stringify({
             items: [orderItem],
             deliveryAddress,
-            shippingFee: shippingFeeAmt ?? 0,
+            shippingFee: deliveryCharge,
             isRush: rushActive,
             agreedToTerms: agreedTerms,
             termsVersion,
@@ -855,7 +896,7 @@ function CustomOrderInner() {
           body: JSON.stringify({
             items: [orderItem],
             deliveryAddress,
-            shippingFee: shippingFeeAmt ?? 0,
+            shippingFee: deliveryCharge,
             isRush: rushActive,
             agreedToTerms: agreedTerms,
             termsVersion,
@@ -873,7 +914,7 @@ function CustomOrderInner() {
       const commonFields = {
         items: [orderItem],
         deliveryAddress,
-        shippingFee: shippingFeeAmt ?? 0,
+        shippingFee: deliveryCharge,
         isRush: rushActive,
         agreedToTerms: agreedTerms,
         termsVersion,
@@ -1329,8 +1370,12 @@ function CustomOrderInner() {
                               <div style={{ width: 18, height: 18, border: '2px solid rgba(212,168,67,0.2)', borderTopColor: '#D4A843', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
                             </div>
                           ) : f.preview ? (
-                            /* eslint-disable-next-line @next/next/no-img-element */
-                            <img src={f.preview} alt="" style={{ width: 40, height: 40, borderRadius: 8, objectFit: 'cover', flexShrink: 0, background: 'var(--dark)' }} />
+                            <button type="button" title="See it full size"
+                              onClick={() => setLightboxAt(lightboxUrls.indexOf(f.preview))}
+                              style={{ padding: 0, border: 'none', background: 'none', cursor: 'zoom-in', flexShrink: 0, lineHeight: 0 }}>
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img src={f.preview} alt="" style={{ width: 52, height: 52, borderRadius: 8, objectFit: 'cover', background: 'var(--dark)' }} />
+                            </button>
                           ) : (
                             <span style={{ width: 40, height: 40, borderRadius: 8, flexShrink: 0, background: 'rgba(212,168,67,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#D4A843" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1502,7 +1547,9 @@ function CustomOrderInner() {
                             display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                             {/* eslint-disable-next-line @next/next/no-img-element */}
                             {/\.(jpe?g|png|webp|gif)$/i.test(f.url)
-                              ? <img src={f.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                              ? <img src={f.url} alt="" title="See it full size"
+                                  onClick={() => setLightboxAt(lightboxUrls.indexOf(f.url))}
+                                  style={{ width: '100%', height: '100%', objectFit: 'cover', cursor: 'zoom-in' }} />
                               : <span style={{ fontSize: 9, fontWeight: 800, color: 'var(--gold)' }}>
                                   {(f.name || 'FILE').split('.').pop().toUpperCase().slice(0, 4)}
                                 </span>}
@@ -1522,7 +1569,7 @@ function CustomOrderInner() {
             </section>
 
             {/* Step 3: Delivery - shown for both upload and request */}
-            {(designMode === 'upload' || designMode === 'request') && !isInquiry && <section style={{ background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '12px', padding: '1.15rem' }}>
+            {(designMode === 'upload' || designMode === 'request') && !isInquiry && <section id="pmp-delivery-address" style={{ background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '12px', padding: '1.15rem' }}>
               {/* One picker for both screens - see components/shop/AddressPicker. Adding an
                   address used to send people to /shop/profile, and coming back meant a reload,
                   which threw away every reference photo they had just attached. */}
@@ -1657,6 +1704,12 @@ function CustomOrderInner() {
                       <span style={{ color: 'var(--gold)' }}>+{fmt(o.priceAdd)}</span>
                     </div>
                   ))}
+                  {firstOrderDiscount > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
+                      <span style={{ color: '#22c55e' }}>{firstOrderLabel(offers.firstOrderPercent, offers.firstOrderCap)}</span>
+                      <span style={{ color: '#22c55e', fontWeight: 600 }}>-{fmt(firstOrderDiscount)}</span>
+                    </div>
+                  )}
                   {designMode === 'request' && designFee > 0 && (
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
                       <span style={{ color: 'var(--gray)' }}>Design fee</span>
@@ -1687,10 +1740,19 @@ function CustomOrderInner() {
                   })()}
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
                     <span style={{ color: 'var(--gray)' }}>Shipping</span>
-                    {shippingFeeAmt !== null
-                      ? <span>{fmt(shippingFeeAmt)}</span>
-                      : <span style={{ color: 'var(--gray)', fontStyle: 'italic', fontSize: '0.78rem' }}>Billed separately</span>}
+                    {offers.freeDelivery
+                      ? <span style={{ color: '#22c55e', fontWeight: 700 }}>FREE</span>
+                      : shippingFeeAmt !== null
+                        ? <span>{fmt(shippingFeeAmt)}</span>
+                        : <span style={{ color: 'var(--gray)', fontStyle: 'italic', fontSize: '0.78rem' }}>Billed separately</span>}
                   </div>
+                  {/* Either "delivery is free on this" or how much more it would take. A threshold
+                      nobody is told about buys the shop nothing. */}
+                  {freeDeliveryNudge(offers) && (
+                    <div style={{ fontSize: '0.74rem', lineHeight: 1.5, color: offers.freeDelivery ? '#22c55e' : 'var(--gray)' }}>
+                      {freeDeliveryNudge(offers)}
+                    </div>
+                  )}
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', fontWeight: 700, paddingTop: '0.5rem', borderTop: '1px solid var(--border)' }}>
                     <span>Total</span>
                     <span>{fmt(grandTotal)}</span>
@@ -1698,7 +1760,7 @@ function CustomOrderInner() {
                   {/* "Billed separately" above says shipping is missing; this says why and what to
                       expect, the same note checkout shows - so a customer who reads this on the
                       product page and checkout later is not told two different things. */}
-                  {courierBooked && (
+                  {courierBooked && !offers.freeDelivery && (
                     <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem', marginTop: '4px', padding: '10px 12px', background: 'rgba(212,168,67,0.07)', border: '1px solid rgba(212,168,67,0.2)', borderRadius: '8px' }}>
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="2" style={{ flexShrink: 0, marginTop: '2px' }}>
                         <rect x="1" y="3" width="15" height="13"/><path d="M16 8h4l3 3v5h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/>
@@ -1814,10 +1876,10 @@ function CustomOrderInner() {
                   file. A spent "Added to cart" button that stayed clickable was inviting a second,
                   silently duplicate line instead of saying what to do next. */}
               {canOrder && !addedToCart && (
-                <button onClick={handleAddToCart} disabled={placing || addingToCart || !agreedTerms}
+                <button onClick={handleAddToCart} disabled={placing || addingToCart || !agreedTerms || needsAddress}
                   style={{ width: '100%', padding: '0.9rem', background: addingToCart ? 'rgba(212,168,67,0.55)' : 'var(--gold)',
                     color: '#000', border: 'none', borderRadius: '10px', fontWeight: 800, fontSize: '0.95rem',
-                    cursor: (addingToCart ? 'wait' : (!agreedTerms ? 'not-allowed' : 'pointer')), fontFamily: "Arial, Arimo, Helvetica, sans-serif", opacity: !agreedTerms ? 0.5 : 1 }}>
+                    cursor: (addingToCart ? 'wait' : (!agreedTerms || needsAddress ? 'not-allowed' : 'pointer')), fontFamily: "Arial, Arimo, Helvetica, sans-serif", opacity: (!agreedTerms || needsAddress) ? 0.5 : 1 }}>
                   {addingToCart ? 'Adding...' : 'Add to cart'}
                 </button>
               )}
@@ -1825,11 +1887,22 @@ function CustomOrderInner() {
               {/* Buy it now - the single-item shortcut that lands in the SAME checkout as the cart.
                   Works for upload and request alike; the checkout charges each line by its own rule. */}
               {canOrder && !addedToCart && (
-                <button onClick={handleBuyNow} disabled={placing || addingToCart || !agreedTerms}
+                <button onClick={handleBuyNow} disabled={placing || addingToCart || !agreedTerms || needsAddress}
                   style={{ width: '100%', padding: '0.85rem', marginTop: '0.6rem', background: 'transparent',
                     color: 'var(--gold)', border: '1.5px solid var(--gold)', borderRadius: '10px', fontWeight: 800,
-                    fontSize: '0.9rem', cursor: !agreedTerms ? 'not-allowed' : 'pointer', fontFamily: "Arial, Arimo, Helvetica, sans-serif", opacity: !agreedTerms ? 0.5 : 1 }}>
+                    fontSize: '0.9rem', cursor: (!agreedTerms || needsAddress) ? 'not-allowed' : 'pointer', fontFamily: "Arial, Arimo, Helvetica, sans-serif", opacity: (!agreedTerms || needsAddress) ? 0.5 : 1 }}>
                   Buy it now
+                </button>
+              )}
+
+              {/* Why they are greyed, with the way out beside it. */}
+              {canOrder && !addedToCart && needsAddress && (
+                <button type="button"
+                  onClick={() => document.getElementById('pmp-delivery-address')?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
+                  style={{ width: '100%', marginTop: '0.6rem', padding: '0.7rem', background: 'transparent',
+                    border: '1px dashed rgba(212,168,67,0.5)', borderRadius: '10px', color: 'var(--gold)',
+                    fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer', lineHeight: 1.5 }}>
+                  Add a delivery address to order
                 </button>
               )}
 
@@ -1898,6 +1971,10 @@ function CustomOrderInner() {
 
         </div>
       </div>
+      {lightboxAt != null && lightboxUrls.length > 0 && (
+        <PhotoLightbox urls={lightboxUrls} index={Math.max(0, lightboxAt)}
+          onIndexChange={setLightboxAt} onClose={() => setLightboxAt(null)} />
+      )}
     </div>
   );
 }

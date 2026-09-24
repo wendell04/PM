@@ -236,7 +236,7 @@ export default function VendorsTab({ vendors, setVendors, materials, categories,
         }
       >
         <div style={{ display:'flex', flexDirection:'column', gap:'14px' }}>
-          {errors._api && <div style={{ color:'#c62828', fontSize:'12px', padding:'8px 12px', background:'#fff5f5', borderRadius:'6px' }}>{errors._api}</div>}
+          {errors._api && <div style={{ color:'var(--st-red-fg)', fontSize:'12px', padding:'8px 12px', background:'#fff5f5', borderRadius:'6px' }}>{errors._api}</div>}
           <Field label="Vendor Name" required error={errors.name}>
             <input
               value={form.name}

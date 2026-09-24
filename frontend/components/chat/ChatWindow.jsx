@@ -245,7 +245,12 @@ const ChatWindow = ({ activeConversation, messages, user, isLoading, isAdmin, on
             <div className="quotation-header">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#d4a843" strokeWidth="2.5"><path d="M9 11l3 3L22 4" /><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" /></svg>
               <span className="quotation-tag">{msg.metadata?.form?.name || 'Order form'}</span>
-              <span style={{ marginLeft: 'auto', fontSize: '0.68rem', fontWeight: 700, color: filled ? '#1a7f3c' : 'var(--gray)' }}>{filled ? 'Filled in' : 'Waiting on the customer'}</span>
+              {/* Replaced is not waiting: a newer copy of the same form went out, and nobody is
+                  expected to answer this one. Saying "waiting on the customer" under a form the
+                  shop itself withdrew is how a thread gets chased for no reason. */}
+              <span style={{ marginLeft: 'auto', fontSize: '0.68rem', fontWeight: 700, color: filled ? '#1a7f3c' : 'var(--gray)' }}>
+                {filled ? 'Filled in' : (msg.metadata?.status === 'replaced' ? 'Replaced by a newer form' : 'Waiting on the customer')}
+              </span>
             </div>
             <div style={{ padding: '6px 12px 8px', fontSize: '0.82rem', color: 'var(--gray-light)', lineHeight: 1.5 }}>{msg.body}</div>
             <div className="quotation-timestamp" style={{ textAlign: isMe ? 'right' : 'left' }}>
@@ -270,7 +275,7 @@ const ChatWindow = ({ activeConversation, messages, user, isLoading, isAdmin, on
             <OrderFormAnswers a={a} />
             {isAdmin && onQuoteFromForm && (
               <div style={{ padding: '0 12px 10px' }}>
-                <button type="button" onClick={() => onQuoteFromForm(noteForQuote)}
+                <button type="button" onClick={() => onQuoteFromForm({ note: noteForQuote, askId: msg.metadata?.orderRequestId ?? null })}
                   style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: 'none', background: '#d4a843', color: '#111', fontWeight: 800, fontSize: '0.8rem', cursor: 'pointer' }}>
                   Send quotation for this
                 </button>

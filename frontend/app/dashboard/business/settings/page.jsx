@@ -7,7 +7,7 @@ import Image from 'next/image';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
-import { DEFAULT_CUSTOM_ORDER_TERMS } from '@/lib/customOrderTerms';
+import { DEFAULT_CUSTOM_ORDER_TERMS, TERMS_MODES } from '@/lib/customOrderTerms';
 import { DEFAULT_REGISTRATION_TERMS } from '@/lib/registrationTerms';
 import { CustomSelect } from './../inventory-v2/shared';
 import OrderForms from './OrderForms';
@@ -237,6 +237,7 @@ export default function SettingsPage() {
     productionLeadDays: '3', shippingDaysMin: '1', shippingDaysMax: '2',
     workingDays: [1, 2, 3, 4, 5, 6], holidays: [], shippingZones: [],
     rushEnabled: true, rushLeadDays: '1', rushFee: '150',
+    freeDeliveryFrom: '',
   });
   const setStorePart = (patch) => setShippingForm(f => {
     const sp = { ...(f.storeAddressParts || {}), ...patch };
@@ -394,6 +395,7 @@ export default function SettingsPage() {
             rushEnabled:          d.data.rushEnabled           != null ? !!d.data.rushEnabled                : true,
             rushLeadDays:         d.data.rushLeadDays          != null ? String(d.data.rushLeadDays)         : '1',
             rushFee:              d.data.rushFee               != null ? String(d.data.rushFee)              : '150',
+            freeDeliveryFrom:     d.data.freeDeliveryFrom      != null ? String(d.data.freeDeliveryFrom)     : '',
             googleMapsEnabled:    d.data.googleMapsEnabled === true,
           });
           setMailLanes(d.data.mailLanes ?? null);
@@ -1068,6 +1070,11 @@ export default function SettingsPage() {
         shippingTierKm:       isFlat ? 5  : (tierKm || 5),
         flatRateInsideMetro:  inside,
         flatRateOutsideMetro: outside,
+        // Blank is OFF, and has to be sent as null rather than 0 - a 0 here would make every
+        // order qualify for free delivery, which is the one value this field must never hold.
+        freeDeliveryFrom:     String(shippingForm.freeDeliveryFrom ?? '').trim() === ''
+          ? null
+          : (parseFloat(shippingForm.freeDeliveryFrom) || null),
       });
       setMethodSuccess('Shipping method saved.');
       setTimeout(() => setMethodSuccess(''), 3000);
@@ -2254,6 +2261,40 @@ export default function SettingsPage() {
                   </div>
                 )}
 
+                {/* Free delivery sits outside the three modes on purpose: it applies to all of
+                    them. Under Flat or Distance it zeroes the fee at checkout; under Courier
+                    Booked there is no fee at checkout to zero, so the order carries the promise
+                    and the courier fee you enter later is never billed to the customer. */}
+                <div style={{ marginTop: '1.25rem', paddingTop: '1.25rem', borderTop: '1px solid var(--border)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: '0.6rem' }}>
+                    <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--white)' }}>Free delivery</span>
+                    <span style={{
+                      fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.03em', padding: '2px 7px', borderRadius: 999,
+                      color: String(shippingForm.freeDeliveryFrom ?? '').trim() === '' ? 'var(--gray)' : '#4ade80',
+                      background: String(shippingForm.freeDeliveryFrom ?? '').trim() === '' ? 'rgba(255,255,255,0.05)' : 'rgba(34,197,94,0.12)',
+                      border: `1px solid ${String(shippingForm.freeDeliveryFrom ?? '').trim() === '' ? 'var(--border)' : 'rgba(34,197,94,0.3)'}`,
+                    }}>
+                      {String(shippingForm.freeDeliveryFrom ?? '').trim() === '' ? 'OFF' : 'ON'}
+                    </span>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
+                    <div className="profile-form-field">
+                      <label>Free delivery when the goods reach (₱)</label>
+                      <input
+                        type="text" inputMode="decimal" maxLength={7}
+                        value={shippingForm.freeDeliveryFrom}
+                        onChange={e => { const v = e.target.value.replace(/[^\d.]/g, ''); setShippingForm(f => ({ ...f, freeDeliveryFrom: v })); }}
+                        placeholder="Leave blank for no free delivery"
+                      />
+                      <div style={{ fontSize: '0.72rem', color: 'var(--gray)', marginTop: '0.25rem', lineHeight: 1.5 }}>
+                        Counted on the goods AFTER any discount, not before - so a basket that only
+                        reaches the figure because of a voucher does not also ship free. The design
+                        fee and the rush fee never count towards it. Quotations are never included.
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
                 {/* Under Courier Booked there are no rate fields, so these landed flush against
                     the bordered explainer above and read as one box growing a second border. */}
                 {methodError && (
@@ -2647,16 +2688,17 @@ export default function SettingsPage() {
                           />
                           {/* Which design flow the clause applies to. A file-quality warning is
                               meaningless to someone who asked US to draw it. */}
-                          <select
-                            value={t.mode || 'both'}
-                            onChange={e => setTermsRows(rows => rows.map((x, j) => j === i ? { ...x, mode: e.target.value } : x))}
-                            style={{ padding: '0.5rem 0.65rem', borderRadius: '7px', border: '1px solid var(--border)', background: 'var(--dark2)', color: 'var(--white)', fontSize: '0.78rem' }}
-                          >
-                            <option value="both">Both flows</option>
-                            <option value="upload">Uploaded design only</option>
-                            <option value="request">Design request only</option>
-                            <option value="quote">Quotation only</option>
-                          </select>
+                          {/* The app's own dropdown. A bare <select> renders in the browser's
+                              chrome - white on white in dark mode on Windows - and was the only
+                              one left on this screen. */}
+                          <div style={{ flex: '0 1 200px', minWidth: 170 }}>
+                            <CustomSelect
+                              value={t.mode || 'all'}
+                              onChange={v => setTermsRows(rows => rows.map((x, j) => j === i ? { ...x, mode: v } : x))}
+                              options={TERMS_MODES}
+                              placeholder="Where it applies"
+                            />
+                          </div>
                           <button
                             type="button"
                             onClick={() => setTermsRows(rows => rows.filter((_, j) => j !== i))}

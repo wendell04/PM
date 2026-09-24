@@ -173,6 +173,11 @@ class AuthController extends Controller
                 // exists (blocks user enumeration via timing). Message is already generic.
                 Hash::check($request->password, '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi');
                 Log::warning('Login failed: user not found', ['email' => $request->email, 'ip' => $ip]);
+                // Kept even though no account matched. Somebody working through addresses is the
+                // pattern this log exists to make visible, and it is invisible if only the
+                // successful attempts are written down.
+                self::logAuthEvent($request, 'auth.login_failed', null,
+                    'Sign-in refused - no account with that email', ['email' => $request->email]);
                 return $this->errorResponse('The email or password you entered is incorrect. Please try again.', 401);
             }
 
@@ -182,6 +187,8 @@ class AuthController extends Controller
             ) {
                 $minutesLeft = (int) ceil(now()->diffInSeconds($user->login_locked_until) / 60);
                 Log::warning('Login blocked: account locked', ['email' => $user->email, 'ip' => $ip]);
+                self::logAuthEvent($request, 'auth.login_failed', $user,
+                    'Sign-in refused - the account is locked', ['reason' => 'locked']);
                 return $this->errorResponse(
                     "Account temporarily locked. Try again in {$minutesLeft} minute(s).",
                     429
@@ -196,6 +203,8 @@ class AuthController extends Controller
                     $user->login_locked_until = now()->addMinutes(self::LOGIN_LOCKOUT_MINUTES);
                     $user->failed_login_attempts = 0;
                     Log::warning('Login failed: account locked after max attempts', ['email' => $user->email, 'ip' => $ip]);
+                    self::logAuthEvent($request, 'auth.login_locked', $user,
+                        'Account locked after too many wrong passwords', ['attempts' => $attempts]);
 
                     // Alert the owner in case this was someone else attacking the account. Non-fatal.
                     try {
@@ -280,6 +289,14 @@ class AuthController extends Controller
             $user->save();
 
             Log::info('Login successful', ['email' => $user->email, 'ip' => $ip, 'requires_2fa' => $requires2fa]);
+            // The entry the whole log was missing. "Who was in the system, from where, and when"
+            // could not be answered at all before this - the only record of a sign-in was a line
+            // in a server log file nobody can reach from the dashboard.
+            self::logAuthEvent($request, 'auth.login', $user,
+                $requires2fa
+                    ? 'Signed in - waiting on the 2FA code'
+                    : 'Signed in',
+                ['requires2fa' => $requires2fa, 'role' => $user->role]);
 
             return $this->successResponse(
                 'Login successful!',
@@ -765,6 +782,11 @@ class AuthController extends Controller
                 Log::warning('Could not revoke sessions after password reset: ' . $e->getMessage());
             }
 
+            // A password change is the single most useful line in a security log: it is what an
+            // account takeover looks like from the outside, and it ends every other session.
+            self::logAuthEvent($request, 'auth.password_reset', $user,
+                'Password reset - every other session was signed out');
+
             // Notify the owner that the password changed - alerts them if it wasn't them. Non-fatal.
             try {
                 Mail::to($user->email)->send(new AccountSecurityAlertMail(
@@ -924,6 +946,8 @@ class AuthController extends Controller
     {
         $user = $request->user();
         if ($user) {
+            // Written before the token goes: afterwards there is no session to attribute it to.
+            self::logAuthEvent($request, 'auth.logout', $user, 'Signed out');
             $user->currentAccessToken()->delete();
         }
         return $this->successResponse('Logged out successfully.');

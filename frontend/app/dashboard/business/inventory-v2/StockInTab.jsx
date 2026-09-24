@@ -20,16 +20,16 @@ function StepIndicator({ step }) {
             <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:'4px' }}>
               <div style={{
                 width:'28px', height:'28px', borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center',
-                background: done ? '#2e7d32' : active ? 'var(--gold)' : 'var(--border)',
+                background: done ? 'var(--st-green-fg)' : active ? 'var(--gold)' : 'var(--border)',
                 color:      done || active ? 'var(--dark)' : 'var(--gray)',
                 fontWeight: 700, fontSize:'12px',
               }}>
                 {done ? ICONS.check : idx}
               </div>
-              <span style={{ fontSize:'11px', fontWeight: active ? 600 : 400, color: active ? 'var(--gold)' : done ? '#2e7d32' : 'var(--gray)', whiteSpace:'nowrap' }}>{label}</span>
+              <span style={{ fontSize:'11px', fontWeight: active ? 600 : 400, color: active ? 'var(--gold)' : done ? 'var(--st-green-fg)' : 'var(--gray)', whiteSpace:'nowrap' }}>{label}</span>
             </div>
             {i < steps.length - 1 && (
-              <div style={{ flex:1, height:'2px', background: done ? '#2e7d32' : 'var(--border)', margin:'0 8px', marginBottom:'16px' }} />
+              <div style={{ flex:1, height:'2px', background: done ? 'var(--st-green-fg)' : 'var(--border)', margin:'0 8px', marginBottom:'16px' }} />
             )}
           </div>
         );
@@ -322,7 +322,7 @@ export default function StockInTab({ materials, vendors, batches, setBatches, ba
                 return (
                   <PhoneRow key={b.id} first={i === 0} mono={false}
                     title={mat?.name || b.matId}
-                    chip={<span style={{ fontSize:12, fontWeight:700, color: b.remainingQty < b.qtyReceived ? '#b45309' : '#2e7d32' }}>{b.remainingQty}/{b.qtyReceived} {mat?.unit} left</span>}
+                    chip={<span style={{ fontSize:12, fontWeight:700, color: b.remainingQty < b.qtyReceived ? 'var(--st-orange-fg)' : 'var(--st-green-fg)' }}>{b.remainingQty}/{b.qtyReceived} {mat?.unit} left</span>}
                     meta={[formatDate(b.date), b.invoiceNo, b.vendorName].filter(Boolean).join(' \u00b7 ')}
                     sub={[seeMoney ? `${b.qtyReceived} ${mat?.unit ?? ''} at ${formatCurrency(b.unitCost)}` : `${b.qtyReceived} ${mat?.unit ?? ''}`, seeMoney ? formatCurrency(b.qtyReceived * b.unitCost) : null, b.notes].filter(Boolean).join(' \u00b7 ')} />
                 );
@@ -363,7 +363,7 @@ export default function StockInTab({ materials, vendors, batches, setBatches, ba
                     <td style={{ ...S.td, textAlign:'right' }}>{b.qtyReceived} {mat?.unit}</td>
                     {seeMoney && <td style={{ ...S.td, textAlign:'right' }}>{formatCurrency(b.unitCost)}</td>}
                     {seeMoney && <td style={{ ...S.td, textAlign:'right', fontWeight:600 }}>{formatCurrency(b.qtyReceived * b.unitCost)}</td>}
-                    <td style={{ ...S.td, textAlign:'right', color: b.remainingQty < b.qtyReceived ? '#b45309' : '#2e7d32', fontWeight:600 }}>{b.remainingQty} {mat?.unit}</td>
+                    <td style={{ ...S.td, textAlign:'right', color: b.remainingQty < b.qtyReceived ? 'var(--st-orange-fg)' : 'var(--st-green-fg)', fontWeight:600 }}>{b.remainingQty} {mat?.unit}</td>
                     <td style={{ ...S.td, fontSize:'12px', color:'var(--gray)', maxWidth:'180px' }}>{b.notes}</td>
                   </tr>
                 );
@@ -402,7 +402,7 @@ export default function StockInTab({ materials, vendors, batches, setBatches, ba
             <>
               <button onClick={() => setStep(2)} style={S.btnGhost}>{ICONS.chevL} Back</button>
               <button onClick={closeModal} style={S.btnGhost}>Cancel</button>
-              <button onClick={confirmReceive} disabled={submitting} style={{ ...S.btnPrimary, background:'#2e7d32', color:'#fff', opacity: submitting ? .6 : 1 }}>{ICONS.check} {submitting ? 'Saving…' : 'Confirm Receive'}</button>
+              <button onClick={confirmReceive} disabled={submitting} style={{ ...S.btnPrimary, background:'var(--st-green-fg)', color:'#fff', opacity: submitting ? .6 : 1 }}>{ICONS.check} {submitting ? 'Saving…' : 'Confirm Receive'}</button>
             </>
           )
         }
@@ -554,7 +554,7 @@ export default function StockInTab({ materials, vendors, batches, setBatches, ba
                       {r.bos.map((bo, j) => (
                         <div key={j} style={{ background:'#fff5f5', border:'1px solid #fca5a5', borderRadius:'7px', padding:'10px 12px' }}>
                           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'8px' }}>
-                            <span style={{ fontSize:'12px', fontWeight:600, color:'#c62828' }}>Bad Order #{j + 1}</span>
+                            <span style={{ fontSize:'12px', fontWeight:600, color:'var(--st-red-fg)' }}>Bad Order #{j + 1}</span>
                             <button type="button" onClick={() => removeBO(i, j)}
                               style={{ background:'none', border:'none', cursor:'pointer', color:'var(--gray)', fontSize:'16px', lineHeight:1 }}>×</button>
                           </div>

@@ -251,7 +251,15 @@ export default function PaymentsPage() {
             {bucketTotals.map(bk => {
               const active = ageFilter === bk.key;
               return (
-                <button key={bk.key} onClick={() => { setAgeFilter(active ? 'all' : bk.key); setPage(1); }}
+                <button key={bk.key} onClick={() => {
+                    // The tiles count RECEIVABLES; the table lists orders by age whatever their
+                    // status. Both are right and together they read as a contradiction - a tile
+                    // saying 4 orders over a table showing nine. Clicking one now says "show me
+                    // those", which means the money still owed, so the two agree.
+                    setAgeFilter(active ? 'all' : bk.key);
+                    if (!active) setStatusFilter('outstanding');
+                    setPage(1);
+                  }}
                   style={{ flex: '1 1 150px', textAlign: 'left', padding: '10px 12px', borderRadius: 8, cursor: 'pointer',
                     background: bk.amount > 0 ? bk.tone.bg : 'var(--dark2)',
                     border: `1px solid ${active ? 'var(--gold)' : 'var(--border)'}` }}>

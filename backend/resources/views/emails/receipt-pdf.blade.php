@@ -86,6 +86,18 @@
       <td align="right" style="padding:2px 12px;font-weight:bold;color:#333333;">Sub-Total:</td>
       <td align="right" style="padding:2px 0;color:#333333;">{{ $peso($subtotal) }}</td>
     </tr>
+    @if($firstOrder > 0)
+    <tr>
+      <td align="right" style="padding:2px 12px;font-weight:bold;color:#333333;">First order@if($firstOrderPercent > 0) ({{ $firstOrderPercent }}%)@endif:</td>
+      <td align="right" style="padding:2px 0;color:#333333;">-{{ $peso($firstOrder) }}</td>
+    </tr>
+    @endif
+    @if($discount > 0)
+    <tr>
+      <td align="right" style="padding:2px 12px;font-weight:bold;color:#333333;">Voucher@if($voucher !== '') ({{ $voucher }})@endif:</td>
+      <td align="right" style="padding:2px 0;color:#333333;">-{{ $peso($discount) }}</td>
+    </tr>
+    @endif
     @if($designFee > 0)
     <tr>
       <td align="right" style="padding:2px 12px;font-weight:bold;color:#333333;">Design fee:</td>
@@ -102,6 +114,12 @@
     <tr>
       <td align="right" style="padding:2px 12px;font-weight:bold;color:#333333;">Delivery:</td>
       <td align="right" style="padding:2px 0;color:#333333;">{{ $peso($shipping) }}</td>
+    </tr>
+    @endif
+    @if($freeDelivery)
+    <tr>
+      <td align="right" style="padding:2px 12px;font-weight:bold;color:#333333;">Delivery:</td>
+      <td align="right" style="padding:2px 0;color:#333333;">FREE</td>
     </tr>
     @endif
     <tr>

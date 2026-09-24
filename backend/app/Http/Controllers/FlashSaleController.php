@@ -77,6 +77,9 @@ class FlashSaleController extends Controller
             'discountValue' => ['required', 'numeric', 'min:0.01', 'max:100000', function ($a, $v, $fail) use ($request) { if ($request->input('discountType') === 'percentage' && (float) $v > 90) $fail('A flash sale can take at most 90% off.'); }],
             'startDate'     => 'required|date',
             'endDate'       => 'required|date|after:startDate',
+            // Empty or absent = the whole product, which is what every earlier sale meant.
+            'variantIds'    => 'nullable|array|max:50',
+            'variantIds.*'  => 'string|max:64',
             'isActive'      => 'boolean',
             'stockLimit'    => 'nullable|integer|min:1',
         ])->validate();
@@ -143,8 +146,10 @@ class FlashSaleController extends Controller
         }
 
         // Overlap check
-        $start = new \DateTime($validated['startDate']);
-        $end = new \DateTime($validated['endDate']);
+        // Carbon in the app timezone, the same clock these dates are stored and compared on.
+        // new DateTime() reads PHP's default zone, which on the server is not Manila.
+        $start = \Carbon\Carbon::parse($validated['startDate']);
+        $end   = \Carbon\Carbon::parse($validated['endDate']);
         $overlap = FlashSale::where('productId', $validated['productId'])
             ->where('isActive', true)
             ->where('startDate', '<', $end)
@@ -163,6 +168,7 @@ class FlashSaleController extends Controller
             'productThumbnail' => $product->thumbnail ?? null,
             'discountType'     => $validated['discountType'],
             'discountValue'    => $validated['discountValue'],
+            'variantIds'       => array_values(array_unique(array_map('strval', $validated['variantIds'] ?? []))),
             'startDate'        => $validated['startDate'],
             'endDate'          => $validated['endDate'],
             'isActive'         => $validated['isActive'] ?? true,
@@ -190,6 +196,9 @@ class FlashSaleController extends Controller
             'discountValue' => ['required', 'numeric', 'min:0.01', 'max:100000', function ($a, $v, $fail) use ($request) { if ($request->input('discountType') === 'percentage' && (float) $v > 90) $fail('A flash sale can take at most 90% off.'); }],
             'startDate'     => 'required|date',
             'endDate'       => 'required|date|after:startDate',
+            // Empty or absent = the whole product, which is what every earlier sale meant.
+            'variantIds'    => 'nullable|array|max:50',
+            'variantIds.*'  => 'string|max:64',
             'isActive'      => 'boolean',
             'stockLimit'    => 'nullable|integer|min:1',
         ])->validate();
@@ -256,8 +265,10 @@ class FlashSaleController extends Controller
         }
 
         // Overlap check (exclude current sale)
-        $start = new \DateTime($validated['startDate']);
-        $end = new \DateTime($validated['endDate']);
+        // Carbon in the app timezone, the same clock these dates are stored and compared on.
+        // new DateTime() reads PHP's default zone, which on the server is not Manila.
+        $start = \Carbon\Carbon::parse($validated['startDate']);
+        $end   = \Carbon\Carbon::parse($validated['endDate']);
         $overlap = FlashSale::where('productId', $validated['productId'])
             ->where('_id', '!=', $id)
             ->where('isActive', true)
@@ -278,6 +289,7 @@ class FlashSaleController extends Controller
             'productThumbnail' => $product->thumbnail ?? null,
             'discountType'     => $validated['discountType'],
             'discountValue'    => $validated['discountValue'],
+            'variantIds'       => array_values(array_unique(array_map('strval', $validated['variantIds'] ?? []))),
             'startDate'        => $validated['startDate'],
             'endDate'          => $validated['endDate'],
             'isActive'         => $validated['isActive'] ?? $sale->isActive,

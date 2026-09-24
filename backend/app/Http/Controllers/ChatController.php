@@ -815,6 +815,27 @@ class ChatController extends Controller
                 ],
                 'is_read'         => false,
             ]);
+            // Sending the SAME form again is a correction - "ignore that one, fill this in" - and
+            // two live copies of it is how answers come back to the questions you replaced. The
+            // older one stops being fillable and says why. A DIFFERENT form is a second question
+            // (the shirts are settled, now the mugs), so both stay live; keepPrevious does the
+            // same for a deliberate resend.
+            if (!$request->boolean('keepPrevious')) {
+                $newTemplate = $template ? (string) $template->_id : null;
+                foreach (Message::where('conversation_id', (string) $conversation->_id)
+                    ->where('type', 'order_form')->get() as $old) {
+                    if ((string) $old->_id === (string) $message->_id) continue;
+                    $m = $old->metadata ?? [];
+                    if (($m['status'] ?? 'sent') !== 'sent') continue;
+                    if ((string) ($m['templateId'] ?? '') !== (string) ($newTemplate ?? '')) continue;
+                    $m['status']     = 'replaced';
+                    $m['replacedBy'] = (string) $message->_id;
+                    $m['replacedAt'] = now()->toIso8601String();
+                    $old->metadata   = $m;
+                    $old->save();
+                }
+            }
+
             $conversation->update(['last_message' => 'Sent an order form', 'last_message_at' => now()]);
 
             try { broadcast(new MessageSent($message))->toOthers(); } catch (\Throwable $e) {
@@ -869,6 +890,12 @@ class ChatController extends Controller
             if (($form->metadata['status'] ?? 'sent') === 'filled') {
                 return response()->json(['message' => 'This form has already been filled in.'], 422);
             }
+            // Refused on the server as well as hidden on the screen: a form left open in another
+            // tab before it was replaced would otherwise come back with answers to the questions
+            // the shop had already withdrawn.
+            if (($form->metadata['status'] ?? 'sent') === 'replaced') {
+                return response()->json(['message' => 'This form was replaced by a newer one. Please fill in the latest form.'], 422);
+            }
 
             // A form sent since templates exist carries its own questions; one sent before them
             // does not, and is still read the way it was written.
@@ -881,13 +908,15 @@ class ChatController extends Controller
                     'contact'        => 'required|string|max:40',
                     'email'          => 'required|email|max:160',
                     'address'        => 'nullable|string|max:400',
-                    'shipment'       => 'required|in:delivery,pickup',
+                    'shipment'       => 'nullable|in:delivery,pickup',
                     'answers'        => 'nullable|array',
                     'confirmDetails' => 'accepted',
                     'agreeTerms'     => 'accepted',
                 ]);
-                if ($v['shipment'] === 'delivery' && trim((string) ($v['address'] ?? '')) === '') {
-                    return response()->json(['message' => 'A delivery address is needed for delivery.'], 422);
+                // Checked whatever the shipment says. Guarding it on 'delivery' meant the one
+                // field the shop cannot fulfil an order without was optional in practice.
+                if (trim((string) ($v['address'] ?? '')) === '') {
+                    return response()->json(['message' => 'A complete shipping address is needed.'], 422);
                 }
                 [$missing, $given] = \App\Support\OrderFormSpec::checkAnswers($spec, (array) ($v['answers'] ?? []));
                 if ($missing) {
@@ -919,14 +948,16 @@ class ChatController extends Controller
                     'lines.*.item'    => 'required|string|max:160',
                     'lines.*.details' => 'nullable|string|max:200',
                     'lines.*.qty'     => 'required|integer|min:1|max:100000',
-                    'shipment'        => 'required|in:delivery,pickup',
+                    'shipment'        => 'nullable|in:delivery,pickup',
                     'payment'         => 'required|in:gcash,maya,card,cash',
                     'instructions'    => 'nullable|string|max:2000',
                     'confirmDetails'  => 'accepted',
                     'agreeTerms'      => 'accepted',
                 ]);
-                if ($v['shipment'] === 'delivery' && trim((string) ($v['address'] ?? '')) === '') {
-                    return response()->json(['message' => 'A delivery address is needed for delivery.'], 422);
+                // Checked whatever the shipment says. Guarding it on 'delivery' meant the one
+                // field the shop cannot fulfil an order without was optional in practice.
+                if (trim((string) ($v['address'] ?? '')) === '') {
+                    return response()->json(['message' => 'A complete shipping address is needed.'], 422);
                 }
                 $answers = [
                     'name'         => $clean($v['name']),

@@ -189,11 +189,11 @@ function ManageListsModal({ open, onClose, categories, setCategories, units, set
           </div>
           {isPending ? (
             <div style={{ display:'flex', alignItems:'center', gap:'6px', fontSize:'12px' }}>
-              <span style={{ color:'#c62828', fontWeight:500 }}>
+              <span style={{ color:'var(--st-red-fg)', fontWeight:500 }}>
                 {inUse > 0 ? `Remove? (${inUse} material${inUse!==1?'s':''} use this)` : 'Remove?'}
               </span>
               <button onClick={confirmRemove}
-                style={{ background:'#c62828', color:'var(--dark)', border:'none', borderRadius:'4px', padding:'2px 8px', fontSize:'11px', cursor:'pointer', fontWeight:600 }}>
+                style={{ background:'var(--st-red-fg)', color:'var(--dark)', border:'none', borderRadius:'4px', padding:'2px 8px', fontSize:'11px', cursor:'pointer', fontWeight:600 }}>
                 Yes
               </button>
               <button onClick={cancelRemove}
@@ -249,10 +249,10 @@ function ManageListsModal({ open, onClose, categories, setCategories, units, set
 // against the supplier's wait, because three days is fine from a same-day supplier and already
 // late from a week-long one.
 const COVER_TONE = {
-  out:      { bg: 'rgba(198,40,40,0.16)',  fg: '#c62828', label: 'out' },
-  critical: { bg: 'rgba(198,40,40,0.14)',  fg: '#c62828', label: null },
-  soon:     { bg: 'rgba(224,168,82,0.16)', fg: '#b45309', label: null },
-  ok:       { bg: 'rgba(46,125,50,0.12)',  fg: '#2e7d32', label: null },
+  out:      { bg: 'rgba(198,40,40,0.16)',  fg: 'var(--st-red-fg)', label: 'out' },
+  critical: { bg: 'rgba(198,40,40,0.14)',  fg: 'var(--st-red-fg)', label: null },
+  soon:     { bg: 'rgba(224,168,82,0.16)', fg: 'var(--st-orange-fg)', label: null },
+  ok:       { bg: 'rgba(46,125,50,0.12)',  fg: 'var(--st-green-fg)', label: null },
 };
 
 // The same gauge To Buy draws: how full against the line the owner set. It answers "konti na
@@ -262,7 +262,7 @@ function LevelBar({ have, min, uom, width = 96 }) {
   const h = Math.max(0, Number(have) || 0);
   if (m <= 0) return <span style={{ fontSize: 10.5, color: 'var(--gray)' }} title="No minimum set for this material.">no level set</span>;
   const pct  = Math.min(100, Math.round((h / m) * 100));
-  const tone = pct === 0 ? '#c62828' : pct < 50 ? '#c62828' : pct < 100 ? '#b45309' : '#2e7d32';
+  const tone = pct === 0 ? 'var(--st-red-fg)' : pct < 50 ? 'var(--st-red-fg)' : pct < 100 ? 'var(--st-orange-fg)' : 'var(--st-green-fg)';
   return (
     <span title={`${h} ${uom ?? ''} on hand against a minimum of ${m}`}
       style={{ display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}>
@@ -492,9 +492,9 @@ export default function MaterialsTab({ materials, setMaterials, vendors, setVend
           {mayWork && <button onClick={openAdd} style={{ ...S.btnPrimary, minHeight:44, justifyContent:'center' }}>{ICONS.plus} Add Material</button>}
           <KpiStrip items={[
             { key:'all', label:'Materials',    value: materials.length },
-            { key:'in',  label:'In stock',     value: inStock,  color:'#2e7d32' },
-            { key:'low', label:'Low stock',    value: lowStock, color:'#b45309' },
-            { key:'out', label:'Out of stock', value: outStock, color:'#c62828' },
+            { key:'in',  label:'In stock',     value: inStock,  color:'var(--st-green-fg)' },
+            { key:'low', label:'Low stock',    value: lowStock, color:'var(--st-orange-fg)' },
+            { key:'out', label:'Out of stock', value: outStock, color:'var(--st-red-fg)' },
           ]} />
           <PhoneFilterBar search={search} onSearch={setSearch} placeholder="Search name or SKU"
             filters={[{ key:'cat', label:'Category', value:catFilter, defaultValue:'All', onChange:setCat,
@@ -505,9 +505,9 @@ export default function MaterialsTab({ materials, setMaterials, vendors, setVend
       ) : (<>
       <div style={{ display:'flex', gap:'12px', flexWrap:'wrap' }}>
         <SummaryCard label="Total Materials" value={materials.length} accent />
-        <SummaryCard label="In Stock"        value={inStock}          color="#2e7d32" />
-        <SummaryCard label="Low Stock"       value={lowStock}         color="#b45309" />
-        <SummaryCard label="Out of Stock"    value={outStock}         color="#c62828" />
+        <SummaryCard label="In Stock"        value={inStock}          color="var(--st-green-fg)" />
+        <SummaryCard label="Low Stock"       value={lowStock}         color="var(--st-orange-fg)" />
+        <SummaryCard label="Out of Stock"    value={outStock}         color="var(--st-red-fg)" />
       </div>
 
       <div style={{ ...S.card, ...S.rowBetween }}>
@@ -614,7 +614,7 @@ export default function MaterialsTab({ materials, setMaterials, vendors, setVend
         }
       >
         <div style={{ display:'flex', flexDirection:'column', gap:'14px' }}>
-          {errors._api && <div style={{ color:'#c62828', fontSize:'12px', padding:'8px 12px', background:'#fff5f5', borderRadius:'6px' }}>{errors._api}</div>}
+          {errors._api && <div style={{ color:'var(--st-red-fg)', fontSize:'12px', padding:'8px 12px', background:'#fff5f5', borderRadius:'6px' }}>{errors._api}</div>}
           <Field label="Material Name" required error={errors.name}>
             <input
               value={form.name}
@@ -658,10 +658,10 @@ export default function MaterialsTab({ materials, setMaterials, vendors, setVend
                 title="Add new vendor">+</button>
             </div>
             {catVendors.length === 0 && vendors.length > 0 && (
-              <div style={{ fontSize:'11px', color:'#b45309', marginTop:'4px' }}>No vendors supply {form.category}. Click + to add one.</div>
+              <div style={{ fontSize:'11px', color:'var(--st-orange-fg)', marginTop:'4px' }}>No vendors supply {form.category}. Click + to add one.</div>
             )}
             {catVendors.length === 0 && vendors.length === 0 && (
-              <div style={{ fontSize:'11px', color:'#b45309', marginTop:'4px' }}>No vendors yet. Click + to add one.</div>
+              <div style={{ fontSize:'11px', color:'var(--st-orange-fg)', marginTop:'4px' }}>No vendors yet. Click + to add one.</div>
             )}
             {catVendors.length > 0 && catVendors.length < vendors.length && (
               <div style={{ fontSize:'11px', color:'var(--gray)', marginTop:'3px' }}>Showing vendors that supply {form.category}.</div>
@@ -780,7 +780,7 @@ export default function MaterialsTab({ materials, setMaterials, vendors, setVend
                           <div style={{ textAlign:'right', minWidth:110 }}>
                             <span style={{ fontSize:12, color:'var(--gray)', textDecoration:'line-through' }}>{r.current}</span>
                             <span style={{ margin:'0 6px', color:'var(--gray)' }}>&rarr;</span>
-                            <b style={{ fontSize:15, color: up ? '#b45309' : '#2e7d32' }}>{r.suggested}</b>
+                            <b style={{ fontSize:15, color: up ? 'var(--st-orange-fg)' : 'var(--st-green-fg)' }}>{r.suggested}</b>
                             <span style={{ fontSize:11, color:'var(--gray)' }}> {r.uom}</span>
                           </div>
                           <button onClick={() => acceptSuggestion([r])} disabled={!!applying} style={{ ...S.btnSm, minHeight:36, opacity: applying ? .6 : 1 }}>

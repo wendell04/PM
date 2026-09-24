@@ -694,6 +694,10 @@ export default function CustomerProfilePage() {
   });
 
   // UI State
+  // Staff shop here too, so this page serves both: the role is a label, and the dashboard is
+  // one of the things they do from here.
+  const isStaff = String(currentUser?.role || 'customer') !== 'customer';
+
   const [activeTab, setActiveTab] = useState(
     () => searchParams?.get("tab") || "overview",
   );
@@ -1553,7 +1557,6 @@ export default function CustomerProfilePage() {
               // A staff member who shops: their customer self, plus the staff role in words and a
               // door to the dashboard. The raw role code ("productionstaff") meant nothing here.
               const rawRole = String(currentUser?.role || "customer");
-              const isStaff = rawRole !== "customer";
               const staffLabel = rawRole.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/^./, (c) => c.toUpperCase());
               const pill = {
                 display: "inline-block",
@@ -1572,11 +1575,6 @@ export default function CustomerProfilePage() {
                       <span style={{ ...pill, background: "rgba(212,168,67,0.16)", color: "var(--gold)", border: "1px solid rgba(212,168,67,0.35)" }}>
                         {staffLabel}
                       </span>
-                      <a href="/dashboard/business/home"
-                        style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "4px 12px", borderRadius: 999,
-                          background: "var(--gold)", color: "#111", fontSize: "0.72rem", fontWeight: 800, textDecoration: "none" }}>
-                        Open dashboard
-                      </a>
                     </>
                   )}
                 </div>
@@ -2214,7 +2212,13 @@ export default function CustomerProfilePage() {
                   <div className="pf-quick-actions" style={{ paddingTop: "0.5rem", borderTop: "1px solid var(--border)" }}>
                     <div style={{ fontSize: "0.62rem", fontWeight: 700, color: "var(--gray)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "0.75rem" }}>Quick Actions</div>
                     <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-                      <Link href="/shop" style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem", padding: "0.5rem 1rem", background: "var(--gold)", borderRadius: "8px", color: "#000", fontWeight: 700, fontSize: "0.78rem", textDecoration: "none" }}>
+                      {isStaff && (
+                        <Link href="/dashboard/business/home" style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem", padding: "0.5rem 1rem", background: "var(--gold)", borderRadius: "8px", color: "#000", fontWeight: 700, fontSize: "0.78rem", textDecoration: "none" }}>
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+                          Open dashboard
+                        </Link>
+                      )}
+                      <Link href="/shop" style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem", padding: "0.5rem 1rem", background: isStaff ? "transparent" : "var(--gold)", border: isStaff ? "1px solid var(--border)" : "none", borderRadius: "8px", color: isStaff ? "var(--white)" : "#000", fontWeight: 700, fontSize: "0.78rem", textDecoration: "none" }}>
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
                         Shop Now
                       </Link>

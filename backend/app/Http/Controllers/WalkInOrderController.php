@@ -61,6 +61,12 @@ class WalkInOrderController extends Controller
                 'paymentMethod'  => 'required|in:cash,gcash,paymaya,card,bank_transfer',
                 'amountTendered' => 'nullable|numeric|min:0',
                 'discount'       => 'nullable|numeric|min:0',
+                // Anything charged on this order that is not a catalogue line: a design fee, a
+                // layout charge, a delivery the shop is passing on. Each one is NAMED, because a
+                // figure with no label on a receipt is what a customer comes back to argue about.
+                'fees'           => 'nullable|array|max:10',
+                'fees.*.label'   => 'required_with:fees|string|max:60',
+                'fees.*.amount'  => 'required_with:fees|numeric|min:0|max:999999',
                 'notes'          => 'nullable|string|max:1000',
 
                 // A counter sale and an order taken over Messenger are not the same transaction.
@@ -80,7 +86,7 @@ class WalkInOrderController extends Controller
             }
 
             $validated = $request->only([
-                'customerName', 'items', 'paymentMethod', 'amountTendered', 'discount', 'notes',
+                'customerName', 'items', 'paymentMethod', 'amountTendered', 'discount', 'fees', 'notes',
                 'saleType', 'paymentMode', 'amountPaid', 'fulfillment', 'customerPhone',
                 'deliveryAddress', 'targetDate',
             ]);
@@ -144,7 +150,19 @@ class WalkInOrderController extends Controller
             $customerName = trim($validated['customerName'] ?? '') ?: 'Walk-in Customer';
             $discount     = (float) ($validated['discount'] ?? 0);
             $discount     = max(0, $discount);
-            $netAmount    = max(0, round($totalAmount - $discount, 2));
+
+            // Extra charges, named. They are added AFTER the discount and are not discountable:
+            // the discount the counter gives is off the goods, and taking it off a delivery the
+            // shop is paying a rider for would be giving away someone else's money.
+            $fees = array_values(array_filter(array_map(fn ($f) => [
+                'label'  => trim((string) ($f['label'] ?? '')),
+                'amount' => round((float) ($f['amount'] ?? 0), 2),
+            ], (array) ($validated['fees'] ?? [])), fn ($f) => $f['label'] !== '' && $f['amount'] > 0));
+            $feeTotal = round(array_sum(array_column($fees, 'amount')), 2);
+
+            // The discount can only ever reach the goods, never the fees underneath them.
+            $discount     = min($discount, $totalAmount);
+            $netAmount    = max(0, round($totalAmount - $discount + $feeTotal, 2));
 
             // Default to the historical behaviour so anything still posting the old payload keeps
             // working: goods handed over, paid in full.
@@ -189,6 +207,10 @@ class WalkInOrderController extends Controller
                 ],
                 'items'           => $orderItems,
                 'totalAmount'     => $netAmount,
+                // What the lines came to before anything was added or taken off, so the receipt
+                // and every order screen can show a breakdown that adds up.
+                'subtotal'        => round($totalAmount, 2),
+                'extraFees'       => $fees ?: null,
                 'discountAmount'  => $discount > 0 ? $discount : null,
                 'voucherCode'     => null,
                 'orderStatus'     => $orderStatus,
@@ -238,7 +260,12 @@ class WalkInOrderController extends Controller
                     'orderId'    => (string) $order->_id,
                     'orderRef'   => $orderRef,
                     'totalAmount'=> $netAmount,
+                    'subtotal'   => round($totalAmount, 2),
                     'discount'   => $discount,
+                    // Named, so the receipt printed at the counter can say what the extra figure
+                    // on it was for rather than leaving the customer to ask.
+                    'extraFees'      => $fees,
+                    'discountAmount' => $discount,
                     'paymentMethod' => $validated['paymentMethod'],
                     'amountTendered' => (float) ($validated['amountTendered'] ?? 0),
                     'items'      => $orderItems,
