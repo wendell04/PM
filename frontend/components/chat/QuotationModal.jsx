@@ -136,6 +136,19 @@ const QuotationModal = ({ onClose, onSubmit, isSending, token, customerId, custo
     return () => { cancelled = true; };
   }, [customerId, token]);
 
+  // The address on the attached form, when it is not the same one the account has pinned.
+  // Free text cannot BE the delivery address - the courier needs a pinned, phoned address, and
+  // the customer picks that at checkout - but it is what they typed when they asked, and the
+  // delivery fee is being priced right here.
+  const formAddress = (() => {
+    const picked = forms.filter(f => pickedAsks.includes(f.askId));
+    for (const f of picked) {
+      const a = String(f.address ?? '').trim();
+      if (a) return a;
+    }
+    return '';
+  })();
+
   const addrLine = addr
     ? [addr.house_number, addr.street, addr.subdivision, addr.barangay, addr.city, addr.province, addr.zip]
         .filter(Boolean).join(', ')
@@ -951,12 +964,36 @@ const QuotationModal = ({ onClose, onSubmit, isSending, token, customerId, custo
               <div style={{ fontSize: '12px', color: 'var(--gray)' }}>Loading address…</div>
             ) : !addr ? (
               <div style={{ fontSize: '12px', color: 'var(--gray)', lineHeight: 1.5 }}>
-                No saved address yet - the customer will pin one at checkout, and the quote can be
-                sent without it. Ask for it here in the chat if you need to price delivery first.
+                {formAddress ? (
+                  <>
+                    <span style={{ color: 'var(--white)' }}>From the form: {formAddress}</span>
+                    <br />
+                    Nothing pinned on the account yet, so price the delivery against this and ask
+                    them to save it before they pay - the courier is booked from a pinned address.
+                  </>
+                ) : (
+                  <>
+                    No saved address yet - the customer will pin one at checkout, and the quote can
+                    be sent without it. Ask for it here in the chat if you need to price delivery
+                    first.
+                  </>
+                )}
               </div>
             ) : (
               <>
                 <div style={{ fontSize: '12.5px', color: 'var(--white)', lineHeight: 1.5 }}>{addrLine}</div>
+                {formAddress && formAddress.replace(/\s+/g, ' ').toLowerCase() !== addrLine.replace(/\s+/g, ' ').toLowerCase() && (
+                  <div style={{ marginTop: 6, padding: '7px 9px', borderRadius: 8, border: '1px solid var(--gold)', background: 'var(--gold-subtle)' }}>
+                    <div style={{ fontSize: '11px', fontWeight: 800, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--gold)' }}>
+                      They wrote a different address on the form
+                    </div>
+                    <div style={{ fontSize: '12px', color: 'var(--white)', lineHeight: 1.5, marginTop: 3 }}>{formAddress}</div>
+                    <div style={{ fontSize: '11px', color: 'var(--gray)', marginTop: 4, lineHeight: 1.45 }}>
+                      Price the delivery for this one. They still pick a pinned address at checkout -
+                      ask them to save this one before they pay.
+                    </div>
+                  </div>
+                )}
                 {(addr.phone || addrPhone) && (
                   <div style={{ fontSize: '11.5px', color: 'var(--gray)', marginTop: '2px' }}>Phone: {addr.phone || addrPhone}</div>
                 )}

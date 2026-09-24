@@ -953,6 +953,10 @@ class OrderRequestController extends Controller
                     'formName'    => (string) ($form['name'] ?? 'Order form'),
                     'submittedAt' => (string) ($snap['agreedAt'] ?? ($a->createdAt ? $a->createdAt->toIso8601String() : '')),
                     'quantity'    => (int) ($a->quantity ?? 0),
+                    // What they typed as the address when they asked. The courier is booked from a
+                    // pinned address the customer picks at checkout, but the delivery fee is priced
+                    // on this screen, and a customer who wrote somewhere else meant it.
+                    'address'     => (string) ($snap['address'] ?? ''),
                     'headline'    => (string) ($a->productName ?? ''),
                     'summary'     => $form
                         ? \App\Support\OrderFormSpec::summarise($form, (array) ($snap['answers'] ?? []))
