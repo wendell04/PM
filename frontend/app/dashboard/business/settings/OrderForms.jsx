@@ -135,7 +135,7 @@ export default function OrderForms({ token }) {
           <div style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--white)' }}>Order forms</div>
           <div style={{ fontSize: '0.78rem', color: 'var(--gray)', marginTop: 2, lineHeight: 1.5 }}>
             The questions asked in chat before a price is given. Every form also asks who the order is
-            for, whether it is delivered or picked up, and the two ticks - those are not editable.
+            for, where it goes, and the two ticks - those are not editable.
           </div>
         </div>
         <button type="button" onClick={startNew} style={S.btnPrimary}>{ICONS.plus} New form</button>

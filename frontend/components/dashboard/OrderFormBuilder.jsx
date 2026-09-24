@@ -218,7 +218,7 @@ export default function OrderFormBuilder({ value, onChange, types = {}, limits =
           <div style={{ ...S.label, marginBottom: 8 }}>Always asked - cannot be changed</div>
           <div style={{ display: 'grid', gap: 7, fontSize: 12.5, color: 'var(--gray)' }}>
             <div>Their name, contact number and email</div>
-            <div>Delivery or pickup, with the delivery address</div>
+            <div>Their complete shipping address</div>
             <div>The two ticks: the details are correct, and the custom order terms</div>
           </div>
         </div>
