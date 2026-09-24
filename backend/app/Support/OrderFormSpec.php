@@ -290,6 +290,11 @@ class OrderFormSpec
                     $clean[$id] = $s;
                     break;
                 }
+                // A print area is Pick any with a size on each row, and it is checked the same
+                // way. Without this case it fell through a switch with no default at all: no
+                // error, and nothing written to $clean - the customer ticked where the print
+                // goes, the form went through, and the answer was quietly thrown away.
+                case 'print_area':
                 case 'choice_many': {
                     $picked = [];
                     foreach (is_array($v) ? $v : [] as $o) {
@@ -416,6 +421,7 @@ class OrderFormSpec
                     if ($bits) $out[] = $label . ': ' . implode(', ', $bits);
                     break;
                 }
+                case 'print_area':
                 case 'choice_many':
                     if (is_array($v) && $v) $out[] = $label . ': ' . implode(', ', $v);
                     break;

@@ -5,8 +5,8 @@ import useLockBodyScroll from '@/lib/useLockBodyScroll';
 import PhoneInput from '@/components/auth/PhoneInput';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import {
-  blankFormState, blankOrderLine, validateForm, LIMITS,
-  SHIPMENT_OPTIONS, PAYMENT_OPTIONS, MAX_ORDER_LINES,
+  blankFormState, blankAnswer, blankOrderLine, validateForm, LIMITS,
+  PAYMENT_OPTIONS, MAX_ORDER_LINES,
 } from '@/lib/orderForm';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
@@ -79,7 +79,9 @@ export default function OrderFormModal({ open, onClose, token, user, message, on
     // they switch to delivery.
     if (q.type === 'choice_one') return (q.options || []).includes(v) ? v : '';
     if (v !== undefined) return v;
-    return (q.type === 'choice_many' || q.type === 'print_area') ? [] : q.type === 'item_list' ? [blankOrderLine()] : q.type === 'size_grid' ? (q.options || []).map(size => ({ size, qty: '' })) : '';
+    // The same rule that built the state in the first place. It was written out a second time
+    // here, and the two had already drifted - a new type only has to be taught once.
+    return blankAnswer(q);
   };
 
   const submit = async () => {
