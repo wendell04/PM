@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import { useAuth } from '@/contexts/AuthContext';
@@ -74,7 +74,7 @@ export default function CheckoutPage() {
   const router = useRouter();
   const { token, currentUser } = useAuth();
   const { theme } = useTheme();
-  const { clearCart } = useCart();
+  const { clearCart, returnToCart } = useCart();
 
   // Cart payload (loaded from sessionStorage)
   const [items, setItems] = useState([]);
@@ -149,6 +149,51 @@ export default function CheckoutPage() {
   // scroll position across and checkout opened halfway down - past the breakdown the customer is
   // here to check before paying.
   useEffect(() => { window.scrollTo(0, 0); }, []);
+
+  // ── Walking away from checkout must not throw the work away ───────────────
+  // Buy it now deliberately skips the cart, so a line that got this far lived ONLY in
+  // sessionStorage. Tap "Back to Shop" and it was nowhere the customer could see - not in the
+  // cart, not anywhere - and the design they uploaded, the notes they typed and the terms they
+  // accepted went with it. On a custom order that is the expensive part, and asking somebody to
+  // upload their artwork a second time because they went to look at one more product is the kind
+  // of thing that ends a sale.
+  //
+  // So: leaving without paying puts the line in the cart, which is the one place a shopper
+  // already understands as "the things I am buying". Nothing new to learn, and nothing lost.
+  // A cart checkout needs none of this - the line never left the cart in the first place.
+  const finishedRef = useRef(false);
+  const [leaving, setLeaving] = useState(false);
+
+  /**
+   * Leaving checkout without paying.
+   *
+   * Done on the way out, as an awaited step, not in an unmount cleanup. A cleanup cannot finish a
+   * network call: the page is already tearing down and the request dies with it. Two earlier
+   * attempts proved it - one fired on every dependency change and handed the line back while the
+   * customer was still looking at the page, the other never completed at all.
+   *
+   * Buy it now skips the cart on purpose, so a line that got this far lived only in
+   * sessionStorage. Walk away and it was nowhere the customer could see, taking the uploaded
+   * artwork, the notes and the accepted terms with it - the expensive part of a custom order, and
+   * the part nobody wants to do twice. It goes to the cart instead, which is the one place a
+   * shopper already reads as "the things I am buying".
+   *
+   * A cart checkout needs none of this: the line never left the cart.
+   */
+  const leaveCheckout = useCallback(async () => {
+    setLeaving(true);
+    try {
+      if (!finishedRef.current && !fromCart && items.length) {
+        await returnToCart(items);
+        sessionStorage.removeItem('checkout_payload');
+      }
+    } catch {
+      /* the cart is a convenience - never trap somebody on this page because it failed */
+    } finally {
+      setShowCancelModal(false);
+      router.push(fromCart ? '/shop/cart' : '/shop');
+    }
+  }, [fromCart, items, returnToCart, router]);
 
   // ── EFFECT: Load store settings for shipping calculation ──
   useEffect(() => {
@@ -790,6 +835,7 @@ export default function CheckoutPage() {
         }
         const orderId = (data.data?._id ?? data.data?.id ?? data._id ?? data.id);
         if (!orderId) throw new Error('Order created but no ID returned. Please check your orders.');
+        finishedRef.current = true;
         sessionStorage.removeItem('checkout_payload');
         router.push(`/shop/payment-success?id=${orderId}&method=cod`);
 
@@ -831,7 +877,8 @@ export default function CheckoutPage() {
         const { orderId, status, redirectUrl } = data.data ?? data;
 
         if (status === 'succeeded') {
-          sessionStorage.removeItem('checkout_payload');
+          finishedRef.current = true;
+        sessionStorage.removeItem('checkout_payload');
           clearCart();
           router.push(`/shop/payment-success?id=${orderId}&method=${paymentMethod}`);
         } else if (redirectUrl) {
@@ -963,7 +1010,8 @@ export default function CheckoutPage() {
             <div style={{ display: 'flex', gap: 10 }}>
               <button
                 onClick={() => {
-                  sessionStorage.removeItem('checkout_payload');
+                  finishedRef.current = true;
+        sessionStorage.removeItem('checkout_payload');
                   clearCart();
                   router.push('/shop/orders-history');
                 }}
@@ -973,7 +1021,8 @@ export default function CheckoutPage() {
               </button>
               <button
                 onClick={() => {
-                  sessionStorage.removeItem('checkout_payload');
+                  finishedRef.current = true;
+        sessionStorage.removeItem('checkout_payload');
                   clearCart();
                   router.push('/shop');
                 }}
@@ -2246,7 +2295,9 @@ export default function CheckoutPage() {
               Cancel Checkout?
             </h3>
             <p style={{ margin: '0 0 20px', fontSize: '0.875rem', color: 'var(--gray)', lineHeight: 1.5 }}>
-              Are you sure you want to go back? Your cart items will be kept.
+              {fromCart
+                ? 'Are you sure you want to go back? Your cart items will be kept.'
+                : 'Your order moves to your cart, with the design and notes you added, so nothing has to be done again. You can finish it whenever you like.'}
             </p>
             <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
               <button
@@ -2262,19 +2313,18 @@ export default function CheckoutPage() {
                 Continue Checkout
               </button>
               <button
-                onClick={() => {
-                  setShowCancelModal(false);
-                  router.push(fromCart ? '/shop/cart' : '/shop');
-                }}
+                onClick={leaveCheckout}
+                disabled={leaving}
                 style={{
                   padding: '10px 20px', borderRadius: '8px',
                   border: 'none',
                   background: 'var(--red)',
                   color: 'var(--white)', fontSize: '0.875rem',
-                  cursor: 'pointer',
+                  cursor: leaving ? 'wait' : 'pointer',
+                  opacity: leaving ? 0.6 : 1,
                 }}
               >
-                Yes, Cancel
+                {leaving ? 'Saving to your cart…' : (fromCart ? 'Yes, go back' : 'Move it to my cart')}
               </button>
             </div>
           </div>
