@@ -28,24 +28,7 @@ class ActivityLogController extends Controller
                 return $this->unauthorizedResponse();
             }
 
-            $query = ActivityLog::orderBy('createdAt', 'desc');
-
-            if ($request->filled('action'))     $query->where('action', $request->action);
-            if ($request->filled('entityType')) $query->where('entityType', $request->entityType);
-            if ($request->filled('entityId'))   $query->where('entityId', $request->entityId);
-            if ($request->filled('actor'))      $query->where('performedBy', $request->actor);
-            if ($request->filled('startDate'))  $query->where('createdAt', '>=', $request->startDate);
-            if ($request->filled('endDate'))    $query->where('createdAt', '<=', $request->endDate);
-
-            // A whole group at once - "show me everything about who got in", rather than making
-            // somebody pick sign-in, refused, locked out and signed out one at a time.
-            if ($request->filled('group')) {
-                $wanted = array_keys(array_filter(
-                    ActivityLog::KINDS,
-                    fn ($k) => $k[1] === $request->group
-                ));
-                $query->whereIn('action', $wanted ?: ['__none__']);
-            }
+            $query = $this->filtered($request);
 
             $limit = min(max((int) $request->query('limit', 100), 1), 200);
             $logs  = $query->limit($limit)->get();
@@ -94,6 +77,115 @@ class ActivityLogController extends Controller
         } catch (\Exception $e) {
             return $this->serverErrorResponse($e, 'Failed to fetch activity logs.');
         }
+    }
+
+    /**
+     * The filter, in one place.
+     *
+     * index() and export() have to select the same rows or the file somebody downloads is not
+     * the screen they were looking at - which on an audit log is worse than having no export.
+     */
+    private function filtered(Request $request)
+    {
+        $query = ActivityLog::orderBy('createdAt', 'desc');
+
+        if ($request->filled('action'))     $query->where('action', $request->action);
+        if ($request->filled('entityType')) $query->where('entityType', $request->entityType);
+        if ($request->filled('entityId'))   $query->where('entityId', $request->entityId);
+        if ($request->filled('actor'))      $query->where('performedBy', $request->actor);
+        if ($request->filled('startDate'))  $query->where('createdAt', '>=', $request->startDate);
+        if ($request->filled('endDate'))    $query->where('createdAt', '<=', $request->endDate);
+
+        // A whole group at once - "show me everything about who got in", rather than making
+        // somebody pick sign-in, refused, locked out and signed out one at a time.
+        if ($request->filled('group')) {
+            $wanted = array_keys(array_filter(
+                ActivityLog::KINDS,
+                fn ($k) => $k[1] === $request->group
+            ));
+            $query->whereIn('action', $wanted ?: ['__none__']);
+        }
+
+        return $query;
+    }
+
+    /**
+     * One CSV cell.
+     *
+     * A cell beginning =, +, - or @ is a FORMULA to Excel and Google Sheets, and it runs when the
+     * file is opened. An audit log is exactly where that matters: the text in it is written by
+     * whoever tried to sign in, so an attacker picks their own email address and gets code
+     * execution on the machine of the person investigating them. Prefixed with a quote, which is
+     * the documented way to make a spreadsheet treat a cell as text.
+     */
+    private function csvCell($value): string
+    {
+        $v = (string) ($value ?? '');
+        $v = str_replace(["\r", "\n"], ' ', $v);
+        if ($v !== '' && in_array($v[0], ['=', '+', '-', '@', "\t"], true)) {
+            $v = "'" . $v;
+        }
+        return '"' . str_replace('"', '""', $v) . '"';
+    }
+
+    /**
+     * GET /api/admin/activity-logs/export
+     *
+     * The same rows the screen is showing, as a file. Streamed rather than built in memory: an
+     * audit log is the one collection that only ever grows, and holding a year of it in a PHP
+     * array to hand back in one response is how an export takes the site down with it.
+     */
+    public function export(Request $request)
+    {
+        if (!$this->hasPermission($request, 'auditLogs')) {
+            return $this->unauthorizedResponse();
+        }
+
+        // Taking a copy of the trail out of the system is itself an event, and a more serious one
+        // than reading it on screen. Recorded BEFORE the file is built, so a download that fails
+        // half way still leaves the attempt on the record.
+        $this->logActivity($request, 'audit.exported', 'audit', null, 'Exported the audit log', [
+            'group'     => $request->input('group'),
+            'startDate' => $request->input('startDate'),
+            'endDate'   => $request->input('endDate'),
+        ]);
+
+        $query    = $this->filtered($request);
+        $filename = 'audit-log-' . now()->format('Y-m-d-Hi') . '.csv';
+
+        return response()->streamDownload(function () use ($query) {
+            $out = fopen('php://output', 'w');
+            // The byte order mark. Without it Excel on Windows reads the file as the system
+            // codepage and every peso sign and accented name arrives as mojibake.
+            fwrite($out, "\xEF\xBB\xBF");
+            fwrite($out, implode(',', [
+                'When', 'Who', 'Email', 'Role', 'Action', 'What happened',
+                'From', 'Device', 'About', 'Details',
+            ]) . "\r\n");
+
+            $query->chunk(500, function ($rows) use ($out) {
+                foreach ($rows as $l) {
+                    fwrite($out, implode(',', array_map([$this, 'csvCell'], [
+                        optional($l->createdAt)->format('Y-m-d H:i:s'),
+                        $l->performedByName ?: ($l->performedByEmail ?: 'Not signed in'),
+                        $l->performedByEmail,
+                        $l->performedByRole,
+                        ActivityLog::label($l->action),
+                        $l->description,
+                        $l->ip,
+                        $l->device,
+                        trim(($l->entityType ?? '') . ' ' . ($l->entityId ?? '')),
+                        $l->metadata ? json_encode($l->metadata) : '',
+                    ])) . "\r\n");
+                }
+            });
+
+            fclose($out);
+        }, $filename, [
+            'Content-Type'        => 'text/csv; charset=UTF-8',
+            'Cache-Control'       => 'no-store, no-cache, must-revalidate, private',
+            'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+        ]);
     }
 
     /**

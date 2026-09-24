@@ -128,6 +128,7 @@ export default function AuditLogsPage() {
   // that is a person, a badge, a time and an address does not survive being squeezed to 360px -
   // on a phone it becomes a list and a full-screen sheet instead.
   const isPhone = useIsPhone();
+  const [exporting, setExporting] = useState(false);
 
   const startDate = useMemo(() => {
     if (range === 'all') return '';
@@ -175,6 +176,39 @@ export default function AuditLogsPage() {
     }
   }, [token, group, startDate, query]);
 
+  // The file has to be fetched rather than linked: the endpoint wants the bearer token, and an
+  // <a href> carries no headers. Same filters as the screen, so the file IS what is on it.
+  const exportCsv = useCallback(async () => {
+    if (!token || exporting) return;
+    setExporting(true);
+    setError('');
+    try {
+      const p = new URLSearchParams();
+      if (group && group !== 'all') p.set('group', group);
+      if (startDate) p.set('startDate', startDate);
+      const res = await fetchWithTimeout(`${API_URL}/api/admin/activity-logs/export?${p}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      }, 60000);
+      if (!res.ok) throw new Error('The export was refused.');
+      const blob = await res.blob();
+      // The filename the server chose, so the date in it is the server's clock and not the
+      // browser's - an audit file argued over later should not carry a time nobody can check.
+      const named = /filename="?([^"]+)"?/.exec(res.headers.get('content-disposition') || '');
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = named?.[1] || 'audit-log.csv';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setError(e.message || 'Could not export the audit log.');
+    } finally {
+      setExporting(false);
+    }
+  }, [token, exporting, group, startDate]);
+
   useEffect(() => { load(); }, [load]);
   useEffect(() => { setPage(1); }, [group, range, query]);
 
@@ -202,11 +236,25 @@ export default function AuditLogsPage() {
               Showing {logs.length} entr{logs.length === 1 ? 'y' : 'ies'} from {rangeLabel}
             </div>
           </div>
-          <button type="button" onClick={load} disabled={isLoading} aria-label="Reload the audit trail"
-            style={{ ...S.btnGhost, opacity: isLoading ? 0.6 : 1 }}>
-            {ICONS.refresh ?? null}
-            {isLoading ? 'Refreshing…' : 'Refresh'}
-          </button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {/* Taking a copy out of the system is itself recorded - the export writes its own
+                entry before the file is built. */}
+            <button type="button" onClick={exportCsv} disabled={exporting || isLoading}
+              aria-label="Download these entries as a CSV file"
+              title="Downloads exactly what the filters above are showing"
+              style={{ ...S.btnGhost, opacity: exporting || isLoading ? 0.6 : 1 }}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+              {exporting ? 'Preparing…' : 'Export'}
+            </button>
+            <button type="button" onClick={load} disabled={isLoading} aria-label="Reload the audit trail"
+              style={{ ...S.btnGhost, opacity: isLoading ? 0.6 : 1 }}>
+              {ICONS.refresh ?? null}
+              {isLoading ? 'Refreshing…' : 'Refresh'}
+            </button>
+          </div>
         </div>
 
         {/* The four figures a security screen is actually for. Access and change - not stock. */}

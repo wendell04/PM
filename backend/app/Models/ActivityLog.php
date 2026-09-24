@@ -56,6 +56,7 @@ class ActivityLog extends Model
         'auth.2fa_disabled'     => ['Turned 2FA off',         'access'],
         'auth.session_revoked'  => ['Signed a device out',    'access'],
         'audit.viewed'          => ['Opened the audit log',   'access'],
+        'audit.exported'        => ['Exported the audit log', 'access'],
 
         // Who is allowed to do what
         'user.created'             => ['Added a staff member',    'people'],
