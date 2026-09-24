@@ -371,9 +371,9 @@ const pageStyles = `
     width: 70%;
   }
   .ssa-card {
-    background: var(--dark2);
+    background: var(--dark);
     border: 1px solid var(--border);
-    border-radius: 6px;
+    border-radius: 8px;
     padding: 1.5rem;
     margin-bottom: 1.5rem;
   }
@@ -427,7 +427,7 @@ const pageStyles = `
     gap: 0.5rem;
     background: rgba(239,68,68,0.1);
     border: 1px solid rgba(239,68,68,0.3);
-    border-radius: 8px;
+    border-radius: 6px;
     padding: 0.75rem 1rem;
     color: #ef4444;
     font-size: 0.875rem;
@@ -449,7 +449,7 @@ const pageStyles = `
   .ssa-warning-banner {
     background: rgba(251,191,36,0.06);
     border: 1px solid rgba(251,191,36,0.25);
-    border-radius: 5px;
+    border-radius: 6px;
     padding: 0.65rem 1rem;
     margin-bottom: 1rem;
     display: flex;
@@ -479,7 +479,7 @@ const pageStyles = `
 
   .ssa-toggle-btn {
     padding: 0.35rem 0.85rem;
-    border-radius: 4px;
+    border-radius: 6px;
     border: 1px solid var(--border);
     background: var(--dark);
     color: var(--gray);
@@ -494,7 +494,7 @@ const pageStyles = `
     padding: 0.5rem 0.75rem;
     background: var(--dark);
     border: 1px solid var(--border);
-    border-radius: 4px;
+    border-radius: 6px;
     color: var(--white);
     font-size: 0.875rem;
     outline: none;
@@ -512,7 +512,7 @@ const pageStyles = `
     width: 240px;
     background: var(--dark2);
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: 6px;
     color: var(--gray);
     font-size: 0.75rem;
     font-weight: 400;
@@ -557,7 +557,7 @@ const pageStyles = `
   .ssa-rfm-badge {
     display: inline-block;
     padding: 0.18rem 0.65rem;
-    border-radius: 99px;
+    border-radius: 999px;
     font-size: 0.8rem;
     font-weight: 600;
   }
@@ -594,7 +594,7 @@ const pageStyles = `
   @media (max-width: 480px)  { .ssa-metrics-grid { grid-template-columns: 1fr; } }
   .ssa-run-btn {
     padding: 0.5rem 1.25rem;
-    border-radius: 4px;
+    border-radius: 6px;
     border: 1px solid var(--gold);
     background: rgba(212,168,67,0.1);
     color: var(--gold);
@@ -718,7 +718,7 @@ const pageStyles = `
     width: 100%;
     padding: 0.6rem 0.8rem;
     border: 1px solid var(--border);
-    border-radius: 4px;
+    border-radius: 6px;
     background: var(--dark);
     color: var(--gray);
     font-size: 0.85rem;
@@ -738,7 +738,7 @@ const pageStyles = `
   .ssa-segmented {
     display: flex;
     border: 1px solid var(--border);
-    border-radius: 4px;
+    border-radius: 8px;
     overflow: hidden;
   }
   .ssa-seg-btn {
@@ -760,7 +760,7 @@ const pageStyles = `
     display: flex;
     align-items: center;
     border: 1px solid var(--border);
-    border-radius: 4px;
+    border-radius: 6px;
     background: var(--dark);
     overflow: hidden;
     transition: border-color 0.15s;
@@ -796,7 +796,7 @@ const pageStyles = `
     padding: 0.7rem 1rem;
     background: var(--gold);
     border: 1px solid var(--gold);
-    border-radius: 4px;
+    border-radius: 6px;
     color: #1a1a1a;
     font-size: 0.88rem;
     font-weight: 700;
@@ -829,7 +829,7 @@ const pageStyles = `
     padding: 0.6rem 0.85rem;
     background: var(--dark);
     border: 1px solid var(--border);
-    border-radius: 4px;
+    border-radius: 6px;
     color: var(--gray);
     font-size: 0.82rem;
     font-weight: 600;
@@ -858,7 +858,7 @@ const pageStyles = `
     align-items: center;
     gap: 0.35rem;
     padding: 0.32rem 0.7rem;
-    border-radius: 4px;
+    border-radius: 999px;
     background: rgba(74,222,128,0.12);
     border: 1px solid rgba(74,222,128,0.35);
     color: var(--st-green-fg);
@@ -894,7 +894,7 @@ const pageStyles = `
     padding: 0.4rem 0.75rem;
     background: var(--dark);
     border: 1px solid var(--border);
-    border-radius: 4px;
+    border-radius: 6px;
     color: var(--gray);
     font-size: 0.78rem;
     font-weight: 600;
