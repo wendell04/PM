@@ -130,9 +130,18 @@ function describeForecastError(err, ssaUrl) {
     return `The forecast service did not answer in time. Check that it is running at ${ssaUrl}.`;
   }
   // A network-level failure: service down, wrong host, or blocked by CORS.
-  // Fetch reports all three identically, so name the likeliest and say how to tell.
+  // Fetch reports all three identically, so the advice has to fit the host.
   if (err instanceof TypeError || /failed to fetch|networkerror|load failed/i.test(err?.message ?? "")) {
-    return `Could not reach the forecast service at ${ssaUrl}. It runs separately from the dashboard - start it with "uvicorn main:app --port 8001" in ssa-service, then run the forecast again.`;
+    let isLocal = false;
+    try {
+      isLocal = ["localhost", "127.0.0.1"].includes(new URL(ssaUrl).hostname);
+    } catch { /* malformed URL - treat as remote */ }
+    return isLocal
+      ? `Could not reach the forecast service at ${ssaUrl}. It runs separately from the dashboard - start it with "uvicorn main:app --port 8001" in ssa-service, then run the forecast again.`
+      // Telling someone to run uvicorn is useless when the service is hosted;
+      // for a remote host the causes are that it is down or that this page's
+      // origin is not on its allow-list.
+      : `Could not reach the forecast service at ${ssaUrl}. Either it is not responding, or this site's address is not on its allowed list - check the service is up and that SSA_ALLOWED_ORIGINS includes ${typeof window !== "undefined" ? window.location.origin : "this site"}.`;
   }
   return err?.message || "An unexpected error occurred.";
 }

@@ -15,12 +15,20 @@ logger = logging.getLogger("ssa-service")
 app = FastAPI()
 
 # The dashboard calls this service directly from the browser, so it needs CORS -
-# but only from the dashboard. Set SSA_ALLOWED_ORIGINS to a comma-separated list
-# in deployment; the default covers local development.
+# but only from the dashboard.
 #
-# "*" was also paired with allow_credentials=True, which no browser accepts: a
-# wildcard origin is rejected outright on a credentialed request. Naming the
-# origins makes credentialed calls work if they are ever needed.
+# The default here MUST include the deployed dashboard, not just localhost. An
+# earlier version of this defaulted to localhost only, which was correct on a
+# dev machine and silently cut the live dashboard off from its own forecast
+# service the moment it deployed: every tab showed "could not reach", because a
+# blocked preflight and a dead host look identical to fetch().
+#
+# These mirror backend/config/cors.php, which is where the dashboard's real
+# origins are already written down - they are not guesses. Override the whole
+# list with SSA_ALLOWED_ORIGINS (comma separated) when a new host appears.
+#
+# "*" is still not an option: it was paired with allow_credentials=True, and no
+# browser accepts a wildcard origin on a credentialed request.
 _origins_env = os.getenv("SSA_ALLOWED_ORIGINS", "").strip()
 ALLOWED_ORIGINS = (
     [o.strip() for o in _origins_env.split(",") if o.strip()]
@@ -28,12 +36,26 @@ ALLOWED_ORIGINS = (
     else [
         "http://localhost:3000",
         "http://127.0.0.1:3000",
+        "https://personalizemeprints.com",
+        "https://www.personalizemeprints.com",
     ]
 )
+
+# Cloudflare Pages preview deployments, matching the same carve-out Laravel
+# makes: allowed outside production only, because anyone can host on
+# *.pages.dev and these responses are credentialed.
+_preview_regex = (
+    None if os.getenv("APP_ENV", "").lower() == "production"
+    else r"https://[^.]+\.pages\.dev"
+)
+
+logger.info("CORS allows: %s%s", ", ".join(ALLOWED_ORIGINS),
+            "  (+ *.pages.dev previews)" if _preview_regex else "")
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
+    allow_origin_regex=_preview_regex,
     allow_credentials=True,
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization"],
