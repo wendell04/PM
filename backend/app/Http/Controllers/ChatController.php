@@ -881,13 +881,15 @@ class ChatController extends Controller
                     'contact'        => 'required|string|max:40',
                     'email'          => 'required|email|max:160',
                     'address'        => 'nullable|string|max:400',
-                    'shipment'       => 'required|in:delivery,pickup',
+                    'shipment'       => 'nullable|in:delivery,pickup',
                     'answers'        => 'nullable|array',
                     'confirmDetails' => 'accepted',
                     'agreeTerms'     => 'accepted',
                 ]);
-                if ($v['shipment'] === 'delivery' && trim((string) ($v['address'] ?? '')) === '') {
-                    return response()->json(['message' => 'A delivery address is needed for delivery.'], 422);
+                // Checked whatever the shipment says. Guarding it on 'delivery' meant the one
+                // field the shop cannot fulfil an order without was optional in practice.
+                if (trim((string) ($v['address'] ?? '')) === '') {
+                    return response()->json(['message' => 'A complete shipping address is needed.'], 422);
                 }
                 [$missing, $given] = \App\Support\OrderFormSpec::checkAnswers($spec, (array) ($v['answers'] ?? []));
                 if ($missing) {
@@ -919,14 +921,16 @@ class ChatController extends Controller
                     'lines.*.item'    => 'required|string|max:160',
                     'lines.*.details' => 'nullable|string|max:200',
                     'lines.*.qty'     => 'required|integer|min:1|max:100000',
-                    'shipment'        => 'required|in:delivery,pickup',
+                    'shipment'        => 'nullable|in:delivery,pickup',
                     'payment'         => 'required|in:gcash,maya,card,cash',
                     'instructions'    => 'nullable|string|max:2000',
                     'confirmDetails'  => 'accepted',
                     'agreeTerms'      => 'accepted',
                 ]);
-                if ($v['shipment'] === 'delivery' && trim((string) ($v['address'] ?? '')) === '') {
-                    return response()->json(['message' => 'A delivery address is needed for delivery.'], 422);
+                // Checked whatever the shipment says. Guarding it on 'delivery' meant the one
+                // field the shop cannot fulfil an order without was optional in practice.
+                if (trim((string) ($v['address'] ?? '')) === '') {
+                    return response()->json(['message' => 'A complete shipping address is needed.'], 422);
                 }
                 $answers = [
                     'name'         => $clean($v['name']),

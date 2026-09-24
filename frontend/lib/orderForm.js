@@ -71,7 +71,10 @@ export function validateForm(s, form) {
   if (!String(s.name ?? '').trim())    errs.push('Your name');
   if (!String(s.contact ?? '').trim()) errs.push('A contact number');
   if (!String(s.email ?? '').trim())   errs.push('Your email');
-  if (s.shipment === 'delivery' && !String(s.address ?? '').trim()) errs.push('A delivery address');
+  // Always required. It hung off a pickup-or-deliver choice that no longer exists, so with
+  // shipment sitting at anything but 'delivery' the address was never checked at all and a form
+  // could be sent with nowhere to send the goods.
+  if (!String(s.address ?? '').trim()) errs.push('A complete shipping address');
 
   let total = 0;
   let asksQty = false;
@@ -85,6 +88,10 @@ export function validateForm(s, form) {
     if (!q.required) continue;
     switch (q.type) {
       case 'choice_many':
+      // A print area answers as a list of ticked areas, exactly like Pick any. It reached the
+      // default branch and passed only because String([]) is empty - true by accident, and the
+      // kind of accident that stops being true the moment the shape changes.
+      case 'print_area':
         if (!(Array.isArray(v) && v.length)) errs.push(q.label);
         break;
       case 'size_grid':

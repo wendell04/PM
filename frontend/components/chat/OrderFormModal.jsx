@@ -89,7 +89,9 @@ export default function OrderFormModal({ open, onClose, token, user, message, on
     try {
       const core = {
         name: a.name, contact: a.contact, email: a.email,
-        address: a.shipment === 'delivery' ? a.address : '',
+        // Always sent now. It was blanked whenever shipment was not 'delivery', which is how a
+        // quotation could arrive with an empty address on it.
+        address: a.address,
         shipment: a.shipment,
         confirmDetails: a.confirmDetails ? 1 : 0,
         agreeTerms: a.agreeTerms ? 1 : 0,
@@ -297,6 +299,17 @@ export default function OrderFormModal({ open, onClose, token, user, message, on
           </div>
         </div>
 
+        {/* The address sits with the rest of "about you", above the shop's own questions - it is
+            part of who and where, not an afterthought at the end. It used to hang off a
+            pickup-or-deliver choice and only appear on delivery, so a form could be sent with no
+            address on it at all; the shop delivers, and somebody collecting says so in the notes. */}
+        <div style={section}>
+          <label style={label}>Complete shipping address</label>
+          <span style={help}>House or unit, street, barangay, city, province and postcode.</span>
+          <textarea style={{ ...field, minHeight: 64, resize: 'vertical' }} placeholder="Complete shipping address"
+            value={a.address} maxLength={400} onChange={e => set('address', e.target.value)} />
+        </div>
+
         {(form.questions ?? []).map(q => (
           <div key={q.id} style={section}>
             <label style={label}>{q.label}{!q.required && <span style={{ textTransform: 'none', letterSpacing: 0, fontWeight: 500 }}> (optional)</span>}</label>
@@ -305,22 +318,10 @@ export default function OrderFormModal({ open, onClose, token, user, message, on
           </div>
         ))}
 
-        <div style={section}>
-          <label style={label}>How it reaches you</label>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
-            {SHIPMENT_OPTIONS.map(o => (
-              <button key={o.value} type="button" onClick={() => set('shipment', o.value)} style={pill(a.shipment === o.value)}>{o.label}</button>
-            ))}
-          </div>
-          {a.shipment === 'delivery' && (
-            <textarea style={{ ...field, minHeight: 64, resize: 'vertical' }} placeholder="Delivery address" value={a.address} maxLength={400} onChange={e => set('address', e.target.value)} />
-          )}
-        </div>
-
         <div style={{ ...section, display: 'grid', gap: 8 }}>
           <label style={{ display: 'flex', gap: 10, alignItems: 'flex-start', fontSize: '0.82rem', color: 'var(--white, #fff)', cursor: 'pointer' }}>
             <input type="checkbox" checked={a.confirmDetails} onChange={e => set('confirmDetails', e.target.checked)} style={{ marginTop: 3 }} />
-            <span>The details above are correct.</span>
+            <span>Please make sure all details are correct.</span>
           </label>
           <label style={{ display: 'flex', gap: 10, alignItems: 'flex-start', fontSize: '0.82rem', color: 'var(--white, #fff)', cursor: 'pointer' }}>
             <input type="checkbox" checked={a.agreeTerms} onChange={e => set('agreeTerms', e.target.checked)} style={{ marginTop: 3 }} />
