@@ -57,6 +57,7 @@ class ActivityLog extends Model
         'auth.session_revoked'  => ['Signed a device out',    'access'],
         'audit.viewed'          => ['Opened the audit log',   'access'],
         'audit.exported'        => ['Exported the audit log', 'access'],
+        'audit.purged'          => ['Purged audit entries',   'access'],
 
         // Who is allowed to do what
         'user.created'             => ['Added a staff member',    'people'],
@@ -89,6 +90,55 @@ class ActivityLog extends Model
         'review_submitted'        => ['A customer left a review',    'catalog'],
         'settings.changed'        => ['Changed a setting',          'settings'],
     ];
+
+    /**
+     * Append-only, enforced here rather than hoped for.
+     *
+     * An audit log that the application can edit is not evidence of anything: the first thing
+     * somebody covering their tracks does is change or remove the line about themselves. Nothing
+     * in this system has ever had a reason to modify an entry, so an update is always a mistake
+     * or an attack and is refused outright.
+     *
+     * Deletion is refused too, with one narrow way through. The test-data reset genuinely needs
+     * it, and silently breaking a tool the owner uses is worse than the risk - so it has to say
+     * so out loud, by name, and the purge records itself before it runs. Nothing else can.
+     *
+     * This does not stop somebody with direct database access. That is a different threat, and
+     * the answer to it is Atlas permissions, not PHP.
+     */
+    // A stack, not a single reason. With one slot, a purge nested inside another would shut the
+    // door on its way out and the outer one's remaining deletes would start failing - a trap for
+    // whoever writes the second caller. Nothing nests today; this is so nothing has to remember.
+    private static array $purgeReasons = [];
+
+    /** Open the one door, for the length of one callback, with a reason that gets recorded. */
+    public static function purging(string $reason, callable $work)
+    {
+        self::$purgeReasons[] = $reason;
+        try {
+            return $work();
+        } finally {
+            array_pop(self::$purgeReasons);
+        }
+    }
+
+    protected static function booted(): void
+    {
+        static::updating(function () {
+            throw new \RuntimeException(
+                'An audit log entry cannot be changed. If this is a new kind of event, write a new entry.'
+            );
+        });
+
+        static::deleting(function () {
+            if (self::$purgeReasons === []) {
+                throw new \RuntimeException(
+                    'An audit log entry cannot be deleted. ActivityLog::purging() is the only way, and it '
+                    . 'has to name a reason.'
+                );
+            }
+        });
+    }
 
     public static function label(?string $action): string
     {
