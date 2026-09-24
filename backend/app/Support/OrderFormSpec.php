@@ -55,6 +55,10 @@ class OrderFormSpec
             'size_grid'   => ['label' => 'Sizes and how many',  'note' => 'A row per size with a quantity beside it.',  'options' => true,  'quantity' => true],
             'item_list'   => ['label' => 'List of items',       'note' => 'Item, details and quantity, up to 10 rows.', 'options' => false, 'quantity' => true],
             'date'        => ['label' => 'A date',              'note' => 'A day picked from a calendar.',              'options' => false, 'quantity' => false],
+            // Where the print goes. The AREAS are the owner's - front, back, a sleeve, the lid of a
+            // box - each with the biggest size that area takes. Nothing about a t-shirt is
+            // written into the code; a mug or a tote is the same question with different rows.
+            'print_area'  => ['label' => 'Print area',          'note' => 'Areas with a maximum print size on each.',   'options' => true,  'quantity' => false],
         ];
     }
 
@@ -65,6 +69,38 @@ class OrderFormSpec
     }
 
     /**
+     * What every form asks, whatever the owner writes.
+     *
+     * These are not questions in the template and cannot be added, edited or removed. They are
+     * the things an order cannot be fulfilled without: who it is, how to reach them, where it is
+     * going, and the two confirmations. Leaving them to the owner to remember means the day one
+     * gets forgotten is the day a job arrives with nowhere to send it.
+     *
+     * The shop's own Weebly form asked exactly these, which is what this is modelled on.
+     */
+    public static function core(): array
+    {
+        return [
+            'fields' => [
+                ['id' => 'fullName', 'label' => 'Full name',                 'type' => 'text',     'required' => true,
+                 'help' => '', 'from' => 'name'],
+                ['id' => 'contact',  'label' => 'Contact number',            'type' => 'phone',    'required' => true,
+                 'help' => '', 'from' => 'phone'],
+                ['id' => 'email',    'label' => 'Email address',             'type' => 'email',    'required' => true,
+                 'help' => '', 'from' => 'email'],
+                // One field, typed or picked from a saved address. The pickup-or-deliver choice was
+                // here and is gone: the shop delivers, and somebody collecting says so in the notes.
+                ['id' => 'address',  'label' => 'Complete shipping address', 'type' => 'address',  'required' => true,
+                 'help' => 'House or unit, street, barangay, city, province and postcode.', 'from' => 'address'],
+            ],
+            'confirmations' => [
+                ['id' => 'detailsOk', 'label' => 'Please make sure all details are correct.', 'terms' => false],
+                ['id' => 'termsOk',   'label' => 'I have read and agree to the Custom Order Terms.', 'terms' => true],
+            ],
+        ];
+    }
+
+    /**
      * The form every shop starts with: what the fixed form asked before templates existed, so
      * nothing is lost on the day this ships and the owner has something to edit rather than a
      * blank page.
@@ -72,22 +108,43 @@ class OrderFormSpec
     public static function starter(): array
     {
         return [
-            'name'        => 'Custom order form',
-            // The shop's own wording, carried over from the old site. The chat is listed first on
-            // purpose: a file sent here lands ON the order, where production picks it up, while an
-            // emailed file has to be found and re-attached by hand. Both are offered because
-            // customers do email, and this whole block is the owner's to rewrite in Settings.
-            'description' => "LAYOUT / DESIGN\n"
-                . "Send your layout as PNG, JPG or PDF at 300 dpi. Vector files (AI, EPS, SVG) print sharpest.\n"
-                . "E-mail your files to personalizemeprints.admin@gmail.com with Subject: DESIGN (your full name).\n"
-                . "You can also attach the file here in the chat, which puts it straight on your order.\n"
-                . "No artwork yet? Say so below and our designer will draw it for you.",
+            'name'        => 'Custom Order Form',
+            // The shop's own words. The file formats come FIRST because that is what somebody
+            // opening this needs to know before anything else; the invitation to chat follows.
+            // Every line of it is the owner's to rewrite in Settings.
+            'description' => "Jpeg, PSD, PDF, PNG. Choose any format you want. 300 dpi or at least a clear design.\n"
+                . "E-mail your files to personalizemeprints.admin@gmail.com with Subject: DESIGN (your full name)\n"
+                . "\n"
+                . "LAYOUT | DESIGN\n"
+                . "Prefer to chat? You can stay on this chat to send your inquiries or discuss your "
+                . "design preferences with us anytime.",
+            // A t-shirt order, because that is the shop's commonest job - but written as DATA, not
+            // as code. Change a colour, add a size, swap the print areas for the lid and base of a
+            // box, and it is a different form with nothing rebuilt.
             'questions'   => [
-                ['id' => 'items', 'type' => 'item_list', 'label' => 'What do you want made?', 'help' => 'One row per item. Put the size, colour and where the print goes in the details.', 'required' => true, 'options' => []],
-                ['id' => 'artwork', 'type' => 'choice_one', 'label' => 'Do you have the artwork ready?', 'help' => '', 'required' => true, 'options' => ['Yes, I will send the file', 'No, please design it for me', 'I have an idea but no file']],
-                ['id' => 'payment', 'type' => 'choice_one', 'label' => 'How will you pay?', 'help' => 'You can still change this when you pay.', 'required' => true, 'options' => ['GCash', 'Maya', 'Credit or debit card', 'Cash on pickup']],
-                ['id' => 'needby', 'type' => 'date', 'label' => 'When do you need it?', 'help' => 'Leave this out if there is no deadline.', 'required' => false, 'options' => []],
-                ['id' => 'notes', 'type' => 'long_text', 'label' => 'Anything else we should know?', 'help' => 'A reference, a colour code, where it will be used.', 'required' => false, 'options' => []],
+                ['id' => 'items', 'type' => 'item_list', 'label' => 'What do you want made?',
+                 'help' => 'One row per item, with the quantity beside it.', 'required' => true, 'options' => []],
+                ['id' => 'colour', 'type' => 'choice_many', 'label' => 'Shirt colour',
+                 'help' => 'Tick every colour you want.', 'required' => true,
+                 'options' => ['White', 'Black', 'Navy', 'Red', 'Maroon', 'Sand']],
+                ['id' => 'sizes', 'type' => 'size_grid', 'label' => 'Sizes and how many',
+                 'help' => 'Put a number beside each size you need.', 'required' => true,
+                 'options' => ['S', 'M', 'L', 'XL', '2XL', '3XL']],
+                ['id' => 'printarea', 'type' => 'print_area', 'label' => 'Where does the print go?',
+                 'help' => 'Tick each area. The sizes are the maximum we can print there.', 'required' => true,
+                 'options' => [
+                     'Front 1/4 - 15x10cm',
+                     'Front half - 30x20cm',
+                     'Front full - 30x40cm',
+                     'Back full - 30x40cm',
+                     'Left sleeve - 15x10cm',
+                     'Right sleeve - 15x10cm',
+                 ]],
+                ['id' => 'artwork', 'type' => 'choice_one', 'label' => 'Do you have the artwork ready?',
+                 'help' => '', 'required' => true,
+                 'options' => ['Yes, I will e-mail the file', 'No, please design it for me', 'I have an idea but no file']],
+                ['id' => 'notes', 'type' => 'long_text', 'label' => 'Other instructions',
+                 'help' => 'A reference, a colour code, where it will be used.', 'required' => false, 'options' => []],
             ],
         ];
     }

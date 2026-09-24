@@ -96,6 +96,18 @@ export default function OrderFormBuilder({ value, onChange, types = {}, limits =
       case 'date':        return ghost('dd / mm / yyyy', { maxWidth: 190 });
       case 'choice_one':  return optionRows(true);
       case 'choice_many': return optionRows(false);
+      // Same editor as Pick any - the rows ARE the areas. The hint underneath is where the
+      // convention lives: "Front full - 30x40cm" splits on the dash into a place and a limit,
+      // and nothing about a t-shirt is assumed, so a mug lid or a box base works the same way.
+      case 'print_area': return (
+        <div style={{ display: 'grid', gap: 6 }}>
+          {optionRows(false)}
+          <div style={{ fontSize: 11.5, color: 'var(--gray)', lineHeight: 1.5 }}>
+            Write each area as <b>where - max size</b>, for example <i>Front full - 30x40cm</i>.
+            The part after the dash is shown to the customer as the largest print that area takes.
+          </div>
+        </div>
+      );
       case 'size_grid':
         return (
           <div style={{ display: 'grid', gap: 6 }}>

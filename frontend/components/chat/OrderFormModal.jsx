@@ -79,7 +79,7 @@ export default function OrderFormModal({ open, onClose, token, user, message, on
     // they switch to delivery.
     if (q.type === 'choice_one') return (q.options || []).includes(v) ? v : '';
     if (v !== undefined) return v;
-    return q.type === 'choice_many' ? [] : q.type === 'item_list' ? [blankOrderLine()] : q.type === 'size_grid' ? (q.options || []).map(size => ({ size, qty: '' })) : '';
+    return (q.type === 'choice_many' || q.type === 'print_area') ? [] : q.type === 'item_list' ? [blankOrderLine()] : q.type === 'size_grid' ? (q.options || []).map(size => ({ size, qty: '' })) : '';
   };
 
   const submit = async () => {
@@ -176,6 +176,50 @@ export default function OrderFormModal({ open, onClose, token, user, message, on
               return (
                 <button key={o} type="button" style={pill(on)}
                   onClick={() => setAns(q.id, on ? v.filter(x => x !== o) : [...(Array.isArray(v) ? v : []), o])}>{o}</button>
+              );
+            })}
+          </div>
+        );
+      // Each area on its own row with the maximum size beside it, ticked or not. The areas are
+      // whatever the owner typed - "Front full - 30x40cm", "Lid - 8x8cm" - so a mug or a box is
+      // the same question with different rows and nothing about a shirt is assumed here.
+      case 'print_area':
+        return (
+          <div style={{ display: 'grid', gap: 5 }}>
+            {(q.options || []).map(o => {
+              const on = Array.isArray(v) && v.includes(o);
+              // "Front full - 30x40cm" reads as a place and a limit; the dash is the split.
+              const dash = o.lastIndexOf(' - ');
+              const where = dash > 0 ? o.slice(0, dash) : o;
+              const size = dash > 0 ? o.slice(dash + 3) : '';
+              return (
+                <button key={o} type="button"
+                  onClick={() => setAns(q.id, on ? v.filter(x => x !== o) : [...(Array.isArray(v) ? v : []), o])}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 9, width: '100%', textAlign: 'left',
+                    padding: '9px 11px', borderRadius: 9, cursor: 'pointer', fontFamily: 'inherit',
+                    border: `1.5px solid ${on ? 'var(--gold)' : 'var(--border)'}`,
+                    background: on ? 'rgba(212,168,67,0.08)' : 'transparent',
+                  }}>
+                  <span style={{
+                    width: 15, height: 15, borderRadius: 3, flexShrink: 0, display: 'flex',
+                    alignItems: 'center', justifyContent: 'center',
+                    border: `1.5px solid ${on ? 'var(--gold)' : 'var(--gray)'}`,
+                    background: on ? 'var(--gold)' : 'transparent',
+                  }}>
+                    {on && (
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#1a1a1a" strokeWidth="3.5">
+                        <polyline points="20 6 9 17 4 12" />
+                      </svg>
+                    )}
+                  </span>
+                  <span style={{ flex: 1, minWidth: 0, fontSize: '0.86rem', color: on ? 'var(--gold)' : 'var(--white)', fontWeight: on ? 700 : 500 }}>
+                    {where}
+                  </span>
+                  {size && (
+                    <span style={{ fontSize: '0.74rem', color: 'var(--gray)', whiteSpace: 'nowrap' }}>max {size}</span>
+                  )}
+                </button>
               );
             })}
           </div>

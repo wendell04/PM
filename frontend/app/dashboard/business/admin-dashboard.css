@@ -4597,6 +4597,13 @@ html.light .skeleton-table-header {
   font-family: inherit;
 }
 .pmp-q-title { font-size: 14.5px; font-weight: 600; border-bottom-color: var(--border); }
+/* These are inputs, and they have to look like inputs. Transparent with no border until hover,
+   they read as printed text - the owner clicked the question, typed, and reasonably concluded it
+   could not be changed. A visible resting underline and a placeholder in italics is the whole
+   fix. */
+.pmp-q-title, .pmp-q-help, .pmp-q-opt { border-bottom-color: var(--border); }
+.pmp-q-title::placeholder, .pmp-q-help::placeholder, .pmp-q-opt::placeholder { font-style: italic; opacity: .7; }
+.pmp-q-title:hover, .pmp-q-help:hover, .pmp-q-opt:hover { background: rgba(255,255,255,.03); }
 .pmp-q-help  { font-size: 12.5px; color: var(--gray); }
 .pmp-q-opt   { font-size: 13px; }
 .pmp-q-title:hover, .pmp-q-help:hover, .pmp-q-opt:hover { border-bottom-color: var(--border); }
