@@ -5,9 +5,11 @@ import { useAuth } from "@/contexts/AuthContext";
 import { fetchWithTimeout } from "@/lib/fetchWithTimeout";
 import { useEffect, useRef, useState } from "react";
 import {
+  Area,
   Bar,
   BarChart,
   Brush,
+  ComposedChart,
   CartesianGrid,
   Cell,
   Legend,
@@ -2059,6 +2061,12 @@ export default function SSAForecastPage() {
           Forecast:      fcValues[i] != null ? Math.round(fcValues[i] * 100) / 100 : null,
           High:          showConfidence ? (fcHigh[i] != null ? Math.round(fcHigh[i] * 100) / 100 : null) : null,
           Low:           showConfidence ? (fcLow[i]  != null ? Math.round(fcLow[i]  * 100) / 100 : null) : null,
+          // One [low, high] pair so the interval draws as a single shaded
+          // region. Two separate lines read as two more series competing
+          // with the forecast; a band reads as uncertainty around it.
+          Band:          showConfidence && fcHigh[i] != null && fcLow[i] != null
+            ? [Math.round(fcLow[i] * 100) / 100, Math.round(fcHigh[i] * 100) / 100]
+            : null,
         });
       }
     }
@@ -3295,7 +3303,7 @@ export default function SSAForecastPage() {
                   {(() => {
                     const chartData = isInvMode ? getInventoryChartData() : getCombinedChartData();
                     return (
-                      <LineChart
+                      <ComposedChart
                         data={chartData}
                         margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
                       >
@@ -3351,6 +3359,19 @@ export default function SSAForecastPage() {
                         )}
                         {isInvMode ? (
                           <>
+                            {showConfidence && (
+                              <Area
+                                type="monotone"
+                                dataKey="Band"
+                                name="Confidence range"
+                                stroke="none"
+                                fill="var(--gold)"
+                                fillOpacity={0.14}
+                                isAnimationActive={false}
+                                legendType="rect"
+                                connectNulls={false}
+                              />
+                            )}
                             <Line
                               type="stepAfter"
                               dataKey="StockActual"
@@ -3390,30 +3411,6 @@ export default function SSAForecastPage() {
                               dot={false}
                               activeDot={{ r: 5 }}
                             />
-                            {showConfidence && (
-                              <>
-                                <Line
-                                  type="monotone"
-                                  dataKey="High"
-                                  name="Upper CI"
-                                  stroke="rgba(212,168,67,0.35)"
-                                  strokeWidth={1}
-                                  strokeDasharray="3 3"
-                                  dot={false}
-                                  legendType="line"
-                                />
-                                <Line
-                                  type="monotone"
-                                  dataKey="Low"
-                                  name="Lower CI"
-                                  stroke="rgba(212,168,67,0.35)"
-                                  strokeWidth={1}
-                                  strokeDasharray="3 3"
-                                  dot={false}
-                                  legendType="line"
-                                />
-                              </>
-                            )}
                             {showTrend && (
                               <Line
                                 type="monotone"
@@ -3503,7 +3500,7 @@ export default function SSAForecastPage() {
                             label={{ value: `Reorder pt (${invPolicy.ROP})`, position: "insideBottomLeft", fill: "var(--st-amber-fg)", fontSize: 10 }}
                           />
                         )}
-                      </LineChart>
+                      </ComposedChart>
                     );
                   })()}
                 </ResponsiveContainer>
