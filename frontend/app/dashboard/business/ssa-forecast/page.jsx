@@ -115,6 +115,27 @@ const DATA_SOURCES = [
 ];
 
 /**
+ * Turn a thrown fetch error into something the reader can act on.
+ *
+ * Every tab on this page posts to the SSA service, which runs separately from
+ * the rest of the dashboard. When it is not running the browser throws a bare
+ * TypeError - "Failed to fetch" - with no clue that a second service exists or
+ * that the rest of the app is fine. That message was the whole error the user
+ * saw on all four tabs at once.
+ */
+function describeForecastError(err, ssaUrl) {
+  if (err?.name === "AbortError") {
+    return `The forecast service did not answer in time. Check that it is running at ${ssaUrl}.`;
+  }
+  // A network-level failure: service down, wrong host, or blocked by CORS.
+  // Fetch reports all three identically, so name the likeliest and say how to tell.
+  if (err instanceof TypeError || /failed to fetch|networkerror|load failed/i.test(err?.message ?? "")) {
+    return `Could not reach the forecast service at ${ssaUrl}. It runs separately from the dashboard - start it with "uvicorn main:app --port 8001" in ssa-service, then run the forecast again.`;
+  }
+  return err?.message || "An unexpected error occurred.";
+}
+
+/**
  * Turn sales of finished products into demand for one raw material.
  *
  * No sale in the collection carries an inventoryId, so the link runs
@@ -1639,10 +1660,8 @@ export default function SSAForecastPage() {
       // rejected the (sparse) data.
       if (dataSource === "inventory_stock") {
         applyInvFallback(rows);
-      } else if (err.name === "AbortError") {
-        setError("Forecast timed out. The SSA service may be unavailable.");
       } else {
-        setError(err.message || "An unexpected error occurred.");
+        setError(describeForecastError(err, SSA_API_URL));
       }
     } finally {
       setIsLoading(false);
@@ -1675,7 +1694,7 @@ export default function SSAForecastPage() {
       }
       setRfmResult(await ssaRes.json());
     } catch (err) {
-      setRfmError(err.message || "Failed to run customer segmentation.");
+      setRfmError(describeForecastError(err, SSA_API_URL));
     } finally {
       setAnalyticsLoading(false);
     }
@@ -1716,7 +1735,7 @@ export default function SSAForecastPage() {
       }
       setServiceResult(await ssaRes.json());
     } catch (err) {
-      setServiceError(err.message || "Failed to run service segmentation.");
+      setServiceError(describeForecastError(err, SSA_API_URL));
     } finally {
       setAnalyticsLoading(false);
     }
