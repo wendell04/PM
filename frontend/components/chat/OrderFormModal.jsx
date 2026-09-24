@@ -22,13 +22,16 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
 // A form sent before the owner could write their own. Those messages carry no questions, so they
 // are drawn from the list they were sent with, and answered in the shape that endpoint still takes.
-const legacyForm = (shipment) => ({
+const legacyForm = () => ({
   name: 'Order form',
   description: '',
   questions: [
     { id: 'lines', type: 'item_list', label: 'What you want made', help: 'One row per item. Size, colour and where the print goes belong in the details.', required: true, options: [] },
+    // Cash on pickup left with the pickup choice. The filter that used to offer it read
+    // shipment === 'pickup', a choice that can no longer be made, so it was a branch that looked
+    // live and could never be taken - and an order the shop delivers cannot be paid on collection.
     { id: 'payment', type: 'choice_one', label: 'How you will pay', help: '', required: true,
-      options: PAYMENT_OPTIONS.filter(o => o.value !== 'cash' || shipment === 'pickup').map(o => o.label) },
+      options: PAYMENT_OPTIONS.filter(o => o.value !== 'cash').map(o => o.label) },
     { id: 'instructions', type: 'long_text', label: 'Anything else', help: 'Deadline, reference, anything we should know.', required: false, options: [] },
   ],
 });
@@ -41,9 +44,9 @@ export default function OrderFormModal({ open, onClose, token, user, message, on
 
   useLockBodyScroll(open);
 
-  // Cash on pickup is only on the table when they are picking up, so the legacy form is rebuilt
-  // when that changes. A form the owner wrote is used exactly as it was sent.
-  const form = useMemo(() => sent ?? legacyForm(a.shipment), [sent, a.shipment]);
+  // A form the owner wrote is used exactly as it was sent; anything older falls back to the fixed
+  // list it was sent with, which no longer depends on anything the customer picks.
+  const form = useMemo(() => sent ?? legacyForm(), [sent]);
 
   // The default address, if the account has one. Typed over freely.
   useEffect(() => {
