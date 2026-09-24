@@ -52,11 +52,11 @@ const DEFAULT_COUNTS = { weekly: 4, monthly: 3, annually: 2 };
 
 const RFM_COLORS = {
   "Champions":           { bg: "var(--st-green-bg)",  color: "var(--st-green-fg)" },
-  "Loyal Customers":     { bg: "rgba(96,165,250,0.15)",  color: "#60a5fa" },
-  "Potential Loyalists": { bg: "rgba(167,139,250,0.15)", color: "#a78bfa" },
+  "Loyal Customers":     { bg: "var(--st-blue-bg)",  color: "var(--st-blue-fg)" },
+  "Potential Loyalists": { bg: "rgba(167,139,250,0.15)", color: "var(--st-purple-fg)" },
   "New Customers":       { bg: "rgba(52,211,153,0.15)",  color: "#34d399" },
   "Promising":           { bg: "rgba(251,191,36,0.15)",  color: "var(--st-amber-fg)" },
-  "At Risk":             { bg: "rgba(251,146,60,0.15)",  color: "#fb923c" },
+  "At Risk":             { bg: "rgba(251,146,60,0.15)",  color: "var(--st-orange-fg)" },
   "Can't Lose Them":     { bg: "var(--st-red-bg)", color: "var(--st-red-fg)" },
   "Hibernating":         { bg: "rgba(156,163,175,0.15)", color: "#9ca3af" },
   "Lost":                { bg: "rgba(107,114,128,0.15)", color: "#6b7280" },
@@ -3399,7 +3399,7 @@ export default function SSAForecastPage() {
                               <Line
                                 type="monotone"
                                 dataKey="Trend"
-                                stroke="#60a5fa"
+                                stroke="var(--st-blue-fg)"
                                 strokeWidth={1.5}
                                 dot={false}
                                 activeDot={{ r: 3 }}
@@ -3409,7 +3409,7 @@ export default function SSAForecastPage() {
                               <Line
                                 type="monotone"
                                 dataKey="Seasonality"
-                                stroke="#a78bfa"
+                                stroke="var(--st-purple-fg)"
                                 strokeWidth={1.5}
                                 dot={false}
                                 activeDot={{ r: 3 }}
@@ -3526,7 +3526,7 @@ export default function SSAForecastPage() {
                         />
                         <Legend wrapperStyle={{ paddingTop: "16px", fontSize: "0.8rem" }} />
                         <Line type="monotone" dataKey="Trend" stroke="var(--gold)" strokeWidth={2} dot={false} activeDot={{ r: 3 }} />
-                        <Line type="monotone" dataKey="Seasonality" stroke="#60a5fa" strokeWidth={1.5} dot={false} activeDot={{ r: 3 }} />
+                        <Line type="monotone" dataKey="Seasonality" stroke="var(--st-blue-fg)" strokeWidth={1.5} dot={false} activeDot={{ r: 3 }} />
                         <Line type="monotone" dataKey="Noise" stroke="rgba(255,255,255,0.25)" strokeWidth={1} dot={false} activeDot={{ r: 2 }} />
                       </LineChart>
                     </ResponsiveContainer>
@@ -3572,13 +3572,13 @@ export default function SSAForecastPage() {
             )}
             {isInvMode && invPolicy && invPolicy.d > 0 && invPolicy.d < 0.5 && submittedConfig?.period?.type === "weekly" && (
               <div className="ssa-warning-banner" style={{ background: "rgba(96,165,250,0.06)", borderColor: "rgba(96,165,250,0.3)" }}>
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" strokeWidth="2" style={{ flexShrink: 0, marginTop: 1 }}>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--st-blue-fg)" strokeWidth="2" style={{ flexShrink: 0, marginTop: 1 }}>
                   <circle cx="12" cy="12" r="10" />
                   <line x1="12" y1="16" x2="12" y2="12" />
                   <line x1="12" y1="8" x2="12.01" y2="8" />
                 </svg>
                 <span>
-                  <strong style={{ color: "#60a5fa" }}>Low weekly demand \u2014</strong>{" "}
+                  <strong style={{ color: "var(--st-blue-fg)" }}>Low weekly demand \u2014</strong>{" "}
                   this item sells under 1 unit/week, so weekly numbers are mostly fractional. Switch to{" "}
                   <strong style={{ color: "var(--white)" }}>Monthly</strong> or <strong style={{ color: "var(--white)" }}>Annually</strong> for clearer whole-unit figures.
                 </span>
