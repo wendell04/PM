@@ -384,7 +384,7 @@ class OrderRequestController extends Controller
         }
 
         $validated = Validator::make($request->all(), [
-            'status'     => 'required|in:pending_review,confirmed,processing,ready,delivered,cancelled',
+            'status'     => 'required|in:pending_review,confirmed,processing,ready,delivered,cancelled,answered',
             'finalPrice' => 'nullable|numeric|min:0',
             'downPayment' => 'nullable|numeric|min:0',
             // How long the customer has to pay it. Same default the chat path uses.
@@ -425,6 +425,9 @@ class OrderRequestController extends Controller
             'ready'          => ['delivered', 'cancelled'],
             'delivered'      => [],
             'cancelled'      => [],
+            // Terminal, like cancelled: the quotation that answered it is the live record now,
+            // and moving this one on would put the same job in the pipeline twice.
+            'answered'       => [],
         ];
         $currentStatus = $req->status ?? 'pending_review';
         $allowed = $transitions[$currentStatus] ?? [];
@@ -909,7 +912,12 @@ class OrderRequestController extends Controller
                 $h   = $ask->statusHistory ?? [];
                 $h[] = ['status' => 'answered', 'at' => now()->toISOString(), 'by' => 'admin',
                         'note' => 'Answered with quotation ' . (string) $orderRequest->_id . '.'];
-                $ask->status            = 'cancelled';
+                // Answered, not cancelled. A quotation is a reply; cancelling is what
+                // happens when work is called off, and the two were being recorded as the same
+                // thing - so every count of cancelled work included every ask the shop had
+                // actually replied to. Rows written before this stay 'cancelled' with
+                // answeredByQuoteId beside them, and both are read as answered.
+                $ask->status            = 'answered';
                 $ask->answeredByQuoteId = (string) $orderRequest->_id;
                 $ask->statusHistory     = $h;
                 $ask->save();
@@ -1319,9 +1327,15 @@ class OrderRequestController extends Controller
             $ready     = (clone $query)->where('status', 'ready')->count();
             $delivered = (clone $query)->where('status', 'delivered')->count();
             $cancelled = (clone $query)->where('status', 'cancelled')->count();
+            // Asks the shop replied to with a quotation. They used to be counted as cancelled,
+            // which made cancelled work look worse than it was, and they sit in the denominator
+            // below as if they were a separate deal that never closed - they are not, the
+            // quotation they became is already counted in its own right.
+            $answered  = (clone $query)->where('status', 'answered')->count();
+            $deals     = max(0, $total - $answered);
 
-            $conversionRate = $total > 0
-                ? round((($confirmed + $processing + $ready + $delivered) / $total) * 100, 2)
+            $conversionRate = $deals > 0
+                ? round((($confirmed + $processing + $ready + $delivered) / $deals) * 100, 2)
                 : 0;
 
             return $this->successResponse('Order request stats fetched successfully.', [
@@ -1332,6 +1346,7 @@ class OrderRequestController extends Controller
                 'ready'          => $ready,
                 'delivered'      => $delivered,
                 'cancelled'      => $cancelled,
+                'answered'       => $answered,
                 'conversionRate' => $conversionRate,
             ]);
         } catch (\Exception $e) {

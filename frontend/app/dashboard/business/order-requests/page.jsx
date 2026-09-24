@@ -16,6 +16,8 @@ import QuotationModal from '@/components/chat/QuotationModal';
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 import { createAdminQuotation } from '@/lib/orderRequestApi';
 import { useAccess } from '@/contexts/AccessContext';
+// One rule for where a quotation has got to, shared so the list and the counts cannot drift.
+import { stageOf } from '@/lib/askStage';
 
 const STATUS_LABELS = {
   pending_review: 'Pending Review',
@@ -75,20 +77,6 @@ const STAGES = {
   answered:  { label: 'Answered',  hint: 'Replaced by a quotation', bg: 'rgba(120,120,120,0.22)',   color: 'var(--gray-light)' },
 };
 
-function stageOf(req) {
-  if (!req) return 'ask';
-  if (req.convertedOrderId) return 'accepted';
-  if (['downpayment_paid', 'partial', 'paid'].includes(String(req.paymentStatus ?? ''))) return 'accepted';
-  const st = String(req.status ?? 'pending_review');
-  if (st === 'cancelled') return req.answeredByQuoteId ? 'answered' : 'cancelled';
-  if (['processing', 'ready', 'delivered'].includes(st)) return 'accepted';   // legacy pipeline: work happened
-  if (st === 'confirmed') {
-    const t = req.expiresAt ? new Date(req.expiresAt) : null;
-    if (t && !isNaN(t) && t < new Date()) return 'expired';
-    return 'quoted';
-  }
-  return 'ask';
-}
 
 // Whole days until a quotation runs out. Negative once it has.
 function daysLeft(req) {
