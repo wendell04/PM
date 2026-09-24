@@ -1179,15 +1179,31 @@ export default function CheckoutPage() {
                   }}>
                     {files.length > 0 ? (
                       <>
-                        {files.slice(0, 5).map((f, i) => (
-                          <a key={i} href={f.url} target="_blank" rel="noopener noreferrer" title={f.name || 'design'}
-                            style={{ width: 30, height: 30, borderRadius: 6, overflow: 'hidden', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--dark)', border: '1px solid var(--border)' }}>
-                            {/\.(jpe?g|png|webp|gif|avif)(\?|$)/i.test(f.url)
-                              /* eslint-disable-next-line @next/next/no-img-element */
-                              ? <img src={f.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                              : <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--gray)" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>}
-                          </a>
-                        ))}
+                        {files.slice(0, 5).map((f, i) => {
+                          const isImage = /\.(jpe?g|png|webp|gif|avif)(\?|$)/i.test(f.url);
+                          // An image is its own label - the thumbnail says which one it is. A PDF
+                          // or an AI file is a grey document icon indistinguishable from every
+                          // other grey document icon, and the name was only in a tooltip, which a
+                          // phone does not have. This is the last screen before the money leaves.
+                          return (
+                            <a key={i} href={f.url} target="_blank" rel="noopener noreferrer" title={f.name || 'design'}
+                              style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0, maxWidth: '100%',
+                                ...(isImage ? null : { padding: '3px 8px 3px 5px', borderRadius: 7, background: 'var(--dark)', border: '1px solid var(--border)', textDecoration: 'none' }) }}>
+                              <span style={{ width: 30, height: 30, borderRadius: 6, overflow: 'hidden', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                ...(isImage ? { background: 'var(--dark)', border: '1px solid var(--border)' } : null) }}>
+                                {isImage
+                                  /* eslint-disable-next-line @next/next/no-img-element */
+                                  ? <img src={f.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                  : <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>}
+                              </span>
+                              {!isImage && (
+                                <span style={{ fontSize: '0.72rem', color: 'var(--white)', maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                  {f.name || 'attachment'}
+                                </span>
+                              )}
+                            </a>
+                          );
+                        })}
                         <span style={{ fontSize: '0.74rem', fontWeight: 600, color: 'var(--gray)' }}>
                           {files.length} file{files.length === 1 ? '' : 's'} attached
                         </span>
