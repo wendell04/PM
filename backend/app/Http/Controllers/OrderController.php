@@ -1287,6 +1287,10 @@ class OrderController extends Controller
             // screen said where it came from, and there was no way back to the quotation whose
             // prices and terms the customer actually agreed to.
             'orderRequestId',
+            // The form the customer filled in and agreed to, carried from the quotation. Left off
+            // this list it exists on the order and reaches no screen at all, which is exactly how
+            // orderFormAnswers spent its whole life.
+            'orderForms',
             'designRejectionReason',
             'designFiles',
             'adminDesignUrl',

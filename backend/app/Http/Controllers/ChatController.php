@@ -815,6 +815,27 @@ class ChatController extends Controller
                 ],
                 'is_read'         => false,
             ]);
+            // Sending the SAME form again is a correction - "ignore that one, fill this in" - and
+            // two live copies of it is how answers come back to the questions you replaced. The
+            // older one stops being fillable and says why. A DIFFERENT form is a second question
+            // (the shirts are settled, now the mugs), so both stay live; keepPrevious does the
+            // same for a deliberate resend.
+            if (!$request->boolean('keepPrevious')) {
+                $newTemplate = $template ? (string) $template->_id : null;
+                foreach (Message::where('conversation_id', (string) $conversation->_id)
+                    ->where('type', 'order_form')->get() as $old) {
+                    if ((string) $old->_id === (string) $message->_id) continue;
+                    $m = $old->metadata ?? [];
+                    if (($m['status'] ?? 'sent') !== 'sent') continue;
+                    if ((string) ($m['templateId'] ?? '') !== (string) ($newTemplate ?? '')) continue;
+                    $m['status']     = 'replaced';
+                    $m['replacedBy'] = (string) $message->_id;
+                    $m['replacedAt'] = now()->toIso8601String();
+                    $old->metadata   = $m;
+                    $old->save();
+                }
+            }
+
             $conversation->update(['last_message' => 'Sent an order form', 'last_message_at' => now()]);
 
             try { broadcast(new MessageSent($message))->toOthers(); } catch (\Throwable $e) {
@@ -868,6 +889,12 @@ class ChatController extends Controller
             }
             if (($form->metadata['status'] ?? 'sent') === 'filled') {
                 return response()->json(['message' => 'This form has already been filled in.'], 422);
+            }
+            // Refused on the server as well as hidden on the screen: a form left open in another
+            // tab before it was replaced would otherwise come back with answers to the questions
+            // the shop had already withdrawn.
+            if (($form->metadata['status'] ?? 'sent') === 'replaced') {
+                return response()->json(['message' => 'This form was replaced by a newer one. Please fill in the latest form.'], 422);
             }
 
             // A form sent since templates exist carries its own questions; one sent before them

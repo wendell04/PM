@@ -8,6 +8,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { fetchMyOrderRequest, createOrderRequestPaymentLink } from '@/lib/orderRequestApi';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import { formatPeso } from '@/lib/shopUtils';
+import OrderFormSnapshot from '@/components/orders/OrderFormSnapshot';
 import { DEFAULT_CUSTOM_ORDER_TERMS, renderTermsBody, clauseApplies } from '@/lib/customOrderTerms';
 import '@/app/shop/shop.css';
 
@@ -481,6 +482,14 @@ export default function QuoteCheckoutPage() {
               </div>
             ))}
           </div>
+
+          {/* Their own answers, above the store's note: this is the price for THAT, and the
+              moment to check it is before paying, not after the shirts are printed. */}
+          {Array.isArray(quote.orderForms) && quote.orderForms.length > 0 && (
+            <div style={{ marginBottom: 12 }}>
+              <OrderFormSnapshot forms={quote.orderForms} compact />
+            </div>
+          )}
 
           {quote.adminComment && (
             <div style={{ fontSize: '.78rem', color: 'var(--gray-light)', background: 'var(--dark2)', border: '1px solid #f0f1f3', borderRadius: 8, padding: '7px 9px', marginBottom: 12 }}>

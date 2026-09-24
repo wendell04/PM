@@ -956,6 +956,14 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
                               <div style={{ padding: '0 12px 10px' }}>
                                 {filled ? (
                                   <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#1a7f3c' }}>Filled in - thank you. Your quotation will arrive here.</div>
+                                ) : msg.metadata?.status === 'replaced' ? (
+                                  // The shop sent this form again with something changed. Leaving
+                                  // the button here collects answers to questions that have been
+                                  // withdrawn, and the customer finds out only when the price is
+                                  // wrong.
+                                  <div style={{ fontSize: '0.78rem', color: 'var(--gray)', lineHeight: 1.5 }}>
+                                    This form was replaced by a newer one below. Please fill in the latest form.
+                                  </div>
                                 ) : (
                                   <button type="button" onClick={() => setOrderFormMsg(msg)}
                                     style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: 'none', background: '#d4a843', color: '#111', fontWeight: 800, fontSize: '0.82rem', cursor: 'pointer' }}>

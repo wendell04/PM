@@ -706,11 +706,36 @@ class OrderRequestController extends Controller
             'designUrls.*.name' => 'nullable|string|max:200',
             'designNotes'       => 'nullable|string|max:1000',
             'expiresInDays'     => 'nullable|integer|min:1|max:90',
+            // Which filled-in order forms this quotation answers. IDS ONLY - the content is read
+            // from the ask on this side, so nothing the browser sends can change what the
+            // customer is later shown they agreed to.
+            'orderFormAskIds'   => 'nullable|array|max:5',
+            'orderFormAskIds.*' => 'string|size:24',
         ]);
 
         $customer = User::where('_id', $validated['recipientId'])->first();
         if (!$customer) {
             return $this->errorResponse('Customer not found.', 404);
+        }
+
+        // The forms this quotation answers, copied whole from the asks they were filled into.
+        // Each one carries the questions as they were sent, the answers as they were given, and
+        // when it was agreed - so the quote, the checkout and the order all show the same thing
+        // however the template changes afterwards.
+        $attachedForms = [];
+        $attachedAsks  = [];
+        foreach (array_unique((array) ($validated['orderFormAskIds'] ?? [])) as $askId) {
+            $ask = OrderRequest::find($askId);
+            if (!$ask || (string) $ask->customerId !== (string) $customer->_id) continue;
+            $snap = $ask->orderFormAnswers;
+            if (!is_array($snap) || $snap === []) continue;
+            $attachedForms[] = [
+                'askId'       => (string) $ask->_id,
+                'formName'    => (string) ($snap['form']['name'] ?? 'Order form'),
+                'submittedAt' => (string) ($snap['agreedAt'] ?? ''),
+                'answers'     => $snap,
+            ];
+            $attachedAsks[] = (string) $ask->_id;
         }
 
         // Every line is resolved against the real catalog item so the quote - and the Order it
@@ -843,6 +868,7 @@ class OrderRequestController extends Controller
             // is stored as such and re-stated with the real purchase cost later.
             'estimatedMaterialCost' => round($materialTotal, 2),
             'costBasis'             => 'estimated',
+            'orderForms'    => $attachedForms ?: null,
             'adminComment'  => $validated['note'] ?? null,
             'designUrl'     => $designUrl,
             'designUrls'    => $designFiles ?: null,
@@ -860,11 +886,25 @@ class OrderRequestController extends Controller
 
         // The quotation answers whatever this customer was still asking. Left open, the ask would
         // sit in the "waiting" count after the shop had already replied to it.
+        //
+        // But only what it ACTUALLY answered. This closed every waiting ask the customer had, so a
+        // shop quoting the shirts silently closed the request for the mugs - no notice, and
+        // recorded as cancelled. A filled-in form is a specific job with a price of its own, so it
+        // is closed only by a quotation that attached it. A plain inquiry carries no form and no
+        // such claim, so a quotation still answers those.
         try {
             $answered = OrderRequest::where('customerId', (string) $validated['recipientId'])
                 ->where('status', 'pending_review')
                 ->where(function ($q) { $q->whereNull('finalPrice')->orWhere('finalPrice', 0); })
                 ->get();
+            $closing = \App\Support\QuoteAnswering::toClose(
+                $answered->map(fn ($a) => [
+                    'id'       => (string) $a->_id,
+                    'fromForm' => is_array($a->orderFormAnswers) && $a->orderFormAnswers !== [],
+                ])->all(),
+                $attachedAsks
+            );
+            $answered = $answered->filter(fn ($a) => in_array((string) $a->_id, $closing, true));
             foreach ($answered as $ask) {
                 $h   = $ask->statusHistory ?? [];
                 $h[] = ['status' => 'answered', 'at' => now()->toISOString(), 'by' => 'admin',
@@ -885,6 +925,43 @@ class OrderRequestController extends Controller
         ]);
 
         return $this->successResponse('Quotation sent.', $orderRequest);
+    }
+
+    /**
+     * The forms this customer has filled in and nobody has quoted yet.
+     *
+     * For the attach row on the quotation: what it was called, when it was sent in, and enough of
+     * the answers to tell two apart at a glance ("30 shirts" against "12 mugs"). Ids and summaries
+     * only - the quotation copies the content itself, from this side.
+     */
+    public function customerOrderForms(Request $request, $customerId)
+    {
+        if (!$this->hasPermission($request, 'orderRequests.create')) {
+            return $this->unauthorizedResponse();
+        }
+        $rows = OrderRequest::where('customerId', (string) $customerId)
+            ->where('status', 'pending_review')
+            ->orderBy('createdAt', 'desc')
+            ->limit(20)
+            ->get()
+            ->filter(fn ($a) => is_array($a->orderFormAnswers) && $a->orderFormAnswers !== [])
+            ->map(function ($a) {
+                $snap = $a->orderFormAnswers;
+                $form = is_array($snap['form'] ?? null) ? $snap['form'] : null;
+                return [
+                    'askId'       => (string) $a->_id,
+                    'formName'    => (string) ($form['name'] ?? 'Order form'),
+                    'submittedAt' => (string) ($snap['agreedAt'] ?? ($a->createdAt ? $a->createdAt->toIso8601String() : '')),
+                    'quantity'    => (int) ($a->quantity ?? 0),
+                    'headline'    => (string) ($a->productName ?? ''),
+                    'summary'     => $form
+                        ? \App\Support\OrderFormSpec::summarise($form, (array) ($snap['answers'] ?? []))
+                        : (string) ($a->designNotes ?? ''),
+                ];
+            })
+            ->values();
+
+        return $this->successResponse('Order forms.', $rows);
     }
 
     /**

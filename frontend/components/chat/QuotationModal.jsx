@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { fetchWithTimeout } from '../../lib/fetchWithTimeout';
-import { uploadDesignFile } from '../../lib/orderRequestApi';
+import { uploadDesignFile, fetchCustomerOrderForms } from '../../lib/orderRequestApi';
 import { S, ICONS, Modal, Field, CustomSelect, IntegerInput, DecimalInput } from '@/app/dashboard/business/inventory-v2/shared';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
@@ -35,7 +35,7 @@ const tierPriceOf = (line, variantId, qty) => {
   return Number(v?.price ?? line.basePrice ?? 0) || 0;
 };
 
-const QuotationModal = ({ onClose, onSubmit, isSending, token, customerId, customerName, initialNote = '' }) => {
+const QuotationModal = ({ onClose, onSubmit, isSending, token, customerId, customerName, initialNote = '', initialAskId = null }) => {
   // The customer's pinned address - so the delivery fee can be checked against a
   // courier (Lalamove etc.) before the quote is sent.
   const [addr, setAddr] = useState(null);
@@ -64,6 +64,29 @@ const QuotationModal = ({ onClose, onSubmit, isSending, token, customerId, custo
     // the note, so what they asked for and what they are being priced sit on the same card.
     note: initialNote || '',
   });
+
+  // The forms this customer filled in that nobody has priced yet, and which of them this
+  // quotation answers. Attached for you when you came from the card - the card already said which
+  // form it was - and when there is only one waiting, because there is then nothing to choose. You
+  // pick only when the shop is the only one who can know: two forms in, two different jobs.
+  const [forms, setForms] = useState([]);
+  const [pickedAsks, setPickedAsks] = useState(initialAskId ? [initialAskId] : []);
+
+  useEffect(() => {
+    if (!customerId || !token) return;
+    let dead = false;
+    fetchCustomerOrderForms(token, customerId)
+      .then(list => {
+        if (dead) return;
+        setForms(list);
+        setPickedAsks(prev => {
+          if (prev.length) return prev.filter(id => list.some(f => f.askId === id));
+          return list.length === 1 ? [list[0].askId] : [];
+        });
+      })
+      .catch(() => {});
+    return () => { dead = true; };
+  }, [customerId, token]);
 
   // Owner attaches the agreed artwork here; it rides the quote into the order and skips the
   // proof-approval gate (the design was already settled in chat).
@@ -531,6 +554,9 @@ const QuotationModal = ({ onClose, onSubmit, isSending, token, customerId, custo
       downPayment,
       expiresInDays: Math.min(90, Math.max(1, parseInt(form.expiresInDays) || 7)),
       note: form.note.trim(),
+      // Ids only. The server copies the answers from the ask itself, so nothing on this side can
+      // change what the customer is later shown they agreed to.
+      orderFormAskIds: pickedAsks,
       total,
       // designUrl stays as the first of them, because every screen written before the list reads
       // that one field and there is no reason to break them.
@@ -559,6 +585,62 @@ const QuotationModal = ({ onClose, onSubmit, isSending, token, customerId, custo
       }
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+        {/* What this quotation answers. Nothing is shown when the customer has filled nothing in,
+            one waiting form is simply attached, and the choice appears only when there are two -
+            which is the one case the shop is the only one who can settle. Attached is never
+            silent: it is a row you can see and take off before the quote goes out. */}
+        {forms.length > 0 && (
+          <div style={{ border: '1px solid var(--border)', borderRadius: 10, padding: '10px 12px', background: 'var(--dark2)' }}>
+            <div style={{ ...S.label, textTransform: 'none', letterSpacing: 0, fontSize: '12px', color: 'var(--gray-light)', marginBottom: 8 }}>
+              {forms.length === 1 ? 'Submitted form' : 'Which form does this quotation answer?'}
+            </div>
+            <div style={{ display: 'grid', gap: 6 }}>
+              {forms.map(f => {
+                const on = pickedAsks.includes(f.askId);
+                const at = f.submittedAt ? new Date(f.submittedAt) : null;
+                const when = at && !Number.isNaN(at.getTime())
+                  ? at.toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+                  : '';
+                return (
+                  <button key={f.askId} type="button"
+                    onClick={() => setPickedAsks(prev => on ? prev.filter(x => x !== f.askId) : [...prev, f.askId])}
+                    style={{
+                      display: 'flex', alignItems: 'flex-start', gap: 9, width: '100%', textAlign: 'left',
+                      padding: '9px 11px', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit',
+                      border: `1.5px solid ${on ? 'var(--gold)' : 'var(--border)'}`,
+                      background: on ? 'var(--gold-subtle)' : 'transparent',
+                    }}>
+                    <span style={{
+                      width: 15, height: 15, borderRadius: 3, flexShrink: 0, marginTop: 2, display: 'flex',
+                      alignItems: 'center', justifyContent: 'center',
+                      border: `1.5px solid ${on ? 'var(--gold)' : 'var(--gray)'}`,
+                      background: on ? 'var(--gold)' : 'transparent',
+                    }}>
+                      {on && (
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#1a1a1a" strokeWidth="3.5">
+                          <polyline points="20 6 9 17 4 12" />
+                        </svg>
+                      )}
+                    </span>
+                    <span style={{ minWidth: 0, flex: 1 }}>
+                      <span style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: on ? 'var(--gold)' : 'var(--white)' }}>
+                        {f.formName}{when ? ` - ${when}` : ''}
+                      </span>
+                      <span style={{ display: 'block', fontSize: '0.74rem', color: 'var(--gray)', marginTop: 2, overflowWrap: 'anywhere' }}>
+                        {(f.summary || f.headline || '').split('\n').slice(0, 2).join(' - ')}
+                      </span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            <div style={{ fontSize: '0.72rem', color: 'var(--gray)', marginTop: 7, lineHeight: 1.45 }}>
+              The form travels with the quotation and onto the order, so what was agreed stays on
+              the record. A form you leave off stays waiting for its own quotation.
+            </div>
+          </div>
+        )}
+
         <div>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
             <span style={{ ...S.label, textTransform: 'none', letterSpacing: 0, fontSize: '12px', color: 'var(--gray-light)' }}>

@@ -6,6 +6,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { getStatusBadge } from '@/lib/utils/orderHelpers';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import { normalizeStatus } from '@/lib/orderStatus';
+import OrderFormSnapshot from '@/components/orders/OrderFormSnapshot';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
@@ -496,6 +497,13 @@ export default function OrderQuickViewModal({
                     {order.userSnapshot?.phone || '-'}
                   </div>
                 </div>
+
+                {/* What the customer filled in and agreed to, when the order came from a
+                    quotation raised off an order form. Production reads the sizes and the print
+                    areas off this rather than off a retyped note. */}
+                {Array.isArray(order.orderForms) && order.orderForms.length > 0 && (
+                  <OrderFormSnapshot forms={order.orderForms} title="Order form" />
+                )}
 
                 {/* Shipping Address Section */}
                 <div>

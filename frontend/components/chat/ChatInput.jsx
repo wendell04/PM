@@ -26,10 +26,13 @@ const ChatInput = ({ onSendMessage, isSending, activeConversation, token, onTypi
   const [showFormPicker, setShowFormPicker] = useState(false);
   const fileInputRef = useRef(null);
 
-  // "Send quotation" pressed on a filled order form card: open the modal with the answers in.
+  // "Send quotation" pressed on a filled order form card: open the modal with the answers in,
+  // and with that form attached - the card already said which one, so the modal does not ask.
+  const [quoteAskId, setQuoteAskId] = useState(null);
   useEffect(() => {
     if (!quotePrefill?.at) return;
     setQuoteNote(quotePrefill.note || '');
+    setQuoteAskId(quotePrefill.askId || null);
     setQuotationError('');
     setShowQuotation(true);
   }, [quotePrefill]);
@@ -490,13 +493,14 @@ const ChatInput = ({ onSendMessage, isSending, activeConversation, token, onTypi
 
       {showQuotation && (
         <QuotationModal
-          onClose={() => { setShowQuotation(false); setQuoteNote(''); }}
+          onClose={() => { setShowQuotation(false); setQuoteNote(''); setQuoteAskId(null); }}
           onSubmit={handleSendQuotation}
           isSending={quotationSending}
           token={token}
           customerId={activeConversation?.other_user?.id}
           customerName={activeConversation?.other_user?.name}
           initialNote={quoteNote}
+          initialAskId={quoteAskId}
         />
       )}
     </div>

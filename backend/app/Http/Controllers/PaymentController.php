@@ -2064,6 +2064,9 @@ class PaymentController extends Controller
             // An owner-attached quote design is pre-approved (agreed in chat) → no proof gate.
             // A customer-uploaded design still needs the store to review it.
             'designStatus'         => $orderDesignStatus,
+            // What the customer filled in and agreed to, carried from the quotation so the order
+            // itself holds the record rather than pointing back at a chat thread.
+            'orderForms'           => $orderRequest->orderForms ?: null,
             'materials'            => $orderRequest->materials,
             'materialsCost'        => $orderRequest->materialsCost,
             'orderRequestId'       => (string) $orderRequest->_id,

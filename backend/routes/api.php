@@ -385,6 +385,8 @@ Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
     Route::patch('/admin/order-requests/{id}/status', [OrderRequestController::class, 'updateStatus']);
     // Create a quotation straight from the chat → confirmed OrderRequest + posts the View & Pay card.
     Route::post('/admin/quotations',                  [OrderRequestController::class, 'adminQuote']);
+    // The filled-in forms waiting on a price, for the attach row on a new quotation.
+    Route::get('/admin/customers/{customerId}/order-forms', [OrderRequestController::class, 'customerOrderForms']);
     // A quote refused at payment because stock ran short: let it be paid as a pre-order, or confirm
     // the stock is back. Both tell the customer in the chat.
     Route::post('/admin/quotations/{id}/allow-preorder', [OrderRequestController::class, 'allowPreorder']);

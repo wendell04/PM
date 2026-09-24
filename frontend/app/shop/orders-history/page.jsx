@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import OrderFormSnapshot from '@/components/orders/OrderFormSnapshot';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
@@ -1852,6 +1853,14 @@ export default function OrdersHistoryPage() {
                       );
 
                     })()}
+
+                    {/* What they filled in, so they can check the shirts against their own
+                        answers without going back through the chat. */}
+                    {Array.isArray(selectedOrder.orderForms) && selectedOrder.orderForms.length > 0 && (
+                      <div style={{ borderTop: '1px solid var(--border)', paddingTop: '16px' }}>
+                        <OrderFormSnapshot forms={selectedOrder.orderForms} />
+                      </div>
+                    )}
 
                     {/* Delivery Address */}
                     {selectedOrder.deliveryAddress && Object.keys(selectedOrder.deliveryAddress).length > 0 && (
