@@ -114,6 +114,9 @@ export default function AuditLogsPage() {
   const { token } = useAuth();
 
   const [logs, setLogs] = useState([]);
+  // How many MATCH, which is not how many came back. The pager needs the first to know how many
+  // pages there are; the screen only ever holds one page.
+  const [total, setTotal] = useState(0);
   const [summary, setSummary] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
@@ -144,7 +147,8 @@ export default function AuditLogsPage() {
     setError('');
     try {
       const p = new URLSearchParams();
-      p.set('limit', '200');
+      p.set('page', String(page));
+      p.set('perPage', String(perPage));
       if (group && group !== 'all') p.set('group', group);
       if (startDate) p.set('startDate', startDate);
       if (query.trim()) p.set('q', query.trim());
@@ -164,6 +168,7 @@ export default function AuditLogsPage() {
       const logsData = await logsRes.json();
       if (!logsRes.ok) throw new Error(logsData.message || 'Could not load the audit trail.');
       setLogs(logsData.data?.data ?? []);
+      setTotal(Number(logsData.data?.total ?? 0));
 
       if (sumRes.ok) {
         const sumData = await sumRes.json();
@@ -174,7 +179,7 @@ export default function AuditLogsPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [token, group, startDate, query]);
+  }, [token, group, startDate, query, page, perPage]);
 
   // The file has to be fetched rather than linked: the endpoint wants the bearer token, and an
   // <a href> carries no headers. Same filters as the screen, so the file IS what is on it.
@@ -212,7 +217,9 @@ export default function AuditLogsPage() {
   useEffect(() => { load(); }, [load]);
   useEffect(() => { setPage(1); }, [group, range, query]);
 
-  const paged = logs.slice((page - 1) * perPage, page * perPage);
+  // The server already cut the page. Slicing again here is what made the pager page through a
+  // 200-row window while everything older than that was unreachable.
+  const paged = logs;
   const rangeLabel = range === 'all' ? 'all time' : range === '1' ? 'today' : `the last ${range} days`;
 
   return (
@@ -233,7 +240,9 @@ export default function AuditLogsPage() {
           <div>
             <h1 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: 'var(--white)' }}>Audit Logs</h1>
             <div style={{ fontSize: 12, color: 'var(--gray)', marginTop: 2 }}>
-              Showing {logs.length} entr{logs.length === 1 ? 'y' : 'ies'} from {rangeLabel}
+              {total === 0
+                ? `Nothing from ${rangeLabel}`
+                : `${total} entr${total === 1 ? 'y' : 'ies'} from ${rangeLabel}${total > perPage ? ` - showing ${logs.length}` : ''}`}
             </div>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
@@ -471,10 +480,10 @@ export default function AuditLogsPage() {
           );
         })()}
 
-        {logs.length > perPage && (
+        {total > perPage && (
           <div style={{ marginTop: 12 }}>
             <PaginationBar
-              total={logs.length}
+              total={total}
               page={page}
               perPage={perPage}
               onPage={setPage}

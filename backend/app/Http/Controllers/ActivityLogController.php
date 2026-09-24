@@ -30,27 +30,19 @@ class ActivityLogController extends Controller
 
             $query = $this->filtered($request);
 
-            $limit = min(max((int) $request->query('limit', 100), 1), 200);
-            $logs  = $query->limit($limit)->get();
-
-            // Free text is matched here rather than in Mongo: the fields worth searching are
-            // spread across four keys and one of them is a snapshotted name, and a regex per
-            // field on a growing collection costs more than filtering one page of results.
-            if ($request->filled('q')) {
-                $q = mb_strtolower(trim($request->q));
-                $logs = $logs->filter(function ($l) use ($q) {
-                    $hay = mb_strtolower(implode(' ', array_filter([
-                        $l->performedByName, $l->performedByEmail, $l->performedByRole,
-                        $l->description, ActivityLog::label($l->action), $l->ip,
-                    ])));
-                    return str_contains($hay, $q);
-                })->values();
-            }
+            // One page from the database, not the whole collection into PHP. This is the one
+            // table that only grows; the old ceiling of 200 rows meant that past 200 entries the
+            // pager was paging through a window, and anything older than the 200th was simply
+            // unreachable from this screen.
+            $perPage = min(max((int) $request->query('perPage', 50), 1), 200);
+            $page    = max((int) $request->query('page', 1), 1);
+            $total   = (clone $query)->count();
+            $logs    = $query->skip(($page - 1) * $perPage)->limit($perPage)->get();
 
             // Reading the audit log is itself something a log should record - "who had access,
             // including me looking at it" is exactly the question it exists to answer. Only the
             // first page, so paging through a long list does not write an entry per scroll.
-            if (!$request->filled('page') && !$request->filled('q')) {
+            if ($page === 1 && !$request->filled('q')) {
                 $this->logActivity($request, 'audit.viewed', 'audit', null, 'Opened the audit log');
             }
 
@@ -72,7 +64,11 @@ class ActivityLogController extends Controller
                     'metadata'    => $l->metadata,
                     'at'          => optional($l->createdAt)->toIso8601String(),
                 ])->values(),
-                'total' => $logs->count(),
+                // What MATCHES, not what was returned - the pager needs the size of the whole
+                // result to know how many pages there are.
+                'total'   => $total,
+                'page'    => $page,
+                'perPage' => $perPage,
             ]);
         } catch (\Exception $e) {
             return $this->serverErrorResponse($e, 'Failed to fetch activity logs.');
@@ -95,6 +91,24 @@ class ActivityLogController extends Controller
         if ($request->filled('actor'))      $query->where('performedBy', $request->actor);
         if ($request->filled('startDate'))  $query->where('createdAt', '>=', $request->startDate);
         if ($request->filled('endDate'))    $query->where('createdAt', '<=', $request->endDate);
+
+        // Free text. This has to be part of the QUERY, not a filter applied to the rows that come
+        // back: filtering after the page has been cut gives a page of five results out of fifty,
+        // and a total that counts rows the reader cannot see. The cost is a regex across six
+        // fields - worth an index on createdAt and performedBy once this collection is large.
+        if ($request->filled('q')) {
+            $needle = preg_quote(trim((string) $request->q), '/');
+            if ($needle !== '') {
+                $query->where(function ($w) use ($needle) {
+                    foreach ([
+                        'performedByName', 'performedByEmail', 'performedByRole',
+                        'description', 'action', 'ip',
+                    ] as $field) {
+                        $w->orWhere($field, 'regexp', '/' . $needle . '/i');
+                    }
+                });
+            }
+        }
 
         // A whole group at once - "show me everything about who got in", rather than making
         // somebody pick sign-in, refused, locked out and signed out one at a time.
