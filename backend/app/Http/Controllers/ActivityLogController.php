@@ -216,19 +216,18 @@ class ActivityLogController extends Controller
                 return $this->unauthorizedResponse();
             }
 
-            $since = $request->filled('startDate')
-                ? \Carbon\Carbon::parse($request->startDate)
-                : now()->startOfDay();
-            $until = $request->filled('endDate')
-                ? \Carbon\Carbon::parse($request->endDate)
-                : now();
+            // No startDate means ALL TIME, not today. Defaulting to the start of today made the
+            // tiles disagree with the list beside them and with their own label - the screen said
+            // "in all time" over figures that covered a few hours.
+            $since = $request->filled('startDate') ? \Carbon\Carbon::parse($request->startDate) : null;
+            $until = $request->filled('endDate')   ? \Carbon\Carbon::parse($request->endDate)   : now();
 
-            $rows = ActivityLog::where('createdAt', '>=', $since)
-                ->where('createdAt', '<=', $until)
-                ->get(['action', 'performedBy', 'ip', 'createdAt']);
+            $q = ActivityLog::where('createdAt', '<=', $until);
+            if ($since) $q->where('createdAt', '>=', $since);
+            $rows = $q->get(['action', 'performedBy', 'ip', 'createdAt']);
 
-            $signIns  = $rows->where('action', 'login');
-            $refused  = $rows->whereIn('action', ['login_failed', 'login_locked', 'two_factor_failed']);
+            $signIns  = $rows->whereIn('action', ActivityLog::SIGN_IN);
+            $refused  = $rows->whereIn('action', ActivityLog::REFUSED);
             $changes  = $rows->reject(fn ($r) => ActivityLog::group($r->action) === 'access');
 
             return $this->successResponse('Summary fetched.', [
@@ -240,7 +239,7 @@ class ActivityLogController extends Controller
                 // problem from ten people each mistyping once, and the count alone hides which.
                 'refusedFrom'  => $refused->pluck('ip')->filter()->unique()->count(),
                 'changes'      => $changes->count(),
-                'from'         => $since->toIso8601String(),
+                'from'         => $since?->toIso8601String(),
                 'to'           => $until->toIso8601String(),
             ]);
         } catch (\Exception $e) {

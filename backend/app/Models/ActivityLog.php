@@ -140,6 +140,18 @@ class ActivityLog extends Model
         });
     }
 
+    /**
+     * Getting in, and being turned away.
+     *
+     * Named here rather than typed into the summary, because that is exactly how they went
+     * stale: the actions were renamed to the dotted convention, every writer moved with them,
+     * and the summary was left filtering on 'login'. It counted zero sign-ins on a screen that
+     * was listing sign-ins immediately underneath.
+     */
+    public const SIGN_IN = ['auth.login'];
+
+    public const REFUSED = ['auth.login_failed', 'auth.login_locked', 'auth.2fa_failed'];
+
     public static function label(?string $action): string
     {
         return self::KINDS[$action][0] ?? ucfirst(str_replace('_', ' ', (string) $action));
