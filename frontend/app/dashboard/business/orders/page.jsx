@@ -2987,6 +2987,23 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
           </div>
 
           <SectionLabel>Payment</SectionLabel>
+          {/* The server leaves the money out for a role that cannot see Payments, Sales or the
+              counter. Every row below does arithmetic on it, so without this the section read
+              "Total P0.00, Balance P0.00" - an order worth nothing and owing nothing. Whether it is
+              paid is not money, and production needs it: that stays. */}
+          {(lo.totalAmount ?? lo.totalPrice) == null ? (
+            <div style={{ fontSize: 12, color: 'var(--gray)', lineHeight: 1.5 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0' }}>
+                <span>Payment</span>
+                <span style={{ fontWeight: 700, color: 'var(--white)', textTransform: 'capitalize' }}>
+                  {String(lo.paymentStatus || 'unpaid').replace(/_/g, ' ')}
+                </span>
+              </div>
+              <div style={{ fontSize: 11, marginTop: 2 }}>
+                Amounts are not part of your access. Ask the owner to give your role See on Payments.
+              </div>
+            </div>
+          ) : (<>
           {(Number(lo.discountAmount) > 0 || Number(lo.firstOrderDiscount) > 0) && (
             <InfoRow
               label="Subtotal"
@@ -3164,6 +3181,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
               </>
             );
           })()}
+          </>)}
 
           {Array.isArray(lo.paymentHistory) && lo.paymentHistory.length > 0 && (
             <>
@@ -3522,8 +3540,11 @@ export default function OrdersPage() {
             { label:'Cancelled',      value:counts.cancelled,     id:'cancelled'     },
             { label:'Needs Attention',value:counts.needsAttention,id:'needs_attention', alert:true },
           ].map(c => (
+            // The same floor as the card inside it. The wrapper could shrink to 100px while the card
+            // held at 140px, so at laptop width every card spilled over its neighbour instead of the
+            // row wrapping onto a second line.
             <div key={c.id} onClick={() => { setStatusFilter(c.id); setPage(1); }}
-              style={{ cursor:'pointer', flex:'1', minWidth:'100px' }}>
+              style={{ cursor:'pointer', flex:'1 1 140px', minWidth:'140px' }}>
               <SummaryCard label={c.label} value={c.value}
                 accent={statusFilter === c.id}
                 color={statusFilter === c.id ? 'var(--gold)' : (c.alert && c.value > 0 ? 'var(--st-red-fg)' : undefined)} />
@@ -3779,14 +3800,20 @@ export default function OrdersPage() {
                           )}
                         </td>
                         <td data-label="Type" style={{ ...S.td }}>
-                          <TypeBadge isCustom={o.isCustom} items={o.items} />
-                          {/* Its prices were negotiated in chat, not taken from the catalogue.
-                              Worth knowing before anyone questions a figure on it. */}
-                          {(o.orderRequestId || o.orderSource === 'inquiry') && (
-                            <span style={{ ...S.badge, background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe', fontSize: '10px' }}>
-                              Quote
-                            </span>
-                          )}
+                          {/* One line, always. The two badges were loose in the cell, so the moment the
+                              column narrowed Quote dropped under Custom and the row grew a line taller
+                              than its neighbours. */}
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}>
+                            <TypeBadge isCustom={o.isCustom} items={o.items} />
+                            {/* Its prices were negotiated in chat, not taken from the catalogue.
+                                Worth knowing before anyone questions a figure on it. Theme tokens, not
+                                a light-mode blue that turned into a white slab in dark mode. */}
+                            {(o.orderRequestId || o.orderSource === 'inquiry') && (
+                              <span style={{ ...S.badge, background: 'var(--st-blue-bg)', color: 'var(--st-blue-fg)', border: '1px solid color-mix(in srgb, var(--st-blue-fg) 30%, transparent)', fontSize: '10px' }}>
+                                Quote
+                              </span>
+                            )}
+                          </span>
                         </td>
                         <td data-label="Customer" style={{ ...S.td }}>
                           <div style={{ fontWeight:600, fontSize:'13px' }}>{o.customerName}</div>

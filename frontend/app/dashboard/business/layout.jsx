@@ -1838,7 +1838,7 @@ export default function BusinessDashboardLayout({ children }) {
             </div>
 
             {/* ── Sign Out footer ── */}
-            <div style={{ padding: "0.875rem 1.25rem", borderTop: "1px solid var(--border)", flexShrink: 0 }}>
+            <div style={{ padding: "0.875rem 1.25rem", paddingBottom: "calc(0.875rem + env(safe-area-inset-bottom, 0px))", borderTop: "1px solid var(--border)", flexShrink: 0 }}>
               <button
                 type="button"
                 onClick={() => { setProfileModalOpen(false); handleLogout(); }}

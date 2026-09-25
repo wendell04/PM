@@ -604,7 +604,10 @@ export default function JobOrdersPage() {
     // Status is filtered here, not in the fetch. Filtering in the fetch made the tiles above count
     // only the filtered rows, so a Queued default would have read "Completed 0" every time.
     if (statusFilter === UNFINISHED) {
-      if (['Completed', 'Cancelled'].includes(jo.joStatus)) return false;
+      // QC Passed is finished work: the Completed tile above counts it, and the job is locked once
+      // it gets there. Leaving it out of this list put 24 passed jobs under "Still to do" beside a
+      // Queued tile that said 1.
+      if (['Completed', 'QC_Passed', 'Cancelled'].includes(jo.joStatus)) return false;
     } else if (statusFilter && jo.joStatus !== statusFilter) return false;
     const q = search.toLowerCase();
     return !q || prodName(jo).toLowerCase().includes(q) || (jo.joId || '').toLowerCase().includes(q) || (jo.orderId || '').toLowerCase().includes(q);

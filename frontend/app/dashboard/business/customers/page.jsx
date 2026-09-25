@@ -327,7 +327,7 @@ export default function CustomersPage() {
 
         {/* Loading */}
         {loading && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(380px, 1fr))', gap: '12px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(380px, 100%), 1fr))', gap: '12px' }}>
             {[1, 2, 3, 4, 5, 6].map(i => (
               <div key={i} style={{
                 height: '72px', borderRadius: '12px', background: 'var(--dark2)',
@@ -362,7 +362,7 @@ export default function CustomersPage() {
 
         {/* Customer list */}
         {!loading && !error && paged.length > 0 && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(380px, 1fr))', gap: '12px', alignItems: 'start' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(380px, 100%), 1fr))', gap: '12px', alignItems: 'start' }}>
             {paged.map(c => (
               <div key={c.id} style={{
                 display: 'flex', alignItems: 'center', gap: '14px',
@@ -501,7 +501,10 @@ export default function CustomersPage() {
 
             {/* Pagination */}
             {filtered.length > rpp && (
-              <div style={{ marginTop: '4px' }}>
+              // The pager lives inside the card grid, so without this it became a grid cell of its own -
+              // a third column squeezed down to one card's width, "Rows per page" wrapped over three
+              // lines. It spans the whole row instead.
+              <div style={{ marginTop: '4px', gridColumn: '1 / -1' }}>
                 <PaginationBar
                   total={filtered.length}
                   page={page}

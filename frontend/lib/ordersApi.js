@@ -129,9 +129,14 @@ function normalizeOrder(apiOrder) {
     : [];
 
   const normalizedStatus = apiOrder.orderStatus || apiOrder.status || 'Pending';
-  const totalAmount = parseFloat(
-    apiOrder.totalAmount || apiOrder.total || apiOrder.totalPrice || 0
-  );
+  // Absent is not zero. The server leaves the money fields OUT for a role that cannot see money,
+  // and `|| 0` here turned that absence into P0.00 before any screen could tell the difference -
+  // which is why the dash the Orders table shows for "not yours to see" never once appeared.
+  // A real zero is still zero; only a total the server did not send becomes null.
+  const hasTotal = ['totalAmount', 'total', 'totalPrice'].some(k => apiOrder[k] != null);
+  const totalAmount = hasTotal
+    ? parseFloat(apiOrder.totalAmount || apiOrder.total || apiOrder.totalPrice || 0)
+    : null;
   // Does anything on this order have to be MADE? Any line that is custom, made-to-order, or
   // carries artwork needs a Job Order; an order of only shelf goods does not. Checked across every
   // line, not just the first - a mixed cart is the whole reason the batch Job Order creator exists.

@@ -193,8 +193,11 @@ export function CustomSelect({ value, onChange, options = [], placeholder = 'Sel
 
   const menu = (open && pos && typeof document !== 'undefined') ? createPortal(
     (
+        // Above every layer in the app, not just the dashboard's. An open list is the one thing the
+        // person is looking at; at 3000 it drew BEHIND the chat's form sheet (100001), so the
+        // question-type list in "Edit before sending" opened invisibly under the form.
         <div ref={menuRef} style={{
-          position: 'fixed', left: pos.left, width: pos.width, zIndex: 3000,
+          position: 'fixed', left: pos.left, width: pos.width, zIndex: 200000,
           ...(pos.openUp ? { bottom: pos.bottom } : { top: pos.top }),
           background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '8px',
           boxShadow: '0 8px 24px rgba(0,0,0,0.25)',
