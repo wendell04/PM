@@ -30,6 +30,7 @@ export default function OrderForms({ token }) {
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
   const [ask, setAsk] = useState(null);           // one confirm for the whole tab
+  const [starter, setStarter] = useState(null);   // the shop's standard form, as the code has it
   const confirmAsk = (opts) => new Promise(resolve => setAsk({ ...opts, resolve }));
 
   const load = useCallback(async () => {
@@ -39,6 +40,7 @@ export default function OrderForms({ token }) {
       if (!res.ok) throw new Error(d.message || 'Could not load the order forms.');
       const list = d?.data?.templates ?? [];
       setTemplates(list);
+      setStarter(d?.data?.starter ?? null);
       setTypes(d?.data?.types ?? {});
       setLimits({ ...FORM_LIMITS, ...(d?.data?.limits ?? {}) });
       setPickedId(prev => (list.some(t => String(t._id) === prev) ? prev : String(list[0]?._id ?? '')));
@@ -74,6 +76,26 @@ export default function OrderForms({ token }) {
     if ((templates ?? []).length >= limits.templates) { toast(`That is the ${limits.templates}-form limit. Delete one first.`, 'error'); return; }
     setErr(''); setPickedId(''); setDraft(blankForm());
   };
+
+  // The standard T-shirt form, opened as a NEW draft marked default. Nothing is written until Save,
+  // so the owner reads it first; the forms already in the list stay exactly as they are.
+  const startFromStandard = async () => {
+    if (!starter) return;
+    if (!(await leaveGuard())) return;
+    if ((templates ?? []).length >= limits.templates) { toast(`That is the ${limits.templates}-form limit. Delete one first.`, 'error'); return; }
+    setErr(''); setPickedId('');
+    setDraft({
+      ...starter,
+      isDefault: true,
+      questions: (starter.questions ?? []).map(q => ({ ...q, options: [...(q.options ?? [])] })),
+    });
+  };
+
+  // Offered only while no saved form already IS the standard one, so it does not sit there as a
+  // button that makes duplicates.
+  const hasStandard = !!starter && (templates ?? []).some(t =>
+    String(t.name ?? '').trim().toLowerCase() === String(starter.name ?? '').trim().toLowerCase()
+    && (t.questions ?? []).some(q => q.type === 'print_area'));
 
   const save = async () => {
     if (!editing || saving) return;
@@ -138,8 +160,24 @@ export default function OrderForms({ token }) {
             for, where it goes, and the two ticks - those are not editable.
           </div>
         </div>
-        <button type="button" onClick={startNew} style={S.btnPrimary}>{ICONS.plus} New form</button>
+        <div style={{ ...S.row, gap: 8, flexWrap: 'wrap' }}>
+          {starter && !hasStandard && (
+            <button type="button" onClick={startFromStandard} style={S.btnGhost}>Use the standard form</button>
+          )}
+          <button type="button" onClick={startNew} style={S.btnPrimary}>{ICONS.plus} New form</button>
+        </div>
       </div>
+
+      {/* Said where the owner is looking, because the list is theirs and the code will not change it
+          for them: a list saved before the standard form changed keeps the old one as its default. */}
+      {starter && !hasStandard && (
+        <div style={{ ...S.cardSm, border: '1px solid var(--gold)', background: 'var(--gold-subtle)', fontSize: '0.8rem', color: 'var(--white)', lineHeight: 1.5 }}>
+          <strong style={{ color: 'var(--gold)' }}>The standard form is newer than yours.</strong>{' '}
+          It asks for colours, sizes and where the print goes, with your file-format note first.
+          Press <strong>Use the standard form</strong> to open it as a new form, check it, and save - it
+          becomes the one the chat sends. Your current forms are kept.
+        </div>
+      )}
 
       <div className="pmp-cols" style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: '1rem', alignItems: 'start' }}>
         {/* The list. On a phone this wraps into a row of chips above the editor. */}

@@ -31,6 +31,12 @@ class OrderFormTemplateController extends Controller
             }
             return $this->successResponse('Order forms retrieved.', [
                 'templates' => $list,
+                // The shop's standard form, as the code has it today. It is only SEEDED into an
+                // empty list, so a shop whose list was seeded from an older starter never saw the
+                // new one - changing starter() changed nothing for them. Sent along so the page can
+                // offer it as a draft the owner looks at and saves, rather than it being written
+                // over their forms from here.
+                'starter'   => OrderFormSpec::sanitizeTemplate(OrderFormSpec::starter()),
                 'types'     => OrderFormSpec::types(),
                 'limits'    => [
                     'templates'   => OrderFormSpec::MAX_TEMPLATES,
