@@ -97,7 +97,11 @@ class ReportController extends Controller
             foreach ($items as $inv) {
                 $counts['materials']++;
                 $qty  = (float) ($inv->stockQty ?? 0);
-                $cost = (float) ($inv->unitCost ?? $inv->baseCost ?? 0);
+                // A material has no unitCost field - that name is on stock movements, not on the
+                // material - so this always fell through to baseCost, the price typed in when the
+                // material was first created, and valued the shelf at May's prices. The running
+                // average is what the stock on it actually cost.
+                $cost = \App\Support\CostResolver::materialCost($inv);
                 $val  = $qty * $cost;
                 $value += $val;
                 $cat = $inv->category ?: 'Uncategorized';
@@ -132,17 +136,28 @@ class ReportController extends Controller
 
             // What left the shelf in the last 30 days, by material.
             $since = CarbonImmutable::now(self::TZ)->subDays(30)->startOfDay()->utc();
-            $used  = [];
-            foreach (StockHistory::where('type', 'deduction')->where('createdAt', '>=', $since)->get(['inventoryId', 'quantity']) as $h) {
-                $id = (string) $h->inventoryId;
-                $used[$id] = ($used[$id] ?? 0) + abs((float) $h->quantity);
-            }
+            // "At cost" is what those units cost WHEN they went out. Every deduction records its own
+            // unitCost and totalCost from the batch it came off; pricing the whole month at today's
+            // figure - worse, at the material's original seed price - restated it at a cost nobody
+            // paid. A row without a recorded cost falls back to the running average.
             $names = $items->keyBy(fn ($i) => (string) $i->_id);
+            $used  = [];
+            foreach (StockHistory::where('type', 'deduction')->where('createdAt', '>=', $since)->get(['inventoryId', 'quantity', 'unitCost', 'totalCost']) as $h) {
+                $id  = (string) $h->inventoryId;
+                $q   = abs((float) $h->quantity);
+                $rowCost = (float) ($h->totalCost ?? 0);
+                if ($rowCost <= 0 && (float) ($h->unitCost ?? 0) > 0) $rowCost = $q * (float) $h->unitCost;
+                if ($rowCost <= 0) $rowCost = $q * \App\Support\CostResolver::materialCost($names[$id] ?? null);
+                $used[$id] = [
+                    'qty'  => ($used[$id]['qty'] ?? 0) + $q,
+                    'cost' => ($used[$id]['cost'] ?? 0) + abs($rowCost),
+                ];
+            }
             $consumption = [];
-            foreach ($used as $id => $q) {
+            foreach ($used as $id => $u) {
                 $inv = $names[$id] ?? null;
                 if (!$inv) continue;
-                $consumption[] = ['name' => $inv->name, 'uom' => $inv->uom, 'qty' => round($q, 2), 'cost' => round($q * (float) ($inv->unitCost ?? $inv->baseCost ?? 0), 2)];
+                $consumption[] = ['name' => $inv->name, 'uom' => $inv->uom, 'qty' => round($u['qty'], 2), 'cost' => round($u['cost'], 2)];
             }
             usort($consumption, fn ($a, $b) => $b['qty'] <=> $a['qty']);
 
@@ -208,17 +223,41 @@ class ReportController extends Controller
         return $out;
     }
 
+    /**
+     * Which ORDER a sale line belongs to.
+     *
+     * A sale row is one LINE - the id is generated per item - so counting distinct sale ids counted
+     * a two-item order as two orders and put Avg order at half what it was. Lines of one order are
+     * tied together by orderRef (written from 2026-09-26) or by the "From Order: ..." note every
+     * earlier row carries. A line with neither was entered on its own and is its own order.
+     */
+    private static function orderKey($s): string
+    {
+        $ref = trim((string) ($s->orderRef ?? ''));
+        if ($ref !== '') return 'o:' . $ref;
+        if (preg_match('/From (?:Walk-in )?Order:\s*(\S+)/i', (string) ($s->notes ?? ''), $m)) return 'o:' . $m[1];
+        return 's:' . (string) ($s->saleId ?: $s->_id);
+    }
+
     private function salesSlice(CarbonImmutable $from, CarbonImmutable $to, string $bucket): array
     {
         $rows = Sale::where('status', 'completed')
             ->where('saleDate', '>=', $from->utc())
             ->where('saleDate', '<=', $to->utc())
-            ->get(['saleId', 'saleDate', 'totalPrice', 'cost', 'profit', 'quantity', 'productName', 'category', 'source']);
+            ->get(['saleId', 'saleDate', 'totalPrice', 'cost', 'profit', 'quantity', 'productName', 'category', 'source', 'notes', 'orderRef']);
 
         $buckets = $this->emptyBuckets($from, $to, $bucket);
         $totals  = ['revenue' => 0.0, 'cost' => 0.0, 'profit' => 0.0, 'lines' => 0, 'units' => 0, 'costMissing' => 0];
         $orders  = [];
-        $source  = ['online' => ['revenue' => 0.0, 'orders' => []], 'manual' => ['revenue' => 0.0, 'orders' => []]];
+        // Three ways a sale reaches the books. The screen had two, and labelled the second one
+        // Counter while filling it with 'manual' rows - sales typed into the Sales module by hand,
+        // which is how the whole imported history came in - so P305k of history read as counter
+        // sales, while the counter's own sales ('walk-in') fell through to Online.
+        $source  = [
+            'online'  => ['revenue' => 0.0, 'orders' => []],
+            'counter' => ['revenue' => 0.0, 'orders' => []],
+            'manual'  => ['revenue' => 0.0, 'orders' => []],
+        ];
         $products = [];
         $cats     = [];
 
@@ -228,7 +267,7 @@ class ReportController extends Controller
             if (!isset($buckets[$key])) continue;   // a week/month bucket that starts before the range
             $rev  = (float) ($s->totalPrice ?? 0);
             $cost = (float) ($s->cost ?? 0);
-            $oid  = (string) ($s->saleId ?: $s->_id);
+            $oid  = self::orderKey($s);
 
             $b = &$buckets[$key];
             $b['revenue'] += $rev; $b['cost'] += $cost; $b['profit'] += $rev - $cost; $b['lines']++;
@@ -240,7 +279,11 @@ class ReportController extends Controller
             if ($cost <= 0) $totals['costMissing']++;
             $orders[$oid] = true;
 
-            $src = ($s->source ?? '') === 'manual' ? 'manual' : 'online';
+            $src = match ((string) ($s->source ?? '')) {
+                'walk-in', 'pos', 'counter' => 'counter',
+                'manual'                    => 'manual',
+                default                     => 'online',
+            };
             $source[$src]['revenue'] += $rev;
             $source[$src]['orders'][$oid] = true;
 
@@ -275,8 +318,9 @@ class ReportController extends Controller
             ]),
             'series'   => $series,
             'bySource' => [
-                'online' => ['revenue' => round($source['online']['revenue'], 2), 'orders' => count($source['online']['orders'])],
-                'manual' => ['revenue' => round($source['manual']['revenue'], 2), 'orders' => count($source['manual']['orders'])],
+                'online'  => ['revenue' => round($source['online']['revenue'], 2),  'orders' => count($source['online']['orders'])],
+                'counter' => ['revenue' => round($source['counter']['revenue'], 2), 'orders' => count($source['counter']['orders'])],
+                'manual'  => ['revenue' => round($source['manual']['revenue'], 2),  'orders' => count($source['manual']['orders'])],
             ],
             'topProducts' => array_slice(array_map(fn ($p) => array_merge($p, ['revenue' => round($p['revenue'], 2), 'profit' => round($p['profit'], 2)]), $top), 0, 10),
             'byCategory'  => array_map(fn ($c) => array_merge($c, ['revenue' => round($c['revenue'], 2)]), $catList),

@@ -226,7 +226,11 @@ function SalesReport({ token }) {
     { key: 'rev',    label: 'Revenue',      value: isPhone ? pesoShort(t.revenue) : peso(t.revenue), title: peso(t.revenue), delta: pct(t.revenue, p?.revenue) },
     { key: 'orders', label: 'Orders',       value: num(t.orders), delta: pct(t.orders, p?.orders) },
     { key: 'avg',    label: 'Avg order',    value: isPhone ? pesoShort(t.avgOrder) : peso(t.avgOrder), title: peso(t.avgOrder) },
-    { key: 'profit', label: 'Gross profit', value: isPhone ? pesoShort(t.profit) : peso(t.profit), title: peso(t.profit), delta: pct(t.profit, p?.profit) },
+    { key: 'profit', label: 'Gross profit', value: isPhone ? pesoShort(t.profit) : peso(t.profit), title: peso(t.profit), delta: pct(t.profit, p?.profit),
+      // Said on the number itself. A line with no cost counts as all profit, and the only warning
+      // used to be a grey footnote further down the page - under the table, not under the figure
+      // somebody quotes.
+      warn: t.costMissing > 0 ? `Too high: ${t.costMissing} of ${t.lines} lines have no cost` : undefined },
   ] : [];
 
   return (
@@ -257,7 +261,9 @@ function SalesReport({ token }) {
             </div>
 
             {isPhone ? (
-              <KpiStrip items={kpis.map(k => ({ ...k, sub: k.delta ? `${k.delta} vs before` : undefined, subColor: k.delta?.startsWith('-') ? 'var(--st-red-fg)' : 'var(--st-green-fg)' }))} />
+              <KpiStrip items={kpis.map(k => ({ ...k,
+                sub: k.warn ?? (k.delta ? `${k.delta} vs before` : undefined),
+                subColor: k.warn ? 'var(--st-orange-fg)' : (k.delta?.startsWith('-') ? 'var(--st-red-fg)' : 'var(--st-green-fg)') }))} />
             ) : (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 10, marginBottom: 14 }}>
                 {kpis.map(k => (
@@ -265,6 +271,7 @@ function SalesReport({ token }) {
                     <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '.4px' }}>{k.label}</div>
                     <div style={{ fontSize: 24, fontWeight: 700, marginTop: 4, fontVariantNumeric: 'tabular-nums' }}>{k.value}</div>
                     {k.delta && <div style={{ fontSize: 11.5, marginTop: 2, color: k.delta.startsWith('-') ? 'var(--st-red-fg)' : 'var(--st-green-fg)' }}>{k.delta} vs {data.previousRange.label}</div>}
+                    {k.warn && <div style={{ fontSize: 11.5, marginTop: 2, fontWeight: 600, color: 'var(--st-orange-fg)' }}>{k.warn}</div>}
                   </div>
                 ))}
               </div>
@@ -302,7 +309,7 @@ function SalesReport({ token }) {
               </div>
               {t.costMissing > 0 && (
                 <div style={{ padding: '0 14px 12px', fontSize: 11.5, color: 'var(--gray)' }}>
-                  {t.costMissing} of {t.lines} lines have no cost recorded (the imported history), so gross profit is overstated by their cost.
+                  {t.costMissing} of {t.lines} lines have no cost recorded, so each one counts as all profit and gross profit is overstated by their cost. Most are the imported sales history, whose products are not in today's catalogue; sales from the shop itself are costed from their materials.
                 </div>
               )}
             </Card>
@@ -316,7 +323,10 @@ function SalesReport({ token }) {
                   { key: 'share', label: 'Share', right: true, muted: true, wide: true, render: r => t.revenue ? `${((r.revenue / t.revenue) * 100).toFixed(0)}%` : '-' },
                 ]} rows={[
                   { key: 'Online', ...data.bySource.online },
-                  { key: 'Counter', ...data.bySource.manual },
+                  // The counter is POS ('walk-in'). 'manual' is a sale typed into the Sales module by
+                  // hand - which is how the imported history arrived - and was shown here as Counter.
+                  { key: 'Counter (POS)', ...(data.bySource.counter ?? { revenue: 0, orders: 0 }) },
+                  { key: 'Recorded by hand', ...data.bySource.manual },
                 ]} />
               </Card>
               <Card title="By category">

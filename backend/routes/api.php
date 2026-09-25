@@ -238,8 +238,9 @@ Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
 
     // ─── Dashboard & reports (stubs - see AdminAnalyticsController) ───────────
     Route::get('/admin/dashboard/stats',         [AdminAnalyticsController::class, 'dashboardStats']);
-    Route::get('/admin/reports/sales',           [AdminAnalyticsController::class, 'reportsSales']);
-    Route::get('/admin/reports/inventory',       [AdminAnalyticsController::class, 'reportsInventory']);
+    // /admin/reports/sales and /inventory were registered here too, pointing at stubs. The same two
+    // URLs are registered again further down for ReportController, and the later one wins - so
+    // these never answered, and read as if the reports came from here.
 
     // ─── Analytics data (feeds SSA Python service endpoints) ─────────────────
     Route::get('/admin/analytics/rfm-data',      [AnalyticsDataController::class, 'rfmData']);
