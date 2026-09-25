@@ -1352,7 +1352,10 @@ class OrderController extends Controller
         $user = $request->user();
         $canSeeMoney = \App\Support\Rbac::allows($user, 'payments.view')
             || \App\Support\Rbac::allows($user, 'sales.view')
-            || \App\Support\Rbac::allows($user, 'pos');
+            || \App\Support\Rbac::allows($user, 'pos')
+            // The owner's own tick for it, under Orders - money on the orders a person can already
+            // see, without giving them the Payments module to get it.
+            || \App\Support\Rbac::allows($user, 'orders.money');
         if ($canSeeMoney) {
             return $orders; // full financial view - unchanged
         }

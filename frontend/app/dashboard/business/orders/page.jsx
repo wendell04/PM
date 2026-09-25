@@ -970,7 +970,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
   const mayRefund   = can('payments.refund');
   const mayCreateJO = can('jobOrders.create');
   const mayProduce  = can('production.work');
-  const seeMoney    = can(['sales', 'payments', 'reports']);
+  const seeMoney    = can(['sales', 'payments', 'reports', 'orders.money']);
   const canActOnStatus = mayStatus || mayCancel || mayWriteOff || mayCreateJO;
   const fmt = n => Number(n ?? 0).toLocaleString('en-PH', { minimumFractionDigits:2, maximumFractionDigits:2 });
 
@@ -3000,7 +3000,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                 </span>
               </div>
               <div style={{ fontSize: 11, marginTop: 2 }}>
-                Amounts are not part of your access. Ask the owner to give your role See on Payments.
+                Amounts are not part of your access. The owner can tick "See order amounts" for your role, under Orders in Staff and access.
               </div>
             </div>
           ) : (<>

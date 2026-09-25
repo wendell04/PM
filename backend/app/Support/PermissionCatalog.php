@@ -40,6 +40,10 @@ class PermissionCatalog
                     'design.proof'   => ['Send design proofs', 'Upload the adjusted artwork for the customer to approve.'],
                     'design.approve' => ['Approve or reject files', 'Approving releases the order to production and starts the delivery countdown.'],
                     'orders.delete'  => ['Cancel and archive orders', 'Cancelling a paid order can mean money owed back.'],
+                    // Money on an order - the total, what has been paid, what is still owed - without
+                    // handing over the Payments module, which is every customer's balances and
+                    // payment references. Off unless ticked: seeing the work is not seeing its price.
+                    'orders.money'   => ['See order amounts', 'Totals, what has been paid and what is still owed, on Orders only. Does not open Payments.'],
                 ]],
             'pos' => ['section' => 'Operations', 'label' => 'Counter (POS)', 'note' => '',
                 'view'   => $v('pos.view', 'Open the counter screen, read only.'),
