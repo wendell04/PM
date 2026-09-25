@@ -1812,3 +1812,37 @@ html.light .chat-box-switch { background: rgba(0, 0, 0, 0.04); }
     padding: 20px 22px;
   }
 }
+
+/* ── Messages on a phone: one pane at a time, the way Messenger does it ──────────
+   Side by side on a 390px screen the inbox kept its 272px and the conversation got
+   36px, with the reply box under the tab bar at zero width - nothing could be read
+   or answered. The inbox takes the screen; opening a conversation replaces it, and
+   the back arrow in its header returns to the inbox. */
+.chat-back { display: none; }
+@media (max-width: 767px) {
+  .chat-sidebar { width: 100%; border-right: none; }
+  .chat-main { display: none; }
+  .chat-container--thread .chat-sidebar { display: none; }
+  .chat-container--thread .chat-main { display: flex; }
+  .chat-back {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 40px; height: 40px; margin: 0 2px 0 -8px; flex-shrink: 0;
+    background: none; border: none; border-radius: 10px; color: var(--white); cursor: pointer;
+  }
+  .chat-back:active { background: var(--dark2); }
+
+  /* The page around it: edge to edge, no card, and the settings link only on the inbox. */
+  .admin-chat-page { padding: 0 !important; }
+  .admin-chat-card { border-radius: 0 !important; border-left: none !important; border-right: none !important; box-shadow: none !important; }
+  .admin-chat-links { padding: 8px 12px !important; justify-content: flex-start !important; }
+  .admin-chat-page:has(.chat-container--thread) .admin-chat-links { display: none !important; }
+}
+
+/* The composer on a phone: the quotation and order-form buttons become icons (their names stay
+   as the tooltip and the screen-reader label), because with their words they took the whole row
+   and squeezed the text box to zero - there was nowhere left to type. */
+@media (max-width: 767px) {
+  .ci-action { width: 36px; padding: 0 !important; justify-content: center; }
+  .ci-action .ci-label { display: none; }
+  .input-wrapper .text-input { flex: 1 1 auto; min-width: 0; }
+}

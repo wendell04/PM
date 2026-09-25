@@ -18,7 +18,7 @@ const dateLabel = (ts) => {
   return d.toLocaleDateString('en-PH', { weekday: 'long', month: 'long', day: 'numeric' });
 };
 
-const ChatWindow = ({ activeConversation, messages, user, isLoading, isAdmin, onStartChat, isSending, isLoadingMessages, isLoadingConversations, addToCart, onlineUsers = new Set(), typingUsers = {}, onApproveProof, onRequestChanges, proofActionState, onQuoteFromForm }) => {
+const ChatWindow = ({ activeConversation, messages, user, isLoading, isAdmin, onStartChat, isSending, isLoadingMessages, isLoadingConversations, addToCart, onlineUsers = new Set(), typingUsers = {}, onApproveProof, onRequestChanges, proofActionState, onQuoteFromForm, onBack }) => {
   const scrollRef = useRef(null);
   const [lightboxIdx, setLightboxIdx] = useState(null);
   // Every photo in the thread, in the order it was sent. Built here so the viewer can move between
@@ -505,6 +505,13 @@ const ChatWindow = ({ activeConversation, messages, user, isLoading, isAdmin, on
             const roleLabel = role === 'admin' || role === 'owner' ? 'Staff' : 'Customer';
             return (
               <>
+                {/* Phone only (the stylesheet hides it above 768px). On a phone the thread takes
+                    the whole screen, Messenger-style, so this is the way back to the inbox. */}
+                {onBack && (
+                  <button type="button" className="chat-back" onClick={onBack} aria-label="Back to all conversations">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6" /></svg>
+                  </button>
+                )}
                 <div className="chat-avatar-wrap">
                   <div className="chat-avatar" style={{ width: '38px', height: '38px' }}>
                     {activeConversation.other_user?.avatar ? (

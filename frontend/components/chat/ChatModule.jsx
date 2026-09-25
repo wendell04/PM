@@ -392,7 +392,10 @@ const ChatModule = ({ user, token, addToCart }) => {
     !isLoadingMessages;
 
   return (
-    <div className="chat-container">
+    // "--thread" while a conversation is open. On a phone the stylesheet shows ONE pane at a time -
+    // the inbox, or the conversation full screen - because side by side on a 390px screen the
+    // conversation got 36px and the reply box sat under the tab bar with no width at all.
+    <div className={`chat-container${activeConversation ? ' chat-container--thread' : ''}`}>
       <ChatSidebar
         conversations={conversations}
         activeConversation={activeConversation}
@@ -416,6 +419,7 @@ const ChatModule = ({ user, token, addToCart }) => {
           onlineUsers={onlineUsers}
           typingUsers={typingUsers}
           onQuoteFromForm={({ note, askId }) => setQuotePrefill({ note, askId, at: Date.now() })}
+          onBack={() => setActiveConversation(null)}
         />
 
         {/* A guest thread has only the shop in it, so anything typed here reaches nobody.

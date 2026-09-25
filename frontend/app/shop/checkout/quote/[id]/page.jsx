@@ -558,8 +558,10 @@ export default function QuoteCheckoutPage() {
                 delivery - which reads as "included" to anyone who is not looking for it. */}
             {deliveryFee === 0 && (
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: '.86rem' }}>
-                <span style={{ color: 'var(--gray)' }}>Delivery</span>
-                <span style={{ color: 'var(--gray)', textAlign: 'right', maxWidth: 260, lineHeight: 1.45 }}>
+                {/* The label keeps its width. The sentence beside it is long, and on a phone flex
+                    shrank the word itself to one letter wide - "Deli / ver / y". */}
+                <span style={{ color: 'var(--gray)', flexShrink: 0, whiteSpace: 'nowrap' }}>Delivery</span>
+                <span style={{ color: 'var(--gray)', textAlign: 'right', maxWidth: 260, lineHeight: 1.45, minWidth: 0 }}>
                   Not included. The seller books a courier to your address after this is paid and
                   sends you the exact fee in chat.
                 </span>

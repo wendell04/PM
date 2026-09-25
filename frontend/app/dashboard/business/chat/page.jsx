@@ -1,12 +1,32 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import Link from 'next/link';
 import ChatModule from '@/components/chat/ChatModule';
 import { useAuth } from '@/contexts/AuthContext';
 
 export default function AdminChatPage() {
   const { currentUser: user, token, isLoading: loading } = useAuth();
+
+  // On a phone the chat must end where the tab bar starts. "100vh - 80px" was a desktop figure:
+  // under the phone's top bar, section strip and tab bar it ran 107px past the bottom, taking the
+  // reply box with it. Measured on the device instead, and again whenever the address bar shows or
+  // hides, since that changes the height a phone actually has.
+  const pageRef = useRef(null);
+  useEffect(() => {
+    const fit = () => {
+      const el = pageRef.current;
+      if (!el) return;
+      if (window.innerWidth >= 768) { el.style.height = 'calc(100vh - 80px)'; return; }
+      const top = el.getBoundingClientRect().top;
+      const bar = document.querySelector('.phone-tabbar');
+      const barH = bar && getComputedStyle(bar).display !== 'none' ? bar.getBoundingClientRect().height : 0;
+      el.style.height = `${Math.max(320, Math.floor(window.innerHeight - top - barH))}px`;
+    };
+    fit();
+    window.addEventListener('resize', fit);
+    return () => window.removeEventListener('resize', fit);
+  }, [loading, user, token]);
 
   if (loading) {
     return (
@@ -46,11 +66,11 @@ export default function AdminChatPage() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 80px)', padding: '0 24px' }}>
+    <div ref={pageRef} className="admin-chat-page" style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 80px)', padding: '0 24px' }}>
       {/* The common questions and away message customers see are set in Settings - linked from the
           inbox they shape, so the owner does not have to go looking. Settings is owner/admin only. */}
       {['superAdmin', 'admin', 'owner'].includes(user.role) && (
-        <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '0 0 10px' }}>
+        <div className="admin-chat-links" style={{ display: 'flex', justifyContent: 'flex-end', padding: '0 0 10px' }}>
           <Link
             href="/dashboard/business/settings?tab=chat"
             style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.8rem', fontWeight: 600, color: 'var(--gold)', textDecoration: 'none', padding: '6px 10px', border: '1px solid var(--border)', borderRadius: 8 }}
@@ -62,7 +82,7 @@ export default function AdminChatPage() {
           </Link>
         </div>
       )}
-      <div style={{ flex: 1, minHeight: 0, borderRadius: '14px', overflow: 'hidden', border: '1px solid var(--border)', boxShadow: '0 8px 32px rgba(0,0,0,0.3)' }}>
+      <div className="admin-chat-card" style={{ flex: 1, minHeight: 0, borderRadius: '14px', overflow: 'hidden', border: '1px solid var(--border)', boxShadow: '0 8px 32px rgba(0,0,0,0.3)' }}>
         <ChatModule user={user} token={token} />
       </div>
     </div>

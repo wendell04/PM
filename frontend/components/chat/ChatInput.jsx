@@ -395,6 +395,8 @@ const ChatInput = ({ onSendMessage, isSending, activeConversation, token, onTypi
             disabled={isSending || isUploading}
             onClick={() => { setQuotationError(''); setShowQuotation(true); }}
             title="Send quotation"
+            aria-label="Send quotation"
+            className="ci-action"
             style={{
               height: '34px', flexShrink: 0, padding: '0 12px',
               display: 'inline-flex', alignItems: 'center', gap: '6px',
@@ -406,7 +408,7 @@ const ChatInput = ({ onSendMessage, isSending, activeConversation, token, onTypi
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <rect x="4" y="2" width="16" height="20" rx="2" /><line x1="8" y1="7" x2="16" y2="7" /><line x1="8" y1="11" x2="16" y2="11" /><line x1="8" y1="15" x2="12" y2="15" />
             </svg>
-            Send quotation
+            <span className="ci-label">Send quotation</span>
           </button>
         )}
 
@@ -418,6 +420,8 @@ const ChatInput = ({ onSendMessage, isSending, activeConversation, token, onTypi
             disabled={isSending || isUploading}
             onClick={() => setShowFormPicker(true)}
             title="Send order form"
+            aria-label="Send order form"
+            className="ci-action"
             style={{
               height: '34px', flexShrink: 0, padding: '0 12px',
               display: 'inline-flex', alignItems: 'center', gap: '6px',
@@ -429,7 +433,7 @@ const ChatInput = ({ onSendMessage, isSending, activeConversation, token, onTypi
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M9 11l3 3L22 4" /><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
             </svg>
-            Send order form
+            <span className="ci-label">Send order form</span>
           </button>
         )}
 

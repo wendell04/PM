@@ -136,10 +136,12 @@ export default function PaymentMethods({
                   Mobile number <span style={{ opacity: 0.7 }}>(optional - we use your account number if blank)</span>
                 </label>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span style={{ fontSize: '0.875rem', color: 'var(--gray)' }}>+63</span>
+                  {/* The prefix keeps its width; the box takes the rest. With a full-width input
+                      beside it, flex shrank "+63" until it broke over two lines on a phone. */}
+                  <span style={{ fontSize: '0.875rem', color: 'var(--gray)', flexShrink: 0, whiteSpace: 'nowrap' }}>+63</span>
                   <input value={eWalletPhone} inputMode="numeric" maxLength={10}
                     onChange={e => onEWalletPhone?.(e.target.value.replace(/\D/g, '').slice(0, 10))}
-                    placeholder="912 345 6789" style={input} />
+                    placeholder="912 345 6789" style={{ ...input, flex: 1, minWidth: 0 }} />
                 </div>
               </div>
             )}
