@@ -105,6 +105,12 @@ class BackfillSaleCost extends Command
         if (!$p) return [null, null, 'no single product by that name'];
 
         $variantId = CostResolver::variantIdByName($p, $variantName);
+        // A line that picked two options records both - "Matte · Kisscut" - while the product's
+        // variants name only the one that decides the materials ("Matte"); the cut is an option on
+        // top. The first part is an exact variant name, not a guess, so it is tried on its own.
+        if (!$variantId && $variantName !== null && str_contains($variantName, '·')) {
+            $variantId = CostResolver::variantIdByName($p, trim(explode('·', $variantName)[0]));
+        }
         if ($variantName !== null && !$variantId && !empty($p->combinations)) {
             return [null, null, 'variant name not on the product'];
         }
