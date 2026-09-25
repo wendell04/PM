@@ -33,6 +33,14 @@ class Sale extends Model
         'jobOrderId',
         'bomSnapshot',
         'createdAt',
+        // Written by completeOrder and the counter since the discounts work, and silently dropped by
+        // this list the whole time - so no sale row ever said what came off it.
+        'discount',
+        'voucherCode',
+        // The order a line belongs to, so a report counts orders rather than lines.
+        'orderRef',
+        // Set by sales:backfill-cost on a row whose cost was filled in afterwards.
+        'costBackfilledAt',
     ];
 
     protected $casts = [

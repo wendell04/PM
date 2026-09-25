@@ -950,8 +950,12 @@ class InventoryController extends Controller
 
                 $newStock = ($inventory->stockQty ?? 0) + $absQty;
 
-                // Recalculate weighted average cost
-                $currentTotalCost = ($inventory->averageCost ?? 0) * ($newStock - $absQty);
+                // Recalculate weighted average cost. The stock already held is valued at its own
+                // average - and when there is none, at the last price paid, never at zero: `?? 0`
+                // counted it as free, which is how 49 mugs bought at P30 averaged P20.13.
+                $prevAvg = (float) ($inventory->averageCost ?? 0);
+                if ($prevAvg <= 0) $prevAvg = (float) ($inventory->lastUnitCost ?: ($inventory->baseCost ?: $unitCost));
+                $currentTotalCost = $prevAvg * ($newStock - $absQty);
                 $newAdditionCost  = $unitCost * $absQty;
                 $inventory->averageCost  = $newStock > 0 ? ($currentTotalCost + $newAdditionCost) / $newStock : $unitCost;
                 $inventory->lastUnitCost = $unitCost;

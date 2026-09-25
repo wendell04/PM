@@ -403,7 +403,9 @@ class WalkInOrderController extends Controller
                 $cost = 0.0;
                 foreach ($consume as $invId => $qty) {
                     $ci = Inventory::find($invId);
-                    if ($ci) $cost += (float) ($ci->averageCost ?? $ci->lastUnitCost ?? 0) * (float) $qty;
+                    // The same cost every other sale is recorded at. averageCost alone can have drifted
+                    // below anything the shop ever paid (see CostResolver::materialCost).
+                    if ($ci) $cost += \App\Support\CostResolver::materialCost($ci) * (float) $qty;
                 }
                 $profit      = $netLine - $cost;
                 $variantName = $item['variantName'] ?? '';
@@ -431,6 +433,9 @@ class WalkInOrderController extends Controller
                     'source'          => 'walk-in',
                     'status'          => 'completed',
                     'notes'           => 'From Walk-in Order: ' . (string) $order->_id,
+                    // Which order this line is part of, as a field rather than only inside the note,
+                    // so a report can count orders instead of lines.
+                    'orderRef'        => (string) $order->_id,
                     'createdAt'       => now(),
                 ]);
 

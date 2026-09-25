@@ -1970,7 +1970,9 @@ class OrderController extends Controller
 
                 // COGS resolved from BOM → inventory → product cost, so profit is correct even when
                 // there is no directly-linked inventory item (services, finished goods with a buy price).
-                $cost        = \App\Support\CostResolver::lineCost($product, $item['qty']);
+                // With the VARIANT. Without it only the product-level BOM was tried, which on the live
+                // catalogue points at nothing - so custom lines were recorded at cost 0.
+                $cost        = \App\Support\CostResolver::lineCost($product, $item['qty'], $item['variantId'] ?? null);
                 $profit      = $netLine - $cost;
                 $variantName = $item['variantName'] ?? '';
 
@@ -2002,6 +2004,9 @@ class OrderController extends Controller
                     'source'          => 'online',
                     'status'          => 'completed',
                     'notes'           => "From Order: " . ($order->orderId ?? $order->_id),
+                    // Which order this line is part of, as a field rather than only inside the note,
+                    // so a report can count orders instead of lines.
+                    'orderRef'        => (string) ($order->orderId ?? $order->_id),
                     'createdAt'       => now(),
                 ]);
 
