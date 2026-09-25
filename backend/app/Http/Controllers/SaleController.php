@@ -33,11 +33,11 @@ class SaleController extends Controller
             }
 
             if ($request->filled('startDate')) {
-                $query->where('saleDate', '>=', $request->startDate);
+                $query->where('saleDate', '>=', \App\Support\RequestDates::start($request->startDate));
             }
 
             if ($request->filled('endDate')) {
-                $query->where('saleDate', '<=', $request->endDate);
+                $query->where('saleDate', '<=', \App\Support\RequestDates::end($request->endDate));
             }
 
             if ($request->filled('inventoryId')) {
@@ -249,11 +249,11 @@ class SaleController extends Controller
                 $query = Sale::where('status', 'completed');
 
                 if ($request->filled('startDate')) {
-                    $query->where('saleDate', '>=', $request->startDate);
+                    $query->where('saleDate', '>=', \App\Support\RequestDates::start($request->startDate));
                 }
 
                 if ($request->filled('endDate')) {
-                    $query->where('saleDate', '<=', $request->endDate);
+                    $query->where('saleDate', '<=', \App\Support\RequestDates::end($request->endDate));
                 }
 
                 $totalSales   = $query->count();
@@ -274,8 +274,8 @@ class SaleController extends Controller
 
                 if (in_array($groupBy, ['daily', 'weekly', 'monthly'])) {
                     $allSales = Sale::where('status', 'completed')
-                        ->when($request->filled('startDate'), fn($q) => $q->where('saleDate', '>=', $request->startDate))
-                        ->when($request->filled('endDate'),   fn($q) => $q->where('saleDate', '<=', $request->endDate))
+                        ->when($request->filled('startDate'), fn($q) => $q->where('saleDate', '>=', \App\Support\RequestDates::start($request->startDate)))
+                        ->when($request->filled('endDate'),   fn($q) => $q->where('saleDate', '<=', \App\Support\RequestDates::end($request->endDate)))
                         ->get(['saleDate', 'totalPrice', 'cost']);
 
                     $buckets = [];
@@ -331,11 +331,11 @@ class SaleController extends Controller
                 $query = Sale::where('status', 'completed');
 
                 if ($request->filled('startDate')) {
-                    $query->where('saleDate', '>=', $request->startDate);
+                    $query->where('saleDate', '>=', \App\Support\RequestDates::start($request->startDate));
                 }
 
                 if ($request->filled('endDate')) {
-                    $query->where('saleDate', '<=', $request->endDate);
+                    $query->where('saleDate', '<=', \App\Support\RequestDates::end($request->endDate));
                 }
 
                 $sales = $query->get(['productName', 'category', 'quantity', 'totalPrice']);

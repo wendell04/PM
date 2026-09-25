@@ -89,8 +89,12 @@ class ActivityLogController extends Controller
         if ($request->filled('entityType')) $query->where('entityType', $request->entityType);
         if ($request->filled('entityId'))   $query->where('entityId', $request->entityId);
         if ($request->filled('actor'))      $query->where('performedBy', $request->actor);
-        if ($request->filled('startDate'))  $query->where('createdAt', '>=', $request->startDate);
-        if ($request->filled('endDate'))    $query->where('createdAt', '<=', $request->endDate);
+        // Parsed, not passed through. createdAt is stored as a date and the request carries text,
+        // and MongoDB never matches a date against a string - so every window from Today to Last
+        // 90 days came back empty while the tiles above it, which did parse, counted seven
+        // sign-ins. Only All time worked, because it sends no date at all.
+        if ($request->filled('startDate'))  $query->where('createdAt', '>=', \App\Support\RequestDates::start($request->startDate));
+        if ($request->filled('endDate'))    $query->where('createdAt', '<=', \App\Support\RequestDates::end($request->endDate));
 
         // Free text. This has to be part of the QUERY, not a filter applied to the rows that come
         // back: filtering after the page has been cut gives a page of five results out of fifty,
@@ -219,8 +223,8 @@ class ActivityLogController extends Controller
             // No startDate means ALL TIME, not today. Defaulting to the start of today made the
             // tiles disagree with the list beside them and with their own label - the screen said
             // "in all time" over figures that covered a few hours.
-            $since = $request->filled('startDate') ? \Carbon\Carbon::parse($request->startDate) : null;
-            $until = $request->filled('endDate')   ? \Carbon\Carbon::parse($request->endDate)   : now();
+            $since = $request->filled('startDate') ? \App\Support\RequestDates::start($request->startDate) : null;
+            $until = $request->filled('endDate')   ? \App\Support\RequestDates::end($request->endDate)   : now();
 
             $q = ActivityLog::where('createdAt', '<=', $until);
             if ($since) $q->where('createdAt', '>=', $since);

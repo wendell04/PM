@@ -31,11 +31,11 @@ class AuditLogController extends Controller
             }
 
             if ($request->filled('startDate')) {
-                $query->where('createdAt', '>=', $request->startDate);
+                $query->where('createdAt', '>=', \App\Support\RequestDates::start($request->startDate));
             }
 
             if ($request->filled('endDate')) {
-                $query->where('createdAt', '<=', $request->endDate);
+                $query->where('createdAt', '<=', \App\Support\RequestDates::end($request->endDate));
             }
 
             $limit = (int) $request->input('limit', 50);
@@ -130,11 +130,11 @@ class AuditLogController extends Controller
             $query = AuditLog::query();
 
             if ($request->filled('startDate')) {
-                $query->where('createdAt', '>=', $request->startDate);
+                $query->where('createdAt', '>=', \App\Support\RequestDates::start($request->startDate));
             }
 
             if ($request->filled('endDate')) {
-                $query->where('createdAt', '<=', $request->endDate);
+                $query->where('createdAt', '<=', \App\Support\RequestDates::end($request->endDate));
             }
 
             $totalStockIn = (clone $query)->where('quantity', '>', 0)->sum('quantity');

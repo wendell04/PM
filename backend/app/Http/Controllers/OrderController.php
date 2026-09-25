@@ -1841,8 +1841,8 @@ class OrderController extends Controller
                 $base = Order::query()
                     ->where('checkoutPending', '!=', true)
                     ->where('voidedCheckout', '!=', true)
-                    ->when($request->filled('startDate'), fn($q) => $q->where('createdAt', '>=', $request->startDate))
-                    ->when($request->filled('endDate'),   fn($q) => $q->where('createdAt', '<=', $request->endDate));
+                    ->when($request->filled('startDate'), fn($q) => $q->where('createdAt', '>=', \App\Support\RequestDates::start($request->startDate)))
+                    ->when($request->filled('endDate'),   fn($q) => $q->where('createdAt', '<=', \App\Support\RequestDates::end($request->endDate)));
 
                 $totalOrders     = (clone $base)->count();
                 $pendingOrders   = (clone $base)->whereIn('orderStatus', OrderStatus::spellings(OrderStatus::PENDING))->count();

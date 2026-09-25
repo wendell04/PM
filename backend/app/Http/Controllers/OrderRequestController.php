@@ -1317,8 +1317,8 @@ class OrderRequestController extends Controller
             }
 
             $query = \App\Models\OrderRequest::query()
-                ->when($request->filled('startDate'), fn($q) => $q->where('createdAt', '>=', $request->startDate))
-                ->when($request->filled('endDate'),   fn($q) => $q->where('createdAt', '<=', $request->endDate));
+                ->when($request->filled('startDate'), fn($q) => $q->where('createdAt', '>=', \App\Support\RequestDates::start($request->startDate)))
+                ->when($request->filled('endDate'),   fn($q) => $q->where('createdAt', '<=', \App\Support\RequestDates::end($request->endDate)));
 
             $total     = (clone $query)->count();
             $pending   = (clone $query)->where('status', 'pending_review')->count();
