@@ -27,7 +27,7 @@ import { socialsFrom, socialNames } from '@/lib/socialLinks';
 // display-sized copy of the same file instead.
 import { cloudinaryThumb } from '@/lib/cloudinaryImage';
 import { priceFrom } from '@/lib/priceFrom';
-import { priceLabel, stockBadge, variantCount } from '@/lib/productCardInfo';
+import { priceLabel, variantCount } from '@/lib/productCardInfo';
 import OtpInput from '@/components/auth/OtpInput';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
@@ -2118,22 +2118,10 @@ const handleForgotResetPassword = async () => {
                         {img
                           ? <img src={cloudinaryThumb(img, 600)} alt={p.name} loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                           : <NoImage size={36} />}
-                        {/* The same two badges the shop grid shows, so a product looks like itself
-                            wherever somebody meets it first. */}
-                        {(() => {
-                          const badge = stockBadge(p);
-                          if (!badge) return null;
-                          const tone = badge.tone === 'gone' ? { background: 'rgba(239,68,68,0.9)', color: '#fff' }
-                            : badge.tone === 'low' ? { background: '#f59e0b', color: '#111' }
-                            : badge.tone === 'wait' ? { background: 'rgba(96,165,250,0.9)', color: '#fff' }
-                            : { background: '#d4a843', color: '#111' };
-                          return (
-                            <span style={{ position: 'absolute', top: 8, left: 8, ...tone, borderRadius: 999,
-                              padding: '3px 9px', fontSize: '0.66rem', fontWeight: 800, letterSpacing: '0.02em' }}>
-                              {badge.label}
-                            </span>
-                          );
-                        })()}
+                        {/* No stock or pre-order badge here, on the owner's word: the landing page is a
+                            shop window, and "3 left" or "Pre-order" on it reads as a warning before
+                            anyone has looked at the product. The /shop grid keeps it, where somebody
+                            is choosing and needs it. */}
                         {p.isCustom && (
                           <span style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(212,168,67,0.92)', color: '#111',
                             borderRadius: 999, padding: '3px 9px', fontSize: '0.66rem', fontWeight: 800, letterSpacing: '0.02em' }}>
