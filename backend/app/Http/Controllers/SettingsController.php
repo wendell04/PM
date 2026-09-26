@@ -39,6 +39,8 @@ class SettingsController extends Controller
                 // Delivery estimate + rush (storefront shows "Get by [range]" from these).
                 'productionLeadDays'   => (int)   ($owner->productionLeadDays   ?? 3),
                 'depositDueDays'       => (int)   ($owner->depositDueDays       ?? 7),
+                // Days a customer has to answer a proof before the order closes (terms: {proofReplyDays}).
+                'proofReplyDays'       => (int)   ($owner->proofReplyDays       ?? 14),
                 'unpaidOrderDays'      => (int)   ($owner->unpaidOrderDays      ?? 3),
                 // How long a FINISHED order is held while the balance goes unpaid. Personalised goods
                 // cannot be resold, so this is a holding period ending in disposal, not a refund
@@ -295,6 +297,8 @@ class SettingsController extends Controller
                 'designFeeMode'        => \App\Support\DesignFee::mode(),
                 'productionLeadDays'   => (int)   ($owner->productionLeadDays   ?? 3),
                 'depositDueDays'       => (int)   ($owner->depositDueDays       ?? 7),
+                // Days a customer has to answer a proof before the order closes (terms: {proofReplyDays}).
+                'proofReplyDays'       => (int)   ($owner->proofReplyDays       ?? 14),
                 'unpaidOrderDays'      => (int)   ($owner->unpaidOrderDays      ?? 3),
                 // How long a FINISHED order is held while the balance goes unpaid. Personalised goods
                 // cannot be resold, so this is a holding period ending in disposal, not a refund
@@ -377,6 +381,7 @@ class SettingsController extends Controller
                 'flatRateOutsideMetro' => 'nullable|numeric|min:0|max:9999',
                 'productionLeadDays'   => 'nullable|integer|min:0|max:120',
                 'depositDueDays'       => 'nullable|integer|min:1|max:60',
+                'proofReplyDays'       => 'nullable|integer|min:3|max:60',
                 'unpaidOrderDays'      => 'nullable|integer|min:1|max:60',
                 'unpaidReadyHoldDays'  => 'nullable|integer|min:1|max:180',
                 'refundDays'           => 'nullable|integer|min:1|max:60',
@@ -422,6 +427,7 @@ class SettingsController extends Controller
             if ($request->has('flatRateOutsideMetro')) $owner->flatRateOutsideMetro = (float) $request->flatRateOutsideMetro;
             if ($request->has('productionLeadDays'))   $owner->productionLeadDays   = (int) $request->productionLeadDays;
             if ($request->has('depositDueDays'))       $owner->depositDueDays       = (int) $request->depositDueDays;
+            if ($request->has('proofReplyDays'))       $owner->proofReplyDays       = (int) $request->proofReplyDays;
             if ($request->has('unpaidOrderDays'))      $owner->unpaidOrderDays      = (int) $request->unpaidOrderDays;
             if ($request->has('unpaidReadyHoldDays'))  $owner->unpaidReadyHoldDays  = (int) $request->unpaidReadyHoldDays;
             if ($request->has('refundDays'))           $owner->refundDays           = (int) $request->refundDays;
@@ -468,6 +474,8 @@ class SettingsController extends Controller
                 'flatRateOutsideMetro' => (float) ($owner->flatRateOutsideMetro ?? 250),
                 'productionLeadDays'   => (int)   ($owner->productionLeadDays   ?? 3),
                 'depositDueDays'       => (int)   ($owner->depositDueDays       ?? 7),
+                // Days a customer has to answer a proof before the order closes (terms: {proofReplyDays}).
+                'proofReplyDays'       => (int)   ($owner->proofReplyDays       ?? 14),
                 'unpaidOrderDays'      => (int)   ($owner->unpaidOrderDays      ?? 3),
                 // How long a FINISHED order is held while the balance goes unpaid. Personalised goods
                 // cannot be resold, so this is a holding period ending in disposal, not a refund

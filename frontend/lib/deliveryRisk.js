@@ -26,6 +26,13 @@ export function deliveryRisk(order, riskWindowDays = 2) {
   if (!order) return null;
   const state = norm(order.orderStatus);
   if (DONE_STATES.includes(state)) return null;
+  // The customer's turn, not the shop's: a proof waiting for their answer, or an approved order
+  // waiting for their payment. The date was set when the order was placed, so while they sit on
+  // it the promise slides with them - OVERDUE here blamed the shop for the customer's delay. The
+  // status pill already says whose move it is.
+  const design = norm(order.designStatus);
+  if (['proof_sent', 'awaiting_payment'].includes(state)) return null;
+  if (order.isCustomOrder && ['draft_ready', 'proof_sent'].includes(design)) return null;
 
   const promise = order.needByDate || order.estimatedDeliveryMax || null;
   if (!promise) return null;

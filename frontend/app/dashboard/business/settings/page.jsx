@@ -395,6 +395,7 @@ export default function SettingsPage() {
             extraRevisionFee:     d.data.extraRevisionFee     != null ? String(d.data.extraRevisionFee)     : '50',
             maxRevisions:         d.data.maxRevisions         != null ? String(d.data.maxRevisions)         : '5',
             depositDueDays:       d.data.depositDueDays       != null ? String(d.data.depositDueDays)       : '7',
+            proofReplyDays:       d.data.proofReplyDays       != null ? String(d.data.proofReplyDays)       : '14',
             unpaidOrderDays:      d.data.unpaidOrderDays      != null ? String(d.data.unpaidOrderDays)      : '3',
             unpaidReadyHoldDays:  d.data.unpaidReadyHoldDays  != null ? String(d.data.unpaidReadyHoldDays)  : '14',
             refundDays:           d.data.refundDays           != null ? String(d.data.refundDays)           : '7',
@@ -1106,6 +1107,7 @@ export default function SettingsPage() {
         extraRevisionFee:    Math.min(99999, Math.max(0, parseFloat(shippingForm.extraRevisionFee) || 0)),
         maxRevisions:        Math.min(20, Math.max(1, parseInt(shippingForm.maxRevisions, 10) || 1)),
         depositDueDays:      Math.min(60, Math.max(1, parseInt(shippingForm.depositDueDays, 10) || 1)),
+        proofReplyDays:      Math.min(60, Math.max(3, parseInt(shippingForm.proofReplyDays, 10) || 14)),
         unpaidOrderDays:     Math.min(60, Math.max(1, parseInt(shippingForm.unpaidOrderDays, 10) || 1)),
         unpaidReadyHoldDays: Math.min(180, Math.max(1, parseInt(shippingForm.unpaidReadyHoldDays, 10) || 14)),
         refundDays:          Math.min(60,  Math.max(1, parseInt(shippingForm.refundDays, 10) || 7)),
@@ -2412,6 +2414,26 @@ export default function SettingsPage() {
                   </p>
                 </div>
 
+                {/* The step before the one above: a proof the customer has not answered at all. */}
+                <div className="pmp-cols" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 320px) minmax(0, 1fr)', gap: '1rem 1.5rem', alignItems: 'start', marginBottom: '1.25rem' }}>
+                  <div>
+                  <label htmlFor="set-proof-reply" style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: 'var(--gray-light)', marginBottom: '0.35rem' }}>
+                    Days to answer a proof
+                  </label>
+                  <input
+                    id="set-proof-reply" type="text" inputMode="numeric" maxLength={2}
+                    value={shippingForm.proofReplyDays ?? ''}
+                    onChange={e => setShippingForm(f => ({ ...f, proofReplyDays: e.target.value.replace(/[^0-9]/g, '') }))}
+                    placeholder="14"
+                    style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--dark2)', color: 'var(--white)', fontSize: '0.9rem', boxSizing: 'border-box' }}
+                  />
+                  </div>
+                  <p style={{ fontSize: '0.72rem', color: 'var(--gray)', margin: '0.35rem 0 0', lineHeight: 1.5 }}>
+                    How long a customer has to approve a proof or ask for changes. They are reminded the day before; after it the order closes and the design fee stays with the designer.
+                    Only orders placed under terms that include this rule are closed - older ones you close by hand.
+                  </p>
+                </div>
+
                 {/* Separate from the one above: this catches orders that were placed and then never paid
                     for at all. They hold stock just as hard as an approved order does, and nothing else
                     in the system ever lets go of it. Orders whose design fee HAS cleared are exempt -
@@ -2666,7 +2688,7 @@ export default function SettingsPage() {
                   <p style={{ fontSize: '0.78rem', color: 'var(--gray)', margin: '0 0 1rem', lineHeight: 1.6, maxWidth: '620px' }}>
                     Placeholders are filled from the shipping settings, so a clause always quotes the
                     number actually in force: designRequestFee, freeRevisions, extraRevisionFee,
-                    maxRevisions, depositDueDays, unpaidReadyHoldDays, refundDays. Write them in curly
+                    maxRevisions, depositDueDays, proofReplyDays, unpaidReadyHoldDays, refundDays. Write them in curly
                     braces. Saving bumps the version, and every order records the version it was placed
                     under, so editing these can never rewrite what someone already agreed to.
                   </p>

@@ -19,7 +19,7 @@ class SettingsDiff
         'shippingMode' => 'Shipping method', 'shippingBaseRate' => 'Base delivery rate',
         'shippingPerKmRate' => 'Rate per km', 'shippingPerKmRateFar' => 'Rate per km (far)', 'shippingTierKm' => 'Near/far split (km)',
         'flatRateInsideMetro' => 'Flat rate - Metro Manila', 'flatRateOutsideMetro' => 'Flat rate - outside Metro',
-        'productionLeadDays' => 'Production days', 'depositDueDays' => 'Days to pay after approving',
+        'productionLeadDays' => 'Production days', 'depositDueDays' => 'Days to pay after approving', 'proofReplyDays' => 'Days to answer a proof',
         'unpaidOrderDays' => 'Days before an unpaid order is cancelled', 'unpaidReadyHoldDays' => 'Days a finished order is held',
         'refundDays' => 'Refund days', 'freeRevisions' => 'Free revisions', 'extraRevisionFee' => 'Extra revision fee',
         'maxRevisions' => 'Most revisions', 'shippingZones' => 'Delivery days by area', 'workingDays' => 'Working days',

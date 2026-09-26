@@ -30,6 +30,10 @@ class ExpireUnpaidProofs extends Command
     {
         $dry = (bool) $this->option('dry-run');
 
+        // A proof nobody answered. Its own rule, run first: the path below returns as soon as it
+        // has nothing to expire.
+        $this->closeUnansweredProofs($dry);
+
         // A day's warning first. The customer was told the date when they approved, but the next
         // thing they heard was "cancelled". This runs nightly, so anything falling due within the
         // next 36 hours is warned once - the stamp stops a second reminder the night after.
@@ -136,16 +140,19 @@ class ExpireUnpaidProofs extends Command
                 PromotionRelease::forCancelledOrder($order);
 
                 try {
+                    // user_id / is_read / data: the model's own names. This wrote userId, read and
+                    // orderId, which are not fillable, so every one of these notices was saved with
+                    // no recipient and no customer ever saw one.
                     Notification::create([
-                        'userId'  => (string) $order->userId,
+                        'user_id' => (string) $order->userId,
                         'type'    => 'order_expired',
                         'title'   => 'Order expired',
                         'message' => $order->paymentDueAt
                             ? 'Your approved design was held until ' . \Carbon\Carbon::parse($order->paymentDueAt)->format('M j, Y')
                                 . ', but the payment was not completed, so the order has been released. Message us and we can set it up again.'
                             : 'This order was not paid for, so it has been released and the stock returned. Message us and we can set it up again.',
-                        'orderId' => $orderId,
-                        'read'    => false,
+                        'data'    => ['orderId' => $orderId],
+                        'is_read' => false,
                     ]);
                 } catch (\Throwable $e) {
                     Log::warning('ExpireUnpaidProofs: notification failed', ['order' => $orderId, 'error' => $e->getMessage()]);
@@ -158,5 +165,92 @@ class ExpireUnpaidProofs extends Command
         $this->info(($dry ? 'Would expire ' : 'Expired ') . $due->count() . ' order(s)'
             . ($dry ? '' : ", released {$released} material reservation(s)"));
         return self::SUCCESS;
+    }
+
+    /**
+     * Close a request-design order whose proof the customer never answered.
+     *
+     * The terms' "If you do not answer a proof" clause: {proofReplyDays} days after the latest proof
+     * went out, with a reminder the day before, an order still waiting on the customer is closed.
+     * Nothing was made, so there is nothing to refund but the goods deposit, if any was paid - and
+     * the design fee stays with the designer for the work done.
+     *
+     * Only an order whose ACCEPTED terms (the snapshot taken at checkout) carry that clause. An order
+     * placed before the clause existed was never told about it, so it is left for the owner.
+     */
+    private function closeUnansweredProofs(bool $dry): void
+    {
+        $days  = max(3, (int) (\App\Support\ShopSettings::owner()->proofReplyDays ?? 14));
+        $title = 'If you do not answer a proof';
+
+        $waiting = Order::whereIn('orderStatus', ['proof_sent', 'Proof Sent'])->get()->filter(function ($o) use ($title) {
+            // Asked for changes = the shop's turn, not the customer's.
+            if (in_array((string) ($o->designStatus ?? ''), ['revision_requested', 'rejected', 'approved'], true)) return false;
+            foreach ((array) ($o->agreedTermsSnapshot ?? []) as $c) {
+                if (trim((string) (((array) $c)['title'] ?? '')) === $title) return true;
+            }
+            return false;
+        });
+
+        foreach ($waiting as $o) {
+            // When the latest proof went out: the last proof_sent entry in the status history.
+            $sentAt = null;
+            foreach ((array) ($o->statusHistory ?? []) as $h) {
+                $h = (array) $h;
+                if (($h['status'] ?? null) === 'proof_sent' && !empty($h['at'])) $sentAt = $h['at'];
+            }
+            if (!$sentAt) continue;
+            try { $sent = \Carbon\Carbon::parse($sentAt); } catch (\Throwable $e) { continue; }
+            $deadline = $sent->copy()->addDays($days);
+            $id  = (string) $o->_id;
+            $ref = 'ORD-' . strtoupper(substr($id, -8));
+
+            // The day before: remind once per proof (a new proof resets the clock and the reminder).
+            if (now()->lt($deadline)) {
+                $reminded = $o->proofReplyRemindedAt ? \Carbon\Carbon::parse($o->proofReplyRemindedAt) : null;
+                if (now()->gte($deadline->copy()->subDay()) && (!$reminded || $reminded->lt($sent))) {
+                    $this->line(($dry ? '[dry] ' : '') . "Reminding {$ref}: proof unanswered, closes " . $deadline->format('M j'));
+                    if ($dry) continue;
+                    try {
+                        Notification::create([
+                            'user_id' => (string) $o->userId,
+                            'type'    => 'proof_reply_due',
+                            'title'   => 'Your proof is waiting for you',
+                            'message' => "Please approve the proof for {$ref} or ask for changes by " . $deadline->format('M j, Y')
+                                . '. If we do not hear from you, the order will be closed (the design fee is kept for the work done). Need more time? Message us.',
+                            'data'    => ['orderId' => $id],
+                            'is_read' => false,
+                        ]);
+                    } catch (\Throwable $e) {
+                        Log::warning('closeUnansweredProofs: reminder failed', ['order' => $id, 'error' => $e->getMessage()]);
+                    }
+                    $o->proofReplyRemindedAt = now();
+                    $o->save();
+                }
+                continue;
+            }
+
+            $this->line(($dry ? '[dry] ' : '') . "Closing {$ref}: proof sent " . $sent->format('M j') . ", no answer in {$days} days");
+            if ($dry) continue;
+            try {
+                app(\App\Http\Controllers\OrderController::class)->releaseReservationsFor($o);
+                $previous = $o->orderStatus;
+                $history   = (array) ($o->statusHistory ?? []);
+                $history[] = ['status' => 'cancelled', 'at' => now()->toISOString(), 'note' => "Proof not answered within {$days} days."];
+                $o->orderStatus   = 'cancelled';
+                $o->statusHistory = $history;
+                $o->cancelledAt   = now();
+                $o->cancelReason  = "The proof was not answered within {$days} days. The design fee is kept for the work done.";
+                $o->updatedAt     = now();
+                $o->save();
+                PromotionRelease::forCancelledOrder($o);
+                // The one announcer: email and bell to the customer, the same as any cancellation.
+                try { \App\Support\OrderNotifier::statusChanged($o, $previous); } catch (\Throwable $e) {
+                    Log::warning('closeUnansweredProofs: notify failed', ['order' => $id, 'error' => $e->getMessage()]);
+                }
+            } catch (\Throwable $e) {
+                Log::warning('closeUnansweredProofs: failed', ['order' => $id, 'error' => $e->getMessage()]);
+            }
+        }
     }
 }

@@ -43,6 +43,7 @@ class ReconcileBatchLedger extends Command
         $short   = 0;
         $ok      = 0;
         $totalPc = 0;
+        $opened  = 0;
 
         foreach ($items as $inv) {
             $batches = $inv->batches ?? [];
@@ -90,7 +91,8 @@ class ReconcileBatchLedger extends Command
                     $inv->updatedAt = now();
                     $inv->save();
                 }
-                $short++;
+                $short--;      // counted as SHORT above; it is an opening balance, not left alone
+                $opened++;
                 continue;
             }
 
@@ -120,8 +122,8 @@ class ReconcileBatchLedger extends Command
 
         $this->newLine();
         $this->info(($dry ? '[dry run] ' : '') . sprintf(
-            '%d already correct, %d reconciled (%d units removed from the ledger), %d short and left alone.',
-            $ok, $fixed, $totalPc, $short
+            '%d already correct, %d reconciled (%d units removed from the ledger), %d given an opening balance, %d short and left alone.',
+            $ok, $fixed, $totalPc, $opened, $short
         ));
 
         if ($short > 0) {
