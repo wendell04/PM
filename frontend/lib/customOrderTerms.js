@@ -38,6 +38,14 @@ export const DEFAULT_CUSTOM_ORDER_TERMS = [
   // renderTermsBody(), so the owner changes the allowance in one place and every screen that quotes
   // it follows. The wording itself stays fully editable.
   { title: 'Design revisions', mode: 'request', body: 'Your design fee includes {freeRevisions} revision rounds. Each further round costs {extraRevisionFee} and is added to your order balance. We can take at most {maxRevisions} rounds online; beyond that, message us and we will work it out with you directly.' },
+  // What the system already does (orders:expire-unpaid-proofs), said where the customer agrees to
+  // it. A cancellation the contract never mentioned is one the customer can fairly dispute.
+  { title: 'Paying after you approve', mode: 'request', body: 'Once you approve the proof, the goods fall due. Pay the downpayment or the full amount in My Orders within {depositDueDays} days - we remind you the day before. If it is still unpaid after that, the order is cancelled automatically, the materials held for it are released, and the design fee stays with the designer for the work already done.' },
+  // Proof links are emailed and answered without signing in; this makes that answer binding.
+  { title: 'Approving by email', mode: 'request', body: 'Every proof we send also arrives by email with a link. Approving it, or asking for changes, through that link counts exactly the same as doing it in My Orders. The link works for two weeks; after that, open the order in My Orders to see the latest proof.' },
+  // The reprint clause says an approved mistake is not covered; this one says what to look for first.
+  { title: 'Check it before you approve', mode: 'both', body: 'Please check every name, spelling, number, date and colour before you approve. We print exactly what you approve - a mistake in an approved design or an uploaded file is not reprinted for free.' },
+  { title: 'Your artwork', mode: 'all', body: 'You confirm that you own, or have permission to use, every logo, photo, character and piece of text you send us. We may refuse artwork that copies someone else\'s work or brand, or is offensive - we will then ask you for another file, or refund what you paid for that item if you would rather not. Your files are used only to make your order.' },
   { title: 'Colour differences', mode: 'all' , body: 'Screen colours (RGB) differ from print (CMYK). Slight colour variation between your screen and the final print is normal and not a defect.' },
   { title: 'File quality',    mode: 'upload',  body: 'For uploaded designs, print quality depends on your file. Low-resolution or incorrectly sized files may print blurry or cropped; this is not the shop\'s fault.' },
   // The clause above says whose fault a bad print is; this one says how to avoid needing it. The
