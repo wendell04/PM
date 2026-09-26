@@ -393,7 +393,7 @@ class InventoryController extends Controller
 
                 if ($request->filled('status')) {
                     if ($request->status === 'low-stock') {
-                        $query->whereColumn('stockQty', '<=', 'minStockLevel');
+                        $query->whereColumn('stockQty', '<', 'minStockLevel');
                     } elseif ($request->status === 'out-of-stock') {
                         $query->where('stockQty', 0);
                     } elseif ($request->status === 'upon-order') {
@@ -887,7 +887,7 @@ class InventoryController extends Controller
                         if (($batch['batchId'] ?? null) === $specificBatchId) {
                             $batchQty = (int) ($batch['remainingQty'] ?? $batch['goodQty'] ?? 0);
                             if ($batchQty < $absQty) {
-                                throw new \Exception("Insufficient stock in selected batch (available: {$batchQty}).");
+                                return $this->errorResponse("That batch only has {$batchQty} left.", 422);
                             }
                             $batch['remainingQty'] = $batchQty - $absQty;
                             $batchDeductions[] = ['batchId' => $batch['batchId'] ?? null, 'qty' => $absQty, 'unitCost' => $batch['unitCost'] ?? 0];
@@ -897,7 +897,7 @@ class InventoryController extends Controller
                     }
                     unset($batch);
                     if (!$found) {
-                        throw new \Exception('Selected batch not found.');
+                        return $this->errorResponse('That batch is no longer on this material. Refresh and pick again.', 422);
                     }
                 } else {
                     // ── FIFO deduction from batches ────────────────────────────────
@@ -910,11 +910,23 @@ class InventoryController extends Controller
                         return $carry + ($b['remainingQty'] ?? $b['goodQty'] ?? 0);
                     }, 0);
 
-                    if ($available < $absQty) {
-                        throw new \Exception('Insufficient stock.');
+                    // Stock on the shelf that no delivery ever recorded - seeded before batches
+                    // existed. It is the oldest stock there is, so FIFO takes it first, at the
+                    // material's own cost. Refusing it made those units impossible to remove.
+                    $unbatched = max(0, (int) ($inventory->stockQty ?? 0) - (int) $available);
+                    if ($available + $unbatched < $absQty) {
+                        return $this->errorResponse(
+                            'Only ' . ($available + $unbatched) . ' ' . ($inventory->uom ?? 'units') . ' on hand - you cannot remove ' . $absQty . '.', 422);
                     }
 
                     $remaining = $absQty;
+                    if ($unbatched > 0) {
+                        $fromLoose = min($unbatched, $remaining);
+                        $remaining -= $fromLoose;
+                        $batchDeductions[] = ['batchId' => null, 'qty' => $fromLoose,
+                            'unitCost' => (float) ($inventory->averageCost ?: ($inventory->lastUnitCost ?: ($inventory->baseCost ?: 0))),
+                            'note' => 'opening stock (no delivery on record)'];
+                    }
                     foreach ($batches as &$batch) {
                         if ($remaining <= 0) break;
                         $batchQty = $batch['remainingQty'] ?? $batch['goodQty'] ?? 0;

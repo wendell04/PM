@@ -680,7 +680,7 @@ export default function StaffHome() {
             <div style={{ ...S.row, marginBottom: '18px' }}>
               <SummaryCard label="Materials to buy" value={toBuy?.totalItems ?? '-'} accent color={toBuy?.totalItems > 0 ? 'var(--gold)' : 'var(--white)'}
                 sub={toBuy ? `About ${peso(toBuy.estimatedCost)} to cover committed work` : 'Loading'} />
-              <SummaryCard label="At or below minimum" value={stock.filter(r => r.isActive !== false && Number(r.minStockLevel ?? 0) > 0 && (Number(r.stockQty ?? 0) - Number(r.reservedQty ?? 0)) <= Number(r.minStockLevel)).length} sub="Restock before an order needs it" />
+              <SummaryCard label="Below minimum" value={stock.filter(r => r.isActive !== false && Number(r.minStockLevel ?? 0) > 0 && (Number(r.stockQty ?? 0) - Number(r.reservedQty ?? 0)) < Number(r.minStockLevel)).length} sub="Restock before an order needs it" />
               <SummaryCard label="Out of stock" value={stock.filter(r => r.isActive !== false && !r.isOnDemand && (Number(r.stockQty ?? 0) - Number(r.reservedQty ?? 0)) <= 0).length} color="var(--st-red-fg, #dc2626)" sub="Nothing on the shelf" />
             </div>
           )}
@@ -721,7 +721,10 @@ export default function StaffHome() {
             // SET is checked like any other; one with no minimum stays with To Buy alone.
             const live  = stock.filter(r => r.isActive !== false && (!r.isOnDemand || Number(r.minStockLevel ?? 0) > 0));
             const out   = live.filter(r => level(r) <= 0);
-            const low   = live.filter(r => level(r) > 0 && floor(r) > 0 && level(r) <= floor(r));
+            // Below, not at: the minimum is the least the shop wants on hand, and To Buy only asks
+            // for more once stock drops under it. Counting "at" here sent people to a To Buy with
+            // nothing on it.
+            const low   = live.filter(r => level(r) > 0 && floor(r) > 0 && level(r) < floor(r));
             const worst = [...out, ...low]
               .sort((a, b) => (level(a) - floor(a)) - (level(b) - floor(b)))
               .slice(0, 6);
@@ -743,8 +746,8 @@ export default function StaffHome() {
                     <span style={{ fontSize: 11.5, marginLeft: 8, color: 'var(--gray)' }}>
                       {[
                         out.length === 0 && low.length === 0
-                          ? `all ${live.length} stocked materials above their minimum`
-                          : `${out.length} out of stock, ${low.length} at or below minimum, of ${live.length} stocked`,
+                          ? `all ${live.length} stocked materials at or above their minimum`
+                          : `${out.length} out of stock, ${low.length} below minimum, of ${live.length} stocked`,
                         short.length > 0 && `${short.length} short for orders already taken`,
                       ].filter(Boolean).join(' - ')}
                     </span>
@@ -765,7 +768,7 @@ export default function StaffHome() {
                     {[
                       { n: short.length, label: 'short for orders already taken', show: 'orders', bad: true },
                       { n: out.length, label: 'out of stock', show: 'minimum', bad: true },
-                      { n: low.length, label: 'at or below minimum', show: 'minimum' },
+                      { n: low.length, label: 'below minimum', show: 'minimum' },
                     ].filter(c => c.n > 0).map(c => (
                       <button key={c.label} type="button" onClick={() => router.push(`/dashboard/business/to-buy?show=${c.show}`)}
                         style={{ display: 'inline-flex', alignItems: 'baseline', gap: 6, padding: '7px 12px', borderRadius: 999, cursor: 'pointer', fontFamily: 'inherit', fontSize: 13,

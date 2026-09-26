@@ -38,6 +38,8 @@ function StockOutModal({ open, onClose, material, currentStock, materialBatches,
   const [useBatch,   setUseBatch]  = useState(false);
   const [batchId,    setBatchId]   = useState('');
   const [errors,     setErrors]    = useState({});
+  // A second look before stock is written off: one click used to remove it at once.
+  const [reviewing,  setReviewing] = useState(false);
 
   const availBatches = useMemo(() =>
     (materialBatches || []).filter(b => b.remainingQty > 0).sort((a, b) => new Date(a.date) - new Date(b.date)),
@@ -46,7 +48,7 @@ function StockOutModal({ open, onClose, material, currentStock, materialBatches,
   const selectedBatch = useBatch ? availBatches.find(b => b.id === batchId) : null;
   const maxQty = selectedBatch ? selectedBatch.remainingQty : currentStock;
 
-  const reset = () => { setQty(''); setReason('Damaged'); setNotes(''); setUseBatch(false); setBatchId(''); setErrors({}); };
+  const reset = () => { setQty(''); setReason('Damaged'); setNotes(''); setUseBatch(false); setBatchId(''); setErrors({}); setReviewing(false); };
 
   const handleToggleBatch = (on) => {
     setUseBatch(on);
@@ -67,7 +69,8 @@ function StockOutModal({ open, onClose, material, currentStock, materialBatches,
 
   const submit = () => {
     const e = validate();
-    if (Object.keys(e).length) { setErrors(e); scrollToFirstError(); return; }
+    if (Object.keys(e).length) { setErrors(e); setReviewing(false); scrollToFirstError(); return; }
+    if (!reviewing) { setReviewing(true); return; }
     onConfirm({ qty: Number(qty), reason, notes: notes.trim(), batchId: useBatch ? batchId : null });
     reset();
   };
@@ -83,8 +86,12 @@ function StockOutModal({ open, onClose, material, currentStock, materialBatches,
       width={480}
       footer={
         <>
-          <button onClick={handleClose} style={S.btnGhost}>Cancel</button>
-          <button onClick={submit} style={S.btnDanger}>{ICONS.warn} Confirm Reduction</button>
+          {reviewing
+            ? <button onClick={() => setReviewing(false)} style={S.btnGhost}>Back</button>
+            : <button onClick={handleClose} style={S.btnGhost}>Cancel</button>}
+          <button onClick={submit} style={S.btnDanger}>
+            {ICONS.warn} {reviewing ? `Yes, remove ${Number(qty) || 0} ${material?.unit ?? ''}` : 'Review reduction'}
+          </button>
         </>
       }
     >
@@ -93,7 +100,7 @@ function StockOutModal({ open, onClose, material, currentStock, materialBatches,
 
         <div style={{ ...S.cardSm, background:'var(--dark2)', display:'flex', justifyContent:'space-between' }}>
           <span style={{ fontSize:'13px', color:'var(--gray)' }}>Current Stock</span>
-          <span style={{ fontWeight:700, fontSize:'15px', color: currentStock <= (material?.minStock || 0) ? 'var(--st-red-fg)' : 'var(--white)' }}>{currentStock} {material?.unit}</span>
+          <span style={{ fontWeight:700, fontSize:'15px', color: currentStock < (material?.minStock || 0) ? 'var(--st-red-fg)' : 'var(--white)' }}>{currentStock} {material?.unit}</span>
         </div>
 
         {/* Batch picker toggle */}
@@ -126,11 +133,11 @@ function StockOutModal({ open, onClose, material, currentStock, materialBatches,
         )}
 
         <Field label="Qty to Remove" required error={errors.qty}>
-          <IntegerInput value={qty} onChange={v => { setQty(v); setErrors(p => ({ ...p, qty:'' })); }} max={maxQty} placeholder="0" style={errors.qty ? S.inputErr : undefined} />
+          <IntegerInput value={qty} onChange={v => { setQty(v); setReviewing(false); setErrors(p => ({ ...p, qty:'' })); }} max={maxQty} placeholder="0" style={errors.qty ? S.inputErr : undefined} />
         </Field>
 
         <Field label="Reason" required>
-          <CustomSelect value={reason} onChange={setReason} options={REDUCE_REASONS} />
+          <CustomSelect value={reason} onChange={v => { setReason(v); setReviewing(false); }} options={REDUCE_REASONS} />
         </Field>
 
         <Field label="Notes">
@@ -138,12 +145,19 @@ function StockOutModal({ open, onClose, material, currentStock, materialBatches,
         </Field>
 
         {qty && Number(qty) > 0 && Number(qty) <= maxQty && (
-          <div style={{ background:'#fff5f5', border:'1px solid color-mix(in srgb, var(--st-red-fg) 35%, transparent)', borderRadius:'7px', padding:'10px 14px', fontSize:'13px' }}>
+          <div style={{ background:'var(--st-red-bg)', border:'1px solid color-mix(in srgb, var(--st-red-fg) 35%, transparent)', borderRadius:'7px', padding:'10px 14px', fontSize:'13px' }}>
             {useBatch && selectedBatch && <div style={{ fontSize:'12px', color:'var(--gray)', marginBottom:'4px' }}>Batch {selectedBatch.invoiceNo || 'no invoice'} · {selectedBatch.remainingQty - Number(qty)} remaining after</div>}
             Remaining stock: <b>{currentStock - Number(qty)} {material?.unit}</b>
-            {currentStock - Number(qty) <= (material?.minStock || 0) && (
-              <span style={{ color:'var(--st-red-fg)', marginLeft:'8px' }}>(below min stock!)</span>
+            {/* Below, not at: the minimum is the least the shop wants on hand, so sitting on it is fine. */}
+            {currentStock - Number(qty) < (material?.minStock || 0) && (
+              <span style={{ color:'var(--st-red-fg)', marginLeft:'8px' }}>(below minimum - it will show on To Buy)</span>
             )}
+          </div>
+        )}
+        {reviewing && (
+          <div role="alert" style={{ border:'1px solid var(--st-red-fg)', borderRadius:'8px', padding:'10px 14px', fontSize:'13px', lineHeight:1.55, color:'var(--white)' }}>
+            Remove <b>{Number(qty)} {material?.unit}</b> of <b>{material?.name}</b> as <b>{reason}</b>? Stock goes from {currentStock} to {currentStock - Number(qty)}.
+            {' '}This is recorded permanently and in the audit trail - putting it back later is a new stock-in, not an undo.
           </div>
         )}
       </div>
@@ -185,7 +199,7 @@ export default function ActualStockTab({ materials, batches, setBatches, badOrde
       const reservedQty  = Number(mat.reservedQty ?? 0);
       const goodsQty     = Math.max(0, actualQty - pendingBOQty);
       const availableQty = Math.max(0, goodsQty - reservedQty);
-      const status       = availableQty === 0 ? 'out_of_stock' : availableQty <= mat.minStock ? 'low_stock' : 'in_stock';
+      const status       = availableQty === 0 ? 'out_of_stock' : availableQty < mat.minStock ? 'low_stock' : 'in_stock';
 
       const sorted   = (batches || []).filter(b => b.matId === mat.id && b.remainingQty > 0).sort((a, b) => new Date(a.date) - new Date(b.date));
       const unitCost = sorted[0]?.unitCost ?? mat.baseCost;
@@ -358,7 +372,7 @@ export default function ActualStockTab({ materials, batches, setBatches, badOrde
                     title={d.reservedQty > 0 ? 'Held by open orders. Released when the order is cancelled or the material is consumed at QC.' : undefined}>
                     {d.reservedQty > 0 ? `\u2212${d.reservedQty}` : '0'} {d.mat.unit}
                   </td>
-                  <td style={{ ...S.td, textAlign:'right', fontWeight:700, color: d.availableQty === 0 ? 'var(--st-red-fg)' : d.availableQty <= d.mat.minStock ? 'var(--st-orange-fg)' : 'var(--st-green-fg)' }}
+                  <td style={{ ...S.td, textAlign:'right', fontWeight:700, color: d.availableQty === 0 ? 'var(--st-red-fg)' : d.availableQty < d.mat.minStock ? 'var(--st-orange-fg)' : 'var(--st-green-fg)' }}
                     title="What the storefront can still sell.">
                     {d.availableQty} {d.mat.unit}
                   </td>

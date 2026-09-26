@@ -483,7 +483,7 @@ export default function MaterialsTab({ materials, setMaterials, vendors, setVend
   };
 
   const inStock  = materials.filter(m => (stockMap[m.id] || 0) > m.minStock).length;
-  const lowStock = materials.filter(m => { const q = stockMap[m.id] || 0; return q > 0 && q <= m.minStock; }).length;
+  const lowStock = materials.filter(m => { const q = stockMap[m.id] || 0; return q > 0 && q < m.minStock; }).length;
   const outStock = materials.filter(m => (stockMap[m.id] || 0) === 0).length;
 
   return (
@@ -535,7 +535,7 @@ export default function MaterialsTab({ materials, setMaterials, vendors, setVend
             <PhoneList>
               {slice.map((mat, i) => {
                 const qty    = stockMap[mat.id] || 0;
-                const status = qty === 0 ? 'out_of_stock' : qty <= mat.minStock ? 'low_stock' : 'in_stock';
+                const status = qty === 0 ? 'out_of_stock' : qty < mat.minStock ? 'low_stock' : 'in_stock';
                 const vendor = vendors.find(v => v.id === mat.vendorId);
                 return (
                   <PhoneRow key={mat.id} first={i === 0} onClick={mayWork ? () => openEdit(mat) : undefined}
@@ -566,7 +566,7 @@ export default function MaterialsTab({ materials, setMaterials, vendors, setVend
                 <tr><td colSpan={8 + (seeCost ? 1 : 0) + (hasActions ? 1 : 0)}><EmptyState message="No materials found" sub={mayWork ? "Add a material or adjust filters." : "Adjust the filters."} /></td></tr>
               ) : slice.map(mat => {
                 const qty    = stockMap[mat.id] || 0;
-                const status = qty === 0 ? 'out_of_stock' : qty <= mat.minStock ? 'low_stock' : 'in_stock';
+                const status = qty === 0 ? 'out_of_stock' : qty < mat.minStock ? 'low_stock' : 'in_stock';
                 const vendor = vendors.find(v => v.id === mat.vendorId);
                 return (
                   <tr key={mat.id} style={S.tr} onMouseEnter={e => e.currentTarget.style.background='var(--dark2)'} onMouseLeave={e => e.currentTarget.style.background=''}>

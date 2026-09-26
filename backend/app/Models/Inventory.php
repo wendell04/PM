@@ -73,7 +73,8 @@ class Inventory extends Model
  
     public function scopeActive($query) { return $query->where('isActive', true); }  
     public function scopeTrackStock($query) { return $query->where('isOnDemand', false); }  
-    public function scopeLowStock($query) { return $query->whereColumn('stockQty', '<=', 'minStockLevel')->where('isOnDemand', false); }  
+    // Below the minimum, not at it - the same line To Buy draws.
+    public function scopeLowStock($query) { return $query->whereColumn('stockQty', '<', 'minStockLevel')->where('isOnDemand', false); }  
     public function scopeOutOfStock($query) { return $query->where('stockQty', 0)->where('isOnDemand', false); }  
     public function scopeUponOrder($query) { return $query->where('isOnDemand', true); }  
 } 
