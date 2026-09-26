@@ -37,9 +37,12 @@ export async function fetchOrderRequest(token, id) {
   return data.data ?? data;
 }
 
-export async function updateOrderRequestStatus(token, id, { status, finalPrice, note, downPayment, paymentStatus, eta, adminComment, mockupUrl, materials }) {
+// expiresInDays was missing from this list, so "Valid for 14 days" reached the server as nothing and
+// every re-sent or extended quotation got the server's default 7.
+export async function updateOrderRequestStatus(token, id, { status, finalPrice, note, downPayment, paymentStatus, eta, adminComment, mockupUrl, materials, expiresInDays }) {
   const body = { status };
   if (finalPrice !== undefined && finalPrice !== null) body.finalPrice = finalPrice;
+  if (expiresInDays) body.expiresInDays = expiresInDays;
   if (note) body.note = note;
   if (downPayment !== undefined && downPayment !== null) body.downPayment = downPayment;
   if (paymentStatus) body.paymentStatus = paymentStatus;
