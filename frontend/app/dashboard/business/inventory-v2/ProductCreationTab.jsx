@@ -1,8 +1,9 @@
 'use client';
 import { useState, useMemo } from 'react';
-import { S, ICONS, Field, IntegerInput, Modal, ConfirmModal, PaginationBar, SearchBar, Note, EmptyState, SummaryCard, usePagination, formatCurrency, uid, CustomSelect } from './shared';
+import { S, ICONS, Field, IntegerInput, Modal, PaginationBar, SearchBar, Note, EmptyState, SummaryCard, usePagination, formatCurrency, uid, CustomSelect } from './shared';
 import { useAccess } from '@/contexts/AccessContext';
-import { createBom, updateBom, deleteBom } from './api';
+import { createBom, updateBom, deleteBom, getBomUsage } from './api';
+import { scrollToFirstError } from '@/lib/scrollToError';
 
 const EMPTY_FORM = { productName:'', items:[] };
 
@@ -68,6 +69,18 @@ export default function ProductCreationTab({ boms, setBoms, materials, batches, 
   const [editId,   setEditId]  = useState(null);
   const [showForm, setShowForm]= useState(false);
   const [confirm,  setConfirm] = useState(null);
+  // What the delete would take with it, read before the dialog opens so the warning is about
+  // THIS recipe's product cards and not a generic "cannot be undone".
+  const askDelete = async (bom) => {
+    setConfirm({ id: bom.id, name: bom.productName, usage: null, typed: '', busy: false });
+    try {
+      const usage = await getBomUsage(token, bom.id);
+      setConfirm(c => c && c.id === bom.id ? { ...c, usage: Array.isArray(usage) ? usage : [] } : c);
+    } catch (err) {
+      setConfirm(null);
+      toast?.(err.message, 'error');
+    }
+  };
   const [addMat,   setAddMat]  = useState('');
   const [saving,   setSaving]  = useState(false);
 
@@ -96,7 +109,7 @@ export default function ProductCreationTab({ boms, setBoms, materials, batches, 
 
   const save = async () => {
     const e = validate(form);
-    if (Object.keys(e).length) { setErrors(e); return; }
+    if (Object.keys(e).length) { setErrors(e); scrollToFirstError(); return; }
     const components = form.items.map(it => {
       const mat = materials.find(m => m.id === it.matId);
       const batchList = (batches || []).filter(b => b.matId === it.matId).sort((a, b) => new Date(a.date) - new Date(b.date));
@@ -206,7 +219,7 @@ export default function ProductCreationTab({ boms, setBoms, materials, batches, 
                     {hasActions && <td style={{ ...S.td, textAlign:'right' }}>
                       <div style={{ display:'flex', gap:'6px', justifyContent:'flex-end' }}>
                         {mayWork && <button onClick={() => openEdit(bom)} style={S.btnSmGhost}>{ICONS.edit}</button>}
-                        {mayArchive && <button onClick={() => setConfirm({ id:bom.id, name:bom.productName })} style={S.btnSmDanger}>{ICONS.trash}</button>}
+                        {mayArchive && <button onClick={() => askDelete(bom)} aria-label={`Delete ${bom.productName}`} style={S.btnSmDanger}>{ICONS.trash}</button>}
                       </div>
                     </td>}
                   </tr>
@@ -260,7 +273,7 @@ export default function ProductCreationTab({ boms, setBoms, materials, batches, 
             </div>
           </Field>
 
-          {errors.items && <span style={S.errText}>{errors.items}</span>}
+          {errors.items && <span data-field-error style={S.errText}>{errors.items}</span>}
 
           {/* BOM items */}
           {form.items.length > 0 && (
@@ -284,7 +297,7 @@ export default function ProductCreationTab({ boms, setBoms, materials, batches, 
                         <td style={{ ...S.td, padding:'8px 12px', width:'120px' }}>
                           <div>
                             <IntegerInput value={it.qty} onChange={v => setQty(i, v)} placeholder="1" style={errors[`qty_${i}`] ? S.inputErr : undefined} />
-                            {errors[`qty_${i}`] && <span style={S.errText}>{errors[`qty_${i}`]}</span>}
+                            {errors[`qty_${i}`] && <span data-field-error style={S.errText}>{errors[`qty_${i}`]}</span>}
                           </div>
                         </td>
                         <td style={{ ...S.td, padding:'8px 12px', fontSize:'12px', color: stock < Number(it.qty || 1) ? 'var(--st-red-fg)' : 'var(--st-green-fg)' }}>
@@ -307,25 +320,81 @@ export default function ProductCreationTab({ boms, setBoms, materials, batches, 
         </div>
       </Modal>
 
-      {/* Delete confirm */}
-      <ConfirmModal
-        open={!!confirm}
-        onClose={() => setConfirm(null)}
-        onConfirm={async () => {
+      {/* Delete confirm. A recipe in use takes its product cards with it, so the dialog names each
+          one and what happens to it, and asks for the recipe's name typed before Delete unlocks -
+          the same guard GitHub puts on deleting a repository, for the same reason: one click
+          should not be able to remove something other screens depend on. */}
+      <BomDeleteDialog
+        confirm={confirm}
+        setConfirm={setConfirm}
+        onDelete={async () => {
+          setConfirm(c => ({ ...c, busy: true }));
           try {
-            await deleteBom(token, confirm.id);
-            await onRefresh(['boms']);
-            toast?.(`Product deleted.`, 'warn');
+            const res = await deleteBom(token, confirm.id);
+            await onRefresh(['boms', 'products']);
+            const v = res?.removedVariants?.length || 0, h = res?.hiddenProducts?.length || 0;
+            toast?.(`BOM deleted.${v ? ` ${v} variant${v > 1 ? 's' : ''} removed from product cards.` : ''}${h ? ` ${h} product card${h > 1 ? 's' : ''} hidden from the shop.` : ''}`, 'warn');
+            setConfirm(null);
           } catch (err) {
             toast?.(err.message, 'error');
+            setConfirm(c => c && ({ ...c, busy: false }));
           }
-          setConfirm(null);
         }}
-        title="Delete Product"
-        confirmLabel="Delete"
-        confirmStyle="danger"
-        message={`Delete product "${confirm?.name}"? This will remove its Bill of Materials definition. This cannot be undone.`}
       />
     </div>
+  );
+}
+
+function BomDeleteDialog({ confirm, setConfirm, onDelete }) {
+  if (!confirm) return null;
+  const usage = confirm.usage;
+  const attached = Array.isArray(usage) && usage.length > 0;
+  const nameOk = !attached || confirm.typed.trim().toLowerCase() === String(confirm.name || '').trim().toLowerCase();
+  const close = () => !confirm.busy && setConfirm(null);
+  return (
+    <Modal open onClose={close} title="Delete BOM" width={480}
+      footer={<>
+        <button onClick={close} style={S.btnGhost} disabled={confirm.busy}>Cancel</button>
+        <button onClick={onDelete} style={{ ...S.btnDanger, opacity: (usage && nameOk && !confirm.busy) ? 1 : .5 }}
+          disabled={!usage || !nameOk || confirm.busy}>
+          {confirm.busy ? 'Deleting...' : attached ? 'Delete and update the cards' : 'Delete'}
+        </button>
+      </>}>
+      {usage === null ? (
+        <p style={{ margin:0, fontSize:14, color:'var(--gray)' }}>Checking which product cards use it...</p>
+      ) : !attached ? (
+        <p style={{ margin:0, fontSize:14, color:'var(--gray-light)', lineHeight:1.6 }}>
+          Delete the BOM <b style={{ color:'var(--white)' }}>{confirm.name}</b>? No product card uses it, so nothing else changes.
+          Past job orders keep the materials they were made with.
+        </p>
+      ) : (
+        <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+          <div style={{ padding:'10px 12px', borderRadius:8, background:'var(--st-red-bg)', border:'1px solid var(--st-red-bd, var(--border))', color:'var(--st-red-fg)', fontSize:13, lineHeight:1.5 }}>
+            <b>{confirm.name}</b> is attached to {usage.length === 1 ? 'a product card' : `${usage.length} product cards`}. A card cannot sell
+            something with no recipe, so deleting it changes {usage.length === 1 ? 'that card' : 'those cards'}:
+          </div>
+          <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+            {usage.map(u => (
+              <div key={u.productId} style={{ padding:'8px 10px', border:'1px solid var(--border)', borderRadius:8, fontSize:13 }}>
+                <div style={{ fontWeight:600, color:'var(--white)', overflowWrap:'anywhere' }}>{u.productName}</div>
+                <div style={{ color:'var(--gray-light)', marginTop:2, lineHeight:1.5 }}>
+                  {u.role === 'variant'
+                    ? (u.lastVariant
+                        ? <>Its only variant <b>{u.variants.join(', ')}</b> is removed, which leaves no variants: the card is <b>hidden from the shop</b>.</>
+                        : <>The variant <b>{u.variants.join(', ')}</b> is removed from this card, with its prices. The other variants stay.</>)
+                    : <>This BOM is the whole product: the card is <b>hidden from the shop</b>. It stays in Catalog, so you can attach another BOM or delete it there.</>}
+                </div>
+              </div>
+            ))}
+          </div>
+          <label htmlFor="bom-del-name" style={{ fontSize:13, color:'var(--gray-light)' }}>
+            Type <b style={{ color:'var(--white)' }}>{confirm.name}</b> to confirm
+          </label>
+          <input id="bom-del-name" value={confirm.typed} maxLength={200} autoComplete="off"
+            onChange={e => setConfirm(c => ({ ...c, typed: e.target.value }))}
+            style={{ ...S.input, width:'100%' }} placeholder={confirm.name} />
+        </div>
+      )}
+    </Modal>
   );
 }

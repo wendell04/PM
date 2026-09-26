@@ -828,6 +828,10 @@ class ProductController extends Controller
                 'isFeatured'          => 'nullable|boolean',
             ]);
 
+            if ($bad = self::pricingProblems($validated)) {
+                throw \Illuminate\Validation\ValidationException::withMessages($bad);
+            }
+
             // Check for duplicate (same category + subCategoryName)
             $duplicate = Product::where('category', $validated['category'])
                                 ->where('subCategoryName', $validated['subCategoryName'])
@@ -1032,6 +1036,19 @@ class ProductController extends Controller
                 'isFeatured'          => 'nullable|boolean',
             ]);
 
+            // Only when the save touches pricing; judged against what the product will be AFTER it.
+            if (array_intersect(['priceType', 'price', 'priceTiers', 'combinations'], array_keys($validated))) {
+                $after = array_merge([
+                    'priceType'    => $product->priceType,
+                    'price'        => $product->price,
+                    'priceTiers'   => $product->priceTiers,
+                    'combinations' => $product->combinations,
+                ], $validated);
+                if ($bad = self::pricingProblems($after)) {
+                    throw \Illuminate\Validation\ValidationException::withMessages($bad);
+                }
+            }
+
             // Check for duplicate if category/subCategory changed
             if (isset($validated['category']) || isset($validated['subCategoryName'])) {
                 $duplicate = Product::where('category', $validated['category'] ?? $product->category)
@@ -1094,6 +1111,47 @@ class ProductController extends Controller
         } catch (\Exception $e) {
             return $this->serverErrorResponse($e, 'An unexpected error occurred while updating the product.');
         }
+    }
+
+    /**
+     * A product that is for sale must cost something. 0 is not "no price yet" to the checkout - it
+     * is free, and the cart would take it at P0. Blank and 0 are the same mistake, so both are
+     * refused here as well as in the form: the form can be bypassed, an old tab can be stale, and
+     * a tier added before a variant existed carries no price for that variant at all.
+     * Inquiry products have no price by design and are not checked.
+     */
+    private static function pricingProblems(array $d): array
+    {
+        $type = $d['priceType'] ?? 'fixed';
+        if ($type === 'inquiry') return [];
+        $combos = array_values(array_filter((array) ($d['combinations'] ?? []), 'is_array'));
+        $e = [];
+        if ($type === 'fixed') {
+            if ($combos) {
+                $free = array_map(fn ($c) => (string) ($c['name'] ?? 'a variant'),
+                    array_filter($combos, fn ($c) => (float) ($c['price'] ?? 0) <= 0));
+                if ($free) $e['combinations'] = ['Set a price above 0 for ' . implode(', ', $free) . '.'];
+            } elseif ((float) ($d['price'] ?? 0) <= 0) {
+                $e['price'] = ['Set a price above 0.'];
+            }
+        } elseif ($type === 'tiered') {
+            $tiers = array_values((array) ($d['priceTiers'] ?? []));
+            if (!$tiers) return ['priceTiers' => ['Add at least one price tier.']];
+            $keys = $combos ? array_map(fn ($c) => (string) ($c['id'] ?? ''), $combos) : null;
+            foreach ($tiers as $i => $t) {
+                $prices = (array) ($t['prices'] ?? []);
+                foreach ($keys ?? array_keys($prices) as $k) {
+                    if ((float) ($prices[$k] ?? 0) <= 0) {
+                        $who = '';
+                        foreach ($combos as $c) if ((string) ($c['id'] ?? '') === (string) $k) $who = ' for ' . ($c['name'] ?? 'a variant');
+                        $e['priceTiers'] = ['Tier ' . ($i + 1) . " needs a price above 0{$who}."];
+                        break 2;
+                    }
+                }
+                if (!$prices) { $e['priceTiers'] = ['Tier ' . ($i + 1) . ' has no price.']; break; }
+            }
+        }
+        return $e;
     }
 
     /**

@@ -199,6 +199,48 @@ class BillOfMaterialController extends Controller
     }
 
     /**
+     * The product cards selling this recipe, as a variant or as the whole product.
+     * Every product is read: there are dozens, and the variant link is a string inside an array
+     * while the standalone one is an ObjectId, which one query cannot match cleanly.
+     */
+    private function productsUsing(string $bomId): array
+    {
+        $out = [];
+        foreach (\App\Models\Product::all() as $p) {
+            $variants = array_values(array_filter((array) $p->combinations, fn ($c) => (string) ($c['bomId'] ?? '') === $bomId));
+            if ($variants) {
+                $out[] = ['product' => $p, 'role' => 'variant',
+                    'variants' => array_map(fn ($c) => (string) ($c['name'] ?? ''), $variants),
+                    'lastVariant' => count((array) $p->combinations) === count($variants)];
+            } elseif ((string) ($p->bomId ?? '') === $bomId && empty($p->combinations)) {
+                $out[] = ['product' => $p, 'role' => 'standalone', 'variants' => [], 'lastVariant' => false];
+            }
+        }
+        return $out;
+    }
+
+    /** GET /api/admin/bom/{id}/usage - what deleting this BOM would take with it. */
+    public function usage(Request $request, string $id)
+    {
+        try {
+            if (!$this->hasAnyPermission($request, ['masterData.view', 'masterData.archive', 'products.edit'])) {
+                return $this->unauthorizedResponse();
+            }
+            if (!BillOfMaterial::find($id)) return $this->notFoundResponse('BOM');
+            return $this->successResponse('Usage fetched.', array_map(fn ($u) => [
+                'productId'   => (string) $u['product']->id,
+                'productName' => $u['product']->name,
+                'isPublished' => (bool) $u['product']->isPublished,
+                'role'        => $u['role'],
+                'variants'    => $u['variants'],
+                'lastVariant' => $u['lastVariant'],
+            ], $this->productsUsing($id)));
+        } catch (\Exception $e) {
+            return $this->serverErrorResponse($e, 'Failed to check where this BOM is used.');
+        }
+    }
+
+    /**
      * DELETE /api/admin/bom/{id}
      * Soft-deletes a BOM by setting isActive = false.
      * Never hard-deletes - historical JO records reference BOM data.
@@ -220,7 +262,56 @@ class BillOfMaterialController extends Controller
             $bom->updatedAt = now();
             $bom->save();
 
-            return $this->successResponse('BOM deactivated successfully.');
+            // A product card still pointing at this recipe would keep selling something the shop
+            // has no recipe for: the order goes through and production finds nothing to pull.
+            $removedVariants = [];
+            $hidden = [];
+            foreach ($this->productsUsing((string) $bom->id) as $use) {
+                $p = $use['product'];
+                if ($use['role'] === 'variant') {
+                    $combos = array_values(array_filter((array) $p->combinations,
+                        fn ($c) => (string) ($c['bomId'] ?? '') !== (string) $bom->id));
+                    $gone = array_values(array_filter((array) $p->combinations,
+                        fn ($c) => (string) ($c['bomId'] ?? '') === (string) $bom->id));
+                    $goneIds   = array_map(fn ($c) => (string) ($c['id'] ?? ''), $gone);
+                    $goneNames = array_map(fn ($c) => (string) ($c['name'] ?? ''), $gone);
+                    $p->combinations = $combos;
+                    $p->variantGroups = array_map(function ($g) use ($goneNames, $combos) {
+                        $still = array_map(fn ($c) => (string) ($c['name'] ?? ''), $combos);
+                        $g['options'] = array_values(array_filter((array) ($g['options'] ?? []),
+                            fn ($o) => !in_array((string) $o, $goneNames, true) || in_array((string) $o, $still, true)));
+                        return $g;
+                    }, (array) $p->variantGroups);
+                    $p->priceTiers = array_map(function ($t) use ($goneIds) {
+                        foreach ($goneIds as $gid) unset($t['prices'][$gid]);
+                        return $t;
+                    }, (array) $p->priceTiers);
+                    if (is_array($p->variantPrices)) {
+                        $vp = $p->variantPrices;
+                        foreach ($goneIds as $gid) unset($vp[$gid]);
+                        $p->variantPrices = $vp;
+                    }
+                    foreach ($goneNames as $n) $removedVariants[] = ['product' => $p->name, 'variant' => $n];
+                    if ($combos === []) { $p->isPublished = false; $hidden[] = $p->name; }
+                } else {
+                    // Hidden, not deleted: the card holds photos, prices and reviews that a mis-click
+                    // on a recipe should not be able to destroy. Deleting it stays a Catalog decision.
+                    $p->isPublished = false;
+                    $hidden[] = $p->name;
+                }
+                $p->updatedAt = now();
+                $p->save();
+            }
+            foreach ($hidden as $name) {
+                $this->logActivity($request, 'product_publish_toggled', 'product', null,
+                    "Hid product \"{$name}\" from the shop: its BOM \"{$bom->productName}\" was deleted");
+            }
+            if ($removedVariants || $hidden) \Illuminate\Support\Facades\Cache::forget('admin_products_list');
+
+            return $this->successResponse('BOM deactivated successfully.', [
+                'removedVariants' => $removedVariants,
+                'hiddenProducts'  => $hidden,
+            ]);
         } catch (\Exception $e) {
             return $this->serverErrorResponse($e, 'Failed to deactivate BOM.');
         }

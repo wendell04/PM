@@ -81,8 +81,9 @@ class Product extends Model
     ];
 
     protected $casts = [
-        'inventoryId'         => ObjectId::class,
-        'bomId'               => ObjectId::class,
+        // Not the package's ObjectId cast: that one turns null into a brand-new random id.
+        'inventoryId'         => \App\Casts\NullableObjectId::class,
+        'bomId'               => \App\Casts\NullableObjectId::class,
         'isCustom'            => 'boolean',
         'allowPlainPurchase'  => 'boolean',
         'isMadeToOrder'       => 'boolean',

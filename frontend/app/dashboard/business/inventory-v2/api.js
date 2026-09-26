@@ -195,6 +195,7 @@ export const deleteSupplier = (token, id)       => req(`/admin/suppliers/${id}`,
 export const createBom  = (token, data)     => req('/admin/bom',        token, { method:'POST',   body:JSON.stringify(data) });
 export const updateBom  = (token, id, data) => req(`/admin/bom/${id}`,  token, { method:'PUT',    body:JSON.stringify(data) });
 export const deleteBom  = (token, id)       => req(`/admin/bom/${id}`,  token, { method:'DELETE' });
+export const getBomUsage = (token, id)      => req(`/admin/bom/${id}/usage`, token);
 
 export const createReturn  = (token, data)     => req('/admin/returns',       token, { method:'POST', body:JSON.stringify(data) });
 export const resolveReturn = (token, id, data) => req(`/admin/returns/${id}`, token, { method:'PUT',  body:JSON.stringify(data) });

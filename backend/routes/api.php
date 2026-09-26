@@ -401,6 +401,7 @@ Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
     Route::get('/admin/bom',                          [BillOfMaterialController::class, 'index']);
     Route::post('/admin/bom',                         [BillOfMaterialController::class, 'store']);
     Route::get('/admin/bom/by-product/{name}',        [BillOfMaterialController::class, 'byProduct']);
+    Route::get('/admin/bom/{id}/usage',               [BillOfMaterialController::class, 'usage']);
     Route::get('/admin/bom/{id}',                     [BillOfMaterialController::class, 'show']);
     Route::put('/admin/bom/{id}',                     [BillOfMaterialController::class, 'update']);
     Route::delete('/admin/bom/{id}',                  [BillOfMaterialController::class, 'destroy']);
