@@ -5,6 +5,7 @@ import { S, ICONS, Field, IntegerInput, Modal, ConfirmModal, PaginationBar, Sear
 import { DateRangeFilter, inDateRange, performedByLabel } from './StockOutHistoryTab';
 import { adjustStock } from './api';
 import { useAccess } from '@/contexts/AccessContext';
+import { scrollToFirstError } from '@/lib/scrollToError';
 
 // "Qc Scrap" is what generic title-casing does to an acronym. These are the reasons the stock screens
 // can actually receive; anything unmapped still degrades to words rather than a raw database key.
@@ -66,7 +67,7 @@ function StockOutModal({ open, onClose, material, currentStock, materialBatches,
 
   const submit = () => {
     const e = validate();
-    if (Object.keys(e).length) { setErrors(e); return; }
+    if (Object.keys(e).length) { setErrors(e); scrollToFirstError(); return; }
     onConfirm({ qty: Number(qty), reason, notes: notes.trim(), batchId: useBatch ? batchId : null });
     reset();
   };

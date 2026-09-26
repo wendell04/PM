@@ -7,6 +7,7 @@ import { uploadImage } from '@/lib/productApi';
 import { S, ICONS, Field, IntegerInput, DecimalInput, Note, formatCurrency, uid, CustomSelect } from '../inventory-v2/shared';
 import ImageCropper from '@/components/ImageCropper';
 import { compressImage } from '@/lib/imageCompress';
+import { scrollToFirstError } from '@/lib/scrollToError';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -309,11 +310,19 @@ function validate(form) {
     }
   }
   if (form.pricingMode === 'tiered') {
-    const incomplete = form.tiers.some(t =>
-      !t.minQty || Number(t.minQty) <= 0 ||
-      Object.values(t.prices).some(p => !p || Number(p) <= 0)
-    );
-    if (incomplete) e.tiers = 'Fill in all tier quantities and prices.';
+    // Every variant the card HAS, not the price keys a tier happens to carry: a variant added after
+    // a tier existed, or a product saved by an older form, has no key at all and was never checked.
+    // Blank and 0 are the same mistake - a 0 would be sold free.
+    const keys = form.type === 'multi-variant' ? form.variants.map(v => v.id) : ['__base__'];
+    let bad = false;
+    form.tiers.forEach((t, ti) => {
+      if (!t.minQty || Number(t.minQty) <= 0) { e[`tmin_${ti}`] = true; bad = true; }
+      keys.forEach(k => {
+        const p = t.prices?.[k];
+        if (p === '' || p == null || !(Number(p) > 0)) { e[`tp_${ti}_${k}`] = true; bad = true; }
+      });
+    });
+    if (bad) e.tiers = 'Every tier needs a quantity and a price above 0 for each variant. The missing ones are marked in red.';
   }
   if (form.downpaymentPct === '' || isNaN(Number(form.downpaymentPct)) ||
       Number(form.downpaymentPct) < 0 || Number(form.downpaymentPct) > 100)
@@ -634,10 +643,10 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
     });
   };
   const removeTier   = (i)          => setForm(p => ({ ...p, tiers: p.tiers.filter((_, j) => j !== i) }));
-  const setTierField = (i, k, v)    => setForm(p => { const tiers = [...p.tiers]; tiers[i] = { ...tiers[i], [k]: v }; return { ...p, tiers }; });
+  const setTierField = (i, k, v)    => { setForm(p => { const tiers = [...p.tiers]; tiers[i] = { ...tiers[i], [k]: v }; return { ...p, tiers }; }); if (k === 'minQty') setErrors(p => ({ ...p, [`tmin_${i}`]: '' })); };
   const setTierPrice = (ti, key, v) => {
     setForm(p => { const tiers = [...p.tiers]; tiers[ti] = { ...tiers[ti], prices: { ...tiers[ti].prices, [key]: v } }; return { ...p, tiers }; });
-    setErrors(p => ({ ...p, tiers: '' }));
+    setErrors(p => ({ ...p, tiers: '', [`tp_${ti}_${key}`]: '' }));
   };
 
   // ── Type / pricingMode change ───────────────────────────────────────────────
@@ -745,7 +754,7 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
   const handleSave = () => {
     const f = form;
     const e = validate(f);
-    if (Object.keys(e).length) { setErrors(e); return; }
+    if (Object.keys(e).length) { setErrors(e); scrollToFirstError(); return; }
     const base = {
       name: f.name.trim(), description: f.description.trim(),
       images: f.images, thumbnail: f.images[0] || '',
@@ -1083,7 +1092,7 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
                       <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--gray)' }}>Variants</span>
                       <button onClick={addVariant} style={S.btnSm}>{ICONS.plus} Add Variant</button>
                     </div>
-                    {errors.variants && <span style={S.errText}>{errors.variants}</span>}
+                    {errors.variants && <span data-field-error style={S.errText}>{errors.variants}</span>}
 
                     {form.variants.map((v, i) => {
                       const cost    = v.bomId ? (floorCostMap[v.bomId]     || 0)   : 0;
@@ -1394,7 +1403,7 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
                                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px' }}>
                                   <DecimalInput value={v.price} onChange={val => setVariant(i, 'price', val)}
                                     placeholder="0.00" style={{ ...(errors[`vprice_${i}`] ? S.inputErr : S.input), width: '90px', textAlign: 'right' }} />
-                                  {errors[`vprice_${i}`] && <span style={{ ...S.errText, fontSize: '10px' }}>{errors[`vprice_${i}`]}</span>}
+                                  {errors[`vprice_${i}`] && <span data-field-error style={{ ...S.errText, fontSize: '10px' }}>{errors[`vprice_${i}`]}</span>}
                                 </div>
                               </td>
                               <td style={{ ...S.td, textAlign: 'right', fontWeight: 700 }}>
@@ -1412,7 +1421,7 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
 
                 {form.pricingMode === 'tiered' && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {errors.tiers && <span style={S.errText}>{errors.tiers}</span>}
+                    {errors.tiers && <span data-field-error style={S.errText}>{errors.tiers}</span>}
                     <div style={{ overflowX: 'auto' }}>
                       <table className="pmp-rt" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
                         <thead>
@@ -1442,13 +1451,13 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
                         <tbody>
                           {form.tiers.map((tier, ti) => (
                             <tr key={tier.id} style={{ background: ti % 2 === 1 ? 'var(--dark2)' : 'var(--dark)' }}>
-                              <td style={S.td}><IntegerInput value={tier.minQty} onChange={v => setTierField(ti, 'minQty', v)} min={1} placeholder="1" style={{ ...S.input, width: '70px' }} /></td>
+                              <td style={S.td}><IntegerInput value={tier.minQty} onChange={v => setTierField(ti, 'minQty', v)} min={1} placeholder="1" aria-invalid={errors[`tmin_${ti}`] ? 'true' : undefined} style={{ ...(errors[`tmin_${ti}`] ? S.inputErr : S.input), width: '70px' }} /></td>
                               <td style={S.td}><IntegerInput value={tier.maxQty} onChange={v => setTierField(ti, 'maxQty', v)} min={1} placeholder="above" style={{ ...S.input, width: '70px' }} /></td>
                               {form.type === 'standalone' ? (
-                                <td style={S.td}><DecimalInput value={tier.prices.__base__ ?? ''} onChange={v => setTierPrice(ti, '__base__', v)} placeholder="0.00" style={{ ...S.input, width: '90px' }} /></td>
+                                <td style={S.td}><DecimalInput value={tier.prices.__base__ ?? ''} onChange={v => setTierPrice(ti, '__base__', v)} placeholder="0.00" aria-invalid={errors[`tp_${ti}___base__`] ? 'true' : undefined} style={{ ...(errors[`tp_${ti}___base__`] ? S.inputErr : S.input), width: '90px' }} /></td>
                               ) : (
                                 form.variants.map(v => (
-                                  <td key={v.id} style={S.td}><DecimalInput value={tier.prices[v.id] ?? ''} onChange={val => setTierPrice(ti, v.id, val)} placeholder="0.00" style={{ ...S.input, width: '90px' }} /></td>
+                                  <td key={v.id} style={S.td}><DecimalInput value={tier.prices[v.id] ?? ''} onChange={val => setTierPrice(ti, v.id, val)} placeholder="0.00" aria-invalid={errors[`tp_${ti}_${v.id}`] ? 'true' : undefined} style={{ ...(errors[`tp_${ti}_${v.id}`] ? S.inputErr : S.input), width: '90px' }} /></td>
                                 ))
                               )}
                               <td style={{ ...S.td, textAlign: 'center' }}>

@@ -4,6 +4,7 @@ import { useAccess } from '@/contexts/AccessContext';
 import { useState, useMemo } from 'react';
 import { S, ICONS, Field, Modal, ConfirmModal, PaginationBar, SearchBar, StatusBadge, EmptyState, SummaryCard, usePagination, uid } from './shared';
 import { createSupplier, updateSupplier, deleteSupplier } from './api';
+import { scrollToFirstError } from '@/lib/scrollToError';
 
 const EMPTY_FORM = { name:'', contact:'', email:'', address:'', itemsSupplied:[] };
 
@@ -65,7 +66,7 @@ export default function VendorsTab({ vendors, setVendors, materials, categories,
 
   const save = async () => {
     const e = validate(form);
-    if (Object.keys(e).length) { setErrors(e); return; }
+    if (Object.keys(e).length) { setErrors(e); scrollToFirstError(); return; }
     const payload = {
       name:          form.name.trim(),
       phone:         form.contact.trim(),
@@ -99,7 +100,7 @@ export default function VendorsTab({ vendors, setVendors, materials, categories,
     try {
       await deleteSupplier(token, confirm.id);
       await onRefresh(['vendors']);
-      toast?.(`"${confirm.name}" deleted.`, 'warn');
+      toast?.(`"${confirm.name}" deactivated.`, 'warn');
     } catch (err) {
       toast?.(err.message, 'error');
     }

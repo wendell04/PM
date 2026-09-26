@@ -30,6 +30,7 @@ import { useIsPhone, KpiStrip, PhoneFilterBar, PhoneList, PhoneRow } from '@/com
 import { isCodMethod } from '@/lib/paymentMethod';
 import { needsJobOrder } from '@/lib/jobOrderEligibility';
 import { addWorkingDays, subtractWorkingDays } from '@/lib/workingDays';
+import { scrollToFirstError } from '@/lib/scrollToError';
 
 // Backward-scheduling buffers: the JO must FINISH before the delivery promise, leaving room to QC,
 // pack, and ship. Target = (customer need-by || delivery promise) - shipping transit - QC/pack.
@@ -212,7 +213,7 @@ function JobOrderForm({ initial = EMPTY_FORM, isEdit = false, orders = [], order
 
   const handleSubmit = () => {
     const e = validate();
-    if (Object.keys(e).length > 0) { setErrors(e); return; }
+    if (Object.keys(e).length > 0) { setErrors(e); scrollToFirstError(); return; }
     if (isEdit) {
       onSubmit({ joStatus: form.joStatus, isRush: form.isRush, notes: form.notes || '',
         ...(form.targetCompletion ? { targetCompletion: form.targetCompletion } : {}) });
@@ -245,12 +246,12 @@ function JobOrderForm({ initial = EMPTY_FORM, isEdit = false, orders = [], order
             <label style={S.label}>Status *</label>
             <CustomSelect value={form.joStatus || ''} onChange={v => set('joStatus', v)} disabled={isSubmitting} error={!!errors.joStatus} style={{ width: '100%' }}
               options={[...new Set([...(form.joStatus ? [form.joStatus] : []), ...JO_EDITABLE_STATUSES])].map(s => ({ value: s, label: JO_BADGE[s]?.label ?? s }))} />
-            {errors.joStatus && <span style={S.errText}>{errors.joStatus}</span>}
+            {errors.joStatus && <span data-field-error style={S.errText}>{errors.joStatus}</span>}
           </div>
           <div>
             <label style={S.label}>Target completion *</label>
             <input style={errors.targetCompletion ? S.inputErr : S.input} type="date" value={form.targetCompletion} onChange={e => set('targetCompletion', e.target.value)} disabled={isSubmitting} />
-            {errors.targetCompletion && <span style={S.errText}>{errors.targetCompletion}</span>}
+            {errors.targetCompletion && <span data-field-error style={S.errText}>{errors.targetCompletion}</span>}
           </div>
           <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '13px', fontWeight: 600, color: 'var(--white)', cursor: 'pointer' }}>
             <input type="checkbox" checked={form.isRush} onChange={e => set('isRush', e.target.checked)} disabled={isSubmitting} style={{ width: 16, height: 16, accentColor: 'var(--gold)' }} />
@@ -273,7 +274,7 @@ function JobOrderForm({ initial = EMPTY_FORM, isEdit = false, orders = [], order
               emptyLabel={ordersLoading ? 'Loading orders…' : 'No paid, design-approved orders are waiting for production yet.'}
               options={orders.map(o => ({ value: o.id ?? o._id, label: `${orderNo(o)}${o.customerName ? ` - ${o.customerName}` : ''}` }))}
             />
-            {errors.orderId && <span style={S.errText}>{errors.orderId}</span>}
+            {errors.orderId && <span data-field-error style={S.errText}>{errors.orderId}</span>}
           </div>
 
           {selectedOrder && (
@@ -379,7 +380,7 @@ function JobOrderForm({ initial = EMPTY_FORM, isEdit = false, orders = [], order
                   );
                 })}
               </div>
-              {errors.items && <span style={S.errText}>{errors.items}</span>}
+              {errors.items && <span data-field-error style={S.errText}>{errors.items}</span>}
             </div>
           )}
 
@@ -405,7 +406,7 @@ function JobOrderForm({ initial = EMPTY_FORM, isEdit = false, orders = [], order
               {override && (
                 <input style={{ ...S.input, marginTop: 8 }} type="date" value={form.targetCompletion} onChange={e => set('targetCompletion', e.target.value)} disabled={isSubmitting} />
               )}
-              {errors.targetCompletion && <span style={S.errText}>{errors.targetCompletion}</span>}
+              {errors.targetCompletion && <span data-field-error style={S.errText}>{errors.targetCompletion}</span>}
             </div>
           )}
 

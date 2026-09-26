@@ -419,7 +419,11 @@ function DetailPanel({ variants, matMap }) {
                       <td style={{ padding:'4px 8px', fontSize:'12px', fontWeight:600, color: !counted ? 'var(--gray)' : can===0?'var(--st-red-fg)':can<=10?'var(--st-orange-fg)':'#1a7f3c' }}>
                         {counted ? can : '-'}
                         {!counted && <span style={{ marginLeft:6, fontSize:'10px', color:'var(--gray)' }}>cost only</span>}
-                        {cov && (() => {
+                        {counted && prod <= 0 && can <= 0 && (
+                          <div style={{ fontSize: 10.5, marginTop: 2, fontWeight: 700, color: 'var(--st-red-fg)' }}>Out - restock to sell</div>
+                        )}
+                        {/* With nothing buildable there is no build to cover: 0 of 0 read as "Enough". */}
+                        {cov && prod > 0 && (() => {
                           const ok = cov.ratio >= 1;
                           const tone = ok ? 'var(--st-green-fg)' : cov.ratio < 0.25 ? 'var(--st-red-fg)' : 'var(--st-orange-fg)';
                           return (

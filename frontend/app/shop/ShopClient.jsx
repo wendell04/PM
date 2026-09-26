@@ -211,6 +211,11 @@ function QuickViewModal({ product, flashSale, onClose, onToast }) {
     return product.stock != null ? Math.max(Number(product.stock), 0) : NO_CAP;
   })();
 
+  // Whether it can be bought at all - the product page's rule (nothing to sell and no pre-order).
+  // isOOS alone ignored pre-order, and the Customize links checked nothing, so a custom product at
+  // zero stock with pre-order off still opened the order form from here.
+  const cantBuy = mode !== 'inquiry' && maxQty === 0;
+
   // What can really be built right now, ignoring the pre-order allowance. Null here means no
   // counted material constrains this variant at all - which is not the same as zero.
   const readyNow = (() => {
@@ -552,7 +557,9 @@ function QuickViewModal({ product, flashSale, onClose, onToast }) {
                 customise-only. */}
             {PLAIN_OR_CUSTOM_ENABLED && product.isCustom && (product.allowPlainPurchase ?? false) && mode !== 'inquiry' ? (
               <>
-                <Link
+                {cantBuy ? (
+                  <button className="shop-qv-btn-cart" disabled style={{ opacity: 0.5, cursor: 'not-allowed' }}>Out of Stock</button>
+                ) : <Link
                   href={(() => {
                     const qs = new URLSearchParams({ qty: String(qty) });
                     Object.entries(selVars || {}).forEach(([g, v]) => { if (v) qs.set(`v_${g}`, String(v)); });
@@ -562,10 +569,10 @@ function QuickViewModal({ product, flashSale, onClose, onToast }) {
                   className="shop-qv-btn-cart"
                 >
                   Customize This Product
-                </Link>
-                <button className="shop-qv-btn-checkout" disabled={isOOS || optsPending} onClick={handleAdd}
-                  style={{ opacity: isOOS ? 0.5 : 1, cursor: isOOS ? 'not-allowed' : 'pointer' }}>
-                  {isOOS ? 'Out of Stock' : 'Buy it plain'}
+                </Link>}
+                <button className="shop-qv-btn-checkout" disabled={cantBuy || optsPending} onClick={handleAdd}
+                  style={{ opacity: cantBuy ? 0.5 : 1, cursor: cantBuy ? 'not-allowed' : 'pointer' }}>
+                  {cantBuy ? 'Out of Stock' : 'Buy it plain'}
                 </button>
               </>
             ) : mode === 'inquiry' ? (
@@ -585,7 +592,9 @@ function QuickViewModal({ product, flashSale, onClose, onToast }) {
                  them press the same button a second time - and it silently dropped the variant and
                  quantity they had already chosen here, so they had to pick both again. The query
                  carries them across exactly as the PDP's own button does. */
-              <Link
+              cantBuy ? (
+                <button className="shop-qv-btn-cart" disabled style={{ opacity: 0.5, cursor: 'not-allowed' }}>Out of Stock</button>
+              ) : <Link
                 href={(() => {
                   const qs = new URLSearchParams({ qty: String(qty) });
                   Object.entries(selVars || {}).forEach(([g, v]) => { if (v) qs.set(`v_${g}`, String(v)); });
@@ -603,12 +612,12 @@ function QuickViewModal({ product, flashSale, onClose, onToast }) {
               </Link>
             ) : (
               <>
-                <button className="shop-qv-btn-cart" disabled={isOOS} onClick={handleAdd}
-                  style={{ opacity: isOOS ? 0.5 : 1, cursor: isOOS ? 'not-allowed' : 'pointer' }}>
-                  {isOOS ? 'Out of Stock' : 'Add to Cart'}
+                <button className="shop-qv-btn-cart" disabled={cantBuy} onClick={handleAdd}
+                  style={{ opacity: cantBuy ? 0.5 : 1, cursor: cantBuy ? 'not-allowed' : 'pointer' }}>
+                  {cantBuy ? 'Out of Stock' : 'Add to Cart'}
                 </button>
-                <button className="shop-qv-btn-checkout" disabled={isOOS} onClick={handleCheckout}
-                  style={{ opacity: isOOS ? 0.5 : 1, cursor: isOOS ? 'not-allowed' : 'pointer' }}>
+                <button className="shop-qv-btn-checkout" disabled={cantBuy} onClick={handleCheckout}
+                  style={{ opacity: cantBuy ? 0.5 : 1, cursor: cantBuy ? 'not-allowed' : 'pointer' }}>
                   Checkout
                 </button>
               </>

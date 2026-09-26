@@ -4,6 +4,7 @@ import { useState, useMemo } from 'react';
 import { S, ICONS, Field, IntegerInput, DecimalInput, Modal, PaginationBar, SearchBar, StatusBadge, Note, EmptyState, SummaryCard, usePagination, formatCurrency, formatDate, uid, CustomSelect } from './shared';
 import { adjustStock, createReturn } from './api';
 import { useAccess } from '@/contexts/AccessContext';
+import { scrollToFirstError } from '@/lib/scrollToError';
 
 const BO_TYPES = ['damaged','defective','shortage','wrong_item','expired'];
 
@@ -193,7 +194,7 @@ export default function StockInTab({ materials, vendors, batches, setBatches, ba
 
   const goStep3 = () => {
     const e = validateStep2();
-    if (Object.keys(e).length) { setErr2(e); return; }
+    if (Object.keys(e).length) { setErr2(e); scrollToFirstError(); return; }
     setErr2({});
     setStep(3);
   };

@@ -263,6 +263,13 @@ function CustomOrderInner() {
       .then(data => {
         const p = data.data ?? data;
         if (!p.isCustom) { router.push(`/shop/products/${id}`); return; }
+        // Opened by link with nothing to sell and no pre-order: back to the product page, which
+        // says Out of Stock. A product with variants is judged per variant at checkout instead.
+        const noVariants = !(Array.isArray(p.combinations) && p.combinations.length);
+        if (p.trackInventory && !p.allowPreorder && p.priceType !== 'inquiry' && noVariants
+            && p.availableQty != null && Number(p.availableQty) <= 0) {
+          router.push(`/shop/products/${id}`); return;
+        }
         setProduct(p);
 
         // Carry over what was already chosen on the product page; fall back to

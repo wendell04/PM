@@ -1,6 +1,7 @@
 'use client';
 import { useState, useMemo } from 'react';
 import { S, ICONS, Field, IntegerInput, DecimalInput, Modal, ConfirmModal, PaginationBar, SearchBar, StatusBadge, Note, EmptyState, SummaryCard, usePagination, formatCurrency, formatDate, uid, CustomSelect } from './shared';
+import { scrollToFirstError } from '@/lib/scrollToError';
 
 function ReturnModal({ open, onClose, materials, vendors, badOrders, onSave }) {
   const [matId,    setMatId]   = useState('');
@@ -34,7 +35,7 @@ function ReturnModal({ open, onClose, materials, vendors, badOrders, onSave }) {
 
   const submit = () => {
     const e = validate();
-    if (Object.keys(e).length) { setErrors(e); return; }
+    if (Object.keys(e).length) { setErrors(e); scrollToFirstError(); return; }
     onSave({
       matId, matName: mat?.name || '',
       vendorId, vendorName: vendors.find(v => v.id === vendorId)?.name || '',
@@ -141,7 +142,7 @@ function ReceiveReplacementModal({ open, onClose, returnRecord, material, onConf
   const submit = () => {
     const e = {};
     if (!qty || Number(qty) < 1) e.qty = 'Qty ≥ 1 required.';
-    if (Object.keys(e).length) { setErrors(e); return; }
+    if (Object.keys(e).length) { setErrors(e); scrollToFirstError(); return; }
     onConfirm({ qty: Number(qty), invoiceNo: invoiceNo.trim(), notes: notes.trim() });
     reset();
   };

@@ -4,6 +4,7 @@ import { useState, useMemo } from 'react';
 import { S, ICONS, Field, IntegerInput, DecimalInput, Modal, ConfirmModal, PaginationBar, SearchBar, StatusBadge, EmptyState, SummaryCard, usePagination, formatCurrency, uid, CustomSelect } from './shared';
 import { createMat, updateMat, deleteMat, createSupplier, loadMinStockSuggestions, loadArchivedMats, restoreMat } from './api';
 import { useAccess } from '@/contexts/AccessContext';
+import { scrollToFirstError } from '@/lib/scrollToError';
 
 function getSkuPrefix(category) {
   const KNOWN = { Garments:'GAR', 'Print Materials':'PRT', Drinkware:'DRW', Packaging:'PKG', Accessories:'ACC', Bags:'BAG', Office:'OFF', Other:'OTH' };
@@ -89,7 +90,7 @@ function QuickAddVendorModal({ open, onClose, categories, onAdd, initialCategory
     const e = {};
     if (!name.trim())      e.name     = 'Vendor name is required.';
     if (!supplied.length)  e.supplied = 'Select at least one category.';
-    if (Object.keys(e).length) { setErrors(e); return; }
+    if (Object.keys(e).length) { setErrors(e); scrollToFirstError(); return; }
     onAdd({ name: name.trim(), contact: contact.trim(), itemsSupplied: supplied });
     reset();
   };
@@ -375,7 +376,7 @@ export default function MaterialsTab({ materials, setMaterials, vendors, setVend
 
   const save = async () => {
     const e = validateMat(form);
-    if (Object.keys(e).length) { setErrors(e); return; }
+    if (Object.keys(e).length) { setErrors(e); scrollToFirstError(); return; }
     const vendor = vendors.find(v => v.id === form.vendorId);
     const payload = {
       name:          form.name.trim(),
@@ -416,7 +417,7 @@ export default function MaterialsTab({ materials, setMaterials, vendors, setVend
     try {
       await deleteMat(token, confirm.id);
       await onRefresh(['materials']);
-      toast?.(`"${confirm.name}" deleted.`, 'warn');
+      toast?.(`"${confirm.name}" archived. Restore it from Archived.`, 'warn');
     } catch (err) {
       toast?.(err.message, 'error');
     }
