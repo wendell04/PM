@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import PhoneInput from '@/components/auth/PhoneInput';
@@ -1716,7 +1716,7 @@ export default function SettingsPage() {
           <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', paddingBottom: '1rem', borderBottom: '1px solid var(--border)' }}>
             <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
               <input type="text" value={q.question} maxLength={120} placeholder="Question the customer taps"
-                onChange={e => setQuickReply(i, 'question', e.target.value)} style={{ flex: 1, minWidth: 0 }} />
+                onChange={e => setQuickReply(i, 'question', e.target.value)} style={{ flex: 1, minWidth: 0, padding: '0.6rem 0.75rem', background: 'var(--dark)', color: 'var(--white)', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '0.85rem', lineHeight: 1.5, outline: 'none' }} />
               <button type="button" onClick={() => setChatReplies(c => ({ ...c, quickReplies: c.quickReplies.filter((_, idx) => idx !== i) }))}
                 aria-label="Remove question"
                 style={{ flexShrink: 0, padding: '0.5rem 0.75rem', background: 'transparent', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--gray)', fontSize: '0.78rem', cursor: 'pointer' }}>
@@ -1726,7 +1726,7 @@ export default function SettingsPage() {
             <textarea value={q.answer} maxLength={1000} rows={3}
               placeholder="Automatic answer (optional). Leave blank and the question simply reaches your inbox."
               onChange={e => setQuickReply(i, 'answer', e.target.value)}
-              style={{ width: '100%', boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit' }} />
+              style={{ width: '100%', boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit', padding: '0.6rem 0.75rem', background: 'var(--dark)', color: 'var(--white)', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '0.85rem', lineHeight: 1.5, outline: 'none' }} />
           </div>
         ))}
         {chatReplies.quickReplies.length < 8 && (
@@ -1756,7 +1756,7 @@ export default function SettingsPage() {
           <textarea value={chatReplies[key].message} maxLength={1000} rows={3}
             placeholder={key === 'awayMessage' ? 'Thanks for your message! We are away right now and will reply as soon as we are back.' : 'Hi! Thanks for reaching out. We will get back to you shortly.'}
             onChange={e => { const v = e.target.value; setChatReplies(c => ({ ...c, [key]: { ...c[key], message: v } })); }}
-            style={{ width: '100%', boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit' }} />
+            style={{ width: '100%', boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit', padding: '0.6rem 0.75rem', background: 'var(--dark)', color: 'var(--white)', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '0.85rem', lineHeight: 1.5, outline: 'none' }} />
         </div>
       </div>
     ))}

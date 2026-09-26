@@ -591,8 +591,11 @@ export default function PosPage() {
       variantId: c.variantId ?? undefined,
       variantLabel: c.variantName ?? undefined,
       // Only service lines carry these; everything else is priced and consumed from its recipe.
+      // Picked PER PIECE, like every recipe in the shop, and sent as the job's total for the line's
+      // quantity at the moment it is recorded - so +/- on the cart line moves the materials with it.
+      // Sent as typed, a 3-shirt job reserved one blank shirt.
       materials: c.materials?.length ? c.materials.map(m => ({
-        inventoryId: m.inventoryId, name: m.name, qty: Number(m.qty) || 0,
+        inventoryId: m.inventoryId, name: m.name, qty: Math.round((Number(m.qty) || 0) * (Number(c.qty) || 1) * 10000) / 10000,
       })) : undefined,
     }));
 
@@ -837,6 +840,13 @@ export default function PosPage() {
                       </div>
                       {c.variantName && (
                         <div style={{ fontSize: '0.72rem', color: 'var(--gray)', marginTop: '1px' }}>{c.variantName}</div>
+                      )}
+                      {/* What the job will take off the shelf, at the line's current quantity. It was
+                          picked in the sheet and then invisible - nobody at the counter could check it. */}
+                      {c.materials?.length > 0 && (
+                        <div style={{ fontSize: '0.7rem', color: 'var(--gray)', marginTop: '2px' }}>
+                          Uses {c.materials.map(m => `${m.name} x${Math.round((Number(m.qty) || 0) * c.qty * 10000) / 10000}`).join(', ')}
+                        </div>
                       )}
                     </div>
                     <button type="button" onClick={() => removeFromCart(c.key)}
@@ -1214,14 +1224,17 @@ export default function PosPage() {
 
             {svcMaterials.length > 0 && (
               <div style={{ marginTop: 10, display: 'grid', gap: 6 }}>
+                <div style={{ fontSize: '0.68rem', color: 'var(--gray)', textAlign: 'right', paddingRight: 26 }}>Per piece</div>
                 {svcMaterials.map((m, i) => {
-                  const short = Number(m.qty) > Number(m.stockQty);
+                  const pieces = Number(svcQty) || 1;
+                  const total = Math.round((Number(m.qty) || 0) * pieces * 10000) / 10000;
+                  const short = total > Number(m.stockQty);
                   return (
                     <div key={m.inventoryId} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 9px', background: 'var(--dark2)', border: `1px solid ${short ? 'var(--st-red-fg)' : 'var(--border)'}`, borderRadius: 8 }}>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: '0.78rem', color: 'var(--white)' }}>{m.name}</div>
                         <div style={{ fontSize: '0.68rem', color: short ? 'var(--st-red-fg)' : 'var(--gray)' }}>
-                          {Number(m.stockQty)} {m.uom} on hand{short ? ' - not enough' : ''}
+                          {total} {m.uom} for {pieces} piece{pieces === 1 ? '' : 's'} · {Number(m.stockQty)} on hand{short ? ' - not enough' : ''}
                         </div>
                       </div>
                       <input
@@ -1231,6 +1244,7 @@ export default function PosPage() {
                           const v = sanitiseAmount(e.target.value, 999999);
                           setSvcMaterials(prev => prev.map((x, xi) => (xi === i ? { ...x, qty: v } : x)));
                         }}
+                        aria-label={`${m.name} per piece`}
                         style={{ ...inputStyle, width: '68px', textAlign: 'center', padding: '4px 6px', fontSize: '0.78rem' }}
                       />
                       <button type="button" onClick={() => setSvcMaterials(prev => prev.filter((_, xi) => xi !== i))}
