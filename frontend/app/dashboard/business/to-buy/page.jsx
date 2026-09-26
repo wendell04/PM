@@ -64,15 +64,8 @@ function LevelBar({ have, min, uom, width = 120 }) {
 function CoverBadge({ row }) {
   // null cover means "nothing has been used yet, so we cannot say" - which is not the same as
   // "it will last forever" and must never be drawn as a comfortable green number.
-  if (row?.daysOfCover == null) {
-    return (
-      <span title="Nothing has left the shelf yet, so there is no usage to measure against."
-        style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: '.3px', textTransform: 'uppercase',
-          padding: '2px 6px', borderRadius: 4, background: 'var(--dark2)', color: 'var(--gray)', whiteSpace: 'nowrap' }}>
-        no usage yet
-      </span>
-    );
-  }
+  // Nothing to say, so say nothing: a grey "NO USAGE YET" tag on a buying list read as a problem.
+  if (row?.daysOfCover == null) return null;
   const tone = COVER_TONE[row.urgency] ?? COVER_TONE.ok;
   const d = row.daysOfCover;
   const text = tone.label ?? (d === 0 ? 'runs out today' : d === 1 ? '1 day left' : `${d} days left`);
@@ -149,13 +142,13 @@ export default function ToBuyPage() {
     !can('masterData.work') ? null : minEdit[r.inventoryId] === undefined ? (
       <button type="button" onClick={() => setMinEdit(prev => ({ ...prev, [r.inventoryId]: String(r.minimum || '') }))}
         style={{ background: 'none', border: 'none', padding: 0, color: 'var(--gold)', fontSize: compact ? 12 : 11, fontWeight: 600, cursor: 'pointer', minHeight: compact ? 36 : undefined }}>
-        {r.minimum > 0 ? 'Change minimum' : 'Set minimum'}
+        {compact ? (r.minimum > 0 ? 'Change minimum' : 'Set minimum') : (r.minimum > 0 ? 'edit' : 'set one')}
       </button>
     ) : (
       <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
         <input type="number" min="0" value={minEdit[r.inventoryId]} onChange={e => setMinEdit(prev => ({ ...prev, [r.inventoryId]: e.target.value }))}
           onKeyDown={e => { if (e.key === 'Enter') saveMin(r); if (e.key === 'Escape') closeMin(r.inventoryId); }}
-          style={{ ...S.input, width: 84, minHeight: 36, padding: '4px 8px', fontSize: 16 }} aria-label="Minimum stock" autoFocus />
+          style={{ ...S.input, width: 64, minHeight: 34, padding: '4px 8px', fontSize: 15 }} aria-label="Minimum stock" autoFocus />
         <button type="button" onClick={() => saveMin(r)} disabled={minSaving === r.inventoryId} style={{ ...S.btnSm, minHeight: 36 }}>{minSaving === r.inventoryId ? 'Saving' : 'Save'}</button>
         <button type="button" onClick={() => closeMin(r.inventoryId)} style={{ ...S.btnSmGhost, minHeight: 36 }}>Cancel</button>
       </span>
@@ -461,86 +454,83 @@ export default function ToBuyPage() {
             <div style={{ padding: '0 14px 10px' }}><MinEditor r={r} compact /></div>
             </div>
           )) : (<>
-          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 90px 90px 90px 90px 110px', gap: '8px',
+          {/* Three questions, three columns: what and why, where the stock stands, what to buy.
+              The five number columns (for orders / on hand / minimum / buy / cost) made the owner
+              do the sum, and the one sentence that explained "Buy 3" lived in a hover tooltip. */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 190px 150px', gap: '12px',
             padding: '8px 16px', fontSize: '10px', fontWeight: 700, letterSpacing: '.05em',
             textTransform: 'uppercase', color: 'var(--gray)', borderBottom: '1px solid var(--border)' }}>
-            <span>Material</span>
-            <span style={{ textAlign: 'right' }}>For orders</span>
-            <span style={{ textAlign: 'right' }}>On hand</span>
-            <span style={{ textAlign: 'right' }}>Minimum</span>
+            <span>Material and why</span>
+            <span>Stock</span>
             <span style={{ textAlign: 'right' }}>Buy</span>
-            <span style={{ textAlign: 'right' }}>Est. cost</span>
           </div>
 
-          {g.items.map(r => (
-            <div key={r.inventoryId} style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 90px 90px 90px 90px 110px',
-              gap: '8px', padding: '10px 16px', borderBottom: '1px solid var(--border)', alignItems: 'center' }}>
+          {g.items.map(r => {
+            const reasons = r.reasons ?? ['orders'];
+            const tone = reasons.includes('orders') ? 'orange' : reasons.includes('forecast') ? 'purple' : 'blue';
+            const who = [];
+            if (r.for?.length) who.push(r.for.map(f => `${f.pieces} x ${f.product}`).join(', '));
+            const extra = (r.blocks ?? []).filter(b => !(r.for ?? []).some(f => String(f.product).startsWith(b.product)));
+            if (extra.length) who.push(extra.map(b => b.product).join(', '));
+            const first = r.blocks?.[0];
+            const fc = reasons.includes('forecast') ? r.forecast : null;
+            return (
+            <div key={r.inventoryId} style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 190px 150px',
+              gap: '12px', padding: '12px 16px', borderBottom: '1px solid var(--border)', alignItems: 'start' }}>
               <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: '13px', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 6 }}>
-                  {r.name}
-                  {(r.reasons ?? ['orders']).map(w => (
-                    <span key={w} style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: '.3px', textTransform: 'uppercase', padding: '2px 6px', borderRadius: 4,
-                      background: w === 'orders' ? 'rgba(224,168,82,0.16)' : w === 'forecast' ? 'rgba(139,92,246,0.14)' : 'rgba(59,130,246,0.14)',
-                      color: w === 'orders' ? 'var(--st-orange-fg)' : w === 'forecast' ? 'var(--st-purple-fg)' : 'var(--st-blue-fg)' }}>
-                      {w === 'orders' ? 'short for orders' : w === 'forecast' ? 'forecast says reorder' : 'below minimum'}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '14px', fontWeight: 700 }}>{r.name}</span>
+                  {reasons.map(w => (
+                    <span key={w} style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 999,
+                      background: `var(--st-${w === 'orders' ? 'orange' : w === 'forecast' ? 'purple' : 'blue'}-bg)`,
+                      color: `var(--st-${w === 'orders' ? 'orange' : w === 'forecast' ? 'purple' : 'blue'}-fg)` }}>
+                      {w === 'orders' ? 'Short for orders' : w === 'forecast' ? 'Forecast says reorder' : 'Below minimum'}
                     </span>
                   ))}
                   <CoverBadge row={r} />
                 </div>
-                {/* One sentence. Orders taken and products held back are the same story. */}
-                {(() => {
-                  const who = [];
-                  if (r.for?.length) who.push(r.for.map(f => `${f.pieces} × ${f.product}`).join(', '));
-                  const extra = (r.blocks ?? []).filter(b => !(r.for ?? []).some(f => String(f.product).startsWith(b.product)));
-                  if (extra.length) who.push(extra.map(b => b.product).join(', '));
-                  const first = r.blocks?.[0];
-                  // A forecast row with no order behind it has nothing in `who`;
-                  // it still has to say why it is here, and how far to trust that.
-                  const fc = (r.reasons ?? []).includes('forecast') ? r.forecast : null;
-                  if (!who.length && !fc) return null;
-                  return (
-                    <div style={{ fontSize: '11px', color: 'var(--gray-light)', marginTop: '2px' }}>
-                      {who.length > 0 && <>For {who.join(', ')}</>}
-                      {first && <span style={{ color: 'var(--st-orange-fg)' }}>{` — only ${first.canShip} of ${first.canBuild} can ship`}</span>}
-                      {fc && (
-                        <div style={{ color: 'var(--st-purple-fg)', marginTop: who.length ? 2 : 0 }}>
-                          {fc.ratePerWeek != null ? `Using about ${fc.ratePerWeek} ${r.uom ?? ''} a week` : 'Forecast'}
-                          {fc.stockoutDate ? ` — runs out around ${fc.stockoutDate}` : ''}
-                          {fc.lowConfidence ? ' (thin history, treat as a guide)' : ''}
-                          {fc.leadTimeAssumed ? ' · lead time assumed' : ''}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })()}
-                <div style={{ marginTop: '4px' }}
-                  title={[r.sku, r.category, r.isOnDemand ? 'bought per order' : null,
-                          r.usagePerDay > 0 ? `${Math.round(r.usagePerDay * 10) / 10} ${r.uom ?? ''} used per day` : null,
-                          r.orders?.length ? r.orders.join(', ') : null].filter(Boolean).join(' · ')}>
-                  <LevelBar have={r.onHand} min={r.minimum} uom={r.uom} />
+                {/* The reason for the number, in words - it was only a tooltip. */}
+                <div style={{ fontSize: 12.5, color: 'var(--white)', marginTop: 4 }}>
+                  Buy {num(r.shortfall)} {r.uom}: {breakdown(r)}.
                 </div>
-                {minEdit[r.inventoryId] !== undefined && (
-                  <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--gray)' }}>
-                    Minimum for this material: <MinEditor r={r} />
+                {(who.length > 0 || fc) && (
+                  <div style={{ fontSize: '11.5px', color: 'var(--gray)', marginTop: 2 }}>
+                    {who.length > 0 && <>For {who.join(', ')}</>}
+                    {first && <span style={{ color: 'var(--st-orange-fg)' }}>{` - only ${first.canShip} of ${first.canBuild} can ship`}</span>}
+                    {fc && (
+                      <span style={{ display: 'block', color: `var(--st-${tone}-fg)` }}>
+                        {fc.ratePerWeek != null ? `Using about ${fc.ratePerWeek} ${r.uom ?? ''} a week` : 'Forecast'}
+                        {fc.stockoutDate ? ` - runs out around ${fc.stockoutDate}` : ''}
+                        {fc.lowConfidence ? ' (thin history, treat as a guide)' : ''}
+                      </span>
+                    )}
                   </div>
                 )}
                 {!Number(r.unitCost) && (
-                  <div style={{ fontSize: '10.5px', color: '#e0a852', marginTop: '1px' }}>
-                    No cost set - the estimate below is understated.
-                  </div>
+                  <div style={{ fontSize: '11px', color: 'var(--st-orange-fg)', marginTop: 2 }}>No cost set, so the estimate is understated.</div>
                 )}
               </div>
-              <span style={{ fontSize: '12px', textAlign: 'right', color: 'var(--gray)' }}>{num(r.needed)} {r.uom}</span>
-              <span style={{ fontSize: '12px', textAlign: 'right', color: 'var(--gray)' }}>{num(r.onHand)} {r.uom}</span>
-              <span style={{ fontSize: '12px', textAlign: 'right', color: 'var(--gray)', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
-                <span>{r.minimum > 0 ? `${num(r.minimum)} ${r.uom}` : '-'}</span>
-                {minEdit[r.inventoryId] === undefined && <MinEditor r={r} />}
-              </span>
-              <span style={{ fontSize: '13px', textAlign: 'right', fontWeight: 700, color: '#e0a852' }}
-                title={`Buy ${num(r.shortfall)} = ${breakdown(r)}`}>{num(r.shortfall)} {r.uom}</span>
-              <span style={{ fontSize: '13px', textAlign: 'right', fontWeight: 700 }}>{peso(r.estimatedCost)}</span>
+
+              <div style={{ fontSize: 12.5, color: 'var(--gray)' }}>
+                <LevelBar have={r.onHand} min={r.minimum} uom={r.uom} width={90} />
+                <div style={{ marginTop: 5 }}>
+                  <span style={{ color: 'var(--white)', fontWeight: 600 }}>{num(r.onHand)}</span> on hand
+                  {Number(r.needed) > 0 && <> - <span style={{ color: 'var(--white)', fontWeight: 600 }}>{num(r.needed)}</span> needed</>}
+                </div>
+                <div style={{ marginTop: 2, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                  <span>Keep at least {r.minimum > 0 ? <span style={{ color: 'var(--white)', fontWeight: 600 }}>{num(r.minimum)}</span> : 'none set'}</span>
+                  {minEdit[r.inventoryId] === undefined && <MinEditor r={r} />}
+                </div>
+                {minEdit[r.inventoryId] !== undefined && <div style={{ marginTop: 6 }}><MinEditor r={r} /></div>}
+              </div>
+
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--gold)', whiteSpace: 'nowrap' }}>{num(r.shortfall)} {r.uom}</div>
+                <div style={{ fontSize: 12.5, color: 'var(--gray)', marginTop: 2 }}>{peso(r.estimatedCost)}</div>
+              </div>
             </div>
-          ))}
+            );
+          })}
           </>)}
         </div>
       ))}

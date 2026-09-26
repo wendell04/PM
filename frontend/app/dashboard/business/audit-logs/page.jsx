@@ -67,6 +67,7 @@ const GROUP_TONE = {
   people:   { fg: 'var(--st-amber-fg)',  bg: 'var(--st-amber-bg)' },
   orders:   { fg: 'var(--st-blue-fg)',   bg: 'var(--st-blue-bg)' },
   money:    { fg: 'var(--st-orange-fg)', bg: 'var(--st-orange-bg)' },
+  stock:    { fg: 'var(--st-red-fg)',    bg: 'var(--st-red-bg)' },
   catalog:  { fg: 'var(--st-blue-fg)',   bg: 'var(--st-blue-bg)' },
   settings: { fg: 'var(--st-purple-fg)', bg: 'var(--st-purple-bg)' },
 };
@@ -231,9 +232,10 @@ export default function AuditLogsPage() {
         <div style={{ ...S.card, padding: '12px 16px', marginBottom: 16, fontSize: 12.5, color: 'var(--gray-light)', lineHeight: 1.6 }}>
           <b style={{ color: 'var(--white)' }}>The audit trail</b> is who did what in this system, from
           where, and when: every sign-in and every one that was refused, passwords and 2FA, staff added
-          or removed, permissions widened, settings moved, orders and money touched. Opening this page
-          is recorded too. For where the <i>material</i> went - stock in, stock out, corrections -
-          that is Inventory, not here.
+          or removed, permissions widened, settings moved (from what, to what), orders and money
+          touched, and stock changed by hand - write-offs, damage, corrections. Opening this page is
+          recorded too. Stock that moves on its own with orders (reserved, used in production) is in
+          Inventory's history.
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>

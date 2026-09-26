@@ -492,7 +492,7 @@ export default function OrderRequestsPage() {
       <div style={{ ...S.card, ...S.rowBetween, marginBottom: '10px', padding: '12px 16px', flexWrap: 'wrap', gap: 10 }}>
         <div className="pmp-filters" style={{ ...S.row, gap: '8px', flex: 1, flexWrap: 'wrap' }}>
           <SearchBar value={searchQuery} onChange={setSearchQuery} placeholder="Search customer or product..." style={{ width: '260px' }} />
-          <CustomSelect value={activeFilter} onChange={setActiveFilter} style={{ width: '170px' }}
+          <CustomSelect value={activeFilter} onChange={setActiveFilter} style={{ width: '230px' }}
             options={FILTER_OPTIONS.map(o => ({ value: o.key, label: o.label }))} />
         </div>
         {mayQuote && (<button onClick={openNewQuote} style={{ ...S.btnPrimary, whiteSpace: 'nowrap' }}>+ New quotation</button>)}
