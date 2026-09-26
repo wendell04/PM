@@ -231,152 +231,6 @@ function OrderExpandRow({ order, colSpan, cost }) {
 // dressed up in colour.
 
 const num = { fontVariantNumeric: 'tabular-nums', fontFeatureSettings: '"tnum"' };
-const pct = (v) => `${(v * 100).toFixed(1)}%`;
-
-/** Period-over-period change, rendered small and muted. Absent when there is no comparable base. */
-function Delta({ current, previous, invert = false }) {
-  if (previous === null || previous === undefined || previous === 0) return null;
-  const change = (current - previous) / Math.abs(previous);
-  if (!isFinite(change)) return null;
-  const up = change >= 0;
-  const good = invert ? !up : up;
-  return (
-    <span style={{ ...num, fontSize: '11px', fontWeight: 600, color: good ? 'var(--st-green-fg)' : 'var(--st-red-fg)' }}>
-      {up ? '▲' : '▼'} {Math.abs(change * 100).toFixed(1)}%
-    </span>
-  );
-}
-
-/** A single headline figure. Deliberately plain: label, value, one line of basis, optional delta. */
-function Metric({ label, value, basis, delta, emphasis = false }) {
-  return (
-    <div style={{ flex: '1 1 170px', minWidth: '150px', padding: '14px 16px', background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '8px', borderTop: emphasis ? '2px solid var(--gold)' : '1px solid var(--border)' }}>
-      <div style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.6px', color: 'var(--gray)' }}>{label}</div>
-      <div style={{ ...num, fontSize: '20px', fontWeight: 700, color: 'var(--white)', margin: '6px 0 3px', lineHeight: 1.1 }}>{value}</div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-        {delta}
-        <span style={{ fontSize: '11px', color: 'var(--gray)' }}>{basis}</span>
-      </div>
-    </div>
-  );
-}
-
-function Panel({ title, note, children }) {
-  return (
-    <div style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
-      <div style={{ padding: '11px 16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12 }}>
-        <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.6px', color: 'var(--white)' }}>{title}</span>
-        {note && <span style={{ fontSize: '11px', color: 'var(--gray)' }}>{note}</span>}
-      </div>
-      {children}
-    </div>
-  );
-}
-
-function DataTable({ rows, cols, empty = 'No data in this period' }) {
-  return (
-    <div style={{ overflowX: 'auto' }}>
-      <table className="pmp-rt" style={{ width: '100%', borderCollapse: 'collapse' }}>
-        <thead><tr>{cols.map((c, i) => <th key={i} style={{ ...S.th, textAlign: i === 0 ? 'left' : 'right' }}>{c.label}</th>)}</tr></thead>
-        <tbody>
-          {rows.length === 0 ? (
-            <tr><td colSpan={cols.length} style={{ padding: '20px', textAlign: 'center', color: 'var(--gray)', fontSize: '13px' }}>{empty}</td></tr>
-          ) : rows.map((r, i) => (
-            <tr key={i} style={S.tr}>
-              {cols.map((c, j) => (
-                <td key={j} {...(j === 0 ? { 'data-rt': 'head' } : { 'data-label': c.label })} style={{ ...S.td, ...(j === 0 ? {} : num), textAlign: j === 0 ? 'left' : 'right' }}>{c.render(r)}</td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function ReportsView({ reports, hasCostData }) {
-  const { revenue, cost, profit, margin, units, orders, aov, bestSellers, byCategory, byPayment, byMonth, prev } = reports;
-  const maxMonth = Math.max(1, ...byMonth.map(x => x.revenue));
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-
-      <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-        <Metric label="Net Revenue" value={formatPrice(revenue)} basis="excl. shipping" emphasis
-          delta={<Delta current={revenue} previous={prev?.revenue} />} />
-        <Metric label="Cost of Goods" value={hasCostData ? formatPrice(cost) : 'n/a'} basis={hasCostData ? 'materials at BOM cost' : 'no cost recorded'} />
-        <Metric label="Gross Profit" value={hasCostData ? formatPrice(profit) : 'n/a'} basis={hasCostData ? 'revenue less cost' : 'needs cost data'}
-          delta={hasCostData ? <Delta current={profit} previous={prev?.profit} /> : null} />
-        <Metric label="Gross Margin" value={hasCostData ? pct(margin) : 'n/a'} basis={hasCostData ? 'profit over revenue' : 'needs cost data'} />
-        <Metric label="Orders" value={orders} basis="excludes cancelled"
-          delta={<Delta current={orders} previous={prev?.orders} />} />
-        <Metric label="Average Order" value={formatPrice(aov)} basis={`${units} unit${units === 1 ? '' : 's'} sold`}
-          delta={<Delta current={aov} previous={prev?.aov} />} />
-      </div>
-
-      <Panel title="Revenue by month" note={byMonth.length ? `${byMonth.length} month${byMonth.length === 1 ? '' : 's'}` : null}>
-        {byMonth.length === 0 ? (
-          <div style={{ padding: '20px', color: 'var(--gray)', fontSize: '13px', textAlign: 'center' }}>No data in this period</div>
-        ) : (
-          <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: '7px' }}>
-            {byMonth.map((mo, i) => (
-              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <span style={{ ...num, width: '64px', fontSize: '12px', color: 'var(--gray)', flexShrink: 0 }}>{mo.name}</span>
-                <div style={{ flex: 1, height: '14px', background: 'var(--dark)', borderRadius: '2px', overflow: 'hidden', display: 'flex' }}>
-                  <div title={`Revenue ${formatPrice(mo.revenue)}`} style={{ width: `${(mo.revenue / maxMonth) * 100}%`, background: 'var(--gold)' }} />
-                </div>
-                <span style={{ ...num, width: '46px', textAlign: 'right', fontSize: '12px', color: 'var(--gray)', flexShrink: 0 }}>{mo.orders}</span>
-                <span style={{ ...num, width: '104px', textAlign: 'right', fontSize: '12px', fontWeight: 600, color: 'var(--white)', flexShrink: 0 }}>{formatPrice(mo.revenue)}</span>
-              </div>
-            ))}
-            <div style={{ display: 'flex', gap: '12px', marginTop: '2px', fontSize: '10px', color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '.5px' }}>
-              <span style={{ width: '64px', flexShrink: 0 }}>Month</span>
-              <span style={{ flex: 1 }} />
-              <span style={{ width: '46px', textAlign: 'right', flexShrink: 0 }}>Orders</span>
-              <span style={{ width: '104px', textAlign: 'right', flexShrink: 0 }}>Revenue</span>
-            </div>
-          </div>
-        )}
-      </Panel>
-
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(330px, 1fr))', gap: '14px' }}>
-        <Panel title="Best sellers" note="top 10 by revenue">
-          <DataTable rows={bestSellers} cols={[
-            { label: 'Product', render: r => r.name },
-            { label: 'Units',   render: r => r.qty },
-            { label: 'Revenue', render: r => formatPrice(r.revenue) },
-          ]} />
-        </Panel>
-
-        <Panel title="Category performance">
-          <DataTable rows={byCategory} cols={[
-            { label: 'Category', render: r => r.name },
-            { label: 'Units',    render: r => r.qty },
-            { label: 'Revenue',  render: r => formatPrice(r.revenue) },
-            { label: 'Share',    render: r => revenue > 0 ? pct(r.revenue / revenue) : '-' },
-          ]} />
-        </Panel>
-
-        <Panel title="Settlement status" note="how the revenue is collected">
-          <DataTable rows={byPayment} cols={[
-            { label: 'Status',  render: r => STATUS_LABEL[r.name] || r.name },
-            { label: 'Orders',  render: r => r.count },
-            { label: 'Revenue', render: r => formatPrice(r.revenue) },
-          ]} />
-        </Panel>
-      </div>
-
-      <div style={{ fontSize: '11px', color: 'var(--gray)', lineHeight: 1.6 }}>
-        Net revenue excludes shipping, which is collected on behalf of the courier and is not income.
-        Cancelled orders are excluded throughout.
-        {hasCostData
-          ? ' Cost of goods is resolved per line from the product bill of materials at the time of sale, so margin reflects what the materials actually cost rather than a list price.'
-          : ' Cost of goods is unavailable for this period, so profit and margin are not shown. Sale records carry cost only from the point the order completes.'}
-        {' '}Comparisons are against the immediately preceding period of the same length.
-      </div>
-    </div>
-  );
-}
 
 export default function SalesListPage() {
   // Exporting takes the list out of the system - its own tick (Export sales).
@@ -584,6 +438,23 @@ export default function SalesListPage() {
   // cost recorded; anything less mixes orders that carry cost with orders that do not, which is what
   // made the margin read far too high.
   const useOrderCost = orderCost.population > 0 && orderCost.covered === orderCost.population;
+
+  // The profit card. Cost is booked when an order is COMPLETED (that is when its sale lines are
+  // written), so profit is shown for the completed orders on screen and says how many those are -
+  // an order still being made has revenue but no cost yet, and counting it would read as pure profit.
+  const profitCard = useMemo(() => {
+    const goods = (o) => Math.max(0, (o.totalPrice || 0) - (o.shipping || 0));
+    let revenue = 0, profit = 0, costed = 0, open = 0;
+    for (const o of filteredSales) {
+      if (o.status === 'cancelled') continue;
+      const c = costByOrder[String(o.id ?? o._id ?? '')];
+      if (c === undefined) { open += 1; continue; }
+      costed += 1;
+      revenue += goods(o);
+      profit += goods(o) - (Number(c.total) || 0);
+    }
+    return { profit: Math.round(profit * 100) / 100, margin: revenue > 0 ? profit / revenue : 0, costed, open };
+  }, [filteredSales, costByOrder]);
   const hasCostData  = (useOrderCost || costWindow.count > 0) && !searchQuery && !paymentFilter;
 
   // ── Reports aggregation (respects the current search/date/payment filters via filteredSales) ──
@@ -822,7 +693,13 @@ export default function SalesListPage() {
           {checkoutChargesShipping && (
             <SummaryCard label="Shipping Collected" value={formatPrice(m.shippingCollected)} sub="Held for delivery, not income" color="var(--st-blue-fg)" />
           )}
-          <SummaryCard label="Products Sold"      value={m.topProductsCount}               sub="Distinct products" color="var(--st-purple-fg)" />
+          {/* Was "Products sold: 7 distinct products" - a number nobody acts on. Profit is the one
+              the owner asks about, from the orders whose cost is known. */}
+          <SummaryCard label="Gross Profit" value={profitCard.costed ? formatPrice(profitCard.profit) : 'n/a'}
+            sub={profitCard.costed
+              ? `${Math.round(profitCard.margin * 100)}% margin on ${profitCard.costed} completed order${profitCard.costed === 1 ? '' : 's'}${profitCard.open ? ` - ${profitCard.open} still open, costed when done` : ''}`
+              : 'Booked when an order is completed'}
+            color={profitCard.profit >= 0 ? 'var(--st-green-fg)' : 'var(--st-red-fg)'} />
           {/* The cost of promotions, in one number. Revenue above is already net of it. */}
           {m.discounts > 0 && (
             <SummaryCard label="Discounts Given" value={formatPrice(m.discounts)} sub={`Vouchers on ${m.discountedOrders} order${m.discountedOrders === 1 ? '' : 's'} - already taken out of revenue`} color="var(--st-red-fg)" />
@@ -875,15 +752,9 @@ export default function SalesListPage() {
             )}
           </div>
           <div style={{ ...S.row, gap: '8px' }}>
-            <div style={{ display: 'flex', border: '1px solid var(--border)', borderRadius: '6px', overflow: 'hidden' }}>
-              {[['list', 'List'], ['reports', 'Reports']].map(([v, lbl]) => (
-                <button key={v} type="button" onClick={() => setView(v)}
-                  style={{ padding: '6px 13px', fontSize: '12px', fontWeight: 600, border: 'none', cursor: 'pointer',
-                    background: view === v ? 'var(--gold)' : 'var(--dark)', color: view === v ? 'var(--black)' : 'var(--gray)' }}>
-                  {lbl}
-                </button>
-              ))}
-            </div>
+            {/* The charts live in Reports. This page had its own copy that counted differently (per
+                line, not per order), so the same month showed two revenue figures on two screens. */}
+            <a href="/dashboard/business/reports" style={{ ...S.btnGhost, textDecoration: 'none', whiteSpace: 'nowrap' }}>Sales report</a>
             {/* Two formats because they answer different needs: CSV is the portable one that any
                 tool can read, Excel is the one a person opens and looks at. */}
             {mayExport && (<button type="button" onClick={exportCsv}
@@ -987,7 +858,6 @@ export default function SalesListPage() {
         )}
         </>)}
 
-        {view === 'reports' && !isLoading && <ReportsView reports={reports} hasCostData={hasCostData} />}
       </div>
     </ErrorBoundary>
   );
