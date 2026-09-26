@@ -230,7 +230,10 @@ export default function PosPage() {
       // Inquiry-priced services (T-Shirt Printing and the like) are kept, not dropped. They have no
       // catalogue price, so they are only offered in "To produce" mode where the agreed price is
       // typed in and the materials are picked by hand - the same shape the quotation uses.
-      setAllProducts(list.filter(p => !p.isArchived));
+      // Drafts stay (a counter can sell what the website does not show). A card whose variants were
+      // all removed - its BOMs deleted - has nothing left to ring up, so it is not offered.
+      setAllProducts(list.filter(p => !p.isArchived
+        && !(Array.isArray(p.variantGroups) && p.variantGroups.length > 0 && !(Array.isArray(p.combinations) && p.combinations.length > 0))));
     } catch (e) {
       setProdError(e.message || 'Failed to load products.');
       setAllProducts([]);

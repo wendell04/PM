@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { fetchWithTimeout } from '../../lib/fetchWithTimeout';
 import { uploadDesignFile, fetchCustomerOrderForms } from '../../lib/orderRequestApi';
-import { S, ICONS, Modal, Field, CustomSelect, IntegerInput, DecimalInput } from '@/app/dashboard/business/inventory-v2/shared';
+import { S, ICONS, Modal, Field, CustomSelect, IntegerInput, DecimalInput, ConfirmModal } from '@/app/dashboard/business/inventory-v2/shared';
 import { scrollToSection } from '@/lib/scrollToError';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
@@ -473,18 +473,22 @@ const QuotationModal = ({ onClose, onSubmit, isSending, token, customerId, custo
                   onChange={v => setMaterialPrice(l, m.inventoryId, v)}
                   style={{ padding: '2px 4px', fontSize: '11px', textAlign: 'right' }} />
                 <span style={{ fontSize: '11px', fontWeight: 700, color: billable ? 'var(--white)' : 'var(--gray)', textAlign: 'right' }}>
-                  {billable ? `₱${fmt(rowTotal)}` : 'cost only'}
+                  {billable ? `₱${fmt(rowTotal)}` : 'not billed'}
                 </span>
                 <button type="button" onClick={() => removeMaterial(l, m.inventoryId)}
                   style={{ background: 'none', border: 'none', color: '#e05252', cursor: 'pointer', fontSize: '14px', lineHeight: 1, padding: 0 }}>×</button>
               </div>
-              {(short || m.isOnDemand || noCost) && (
-                <div style={{ fontSize: '10px', paddingBottom: '3px', color: short || noCost ? '#e0a852' : 'var(--gray)' }}>
-                  {short && `Buy ${round4(need - available)} more`}
-                  {m.isOnDemand && `${short ? ' - ' : ''}Buy per order${m.leadTimeDays ? ` - ${m.leadTimeDays}d lead` : ''}`}
-                  {noCost && `${short || m.isOnDemand ? ' - ' : ''}no cost set`}
-                </div>
-              )}
+              {/* What it costs the shop, so the price is set against something. Margin once priced. */}
+              <div style={{ fontSize: '10px', paddingBottom: '3px', color: short || noCost ? '#e0a852' : 'var(--gray)' }}>
+                {[
+                  noCost ? 'no cost set' : `cost ₱${fmt(Number(m.unitCost))}/${m.uom || 'pc'}`,
+                  !noCost && price > 0 ? (price < Number(m.unitCost)
+                    ? `below cost - you lose ₱${fmt((Number(m.unitCost) - price) * need)}`
+                    : `margin ${Math.round(((price - Number(m.unitCost)) / price) * 100)}%`) : null,
+                  short ? `buy ${round4(need - available)} more` : null,
+                  m.isOnDemand ? `cost only${m.leadTimeDays ? `, ${m.leadTimeDays}d lead` : ''}` : null,
+                ].filter(Boolean).join(' - ')}
+              </div>
             </div>
           );
         })}
@@ -542,6 +546,10 @@ const QuotationModal = ({ onClose, onSubmit, isSending, token, customerId, custo
   // Send stays pressable. A greyed-out button that never says why is the "it won't proceed and I
   // cannot see the problem" trap; pressing it now names what is missing and goes there.
   const [missing, setMissing] = useState('');
+  // A service line with no material at all: allowed (the customer may bring the shirt), but it
+  // books pure profit and moves no stock, so it is a question, not a silent default.
+  const [confirmBare, setConfirmBare] = useState(false);
+  const bareLines = priced.filter(l => l.productId && !l.hasVariants && !(l.materials || []).length);
   const missingNow = !linesValid ? 'Every line needs a product, a quantity and a price above 0.'
     : !noDupes ? 'The same product is on two lines - put the quantities on one line.'
     : !deliverOk ? 'There is a delivery fee, so choose where it delivers to, under Deliver to.'
@@ -555,6 +563,8 @@ const QuotationModal = ({ onClose, onSubmit, isSending, token, customerId, custo
       return;
     }
     setMissing('');
+    if (bareLines.length && !confirmBare) { setConfirmBare(true); return; }
+    setConfirmBare(false);
     onSubmit({
       // Each variant row becomes its own item - it has its own price, its own BOM and
       // its own stock movement, so the order should carry them apart.
@@ -642,6 +652,15 @@ const QuotationModal = ({ onClose, onSubmit, isSending, token, customerId, custo
         </>
       }
     >
+      <ConfirmModal
+        open={confirmBare}
+        onClose={() => setConfirmBare(false)}
+        onConfirm={handleSubmit}
+        title="Send without materials?"
+        confirmStyle="primary"
+        confirmLabel="Send anyway"
+        message={`${bareLines.map(l => nameOf(l.productId)).join(', ')} ${bareLines.length === 1 ? 'has' : 'have'} no materials.\n\nNo stock will be held or used, and the whole price will read as profit. That is only right if the customer supplies everything - otherwise go back and add what the job uses (e.g. the blank shirt).`}
+      />
       <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
         {/* What this quotation answers. Nothing is shown when the customer has filled nothing in,
             one waiting form is simply attached, and the choice appears only when there are two -
@@ -804,6 +823,12 @@ const QuotationModal = ({ onClose, onSubmit, isSending, token, customerId, custo
                                   : r.canBuild >= r.qty ? '#4ade80'
                                   : r.canBuild > 0 ? '#e0a852' : '#e05252' }}>
                                 {r.canBuild == null ? 'made to order' : `${r.canBuild} can build`}
+                                {unitCost > 0 && (
+                                  <span style={{ color: 'var(--gray)', fontWeight: 500 }}>
+                                    {` - floor ₱${fmt(unitCost)}/pc`}
+                                    {r.unitPrice > 0 && r.unitPrice >= unitCost ? `, margin ${Math.round(((r.unitPrice - unitCost) / r.unitPrice) * 100)}%` : ''}
+                                  </span>
+                                )}
                               </span>
                             </span>
                             <IntegerInput value={r.qtyRaw} max={MAX_QTY}

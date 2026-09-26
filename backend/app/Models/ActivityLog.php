@@ -134,6 +134,32 @@ class ActivityLog extends Model
 
     protected static function booted(): void
     {
+        // Thirteen places write an entry by hand, from before logActivity() existed. Most set only an
+        // email - and some put the person's NAME where their account id belongs - so the list showed
+        // "personalizemeprints.admin@gmail.com" beside "Personalize Me Prints ADMIN" for one person,
+        // with no role or address. Whatever a writer left out is filled here from the signed-in
+        // account, so every entry carries the same who / role / where.
+        static::creating(function (ActivityLog $log) {
+            try {
+                $request = request();
+                $user = $request?->user();
+                if (!$user) return;
+                $id = (string) ($user->_id ?? $user->id ?? '');
+                $by = (string) ($log->performedBy ?? '');
+                if ($by === '' || !preg_match('/^[a-f0-9]{24}$/i', $by)) {
+                    if ($by !== '' && empty($log->performedByName)) $log->performedByName = $by;
+                    $log->performedBy = $id;
+                }
+                if ($by === $id || $log->performedBy === $id) {
+                    if (empty($log->performedByName))  $log->performedByName  = trim(($user->firstName ?? '') . ' ' . ($user->lastName ?? '')) ?: null;
+                    if (empty($log->performedByEmail)) $log->performedByEmail = $user->email ?? null;
+                    if (empty($log->performedByRole))  $log->performedByRole  = $user->role ?? null;
+                }
+                if (empty($log->ip))     $log->ip     = $request->ip();
+                if (empty($log->device)) $log->device = substr((string) $request->userAgent(), 0, 255);
+            } catch (\Throwable $e) { /* never block the write it describes */ }
+        });
+
         static::updating(function () {
             throw new \RuntimeException(
                 'An audit log entry cannot be changed. If this is a new kind of event, write a new entry.'

@@ -63,7 +63,10 @@ class ActivityLogController extends Controller
                     'entityId'    => $l->entityId,
                     'description' => $l->description,
                     'actorId'     => $l->performedBy,
-                    'actorName'   => $l->performedByName ?: ($l->performedByEmail ?: 'Someone not signed in'),
+                    // Older hand-written entries kept the NAME in performedBy (not an id); show it.
+                    'actorName'   => $l->performedByName
+                        ?: ((is_string($l->performedBy) && $l->performedBy !== '' && !preg_match('/^[a-f0-9]{24}$/i', $l->performedBy)) ? $l->performedBy : null)
+                        ?: ($l->performedByEmail ?: 'Someone not signed in'),
                     'actorEmail'  => $l->performedByEmail,
                     'actorRole'   => $l->performedByRole,
                     'ip'          => $l->ip,
