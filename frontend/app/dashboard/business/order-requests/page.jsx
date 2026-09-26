@@ -87,11 +87,10 @@ function daysLeft(req) {
   return Math.ceil((t.getTime() - Date.now()) / 86400000);
 }
 
-// What the shop has SENT, plus the asks still waiting for a price. Asks are answered in Messages,
-// but a count with no list behind it ("12 asks") could never be checked or cleared - stale
-// enquiries from weeks ago sat in it for good. They are listed under their own filter.
+// What the shop has SENT. A customer's ask is not a quotation yet: it arrives as a chat message
+// with a notification, and is answered from that chat with Create Quotation - the chat is the inbox.
+// Listing asks here as well (with a "12 asks waiting" banner) was a second inbox for the same thing.
 const FILTER_OPTIONS = [
-  { key: 'ask',       label: 'Asks - waiting for a price' },
   { key: 'quoted',    label: 'Sent' },
   { key: 'accepted',  label: 'Accepted' },
   { key: 'expired',   label: 'Expired' },
@@ -448,22 +447,6 @@ export default function OrderRequestsPage() {
           customerId={quoteFor.id}
           customerName={quoteFor.name}
           initialAskId={quoteAskId} />
-      )}
-      {/* Asks are answered in Messages, not here. But a count that lives only in Messages is a
-          count nobody sees until they open Messages, so it is repeated where quotations live. */}
-      {owner && (cardCounts.ask ?? 0) > 0 && activeFilter !== 'ask' && (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap',
-          margin: '0 0 1rem', padding: '0.75rem 1rem', borderRadius: 10,
-          background: 'rgba(212,168,67,0.08)', border: '1px solid rgba(212,168,67,0.35)' }}>
-          <span style={{ fontSize: '0.85rem', color: 'var(--white)' }}>
-            <strong style={{ color: 'var(--gold)' }}>{cardCounts.ask} ask{cardCounts.ask === 1 ? '' : 's'}</strong> waiting for a price.
-            Quote them, or decline the ones that went quiet.
-          </span>
-          <button type="button" onClick={() => setActiveFilter('ask')}
-            style={{ background: 'none', border: 'none', padding: 0, fontSize: '0.8rem', fontWeight: 700, color: 'var(--gold)', whiteSpace: 'nowrap', cursor: 'pointer', fontFamily: 'inherit' }}>
-            See them
-          </button>
-        </div>
       )}
 
       {isPhone ? (

@@ -322,15 +322,14 @@ export default function PosPage() {
     return () => { cancelled = true; };
   }, [token]);
 
-  const matResults = useMemo(() => {
-    const q = matSearch.trim().toLowerCase();
-    if (!q) return [];
-    return inventoryList.filter(i => {
-      const chosen = svcMaterials.some(m => m.inventoryId === String(i.id ?? i._id));
-      if (chosen) return false;
-      return `${i.name ?? ''} ${i.sku ?? ''} ${i.category ?? ''}`.toLowerCase().includes(q);
-    }).slice(0, 8);
-  }, [matSearch, inventoryList, svcMaterials]);
+  // Master Data as dropdown options, minus what is already on the job. One searchable list, the
+  // same way Create Quotation picks materials, instead of a search box that spilled every match
+  // into the sheet.
+  const matOptions = useMemo(() => inventoryList
+    .filter(i => !svcMaterials.some(m => m.inventoryId === String(i.id ?? i._id)))
+    .map(i => ({ value: String(i.id ?? i._id), label: `${i.name ?? 'Material'} - ${Number(i.stockQty ?? 0)} ${i.uom ?? ''} on hand` })),
+  [inventoryList, svcMaterials]);
+  const [pickingMat, setPickingMat] = useState(false);
 
   function addMaterial(inv) {
     setSvcMaterials(prev => [...prev, {
@@ -341,6 +340,7 @@ export default function PosPage() {
       stockQty: Number(inv.stockQty ?? 0),
     }]);
     setMatSearch('');
+    setPickingMat(false);
   }
 
   /** Open the job sheet for a product, with whatever is already known filled in. */
@@ -356,7 +356,7 @@ export default function PosPage() {
 
   function closeJobSheet() {
     setServiceModal(null); setSvcVariant(null); setSvcLocked(false);
-    setSvcPrice(''); setSvcQty(1); setSvcMaterials([]); setMatSearch('');
+    setSvcPrice(''); setSvcQty(1); setSvcMaterials([]); setMatSearch(''); setPickingMat(false);
   }
 
   function confirmService() {
@@ -1201,29 +1201,33 @@ export default function PosPage() {
               style={inputStyle}
              maxLength={12}/>
 
-            <label style={{ ...S.label, display: 'block', margin: '0.9rem 0 0.375rem' }}>Materials this job consumes</label>
-            <input
-              value={matSearch}
-              onChange={e => setMatSearch(e.target.value)}
-              placeholder="Search Master Data, e.g. white t-shirt"
-              style={inputStyle}
-             maxLength={100}/>
-            {matResults.length > 0 && (
-              <div style={{ marginTop: 6, border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
-                {matResults.map(inv => (
-                  <button key={String(inv.id ?? inv._id)} type="button" onClick={() => addMaterial(inv)}
-                    style={{ width: '100%', textAlign: 'left', padding: '8px 10px', background: 'var(--dark2)', border: 'none', borderBottom: '1px solid var(--border)', color: 'var(--white)', cursor: 'pointer', fontSize: '0.8rem' }}>
-                    {inv.name}
-                    <span style={{ color: 'var(--gray)', fontSize: '0.72rem', marginLeft: 6 }}>
-                      {Number(inv.stockQty ?? 0)} {inv.uom ?? ''} on hand
-                    </span>
+            <div style={{ marginTop: '0.9rem', padding: '10px 12px', background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                <span style={{ ...S.label, margin: 0 }}>Materials used</span>
+                {!pickingMat && (
+                  <button type="button" onClick={() => setPickingMat(true)}
+                    style={{ background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: 7, padding: '5px 10px', fontSize: '0.75rem', fontWeight: 600, color: 'var(--white)', cursor: 'pointer' }}>
+                    + Add material
                   </button>
-                ))}
+                )}
               </div>
-            )}
-
+              {pickingMat && (
+                <div style={{ marginTop: 8, display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <CustomSelect searchable value="" placeholder="Pick from Master Data, e.g. white t-shirt"
+                      options={matOptions} emptyLabel="Nothing left to add"
+                      onChange={id => {
+                        const inv = inventoryList.find(i => String(i.id ?? i._id) === String(id));
+                        if (inv) addMaterial(inv);
+                        setPickingMat(false);
+                      }} />
+                  </div>
+                  <button type="button" onClick={() => setPickingMat(false)} aria-label="Stop adding"
+                    style={{ background: 'none', border: 'none', color: 'var(--gray)', cursor: 'pointer', fontSize: '1rem' }}>×</button>
+                </div>
+              )}
             {svcMaterials.length > 0 && (
-              <div style={{ marginTop: 10, display: 'grid', gap: 6 }}>
+              <div style={{ marginTop: 8, display: 'grid', gap: 6 }}>
                 <div style={{ fontSize: '0.68rem', color: 'var(--gray)', textAlign: 'right', paddingRight: 26 }}>Per piece</div>
                 {svcMaterials.map((m, i) => {
                   const pieces = Number(svcQty) || 1;
@@ -1256,10 +1260,12 @@ export default function PosPage() {
               </div>
             )}
             {svcMaterials.length === 0 && (
-              <div style={{ marginTop: 8, fontSize: '0.72rem', color: 'var(--gray)' }}>
-                None linked yet. Without materials this job will not reduce any stock.
+              <div style={{ marginTop: 8, fontSize: '0.72rem', lineHeight: 1.5, color: 'var(--st-orange-fg)' }}>
+                No materials - selling this takes nothing off the shelf, and the stock keeps showing material
+                the job used up. Add what it consumes (e.g. the blank shirt).
               </div>
             )}
+            </div>
 
             {svcPrice && (
               <div style={{ marginTop: '1rem', padding: '9px 11px', background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: 8, display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem' }}>

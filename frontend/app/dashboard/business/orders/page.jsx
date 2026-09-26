@@ -3940,15 +3940,21 @@ export default function OrdersPage() {
                             : `₱${fmt(o.totalAmount ?? o.totalPrice)}`}
                         </td>
                         <td data-label="Status" style={{ ...S.td, textAlign:'center' }}>
+                          {/* One wrapping row with a gap on every side: pills that spilled onto a
+                              second line used to sit touching the ones above them. */}
+                          <div style={{ display:'flex', flexWrap:'wrap', justifyContent:'center', alignItems:'center', gap:'5px' }}>
                           <StatusBadge status={o.orderStatus} />
-                          {isArch && <span style={{ ...S.badge, fontSize:'10px', background:'var(--st-gray-bg)', color:'var(--st-gray-fg)', border:'1px solid var(--border)', marginLeft:'4px' }}>Archived</span>}
-                          {isExpired(o) && <span style={{ ...S.badge, fontSize:'10px', background:'var(--st-orange-bg)', color:'var(--st-orange-fg)', border:'1px solid rgba(251,146,60,0.35)', marginLeft:'4px' }}>Expired</span>}
+                          {isArch && <span style={{ ...S.badge, fontSize:'10px', background:'var(--st-gray-bg)', color:'var(--st-gray-fg)', border:'1px solid var(--border)' }}>Archived</span>}
+                          {isExpired(o) && <span style={{ ...S.badge, fontSize:'10px', background:'var(--st-orange-bg)', color:'var(--st-orange-fg)', border:'1px solid rgba(251,146,60,0.35)' }}>Expired</span>}
                           {(() => {
-                            // The delivery promise used to lapse silently. Surface it on the row.
+                            // The delivery promise used to lapse silently. Surface it on the row -
+                            // but not on an archived order: nobody is working it, so "overdue" is noise.
+                            if (isArch) return null;
                             const risk = deliveryRisk(o);
                             if (!risk) return null;
-                            return <span title={risk.reason} style={{ ...S.badge, ...RISK_STYLE[risk.color], fontSize:'10px', fontWeight:700, marginLeft:'4px' }}>{risk.label}</span>;
+                            return <span title={risk.reason} style={{ ...S.badge, ...RISK_STYLE[risk.color], fontSize:'10px', fontWeight:700 }}>{risk.label}</span>;
                           })()}
+                          </div>
                         </td>
                         <td data-label="Payment" style={{ ...S.td, textAlign:'center' }}>
                           <PayBadge status={o.paymentStatus} method={o.paymentMethod} />
