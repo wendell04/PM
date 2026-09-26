@@ -120,7 +120,8 @@ export default function ToBuyPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState('');
   const [search, setSearch]   = useState('');
-  const [reason, setReason]   = useState('all');   // all | orders | minimum
+  // ?show=orders|minimum|forecast - Home's stock chips open the list already narrowed.
+  const [reason, setReason]   = useState(() => (['orders', 'minimum', 'forecast'].includes(searchParams.get('show')) ? searchParams.get('show') : 'all'));
   // Set the minimum where the shortage is seen. inventoryId -> the value being typed.
   const [minEdit, setMinEdit] = useState({});
   const [minSaving, setMinSaving] = useState(null);

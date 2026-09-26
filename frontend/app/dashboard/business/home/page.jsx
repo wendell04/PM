@@ -99,8 +99,8 @@ export default function StaffHome() {
       // What is on the shelf. "To Buy" answers what a committed order still needs; this answers the
       // question before that one - what is running out, whether or not anything has been ordered.
       fetchWithTimeout(`${API_URL}/api/admin/inventory?limit=500`, { headers }, 20000),
-      // One count: price requests nobody has quoted yet.
-      fetchWithTimeout(`${API_URL}/api/admin/order-requests/stats`, { headers }, 15000),
+      // Price requests are counted on Quotations (with the list behind the count), not here.
+      Promise.resolve(null),
     ]);
     try {
       if (o.status === 'fulfilled' && o.value.ok) {
@@ -128,7 +128,7 @@ export default function StaffHome() {
         const rows = Array.isArray(j?.data) ? j.data : (j?.data?.data ?? []);
         setStock(Array.isArray(rows) ? rows : []);
       }
-      if (qs.status === 'fulfilled' && qs.value.ok) {
+      if (qs.status === 'fulfilled' && qs.value?.ok) {
         const j = await qs.value.json();
         setQuotesWaiting(Number(j?.data?.pending ?? 0));
       }
@@ -375,7 +375,6 @@ export default function StaffHome() {
     const chips = [
       { n: stageCount.todo, label: 'to start', href: '/dashboard/business/orders?stage=todo' },
       { n: board.filesToCheck.length + board.proofsToDraft.length, label: 'designs to check or draft', href: '/dashboard/business/orders' },
-      { n: quotesWaiting ?? 0, label: 'price requests to quote', href: '/dashboard/business/order-requests' },
       { n: stageCount.making, label: 'being made', href: '/dashboard/business/orders?stage=making', calm: true },
       { n: stageCount.toship, label: 'ready to ship', href: '/dashboard/business/orders?stage=toship' },
       { n: desk.balancesDue.length, label: 'with a balance due', href: '/dashboard/business/payments' },
@@ -578,7 +577,7 @@ export default function StaffHome() {
               : profile === 'frontdesk' ? 'The counter - who still owes, and what is ready to go out.'
               : profile === 'inventory' ? 'The shelves - what to buy, and what is running low.'
               : blocked.length === 0
-                ? 'Nothing is blocked. Everything open is moving.'
+                ? ''
                 : 'Start here - these are the things that are not moving on their own.'}
           </div>
         </div>
@@ -735,6 +734,27 @@ export default function StaffHome() {
                   <div style={{ padding: '14px 16px', fontSize: 13, color: 'var(--gray)' }}>
                     Nothing needs restocking right now.
                   </div>
+                ) : profile === 'owner' ? (
+                  // The owner needs the count and a door, not the shelf: To Buy has every row, with
+                  // the quantity to order and the supplier, already filtered by the chip pressed.
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, padding: '12px 16px' }}>
+                    {[
+                      { n: short.length, label: 'short for orders already taken', show: 'orders', bad: true },
+                      { n: out.length, label: 'out of stock', show: 'minimum', bad: true },
+                      { n: low.length, label: 'at or below minimum', show: 'minimum' },
+                    ].filter(c => c.n > 0).map(c => (
+                      <button key={c.label} type="button" onClick={() => router.push(`/dashboard/business/to-buy?show=${c.show}`)}
+                        style={{ display: 'inline-flex', alignItems: 'baseline', gap: 6, padding: '7px 12px', borderRadius: 999, cursor: 'pointer', fontFamily: 'inherit', fontSize: 13,
+                          color: 'var(--white)', background: c.bad ? 'var(--st-red-bg)' : 'var(--gold-subtle)',
+                          border: `1px solid ${c.bad ? 'color-mix(in srgb, var(--st-red-fg) 40%, transparent)' : 'var(--gold)'}` }}>
+                        <strong style={{ fontSize: 15, color: c.bad ? 'var(--st-red-fg)' : 'var(--gold)' }}>{c.n}</strong>
+                        <span>{c.label}</span>
+                      </button>
+                    ))}
+                    <span style={{ alignSelf: 'center', fontSize: 12, color: 'var(--gray)' }}>
+                      {(() => { const names = [...new Set(short.concat(worst).map(x => x.name))]; return names.slice(0, 3).join(', ') + (names.length > 3 ? ' and more' : ''); })()}
+                    </span>
+                  </div>
                 ) : (
                   <div>
                     {short.map(i => (
@@ -814,13 +834,16 @@ export default function StaffHome() {
                 {today.latest.length === 0 ? (
                   <div style={{ padding: '14px 16px', fontSize: 13, color: 'var(--gray)' }}>No orders yet.</div>
                 ) : today.latest.map((o, i) => (
-                  <div key={o._id ?? o.id ?? i} onClick={() => router.push('/dashboard/business/orders')}
+                  <div key={o._id ?? o.id ?? i} onClick={() => router.push(`/dashboard/business/orders?order=${o._id ?? o.id}`)}
                     style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 16px', borderTop: i ? '1px solid var(--border)' : 'none', fontSize: 13, cursor: 'pointer' }}>
                     <span style={{ fontFamily: 'monospace', color: 'var(--gold)', fontSize: 12 }}>{orderNo(o)}</span>
                     <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--gray)' }}>
                       {o.userSnapshot?.name || o.customerName || o.customer?.name || [o.customer?.firstName, o.customer?.lastName].filter(Boolean).join(' ') || o.walkIn?.name || 'Walk-in'}
                     </span>
-                    <span style={{ fontSize: 11.5, color: statusColor(o.orderStatus).color, whiteSpace: 'nowrap' }}>{statusLabel(o.orderStatus)}</span>
+                    {(() => { const c = statusColor(o.orderStatus ?? o.status); return (
+                      <span style={{ fontSize: 10.5, fontWeight: 700, padding: '2px 8px', borderRadius: 999, whiteSpace: 'nowrap',
+                        color: c.color, background: c.bg, border: `1px solid ${c.border}` }}>{statusLabel(o.orderStatus ?? o.status)}</span>
+                    ); })()}
                     <span style={{ minWidth: 86, textAlign: 'right', fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{peso(o.totalAmount)}</span>
                   </div>
                 ))}
@@ -975,44 +998,6 @@ export default function StaffHome() {
             })}
           </div>
 
-          {profile === 'owner' && !loading && (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))', gap: 16, marginBottom: 18 }}>
-              <div style={{ ...S.card, padding: 0, overflow: 'hidden', minWidth: 0 }}>
-                <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', fontSize: 13, fontWeight: 700 }}>Top products this month</div>
-                {topProducts.length === 0 ? (
-                  <EmptyState message="No orders yet this month" sub="Products appear here as orders come in." />
-                ) : topProducts.map((p, i) => (
-                  <div key={p.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '11px 16px', borderTop: i === 0 ? 'none' : '1px solid var(--border)' }}>
-                    <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--white)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
-                    <span style={{ textAlign: 'right', flexShrink: 0 }}>
-                      <span style={{ display: 'block', fontSize: 13, fontWeight: 700, color: 'var(--gold)' }}>{p.qty.toLocaleString()} pcs</span>
-                      <span style={{ display: 'block', fontSize: 11, color: 'var(--gray)' }}>{peso(p.revenue)}</span>
-                    </span>
-                  </div>
-                ))}
-              </div>
-              <div style={{ ...S.card, padding: 0, overflow: 'hidden', minWidth: 0 }}>
-                <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', fontSize: 13, fontWeight: 700 }}>Recent orders</div>
-                {recentOrders.length === 0 ? (
-                  <EmptyState message="No orders yet" />
-                ) : recentOrders.map((o, i) => {
-                  const c = statusColor(o.orderStatus ?? o.status);
-                  return (
-                    <div key={o._id ?? o.id ?? i} onClick={() => router.push(`/dashboard/business/orders?order=${o._id ?? o.id}`)}
-                      style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', cursor: 'pointer', borderTop: i === 0 ? 'none' : '1px solid var(--border)' }}>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontFamily: 'monospace', fontSize: 12, fontWeight: 700, color: 'var(--white)' }}>{orderNo(o)}</div>
-                        <div style={{ fontSize: 11.5, color: 'var(--gray)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.customerName || '-'}</div>
-                      </div>
-                      <span style={{ fontSize: 10.5, fontWeight: 700, padding: '2px 8px', borderRadius: 999, whiteSpace: 'nowrap',
-                        color: c.color, background: c.bg, border: `1px solid ${c.border}` }}>{statusLabel(o.orderStatus ?? o.status)}</span>
-                      <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--gold)', whiteSpace: 'nowrap' }}>{peso(o.totalAmount)}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
 
           {/* ── The launchpad ── */}
           <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10 }}>
