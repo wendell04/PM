@@ -97,6 +97,23 @@ export default function PaymentSuccessPage() {
         const data = await res.json();
         const fetched = data.data ?? data;
         setOrder(fetched);
+        // A paid quotation has become an order, and the receipt is the ORDER's. The quote speaks
+        // its own vocabulary ("downpayment_paid", no balance), which this receipt does not read -
+        // so a 3,915 deposit on a 7,830 quote was shown as "Payment Successful, Total Paid 7,830,
+        // Paid". The order says partial, what was paid and what is left, and carries the same
+        // number My Orders shows.
+        if (isOrderRequest && fetched?.convertedOrderId) {
+          try {
+            const r2 = await fetchWithTimeout(`${API_URL}/api/orders/my/${fetched.convertedOrderId}`, {
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            }, 10000);
+            if (r2.ok) {
+              const d2 = await r2.json();
+              const converted = d2?.data ?? d2;
+              if (converted && (converted._id || converted.id)) setOrder(converted);
+            }
+          } catch { /* the quote's own figures stay on screen */ }
+        }
 
         // Re-opening the receipt later: just render it, never poll or redirect to "failed".
         if (viewOnly) {
