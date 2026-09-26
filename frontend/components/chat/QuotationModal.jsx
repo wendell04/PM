@@ -835,7 +835,7 @@ const QuotationModal = ({ onClose, onSubmit, isSending, token, customerId, custo
                                 {c.name} - {need} {c.uom} - {short
                                   ? `${available} available, buy ${round4(need - available)} more`
                                   : `${available} available`}
-                                {c.isOnDemand && `${c.leadTimeDays ? ` - ${c.leadTimeDays}d lead` : ' - buy per order'}`}
+                                {c.isOnDemand && ` - cost only${c.leadTimeDays ? `, ${c.leadTimeDays}d lead` : ''}`}
                                 {!Number(c.unitCost) && ' - no cost set'}
                               </div>
                             );
@@ -912,7 +912,7 @@ const QuotationModal = ({ onClose, onSubmit, isSending, token, customerId, custo
                                 borderBottom: '1px solid var(--border)', padding: '6px 8px', cursor: 'pointer' }}>
                               <div style={{ fontSize: '12px', color: 'var(--white)' }}>{inv.name}</div>
                               <div style={{ fontSize: '10px', color: 'var(--gray)' }}>
-                                {[inv.category, inv.uom, inv.isOnDemand ? 'buy per order' : `${inv.stockQty ?? 0} in stock`].filter(Boolean).join(' · ')}
+                                {[inv.category, inv.uom, `${inv.stockQty ?? 0} in stock`, inv.isOnDemand ? 'cost only' : null, !inv.isOnDemand && Number(inv.stockQty ?? 0) <= 0 ? 'goes on To Buy when paid' : null].filter(Boolean).join(' · ')}
                               </div>
                             </button>
                           ))}
@@ -976,7 +976,7 @@ const QuotationModal = ({ onClose, onSubmit, isSending, token, customerId, custo
                                     borderBottom: '1px solid var(--border)', padding: '6px 8px', cursor: 'pointer' }}>
                                   <div style={{ fontSize: '12px', color: 'var(--white)' }}>{inv.name}</div>
                                   <div style={{ fontSize: '10px', color: 'var(--gray)' }}>
-                                    {[inv.category, inv.uom, inv.isOnDemand ? 'buy per order' : `${inv.stockQty ?? 0} in stock`].filter(Boolean).join(' · ')}
+                                    {[inv.category, inv.uom, `${inv.stockQty ?? 0} in stock`, inv.isOnDemand ? 'cost only' : null, !inv.isOnDemand && Number(inv.stockQty ?? 0) <= 0 ? 'goes on To Buy when paid' : null].filter(Boolean).join(' · ')}
                                   </div>
                                 </button>
                               );

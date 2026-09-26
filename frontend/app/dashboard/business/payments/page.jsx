@@ -9,7 +9,7 @@ import ErrorBoundary from '@/components/ErrorBoundary';
 import useLockBodyScroll from '@/lib/useLockBodyScroll';
 import { orderNo } from '@/lib/orderNumber';
 import { normalizeStatus } from '@/lib/orderStatus';
-import { S, ICONS, SearchBar, SummaryCard, PaginationBar, EmptyState, usePagination, CustomSelect } from '../inventory-v2/shared';
+import { S, ICONS, SearchBar, SummaryCard, PaginationBar, EmptyState, usePagination, CustomSelect, ConfirmModal } from '../inventory-v2/shared';
 import { useIsPhone, KpiStrip, PhoneFilterBar, PhoneList, PhoneRow, pesoShort } from '@/components/dashboard/phone';
 
 // Accounts receivable. Sales answers "what did we sell"; this answers "what have we collected and
@@ -430,26 +430,28 @@ export default function PaymentsPage() {
                 onChange={e => { setPayForm(f => ({ ...f, note: e.target.value })); setPayReview(false); }}
                 placeholder={needsRef ? 'From the GCash or bank receipt' : 'e.g. COD collected by rider'} style={S.input} disabled={paying} />
 
-              {payReview && (
-                <div style={{ ...S.note, marginTop: 12, fontSize: 13, lineHeight: 1.55 }}>
-                  Record <strong>{fmt(Number(payForm.amount))}</strong> from <strong>{customerOf(modalOrder)}</strong>
-                  {needsRef ? <> (ref {payForm.note.trim()})</> : null}? Only if the money is actually in hand or in the
-                  account - this updates what the order owes and emails the customer a receipt.
-                </div>
-              )}
 
               {payError && <div style={{ ...S.note, background: 'var(--st-red-bg)', borderColor: 'rgba(239,68,68,0.35)', color: 'var(--st-red-fg)', marginTop: 12 }}>{payError}</div>}
               {paySuccess && <div style={{ ...S.note, background: 'var(--st-green-bg)', borderColor: 'rgba(34,197,94,0.35)', color: 'var(--st-green-fg)', marginTop: 12 }}>{paySuccess}</div>}
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
-                {payReview
-                  ? <button onClick={() => setPayReview(false)} disabled={paying} style={S.btnGhost}>Back</button>
-                  : <button onClick={() => setModalOrder(null)} disabled={paying} style={S.btnGhost}>Close</button>}
-                <button onClick={handleRecordPayment} disabled={paying} style={S.btnPrimary}>{paying ? 'Recording…' : payReview ? 'Yes, record it' : 'Review payment'}</button>
+                <button onClick={() => setModalOrder(null)} disabled={paying} style={S.btnGhost}>Close</button>
+                <button onClick={handleRecordPayment} disabled={paying} style={S.btnPrimary}>{paying ? 'Recording…' : 'Record payment'}</button>
               </div>
             </div>
           </div>
         )}
+        {/* Its own dialog, on top - money is not written on the first click. */}
+        <ConfirmModal
+          open={!!modalOrder && payReview}
+          onClose={() => !paying && setPayReview(false)}
+          onConfirm={handleRecordPayment}
+          loading={paying}
+          title="Record this payment?"
+          confirmStyle="primary"
+          confirmLabel="Yes, record it"
+          message={modalOrder ? `${fmt(Number(payForm.amount))} from ${customerOf(modalOrder)}${needsRef && payForm.note.trim() ? ` (ref ${payForm.note.trim()})` : ''}.\n\nOnly if the money is actually in hand or in the account. This updates what the order owes and emails the customer a receipt.` : ''}
+        />
 
         {historyOrder && (
           <div onClick={() => setHistoryOrder(null)} style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, background: 'rgba(0,0,0,0.45)' }}>

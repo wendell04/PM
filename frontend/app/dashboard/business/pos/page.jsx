@@ -338,6 +338,9 @@ export default function PosPage() {
       uom: inv.uom ?? '',
       qty: 1,
       stockQty: Number(inv.stockQty ?? 0),
+      // Cost only (Master Data): used and costed, but never blocks a sale - so "not enough" is
+      // not a warning for it, it is a thing to buy.
+      costOnly: !!inv.isOnDemand,
     }]);
     setMatSearch('');
     setPickingMat(false);
@@ -1232,13 +1235,14 @@ export default function PosPage() {
                 {svcMaterials.map((m, i) => {
                   const pieces = Number(svcQty) || 1;
                   const total = Math.round((Number(m.qty) || 0) * pieces * 10000) / 10000;
-                  const short = total > Number(m.stockQty);
+                  const short = !m.costOnly && total > Number(m.stockQty);
+                  const toBuy = m.costOnly && total > Number(m.stockQty);
                   return (
                     <div key={m.inventoryId} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 9px', background: 'var(--dark2)', border: `1px solid ${short ? 'var(--st-red-fg)' : 'var(--border)'}`, borderRadius: 8 }}>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: '0.78rem', color: 'var(--white)' }}>{m.name}</div>
                         <div style={{ fontSize: '0.68rem', color: short ? 'var(--st-red-fg)' : 'var(--gray)' }}>
-                          {total} {m.uom} for {pieces} piece{pieces === 1 ? '' : 's'} · {Number(m.stockQty)} on hand{short ? ' - not enough' : ''}
+                          {total} {m.uom} for {pieces} piece{pieces === 1 ? '' : 's'} · {Number(m.stockQty)} on hand{short ? ' - not enough' : toBuy ? ' - cost only, buy for this job' : ''}
                         </div>
                       </div>
                       <input

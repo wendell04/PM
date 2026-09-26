@@ -916,6 +916,17 @@ export default function BusinessDashboardLayout({ children }) {
                 Open the order
               </a>
             )}
+            {/* Any in-app page, for notices that are not about an order or a chat (a material
+                running low opens To Buy). Only a path inside the app is followed. */}
+            {typeof selectedNotif.data?.link === 'string' && selectedNotif.data.link.startsWith('/dashboard/') && (
+              <a
+                href={selectedNotif.data.link}
+                style={{ fontSize: '0.8rem', color: 'var(--gold)', textDecoration: 'none', fontWeight: 600 }}
+                onClick={() => setSelectedNotif(null)}
+              >
+                {selectedNotif.data.linkLabel || 'Open'}
+              </a>
+            )}
             {selectedNotif.data?.conversationId && (
               <a
                 href={`/dashboard/business/chat`}

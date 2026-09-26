@@ -79,6 +79,7 @@ function StockOutModal({ open, onClose, material, currentStock, materialBatches,
 
   if (!open) return null;
   return (
+    <>
     <Modal
       open={open}
       onClose={handleClose}
@@ -86,12 +87,8 @@ function StockOutModal({ open, onClose, material, currentStock, materialBatches,
       width={480}
       footer={
         <>
-          {reviewing
-            ? <button onClick={() => setReviewing(false)} style={S.btnGhost}>Back</button>
-            : <button onClick={handleClose} style={S.btnGhost}>Cancel</button>}
-          <button onClick={submit} style={S.btnDanger}>
-            {ICONS.warn} {reviewing ? `Yes, remove ${Number(qty) || 0} ${material?.unit ?? ''}` : 'Review reduction'}
-          </button>
+          <button onClick={handleClose} style={S.btnGhost}>Cancel</button>
+          <button onClick={submit} style={S.btnDanger}>{ICONS.warn} Remove stock</button>
         </>
       }
     >
@@ -154,14 +151,22 @@ function StockOutModal({ open, onClose, material, currentStock, materialBatches,
             )}
           </div>
         )}
-        {reviewing && (
-          <div role="alert" style={{ border:'1px solid var(--st-red-fg)', borderRadius:'8px', padding:'10px 14px', fontSize:'13px', lineHeight:1.55, color:'var(--white)' }}>
-            Remove <b>{Number(qty)} {material?.unit}</b> of <b>{material?.name}</b> as <b>{reason}</b>? Stock goes from {currentStock} to {currentStock - Number(qty)}.
-            {' '}This is recorded permanently and in the audit trail - putting it back later is a new stock-in, not an undo.
-          </div>
-        )}
       </div>
     </Modal>
+    {/* Its own dialog, on top: a summary inside the same window was one click past. */}
+    <ConfirmModal
+      open={reviewing}
+      onClose={() => setReviewing(false)}
+      onConfirm={submit}
+      title="Remove this stock?"
+      confirmLabel={`Yes, remove ${Number(qty) || 0} ${material?.unit ?? ''}`}
+      confirmStyle="danger"
+      message={`${Number(qty) || 0} ${material?.unit ?? ''} of ${material?.name ?? 'this material'} as ${reason}.
+Stock goes from ${currentStock} to ${currentStock - (Number(qty) || 0)}.
+
+This is permanent and recorded in the audit trail. Putting it back later is a new stock-in, not an undo.`}
+    />
+    </>
   );
 }
 

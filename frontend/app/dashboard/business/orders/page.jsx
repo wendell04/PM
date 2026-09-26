@@ -338,23 +338,24 @@ function PaymentModal({ order, onClose, onSuccess }) {
         </div>
       </div>
 
-      {reviewing && (
-        <div style={{ ...S.noteInfo, marginTop:'14px', fontSize:'13px', lineHeight:1.55 }}>
-          Record <strong>₱{fmt(parseFloat(amount))}</strong> {({ cash:'cash', gcash:'GCash', bank_transfer:'bank transfer', cod:'COD' })[method] || method}
-          {' '}from <strong>{order.customerName}</strong>{needsRef && note.trim() ? <> (ref {note.trim()})</> : null}?
-          {' '}Only if the money is actually in hand or in the account - this marks the order
-          {parseFloat(amount) >= owed - 0.01 ? ' fully paid' : ' partly paid'} and emails the customer a receipt.
-        </div>
-      )}
       <ModalFooter>
-        {reviewing
-          ? <button onClick={() => setReviewing(false)} disabled={submitting} style={S.btnGhost}>Back</button>
-          : <button onClick={onClose} disabled={submitting} style={S.btnGhost}>Cancel</button>}
-        <button onClick={reviewing ? handleSubmit : review} disabled={submitting}
+        <button onClick={onClose} disabled={submitting} style={S.btnGhost}>Cancel</button>
+        <button onClick={review} disabled={submitting}
           style={{ ...S.btnPrimary, opacity: submitting ? 0.6 : 1 }}>
-          {submitting ? 'Recording…' : reviewing ? 'Yes, record it' : 'Review payment'}
+          {submitting ? 'Recording…' : 'Record payment'}
         </button>
       </ModalFooter>
+      {/* Its own dialog, on top - money is not written on the first click. */}
+      <ConfirmModal
+        open={reviewing}
+        onClose={() => !submitting && setReviewing(false)}
+        onConfirm={async () => { await handleSubmit(); setReviewing(false); }}
+        loading={submitting}
+        title="Record this payment?"
+        confirmStyle="primary"
+        confirmLabel="Yes, record it"
+        message={`₱${fmt(parseFloat(amount))} ${({ cash:'cash', gcash:'GCash', bank_transfer:'bank transfer', cod:'COD' })[method] || method} from ${order.customerName}${needsRef && note.trim() ? ` (ref ${note.trim()})` : ''}.\n\nOnly if the money is actually in hand or in the account. This marks the order ${parseFloat(amount) >= owed - 0.01 ? 'fully paid' : 'partly paid'} and emails the customer a receipt.`}
+      />
     </Modal>
   );
 }
