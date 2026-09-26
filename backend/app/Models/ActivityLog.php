@@ -83,6 +83,7 @@ class ActivityLog extends Model
 
         // Money
         'payment_received'    => ['Recorded a payment',  'money'],
+        'pos.sale'            => ['Rang up a walk-in sale', 'money'],
         'payment.recorded'    => ['Recorded a payment by hand', 'money'],
         'payment.paid'        => ['Payment came in',     'money'],
         'order.refund_waived' => ['Waived a refund',     'money'],
@@ -160,14 +161,37 @@ class ActivityLog extends Model
 
     public const REFUSED = ['auth.login_failed', 'auth.login_locked', 'auth.2fa_failed'];
 
+    /**
+     * Records audited automatically (Concerns\Auditable) write "<entity>.created|updated|deleted".
+     * Their words and group come from here rather than one KINDS line per entity and event.
+     */
+    public const ENTITIES = [
+        'material' => ['a material', 'stock'],   'bom' => ['a BOM', 'stock'],
+        'supplier' => ['a supplier', 'stock'],   'unit' => ['a unit', 'stock'],
+        'product' => ['a product', 'catalog'],   'collection' => ['a collection', 'catalog'],
+        'banner' => ['a banner', 'catalog'],     'voucher' => ['a voucher', 'money'],
+        'flash_sale' => ['a flash sale', 'money'], 'review' => ['a review', 'catalog'],
+        'job_order' => ['a job order', 'orders'], 'quotation' => ['a quotation', 'orders'],
+        'order_form' => ['an order form', 'settings'], 'page_content' => ['page content', 'catalog'],
+        'bad_order' => ['a bad order', 'stock'],
+    ];
+
+    private static function entityKind(?string $action): ?array
+    {
+        if (!is_string($action) || !preg_match('/^([a-z_]+)\.(created|updated|deleted)$/', $action, $m)) return null;
+        if (!isset(self::ENTITIES[$m[1]])) return null;
+        [$noun, $group] = self::ENTITIES[$m[1]];
+        return [['created' => 'Created ', 'updated' => 'Changed ', 'deleted' => 'Deleted '][$m[2]] . $noun, $group];
+    }
+
     public static function label(?string $action): string
     {
-        return self::KINDS[$action][0] ?? ucfirst(str_replace('_', ' ', (string) $action));
+        return self::KINDS[$action][0] ?? self::entityKind($action)[0] ?? ucfirst(str_replace('_', ' ', (string) $action));
     }
 
     public static function group(?string $action): string
     {
-        return self::KINDS[$action][1] ?? 'other';
+        return self::KINDS[$action][1] ?? self::entityKind($action)[1] ?? 'other';
     }
 
     protected $casts = [

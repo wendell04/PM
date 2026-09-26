@@ -7,6 +7,11 @@ use MongoDB\Laravel\Eloquent\Casts\ObjectId;
 
 class Product extends Model
 {
+    // Every create, change and delete by a signed-in person lands in the audit trail.
+    use \App\Models\Concerns\Auditable;
+    protected string $auditEntity = 'product';
+    protected array $auditIgnore = ['stock', 'variantStock', 'stockStatus', 'isPublished'];
+
     protected $connection = 'mongodb';
     protected $collection = 'products';
 

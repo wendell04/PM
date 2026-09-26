@@ -128,6 +128,12 @@ class ActivityLogController extends Controller
                 ActivityLog::KINDS,
                 fn ($k) => $k[1] === $request->group
             ));
+            // Plus the records audited automatically - material.created, product.updated... - whose
+            // group comes from ActivityLog::ENTITIES, not from a line each in KINDS.
+            foreach (ActivityLog::ENTITIES as $entity => [, $g]) {
+                if ($g !== $request->group) continue;
+                foreach (['created', 'updated', 'deleted'] as $ev) $wanted[] = "{$entity}.{$ev}";
+            }
             $query->whereIn('action', $wanted ?: ['__none__']);
         }
 

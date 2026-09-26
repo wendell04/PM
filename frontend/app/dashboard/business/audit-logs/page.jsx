@@ -503,7 +503,8 @@ export default function AuditLogsPage() {
  * removed and reworded. Anything else still shows as data, so nothing recorded is ever hidden.
  */
 function MetadataView({ meta }) {
-  const { changes, added, removed, reworded, ...rest } = meta || {};
+  // name: an automatic create/delete entry carries the record's name, already in the sentence above.
+  const { changes, added, removed, reworded, name: _name, ...rest } = meta || {};
   const box = { marginTop: 3, padding: '7px 9px', background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: 7, fontSize: 12 };
   const list = (label, items) => Array.isArray(items) && items.length > 0 && (
     <div style={{ marginTop: 3 }}><span style={{ color: 'var(--gray)' }}>{label}:</span> {items.join(', ')}</div>
@@ -515,9 +516,13 @@ function MetadataView({ meta }) {
           {Array.isArray(changes) && changes.map((c, i) => (
             <div key={i} style={{ display: 'flex', flexWrap: 'wrap', gap: 6, padding: '2px 0' }}>
               <span style={{ fontWeight: 600, color: 'var(--white)' }}>{c.field}:</span>
-              <span style={{ color: 'var(--st-red-fg)', textDecoration: 'line-through', wordBreak: 'break-word' }}>{c.from}</span>
-              <span style={{ color: 'var(--gray)' }}>{'->'}</span>
-              <span style={{ color: 'var(--st-green-fg)', wordBreak: 'break-word' }}>{c.to}</span>
+              {c.said ? (
+                <span style={{ color: 'var(--white)', wordBreak: 'break-word' }}>{c.said}</span>
+              ) : (<>
+                <span style={{ color: 'var(--st-red-fg)', textDecoration: 'line-through', wordBreak: 'break-word' }}>{c.from}</span>
+                <span style={{ color: 'var(--gray)' }}>{'->'}</span>
+                <span style={{ color: 'var(--st-green-fg)', wordBreak: 'break-word' }}>{c.to}</span>
+              </>)}
             </div>
           ))}
           {list('Added', added)}

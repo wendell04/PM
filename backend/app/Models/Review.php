@@ -6,6 +6,12 @@ use MongoDB\Laravel\Eloquent\Model;
 
 class Review extends Model
 {
+    // Every create, change and delete by a signed-in person lands in the audit trail.
+    use \App\Models\Concerns\Auditable;
+    protected string $auditEntity = 'review';
+    protected array $auditEvents = ['updated', 'deleted'];
+    protected bool $auditStaffOnly = true;
+
     protected $connection = 'mongodb';
     protected $collection = 'reviews';
 

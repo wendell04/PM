@@ -11,6 +11,10 @@ use MongoDB\Laravel\Eloquent\Model;
  */
 class OrderFormTemplate extends Model
 {
+    // Every create, change and delete by a signed-in person lands in the audit trail.
+    use \App\Models\Concerns\Auditable;
+    protected string $auditEntity = 'order_form';
+
     protected $connection = 'mongodb';
 
     protected $collection = 'order_form_templates';

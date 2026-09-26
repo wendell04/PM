@@ -5,8 +5,14 @@ use MongoDB\Laravel\Eloquent\Model;
   
 class Inventory extends Model  
 { 
-    protected $connection = 'mongodb';  
-    protected $collection = 'inventory';  
+    // Every create, change and delete by a signed-in person lands in the audit trail. Stock moves
+    // are left out here: they are audited as stock adjustments, with the reason.
+    use \App\Models\Concerns\Auditable;
+    protected string $auditEntity = 'material';
+    protected array $auditIgnore = ['stockQty', 'reservedQty', 'consumedQty', 'badOrderQty', 'batches', 'averageCost', 'lastUnitCost', 'baseCost', 'forecast'];
+
+    protected $connection = 'mongodb';
+    protected $collection = 'inventory';
   
     protected $fillable = [
         'name', 'sku', 'uom', 'category', 'stockQty', 'minStockLevel', 'leadTimeDays', 'isOnDemand',

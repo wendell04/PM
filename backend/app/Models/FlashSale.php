@@ -6,6 +6,11 @@ use MongoDB\Laravel\Eloquent\Model;
 
 class FlashSale extends Model
 {
+    // Every create, change and delete by a signed-in person lands in the audit trail.
+    use \App\Models\Concerns\Auditable;
+    protected string $auditEntity = 'flash_sale';
+    protected array $auditIgnore = ['stockUsed'];
+
     protected $connection = 'mongodb';
     protected $collection = 'flash_sales';
 
