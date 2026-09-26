@@ -1548,7 +1548,7 @@ export default function SettingsPage() {
                         {s.name}
                         {s.is_current && <span style={{ fontSize: '0.7rem', fontWeight: 600, padding: '0.1rem 0.4rem', borderRadius: '20px', background: 'rgba(234,179,8,0.12)', color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Current</span>}
                       </span>
-                      <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>Last used: {s.last_used_at} · Created: {s.created_at}</span>
+                      <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>Last used: {s.last_used_at} · Created: {s.created_at}{s.ends_at ? (s.ends_why === 'lifetime' ? ` · Ends ${s.ends_at}` : ` · Ends ${s.ends_at} if not used again`) : ''}</span>
                     </div>
                   </div>
                   {!s.is_current && (

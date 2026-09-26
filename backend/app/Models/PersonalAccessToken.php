@@ -56,15 +56,20 @@ class PersonalAccessToken extends Model implements HasAbilities
     {
         try {
             if (strpos($token, '|') === false) {
-                return static::where('token', hash('sha256', $token))->first();
+                $instance = static::where('token', hash('sha256', $token))->first();
+            } else {
+                [$id, $token] = explode('|', $token, 2);
+                $instance = static::find($id);
+                if ($instance && hash('sha256', $token) !== $instance->token) $instance = null;
             }
 
-            [$id, $token] = explode('|', $token, 2);
-            $instance = static::find($id);
-
-            if ($instance) {
-                return hash('sha256', $token) === $instance->token ? $instance : null;
+            // A sign-in past its lifetime or unused too long is no sign-in (App\Support\SessionRules).
+            // Checked here rather than only in Sanctum's guard because three controllers look tokens
+            // up directly, and those accepted an expired token outright.
+            if ($instance && !\App\Support\SessionRules::isLive($instance, $instance->tokenable?->role)) {
+                return null;
             }
+            return $instance;
         } catch (\MongoDB\Driver\Exception\ConnectionTimeoutException $e) {
             \Illuminate\Support\Facades\Log::error('MongoDB unreachable (Sanctum): ' . $e->getMessage());
             abort(503, 'Database temporarily unavailable.');

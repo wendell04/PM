@@ -17,26 +17,25 @@ class SessionController extends Controller
             $user = $request->user();
             $currentTokenId = $user->currentAccessToken()->id;
 
-            // Only tokens that can still sign anyone in. Sanctum expires them (24h by default, see
-            // SANCTUM_TOKEN_EXPIRATION) but nothing deleted the rows, so this listed every login ever
-            // made - months of dead sessions with a Revoke button that achieves nothing, because the
-            // token stopped working long ago. It read as "12 devices are logged in" when the true
-            // answer was one.
-            $ttlMinutes = config('sanctum.expiration');
-            $cutoff = $ttlMinutes ? now()->subMinutes((int) $ttlMinutes) : null;
+            // Only sign-ins that can still get in - the same rule the sign-in check uses (App\Support\SessionRules): its lifetime, and
+            // no more than a week unused for staff (a month for customers). The list and the door
+            // cannot disagree. Dead rows are deleted as they are found - nothing else clears them.
+            $role = $user->role ?? 'customer';
+            $idle = \App\Support\SessionRules::idleDays($role);
+            [$live, $dead] = $user->tokens()->orderBy('last_used_at', 'desc')->get()
+                ->partition(fn ($token) => \App\Support\SessionRules::isLive($token, $role));
+            if ($dead->isNotEmpty()) {
+                try { $user->tokens()->whereIn('_id', $dead->map(fn ($t) => $t->_id)->all())->delete(); }
+                catch (\Throwable $e) { Log::warning('Could not clear ended sessions: ' . $e->getMessage()); }
+            }
 
-            $tokens = $user->tokens()
-                ->orderBy('last_used_at', 'desc')
-                ->get()
-                ->filter(function ($token) use ($cutoff) {
-                    // A token's own expires_at wins where one was set per-role at login.
-                    if ($token->expires_at) return $token->expires_at->isFuture();
-                    if (!$cutoff) return true;
+            $tokens = $live->values()
+                ->map(function ($token) use ($currentTokenId, $idle) {
                     $seen = $token->last_used_at ?? $token->created_at;
-                    return $seen && $seen->greaterThan($cutoff);
-                })
-                ->values()
-                ->map(function ($token) use ($currentTokenId) {
+                    // Whichever comes first: the end of its lifetime, or a week (a month) from last use.
+                    $ends = $seen ? $seen->copy()->addDays($idle) : null;
+                    $why  = 'idle';
+                    if ($token->expires_at && (!$ends || $token->expires_at->lt($ends))) { $ends = $token->expires_at; $why = 'lifetime'; }
                     return [
                         'id'           => $token->id,
                         'name'         => $token->name,
@@ -44,6 +43,9 @@ class SessionController extends Controller
                             ? $token->last_used_at->format('M d, Y h:i A')
                             : 'Never',
                         'created_at'   => $token->created_at->format('M d, Y'),
+                        'ends_at'      => $ends ? $ends->format('M d, Y') : null,
+                        // 'idle': using it again pushes the date back. 'lifetime': it ends then regardless.
+                        'ends_why'     => $ends ? $why : null,
                         'is_current'   => $token->id === $currentTokenId,
                     ];
                 });

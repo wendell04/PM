@@ -3154,6 +3154,9 @@ export default function CustomerProfilePage() {
                                     Last active: {session.last_used_at}
                                     {" · "}
                                     Since: {session.created_at}
+                                    {session.ends_at && (session.ends_why === 'lifetime'
+                                      ? ` · Ends ${session.ends_at}`
+                                      : ` · Ends ${session.ends_at} if not used again`)}
                                   </div>
                                 </div>
                               </div>
