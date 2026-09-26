@@ -4,6 +4,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { fetchWithTimeout } from '../../lib/fetchWithTimeout';
 import { uploadDesignFile, fetchCustomerOrderForms } from '../../lib/orderRequestApi';
 import { S, ICONS, Modal, Field, CustomSelect, IntegerInput, DecimalInput } from '@/app/dashboard/business/inventory-v2/shared';
+import { scrollToSection } from '@/lib/scrollToError';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
@@ -538,9 +539,22 @@ const QuotationModal = ({ onClose, onSubmit, isSending, token, customerId, custo
   // A fee is priced for a place; with none chosen, the checkout has nothing to hold it to.
   const deliverOk = deliveryFee <= 0 || !customerId || !!deliverToPayload;
   const canSubmit = linesValid && noDupes && deliverOk && !isSending && !uploading;
+  // Send stays pressable. A greyed-out button that never says why is the "it won't proceed and I
+  // cannot see the problem" trap; pressing it now names what is missing and goes there.
+  const [missing, setMissing] = useState('');
+  const missingNow = !linesValid ? 'Every line needs a product, a quantity and a price above 0.'
+    : !noDupes ? 'The same product is on two lines - put the quantities on one line.'
+    : !deliverOk ? 'There is a delivery fee, so choose where it delivers to, under Deliver to.'
+    : '';
 
   const handleSubmit = () => {
-    if (!canSubmit) return;
+    if (isSending || uploading) return;
+    if (!canSubmit) {
+      setMissing(missingNow);
+      scrollToSection(!deliverOk && linesValid && noDupes ? 'pmp-quote-deliver' : 'pmp-quote-lines');
+      return;
+    }
+    setMissing('');
     onSubmit({
       // Each variant row becomes its own item - it has its own price, its own BOM and
       // its own stock movement, so the order should carry them apart.
@@ -620,8 +634,8 @@ const QuotationModal = ({ onClose, onSubmit, isSending, token, customerId, custo
           <button
             type="button"
             onClick={handleSubmit}
-            disabled={!canSubmit}
-            style={{ ...S.btnPrimary, cursor: canSubmit ? 'pointer' : 'not-allowed', opacity: canSubmit ? 1 : 0.5 }}
+            disabled={isSending || uploading}
+            style={{ ...S.btnPrimary, cursor: (isSending || uploading) ? 'wait' : 'pointer', opacity: canSubmit ? 1 : 0.7 }}
           >
             {isSending ? 'Sending…' : 'Send Quotation'}
           </button>
@@ -685,7 +699,13 @@ const QuotationModal = ({ onClose, onSubmit, isSending, token, customerId, custo
           </div>
         )}
 
-        <div>
+        {missing && missingNow && (
+          <div role="alert" data-field-error style={{ padding: '9px 12px', borderRadius: 8, fontSize: 12.5, lineHeight: 1.5,
+            background: 'var(--st-red-bg)', color: 'var(--st-red-fg)', border: '1px solid color-mix(in srgb, var(--st-red-fg) 35%, transparent)' }}>
+            {missingNow}
+          </div>
+        )}
+        <div id="pmp-quote-lines" style={{ scrollMarginTop: 12 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
             <span style={{ ...S.label, textTransform: 'none', letterSpacing: 0, fontSize: '12px', color: 'var(--gray-light)' }}>
               Products / Services
@@ -988,7 +1008,7 @@ const QuotationModal = ({ onClose, onSubmit, isSending, token, customerId, custo
             checkout holds the customer to it - a fee worked out for one city cannot be paid
             with an address in another. */}
         {customerId && (
-          <div style={{ padding: '10px 12px', borderRadius: '8px', background: 'var(--dark2)', border: '1px solid var(--border)' }}>
+          <div id="pmp-quote-deliver" style={{ scrollMarginTop: 12, padding: '10px 12px', borderRadius: '8px', background: 'var(--dark2)', border: `1px solid ${missing && !deliverOk && linesValid && noDupes ? 'var(--st-red-fg)' : 'var(--border)'}` }}>
             <div style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: '6px' }}>
               Deliver to{customerName ? ` - ${customerName}` : ''}
             </div>

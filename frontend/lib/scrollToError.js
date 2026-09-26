@@ -39,3 +39,19 @@ export function scrollToFirstError(root) {
     try { input?.focus({ preventScroll: true }); } catch { /* not focusable */ }
   }));
 }
+
+/**
+ * The same, for a form that shows ONE message (usually beside the button) rather than one per field:
+ * take the person to the section the message is about. `id` is the section's element id.
+ */
+export function scrollToSection(id) {
+  if (typeof window === 'undefined' || !id) return;
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    el.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
+    const field = el.querySelector('input:not([type=hidden]):not([disabled]), textarea, select, button');
+    try { field?.focus({ preventScroll: true }); } catch { /* not focusable */ }
+  }));
+}

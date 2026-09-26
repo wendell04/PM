@@ -80,6 +80,11 @@ export default function StaffHome() {
   // Customers who asked for a price and have not been quoted yet. null = not allowed to see it.
   const [quotesWaiting, setQuotesWaiting] = useState(null);
   const [loading, setLoading] = useState(true);
+  // The slow reads - the whole sales history (for the forecast) and the shelf - no longer hold the
+  // page back. They land after it is on screen; the forecast waits for its own data, not the page.
+  const [salesLoaded, setSalesLoaded] = useState(false);
+  // Money worked out on the server over every order (the browser only ever had the latest 300).
+  const [serverMoney, setServerMoney] = useState(null);
   const [error, setError]     = useState('');
 
   const load = useCallback(async () => {
@@ -89,18 +94,20 @@ export default function StaffHome() {
     const headers = { Authorization: `Bearer ${token}`, Accept: 'application/json' };
     // Settled, not all-or-nothing: a reader who cannot see inventory must still get their orders,
     // and the old page rendered zeros when a single call failed.
-    const [o, b, p, c, sl, inv, qs] = await Promise.allSettled([
-      fetchWithTimeout(`${API_URL}/api/admin/orders?limit=300`, { headers }, 20000),
-      fetchWithTimeout(`${API_URL}/api/admin/inventory/to-buy`, { headers }, 20000),
-      fetchWithTimeout(`${API_URL}/api/my/permissions`, { headers }, 15000),
-      fetchWithTimeout(`${API_URL}/api/chat/conversations`, { headers }, 15000),
-      // The whole trading history, counter sales included. Orders alone are the online store.
-      fetchWithTimeout(`${API_URL}/api/admin/sales?limit=10000&status=completed`, { headers }, 25000),
-      // What is on the shelf. "To Buy" answers what a committed order still needs; this answers the
-      // question before that one - what is running out, whether or not anything has been ordered.
-      fetchWithTimeout(`${API_URL}/api/admin/inventory?limit=500`, { headers }, 20000),
-      // Price requests are counted on Quotations (with the list behind the count), not here.
-      Promise.resolve(null),
+    const get = (url, ms) => fetchWithTimeout(url, { headers }, ms);
+    // Started together, awaited in two groups: the page draws as soon as the first group is in.
+    const later = Promise.allSettled([
+      // The whole trading history, counter sales included - the forecast's input.
+      get(`${API_URL}/api/admin/sales?limit=10000&status=completed`, 25000),
+      // What is on the shelf: what is running out, whether or not anything has been ordered.
+      get(`${API_URL}/api/admin/inventory?limit=500`, 20000),
+    ]);
+    const [o, b, p, c, mo] = await Promise.allSettled([
+      get(`${API_URL}/api/admin/orders?limit=300`, 20000),
+      get(`${API_URL}/api/admin/inventory/to-buy`, 20000),
+      get(`${API_URL}/api/my/permissions`, 15000),
+      get(`${API_URL}/api/chat/conversations`, 15000),
+      get(`${API_URL}/api/admin/home/money?months=12`, 20000),
     ]);
     try {
       if (o.status === 'fulfilled' && o.value.ok) {
@@ -117,8 +124,22 @@ export default function StaffHome() {
         const j = await p.value.json();
         setPerms(j?.data ?? j ?? null);
       }
+      if (mo.status === 'fulfilled' && mo.value.ok) {
+        const j = await mo.value.json();
+        setServerMoney(j?.data ?? null);
+      }
       // Somebody waiting on a reply is a thing that needs doing, so it belongs with the other
       // things that need doing rather than only as a number on a nav icon.
+      if (c.status === 'fulfilled' && c.value.ok) {
+        const j = await c.value.json();
+        const convos = Array.isArray(j?.data) ? j.data : (j?.data?.conversations ?? []);
+        setUnread(convos.reduce((a, x) => a + Number(x.unread_count ?? 0), 0));
+      }
+    } finally {
+      setLoading(false);
+    }
+    const [sl, inv] = await later;
+    try {
       if (sl.status === 'fulfilled' && sl.value.ok) {
         const j = await sl.value.json();
         setSales(Array.isArray(j?.data ?? j) ? (j.data ?? j) : []);
@@ -128,17 +149,8 @@ export default function StaffHome() {
         const rows = Array.isArray(j?.data) ? j.data : (j?.data?.data ?? []);
         setStock(Array.isArray(rows) ? rows : []);
       }
-      if (qs.status === 'fulfilled' && qs.value?.ok) {
-        const j = await qs.value.json();
-        setQuotesWaiting(Number(j?.data?.pending ?? 0));
-      }
-      if (c.status === 'fulfilled' && c.value.ok) {
-        const j = await c.value.json();
-        const convos = Array.isArray(j?.data) ? j.data : (j?.data?.conversations ?? []);
-        setUnread(convos.reduce((a, x) => a + Number(x.unread_count ?? 0), 0));
-      }
     } finally {
-      setLoading(false);
+      setSalesLoaded(true);
     }
   }, [token]);
 
@@ -217,9 +229,10 @@ export default function StaffHome() {
       if (history.length) {
         for (const p of history) {
           const amt = Number(p.amount ?? 0);
-          if (amt <= 0) continue;
-          // Orders written before payments carried a date fall back to when the order was placed.
-          const when = p.paidAt ?? p.createdAt ?? o.createdAt ?? null;
+          // A voided line and its minus line are money that never came in.
+          if (amt <= 0 || p.voided || p.type === 'void') continue;
+          // Typed-in payments carry recordedAt; older lines fall back to when the order was placed.
+          const when = p.paidAt ?? p.recordedAt ?? p.createdAt ?? o.createdAt ?? null;
           if (!when) continue;
           rows.push({ amount: amt, at: new Date(when) });
         }
@@ -251,8 +264,10 @@ export default function StaffHome() {
       );
       outstanding += Math.max(0, Number(o.totalAmount ?? 0) - paid);
     }
+    // The server's figures cover every order; these are the fallback for someone it refuses.
+    if (serverMoney) return { collected: Number(serverMoney.collectedThisMonth ?? 0), outstanding: Number(serverMoney.outstanding ?? 0) };
     return { collected, outstanding };
-  }, [orders, payments]);
+  }, [orders, payments, serverMoney]);
 
   // Money received per calendar month, from the orders already in hand - no second request.
   const byMonth = useMemo(() => {
@@ -267,6 +282,14 @@ export default function StaffHome() {
     const idx = Object.fromEntries(buckets.map((b, i) => [b.key, i]));
     // Same ledger as the chip. This read sale totals by sale date, which is the value of what
     // shipped, not the money that came in - so the card above it and the chart below disagreed.
+    if (Array.isArray(serverMoney?.months)) {
+      for (const m of serverMoney.months) {
+        if (!(m.key in idx)) continue;
+        buckets[idx[m.key]].total = Number(m.total ?? 0);
+        buckets[idx[m.key]].orders = Number(m.count ?? 0);
+      }
+      return buckets;
+    }
     for (const p of payments) {
       const k = `${p.at.getFullYear()}-${String(p.at.getMonth() + 1).padStart(2, '0')}`;
       if (!(k in idx)) continue;
@@ -274,7 +297,7 @@ export default function StaffHome() {
       buckets[idx[k]].orders += 1;
     }
     return buckets;
-  }, [payments, months]);
+  }, [payments, months, serverMoney]);
 
   const isOwnerView = isSuper || allows('reports') || allows('sales');
 
@@ -407,7 +430,7 @@ export default function StaffHome() {
   // service, so it is genuinely often not up - that has to read as "not running", never as a
   // forecast of zero.
   useEffect(() => {
-    if (!isOwnerView || loading) return;
+    if (!isOwnerView || !salesLoaded) return;
 
     // Week-start (Monday) buckets of takings, over the last year of trading.
     const weeks = new Map();
@@ -452,7 +475,7 @@ export default function StaffHome() {
       }
     })();
     return () => { cancelled = true; };
-  }, [isOwnerView, loading, sales]);
+  }, [isOwnerView, salesLoaded, sales]);
 
   // The three figures the old Dashboard card carried, from data this page already has - no extra
   // calls. Today's money is the same ledger as the chart above it (payments, not sale value), so
@@ -461,7 +484,8 @@ export default function StaffHome() {
     const today = new Date();
     const sameDay = (d) => d.getFullYear() === today.getFullYear()
       && d.getMonth() === today.getMonth() && d.getDate() === today.getDate();
-    const collectedToday = payments.filter(p => sameDay(p.at)).reduce((a, p) => a + p.amount, 0);
+    const collectedToday = serverMoney ? Number(serverMoney.collectedToday ?? 0)
+      : payments.filter(p => sameDay(p.at)).reduce((a, p) => a + p.amount, 0);
     const liveOrders = orders.filter(o =>
       !['cancelled', 'returned'].includes(String(o.orderStatus ?? o.status ?? '').toLowerCase())).length;
     // Profit is only knowable on a completed sale, and only where the costs were recorded.
@@ -472,7 +496,7 @@ export default function StaffHome() {
       return a + lines.reduce((b, l) => b + Number(l.profit ?? 0), 0);
     }, 0);
     return { collectedToday, liveOrders, profit };
-  }, [payments, orders, sales]);
+  }, [payments, orders, sales, serverMoney]);
 
   // The two things the old Dashboard showed that had no other one-glance place. Its "Top products
   // today" counted every order ever placed; this is the current month, and the title says so.
@@ -497,7 +521,7 @@ export default function StaffHome() {
     .slice(0, 5), [orders]);
 
   useEffect(() => {
-    if (loading || !Array.isArray(sales) || !sales.length) return undefined;
+    if (!salesLoaded || !Array.isArray(sales) || !sales.length) return undefined;
     const revMap = {}, qtyMap = {};
     for (const sale of sales) {
       const d = sale.saleDate ? new Date(sale.saleDate).toISOString().split('T')[0] : null;
@@ -522,7 +546,7 @@ export default function StaffHome() {
       if (!cancelled) { setSsaRev(r); setSsaQty(q); }
     });
     return () => { cancelled = true; };
-  }, [loading, sales]);
+  }, [salesLoaded, sales]);
 
   // The fallback sparkline's 30 days, the Dashboard's way: delivered orders by the day they were placed.
   const dailyRevenue = useMemo(() => {

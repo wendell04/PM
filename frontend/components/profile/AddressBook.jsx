@@ -7,6 +7,7 @@ import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import { fetchRegions, fetchProvinces, fetchCities, fetchBarangays, isNCR } from '@/lib/psgc';
 import { CustomSelect } from '@/app/dashboard/business/inventory-v2/shared';
 import PhoneInput, { isValidPhone } from '@/components/auth/PhoneInput';
+import { scrollToFirstError } from '@/lib/scrollToError';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
@@ -115,7 +116,7 @@ const labelStyle = {
 
 const fieldError = (msg) =>
   msg ? (
-    <span style={{ fontSize: '0.7rem', color: 'var(--red)', marginTop: '0.25rem', display: 'block' }}>
+    <span data-field-error style={{ fontSize: '0.7rem', color: 'var(--red)', marginTop: '0.25rem', display: 'block' }}>
       {msg}
     </span>
   ) : null;
@@ -619,6 +620,8 @@ export default function AddressBook({ onSaved, initialEditAddress }) {
     e.preventDefault();
     if (!validateForm()) {
       if (!formData.lat || !formData.lng) setMapExpanded(true);
+      // The address form is long and saves from the bottom; take them to the field they missed.
+      scrollToFirstError();
       return;
     }
     setIsSubmitting(true);
@@ -872,7 +875,7 @@ export default function AddressBook({ onSaved, initialEditAddress }) {
               </span>
             </button>
             {formErrors.pin && !mapExpanded && (
-              <div style={{ marginTop: '0.375rem', fontSize: '0.78rem', color: 'var(--red)', display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
+              <div data-field-error style={{ marginTop: '0.375rem', fontSize: '0.78rem', color: 'var(--red)', display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
                 {formErrors.pin}
               </div>

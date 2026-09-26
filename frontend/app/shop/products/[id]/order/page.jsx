@@ -1,6 +1,7 @@
 'use client';
 
 import AddressPicker from '@/components/shop/AddressPicker';
+import { scrollToSection } from '@/lib/scrollToError';
 import PhotoLightbox from '@/components/chat/PhotoLightbox';
 import { optionGroupsOf, defaultOptionSelection, selectedOptionList, optionsUnitAdd, optionsOrderAdd, withOptionSuffix, optionKey, groupKey } from '@/lib/shopUtils';
 import NoImage from '@/components/NoImage';
@@ -603,11 +604,11 @@ function CustomOrderInner() {
   // Buying one thing should not cost three clicks. Skips the cart and hands the same
   // payload straight to checkout - the cart's own path, minus the detour.
   function handleBuyNow() {
-    if (designMode === 'upload' && uploading) { setSubmitError('Your files are still uploading, please wait.'); return; }
-    if (designMode === 'upload' && !designFileUrl) { setSubmitError('Upload your design first.'); return; }
-    if (designMode === 'upload' && !uploadOk) { setSubmitError('Tell us how to print it, or choose "Print exactly as my file is".'); return; }
-    if (designMode === 'request' && !briefOk) { setSubmitError('Tell us what you need before ordering.'); return; }
-    if (!designMode) { setSubmitError('Choose how you want to provide your design.'); return; }
+    if (designMode === 'upload' && uploading) { setSubmitError('Your files are still uploading, please wait.'); scrollToSection('pmp-order-design'); return; }
+    if (designMode === 'upload' && !designFileUrl) { setSubmitError('Upload your design first.'); scrollToSection('pmp-order-design'); return; }
+    if (designMode === 'upload' && !uploadOk) { setSubmitError('Tell us how to print it, or choose "Print exactly as my file is".'); scrollToSection('pmp-order-design'); return; }
+    if (designMode === 'request' && !briefOk) { setSubmitError('Tell us what you need before ordering.'); scrollToSection('pmp-order-design'); return; }
+    if (!designMode) { setSubmitError('Choose how you want to provide your design.'); scrollToSection('pmp-order-design'); return; }
     setSubmitError(null);
 
     const thumb = (combo?.id && product.variantImageUrls?.[combo.id])
@@ -712,11 +713,11 @@ function CustomOrderInner() {
   // normal line that happens to carry a design, which is what makes a mug and a totebag
   // shippable as one order instead of two.
   async function handleAddToCart() {
-    if (designMode === 'upload' && uploading) { setSubmitError('Your files are still uploading, please wait.'); return; }
-    if (designMode === 'upload' && !designFileUrl) { setSubmitError('Upload your design first.'); return; }
-    if (designMode === 'upload' && !uploadOk) { setSubmitError('Tell us how to print it, or choose "Print exactly as my file is".'); return; }
-    if (designMode === 'request' && !briefOk) { setSubmitError('Tell us what you need before ordering.'); return; }
-    if (!designMode) { setSubmitError('Choose how you want to provide your design.'); return; }
+    if (designMode === 'upload' && uploading) { setSubmitError('Your files are still uploading, please wait.'); scrollToSection('pmp-order-design'); return; }
+    if (designMode === 'upload' && !designFileUrl) { setSubmitError('Upload your design first.'); scrollToSection('pmp-order-design'); return; }
+    if (designMode === 'upload' && !uploadOk) { setSubmitError('Tell us how to print it, or choose "Print exactly as my file is".'); scrollToSection('pmp-order-design'); return; }
+    if (designMode === 'request' && !briefOk) { setSubmitError('Tell us what you need before ordering.'); scrollToSection('pmp-order-design'); return; }
+    if (!designMode) { setSubmitError('Choose how you want to provide your design.'); scrollToSection('pmp-order-design'); return; }
     setAddingToCart(true);
     setSubmitError(null);
     try {
@@ -758,7 +759,7 @@ function CustomOrderInner() {
   }
 
   async function handleSubmit() {
-    if (!designMode) { setSubmitError('Please choose how you want to provide your design.'); return; }
+    if (!designMode) { setSubmitError('Please choose how you want to provide your design.'); scrollToSection('pmp-order-design'); return; }
     if (designMode === 'upload' && !designFileUrl) {
       setSubmitError(uploading ? 'Design is still uploading, please wait.' : 'Please upload your design file.');
       return;
@@ -795,7 +796,7 @@ function CustomOrderInner() {
     }
 
     if (!selectedAddress) {
-      setSubmitError('Please select a delivery address.'); return;
+      setSubmitError('Please select a delivery address.'); scrollToSection('pmp-delivery-address'); return;
     }
     // Request design no longer pays on this page - it submits an unpaid order and the design
     // fee (then the goods) is paid from the order detail modal. Only the (now unused) upload
@@ -1304,7 +1305,7 @@ function CustomOrderInner() {
             </section>
 
             {/* Step 2: Design */}
-            <section style={{ background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '12px', padding: '1.15rem' }}>
+            <section id="pmp-order-design" style={{ scrollMarginTop: 90, background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '12px', padding: '1.15rem' }}>
               <h2 style={{ fontSize: '0.74rem', fontWeight: 800, letterSpacing: '0.03em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: '0.85rem' }}>Your design</h2>
 
               <div className="co-modes">
@@ -1576,7 +1577,7 @@ function CustomOrderInner() {
             </section>
 
             {/* Step 3: Delivery - shown for both upload and request */}
-            {(designMode === 'upload' || designMode === 'request') && !isInquiry && <section id="pmp-delivery-address" style={{ background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '12px', padding: '1.15rem' }}>
+            {(designMode === 'upload' || designMode === 'request') && !isInquiry && <section id="pmp-delivery-address" style={{ scrollMarginTop: 90, background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '12px', padding: '1.15rem' }}>
               {/* One picker for both screens - see components/shop/AddressPicker. Adding an
                   address used to send people to /shop/profile, and coming back meant a reload,
                   which threw away every reference photo they had just attached. */}

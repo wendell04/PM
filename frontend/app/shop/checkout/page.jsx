@@ -17,6 +17,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { DEFAULT_CUSTOM_ORDER_TERMS } from '@/lib/customOrderTerms';
 import { makeThumbnail } from '@/lib/thumbnail';
 import useLockBodyScroll from '@/lib/useLockBodyScroll';
+import { scrollToSection } from '@/lib/scrollToError';
 
 const AddressBook = dynamic(() => import('@/components/profile/AddressBook'), { ssr: false });
 
@@ -701,6 +702,7 @@ export default function CheckoutPage() {
     if (items.length === 0) return;
     if (!selectedAddress) {
       setError('Please select a delivery address.');
+      scrollToSection('pmp-checkout-address');
       return;
     }
 
@@ -716,12 +718,14 @@ export default function CheckoutPage() {
 
     if (!selectedAddress.phone?.trim()) {
       setError('Your delivery address is missing a contact number. Please select a different address or update it in your profile.');
+      scrollToSection('pmp-checkout-address');
       return;
     }
     const requiredFields = ['street', 'barangay', 'city', 'province'];
     const missingField = requiredFields.find(f => !selectedAddress[f]?.trim());
     if (missingField) {
       setError('Your delivery address is incomplete. Please select a different address or update it in your profile.');
+      scrollToSection('pmp-checkout-address');
       return;
     }
 
@@ -730,6 +734,7 @@ export default function CheckoutPage() {
     // sat inside the card that only renders when Rush is off, and blocked every cart with Rush on.
     if (downpaymentRequired && paymentMethod === 'cod') {
       setError('Cash on Delivery is not available for downpayment orders. Please choose an online payment method.');
+      scrollToSection('pmp-checkout-payment');
       return;
     }
 
@@ -740,7 +745,7 @@ export default function CheckoutPage() {
 
     if (paymentMethod === 'card') {
       const cardErr = validateCardFields();
-      if (cardErr) { setError(cardErr); return; }
+      if (cardErr) { setError(cardErr); scrollToSection('pmp-checkout-payment'); return; }
     }
 
     setError(null);
@@ -1087,7 +1092,7 @@ export default function CheckoutPage() {
       </div>
 
       {/* SECTION 2 - Delivery Address */}
-      <div className="checkout-card" style={{ borderLeft: '3px solid var(--gold)' }}>
+      <div id="pmp-checkout-address" className="checkout-card" style={{ borderLeft: '3px solid var(--gold)', scrollMarginTop: 90 }}>
         <div className="checkout-card-header">
           <div className="checkout-section-label">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -1858,7 +1863,7 @@ export default function CheckoutPage() {
       </div>
 
       {/* SECTION 6 - Payment Method */}
-      <div className="checkout-card">
+      <div id="pmp-checkout-payment" className="checkout-card" style={{ scrollMarginTop: 90 }}>
         <div className="checkout-section-label" style={{ marginBottom: '0.75rem' }}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <rect x="2" y="6" width="20" height="12" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/>
