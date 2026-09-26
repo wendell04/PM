@@ -1584,7 +1584,7 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
                     <ToggleRow label="Made to Order" hint="Produced after the order, so it gets a job order. Leave off for anything you pick off a shelf." on={form.isMadeToOrder} onChange={v => setF('isMadeToOrder', v)} />
                     {form.isMadeToOrder && (
                       <div style={{ marginTop: -4, padding: '10px 12px', borderRadius: 8, background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.25)' }}>
-                        <div style={{ fontSize: 12.5, fontWeight: 700, color: '#b91c1c' }}>This product will not ship on its own</div>
+                        <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--st-red-fg)' }}>This product will not ship on its own</div>
                         <div style={{ fontSize: 11.5, color: 'var(--gray)', marginTop: 3, lineHeight: 1.5 }}>
                           Every order of it waits for someone to create a Job Order and pass QC, and its
                           materials are held rather than deducted. Correct if you really make it per order.
@@ -1658,7 +1658,7 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
                 {form.pricingMode !== 'inquiry' && (<>
                 <ToggleRow label="COD Available" hint="Cash on delivery allowed" on={form.allowCOD} onChange={v => setF('allowCOD', v)} />
                 {form.isCustomizable && form.allowCOD && Number(form.downpaymentPct) <= 0 && (
-                  <div style={{ background: '#fef9c3', border: '1px solid #fcd34d', borderRadius: '6px', padding: '8px 12px', fontSize: '12px', color: '#92400e', lineHeight: 1.5 }}>
+                  <div style={{ background: 'var(--st-amber-bg)', border: '1px solid color-mix(in srgb, var(--st-amber-fg) 35%, transparent)', borderRadius: '6px', padding: '8px 12px', fontSize: '12px', color: 'var(--st-amber-fg)', lineHeight: 1.5 }}>
                     Warning: COD without a downpayment is high-risk for custom orders. Consider setting a downpayment % below.
                   </div>
                 )}
@@ -1699,7 +1699,7 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
                     <span style={{ fontSize: '11px', color: 'var(--gray)' }}>units minimum per order</span>
                   </div>
                   {form.isCustomizable && Number(form.minOrderQty) <= 1 && (
-                    <div style={{ marginTop: '6px', fontSize: '11px', color:'var(--st-orange-fg)', background: '#fef9c3', border: '1px solid #fcd34d', borderRadius: '4px', padding: '5px 8px' }}>
+                    <div style={{ marginTop: '6px', fontSize: '11px', color:'var(--st-orange-fg)', background: 'var(--st-amber-bg)', border: '1px solid color-mix(in srgb, var(--st-amber-fg) 35%, transparent)', borderRadius: '4px', padding: '5px 8px' }}>
                       Warning: customizable products typically require a minimum order. Set an MOQ to protect against unprofitable single-unit orders.
                     </div>
                   )}

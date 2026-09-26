@@ -893,7 +893,7 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
                                       back on a proof that had already been settled. The message
                                       itself carries the outcome now. */}
                                   {m.settled || busy === 'done' ? (
-                                    <div style={{ fontSize: '0.78rem', fontWeight: 700, color: m.settledOutcome === 'changes_requested' ? '#b45309' : m.settledOutcome === 'superseded' ? '#6b6b6b' : '#166534' }}>
+                                    <div style={{ fontSize: '0.78rem', fontWeight: 700, color: m.settledOutcome === 'changes_requested' ? '#b45309' : m.settledOutcome === 'superseded' ? '#6b6b6b' : 'var(--st-green-fg)' }}>
                                       {m.settledOutcome === 'changes_requested'
                                         ? 'Changes requested - we are redrawing this.'
                                         : m.settledOutcome === 'superseded' ? 'Replaced by a newer proof below.'
@@ -920,7 +920,7 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
                               {/* Worked out from the order on load, so a deposit already paid no
                                   longer offers Pay now. */}
                               {m.kind === 'deposit_due' && m.settled && (
-                                <div style={{ padding: '2px 12px 10px', fontSize: '0.78rem', fontWeight: 700, color: '#166534' }}>
+                                <div style={{ padding: '2px 12px 10px', fontSize: '0.78rem', fontWeight: 700, color: 'var(--st-green-fg)' }}>
                                   Paid - thank you.
                                 </div>
                               )}

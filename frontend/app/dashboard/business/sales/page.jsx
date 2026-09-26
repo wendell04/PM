@@ -144,7 +144,7 @@ function OrderExpandRow({ order, colSpan, cost }) {
                 {profit !== null && (
                   <div style={{ fontSize: '11.5px', marginTop: '2px', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
                     <span style={{ color: 'var(--gray)' }}>cost {formatPrice(lineCost)}</span>
-                    <span style={{ color: profit >= 0 ? 'var(--st-green-fg)' : '#c2410c', fontWeight: 700 }}>
+                    <span style={{ color: profit >= 0 ? 'var(--st-green-fg)' : 'var(--st-orange-fg)', fontWeight: 700 }}>
                       profit {formatPrice(profit)}
                       {revenue > 0 && ` (${Math.round((profit / revenue) * 100)}%)`}
                     </span>
@@ -183,7 +183,7 @@ function OrderExpandRow({ order, colSpan, cost }) {
                   </div>
                   <div style={line}>
                     <span style={{ color: 'var(--gray)', fontWeight: 700 }}>Gross profit</span>
-                    <span style={{ color: gp >= 0 ? 'var(--st-green-fg)' : '#c2410c', fontWeight: 700 }}>
+                    <span style={{ color: gp >= 0 ? 'var(--st-green-fg)' : 'var(--st-orange-fg)', fontWeight: 700 }}>
                       {formatPrice(gp)}{income > 0 && ` (${Math.round((gp / income) * 100)}%)`}
                     </span>
                   </div>
@@ -839,7 +839,7 @@ export default function SalesListPage() {
           ))}
         </div>
 
-        {error && <div style={{ ...S.note, background: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b', marginBottom: '10px' }}>{error}</div>}
+        {error && <div style={{ ...S.note, background: 'var(--st-red-bg)', border: '1px solid color-mix(in srgb, var(--st-red-fg) 35%, transparent)', color: 'var(--st-red-fg)', marginBottom: '10px' }}>{error}</div>}
 
         {/* Toolbar - separate card above the table, exactly like the Orders module */}
         <div style={{ ...S.card, ...S.rowBetween, marginBottom: '10px', padding: '12px 16px' }}>

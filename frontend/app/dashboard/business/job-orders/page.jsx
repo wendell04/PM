@@ -255,7 +255,7 @@ function JobOrderForm({ initial = EMPTY_FORM, isEdit = false, orders = [], order
           <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '13px', fontWeight: 600, color: 'var(--white)', cursor: 'pointer' }}>
             <input type="checkbox" checked={form.isRush} onChange={e => set('isRush', e.target.checked)} disabled={isSubmitting} style={{ width: 16, height: 16, accentColor: 'var(--gold)' }} />
             Rush order
-            {form.isRush && <span style={{ ...S.badge, background: 'var(--st-red-bg)', color: 'var(--st-red-fg)', border: '1px solid #fecaca', fontSize: '10px' }}>RUSH</span>}
+            {form.isRush && <span style={{ ...S.badge, background: 'var(--st-red-bg)', color: 'var(--st-red-fg)', border: '1px solid color-mix(in srgb, var(--st-red-fg) 35%, transparent)', fontSize: '10px' }}>RUSH</span>}
           </label>
         </>
       ) : (
@@ -414,7 +414,7 @@ function JobOrderForm({ initial = EMPTY_FORM, isEdit = false, orders = [], order
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <span style={{ ...S.label, margin: 0 }}>Rush</span>
               {form.isRush
-                ? <span style={{ ...S.badge, background: 'var(--st-red-bg)', color: 'var(--st-red-fg)', border: '1px solid #fecaca', fontSize: 10 }}>RUSH · from order</span>
+                ? <span style={{ ...S.badge, background: 'var(--st-red-bg)', color: 'var(--st-red-fg)', border: '1px solid color-mix(in srgb, var(--st-red-fg) 35%, transparent)', fontSize: 10 }}>RUSH · from order</span>
                 : <span style={{ ...S.badge, background: 'var(--dark2)', color: 'var(--gray)', border: '1px solid var(--border)', fontSize: 10 }}>Standard order</span>}
             </div>
           )}

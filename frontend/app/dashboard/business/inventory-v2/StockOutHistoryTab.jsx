@@ -35,16 +35,16 @@ const outQty = (q) => Math.abs(Number(q) || 0);
 
 function ReasonBadge({ reason }) {
   const colors = {
-    sale_reserved: { bg:'#dcfce7', color:'#166534', border:'#bbf7d0' },
-    production:    { bg:'#ede9fe', color:'#5b21b6', border:'#ddd6fe' },
-    damage:        { bg:'#fee2e2', color:'#991b1b', border:'#fecaca' },
-    writeoff:      { bg:'#fee2e2', color:'#991b1b', border:'#fecaca' },
-    scrap:         { bg:'#ffedd5', color:'#9a3412', border:'#fed7aa' },
+    sale_reserved: { bg:'var(--st-green-bg)', color:'var(--st-green-fg)', border:'color-mix(in srgb, var(--st-green-fg) 35%, transparent)' },
+    production:    { bg:'var(--st-purple-bg)', color:'var(--st-purple-fg)', border:'color-mix(in srgb, var(--st-purple-fg) 35%, transparent)' },
+    damage:        { bg:'var(--st-red-bg)', color:'var(--st-red-fg)', border:'color-mix(in srgb, var(--st-red-fg) 35%, transparent)' },
+    writeoff:      { bg:'var(--st-red-bg)', color:'var(--st-red-fg)', border:'color-mix(in srgb, var(--st-red-fg) 35%, transparent)' },
+    scrap:         { bg:'var(--st-orange-bg)', color:'var(--st-orange-fg)', border:'color-mix(in srgb, var(--st-orange-fg) 35%, transparent)' },
     adjustment:    { bg:'var(--dark2)', color:'var(--gray-light)', border:'var(--border)' },
     lost:          { bg:'var(--dark2)', color:'var(--gray-light)', border:'var(--border)' },
-    qc_scrap:      { bg:'#fee2e2', color:'#991b1b', border:'#fecaca' },
-    qc_rework:     { bg:'#ffedd5', color:'#9a3412', border:'#fed7aa' },
-    production_spoilage: { bg:'#fee2e2', color:'#991b1b', border:'#fecaca' },
+    qc_scrap:      { bg:'var(--st-red-bg)', color:'var(--st-red-fg)', border:'color-mix(in srgb, var(--st-red-fg) 35%, transparent)' },
+    qc_rework:     { bg:'var(--st-orange-bg)', color:'var(--st-orange-fg)', border:'color-mix(in srgb, var(--st-orange-fg) 35%, transparent)' },
+    production_spoilage: { bg:'var(--st-red-bg)', color:'var(--st-red-fg)', border:'color-mix(in srgb, var(--st-red-fg) 35%, transparent)' },
   };
   const c = colors[reason] ?? colors.adjustment;
   return (
@@ -205,7 +205,7 @@ function ByOrderTab({ stockOuts, materials }) {
         <SummaryCard label="Manual / Adjustments"   value={manualCount} color="var(--st-orange-fg)" />
         <SummaryCard label="Total Cost of Goods"
           value={`₱${totalSaleValue.toLocaleString('en-PH', { minimumFractionDigits:2, maximumFractionDigits:2 })}`}
-          color="#166534" />
+          color="var(--st-green-fg)" />
       </div>
 
       <div style={{ ...S.card, ...S.rowBetween }}>
@@ -245,7 +245,7 @@ function ByOrderTab({ stockOuts, materials }) {
                       <td style={{ ...S.td, fontWeight:600, fontFamily:'monospace', fontSize:'12px' }}>{ord.ref}</td>
                       <td style={{ ...S.td }}>{ord.customerName}</td>
                       <td style={{ ...S.td, textAlign:'center', color:'var(--gray)', fontSize:'12px' }}>{itemCount} product{itemCount !== 1 ? 's' : ''}</td>
-                      <td style={{ ...S.td, textAlign:'center', fontWeight:600, color:'#166534', fontFamily:'monospace', fontSize:'12px' }}>
+                      <td style={{ ...S.td, textAlign:'center', fontWeight:600, color:'var(--st-green-fg)', fontFamily:'monospace', fontSize:'12px' }}>
                         ₱{ord.totalCost.toLocaleString('en-PH', { minimumFractionDigits:2 })}
                       </td>
                       <td style={{ ...S.td, textAlign:'center' }}><ChevronIcon open={isOpen} /></td>
@@ -301,7 +301,7 @@ function ByOrderTab({ stockOuts, materials }) {
                                               <td style={{ padding:'7px 14px', fontSize:'12px', color:'var(--gray)', fontFamily:'monospace' }}>
                                                 ₱{so.unitCost.toFixed(2)}
                                               </td>
-                                              <td style={{ padding:'7px 14px', fontSize:'12px', fontWeight:600, color:'#166534', fontFamily:'monospace' }}>
+                                              <td style={{ padding:'7px 14px', fontSize:'12px', fontWeight:600, color:'var(--st-green-fg)', fontFamily:'monospace' }}>
                                                 ₱{so.totalCost.toLocaleString('en-PH', { minimumFractionDigits:2 })}
                                               </td>
                                               <td style={{ padding:'7px 14px' }}>
@@ -422,7 +422,7 @@ function ByMaterialTab({ stockOuts, materials }) {
           color="var(--st-red-fg)" />
         <SummaryCard label="Total Cost of Goods"
           value={`₱${groups.reduce((s, g) => s + g.totalCost, 0).toLocaleString('en-PH', { minimumFractionDigits:2 })}`}
-          color="#166534" />
+          color="var(--st-green-fg)" />
       </div>
 
       <div style={{ ...S.card, ...S.rowBetween }}>
@@ -463,7 +463,7 @@ function ByMaterialTab({ stockOuts, materials }) {
                       <td style={{ ...S.td, textAlign:'center', color:'var(--st-red-fg)', fontWeight:600, fontFamily:'monospace', fontSize:'12px' }}>
                         -{outQty(g.totalQty)} {g.unit}
                       </td>
-                      <td style={{ ...S.td, textAlign:'center', fontWeight:600, color:'#166534', fontFamily:'monospace', fontSize:'12px' }}>
+                      <td style={{ ...S.td, textAlign:'center', fontWeight:600, color:'var(--st-green-fg)', fontFamily:'monospace', fontSize:'12px' }}>
                         ₱{g.totalCost.toLocaleString('en-PH', { minimumFractionDigits:2 })}
                       </td>
                       <td style={{ ...S.td, textAlign:'center', color:'var(--gray)', fontSize:'12px' }}>{g.records.length}</td>
@@ -491,7 +491,7 @@ function ByMaterialTab({ stockOuts, materials }) {
                                   <td style={{ padding:'7px 14px', fontSize:'12px', color:'var(--gray-light)' }}>{so.productName || '-'}</td>
                                   <td style={{ padding:'7px 14px', fontSize:'12px', color:'var(--gray)' }}>{so.customerName || '-'}</td>
                                   <td style={{ padding:'7px 14px', fontSize:'12px', color:'var(--st-red-fg)', fontWeight:600 }}>-{outQty(so.qty)} {g.unit}</td>
-                                  <td style={{ padding:'7px 14px', fontSize:'12px', fontFamily:'monospace', color:'#166534' }}>₱{so.totalCost.toFixed(2)}</td>
+                                  <td style={{ padding:'7px 14px', fontSize:'12px', fontFamily:'monospace', color:'var(--st-green-fg)' }}>₱{so.totalCost.toFixed(2)}</td>
                                   <td style={{ padding:'7px 14px' }}><ReasonBadge reason={so.reason} /></td>
                                 </tr>
                               ))}

@@ -57,16 +57,16 @@ const STATUS_CFG = {
   'For QC':             { bg:'rgba(212,168,67,0.08)', color:'var(--gold)', border:'rgba(212,168,67,0.3)' },
   'For Delivery':       { bg:'rgba(212,168,67,0.08)', color:'var(--gold)', border:'rgba(212,168,67,0.3)' },
   // Success → green
-  'Delivered':          { bg:'rgba(34,197,94,0.08)',  color:'#166534', border:'rgba(34,197,94,0.3)'  },
+  'Delivered':          { bg:'rgba(34,197,94,0.08)',  color:'var(--st-green-fg)', border:'rgba(34,197,94,0.3)'  },
   // Negative → red
-  'Cancelled':          { bg:'rgba(239,68,68,0.08)',  color:'#991b1b', border:'rgba(239,68,68,0.3)'  },
-  'Returned':           { bg:'rgba(239,68,68,0.08)',  color:'#991b1b', border:'rgba(239,68,68,0.3)'  },
+  'Cancelled':          { bg:'rgba(239,68,68,0.08)',  color:'var(--st-red-fg)', border:'rgba(239,68,68,0.3)'  },
+  'Returned':           { bg:'rgba(239,68,68,0.08)',  color:'var(--st-red-fg)', border:'rgba(239,68,68,0.3)'  },
 };
 
 const PAY_CFG = {
-  paid:    { bg:'#f0fdf4', color:'#166534', border:'#bbf7d0', label:'Paid'    },
-  partial: { bg:'#fff7ed', color:'#c2410c', border:'#fdba74', label:'Partial' },
-  unpaid:  { bg:'#fef2f2', color:'#991b1b', border:'#fecaca', label:'Unpaid'  },
+  paid:    { bg:'var(--st-green-bg)', color:'var(--st-green-fg)', border:'color-mix(in srgb, var(--st-green-fg) 35%, transparent)', label:'Paid'    },
+  partial: { bg:'var(--st-orange-bg)', color:'var(--st-orange-fg)', border:'color-mix(in srgb, var(--st-orange-fg) 35%, transparent)', label:'Partial' },
+  unpaid:  { bg:'var(--st-red-bg)', color:'var(--st-red-fg)', border:'color-mix(in srgb, var(--st-red-fg) 35%, transparent)', label:'Unpaid'  },
 };
 
 // ── Mini components ───────────────────────────────────────────────────────────
@@ -116,12 +116,12 @@ function TypeBadge({ isCustom, items }) {
   const style = (bg, fg, br) => ({ ...S.badge, background: bg, color: fg, border: `1px solid ${br}`, fontSize: '10px' });
 
   if (lines.length && produced > 0 && stocked > 0) {
-    return <span style={style('#fef3c7', '#92400e', '#fde68a')}>Mixed</span>;
+    return <span style={style('var(--st-amber-bg)', 'var(--st-amber-fg)', 'color-mix(in srgb, var(--st-amber-fg) 35%, transparent)')}>Mixed</span>;
   }
   if (lines.length ? produced > 0 : isCustom) {
-    return <span style={style('#ede9fe', '#5b21b6', '#ddd6fe')}>Custom</span>;
+    return <span style={style('var(--st-purple-bg)', 'var(--st-purple-fg)', 'color-mix(in srgb, var(--st-purple-fg) 35%, transparent)')}>Custom</span>;
   }
-  return <span style={style('#f0fdf4', '#166534', '#bbf7d0')}>Ready Made</span>;
+  return <span style={style('var(--st-green-bg)', 'var(--st-green-fg)', 'color-mix(in srgb, var(--st-green-fg) 35%, transparent)')}>Ready Made</span>;
 }
 
 
@@ -264,7 +264,7 @@ function PaymentModal({ order, onClose, onSuccess }) {
         <div style={{ display:'flex', gap:'16px', fontSize:'12px', flexWrap:'wrap' }}>
           <span>Total: <strong>₱{fmt(orderTotal(order))}</strong></span>
           <span>Paid: <strong>₱{fmt(paidSoFar(order))}</strong></span>
-          <span style={{ color: owed > 0 ? '#c2410c' : '#166534' }}>
+          <span style={{ color: owed > 0 ? 'var(--st-orange-fg)' : 'var(--st-green-fg)' }}>
             Remaining: <strong>₱{fmt(owed)}</strong>
           </span>
         </div>
@@ -351,7 +351,7 @@ function ArchiveModal({ orderId, onClose, onArchived }) {
       <ModalHeader title="Archive Order" onClose={onClose} />
       <p style={{ fontSize:'13px', color:'var(--gray-light)', lineHeight:1.6 }}>
         Archive order{' '}
-        <span style={{ fontFamily:'monospace', fontWeight:700, color:'#c2410c' }}>
+        <span style={{ fontFamily:'monospace', fontWeight:700, color:'var(--st-orange-fg)' }}>
           {orderNo(orderId)}
         </span>?{' '}
         The order will be hidden but kept for records. You can restore it later via the Archived filter.
@@ -424,9 +424,9 @@ function JOQueueModal({ orders, token, onClose, onJOUpdated, onPrintJO }) {
 
       <div style={{ display:'flex', gap:'8px', marginBottom:'16px', flexWrap:'wrap' }}>
         {[
-          { color:'#991b1b', bg:'#fef2f2', label:'Delayed'       },
-          { color:'#c2410c', bg:'#fff7ed', label:'Rush Order'     },
-          { color:'var(--gold)', bg:'#fefce8', label:'Near Deadline'  },
+          { color:'var(--st-red-fg)', bg:'var(--st-red-bg)', label:'Delayed'       },
+          { color:'var(--st-orange-fg)', bg:'var(--st-orange-bg)', label:'Rush Order'     },
+          { color:'var(--gold)', bg:'var(--st-amber-bg)', label:'Near Deadline'  },
         ].map(p => (
           <div key={p.label} style={{ display:'flex', alignItems:'center', gap:'6px', fontSize:'12px', color:'var(--gray)' }}>
             <div style={{ width:'10px', height:'10px', borderRadius:'2px', background:p.color }} />
@@ -453,7 +453,7 @@ function JOQueueModal({ orders, token, onClose, onJOUpdated, onPrintJO }) {
               const daysLeft = target ? Math.ceil((target - today)/86400000) : null;
               const isLate   = target && target < today;
               const isUrgent = !isLate && daysLeft !== null && daysLeft <= 2;
-              const border   = isLate ? '#fca5a5' : j.isRush ? '#fdba74' : isUrgent ? '#fde68a' : 'var(--border)';
+              const border   = isLate ? 'color-mix(in srgb, var(--st-red-fg) 35%, transparent)' : j.isRush ? 'color-mix(in srgb, var(--st-orange-fg) 35%, transparent)' : isUrgent ? 'color-mix(in srgb, var(--st-amber-fg) 35%, transparent)' : 'var(--border)';
               const busy     = busyId === jid;
 
               return (
@@ -471,15 +471,15 @@ function JOQueueModal({ orders, token, onClose, onJOUpdated, onPrintJO }) {
                   </div>
                   <div style={{ textAlign:'center' }}>
                     {isLate
-                      ? <span style={{ ...S.badge, background:'#fef2f2', color:'#991b1b', border:'1px solid #fecaca' }}>
+                      ? <span style={{ ...S.badge, background:'var(--st-red-bg)', color:'var(--st-red-fg)', border:'1px solid color-mix(in srgb, var(--st-red-fg) 35%, transparent)' }}>
                           DELAYED - {Math.abs(daysLeft)}d late
                         </span>
                       : j.isRush
-                        ? <span style={{ ...S.badge, background:'#fff7ed', color:'#c2410c', border:'1px solid #fdba74' }}>RUSH</span>
+                        ? <span style={{ ...S.badge, background:'var(--st-orange-bg)', color:'var(--st-orange-fg)', border:'1px solid color-mix(in srgb, var(--st-orange-fg) 35%, transparent)' }}>RUSH</span>
                         : <span style={{ ...S.badge, background:'var(--dark2)', color:'var(--gray-light)', border:'1px solid var(--border)' }}>Standard</span>
                     }
                     {target && (
-                      <div style={{ fontSize:'11px', color: isLate ? '#991b1b' : 'var(--gray)', marginTop:'4px' }}>
+                      <div style={{ fontSize:'11px', color: isLate ? 'var(--st-red-fg)' : 'var(--gray)', marginTop:'4px' }}>
                         Due {target.toLocaleDateString('en-PH', { month:'short', day:'numeric' })}
                         {daysLeft !== null && !isLate && ` · ${daysLeft}d left`}
                       </div>
@@ -1878,7 +1878,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                         type="text" inputMode="decimal" value={feeInput}
                         onChange={e => { setFeeInput(e.target.value.replace(/[^\d.]/g, '')); if (feeErr) setFeeErr(''); }}
                         placeholder="0.00"
-                        style={{ width:'90px', border:'none', outline:'none', padding:'6px 8px 6px 0', fontSize:'12px', color:'var(--white)' }}
+                        style={{ width:'90px', border:'none', outline:'none', padding:'6px 8px 6px 0', fontSize:'12px', color:'var(--white)', background:'transparent' }}
                        maxLength={12}/>
                     </div>
                     {mayWork && (<button type="button" onClick={handleSaveCourierFee} disabled={savingFee}
@@ -1886,7 +1886,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                       {savingFee ? 'Saving…' : (Number(lo.courierFee) > 0 ? 'Update fee' : 'Set fee')}
                     </button>)}
                     {Number(lo.courierFee) > 0 && (
-                      <span style={{ fontSize:'11px', color:'#166534', fontWeight:600 }}>
+                      <span style={{ fontSize:'11px', color:'var(--st-green-fg)', fontWeight:600 }}>
                         Set: ₱{fmt(lo.courierFee)}
                       </span>
                     )}
@@ -1916,7 +1916,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                                 ? `Marked received by you${when ? ' - ' + when : ''}`
                                 : `Paid online via ${how.toUpperCase()}${when ? ' - ' + when : ''}`;
                             if (!(paid > 0) || short <= 0.009) return (
-                              <span style={{ fontSize:'11px', fontWeight:700, color:'#166534', lineHeight:1.5 }}>
+                              <span style={{ fontSize:'11px', fontWeight:700, color:'var(--st-green-fg)', lineHeight:1.5 }}>
                                 {how && how !== 'manual'
                                   ? 'Paid online - you pay the courier; the rider collects nothing from the customer'
                                   : 'Delivery fee received - nothing for the rider to collect'}
@@ -1949,7 +1949,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                               : 'Settle it here if they paid you another way.'}
                           </span>
                           {mayWork && (<button type="button" onClick={() => handleCourierFeePaid(true)} disabled={savingFee}
-                            style={{ padding:'4px 11px', fontSize:'11px', fontWeight:700, borderRadius:'6px', border:'1px solid #166534', background:'transparent', color:'#166534', cursor: savingFee ? 'not-allowed' : 'pointer' }}>
+                            style={{ padding:'4px 11px', fontSize:'11px', fontWeight:700, borderRadius:'6px', border:'1px solid var(--st-green-fg)', background:'transparent', color:'var(--st-green-fg)', cursor: savingFee ? 'not-allowed' : 'pointer' }}>
                             Mark fee received
                           </button>)}
                         </>
@@ -1997,7 +1997,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                           <div style={{ display:'flex', alignItems:'center', gap:'6px', flexWrap:'wrap' }}>
                             <span style={{ fontFamily:'monospace', fontWeight:700, fontSize:'12px', color:'var(--white)' }}>{j.joId}</span>
                             <JobOrderStatusBadge status={j.joStatus} />
-                            {j.isRush && <span style={{ ...S.badge, background:'#fff7ed', color:'#c2410c', border:'1px solid #fdba74', fontSize:'10px' }}>RUSH</span>}
+                            {j.isRush && <span style={{ ...S.badge, background:'var(--st-orange-bg)', color:'var(--st-orange-fg)', border:'1px solid color-mix(in srgb, var(--st-orange-fg) 35%, transparent)', fontSize:'10px' }}>RUSH</span>}
                             {jrisk && <span style={{ ...S.badge, ...RISK_STYLE[jrisk.color], fontSize:'9px', fontWeight:700 }}>{jrisk.label}</span>}
                           </div>
                           <div style={{ fontSize:'11px', color:'var(--gray)', marginTop:'2px' }}>
@@ -2033,7 +2033,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                     const done = sec.entries.every(({ it }) => it.designStatus === 'approved');
                     return (
                       <button key={sec.key} onClick={() => { setActiveItemIdx(sec.indices[0]); setShowReject(false); setShowFix(false); setConfirmApprove(false); setDraftFiles([]); setDesignErr(''); setMockupMode(false); }}
-                        style={{ padding:'4px 10px', borderRadius:'999px', border:`1px solid ${active?'var(--gold)':done?'#bbf7d0':'var(--border)'}`, background: active?'rgba(212,168,67,0.1)':'transparent', color: active?'var(--gold)':'var(--gray)', fontSize:'11px', fontWeight:700, cursor:'pointer' }}>
+                        style={{ padding:'4px 10px', borderRadius:'999px', border:`1px solid ${active?'var(--gold)':done?'color-mix(in srgb, var(--st-green-fg) 35%, transparent)':'var(--border)'}`, background: active?'rgba(212,168,67,0.1)':'transparent', color: active?'var(--gold)':'var(--gray)', fontSize:'11px', fontWeight:700, cursor:'pointer' }}>
                         {sec.label}{done ? ' - approved' : ''}
                       </button>
                     );
@@ -2053,9 +2053,9 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                     if (!st) return null;
                     return (
                       <span key={idx} style={{ ...S.badge, fontSize:'11px',
-                        background: st==='approved' ? '#f0fdf4' : st==='rejected' ? '#fef2f2' : '#fff7ed',
-                        color:      st==='approved' ? '#166534' : st==='rejected' ? '#991b1b' : '#c2410c',
-                        border:`1px solid ${st==='approved'?'#bbf7d0':st==='rejected'?'#fecaca':'#fdba74'}` }}>
+                        background: st==='approved' ? 'var(--st-green-bg)' : st==='rejected' ? 'var(--st-red-bg)' : 'var(--st-orange-bg)',
+                        color:      st==='approved' ? 'var(--st-green-fg)' : st==='rejected' ? 'var(--st-red-fg)' : 'var(--st-orange-fg)',
+                        border:`1px solid ${st==='approved'?'color-mix(in srgb, var(--st-green-fg) 35%, transparent)':st==='rejected'?'color-mix(in srgb, var(--st-red-fg) 35%, transparent)':'color-mix(in srgb, var(--st-orange-fg) 35%, transparent)'}` }}>
                         {designItems.length > 1 ? `${it.productName || 'Item'}: ` : ''}{statusLabel(st)}
                         {Number(it.revisionCount ?? 0) > 0 && ` - rev ${it.revisionCount}`}
                       </span>
@@ -2065,8 +2065,8 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
               )}
 
               {aiStatus==='revision_requested' && (ai.revisionNotes || lo.revisionNotes) && (
-                <div style={{ ...S.note, background:'#fff7ed', border:'1px solid #fdba74', marginBottom:'8px', fontSize:'12px' }}>
-                  <span style={{ fontWeight:600, color:'#c2410c' }}>Revision: </span>{ai.revisionNotes || lo.revisionNotes}
+                <div style={{ ...S.note, background:'var(--st-orange-bg)', border:'1px solid color-mix(in srgb, var(--st-orange-fg) 35%, transparent)', marginBottom:'8px', fontSize:'12px' }}>
+                  <span style={{ fontWeight:600, color:'var(--st-orange-fg)' }}>Revision: </span>{ai.revisionNotes || lo.revisionNotes}
                 </div>
               )}
 
@@ -2217,7 +2217,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                           style={S.btnSmGhost}>Cancel</button>
                       </div>
                       {convertState === 'error' && (
-                        <div style={{ fontSize: 11, color: '#b91c1c', marginTop: 6 }}>
+                        <div style={{ fontSize: 11, color: 'var(--st-red-fg)', marginTop: 6 }}>
                           Could not convert - try again.
                         </div>
                       )}
@@ -2229,11 +2229,11 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
               {(mayApprove || mayProof) && aiStatus==='pending_review' && aiHasFile && !aiRequested && !showReject && !showFix && !confirmApprove && (
                 <div style={{ display:'flex', gap:'6px', marginBottom:'8px', flexWrap:'wrap' }}>
                   {mayApprove && (<button onClick={() => { setConfirmApprove(true); setDesignErr(''); }} disabled={!!designAct}
-                    style={{ flex:'1 1 30%', padding:'5px 0', background:'#f0fdf4', border:'1px solid #bbf7d0', borderRadius:'6px', color:'#166534', fontSize:'12px', fontWeight:700, cursor:designAct?'not-allowed':'pointer', opacity:designAct?.6:1 }}>
+                    style={{ flex:'1 1 30%', padding:'5px 0', background:'var(--st-green-bg)', border:'1px solid color-mix(in srgb, var(--st-green-fg) 35%, transparent)', borderRadius:'6px', color:'var(--st-green-fg)', fontSize:'12px', fontWeight:700, cursor:designAct?'not-allowed':'pointer', opacity:designAct?.6:1 }}>
                     Approve
                   </button>)}
                   {mayApprove && (<button onClick={() => { setShowReject(true); setDesignErr(''); }} disabled={!!designAct}
-                    style={{ flex:'1 1 30%', padding:'5px 0', background:'#fef2f2', border:'1px solid #fecaca', borderRadius:'6px', color:'#991b1b', fontSize:'12px', fontWeight:700, cursor:designAct?'not-allowed':'pointer', opacity:designAct?.6:1 }}>
+                    style={{ flex:'1 1 30%', padding:'5px 0', background:'var(--st-red-bg)', border:'1px solid color-mix(in srgb, var(--st-red-fg) 35%, transparent)', borderRadius:'6px', color:'var(--st-red-fg)', fontSize:'12px', fontWeight:700, cursor:designAct?'not-allowed':'pointer', opacity:designAct?.6:1 }}>
                     Reject
                   </button>)}
                   {mayProof && (<button onClick={() => { setShowFix(true); setDesignErr(''); }} disabled={!!designAct}
@@ -2246,8 +2246,8 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
               {/* Approve is one click with a hard effect (design goes to production-ready), so it
                   confirms first to avoid an accidental tap. */}
               {confirmApprove && (
-                <div style={{ padding:'10px', background:'#f0fdf4', border:'1px solid #bbf7d0', borderRadius:'8px', marginBottom:'8px', display:'flex', flexDirection:'column', gap:'8px' }}>
-                  <div style={{ fontSize:'12px', color:'#166534' }}>Approve this design? It becomes ready for production and the customer is notified. You can revert only before a Job Order is created.</div>
+                <div style={{ padding:'10px', background:'var(--st-green-bg)', border:'1px solid color-mix(in srgb, var(--st-green-fg) 35%, transparent)', borderRadius:'8px', marginBottom:'8px', display:'flex', flexDirection:'column', gap:'8px' }}>
+                  <div style={{ fontSize:'12px', color:'var(--st-green-fg)' }}>Approve this design? It becomes ready for production and the customer is notified. You can revert only before a Job Order is created.</div>
                   <div style={{ display:'flex', gap:'6px' }}>
                     <button onClick={handleApproveDesign} disabled={!!designAct}
                       style={{ flex:1, padding:'6px 0', background:'#166534', border:'none', borderRadius:'6px', color:'#fff', fontSize:'12px', fontWeight:700, cursor:designAct?'not-allowed':'pointer', opacity:designAct?.6:1 }}>
@@ -2304,8 +2304,8 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
               {/* Reject with a reason - saved on the order, shown to the customer, bounces the
                   order back so they can re-upload a corrected file. */}
               {showReject && (
-                <div style={{ padding:'10px', background:'#fef2f2', border:'1px solid #fecaca', borderRadius:'8px', marginBottom:'8px', display:'flex', flexDirection:'column', gap:'6px' }}>
-                  <div style={{ fontSize:'12px', fontWeight:700, color:'#991b1b' }}>Why is this being rejected?</div>
+                <div style={{ padding:'10px', background:'var(--st-red-bg)', border:'1px solid color-mix(in srgb, var(--st-red-fg) 35%, transparent)', borderRadius:'8px', marginBottom:'8px', display:'flex', flexDirection:'column', gap:'6px' }}>
+                  <div style={{ fontSize:'12px', fontWeight:700, color:'var(--st-red-fg)' }}>Why is this being rejected?</div>
                   {REJECT_REASONS.map(r => (
                     <label key={r} style={{ display:'flex', alignItems:'center', gap:'6px', fontSize:'12px', color:'var(--white)', cursor:'pointer' }}>
                       <input type="radio" name="rejreason" checked={rejectReason===r} onChange={() => setRejectReason(r)} />
@@ -2459,7 +2459,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                   ) : null}
                 </div>
               )}
-              {designErr && <div style={{ fontSize:'11px', color:'#991b1b', marginTop:'4px' }}>{designErr}</div>}
+              {designErr && <div style={{ fontSize:'11px', color:'var(--st-red-fg)', marginTop:'4px' }}>{designErr}</div>}
             </>
           )}
 
@@ -2472,7 +2472,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
               separates a pricing problem from a delivery-time problem from a change of mind. */}
           {lo.cancelledReason && (
             <div style={{ marginBottom:'8px', padding:'8px 10px', borderRadius:'7px', background:'rgba(239,68,68,0.06)', border:'1px solid rgba(239,68,68,0.2)' }}>
-              <div style={{ fontSize:'10px', fontWeight:700, color:'#991b1b', textTransform:'uppercase', letterSpacing:'.5px' }}>
+              <div style={{ fontSize:'10px', fontWeight:700, color:'var(--st-red-fg)', textTransform:'uppercase', letterSpacing:'.5px' }}>
                 Cancelled by {lo.cancelledBy === 'customer' ? 'the customer' : 'the shop'}
               </div>
               <div style={{ fontSize:'12px', color:'var(--gray-light)', marginTop:'3px' }}>{lo.cancelledReason}</div>
@@ -2491,7 +2491,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
               </span>
               {readySince !== null && (
                 <span style={{ fontSize:'11px', fontWeight:700,
-                  color: readySince >= 14 ? '#c2410c' : readySince >= 7 ? 'var(--st-orange-fg)' : 'var(--gray)' }}>
+                  color: readySince >= 14 ? 'var(--st-orange-fg)' : readySince >= 7 ? 'var(--st-orange-fg)' : 'var(--gray)' }}>
                   Finished goods held for {readySince} day{readySince === 1 ? '' : 's'}
                   {readySince >= 14 && ' - these cannot be resold. Decide whether to keep holding them.'}
                 </span>
@@ -2500,7 +2500,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
               {mayWriteOff && readySince !== null && readySince >= 7 && !lo.writeOff && (
                 !woConfirm ? (
                   <button onClick={() => { setWoErr(''); setWoConfirm(true); }}
-                    style={{ ...S.btnSmGhost, justifyContent:'center', color:'#c2410c' }}>
+                    style={{ ...S.btnSmGhost, justifyContent:'center', color:'var(--st-orange-fg)' }}>
                     Write off and archive
                   </button>
                 ) : (
@@ -2509,11 +2509,11 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                       The goods are disposed of and the order is closed. You keep the
                       <strong style={{ color:'var(--gold)' }}> ₱{fmt(paidSoFar(lo))} </strong>
                       already paid, and the
-                      <strong style={{ color:'#c2410c' }}> ₱{fmt(remainingDue(lo))} </strong>
+                      <strong style={{ color:'var(--st-orange-fg)' }}> ₱{fmt(remainingDue(lo))} </strong>
                       balance is never collected. The cost of what was made is recorded as a loss so
                       the forfeited deposit does not read as profit.
                     </div>
-                    {woErr && <div style={{ fontSize:'11px', color:'#991b1b', marginBottom:'6px' }}>{woErr}</div>}
+                    {woErr && <div style={{ fontSize:'11px', color:'var(--st-red-fg)', marginBottom:'6px' }}>{woErr}</div>}
                     <div style={{ display:'flex', gap:'6px' }}>
                       <button onClick={handleWriteOff} disabled={writingOff}
                         style={{ flex:1, padding:'6px 0', background:'#c2410c', border:'none', borderRadius:'6px', color:'#fff', fontSize:'12px', fontWeight:700, cursor: writingOff ? 'not-allowed' : 'pointer' }}>
@@ -2630,7 +2630,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                     )}
 
                     {settlementErr && (
-                      <div style={{ fontSize:'11.5px', color:'#b91c1c' }}>{settlementErr}</div>
+                      <div style={{ fontSize:'11.5px', color:'var(--st-red-fg)' }}>{settlementErr}</div>
                     )}
 
                     {consumeRows.length > 0 && (
@@ -2687,7 +2687,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                             Back to stock <b style={{ color:'var(--white)' }}>{settlementSummary.back}</b>
                           </span>
                           <span style={{ color:'var(--gray)' }}>
-                            Written off <b style={{ color:'#b91c1c' }}>{settlementSummary.off}</b>
+                            Written off <b style={{ color:'var(--st-red-fg)' }}>{settlementSummary.off}</b>
                             {settlementSummary.offValue > 0 && ` (\u20B1${fmt(settlementSummary.offValue)})`}
                           </span>
                         </div>
@@ -2697,7 +2697,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                     {paidSoFar(lo) > 0 && (
                       <div style={{ marginTop:'4px', padding:'9px 11px', borderRadius:'6px',
                         background:'rgba(239,68,68,0.06)', border:'1px solid rgba(239,68,68,0.25)' }}>
-                        <div style={{ fontSize:'12px', fontWeight:700, color:'#b91c1c', marginBottom:'4px' }}>
+                        <div style={{ fontSize:'12px', fontWeight:700, color:'var(--st-red-fg)', marginBottom:'4px' }}>
                           This customer has paid &#8369;{fmt(paidSoFar(lo))}
                         </div>
                         {(() => {
@@ -2733,7 +2733,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                 style={{ ...S.btnSmGhost, justifyContent:'center', opacity: selStatus===lo.orderStatus?.5:1, cursor: selStatus===lo.orderStatus?'not-allowed':'pointer' }}>
                 Update Status
               </button>)}
-              {updateErr && <div style={{ fontSize:'11px', color:'#991b1b' }}>{updateErr}</div>}
+              {updateErr && <div style={{ fontSize:'11px', color:'var(--st-red-fg)' }}>{updateErr}</div>}
 
               {/* The shortcut used to live only in the branch for orders with no legal transition
                   left, as though needing a job order and having a status to move were
@@ -2787,7 +2787,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                   const range = lo.estimatedDeliveryMin
                     ? fmtD(lo.estimatedDeliveryMin) + (lo.estimatedDeliveryMax && lo.estimatedDeliveryMax !== lo.estimatedDeliveryMin ? ` - ${fmtD(lo.estimatedDeliveryMax)}` : '')
                     : '-';
-                  const rushTag = lo.isRush && <span style={{ marginLeft:6, fontSize:'10px', fontWeight:700, color:'#991b1b', background:'#fef2f2', border:'1px solid #fecaca', borderRadius:4, padding:'1px 5px' }}>RUSH</span>;
+                  const rushTag = lo.isRush && <span style={{ marginLeft:6, fontSize:'10px', fontWeight:700, color:'var(--st-red-fg)', background:'var(--st-red-bg)', border:'1px solid color-mix(in srgb, var(--st-red-fg) 35%, transparent)', borderRadius:4, padding:'1px 5px' }}>RUSH</span>;
                   const clock = lo.deliveryClock;
                   const st = String(lo.designStatus ?? '');
                   const waitingDesign = st !== '' && st !== 'approved';
@@ -2837,16 +2837,16 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                 {lo.needByDate && (
                   <div style={{ fontSize:'12px', color:'var(--gray)' }}>
                     Customer needs by:{' '}
-                    <span style={{ color:'#c2410c', fontWeight:700 }}>{new Date(lo.needByDate).toLocaleDateString('en-PH',{month:'short',day:'numeric',year:'numeric'})}</span>
+                    <span style={{ color:'var(--st-orange-fg)', fontWeight:700 }}>{new Date(lo.needByDate).toLocaleDateString('en-PH',{month:'short',day:'numeric',year:'numeric'})}</span>
                   </div>
                 )}
                 {/* Rush is a REQUEST - the shop decides if it can fit it in ("kaya ba isabay"). */}
                 {lo.rushStatus === 'requested' && (
-                  <div style={{ padding:'10px', background:'#fff7ed', border:'1px solid #fdba74', borderRadius:'8px', display:'flex', flexDirection:'column', gap:'8px' }}>
+                  <div style={{ padding:'10px', background:'var(--st-orange-bg)', border:'1px solid color-mix(in srgb, var(--st-orange-fg) 35%, transparent)', borderRadius:'8px', display:'flex', flexDirection:'column', gap:'8px' }}>
                     {/* The customer has ALREADY paid this - it was collected in the checkout total,
                         so "Accept" confirms and charges nothing. Declining is the expensive half,
                         and the old label ("waive fee") read as though it cost the shop nothing. */}
-                    <div style={{ fontSize:'12px', fontWeight:700, color:'#c2410c' }}>
+                    <div style={{ fontSize:'12px', fontWeight:700, color:'var(--st-orange-fg)' }}>
                       Rush requested (+₱{Number(lo.rushFee ?? 0).toLocaleString('en-PH')}) - can you fit it in?
                     </div>
                     <div style={{ fontSize:'11px', color:'var(--gray)', lineHeight:1.45, marginTop:-2 }}>
@@ -2858,7 +2858,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                       {mayWork && (<button onClick={() => handleRushDecision('accepted')} disabled={savingDeliv}
                         style={{ flex:1, padding:'6px 0', background:'#166534', border:'none', borderRadius:'6px', color:'#fff', fontSize:'12px', fontWeight:700, cursor:savingDeliv?'not-allowed':'pointer', opacity:savingDeliv?.6:1 }}>Accept rush</button>)}
                       {mayWork && (<button onClick={() => handleRushDecision('declined')} disabled={savingDeliv}
-                        style={{ flex:1, padding:'6px 0', background:'transparent', border:'1px solid #fecaca', borderRadius:'6px', color:'#991b1b', fontSize:'12px', fontWeight:700, cursor:savingDeliv?'not-allowed':'pointer', opacity:savingDeliv?.6:1 }}>
+                        style={{ flex:1, padding:'6px 0', background:'transparent', border:'1px solid color-mix(in srgb, var(--st-red-fg) 35%, transparent)', borderRadius:'6px', color:'var(--st-red-fg)', fontSize:'12px', fontWeight:700, cursor:savingDeliv?'not-allowed':'pointer', opacity:savingDeliv?.6:1 }}>
                         {Number(lo.balance ?? 0) <= 0
                           ? `Decline & refund \u20B1${Number(lo.rushFee ?? 0).toLocaleString('en-PH')}`
                           : 'Decline (waive fee)'}
@@ -2866,7 +2866,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                     </div>
                   </div>
                 )}
-                {lo.rushStatus === 'accepted' && <div style={{ fontSize:'11px', fontWeight:700, color:'#166534' }}>Rush accepted - prioritise this order.</div>}
+                {lo.rushStatus === 'accepted' && <div style={{ fontSize:'11px', fontWeight:700, color:'var(--st-green-fg)' }}>Rush accepted - prioritise this order.</div>}
                 {lo.rushStatus === 'declined' && <div style={{ fontSize:'11px', color:'var(--gray)' }}>Rush declined - standard schedule, fee waived.</div>}
                 {(() => {
                   // No date to move while the countdown is parked: approval re-counts it anyway, and a
@@ -2906,8 +2906,8 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
               agreed, the exact date/time, the version, and the EXACT clause text they accepted. */}
           {lo.agreedToTerms ? (
             <div style={{ marginTop:'10px' }}>
-              <div style={{ display:'flex', alignItems:'center', gap:'6px', fontSize:'11px', color:'#166534', fontWeight:700 }}>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#166534" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+              <div style={{ display:'flex', alignItems:'center', gap:'6px', fontSize:'11px', color:'var(--st-green-fg)', fontWeight:700 }}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--st-green-fg)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
                 Accepted the Custom Order Terms{lo.termsVersion ? ` (v${lo.termsVersion})` : ''}
                 <button onClick={() => setShowProof(s => !s)} style={{ marginLeft:'auto', background:'none', border:'1px solid var(--border)', borderRadius:'6px', color:'var(--gold)', fontSize:'10px', fontWeight:700, padding:'2px 8px', cursor:'pointer' }}>
                   {showProof ? 'Hide proof' : 'View proof'}
@@ -2928,7 +2928,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                     <div style={{ display:'flex', flexDirection:'column', gap:'6px', maxHeight:'200px', overflowY:'auto' }}>
                       {clauses.map((c, i) => (
                         <div key={i}>
-                          <span style={{ fontWeight:700, color:'#166534' }}>{i+1}. {c.title}</span>
+                          <span style={{ fontWeight:700, color:'var(--st-green-fg)' }}>{i+1}. {c.title}</span>
                           <div style={{ lineHeight:1.5 }}>{c.body}</div>
                         </div>
                       ))}
@@ -2939,7 +2939,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
             </div>
           ) : (
             (lo.isCustom || lo.items?.some(i => i.isCustom)) && (
-              <div style={{ marginTop:'10px', fontSize:'11px', color:'#c2410c' }}>No recorded T&C acceptance on this order.</div>
+              <div style={{ marginTop:'10px', fontSize:'11px', color:'var(--st-orange-fg)' }}>No recorded T&C acceptance on this order.</div>
             )
           )}
         </div>
@@ -2972,9 +2972,9 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                     {(() => {
                       const tag =
                         item.designRequested || item.designMode === 'request' ? null
-                        : (item.designUrl || item.designFiles?.length) ? { t: 'UPLOAD',     c: '#5b21b6', b: '#ede9fe' }
-                        : item.isMadeToOrder                            ? { t: 'MADE TO ORDER', c: '#92400e', b: '#fef3c7' }
-                        : { t: 'READY-MADE', c: '#166534', b: '#f0fdf4' };
+                        : (item.designUrl || item.designFiles?.length) ? { t: 'UPLOAD',     c: 'var(--st-purple-fg)', b: 'var(--st-purple-bg)' }
+                        : item.isMadeToOrder                            ? { t: 'MADE TO ORDER', c: 'var(--st-amber-fg)', b: 'var(--st-amber-bg)' }
+                        : { t: 'READY-MADE', c: 'var(--st-green-fg)', b: 'var(--st-green-bg)' };
                       return tag ? (
                         <span style={{ fontSize:'10px', fontWeight:700, color:tag.c, background:tag.b, borderRadius:'4px', padding:'1px 6px', display:'inline-block', marginTop:'3px' }}>
                           {tag.t}
@@ -2982,7 +2982,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                       ) : null;
                     })()}
                     {item.designRequested && (
-                      <span style={{ fontSize:'10px', fontWeight:700, color:'var(--gold)', background:'#fff7ed', padding:'1px 5px', borderRadius:'3px', border:'1px solid #fdba74', marginTop:'2px', display:'inline-block' }}>Design Service</span>
+                      <span style={{ fontSize:'10px', fontWeight:700, color:'var(--gold)', background:'var(--st-orange-bg)', padding:'1px 5px', borderRadius:'3px', border:'1px solid color-mix(in srgb, var(--st-orange-fg) 35%, transparent)', marginTop:'2px', display:'inline-block' }}>Design Service</span>
                     )}
                   </div>
                   <div style={{ textAlign:'right', flexShrink:0 }}>
@@ -3061,7 +3061,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
               <span style={{ color:'var(--gray)' }}>
                 Rush fee
                 {lo.rushStatus === 'accepted' ? null : (
-                  <span style={{ marginLeft:6, fontSize:'10px', fontWeight:700, textTransform:'uppercase', letterSpacing:'.04em', color: lo.rushStatus === 'declined' ? '#c2410c' : 'var(--gray)' }}>
+                  <span style={{ marginLeft:6, fontSize:'10px', fontWeight:700, textTransform:'uppercase', letterSpacing:'.04em', color: lo.rushStatus === 'declined' ? 'var(--st-orange-fg)' : 'var(--gray)' }}>
                     {lo.rushStatus === 'declined' ? 'declined' : 'not yet accepted'}
                   </span>
                 )}
@@ -3124,7 +3124,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                 <InfoRow label="Paid" value={`₱${fmt(paid)}`} />
                 <div style={{ display:'flex', justifyContent:'space-between', fontSize:'12px', padding:'3px 0' }}>
                   <span style={{ color:'var(--gray)' }}>Balance</span>
-                  <span style={{ fontWeight:700, color: owing <= 0 ? '#166534' : '#c2410c' }}>₱{fmt(owing)}</span>
+                  <span style={{ fontWeight:700, color: owing <= 0 ? 'var(--st-green-fg)' : 'var(--st-orange-fg)' }}>₱{fmt(owing)}</span>
                 </div>
 
                 {/* Money owed BACK. A cancelled paid order and a declined paid-for rush both leave
@@ -3135,7 +3135,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                 {Number(lo.refundOwed || 0) > 0 && (
                   <div style={{ marginTop: 8, padding: '9px 11px', borderRadius: 6,
                     background: 'rgba(239,68,68,0.07)', border: '1px solid rgba(239,68,68,0.28)' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, fontWeight: 700, color: '#b91c1c' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, fontWeight: 700, color: 'var(--st-red-fg)' }}>
                       <span>Refund owed</span>
                       <span>₱{fmt(Number(lo.refundOwed))}</span>
                     </div>
@@ -3167,7 +3167,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                         Keep it - not refundable
                       </button>
                     </div>}
-                    {refundErr && <div style={{ fontSize: 11, color: '#b91c1c', marginTop: 5 }}>{refundErr}</div>}
+                    {refundErr && <div style={{ fontSize: 11, color: 'var(--st-red-fg)', marginTop: 5 }}>{refundErr}</div>}
                   </div>
                 )}
 
@@ -3180,7 +3180,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                       {reminding ? 'Sending...' : 'Send payment reminder'}
                     </button>
                     {remindMsg && (
-                      <div style={{ fontSize: 11, marginTop: 5, color: remindMsg.ok ? '#166534' : '#c2410c' }}>
+                      <div style={{ fontSize: 11, marginTop: 5, color: remindMsg.ok ? 'var(--st-green-fg)' : 'var(--st-orange-fg)' }}>
                         {remindMsg.text}
                       </div>
                     )}
@@ -3198,7 +3198,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
               {lo.paymentHistory.map((p, i) => (
                 <div key={i} style={{ display:'flex', justifyContent:'space-between', fontSize:'11px', padding:'2px 0' }}>
                   <span style={{ color:'var(--gray)' }}>{p.method}{p.note ? ` - ${p.note}` : ''}</span>
-                  <span style={{ color:'#166534', fontWeight:600 }}>+₱{fmt(p.amount)}</span>
+                  <span style={{ color:'var(--st-green-fg)', fontWeight:600 }}>+₱{fmt(p.amount)}</span>
                 </div>
               ))}
             </>
@@ -3209,11 +3209,11 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
       {/* Action row */}
       <div style={{ display:'flex', gap:'8px', flexWrap:'wrap', marginTop:'12px', alignItems:'center' }}>
         {mayPay && lo.paymentStatus !== 'paid' && (
-          <button onClick={onPayment} style={{ ...S.btnSmGhost, color:'#166534', borderColor:'#bbf7d0' }}>Record Payment</button>
+          <button onClick={onPayment} style={{ ...S.btnSmGhost, color:'var(--st-green-fg)', borderColor:'color-mix(in srgb, var(--st-green-fg) 35%, transparent)' }}>Record Payment</button>
         )}
         {mayCancel && canExpire && (
           <button onClick={handleExpire} disabled={expiring}
-            style={{ ...S.btnSmDanger, background:'#fff7ed', color:'#c2410c', borderColor:'#fdba74', opacity: expiring ? 0.6 : 1 }}>
+            style={{ ...S.btnSmDanger, background:'var(--st-orange-bg)', color:'var(--st-orange-fg)', borderColor:'color-mix(in srgb, var(--st-orange-fg) 35%, transparent)', opacity: expiring ? 0.6 : 1 }}>
             {expiring ? 'Expiring…' : 'Mark Expired'}
           </button>
         )}
@@ -3233,7 +3233,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
             {restoring ? 'Restoring...' : 'Restore from archive'}
           </button>
         )}
-        {expireErr && <span style={{ fontSize:'11px', color:'#991b1b' }}>{expireErr}</span>}
+        {expireErr && <span style={{ fontSize:'11px', color:'var(--st-red-fg)' }}>{expireErr}</span>}
       </div>
 
       {waiveAsk !== null && (
@@ -3619,7 +3619,7 @@ export default function OrdersPage() {
             actions={<>
               <button onClick={() => setShowJOQueue(true)} style={{ ...S.btnSmGhost, minHeight:36 }}>{ICONS.pkg} JO Queue</button>
               <button onClick={() => setShowArchived(v => !v)}
-                style={{ ...S.btnSmGhost, minHeight:36, ...(showArchived ? { background:'#fff7ed', color:'#c2410c', borderColor:'#fdba74' } : {}) }}>
+                style={{ ...S.btnSmGhost, minHeight:36, ...(showArchived ? { background:'var(--st-orange-bg)', color:'var(--st-orange-fg)', borderColor:'color-mix(in srgb, var(--st-orange-fg) 35%, transparent)' } : {}) }}>
                 {showArchived ? 'Hide archived' : 'Archived'}
               </button>
               <button onClick={() => setShowDone(v => !v)}
@@ -3693,7 +3693,7 @@ export default function OrdersPage() {
             </button>
             <button
               onClick={() => setShowArchived(v => !v)}
-              style={{ ...S.btnSmGhost, ...(showArchived ? { background:'#fff7ed', color:'#c2410c', borderColor:'#fdba74' } : {}) }}>
+              style={{ ...S.btnSmGhost, ...(showArchived ? { background:'var(--st-orange-bg)', color:'var(--st-orange-fg)', borderColor:'color-mix(in srgb, var(--st-orange-fg) 35%, transparent)' } : {}) }}>
               {showArchived ? 'Hide Archived' : 'Show Archived'}
             </button>
             <button onClick={() => fetchOrders()} style={S.btnSmGhost}>{ICONS.reload}</button>
@@ -3703,7 +3703,7 @@ export default function OrdersPage() {
 
         </>)}
 
-        {loadError && <div style={{ ...S.note, background:'#fef2f2', border:'1px solid #fecaca', color:'#991b1b', marginBottom:'10px' }}>{loadError}</div>}
+        {loadError && <div style={{ ...S.note, background:'var(--st-red-bg)', border:'1px solid color-mix(in srgb, var(--st-red-fg) 35%, transparent)', color:'var(--st-red-fg)', marginBottom:'10px' }}>{loadError}</div>}
 
         {isPhone ? (
           <>

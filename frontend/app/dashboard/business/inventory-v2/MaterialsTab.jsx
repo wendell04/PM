@@ -179,7 +179,7 @@ function ManageListsModal({ open, onClose, categories, setCategories, units, set
     return (
       <div key={val} style={{ borderRadius:'6px', overflow:'hidden', marginBottom:'3px' }}>
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'6px 10px',
-          background: isPending ? '#fff5f5' : 'var(--dark2)', border: isPending ? '1px solid #fca5a5' : '1px solid transparent',
+          background: isPending ? '#fff5f5' : 'var(--dark2)', border: isPending ? '1px solid color-mix(in srgb, var(--st-red-fg) 35%, transparent)' : '1px solid transparent',
           borderRadius:'6px', fontSize:'13px' }}>
           <div>
             <span>{val}</span>

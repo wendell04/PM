@@ -183,7 +183,7 @@ const ChatWindow = ({ activeConversation, messages, user, isLoading, isAdmin, on
                 {/* proofActionState is per-session, so a reload put live Approve buttons back on a
                     proof that had already been settled. The message carries the outcome now. */}
                 {m.settled || proofActionState?.[m.orderId] === 'done' ? (
-                  <div style={{ fontSize: '0.78rem', fontWeight: 700, color: m.settledOutcome === 'changes_requested' ? '#b45309' : m.settledOutcome === 'superseded' ? '#6b6b6b' : '#166534' }}>
+                  <div style={{ fontSize: '0.78rem', fontWeight: 700, color: m.settledOutcome === 'changes_requested' ? '#b45309' : m.settledOutcome === 'superseded' ? '#6b6b6b' : 'var(--st-green-fg)' }}>
                     {m.settledOutcome === 'changes_requested'
                       ? 'Changes requested - we are redrawing this.'
                                         : m.settledOutcome === 'superseded' ? 'Replaced by a newer proof below.'
@@ -209,7 +209,7 @@ const ChatWindow = ({ activeConversation, messages, user, isLoading, isAdmin, on
                 design fee already paid, deposit against full - and "what was I shown when I paid" is
                 the question every payment dispute turns on. One tap away, not reproduced here. */}
             {m.kind === 'deposit_due' && !isAdmin && m.settled && (
-              <div style={{ padding: '2px 12px 10px', fontSize: '0.78rem', fontWeight: 700, color: '#166534' }}>
+              <div style={{ padding: '2px 12px 10px', fontSize: '0.78rem', fontWeight: 700, color: 'var(--st-green-fg)' }}>
                 Paid - thank you.
               </div>
             )}

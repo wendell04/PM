@@ -199,7 +199,7 @@ export default function VendorsTab({ vendors, setVendors, materials, categories,
                   <td style={S.td}>
                     <div style={{ display:'flex', flexWrap:'wrap', gap:'4px' }}>
                       {(v.itemsSupplied || []).map(c => (
-                        <span key={c} style={{ background:'#f0f4ff', color:'#1e40af', borderRadius:'5px', padding:'2px 7px', fontSize:'11px', fontWeight:500 }}>{c}</span>
+                        <span key={c} style={{ background:'#f0f4ff', color:'var(--st-blue-fg)', borderRadius:'5px', padding:'2px 7px', fontSize:'11px', fontWeight:500 }}>{c}</span>
                       ))}
                     </div>
                   </td>

@@ -4628,3 +4628,11 @@ html.light .skeleton-table-header {
 }
 .pmp-q-mark.round { border-radius: 50%; }
 .pmp-q-mark.square { border-radius: 3px; }
+
+/* An input with no background of its own took the browser's white, and its text is var(--white) -
+   so in dark mode it was white on white (the delivery fee box on Orders). :where() carries no
+   weight, so every input that sets a background, by class or inline, still wins. */
+:where(.admin-page-content) :where(input:not([type=checkbox], [type=radio], [type=range], [type=color], [type=file]), textarea) {
+  background-color: transparent;
+  color: var(--white);
+}

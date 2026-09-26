@@ -552,7 +552,7 @@ export default function StockInTab({ materials, vendors, batches, setBatches, ba
                   {r.bos.length > 0 && (
                     <div style={{ marginTop:'10px', display:'flex', flexDirection:'column', gap:'8px' }}>
                       {r.bos.map((bo, j) => (
-                        <div key={j} style={{ background:'#fff5f5', border:'1px solid #fca5a5', borderRadius:'7px', padding:'10px 12px' }}>
+                        <div key={j} style={{ background:'#fff5f5', border:'1px solid color-mix(in srgb, var(--st-red-fg) 35%, transparent)', borderRadius:'7px', padding:'10px 12px' }}>
                           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'8px' }}>
                             <span style={{ fontSize:'12px', fontWeight:600, color:'var(--st-red-fg)' }}>Bad Order #{j + 1}</span>
                             <button type="button" onClick={() => removeBO(i, j)}
@@ -579,7 +579,7 @@ export default function StockInTab({ materials, vendors, batches, setBatches, ba
                   )}
 
                   <button type="button" onClick={() => addBO(i)}
-                    style={{ ...S.btnGhost, marginTop:'10px', fontSize:'12px', color:'#e05252', borderColor:'#fca5a5' }}>
+                    style={{ ...S.btnGhost, marginTop:'10px', fontSize:'12px', color:'#e05252', borderColor:'color-mix(in srgb, var(--st-red-fg) 35%, transparent)' }}>
                     + Add BO Issue
                     {totalBO > 0 && r.qty && <span style={{ marginLeft:'6px', color:'var(--gray)' }}>({totalBO}/{r.qty} flagged)</span>}
                   </button>

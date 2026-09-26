@@ -137,7 +137,7 @@ function StockOutModal({ open, onClose, material, currentStock, materialBatches,
         </Field>
 
         {qty && Number(qty) > 0 && Number(qty) <= maxQty && (
-          <div style={{ background:'#fff5f5', border:'1px solid #fca5a5', borderRadius:'7px', padding:'10px 14px', fontSize:'13px' }}>
+          <div style={{ background:'#fff5f5', border:'1px solid color-mix(in srgb, var(--st-red-fg) 35%, transparent)', borderRadius:'7px', padding:'10px 14px', fontSize:'13px' }}>
             {useBatch && selectedBatch && <div style={{ fontSize:'12px', color:'var(--gray)', marginBottom:'4px' }}>Batch {selectedBatch.invoiceNo || 'no invoice'} · {selectedBatch.remainingQty - Number(qty)} remaining after</div>}
             Remaining stock: <b>{currentStock - Number(qty)} {material?.unit}</b>
             {currentStock - Number(qty) <= (material?.minStock || 0) && (
@@ -418,7 +418,7 @@ export default function ActualStockTab({ materials, batches, setBatches, badOrde
                     <td style={{ ...S.td, whiteSpace:'nowrap' }}>{formatDate(s.date)}</td>
                     <td style={{ ...S.td, fontFamily:'monospace', fontSize:'12px', color:'var(--gray)' }}>{s.ref || '-'}</td>
                     <td style={S.td}>
-                      <span style={{ background: isProduction ? '#f0f4ff' : isSale ? '#f0fdf4' : isLoss ? '#fee2e2' : 'var(--dark2)', color: isProduction ? '#1e40af' : isSale ? '#166534' : isLoss ? '#991b1b' : 'var(--gray-light)', borderRadius:'5px', padding:'2px 8px', fontSize:'11px', fontWeight:600 }}>
+                      <span style={{ background: isProduction ? '#f0f4ff' : isSale ? 'var(--st-green-bg)' : isLoss ? 'var(--st-red-bg)' : 'var(--dark2)', color: isProduction ? 'var(--st-blue-fg)' : isSale ? 'var(--st-green-fg)' : isLoss ? 'var(--st-red-fg)' : 'var(--gray-light)', borderRadius:'5px', padding:'2px 8px', fontSize:'11px', fontWeight:600 }}>
                         {isProduction ? 'Production' : isSale ? 'Sale' : isLoss ? 'Loss' : 'Adjustment'}
                       </span>
                     </td>

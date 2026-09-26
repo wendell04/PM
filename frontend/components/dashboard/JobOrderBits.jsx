@@ -28,7 +28,7 @@ export function JobOrderStatusBadge({ status }) {
 
 export function RushBadge({ isRush }) {
   if (!isRush) return null;
-  return <span style={{ ...S.badge, background: 'var(--st-red-bg)', color: 'var(--st-red-fg)', border: '1px solid #fecaca', marginLeft: 6, fontSize: '10px' }}>RUSH</span>;
+  return <span style={{ ...S.badge, background: 'var(--st-red-bg)', color: 'var(--st-red-fg)', border: '1px solid color-mix(in srgb, var(--st-red-fg) 35%, transparent)', marginLeft: 6, fontSize: '10px' }}>RUSH</span>;
 }
 
 /** The document id to address a job order by. Mongo ids can arrive as a plain string or, when a

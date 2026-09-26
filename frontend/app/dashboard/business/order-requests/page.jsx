@@ -70,7 +70,7 @@ const PAYMENT_STATUS_STYLES = {
 // one of these five, and thirteen unpriced asks stop looking like thirteen quotations.
 const STAGES = {
   ask:       { label: 'Ask',       hint: 'Waiting on you',          bg: 'var(--gold)',              color: 'var(--black)' },
-  quoted:    { label: 'Quoted',    hint: 'Waiting on the customer', bg: 'rgba(59,130,246,0.18)',    color: '#93c5fd' },
+  quoted:    { label: 'Quoted',    hint: 'Waiting on the customer', bg: 'rgba(59,130,246,0.18)',    color: 'color-mix(in srgb, var(--st-blue-fg) 35%, transparent)' },
   accepted:  { label: 'Accepted',  hint: 'Paid - now an order',     bg: 'rgba(34,197,94,0.18)',     color: 'var(--green)' },
   expired:   { label: 'Expired',   hint: 'Ran out unpaid',          bg: 'rgba(120,120,120,0.22)',   color: 'var(--gray-light)' },
   cancelled: { label: 'Cancelled', hint: 'Closed',                  bg: 'rgba(196,30,58,0.18)',     color: 'var(--red)' },

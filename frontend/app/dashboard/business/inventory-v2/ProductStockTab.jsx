@@ -404,7 +404,7 @@ function DetailPanel({ variants, matMap }) {
                     <tr key={ii} style={{ opacity: counted ? 1 : 0.62 }}>
                       <td style={{ padding:'4px 8px', fontSize:'12px', color:'var(--gray-light)', fontWeight: isBottleneck ? 600 : 400 }}>
                         <span style={{ color: counted ? '#1a7f3c' : 'var(--gray)', marginRight:5, fontSize:'10px' }}>{counted ? '●' : '○'}</span>
-                        {isBottleneck && <span style={{ fontSize:'9px', fontWeight:700, background:'#fde8e8', color:'var(--st-red-fg)', border:'1px solid #fca5a5', borderRadius:3, padding:'1px 4px', marginRight:5, textTransform:'uppercase' }}>limit</span>}
+                        {isBottleneck && <span style={{ fontSize:'9px', fontWeight:700, background:'#fde8e8', color:'var(--st-red-fg)', border:'1px solid color-mix(in srgb, var(--st-red-fg) 35%, transparent)', borderRadius:3, padding:'1px 4px', marginRight:5, textTransform:'uppercase' }}>limit</span>}
                         {mat.name}
                       </td>
                       <td style={{ padding:'4px 8px', fontSize:'12px', color:'var(--gray-light)' }}>

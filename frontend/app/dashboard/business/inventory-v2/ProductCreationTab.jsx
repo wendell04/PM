@@ -195,7 +195,7 @@ export default function ProductCreationTab({ boms, setBoms, materials, batches, 
                           const canMake = stock >= it.qty;
                           return (
                             <span key={it.matId} title={canMake ? undefined : 'Insufficient stock'}
-                              style={{ background: canMake ? '#f0f4ff' : '#fde8e8', color: canMake ? '#1e40af' : 'var(--st-red-fg)', borderRadius:'5px', padding:'2px 8px', fontSize:'11px', fontWeight:500 }}>
+                              style={{ background: canMake ? '#f0f4ff' : '#fde8e8', color: canMake ? 'var(--st-blue-fg)' : 'var(--st-red-fg)', borderRadius:'5px', padding:'2px 8px', fontSize:'11px', fontWeight:500 }}>
                               {mat?.name || it.matId} ×{it.qty}
                             </span>
                           );

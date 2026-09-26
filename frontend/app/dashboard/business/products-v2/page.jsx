@@ -278,8 +278,8 @@ export default function ProductsV2() {
   const modeBadge = (mode) => {
     const map = {
       tiered:  { bg: '#fdf3e0', color: 'var(--gold)' },
-      fixed:   { bg: '#f0fdf4', color: '#15803d' },
-      inquiry: { bg: '#fef9c3', color: '#854d0e' },
+      fixed:   { bg: 'var(--st-green-bg)', color: 'var(--st-green-fg)' },
+      inquiry: { bg: 'var(--st-amber-bg)', color: 'var(--st-amber-fg)' },
     };
     const s = map[mode] || map.fixed;
     return (
@@ -335,7 +335,7 @@ export default function ProductsV2() {
 
   const stockDisplay = (p) => {
     if (p.isMadeToOrder) {
-      return <span style={{ fontSize: '11px', background: '#f5f3ff', color: '#7c3aed', borderRadius: '4px', padding: '2px 7px', fontWeight: 600 }}>MTO</span>;
+      return <span style={{ fontSize: '11px', background: 'var(--st-purple-bg)', color: '#7c3aed', borderRadius: '4px', padding: '2px 7px', fontWeight: 600 }}>MTO</span>;
     }
     let units = null;
     if (p.type === 'standalone' && p.bomId) {
@@ -566,8 +566,8 @@ export default function ProductsV2() {
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
                       {p.isCustomizable && <span style={{ fontSize: '10px', background: '#fdf3e0', color: 'var(--gold)', borderRadius: '4px', padding: '2px 6px', fontWeight: 600 }}>Custom</span>}
                       {p.isMadeToOrder  && <span style={{ fontSize: '10px', background: 'var(--dark2)', color: 'var(--gray-light)', borderRadius: '4px', padding: '2px 6px', fontWeight: 600 }}>MTO</span>}
-                      {p.allowCOD       && <span style={{ fontSize: '10px', background: '#f0fdf4', color: '#15803d', borderRadius: '4px', padding: '2px 6px', fontWeight: 600 }}>COD</span>}
-                      {!p.allowCOD      && <span style={{ fontSize: '10px', background: '#fef2f2', color: '#dc2626', borderRadius: '4px', padding: '2px 6px', fontWeight: 600 }}>Online</span>}
+                      {p.allowCOD       && <span style={{ fontSize: '10px', background: 'var(--st-green-bg)', color: 'var(--st-green-fg)', borderRadius: '4px', padding: '2px 6px', fontWeight: 600 }}>COD</span>}
+                      {!p.allowCOD      && <span style={{ fontSize: '10px', background: 'var(--st-red-bg)', color: '#dc2626', borderRadius: '4px', padding: '2px 6px', fontWeight: 600 }}>Online</span>}
                       {p.downpaymentPct > 0 && <span style={{ fontSize: '10px', background: '#fff8e1', color:'var(--st-orange-fg)', borderRadius: '4px', padding: '2px 6px', fontWeight: 600 }}>{p.downpaymentPct}% DP</span>}
                     </div>
                   </td>
@@ -740,7 +740,7 @@ function StockBreakdown({ product, boms, materials }) {
                     <tr key={ii} style={{ opacity: counted ? 1 : 0.62 }}>
                       <td style={{ padding:'4px 8px', fontSize:'12px', color:'var(--gray-light)', fontWeight: isLimit ? 600 : 400 }}>
                         <span style={{ color: counted ? '#1a7f3c' : 'var(--gray)', marginRight:'5px', fontSize:'10px' }}>{counted ? '●' : '○'}</span>
-                        {isLimit && <span style={{ fontSize:'9px', fontWeight:700, background:'#fde8e8', color:'var(--st-red-fg)', border:'1px solid #fca5a5', borderRadius:'3px', padding:'1px 4px', marginRight:'5px', textTransform:'uppercase' }}>limit</span>}
+                        {isLimit && <span style={{ fontSize:'9px', fontWeight:700, background:'#fde8e8', color:'var(--st-red-fg)', border:'1px solid color-mix(in srgb, var(--st-red-fg) 35%, transparent)', borderRadius:'3px', padding:'1px 4px', marginRight:'5px', textTransform:'uppercase' }}>limit</span>}
                         {mat.name}
                       </td>
                       <td style={{ padding:'4px 8px', fontSize:'12px', color:'var(--gray-light)' }}>

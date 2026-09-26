@@ -65,7 +65,7 @@ const SORT_OPTIONS = [
 // Orders queue" and "this is settled" - archiving does the first and never the second.
 const ArchivedTag = () => (
   <span style={{ marginLeft: 6, padding: '1px 6px', borderRadius: 4, fontSize: 10, fontWeight: 700, letterSpacing: '0.04em',
-    fontFamily: 'inherit', background: '#fff7ed', color: '#c2410c', border: '1px solid #fdba74', verticalAlign: 'middle' }}>
+    fontFamily: 'inherit', background: 'var(--st-orange-bg)', color: 'var(--st-orange-fg)', border: '1px solid color-mix(in srgb, var(--st-orange-fg) 35%, transparent)', verticalAlign: 'middle' }}>
     ARCHIVED
   </span>
 );
