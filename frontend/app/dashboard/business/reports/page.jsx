@@ -214,6 +214,12 @@ function SalesReport({ token }) {
     label: b.label, revenue: b.revenue, orders: b.orders, cost: b.cost, profit: b.profit,
     prev: data.prevSeries?.[i]?.revenue ?? 0, prevLabel: data.prevSeries?.[i]?.label,
   })), [data]);
+  // The chart keeps every day - a gap is information there. The table lists only the days that
+  // have a figure in this period or the one before; thirty rows of zeros bury the six that matter.
+  // The CSV stays complete, since a spreadsheet wants the whole series.
+  const [showQuiet, setShowQuiet] = useState(false);
+  const tableRows = useMemo(() => (showQuiet ? chart : chart.filter(r => r.orders || r.revenue || r.prev)), [chart, showQuiet]);
+  const quiet = chart.length - tableRows.length;
 
   const bucketWord = { day: 'day', week: 'week', month: 'month' }[data?.range?.bucket] ?? 'period';
   const exportRows = () => exportCSV(
@@ -300,7 +306,16 @@ function SalesReport({ token }) {
                   { key: 'profit', label: 'Gross profit', right: true, wide: true, render: r => peso(r.profit) },
                   { key: 'prev', label: data.previousRange.label, right: true, muted: true, wide: true, render: r => peso(r.prev) },
                 ]}
-                rows={chart} />
+                rows={tableRows} />
+              {(quiet > 0 || showQuiet) && (
+                <div className="rpt-noprint" style={{ padding: '8px 14px 0', fontSize: 12, color: 'var(--gray)' }}>
+                  {showQuiet ? 'Showing every ' + bucketWord + '. ' : `${quiet} ${bucketWord}${quiet === 1 ? '' : 's'} with no sales in either period not listed. `}
+                  <button type="button" onClick={() => setShowQuiet(v => !v)}
+                    style={{ background: 'none', border: 'none', padding: 0, color: 'var(--gold)', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>
+                    {showQuiet ? 'Hide the empty ones' : `Show all ${chart.length}`}
+                  </button>
+                </div>
+              )}
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '10px 14px', fontSize: 13, fontWeight: 700, flexWrap: 'wrap' }}>
                 <span>Total</span>
                 <span style={{ display: 'flex', gap: 18, flexWrap: 'wrap' }}>

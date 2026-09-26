@@ -4,6 +4,11 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import { S, ICONS, ConfirmModal, ToastContainer, useToast } from '../inventory-v2/shared';
 import OrderFormBuilder, { FORM_LIMITS, blankForm } from '@/components/dashboard/OrderFormBuilder';
+// The server names a form's id `id` (laravel-mongodb 5); older copies said `_id`. Read both, and
+// give back nothing when there is none - with both missing, every form's id was "undefined", so they
+// all matched each other: the picker lit every card and saving an edit made a new form.
+const tid = t => { const v = t?._id ?? t?.id; return v == null || v === '' ? undefined : String(v); };
+
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
@@ -43,7 +48,7 @@ export default function OrderForms({ token }) {
       setStarter(d?.data?.starter ?? null);
       setTypes(d?.data?.types ?? {});
       setLimits({ ...FORM_LIMITS, ...(d?.data?.limits ?? {}) });
-      setPickedId(prev => (list.some(t => String(t._id) === prev) ? prev : String(list[0]?._id ?? '')));
+      setPickedId(prev => (list.some(t => String(tid(t)) === prev) ? prev : String(tid(list[0]) ?? '')));
     } catch (e) {
       setTemplates([]);
       setErr(e.message || 'Could not load the order forms.');
@@ -52,7 +57,7 @@ export default function OrderForms({ token }) {
 
   useEffect(() => { if (token) load(); }, [token, load]);
 
-  const picked = useMemo(() => (templates ?? []).find(t => String(t._id) === pickedId) ?? null, [templates, pickedId]);
+  const picked = useMemo(() => (templates ?? []).find(t => String(tid(t)) === pickedId) ?? null, [templates, pickedId]);
 
   // The editor always works on a copy. Nothing reaches the server until Save, so a half-typed
   // question is never a form somebody could be sent.
@@ -101,8 +106,8 @@ export default function OrderForms({ token }) {
     if (!editing || saving) return;
     setSaving(true); setErr('');
     try {
-      const isNew = !editing._id;
-      const res = await fetchWithTimeout(`${API_URL}/api/admin/order-forms${isNew ? '' : `/${editing._id}`}`, {
+      const isNew = !tid(editing);
+      const res = await fetchWithTimeout(`${API_URL}/api/admin/order-forms${isNew ? '' : `/${tid(editing)}`}`, {
         method: isNew ? 'POST' : 'PUT',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ name: editing.name, description: editing.description, questions: editing.questions, isDefault: !!editing.isDefault }),
@@ -110,7 +115,7 @@ export default function OrderForms({ token }) {
       const d = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(d.message || 'Could not save this form.');
       setDraft(null);
-      setPickedId(String(d?.data?._id ?? editing._id ?? ''));
+      setPickedId(String(tid(d?.data) ?? tid(editing) ?? ''));
       await load();
       toast('Form saved. Forms already sent are unchanged.');
     } catch (e) {
@@ -121,7 +126,7 @@ export default function OrderForms({ token }) {
   };
 
   const remove = async () => {
-    if (!editing?._id) { setDraft(null); return; }
+    if (!tid(editing)) { setDraft(null); return; }
     const ok = await confirmAsk({
       title: 'Delete this form?',
       message: `"${editing.name}" will be gone from the list the chat picks from. Forms already sent to customers stay exactly as they were sent.`,
@@ -129,7 +134,7 @@ export default function OrderForms({ token }) {
     });
     if (!ok) return;
     try {
-      const res = await fetchWithTimeout(`${API_URL}/api/admin/order-forms/${editing._id}`, {
+      const res = await fetchWithTimeout(`${API_URL}/api/admin/order-forms/${tid(editing)}`, {
         method: 'DELETE', headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
       }, 15000);
       const d = await res.json().catch(() => ({}));
@@ -183,9 +188,9 @@ export default function OrderForms({ token }) {
         {/* The list. On a phone this wraps into a row of chips above the editor. */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           {(templates ?? []).map(t => {
-            const on = String(t._id) === pickedId;
+            const on = String(tid(t)) === pickedId;
             return (
-              <button key={t._id} type="button" onClick={() => pick(t._id)}
+              <button key={tid(t)} type="button" onClick={() => pick(tid(t))}
                 style={{ textAlign: 'left', padding: '9px 11px', borderRadius: 8, cursor: 'pointer', border: '1px solid',
                   borderColor: on ? 'var(--gold)' : 'var(--border)', background: on ? 'rgba(212,168,67,0.1)' : 'transparent', color: 'inherit' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -198,7 +203,7 @@ export default function OrderForms({ token }) {
               </button>
             );
           })}
-          {draft && !draft._id && (
+          {draft && !tid(draft) && (
             <div style={{ padding: '9px 11px', borderRadius: 8, border: '1px dashed var(--gold)', fontSize: '0.82rem', color: 'var(--gold)' }}>New form</div>
           )}
         </div>
@@ -224,7 +229,7 @@ export default function OrderForms({ token }) {
               </button>
               {dirty && <button type="button" onClick={() => { setDraft(null); setErr(''); }} style={S.btnGhost}>Undo changes</button>}
               <button type="button" onClick={remove} style={{ ...S.btnSmDanger, marginLeft: 'auto', padding: '8px 18px' }}>
-                {ICONS.trash} {editing._id ? 'Delete form' : 'Discard'}
+                {ICONS.trash} {tid(editing) ? 'Delete form' : 'Discard'}
               </button>
             </div>
           </div>

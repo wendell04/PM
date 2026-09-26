@@ -4,6 +4,11 @@ import React, { useEffect, useState } from 'react';
 import useLockBodyScroll from '@/lib/useLockBodyScroll';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import OrderFormBuilder, { FORM_LIMITS, blankForm } from '@/components/dashboard/OrderFormBuilder';
+// The server names a form's id `id` (laravel-mongodb 5); older copies said `_id`. Read both, and
+// give back nothing when there is none - with both missing, every form's id was "undefined", so they
+// all matched each other: the picker lit every card and saving an edit made a new form.
+const tid = t => { const v = t?._id ?? t?.id; return v == null || v === '' ? undefined : String(v); };
+
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
@@ -46,7 +51,7 @@ export default function OrderFormSendModal({ open, onClose, token, conversationI
         setTypes(d?.data?.types ?? {});
         setLimits({ ...FORM_LIMITS, ...(d?.data?.limits ?? {}) });
         const def = list.find(t => t.isDefault) ?? list[0];
-        setPickedId(String(def?._id ?? ''));
+        setPickedId(String(tid(def) ?? ''));
       } catch (e) {
         if (!dead) { setTemplates([]); setErr(e.message || 'Could not load the order forms.'); }
       }
@@ -56,7 +61,7 @@ export default function OrderFormSendModal({ open, onClose, token, conversationI
 
   if (!open) return null;
 
-  const picked = (templates ?? []).find(t => String(t._id) === pickedId) ?? null;
+  const picked = (templates ?? []).find(t => String(tid(t)) === pickedId) ?? null;
   const shown = draft ?? picked;
 
   const startEdit = () => {
@@ -78,8 +83,8 @@ export default function OrderFormSendModal({ open, onClose, token, conversationI
     if (!draft || busy) return;
     setBusy('saving'); setErr('');
     try {
-      const isNew = !draft._id;
-      const res = await fetchWithTimeout(`${API_URL}/api/admin/order-forms${isNew ? '' : `/${draft._id}`}`, {
+      const isNew = !tid(draft);
+      const res = await fetchWithTimeout(`${API_URL}/api/admin/order-forms${isNew ? '' : `/${tid(draft)}`}`, {
         method: isNew ? 'POST' : 'PUT',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ name: draft.name, description: draft.description, questions: draft.questions, isDefault: !!draft.isDefault }),
@@ -91,7 +96,7 @@ export default function OrderFormSendModal({ open, onClose, token, conversationI
       const list = await fetchWithTimeout(`${API_URL}/api/admin/order-forms`, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } }, 15000)
         .then(r => r.json()).then(j => j?.data?.templates ?? []).catch(() => []);
       setTemplates(list);
-      setPickedId(String(saved?._id ?? draft._id ?? ''));
+      setPickedId(String(tid(saved) ?? tid(draft) ?? ''));
       setDraft(null);
       setMode('pick');
       return true;
@@ -124,7 +129,7 @@ export default function OrderFormSendModal({ open, onClose, token, conversationI
   };
 
   const sendPicked = () => send({ templateId: pickedId });
-  const sendEdited = () => send({ templateId: draft?._id ?? pickedId, name: draft?.name, description: draft?.description, questions: draft?.questions });
+  const sendEdited = () => send({ templateId: tid(draft) ?? pickedId, name: draft?.name, description: draft?.description, questions: draft?.questions });
   const saveAndSend = async () => { const ok = await saveForm(); if (ok !== false) { /* pickedId now points at it */ } };
 
   const cap = { fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--gray)' };
@@ -183,9 +188,9 @@ export default function OrderFormSendModal({ open, onClose, token, conversationI
             <div style={{ ...cap, marginBottom: 6 }}>Which form</div>
             <div style={{ display: 'grid', gap: 6, marginBottom: 12 }}>
               {(templates ?? []).map(t => {
-                const on = String(t._id) === pickedId;
+                const on = String(tid(t)) === pickedId;
                 return (
-                  <button key={t._id} type="button" onClick={() => setPickedId(String(t._id))}
+                  <button key={tid(t)} type="button" onClick={() => setPickedId(String(tid(t)))}
                     style={{ textAlign: 'left', padding: '10px 12px', borderRadius: 10, cursor: 'pointer',
                       border: `1px solid ${on ? 'var(--gold)' : 'var(--border)'}`, background: on ? 'var(--gold-subtle)' : 'transparent', color: 'inherit' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
