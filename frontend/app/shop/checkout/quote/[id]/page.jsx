@@ -13,6 +13,7 @@ import { DEFAULT_CUSTOM_ORDER_TERMS, renderTermsBody, clauseApplies } from '@/li
 import '@/app/shop/shop.css';
 
 import AddressPicker from '@/components/shop/AddressPicker';
+import { deliverToCheck } from '@/lib/deliverTo';
 import PhotoLightbox from '@/components/chat/PhotoLightbox';
 import useLockBodyScroll from '@/lib/useLockBodyScroll';
 import PaymentMethods, { ONLINE_METHODS, tokenizeCard } from '@/components/shop/PaymentMethods';
@@ -158,6 +159,25 @@ export default function QuoteCheckoutPage() {
   const deliveryFee = Number(quote?.shippingFee) || 0;
   const amountDue = payType === 'full' ? finalPrice : down;
 
+  // ── Where the delivery fee was priced for ─────────────────────────────────
+  // The shop priced the courier by hand, for one place. Paying that fee with an address somewhere
+  // else would charge one city's fare for another's delivery - the server refuses it, and this says
+  // so before the button is pressed. No fee on the quote, nothing was priced, any address will do.
+  const priced = deliveryFee > 0 && quote?.deliverTo?.text ? quote.deliverTo : null;
+  const placeCheck = priced && selectedAddress ? deliverToCheck(priced, selectedAddress) : 'match';
+  const [samePlace, setSamePlace] = useState(false);
+  useEffect(() => { setSamePlace(false); }, [selectedAddressId]);
+  // Start on the address that was priced, or on a saved one in the same barangay and city - once,
+  // so a customer who then picks another is not pulled back.
+  const [placeSeeded, setPlaceSeeded] = useState(false);
+  useEffect(() => {
+    if (placeSeeded || !priced || !addresses.length) return;
+    const hit = addresses.find(a => deliverToCheck(priced, a) === 'match');
+    if (hit) setSelectedAddressId(hit.id);
+    setPlaceSeeded(true);
+  }, [placeSeeded, priced, addresses]);
+  const placeBlocked = placeCheck === 'differs' || (placeCheck === 'unsure' && !samePlace);
+
   // ── What is actually being sold ───────────────────────────────────────────
   // A quotation for goods off a shelf is a purchase, not a commission: there is no artwork, no
   // proof, no revisions and no design fee, so asking the customer to accept the custom order
@@ -185,6 +205,8 @@ export default function QuoteCheckoutPage() {
 
   function buildAddressPayload(a) {
     return {
+      // The saved address's id, so the server can tell it is the one the fee was priced for.
+      id: a.id ?? null,
       label: a.label, house_number: a.house_number, street: a.street,
       subdivision: a.subdivision, region: a.region ?? null, barangay: a.barangay,
       city: a.city, province: a.province, zip: a.zip, phone: a.phone,
@@ -231,6 +253,14 @@ export default function QuoteCheckoutPage() {
     }
     const missing = ['street', 'barangay', 'city', 'province'].find(f => !selectedAddress[f]?.trim?.());
     if (missing) { setError('Your delivery address is incomplete. Please update it first.'); return; }
+    if (placeCheck === 'differs') {
+      setError(`The delivery fee on this quote was priced for ${priced.text}. Choose that address, or message the shop to update the quote for this one.`);
+      return;
+    }
+    if (placeCheck === 'unsure' && !samePlace) {
+      setError('Please confirm, under Delivery address, that this is the place the shop priced your delivery for.');
+      return;
+    }
 
     setPaying(true);
     try {
@@ -248,7 +278,7 @@ export default function QuoteCheckoutPage() {
         termsVersion,
         termsAgreedAt: new Date().toISOString(),
         termsSnapshot,
-      } : {}, payment, { isRush: rush && rushOffered });
+      } : {}, payment, { isRush: rush && rushOffered, ...(placeCheck === 'unsure' && samePlace ? { deliverToConfirmed: true } : {}) });
 
       // An intent that needs authorising hands back a redirect; one that cleared outright (a saved
       // card, no 3DS) is already done. checkoutUrl is the hosted-page fallback.
@@ -328,6 +358,41 @@ export default function QuoteCheckoutPage() {
               onSaved={() => fetchAddresses(true)}
               requirePin
             />
+            {priced && (
+              <div style={{ marginTop: 12, padding: '10px 12px', borderRadius: 10, fontSize: '.8rem', lineHeight: 1.5,
+                border: `1px solid ${placeCheck === 'differs' ? '#fecaca' : 'var(--border)'}`,
+                background: placeCheck === 'differs' ? '#fef2f2' : 'var(--dark2)', color: placeCheck === 'differs' ? '#b91c1c' : 'var(--white)' }}>
+                <div>
+                  <span style={{ color: placeCheck === 'differs' ? '#b91c1c' : 'var(--gray)' }}>Your {formatPeso(deliveryFee)} delivery fee was priced for </span>
+                  <strong>{priced.text}</strong>
+                </div>
+                {placeCheck === 'match' && selectedAddress && (
+                  <div style={{ color: 'var(--gray)', marginTop: 3 }}>That is the address picked above.</div>
+                )}
+                {placeCheck === 'match' && !selectedAddress && priced.source !== 'saved' && (
+                  <div style={{ color: 'var(--gray)', marginTop: 3 }}>Save it with Add address and pin it on the map - the rider is booked from the pin.</div>
+                )}
+                {placeCheck === 'differs' && (
+                  <>
+                    <div style={{ marginTop: 3 }}>The address picked above is somewhere else, so this fee does not cover it. Pick the address above that matches, or ask the shop to update the quote.</div>
+                    <button type="button"
+                      onClick={() => window.dispatchEvent(new CustomEvent('pmp_open_chat', { detail: {
+                        message: `Hi! Could you update the delivery fee on my quote for this address instead: ${[selectedAddress?.house_number, selectedAddress?.street, selectedAddress?.barangay, selectedAddress?.city, selectedAddress?.province].filter(Boolean).join(', ')}?`,
+                      } }))}
+                      style={{ marginTop: 8, background: 'none', border: '1px solid #b91c1c', color: '#b91c1c', borderRadius: 8, padding: '6px 12px', fontWeight: 700, fontSize: '.78rem', cursor: 'pointer', fontFamily: 'inherit' }}>
+                      Message the shop
+                    </button>
+                  </>
+                )}
+                {placeCheck === 'unsure' && (
+                  <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginTop: 8, cursor: 'pointer' }}>
+                    <input type="checkbox" checked={samePlace} onChange={e => setSamePlace(e.target.checked)}
+                      style={{ marginTop: 3, accentColor: 'var(--gold)' }} />
+                    <span>Yes, the address picked above is this same place. <span style={{ color: 'var(--gray)' }}>If it is not, message the shop first - the fee would not cover it.</span></span>
+                  </label>
+                )}
+              </div>
+            )}
           </section>
 
           <section style={{ background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: 12, padding: 14 }}>
@@ -699,10 +764,13 @@ export default function QuoteCheckoutPage() {
             // the button says which of the three things is in the way rather than going grey
             // and leaving the customer to guess.
             const needsTerms = isBespoke && !agreed;
-            const blocked = paying || !selectedAddress || isExpired || needsTerms;
+            // Greyed but still pressable, like the terms: pressing says exactly what is missing.
+            const blocked = paying || !selectedAddress || isExpired || needsTerms || placeBlocked;
             const label = isExpired ? 'Quote expired'
               : paying ? 'Opening payment…'
               : !selectedAddress ? 'Choose a delivery address'
+              : placeCheck === 'differs' ? 'Fee is for another address'
+              : placeBlocked ? 'Confirm the delivery address'
               : needsTerms ? 'Read the terms to continue'
               : `Pay ${formatPeso(amountDue)}`;
             return (

@@ -714,6 +714,12 @@ class OrderRequestController extends Controller
             // customer is later shown they agreed to.
             'orderFormAskIds'   => 'nullable|array|max:5',
             'orderFormAskIds.*' => 'string|size:24',
+            // Which address the delivery fee was priced for. For a saved one only its id counts -
+            // the rest is read from the customer's record (App\Support\DeliverTo).
+            'deliverTo'           => 'nullable|array',
+            'deliverTo.source'    => 'required_with:deliverTo|in:saved,form,typed',
+            'deliverTo.addressId' => 'nullable|string|max:64',
+            'deliverTo.text'      => 'nullable|string|max:' . \App\Support\DeliverTo::MAX_TEXT,
         ]);
 
         $customer = User::where('_id', $validated['recipientId'])->first();
@@ -821,6 +827,11 @@ class OrderRequestController extends Controller
         $designFee   = round((float) ($validated['designFee'] ?? 0), 2);
         $deliveryFee = round((float) ($validated['deliveryFee'] ?? 0), 2);
         $total       = round($goodsTotal + $designFee + $deliveryFee, 2);
+        $deliverTo   = \App\Support\DeliverTo::fromRequest($validated['deliverTo'] ?? null, $customer, $attachedForms);
+        // A fee priced for nowhere cannot be checked against anything at payment.
+        if ($deliveryFee > 0 && !$deliverTo) {
+            return $this->errorResponse('Choose the address this delivery fee is for.', 422);
+        }
         // Absent (blank) means "use the 50% default" - nullable rules drop the key entirely, so it
         // must be coalesced rather than read directly.
         $downPayment = isset($validated['downPayment']) ? round((float) $validated['downPayment'], 2) : null;
@@ -872,6 +883,7 @@ class OrderRequestController extends Controller
             'estimatedMaterialCost' => round($materialTotal, 2),
             'costBasis'             => 'estimated',
             'orderForms'    => $attachedForms ?: null,
+            'deliverTo'     => $deliverTo,
             'adminComment'  => $validated['note'] ?? null,
             'designUrl'     => $designUrl,
             'designUrls'    => $designFiles ?: null,

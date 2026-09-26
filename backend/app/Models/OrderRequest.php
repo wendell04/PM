@@ -84,6 +84,8 @@ class OrderRequest extends Model
         // template can be edited next month and the chat message can be deleted, and neither may
         // change what the customer is shown they agreed to.
         'orderForms',
+        'deliverTo',
+        'deliverToCheck',
         // Set when a quote is paid through a Payment Intent rather than PayMongo's hosted page.
         // Fillable because $fillable is what decides whether they reach the document at all.
         'paymongoIntentId',

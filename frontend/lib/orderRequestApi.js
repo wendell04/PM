@@ -168,7 +168,9 @@ export async function fetchCustomerOrderForms(token, customerId) {
   return Array.isArray(data?.data) ? data.data : [];
 }
 
-export async function createAdminQuotation(token, { recipientId, items, designFee, deliveryFee, downPayment, expiresInDays, note, designUrl, designNotes, orderFormAskIds }) {
+// Every field is named here, so a field left off this list never leaves the browser - the whole
+// set of attached designs was dropped that way (only the first reached the server).
+export async function createAdminQuotation(token, { recipientId, items, designFee, deliveryFee, downPayment, expiresInDays, note, designUrl, designUrls, designNotes, orderFormAskIds, deliverTo }) {
   const res = await fetchWithTimeout(`${API_URL}/api/admin/quotations`, {
     method: 'POST',
     headers: {
@@ -185,9 +187,12 @@ export async function createAdminQuotation(token, { recipientId, items, designFe
       ...(expiresInDays ? { expiresInDays } : {}),
       note: note || '',
       ...(designUrl ? { designUrl } : {}),
+      ...(designUrls?.length ? { designUrls } : {}),
       ...(designNotes ? { designNotes } : {}),
       // Which filled-in forms this quotation answers. Ids only - the server copies the content.
       ...(orderFormAskIds?.length ? { orderFormAskIds } : {}),
+      // The address the delivery fee was priced for.
+      ...(deliverTo ? { deliverTo } : {}),
     }),
   }, 30000);
   const data = await res.json();

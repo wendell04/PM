@@ -1436,6 +1436,9 @@ class PaymentController extends Controller
                 'termsSnapshot.*.title'  => 'required_with:termsSnapshot|string|max:200',
                 'termsSnapshot.*.body'   => 'nullable|string|max:5000',
                 'termsSnapshot.*.mode'   => 'nullable|string|max:20',
+                // "This is the same place as the address the shop priced" - asked only when the
+                // shop priced a written address we cannot match to the one picked.
+                'deliverToConfirmed'     => 'nullable|boolean',
             ]);
 
             $orderRequest = OrderRequest::find($validated['orderRequestId']);
@@ -1463,6 +1466,21 @@ class PaymentController extends Controller
                 $address = $validated['deliveryAddress'] ?? $orderRequest->deliveryAddress;
                 if (empty($address)) {
                     return $this->errorResponse('A delivery address is required before payment.', 422);
+                }
+                // The delivery fee was priced for one place. Paying it with an address somewhere
+                // else would charge a Quezon City fare for a Cebu delivery.
+                if ((float) ($orderRequest->shippingFee ?? 0) > 0 && !empty($orderRequest->deliverTo)) {
+                    $check = \App\Support\DeliverTo::check((array) $orderRequest->deliverTo, (array) $address, !empty($validated['deliverToConfirmed']));
+                    if ($check === 'differs' || $check === 'unsure') {
+                        return response()->json([
+                            'success' => false,
+                            'code'    => $check === 'differs' ? 'deliver_to_differs' : 'deliver_to_unsure',
+                            'message' => $check === 'differs'
+                                ? 'The delivery fee on this quote was priced for ' . ($orderRequest->deliverTo['text'] ?? 'another address') . '. Choose that address, or ask the shop to update the quote for this one.'
+                                : 'Please confirm this is the address the shop priced your delivery for.',
+                        ], 422);
+                    }
+                    $orderRequest->deliverToCheck = $check;
                 }
                 $orderRequest->deliveryAddress = $address;
                 // Keep the admin-set delivery fee (already folded into finalPrice); do not zero it out.
@@ -2067,6 +2085,10 @@ class PaymentController extends Controller
             // What the customer filled in and agreed to, carried from the quotation so the order
             // itself holds the record rather than pointing back at a chat thread.
             'orderForms'           => $orderRequest->orderForms ?: null,
+            // Where the delivery fee was priced for, and how the address paid with was matched to
+            // it - 'confirmed' means the customer said it is the same place and we could not tell.
+            'deliverTo'            => $orderRequest->deliverTo ?: null,
+            'deliverToCheck'       => $orderRequest->deliverToCheck ?: null,
             'materials'            => $orderRequest->materials,
             'materialsCost'        => $orderRequest->materialsCost,
             'orderRequestId'       => (string) $orderRequest->_id,

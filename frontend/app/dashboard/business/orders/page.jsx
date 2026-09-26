@@ -1763,6 +1763,14 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                      lo.deliveryAddress.city, lo.deliveryAddress.province, lo.deliveryAddress.zip].filter(Boolean).join(', ')
                   : lo.deliveryAddress}
               </div>
+              {/* The customer ticked "same place" for an address we could not match to the one the
+                  delivery fee was priced for. Worth a look before the rider is booked. */}
+              {lo.deliverToCheck === 'confirmed' && lo.deliverTo?.text && (
+                <div style={{ marginTop: 6, padding: '7px 9px', borderRadius: 8, border: '1px solid var(--gold)', background: 'var(--gold-subtle)', fontSize: '12px', lineHeight: 1.45 }}>
+                  <strong style={{ color: 'var(--gold)' }}>Check before booking:</strong> delivery was priced for{' '}
+                  <span style={{ color: 'var(--white)' }}>{lo.deliverTo.text}</span>. The customer confirmed the address above is the same place.
+                </div>
+              )}
               {typeof lo.deliveryAddress === 'object' && lo.deliveryAddress.phone && (
                 <div style={{ fontSize:'12px', color:'var(--gray)', marginTop:'2px' }}>Phone: {lo.deliveryAddress.phone}</div>
               )}

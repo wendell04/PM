@@ -39,6 +39,11 @@ const QuotationModal = ({ onClose, onSubmit, isSending, token, customerId, custo
   // The customer's pinned address - so the delivery fee can be checked against a
   // courier (Lalamove etc.) before the quote is sent.
   const [addr, setAddr] = useState(null);
+  const [addrList, setAddrList] = useState([]);
+  // Which address the delivery fee is priced for: { source: 'saved', addressId } | { source:
+  // 'form' } | { source: 'typed' }. null until the shop or the defaults below choose one.
+  const [deliverPick, setDeliverPick] = useState(null);
+  const [deliverTyped, setDeliverTyped] = useState('');
   const [shipMode, setShipMode] = useState(null);
   const [addrLoading, setAddrLoading] = useState(false);
   const [addrPhone, setAddrPhone] = useState('');
@@ -128,6 +133,7 @@ const QuotationModal = ({ onClose, onSubmit, isSending, token, customerId, custo
       .then(d => {
         if (cancelled || !d?.success) return;
         const list = Array.isArray(d.addresses) ? d.addresses : [];
+        setAddrList(list);
         setAddr(list.find(a => a.is_default) ?? list[0] ?? null);
         setAddrPhone(d.customer?.phone || '');
       })
@@ -149,11 +155,32 @@ const QuotationModal = ({ onClose, onSubmit, isSending, token, customerId, custo
     return '';
   })();
 
-  const addrLine = addr
-    ? [addr.house_number, addr.street, addr.subdivision, addr.barangay, addr.city, addr.province, addr.zip]
-        .filter(Boolean).join(', ')
-    : '';
-  const hasPin = addr && addr.lat != null && addr.lng != null;
+  const lineOf = (a) => (a
+    ? [a.house_number, a.street, a.subdivision, a.barangay, a.city, a.province, a.zip].filter(Boolean).join(', ')
+    : '');
+  const sameText = (x, y) => String(x).replace(/\s+/g, ' ').trim().toLowerCase() === String(y).replace(/\s+/g, ' ').trim().toLowerCase();
+
+  // What the fee is priced for until the shop picks: the form's address when they wrote one that
+  // is not the saved default (they were telling us where this job goes), else the default, else
+  // the form's, else a typed one. The shop's own pick always wins.
+  const defaultPick = formAddress && !(addr && sameText(formAddress, lineOf(addr)))
+    ? { source: 'form' }
+    : addr ? { source: 'saved', addressId: addr.id }
+    : formAddress ? { source: 'form' }
+    : { source: 'typed' };
+  const pick = (deliverPick?.source === 'form' && !formAddress) ? defaultPick : (deliverPick ?? defaultPick);
+  const pickedSaved = pick.source === 'saved' ? (addrList.find(a => a.id === pick.addressId) ?? null) : null;
+
+  // Sent to the server as a choice; it reads a saved address and the form's text itself.
+  const deliverToPayload = pick.source === 'saved' ? (pickedSaved ? { source: 'saved', addressId: pickedSaved.id } : null)
+    : pick.source === 'form' ? (formAddress ? { source: 'form' } : null)
+    : (deliverTyped.trim() ? { source: 'typed', text: deliverTyped.trim().slice(0, 300) } : null);
+  const deliverLabel = pick.source === 'saved' ? lineOf(pickedSaved) : pick.source === 'form' ? formAddress : deliverTyped.trim();
+
+  // The map buttons and the phone follow the saved address being priced, or the default.
+  const shownAddr = pickedSaved ?? addr;
+  const addrLine = lineOf(shownAddr);
+  const hasPin = shownAddr && shownAddr.lat != null && shownAddr.lng != null;
 
   useEffect(() => {
     if (!token) return;
@@ -508,7 +535,9 @@ const QuotationModal = ({ onClose, onSubmit, isSending, token, customerId, custo
       : l.pricedByMaterials ? l.lineTotal > 0
       : l.unitPrice > 0));
   const noDupes = new Set(lines.map(l => l.productId)).size === lines.length;
-  const canSubmit = linesValid && noDupes && !isSending && !uploading;
+  // A fee is priced for a place; with none chosen, the checkout has nothing to hold it to.
+  const deliverOk = deliveryFee <= 0 || !customerId || !!deliverToPayload;
+  const canSubmit = linesValid && noDupes && deliverOk && !isSending && !uploading;
 
   const handleSubmit = () => {
     if (!canSubmit) return;
@@ -570,6 +599,8 @@ const QuotationModal = ({ onClose, onSubmit, isSending, token, customerId, custo
       // Ids only. The server copies the answers from the ask itself, so nothing on this side can
       // change what the customer is later shown they agreed to.
       orderFormAskIds: pickedAsks,
+      // Only when there is a fee: with none, nothing was priced for anywhere.
+      ...(deliveryFee > 0 && deliverToPayload ? { deliverTo: deliverToPayload } : {}),
       total,
       // designUrl stays as the first of them, because every screen written before the list reads
       // that one field and there is no reason to break them.
@@ -953,7 +984,9 @@ const QuotationModal = ({ onClose, onSubmit, isSending, token, customerId, custo
           )}
         </div>
 
-        {/* Where this quote will be delivered - check it against a courier before pricing. */}
+        {/* Where the delivery fee is priced for. The quote remembers the choice, and the
+            checkout holds the customer to it - a fee worked out for one city cannot be paid
+            with an address in another. */}
         {customerId && (
           <div style={{ padding: '10px 12px', borderRadius: '8px', background: 'var(--dark2)', border: '1px solid var(--border)' }}>
             <div style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: '6px' }}>
@@ -962,63 +995,61 @@ const QuotationModal = ({ onClose, onSubmit, isSending, token, customerId, custo
 
             {addrLoading ? (
               <div style={{ fontSize: '12px', color: 'var(--gray)' }}>Loading address…</div>
-            ) : !addr ? (
-              <div style={{ fontSize: '12px', color: 'var(--gray)', lineHeight: 1.5 }}>
-                {formAddress ? (
-                  <>
-                    <span style={{ color: 'var(--white)' }}>From the form: {formAddress}</span>
-                    <br />
-                    Nothing pinned on the account yet, so price the delivery against this and ask
-                    them to save it before they pay - the courier is booked from a pinned address.
-                  </>
-                ) : (
-                  <>
-                    No saved address yet - the customer will pin one at checkout, and the quote can
-                    be sent without it. Ask for it here in the chat if you need to price delivery
-                    first.
-                  </>
-                )}
-              </div>
             ) : (
               <>
-                <div style={{ fontSize: '12.5px', color: 'var(--white)', lineHeight: 1.5 }}>{addrLine}</div>
-                {formAddress && formAddress.replace(/\s+/g, ' ').toLowerCase() !== addrLine.replace(/\s+/g, ' ').toLowerCase() && (
-                  <div style={{ marginTop: 6, padding: '7px 9px', borderRadius: 8, border: '1px solid var(--gold)', background: 'var(--gold-subtle)' }}>
-                    <div style={{ fontSize: '11px', fontWeight: 800, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--gold)' }}>
-                      They wrote a different address on the form
-                    </div>
-                    <div style={{ fontSize: '12px', color: 'var(--white)', lineHeight: 1.5, marginTop: 3 }}>{formAddress}</div>
-                    <div style={{ fontSize: '11px', color: 'var(--gray)', marginTop: 4, lineHeight: 1.45 }}>
-                      Price the delivery for this one. They still pick a pinned address at checkout -
-                      ask them to save this one before they pay.
-                    </div>
-                  </div>
-                )}
-                {(addr.phone || addrPhone) && (
-                  <div style={{ fontSize: '11.5px', color: 'var(--gray)', marginTop: '2px' }}>Phone: {addr.phone || addrPhone}</div>
-                )}
-                {addr.delivery_notes && (
-                  <div style={{ fontSize: '11.5px', color: 'var(--gold)', marginTop: '4px', lineHeight: 1.45 }}>
-                    Note: {addr.delivery_notes}
+                <div role="radiogroup" aria-label="Deliver to" style={{ display: 'grid', gap: 6 }}>
+                  {addrList.map(a => (
+                    <DeliverOption key={a.id} on={pick.source === 'saved' && pick.addressId === a.id}
+                      onPick={() => setDeliverPick({ source: 'saved', addressId: a.id })}
+                      title={lineOf(a)}
+                      tag={a.is_default ? 'Saved, default' : 'Saved'}
+                      note={a.lat != null && a.lng != null ? null : 'No map pin'} />
+                  ))}
+                  {formAddress && !addrList.some(a => sameText(formAddress, lineOf(a))) && (
+                    <DeliverOption on={pick.source === 'form'} onPick={() => setDeliverPick({ source: 'form' })}
+                      title={formAddress} tag="From the form"
+                      note="Not saved on their account - they save and pin it at checkout." />
+                  )}
+                  <DeliverOption on={pick.source === 'typed'} onPick={() => setDeliverPick({ source: 'typed' })}
+                    title={addrList.length || formAddress ? 'Another address' : 'Type the address'}
+                    tag={addrList.length || formAddress ? 'e.g. told you in this chat' : 'Nothing saved and no form yet'} />
+                  {pick.source === 'typed' && (
+                    <textarea value={deliverTyped} maxLength={300} rows={2}
+                      onChange={e => setDeliverTyped(e.target.value)}
+                      placeholder="House no., street, barangay, city, province"
+                      style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)',
+                        background: 'var(--dark)', color: 'var(--white)', fontSize: '12.5px', fontFamily: 'inherit', resize: 'vertical' }} />
+                  )}
+                </div>
+
+                {pickedSaved && ((pickedSaved.phone || addrPhone) || pickedSaved.delivery_notes) && (
+                  <div style={{ marginTop: 8 }}>
+                    {(pickedSaved.phone || addrPhone) && (
+                      <div style={{ fontSize: '11.5px', color: 'var(--gray)' }}>Phone: {pickedSaved.phone || addrPhone}</div>
+                    )}
+                    {pickedSaved.delivery_notes && (
+                      <div style={{ fontSize: '11.5px', color: 'var(--gold)', marginTop: '4px', lineHeight: 1.45 }}>Note: {pickedSaved.delivery_notes}</div>
+                    )}
                   </div>
                 )}
 
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '8px' }}>
-                  {hasPin ? (
+                  {pickedSaved && hasPin ? (
                     <>
-                      <a href={`https://www.google.com/maps/search/?api=1&query=${addr.lat},${addr.lng}`} target="_blank" rel="noopener noreferrer"
+                      <a href={`https://www.google.com/maps/search/?api=1&query=${shownAddr.lat},${shownAddr.lng}`} target="_blank" rel="noopener noreferrer"
                         style={{ ...S.btnSm, textDecoration: 'none' }}>Google Maps</a>
-                      <a href={`https://waze.com/ul?ll=${addr.lat},${addr.lng}&navigate=yes`} target="_blank" rel="noopener noreferrer"
+                      <a href={`https://waze.com/ul?ll=${shownAddr.lat},${shownAddr.lng}&navigate=yes`} target="_blank" rel="noopener noreferrer"
                         style={{ ...S.btnGhost, padding: '5px 12px', fontSize: '12px', textDecoration: 'none' }}>Waze</a>
                       <button type="button"
-                        onClick={() => { navigator.clipboard?.writeText(`${addr.lat},${addr.lng}`); setCopied(true); setTimeout(() => setCopied(false), 1500); }}
+                        onClick={() => { navigator.clipboard?.writeText(`${shownAddr.lat},${shownAddr.lng}`); setCopied(true); setTimeout(() => setCopied(false), 1500); }}
                         style={{ ...S.btnGhost, padding: '5px 12px', fontSize: '12px' }}>
                         {copied ? 'Copied' : 'Copy coords'}
                       </button>
                     </>
-                  ) : (
-                    <span style={{ fontSize: '11.5px', color: 'var(--gray)' }}>No map pin saved - address text only.</span>
-                  )}
+                  ) : deliverLabel ? (
+                    <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(deliverLabel)}`} target="_blank" rel="noopener noreferrer"
+                      style={{ ...S.btnGhost, padding: '5px 12px', fontSize: '12px', textDecoration: 'none' }}>Look it up in Google Maps</a>
+                  ) : null}
                 </div>
               </>
             )}
@@ -1033,6 +1064,13 @@ const QuotationModal = ({ onClose, onSubmit, isSending, token, customerId, custo
             <DecimalInput value={form.deliveryFee} onChange={set('deliveryFee')} />
           </Field>
         </div>
+        {deliveryFee > 0 && customerId && (
+          <div style={{ marginTop: -4, fontSize: '11.5px', lineHeight: 1.45, color: deliverOk ? 'var(--gray)' : 'var(--st-red-fg, #dc2626)' }}>
+            {deliverOk
+              ? <>Priced for: <span style={{ color: 'var(--white)' }}>{deliverLabel}</span>. They pay with this address or one in the same barangay and city.</>
+              : pick.source === 'typed' ? 'Type the address this delivery fee is for, under Deliver to.' : 'Choose the address this delivery fee is for, under Deliver to.'}
+          </div>
+        )}
 
         {/* Said where the number is typed, not on a settings page the owner is not looking at.
             Address-aware, because the right advice is opposite in the two cases. */}
@@ -1226,3 +1264,23 @@ const QuotationModal = ({ onClose, onSubmit, isSending, token, customerId, custo
 };
 
 export default QuotationModal;
+
+// One place the delivery fee could be priced for: a radio, the address, and what kind it is.
+function DeliverOption({ on, onPick, title, tag, note }) {
+  return (
+    <button type="button" role="radio" aria-checked={on} onClick={onPick}
+      style={{ display: 'flex', gap: 9, alignItems: 'flex-start', width: '100%', textAlign: 'left', padding: '8px 10px', borderRadius: 8, cursor: 'pointer',
+        border: `1px solid ${on ? 'var(--gold)' : 'var(--border)'}`, background: on ? 'var(--gold-subtle)' : 'transparent', color: 'inherit', fontFamily: 'inherit' }}>
+      <span style={{ width: 14, height: 14, borderRadius: '50%', flexShrink: 0, marginTop: 2, display: 'flex', alignItems: 'center', justifyContent: 'center',
+        border: `2px solid ${on ? 'var(--gold)' : 'var(--gray)'}` }}>
+        {on && <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--gold)' }} />}
+      </span>
+      <span style={{ minWidth: 0, flex: 1 }}>
+        <span style={{ display: 'block', fontSize: '12.5px', color: 'var(--white)', lineHeight: 1.45, overflowWrap: 'anywhere' }}>{title}</span>
+        <span style={{ display: 'block', fontSize: '11px', color: 'var(--gray)', marginTop: 1 }}>
+          {tag}{note ? ` - ${note}` : ''}
+        </span>
+      </span>
+    </button>
+  );
+}

@@ -187,6 +187,9 @@ function normalizeOrder(apiOrder) {
     shippingAddress: apiOrder.shipping_address || apiOrder.shippingAddress || {},
     deliveryAddress: apiOrder.deliveryAddress ?? apiOrder.delivery_address ?? null,
     deliveryNotes:   apiOrder.deliveryNotes ?? apiOrder.delivery_notes ?? null,
+    // Where a quote's delivery fee was priced for, and how the paid address matched it.
+    deliverTo:       apiOrder.deliverTo ?? null,
+    deliverToCheck:  apiOrder.deliverToCheck ?? null,
     courierFee:      apiOrder.courierFee ?? null,
     courierFeePaid:  apiOrder.courierFeePaid ?? false,
     courierName: apiOrder.courier_name || apiOrder.courierName || '',

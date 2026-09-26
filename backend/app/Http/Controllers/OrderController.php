@@ -1291,6 +1291,9 @@ class OrderController extends Controller
             // this list it exists on the order and reaches no screen at all, which is exactly how
             // orderFormAnswers spent its whole life.
             'orderForms',
+            // Where the quote's delivery fee was priced for, and how the paid address matched it.
+            'deliverTo',
+            'deliverToCheck',
             'designRejectionReason',
             'designFiles',
             'adminDesignUrl',
