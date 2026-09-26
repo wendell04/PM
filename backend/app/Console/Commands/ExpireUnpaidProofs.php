@@ -30,6 +30,29 @@ class ExpireUnpaidProofs extends Command
     {
         $dry = (bool) $this->option('dry-run');
 
+        // A day's warning first. The customer was told the date when they approved, but the next
+        // thing they heard was "cancelled". This runs nightly, so anything falling due within the
+        // next 36 hours is warned once - the stamp stops a second reminder the night after.
+        $soon = Order::where('orderStatus', 'awaiting_payment')
+            ->where('paymentStatus', 'unpaid')
+            ->whereNotNull('paymentDueAt')
+            ->where('paymentDueAt', '>=', now())
+            ->where('paymentDueAt', '<', now()->addHours(36))
+            ->whereNull('paymentDueRemindedAt')
+            ->get();
+        foreach ($soon as $o) {
+            $this->line(($dry ? '[dry] ' : '') . 'Reminding ' . (string) $o->_id . " (due {$o->paymentDueAt})");
+            if ($dry) continue;
+            $paid  = collect($o->paymentHistory ?? [])->sum('amount');
+            $owed  = max(0, round((float) ($o->totalAmount ?? 0) - $paid, 2));
+            $pct   = (int) ($o->downpaymentPercent ?? 0);
+            $amount = 'P' . number_format($pct > 0 ? round($owed * $pct / 100, 2) : $owed, 2);
+            \App\Support\OrderNotifier::paymentDueAfterApproval($o, $amount,
+                \Carbon\Carbon::parse($o->paymentDueAt)->format('M j, Y'), true);
+            $o->paymentDueRemindedAt = now();
+            $o->save();
+        }
+
         $due = Order::where('orderStatus', 'awaiting_payment')
             ->where('paymentStatus', 'unpaid')
             ->whereNotNull('paymentDueAt')

@@ -237,6 +237,56 @@ final class OrderNotifier
      * against this driver - which is how a check once reported zero notifications for an order
      * that plainly had them.
      */
+    /**
+     * "You approved the design - pay to start production", in the bell and by email.
+     *
+     * The only word of it used to be a card in the chat. A customer who approved from the proof
+     * EMAIL never opens the chat, so they were never told the order now waits on them - it sat in
+     * awaiting_payment until the hold lapsed. Separate from statusChanged on purpose: that one would
+     * also announce awaiting_payment on paths where nothing was approved (an unpaid checkout).
+     */
+    public static function paymentDueAfterApproval(Order $order, string $dueNow, ?string $heldUntil, bool $reminder = false): void
+    {
+        try {
+            $ref      = strtoupper(substr((string) $order->_id, -8));
+            $headline = $reminder
+                // The night before the hold runs out (orders:expire-unpaid-proofs).
+                ? 'Reminder: order #' . $ref . ' is held until ' . $heldUntil . '. Pay ' . $dueNow
+                    . ' in My Orders before then to start production - after that the order is cancelled and the held materials are released.'
+                : 'Thanks for approving the design for order #' . $ref . '. Pay ' . $dueNow
+                    . ' in My Orders to start production' . ($heldUntil ? ' - we hold your order until ' . $heldUntil . '.' : '.');
+            try {
+                Notification::create([
+                    'user_id'    => (string) $order->userId,
+                    'type'       => 'order_status',
+                    'title'      => $reminder ? 'Payment Due Tomorrow' : 'Design Approved - Payment Due',
+                    'message'    => $headline,
+                    'is_read'    => false,
+                    'data'       => ['orderId' => (string) $order->_id, 'status' => 'awaiting_payment'],
+                    'created_at' => now(),
+                ]);
+            } catch (\Exception $e) {
+                Log::warning('OrderNotifier@paymentDueAfterApproval bell: ' . $e->getMessage());
+            }
+
+            $email = $order->userSnapshot['email'] ?? optional(User::find($order->userId))->email;
+            if ($email) {
+                $name = trim((string) ($order->userSnapshot['name'] ?? ''));
+                $base = rtrim((string) config('app.frontend_url', ''), '/');
+                Mail::to($email)->send(new \App\Mail\OrderStatusMail(
+                    firstName:   $name !== '' ? explode(' ', $name)[0] : 'Customer',
+                    orderId:     (string) $order->_id,
+                    newStatus:   'awaiting_payment',
+                    totalAmount: (float) ($order->totalAmount ?? 0),
+                    headline:    $headline,
+                    orderUrl:    $base !== '' ? $base . '/shop/orders-history' : ''
+                ));
+            }
+        } catch (\Throwable $e) {
+            Log::error('OrderNotifier@paymentDueAfterApproval: ' . $e->getMessage(), ['order_id' => (string) $order->_id]);
+        }
+    }
+
     public static function statusChanged(Order $order, ?string $previous = null): void
     {
         try {

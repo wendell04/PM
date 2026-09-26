@@ -4616,6 +4616,9 @@ class OrderController extends Controller
                 $deposit   = $pct > 0 ? round($owed * $pct / 100, 2) : $owed;
                 $peso      = fn($n) => 'P' . number_format((float) $n, 2);
 
+                $heldUntil = $order->paymentDueAt
+                    ? \Carbon\Carbon::parse($order->paymentDueAt)->format('M j, Y')
+                    : null;
                 $this->postOrderCardToChat(
                     $order,
                     'deposit_due',
@@ -4623,11 +4626,12 @@ class OrderController extends Controller
                     [
                         'dueNow'    => $pct > 0 ? $peso($deposit) . " ({$pct}%)" : $peso($owed),
                         'dueFull'   => $pct > 0 ? $peso($owed) : null,
-                        'heldUntil' => $order->paymentDueAt
-                            ? \Carbon\Carbon::parse($order->paymentDueAt)->format('M j, Y')
-                            : null,
+                        'heldUntil' => $heldUntil,
                     ]
                 );
+                // And in the bell and the inbox: someone who approved from the proof email is not
+                // looking at the chat.
+                \App\Support\OrderNotifier::paymentDueAfterApproval($order, $pct > 0 ? $peso($deposit) : $peso($owed), $heldUntil);
             }
 
             try {
@@ -4652,7 +4656,14 @@ class OrderController extends Controller
             // Approve on a design that is already through.
             $this->settleOrderCards($order, ['proof_ready'], 'approved');
 
-            return $this->successResponse('Design approved. We\'ll proceed to production.', $this->normalizeOrderForCustomer($order));
+            // "We'll proceed to production" was said even when nothing had been paid - the one case
+            // where production does NOT start until the customer acts.
+            return $this->successResponse(
+                $awaitingPayment
+                    ? 'Design approved. Pay in My Orders to start production - we have emailed you the amount.'
+                    : 'Design approved. We\'ll proceed to production.',
+                $this->normalizeOrderForCustomer($order)
+            );
 
         } catch (\Exception $e) {
             return $this->serverErrorResponse($e, 'Failed to approve design.');

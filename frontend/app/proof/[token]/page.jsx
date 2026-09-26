@@ -23,6 +23,7 @@ export default function ProofPage({ params }) {
   const [error,   setError]   = useState('');
   const [busy,    setBusy]    = useState('');
   const [done,    setDone]    = useState('');
+  const [payDue,  setPayDue]  = useState(false);
   const [asking,  setAsking]  = useState(false);
   const [notes,   setNotes]   = useState('');
 
@@ -57,6 +58,9 @@ export default function ProofPage({ params }) {
       });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(d.message || 'Could not record that. Please try again.');
+      // Approved but nothing paid yet: production waits on them, and this page used to say it
+      // could start - the last thing a customer reading it from their inbox should be told.
+      setPayDue(String(d?.data?.orderStatus ?? '') === 'awaiting_payment');
       setDone(decision);
     } catch (e) {
       setError(e.message);
@@ -82,10 +86,14 @@ export default function ProofPage({ params }) {
     <h1 className="pf-title">{done === 'approve' ? 'Approved - thank you' : 'Thanks, we are on it'}</h1>
     <p className="pf-lede">
       {done === 'approve'
-        ? `We have your approval on ${data.orderRef} and production can start. You will hear from us when it is ready.`
+        ? (payDue
+          ? `We have your approval on ${data.orderRef}. One step left: pay in My Orders and production starts. We have emailed you the amount.`
+          : `We have your approval on ${data.orderRef} and production can start. You will hear from us when it is ready.`)
         : `We have your notes on ${data.orderRef}. We will make the changes and send you a new proof.`}
     </p>
-    <a className="pf-btn ghost" href="/shop/orders-history">See the order</a>
+    <a className={done === 'approve' && payDue ? 'pf-btn' : 'pf-btn ghost'} href="/shop/orders-history">
+      {done === 'approve' && payDue ? 'Pay in My Orders' : 'See the order'}
+    </a>
   </>);
 
   if (data?.answered) return shell(<>
@@ -101,7 +109,9 @@ export default function ProofPage({ params }) {
     <div className="pf-ref">Order {data.orderRef}</div>
     <h1 className="pf-title">Does this look right?</h1>
     <p className="pf-lede">
-      This is how we will print it. Once you approve, it goes to production as it appears here -
+      This is how we will print it. {data?.payFirst
+        ? 'Once you approve, you pay in My Orders and it goes to production exactly as it appears here'
+        : 'Once you approve, it goes to production as it appears here'} -
       so please check the spelling, the colours and where everything sits.
     </p>
 
@@ -128,7 +138,7 @@ export default function ProofPage({ params }) {
     {!asking ? (
       <div className="pf-actions">
         <button className="pf-btn" disabled={!!busy} onClick={() => respond('approve')}>
-          {busy === 'approve' ? 'Approving...' : 'Approve and print it'}
+          {busy === 'approve' ? 'Approving...' : (data?.payFirst ? 'Approve this design' : 'Approve and print it')}
         </button>
         <button className="pf-btn ghost" disabled={!!busy} onClick={() => { setAsking(true); setError(''); }}>
           Ask for a change

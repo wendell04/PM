@@ -40,6 +40,9 @@ class ProofLinkController extends Controller
                 // Already answered? Say so rather than offering the buttons again - a customer
                 // who clicks the same mail twice should see what they decided, not a second vote.
                 'answered'     => in_array($status, ['approved', 'revision_requested'], true),
+                // Nothing paid for the goods yet: approving leads to a payment, not straight to the
+                // printer, and the page has to say which before the button is pressed.
+                'payFirst'     => ($order->paymentStatus ?? 'unpaid') === 'unpaid',
                 'items'        => array_map(fn ($i) => [
                     'name'    => $i['productName'] ?? $i['name'] ?? '',
                     'variant' => $i['variantName'] ?? null,
