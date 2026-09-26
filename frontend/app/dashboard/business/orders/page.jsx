@@ -3339,7 +3339,14 @@ export default function OrdersPage() {
   // Opens on the work, not on the archive. All orders is the report you go to; Open - not yet
   // delivered - is the list somebody came here to act on, and starting on All meant 50 rows to
   // scroll before finding the 6 that needed anything.
+  // Home's "Needs you today" links straight to a stage (?stage=todo / making / toship /
+  // needs_attention), so a count there opens the same list here, not the whole book.
   const [statusFilter, setStatusFilter] = useState('open');
+  useEffect(() => {
+    const s = new URLSearchParams(window.location.search).get('stage');
+    if (['todo', 'making', 'toship'].includes(s)) setStatusFilter(`stage:${s}`);
+    else if (s === 'needs_attention') setStatusFilter('needs_attention');
+  }, []);
   const [payFilter,    setPayFilter]    = useState('all');
   const [typeFilter,   setTypeFilter]   = useState('all');
   const [dateFilter,   setDateFilter]   = useState('all-time');

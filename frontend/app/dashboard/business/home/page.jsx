@@ -28,7 +28,7 @@ import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import { S, ICONS, SummaryCard, EmptyState, Note } from '../inventory-v2/shared';
 import { needsJobOrder } from '@/lib/jobOrderEligibility';
 import { orderNo } from '@/lib/orderNumber';
-import { statusLabel, statusColor } from '@/lib/orderStatus';
+import { statusLabel, statusColor, stageOf } from '@/lib/orderStatus';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 const SSA_API_URL = process.env.NEXT_PUBLIC_SSA_API_URL || 'http://localhost:8001';
@@ -77,6 +77,8 @@ export default function StaffHome() {
   const [ssaQty, setSsaQty] = useState(null);
   const [months, setMonths]   = useState(6);
   const [stock, setStock] = useState([]);
+  // Customers who asked for a price and have not been quoted yet. null = not allowed to see it.
+  const [quotesWaiting, setQuotesWaiting] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState('');
 
@@ -87,7 +89,7 @@ export default function StaffHome() {
     const headers = { Authorization: `Bearer ${token}`, Accept: 'application/json' };
     // Settled, not all-or-nothing: a reader who cannot see inventory must still get their orders,
     // and the old page rendered zeros when a single call failed.
-    const [o, b, p, c, sl, inv] = await Promise.allSettled([
+    const [o, b, p, c, sl, inv, qs] = await Promise.allSettled([
       fetchWithTimeout(`${API_URL}/api/admin/orders?limit=300`, { headers }, 20000),
       fetchWithTimeout(`${API_URL}/api/admin/inventory/to-buy`, { headers }, 20000),
       fetchWithTimeout(`${API_URL}/api/my/permissions`, { headers }, 15000),
@@ -97,6 +99,8 @@ export default function StaffHome() {
       // What is on the shelf. "To Buy" answers what a committed order still needs; this answers the
       // question before that one - what is running out, whether or not anything has been ordered.
       fetchWithTimeout(`${API_URL}/api/admin/inventory?limit=500`, { headers }, 20000),
+      // One count: price requests nobody has quoted yet.
+      fetchWithTimeout(`${API_URL}/api/admin/order-requests/stats`, { headers }, 15000),
     ]);
     try {
       if (o.status === 'fulfilled' && o.value.ok) {
@@ -123,6 +127,10 @@ export default function StaffHome() {
         const j = await inv.value.json();
         const rows = Array.isArray(j?.data) ? j.data : (j?.data?.data ?? []);
         setStock(Array.isArray(rows) ? rows : []);
+      }
+      if (qs.status === 'fulfilled' && qs.value.ok) {
+        const j = await qs.value.json();
+        setQuotesWaiting(Number(j?.data?.pending ?? 0));
       }
       if (c.status === 'fulfilled' && c.value.ok) {
         const j = await c.value.json();
@@ -346,6 +354,55 @@ export default function StaffHome() {
     return rows;
   }, [profile, bench, board, desk, blocked, orders, toBuy]);
 
+  // ── Needs you today: the owner's to-do strip, the way a Shopee or Shopify seller home opens ──
+  // Counts of things waiting on the shop, each a door to exactly that list. From the data already
+  // loaded - no extra request but the one quote count.
+  const today = useMemo(() => {
+    const stageCount = { todo: 0, making: 0, toship: 0 };
+    for (const o of orders) {
+      const s = stageOf(o.orderStatus ?? o.status);
+      if (s in stageCount) stageCount[s]++;
+    }
+    const now = new Date();
+    const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const collectedToday = payments.filter(p => p.at >= dayStart).reduce((a, p) => a + p.amount, 0);
+    // Last month up to the same day - comparing a whole last month with nine days of this one says
+    // only that the month is not over.
+    const lastStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const lastSameDay = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate(), 23, 59, 59);
+    const collectedLastSoFar = payments.filter(p => p.at >= lastStart && p.at <= lastSameDay).reduce((a, p) => a + p.amount, 0);
+
+    const chips = [
+      { n: stageCount.todo, label: 'to start', href: '/dashboard/business/orders?stage=todo' },
+      { n: board.filesToCheck.length + board.proofsToDraft.length, label: 'designs to check or draft', href: '/dashboard/business/orders' },
+      { n: quotesWaiting ?? 0, label: 'price requests to quote', href: '/dashboard/business/order-requests' },
+      { n: stageCount.making, label: 'being made', href: '/dashboard/business/orders?stage=making', calm: true },
+      { n: stageCount.toship, label: 'ready to ship', href: '/dashboard/business/orders?stage=toship' },
+      { n: desk.balancesDue.length, label: 'with a balance due', href: '/dashboard/business/payments' },
+    ];
+
+    // Best sellers this month, by what they brought in. Sale rows are one per line.
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const byProduct = new Map();
+    for (const s of sales) {
+      const at = s.saleDate ? new Date(s.saleDate) : null;
+      if (!at || at < monthStart || String(s.status ?? 'completed') !== 'completed') continue;
+      const name = s.productName || 'Unnamed';
+      const row = byProduct.get(name) ?? { name, qty: 0, total: 0 };
+      row.qty += Number(s.quantity ?? 0);
+      row.total += Number(s.totalPrice ?? 0);
+      byProduct.set(name, row);
+    }
+    const top = [...byProduct.values()].sort((a, b) => b.total - a.total).slice(0, 5);
+
+    const latest = [...orders]
+      .filter(o => o.createdAt)
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+      .slice(0, 5);
+
+    return { chips, collectedToday, collectedLastSoFar, top, latest };
+  }, [orders, payments, board, desk, quotesWaiting, sales]);
+
   // The forecast the shop's own SSA service produces, asked for only on the owner's view and
   // only once there is enough history for it to mean anything. It runs as a separate local
   // service, so it is genuinely often not up - that has to read as "not running", never as a
@@ -542,6 +599,29 @@ export default function StaffHome() {
 
       {!loading && (
         <>
+          {profile === 'owner' && (
+            <div style={{ ...S.card, padding: '12px 14px', marginBottom: '14px' }}>
+              <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.5px', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: 8 }}>
+                Needs you today
+              </div>
+              {today.chips.every(c => c.n === 0) ? (
+                <div style={{ fontSize: 13, color: 'var(--gray)' }}>Nothing is waiting on you right now.</div>
+              ) : (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                  {today.chips.filter(c => c.n > 0).map(c => (
+                    <button key={c.label} type="button" onClick={() => router.push(c.href)}
+                      style={{ display: 'inline-flex', alignItems: 'baseline', gap: 6, padding: '7px 12px', borderRadius: 999, cursor: 'pointer',
+                        fontFamily: 'inherit', fontSize: 13, color: 'var(--white)', background: c.calm ? 'transparent' : 'var(--gold-subtle)',
+                        border: `1px solid ${c.calm ? 'var(--border)' : 'var(--gold)'}` }}>
+                      <strong style={{ fontSize: 15, color: c.calm ? 'var(--white)' : 'var(--gold)' }}>{c.n}</strong>
+                      <span>{c.label}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* The tiles are the role's own numbers. Money is the owner's; a production hand
               cannot act on revenue and it is not theirs to read. Same card, different figures -
               one grammar for every Home. */}
@@ -584,7 +664,7 @@ export default function StaffHome() {
           {profile === 'owner' && (
           <div style={{ ...S.row, marginBottom: '18px' }}>
             <SummaryCard label="Collected this month" value={peso(money.collected)} accent
-              sub="Money actually received this month" />
+              sub={`Today ${peso(today.collectedToday)} - last month by this date ${peso(today.collectedLastSoFar)}`} />
             <SummaryCard label="Still owed to you" value={peso(money.outstanding)}
               sub="Unpaid balance across every live order" />
             <SummaryCard label="Materials to buy" value={toBuy?.totalItems ?? '-'}
@@ -708,6 +788,46 @@ export default function StaffHome() {
             );
           })()}
 
+          {/* What is selling, and what just came in - the two lists every seller home carries. */}
+          {profile === 'owner' && (
+            <div className="home-two" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 14, marginBottom: '18px' }}>
+              <div style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
+                <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', fontSize: 13, fontWeight: 700 }}>
+                  Best sellers this month
+                </div>
+                {today.top.length === 0 ? (
+                  <div style={{ padding: '14px 16px', fontSize: 13, color: 'var(--gray)' }}>No sales yet this month.</div>
+                ) : today.top.map((t, i) => (
+                  <div key={t.name} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 16px', borderTop: i ? '1px solid var(--border)' : 'none', fontSize: 13 }}>
+                    <span style={{ width: 16, color: 'var(--gray)', fontVariantNumeric: 'tabular-nums' }}>{i + 1}</span>
+                    <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</span>
+                    <span style={{ color: 'var(--gray)', fontVariantNumeric: 'tabular-nums' }}>{t.qty} sold</span>
+                    <span style={{ minWidth: 90, textAlign: 'right', fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{peso(t.total)}</span>
+                  </div>
+                ))}
+              </div>
+              <div style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
+                <div style={{ ...S.rowBetween, padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
+                  <span style={{ fontSize: 13, fontWeight: 700 }}>Latest orders</span>
+                  <button type="button" onClick={() => router.push('/dashboard/business/orders')} style={S.btnSmGhost}>All orders</button>
+                </div>
+                {today.latest.length === 0 ? (
+                  <div style={{ padding: '14px 16px', fontSize: 13, color: 'var(--gray)' }}>No orders yet.</div>
+                ) : today.latest.map((o, i) => (
+                  <div key={o._id ?? o.id ?? i} onClick={() => router.push('/dashboard/business/orders')}
+                    style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 16px', borderTop: i ? '1px solid var(--border)' : 'none', fontSize: 13, cursor: 'pointer' }}>
+                    <span style={{ fontFamily: 'monospace', color: 'var(--gold)', fontSize: 12 }}>{orderNo(o)}</span>
+                    <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--gray)' }}>
+                      {o.userSnapshot?.name || o.customerName || o.customer?.name || [o.customer?.firstName, o.customer?.lastName].filter(Boolean).join(' ') || o.walkIn?.name || 'Walk-in'}
+                    </span>
+                    <span style={{ fontSize: 11.5, color: statusColor(o.orderStatus).color, whiteSpace: 'nowrap' }}>{statusLabel(o.orderStatus)}</span>
+                    <span style={{ minWidth: 86, textAlign: 'right', fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{peso(o.totalAmount)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* ── Owner view: where the money has been, and where it is heading. Staff never
                  see this block - a production hand cannot act on revenue, and it is not
                  theirs to read. ── */}
@@ -757,7 +877,7 @@ export default function StaffHome() {
               </div>
 
               <div style={{ borderTop: '1px solid var(--border)', padding: '12px 16px' }}>
-                <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>SSA forecast - next 3 weeks</div>
+                <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Demand forecast (SSA) - next 3 weeks</div>
                 {ssa === undefined ? (
                   <div style={{ fontSize: 12, color: 'var(--gray)' }}>Asking the forecast service...</div>
                 ) : ssa?.unavailable ? (
