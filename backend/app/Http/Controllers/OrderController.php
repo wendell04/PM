@@ -3528,6 +3528,13 @@ class OrderController extends Controller
                 'method'     => 'required|string|in:cash,gcash,bank_transfer,cod',
                 'note'       => 'nullable|string|max:500',
             ]);
+            // A transfer has a reference the shop can check against its account. Without it a typed-in
+            // GCash payment cannot be told apart from one that never arrived.
+            if (in_array($validated['method'], ['gcash', 'bank_transfer'], true) && mb_strlen(trim((string) ($validated['note'] ?? ''))) < 4) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'note' => ['Enter the reference number from the GCash or bank receipt.'],
+                ]);
+            }
 
             $recordedBy = trim("{$user->firstName} {$user->lastName}");
 
@@ -3609,6 +3616,83 @@ class OrderController extends Controller
             return $this->validationErrorResponse($e);
         } catch (\Exception $e) {
             return $this->serverErrorResponse($e, 'Failed to record payment.');
+        }
+    }
+
+    /**
+     * POST /api/admin/orders/{id}/payments/{index}/void
+     *
+     * Takes back a payment that was recorded by hand and never happened - the wrong order, a
+     * mis-click on Record Payment. The line is not erased: money records are only ever reversed,
+     * so the entry stays (marked voided, with who, when and why) and a matching minus line is added.
+     * Every total in the system adds the lines up, so the reversal is counted everywhere at once.
+     *
+     * Only hand-recorded lines. A payment that came through PayMongo is real money in the shop's
+     * account; taking it back is a refund, which has its own flow.
+     */
+    public function voidPayment(Request $request, $id, $index)
+    {
+        try {
+            if (!$this->hasPermission($request, 'payments.create')) {
+                return $this->unauthorizedResponse();
+            }
+            $validated = $request->validate(['reason' => 'required|string|min:4|max:300']);
+
+            $order = Order::find($id);
+            if (!$order) return $this->notFoundResponse('Order');
+
+            $history = array_values((array) ($order->paymentHistory ?? []));
+            $i = (int) $index;
+            if (!isset($history[$i]) || !is_array($history[$i])) {
+                return $this->errorResponse('That payment line does not exist.', 404);
+            }
+            $line = $history[$i];
+            if (empty($line['recordedBy']) || ($line['type'] ?? null) === 'void' || (float) ($line['amount'] ?? 0) <= 0) {
+                return $this->errorResponse('Only a payment recorded by hand can be voided. A PayMongo payment is taken back with a refund.', 422);
+            }
+            if (!empty($line['voided'])) {
+                return $this->errorResponse('That payment is already voided.', 422);
+            }
+
+            $user   = $request->user();
+            $by     = trim(($user->firstName ?? '') . ' ' . ($user->lastName ?? '')) ?: ($user->email ?? 'staff');
+            $reason = htmlspecialchars(strip_tags(trim($validated['reason'])), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+            $amount = (float) $line['amount'];
+
+            $history[$i] = array_merge($line, ['voided' => true, 'voidedBy' => $by, 'voidedAt' => now()->toISOString(), 'voidReason' => $reason]);
+            $history[]   = [
+                'amount'     => -$amount,
+                'method'     => $line['method'] ?? null,
+                'type'       => 'void',
+                'voids'      => $i,
+                'note'       => 'Voided: ' . $reason,
+                'recordedBy' => $by,
+                'recordedAt' => now()->toISOString(),
+            ];
+
+            // Same arithmetic recordPayment uses, re-run over the corrected lines. The design fee pays
+            // for the drawing, not the goods, so fee alone leaves the goods unpaid - as it was before.
+            $total     = (float) ($order->totalAmount ?? $order->totalPrice ?? 0);
+            $totalPaid = round(collect($history)->sum(fn ($h) => (float) ($h['amount'] ?? 0)), 2);
+            $feePaid   = round(collect($history)->where('type', 'design_fee')->sum(fn ($h) => (float) ($h['amount'] ?? 0)), 2);
+            $order->paymentHistory = $history;
+            $order->downPayment    = max(0, $totalPaid);
+            $order->balance        = max(0, round($total - $totalPaid, 2));
+            $order->paymentStatus  = $totalPaid >= $total - 0.01 ? 'paid' : ($totalPaid - $feePaid > 0.009 ? 'partial' : 'unpaid');
+            $order->updatedAt      = now();
+            $order->save();
+
+            $this->logActivity($request, 'payment.voided', 'order', (string) $order->_id,
+                'Voided a ' . strtoupper((string) ($line['method'] ?? '')) . ' payment of P' . number_format($amount, 2)
+                    . ' on ORD-' . strtoupper(substr((string) $order->_id, -8)) . ': ' . $reason,
+                ['amount' => $amount, 'reason' => $reason, 'recordedBy' => $line['recordedBy'] ?? null,
+                 'recordedAt' => $line['recordedAt'] ?? null, 'balanceAfter' => (float) $order->balance]);
+
+            return $this->successResponse('Payment voided.', $order);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return $this->validationErrorResponse($e);
+        } catch (\Exception $e) {
+            return $this->serverErrorResponse($e, 'Failed to void the payment.');
         }
     }
 

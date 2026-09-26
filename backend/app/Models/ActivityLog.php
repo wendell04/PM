@@ -86,6 +86,7 @@ class ActivityLog extends Model
         'pos.sale'            => ['Rang up a walk-in sale', 'money'],
         'payment.recorded'    => ['Recorded a payment by hand', 'money'],
         'payment.paid'        => ['Payment came in',     'money'],
+        'payment.voided'      => ['Voided a payment',    'money'],
         'order.refund_waived' => ['Waived a refund',     'money'],
         'order.refunded'      => ['Marked a refund sent', 'money'],
         'order.written_off'   => ['Wrote off an order',  'money'],

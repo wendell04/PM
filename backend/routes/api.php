@@ -421,6 +421,7 @@ Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
 
     // ─── Record Payment ────────────────────────────────────────────────────────────────────────
     Route::post('/admin/orders/{id}/record-payment',  [OrderController::class, 'recordPayment']);
+    Route::post('/admin/orders/{id}/payments/{index}/void', [OrderController::class, 'voidPayment'])->middleware('throttle:20,1');
     // Money going the other way. Same permission as taking a payment, because settling a debt to
     // a customer is the same kind of act as recording one from them.
     Route::post('/admin/orders/{id}/mark-refunded', [OrderController::class, 'markRefunded']);

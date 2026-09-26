@@ -18,6 +18,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useAccess } from '@/contexts/AccessContext';
 import { formatPrice } from '@/src/utils/format';
 import { remainingDue, paidSoFar } from '@/lib/orderBalance';
+import { normalizeStatus } from '@/lib/orderStatus';
 import ErrorBoundary from '../../../../components/ErrorBoundary';
 import { S, ICONS, SummaryCard, SearchBar, PaginationBar, EmptyState, CustomSelect } from '../inventory-v2/shared';
 
@@ -55,6 +56,12 @@ function orderToRow(o) {
   const designFee = Number(o.designFeePaidAmount ?? o.designFee ?? 0)
     || (o.items || []).reduce((mx, i) => Math.max(mx, Number(i.designFee ?? 0)), 0);
   const isCancelled = (o.orderStatus || '').toLowerCase() === 'cancelled' || o.status === 'cancelled';
+  // Archived before it was ever delivered: the shop took it out of circulation unfinished (a proof
+  // nobody answered, an order nobody paid). It is not a sale and will not become one, so it stays
+  // out of revenue, counts and "still open" like a cancelled order. An order archived AFTER delivery
+  // is only tidied away - it was sold, and it keeps counting.
+  const delivered = ['delivered', 'completed'].includes(normalizeStatus(o.orderStatus || o.status));
+  const abandoned = !!o.isArchived && !isCancelled && !delivered;
   return {
     id,
     orderNumber: o.orderId || o.orderNumber || id?.slice?.(-8) || '-',
@@ -101,6 +108,9 @@ function orderToRow(o) {
     downPayment: dp,
     downpaymentPercent: o.downpaymentPercent ?? null,
     balance: bal,
+    abandoned,
+    // What every total counts: not cancelled and not abandoned.
+    countsAsSale: !isCancelled && !abandoned,
     status: isCancelled ? 'cancelled' : (ps === 'paid' || bal === 0 ? 'paid' : (dp > 0 && bal > 0 ? 'partial' : 'pending')),
     paymentStatus: ps,
     source: o.source || 'online',
@@ -328,8 +338,8 @@ export default function SalesListPage() {
         order.orderNumber?.toLowerCase().includes(searchQuery.toLowerCase());
 
       let matchesPayment = true;
-      if (paymentFilter === 'paid') matchesPayment = order.status !== 'cancelled' && (order.paymentStatus === 'paid' || order.balance === 0);
-      else if (paymentFilter === 'pending-50') matchesPayment = order.status !== 'cancelled' && order.downPayment > 0 && order.balance > 0;
+      if (paymentFilter === 'paid') matchesPayment = order.countsAsSale && (order.paymentStatus === 'paid' || order.balance === 0);
+      else if (paymentFilter === 'pending-50') matchesPayment = order.countsAsSale && order.downPayment > 0 && order.balance > 0;
       else if (paymentFilter === 'cancelled') matchesPayment = order.status === 'cancelled';
 
       let matchesDate = true;
@@ -364,7 +374,7 @@ export default function SalesListPage() {
   const checkoutChargesShipping = shippingMode === 'flat' || shippingMode === 'distance';
 
   const m = useMemo(() => {
-    const active    = scopedSales.filter(o => o.status !== 'cancelled');
+    const active    = scopedSales.filter(o => o.countsAsSale);
     const paid      = active.filter(o => o.paymentStatus === 'paid' || o.balance === 0);
     const partial   = active.filter(o => o.downPayment > 0 && o.balance > 0);
     const cancelled = scopedSales.filter(o => o.status === 'cancelled');
@@ -406,7 +416,7 @@ export default function SalesListPage() {
   // computed over partial coverage is not conservative, it is simply wrong - and wrong in the
   // flattering direction, which is the worst kind.
   const orderCost = useMemo(() => {
-    const active = filteredSales.filter(o => o.status !== 'cancelled');
+    const active = filteredSales.filter(o => o.countsAsSale);
     let total = 0, covered = 0;
     for (const o of active) {
       const c = costByOrder[String(o.id ?? o._id ?? '')];
@@ -446,7 +456,7 @@ export default function SalesListPage() {
     const goods = (o) => Math.max(0, (o.totalPrice || 0) - (o.shipping || 0));
     let revenue = 0, profit = 0, costed = 0, open = 0;
     for (const o of filteredSales) {
-      if (o.status === 'cancelled') continue;
+      if (!o.countsAsSale) continue;
       const c = costByOrder[String(o.id ?? o._id ?? '')];
       if (c === undefined) { open += 1; continue; }
       costed += 1;
@@ -459,7 +469,7 @@ export default function SalesListPage() {
 
   // ── Reports aggregation (respects the current search/date/payment filters via filteredSales) ──
   const reports = useMemo(() => {
-    const active = filteredSales.filter(o => o.status !== 'cancelled');
+    const active = filteredSales.filter(o => o.countsAsSale);
     const goods = (o) => Math.max(0, (o.totalPrice || 0) - (o.shipping || 0));
     const revenue = active.reduce((s, o) => s + goods(o), 0);
     const units   = active.reduce((s, o) => s + (o.quantity || 0), 0);
@@ -476,7 +486,7 @@ export default function SalesListPage() {
     let prev = null;
     if (periods.prevStart) {
       const inPrev = sales.filter(o => {
-        if (o.status === 'cancelled') return false;
+        if (!o.countsAsSale) return false;
         const t = new Date(o.orderDate).getTime();
         return t >= periods.prevStart.getTime() && t <= periods.prevEnd.getTime();
       });
@@ -795,7 +805,7 @@ export default function SalesListPage() {
                 ) : pagedSales.map(order => {
                   const isExpanded = expandedRows.has(order.id);
                   const totalItems = order.items?.reduce((s, i) => s + i.quantity, 0) || order.quantity || 0;
-                  const cancelled = order.status === 'cancelled';
+                  const cancelled = order.status === 'cancelled' || order.abandoned;
                   const fullyPaid = !cancelled && order.balance === 0;
                   const partial = order.downPayment > 0 && order.balance > 0;
                   return (
@@ -806,6 +816,7 @@ export default function SalesListPage() {
                         </td>
                         <td data-rt="head" style={S.td}>
                           <div style={{ fontWeight: 700, color: 'var(--gold)' }}>{order.orderNumber}</div>
+                          {order.abandoned && <div style={{ fontSize: '11px', color: 'var(--gray)' }}>Archived unfinished - not counted</div>}
                           {order.source === 'manual' && <div style={{ fontSize: '11px', color: 'var(--orange)' }}>Outside System</div>}
                         </td>
                         <td data-label="Customer" style={S.td}>

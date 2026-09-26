@@ -141,12 +141,23 @@ export default function PaymentsPage() {
   const openRecordPayment = (order) => {
     setModalOrder(order);
     setPayForm({ amount: '', method: 'cash', note: '' });
-    setPayError(''); setPaySuccess('');
+    setPayError(''); setPaySuccess(''); setPayReview(false);
   };
+
+  // Transfers carry a reference the shop can check against its account; a second look before money
+  // is written, because one click once marked an order paid that never was.
+  const needsRef = payForm.method === 'gcash' || payForm.method === 'bank_transfer';
+  const [payReview, setPayReview] = useState(false);
 
   const handleRecordPayment = async () => {
     const amt = Number(payForm.amount);
     if (!payForm.amount || isNaN(amt) || amt <= 0) { setPayError('Enter a valid amount greater than 0.'); return; }
+    if (needsRef && payForm.note.trim().length < 4) { setPayError('Enter the reference number from the GCash or bank receipt.'); return; }
+    if (!payReview) {
+      const due0 = balanceOf(modalOrder);
+      if (amt > due0 + 0.01) { setPayError(due0 > 0 ? `That is more than the outstanding balance of ${fmt(due0)}.` : 'This order has nothing outstanding.'); return; }
+      setPayError(''); setPayReview(true); return;
+    }
     const due = balanceOf(modalOrder);
     // Not gated on `due > 0` any more: a zero figure used to wave everything through, which is how an
     // order with nothing owed could still be paid into.
@@ -171,7 +182,8 @@ export default function PaymentsPage() {
       setOrders(prev => prev.map(o => (o._id || o.id) === key ? { ...o, ...updated } : o));
       setModalOrder(prev => ({ ...prev, ...updated }));
       setPayForm({ amount: '', method: 'cash', note: '' });
-    } catch (err) { setPayError(err.message); }
+      setPayReview(false);
+    } catch (err) { setPayError(err.message); setPayReview(false); }
     finally { setPaying(false); }
   };
 
@@ -406,24 +418,34 @@ export default function PaymentsPage() {
 
               <label style={S.label}>Amount</label>
               <input type="number" min="0.01" step="0.01" max={balanceOf(modalOrder) || undefined}
-                value={payForm.amount} onChange={e => setPayForm(f => ({ ...f, amount: e.target.value }))}
+                value={payForm.amount} onChange={e => { setPayForm(f => ({ ...f, amount: e.target.value })); setPayReview(false); }}
                 placeholder={String(balanceOf(modalOrder).toFixed(2))} style={S.input} disabled={paying} />
 
               <label style={{ ...S.label, marginTop: 12 }}>Payment method</label>
-              <CustomSelect value={payForm.method} onChange={v => setPayForm(f => ({ ...f, method: v }))}
+              <CustomSelect value={payForm.method} onChange={v => { setPayForm(f => ({ ...f, method: v })); setPayReview(false); }}
                 options={PAYMENT_METHODS} style={{ width: '100%' }} disabled={paying} />
 
-              <label style={{ ...S.label, marginTop: 12 }}>Note (optional)</label>
+              <label style={{ ...S.label, marginTop: 12 }}>{needsRef ? 'Reference no. *' : 'Note (optional)'}</label>
               <input type="text" value={payForm.note} maxLength={200}
-                onChange={e => setPayForm(f => ({ ...f, note: e.target.value }))}
-                placeholder="e.g. COD collected by rider" style={S.input} disabled={paying} />
+                onChange={e => { setPayForm(f => ({ ...f, note: e.target.value })); setPayReview(false); }}
+                placeholder={needsRef ? 'From the GCash or bank receipt' : 'e.g. COD collected by rider'} style={S.input} disabled={paying} />
+
+              {payReview && (
+                <div style={{ ...S.note, marginTop: 12, fontSize: 13, lineHeight: 1.55 }}>
+                  Record <strong>{fmt(Number(payForm.amount))}</strong> from <strong>{customerOf(modalOrder)}</strong>
+                  {needsRef ? <> (ref {payForm.note.trim()})</> : null}? Only if the money is actually in hand or in the
+                  account - this updates what the order owes and emails the customer a receipt.
+                </div>
+              )}
 
               {payError && <div style={{ ...S.note, background: 'var(--st-red-bg)', borderColor: 'rgba(239,68,68,0.35)', color: 'var(--st-red-fg)', marginTop: 12 }}>{payError}</div>}
               {paySuccess && <div style={{ ...S.note, background: 'var(--st-green-bg)', borderColor: 'rgba(34,197,94,0.35)', color: 'var(--st-green-fg)', marginTop: 12 }}>{paySuccess}</div>}
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
-                <button onClick={() => setModalOrder(null)} disabled={paying} style={S.btnGhost}>Close</button>
-                <button onClick={handleRecordPayment} disabled={paying} style={S.btnPrimary}>{paying ? 'Recording…' : 'Record Payment'}</button>
+                {payReview
+                  ? <button onClick={() => setPayReview(false)} disabled={paying} style={S.btnGhost}>Back</button>
+                  : <button onClick={() => setModalOrder(null)} disabled={paying} style={S.btnGhost}>Close</button>}
+                <button onClick={handleRecordPayment} disabled={paying} style={S.btnPrimary}>{paying ? 'Recording…' : payReview ? 'Yes, record it' : 'Review payment'}</button>
               </div>
             </div>
           </div>
@@ -438,7 +460,9 @@ export default function PaymentsPage() {
                 {(historyOrder.paymentHistory || []).map((e, i) => (
                   <div key={i} style={{ padding: '10px 12px', background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: 8 }}>
                     <div style={{ ...S.rowBetween, marginBottom: 4 }}>
-                      <span style={{ fontWeight: 700, color: 'var(--st-green-fg)', fontSize: 14 }}>{fmt(e.amount)}</span>
+                      <span style={{ fontWeight: 700, fontSize: 14, color: Number(e.amount) < 0 ? 'var(--st-red-fg)' : 'var(--st-green-fg)', textDecoration: e.voided ? 'line-through' : 'none' }}>
+                        {Number(e.amount) < 0 ? '-' : ''}{fmt(Math.abs(Number(e.amount) || 0))}{e.voided ? ' (voided)' : ''}
+                      </span>
                       <span style={{ ...S.badge, background: 'var(--dark)', color: 'var(--gray)', border: '1px solid var(--border)', fontSize: 10, textTransform: 'uppercase' }}>{e.method}</span>
                     </div>
                     {e.note && <div style={{ fontSize: 12, color: 'var(--gray)', marginBottom: 4 }}>{e.note}</div>}
