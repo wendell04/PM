@@ -315,6 +315,7 @@ Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
     // settlement will follow so the confirm modal cannot show something different.
     Route::get('/admin/orders/{id}/cancel-settlement', [OrderController::class, 'cancelSettlement']);
     Route::get('/admin/orders',         [OrderController::class, 'adminIndex']);
+    Route::get('/admin/home/money',     [\App\Http\Controllers\HomeMoneyController::class, 'show']);
     Route::get('/admin/orders/{id}',    [OrderController::class, 'show']);
 
     // ─── Job Orders ───────────────────────────────────────────────────────────
@@ -401,6 +402,8 @@ Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
     Route::get('/admin/bom',                          [BillOfMaterialController::class, 'index']);
     Route::post('/admin/bom',                         [BillOfMaterialController::class, 'store']);
     Route::get('/admin/bom/by-product/{name}',        [BillOfMaterialController::class, 'byProduct']);
+    Route::get('/admin/bom/archived',                 [BillOfMaterialController::class, 'archived']);
+    Route::post('/admin/bom/{id}/restore',            [BillOfMaterialController::class, 'restore']);
     Route::get('/admin/bom/{id}/usage',               [BillOfMaterialController::class, 'usage']);
     Route::get('/admin/bom/{id}',                     [BillOfMaterialController::class, 'show']);
     Route::put('/admin/bom/{id}',                     [BillOfMaterialController::class, 'update']);

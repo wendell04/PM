@@ -493,42 +493,56 @@ export default function StockInTab({ materials, vendors, batches, setBatches, ba
                   <div style={{ fontWeight:600, marginBottom:'10px', fontSize:'13px' }}>
                     {mat?.name} <span style={{ fontWeight:400, color:'var(--gray)', fontSize:'12px' }}>({mat?.unit})</span>
                   </div>
-                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px' }}>
-                    <Field label={`Qty Received (${mat?.unit})`} required error={errors2[`qty_${i}`]}>
-                      <IntegerInput value={r.qty} onChange={v => setRow(i,'qty',v)} style={errors2[`qty_${i}`] ? S.inputErr : undefined} />
-                    </Field>
-                    <div>
-                      <div style={{ display:'flex', gap:6, marginBottom:6 }}>
-                        {[['unit', 'Price per ' + (mat?.unit ?? 'unit')], ['total', 'Total paid']].map(([mode, label]) => (
-                          <button key={mode} type="button"
-                            onClick={() => { setRow(i, 'costMode', mode); }}
-                            style={{ flex:1, padding:'4px 0', fontSize:'11px', fontWeight:700, borderRadius:6, cursor:'pointer',
-                              background: (r.costMode ?? 'unit') === mode ? 'var(--gold)' : 'transparent',
-                              color: (r.costMode ?? 'unit') === mode ? '#1a1a1a' : 'var(--gray)',
-                              border: `1px solid ${(r.costMode ?? 'unit') === mode ? 'var(--gold)' : 'var(--border)'}` }}>
-                            {label}
-                          </button>
-                        ))}
+                  {/* Both columns get the same label row, so the two inputs sit on one line. The
+                      price toggle used to be its own row above Unit Cost only, which pushed that
+                      input down past Qty Received. It is now a small switch inside the label row. */}
+                  <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(200px, 1fr))', gap:'10px', alignItems:'start' }}>
+                    <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+                      <div style={{ minHeight:24, display:'flex', alignItems:'center' }}>
+                        <label htmlFor={`sin-qty-${i}`} style={{ fontSize:'12px', fontWeight:600, color:'var(--gray-light)' }}>
+                          Qty Received ({mat?.unit})<span style={{ color:'#e05252', marginLeft:2 }}>*</span>
+                        </label>
+                      </div>
+                      <IntegerInput id={`sin-qty-${i}`} value={r.qty} onChange={v => setRow(i,'qty',v)}
+                        aria-invalid={errors2[`qty_${i}`] ? 'true' : undefined} style={errors2[`qty_${i}`] ? S.inputErr : undefined} />
+                      {errors2[`qty_${i}`] && <span data-field-error style={S.errText}>{errors2[`qty_${i}`]}</span>}
+                    </div>
+                    <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+                      <div style={{ minHeight:24, display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, flexWrap:'wrap' }}>
+                        <label htmlFor={`sin-cost-${i}`} style={{ fontSize:'12px', fontWeight:600, color:'var(--gray-light)' }}>
+                          {(r.costMode ?? 'unit') === 'unit' ? 'Unit Cost (₱)' : 'Total paid (₱)'}<span style={{ color:'#e05252', marginLeft:2 }}>*</span>
+                        </label>
+                        <div role="group" aria-label="How you enter the cost" style={{ display:'inline-flex', border:'1px solid var(--border)', borderRadius:6, overflow:'hidden' }}>
+                          {[['unit', 'Per ' + (mat?.unit ?? 'unit')], ['total', 'Total paid']].map(([mode, label]) => {
+                            const on = (r.costMode ?? 'unit') === mode;
+                            return (
+                              <button key={mode} type="button" aria-pressed={on}
+                                onClick={() => { setRow(i, 'costMode', mode); }}
+                                style={{ padding:'3px 9px', fontSize:'10.5px', fontWeight:700, cursor:'pointer', border:'none',
+                                  background: on ? 'var(--gold)' : 'transparent', color: on ? '#1a1a1a' : 'var(--gray)' }}>
+                                {label}
+                              </button>
+                            );
+                          })}
+                        </div>
                       </div>
                       {(r.costMode ?? 'unit') === 'unit' ? (
-                        <Field label="Unit Cost (₱)" required error={errors2[`cost_${i}`]}>
-                          <DecimalInput value={r.unitCost} onChange={v => setRow(i,'unitCost',v)} style={errors2[`cost_${i}`] ? S.inputErr : undefined} />
-                        </Field>
+                        <DecimalInput id={`sin-cost-${i}`} value={r.unitCost} onChange={v => setRow(i,'unitCost',v)}
+                          aria-invalid={errors2[`cost_${i}`] ? 'true' : undefined} style={errors2[`cost_${i}`] ? S.inputErr : undefined} />
                       ) : (
-                        <Field label="Total paid for this material (₱)" required error={errors2[`cost_${i}`]}>
-                          <DecimalInput value={r.totalCost}
-                            onChange={v => {
-                              // The unit cost is what everything downstream reads, so it is derived
-                              // here and kept to four decimals: 600 over 7 boxes is 85.7142, and
-                              // rounding it to 85.71 quietly loses money on every batch.
-                              const n = Number(r.qty) || 0;
-                              setRows(rows => rows.map((row, idx) => idx === i
-                                ? { ...row, totalCost: v, unitCost: n > 0 && Number(v) > 0 ? String(Math.round((Number(v) / n) * 10000) / 10000) : '' }
-                                : row));
-                            }}
-                            style={errors2[`cost_${i}`] ? S.inputErr : undefined} />
-                        </Field>
+                        <DecimalInput id={`sin-cost-${i}`} value={r.totalCost}
+                          onChange={v => {
+                            // The unit cost is what everything downstream reads, so it is derived
+                            // here and kept to four decimals: 600 over 7 boxes is 85.7142, and
+                            // rounding it to 85.71 quietly loses money on every batch.
+                            const n = Number(r.qty) || 0;
+                            setRows(rows => rows.map((row, idx) => idx === i
+                              ? { ...row, totalCost: v, unitCost: n > 0 && Number(v) > 0 ? String(Math.round((Number(v) / n) * 10000) / 10000) : '' }
+                              : row));
+                          }}
+                          aria-invalid={errors2[`cost_${i}`] ? 'true' : undefined} style={errors2[`cost_${i}`] ? S.inputErr : undefined} />
                       )}
+                      {errors2[`cost_${i}`] && <span data-field-error style={S.errText}>{errors2[`cost_${i}`]}</span>}
                       {(r.costMode ?? 'unit') === 'total' && (
                         <div style={{ fontSize:'11px', color: r.unitCost ? 'var(--gold)' : 'var(--gray)', marginTop:4 }}>
                           {r.unitCost

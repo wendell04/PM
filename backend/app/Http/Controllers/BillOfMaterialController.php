@@ -42,6 +42,52 @@ class BillOfMaterialController extends Controller
     }
 
     /**
+     * GET /api/admin/bom/archived - the recipes that were deleted. Deleting only switches a BOM off,
+     * so every one is still here; this is the list Restore works from.
+     */
+    public function archived(Request $request)
+    {
+        try {
+            if (!$this->hasAnyPermission($request, ['masterData.view', 'masterData.archive', 'products.edit'])) {
+                return $this->unauthorizedResponse();
+            }
+            $boms = BillOfMaterial::where('isActive', false)->orderBy('updatedAt', 'desc')->get()
+                ->map(fn ($b) => [
+                    'id'          => (string) $b->id,
+                    'productName' => $b->productName,
+                    'components'  => $b->components ?? [],
+                    'deletedAt'   => optional($b->updatedAt)->toIso8601String(),
+                ])->values();
+            return $this->successResponse('Archived BOMs fetched.', $boms);
+        } catch (\Exception $e) {
+            return $this->serverErrorResponse($e, 'Failed to fetch archived BOMs.');
+        }
+    }
+
+    /**
+     * POST /api/admin/bom/{id}/restore - switch a deleted recipe back on, exactly as it was.
+     * It does not put back variants its delete took off product cards: attach it again from the
+     * card, which is the place that decides what is sold. Audited by the model (Reactivated BOM).
+     */
+    public function restore(Request $request, string $id)
+    {
+        try {
+            if (!$this->hasAnyPermission($request, ['masterData.archive', 'products.edit'])) {
+                return $this->unauthorizedResponse();
+            }
+            $bom = BillOfMaterial::find($id);
+            if (!$bom) return $this->notFoundResponse('BOM');
+            if ($bom->isActive !== false) return $this->errorResponse('That BOM is not deleted.', 422);
+            $bom->isActive  = true;
+            $bom->updatedAt = now();
+            $bom->save();
+            return $this->successResponse('BOM restored.', ['id' => (string) $bom->id, 'productName' => $bom->productName]);
+        } catch (\Exception $e) {
+            return $this->serverErrorResponse($e, 'Failed to restore the BOM.');
+        }
+    }
+
+    /**
      * GET /api/admin/bom/by-product/{name}
      * Returns all active BOMs for a given productGroupName.
      * Used by CreateJOModal and BOMVerification UI.

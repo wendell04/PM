@@ -196,6 +196,8 @@ export const createBom  = (token, data)     => req('/admin/bom',        token, {
 export const updateBom  = (token, id, data) => req(`/admin/bom/${id}`,  token, { method:'PUT',    body:JSON.stringify(data) });
 export const deleteBom  = (token, id)       => req(`/admin/bom/${id}`,  token, { method:'DELETE' });
 export const getBomUsage = (token, id)      => req(`/admin/bom/${id}/usage`, token);
+export const loadArchivedBoms = (token)    => req('/admin/bom/archived', token);
+export const restoreBom  = (token, id)      => req(`/admin/bom/${id}/restore`, token, { method:'POST' });
 
 export const createReturn  = (token, data)     => req('/admin/returns',       token, { method:'POST', body:JSON.stringify(data) });
 export const resolveReturn = (token, id, data) => req(`/admin/returns/${id}`, token, { method:'PUT',  body:JSON.stringify(data) });
@@ -207,6 +209,7 @@ export async function loadAdminProducts(token) {
     id:           String(p._id ?? p.id ?? ''),
     name:         p.name ?? '',
     category:     p.category ?? '',
+    isPublished:  !!p.isPublished,
     bomId:        p.bomId ? String(p.bomId) : null,
     combinations: (Array.isArray(p.combinations) ? p.combinations : []).map(c => ({
       id:    String(c.id ?? ''),

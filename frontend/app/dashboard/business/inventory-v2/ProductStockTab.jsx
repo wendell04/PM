@@ -120,7 +120,7 @@ export default function ProductStockTab({ boms, materials, products }) {
       const minProd = Math.min(...variants.map(v => v.producible));
       const cov = coverageSummary(variants);
       const pooled = shipCompleteAcross(variants, matMap);
-      return [{ id: p.id, name: p.name, category: p.category, variants, minProd, standalone: false,
+      return [{ id: p.id, name: p.name, category: p.category, variants, minProd, standalone: false, published: !!p.isPublished,
                 shipComplete: pooled ? Math.min(pooled.can, minProd) : minProd, ...cov }];
     });
 
@@ -215,7 +215,7 @@ export default function ProductStockTab({ boms, materials, products }) {
               {slice.map((row, i) => (
                 <PhoneRow key={row.id} first={i === 0} mono={false} onClick={() => setExpanded(row.id)}
                   title={row.name} chip={<StatusBadge status={shipStatus(row.minProd, row.shipComplete)} />}
-                  meta={row.standalone ? 'Standalone' : `${row.variants.length} variant${row.variants.length === 1 ? '' : 's'}`}
+                  meta={row.standalone ? 'Recipe only - not on any product card' : `${row.published ? 'Published' : 'Draft'} · ${row.variants.length} variant${row.variants.length === 1 ? '' : 's'}`}
                   sub={[`${row.minProd} can build`, row.coverage < 1 ? `restock to fulfil: ${row.shortNames.join(', ')}` : null, row.category].filter(Boolean).join(' · ')} />
               ))}
             </PhoneList>
@@ -257,7 +257,17 @@ export default function ProductStockTab({ boms, materials, products }) {
                     onMouseEnter={e => e.currentTarget.style.background='var(--dark2)'}
                     onMouseLeave={e => e.currentTarget.style.background=''}
                   >
-                    <td style={{ ...S.td, fontWeight:600 }}>{row.name}</td>
+                    <td style={{ ...S.td, fontWeight:600 }}>
+                      {row.name}
+                      {/* Whether customers can buy it right now, and whether it is on a card at all. A
+                          recipe with no card sells nothing, however much stock covers it. */}
+                      <span style={{ marginLeft:8, fontSize:'10.5px', fontWeight:500, borderRadius:10, padding:'1px 8px', border:'1px solid var(--border)', whiteSpace:'nowrap',
+                        background: row.standalone ? 'transparent' : row.published ? 'var(--st-green-bg)' : 'var(--dark2)',
+                        color: row.standalone ? 'var(--gray)' : row.published ? 'var(--st-green-fg)' : 'var(--gray)',
+                        borderStyle: row.standalone ? 'dashed' : 'solid' }}>
+                        {row.standalone ? 'Not on any product card' : row.published ? 'Published' : 'Draft'}
+                      </span>
+                    </td>
                     <td style={{ ...S.td, fontSize:'12px', color:'var(--gray)' }}>{row.standalone ? <span style={{ color:'var(--gray)', fontStyle:'italic' }}>BOM only</span> : row.category}</td>
                     <td style={{ ...S.td, textAlign:'center', fontSize:'12px', color:'var(--gray)' }}>
                       {row.variants.length > 1 ? `${row.variants.length} variants` : '-'}
