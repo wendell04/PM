@@ -111,10 +111,29 @@ class SettingsController extends Controller
         return $u && (\App\Support\Rbac::isSuperAdmin($u) || \App\Support\Rbac::isOwner($u));
     }
 
+    /**
+     * Three tiers of Settings:
+     *   the system admin (Integrations - mail providers, Google Maps billing: testing and plumbing
+     *     the store owner should never have to see or be able to break);
+     *   the owner (everything else, and Terms & Policies alone - they are the contract);
+     *   staff granted "Shop settings" (shipping, delivery times, chat replies, order forms).
+     */
+    private function isSystemAdmin(Request $request): bool
+    {
+        return \App\Support\Rbac::isSuperAdmin($request->user());
+    }
+
+    private function mayShopSettings(Request $request, bool $write): bool
+    {
+        $u = $request->user();
+        return $u && \App\Support\Rbac::allowsFor($u, $write ? 'shopSettings.work' : 'shopSettings.view', $write);
+    }
+
     public function mailTest(Request $request)
     {
         try {
-            if (!\App\Support\Rbac::isSuperAdmin($request->user()) && !\App\Support\Rbac::isOwner($request->user())) {
+            // Integrations are the system admin's. The owner has no provider to fix if a test fails.
+            if (!$this->isSystemAdmin($request)) {
                 return $this->unauthorizedResponse();
             }
             $validated = $request->validate(['provider' => 'required|in:brevo,resend,security_lane,notification_lane']);
@@ -228,12 +247,15 @@ class SettingsController extends Controller
         try {
             $user = $request->user();
             if (!$user) return $this->unauthorizedResponse();
+            if (!$this->ownsShop($request) && !$this->mayShopSettings($request, false)) return $this->unauthorizedResponse();
 
             // Shipping settings are always stored on the owner account
             $owner = $this->getOwner() ?? $user;
 
             return $this->successResponse('Settings retrieved.', [
-                'mailLanes'            => $this->mailLanes(),
+                // Integrations: the system admin's only.
+                'mailLanes'            => $this->isSystemAdmin($request) ? $this->mailLanes() : null,
+                'isSystemAdmin'        => $this->isSystemAdmin($request),
                 'storeName'            => $user->storeName             ?? '',
                 'storeDescription'     => $user->storeDescription      ?? '',
                 'storeEmail'           => $user->storeEmail            ?? '',
@@ -308,7 +330,12 @@ class SettingsController extends Controller
     public function shippingUpdate(Request $request)
     {
         try {
-            if (!$this->ownsShop($request)) return $this->unauthorizedResponse();
+            if (!$this->mayShopSettings($request, true)) return $this->unauthorizedResponse();
+            // The Google Maps switch is an integration (Google bills for it). Refused rather than
+            // quietly dropped, so a screen that sends it by mistake is found, not believed.
+            if ($request->has('googleMapsEnabled') && !$this->isSystemAdmin($request)) {
+                return $this->errorResponse('Only the system admin can switch Google Maps.', 403);
+            }
 
             $owner = $this->getOwner();
             if (!$owner) return $this->serverErrorResponse(new \Exception('No owner'), 'Store owner not found.');
@@ -479,7 +506,9 @@ class SettingsController extends Controller
     public function offersUpdate(Request $request)
     {
         try {
-            if (!$this->ownsShop($request)) return $this->unauthorizedResponse();
+            // Promotions work, like the vouchers beside it. Both offers come out of the margin.
+            $u = $request->user();
+            if (!$u || !\App\Support\Rbac::allowsFor($u, 'promotions.work', true)) return $this->unauthorizedResponse();
 
             $owner = $this->getOwner();
             if (!$owner) return $this->serverErrorResponse(new \Exception('No owner'), 'Store owner not found.');
@@ -487,7 +516,13 @@ class SettingsController extends Controller
             $request->validate([
                 'firstOrderPercent' => 'nullable|integer|min:1|max:100',
                 'firstOrderCap'     => 'nullable|numeric|min:1|max:999999',
+                // Moved here from Shipping: it is an offer, not a rate. Blank switches it off.
+                'freeDeliveryFrom'  => 'nullable|numeric|min:1|max:999999',
             ]);
+            if ($request->has('freeDeliveryFrom')) {
+                $raw = $request->input('freeDeliveryFrom');
+                $owner->freeDeliveryFrom = ($raw === null || $raw === '' || (float) $raw <= 0) ? null : (float) $raw;
+            }
 
             if ($request->has('firstOrderPercent')) {
                 $raw = $request->input('firstOrderPercent');
@@ -500,8 +535,8 @@ class SettingsController extends Controller
             $owner->save();
 
             $this->logActivity($request, 'settings.changed', 'settings', null,
-                'Changed the first-order discount',
-                ['percent' => $owner->firstOrderPercent, 'cap' => $owner->firstOrderCap]);
+                'Changed the standing offers',
+                ['percent' => $owner->firstOrderPercent, 'cap' => $owner->firstOrderCap, 'freeDeliveryFrom' => $owner->freeDeliveryFrom]);
 
             return $this->successResponse('Offers saved.', [
                 'firstOrderPercent' => \App\Support\ShopOffers::firstOrderPercent(),
@@ -572,6 +607,12 @@ class SettingsController extends Controller
             $owner->registrationTermsUpdatedAt = now();
             $owner->save();
 
+            // The terms are a contract. Every accepted copy is already frozen on the customer, and
+            // this says who changed the wording that new customers agree to, and when.
+            $this->logActivity($request, 'settings.terms_changed', 'settings', null,
+                'Changed the account sign-up terms (now version ' . (int) $owner->registrationTermsVersion . ')',
+                ['clauses' => count($clean), 'version' => (int) $owner->registrationTermsVersion]);
+
             return $this->successResponse('Registration terms saved.', [
                 'registrationTerms'        => $owner->registrationTerms,
                 'registrationTermsVersion' => (int) $owner->registrationTermsVersion,
@@ -631,6 +672,10 @@ class SettingsController extends Controller
             $owner->termsVersion     = (int) ($owner->termsVersion ?? 1) + 1;
             $owner->termsUpdatedAt   = now();
             $owner->save();
+
+            $this->logActivity($request, 'settings.terms_changed', 'settings', null,
+                'Changed the custom order terms (now version ' . (int) $owner->termsVersion . ')',
+                ['clauses' => count($clean), 'version' => (int) $owner->termsVersion]);
 
             return $this->successResponse('Terms saved.', [
                 'customOrderTerms' => $owner->customOrderTerms,

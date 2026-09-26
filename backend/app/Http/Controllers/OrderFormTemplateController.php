@@ -23,6 +23,8 @@ class OrderFormTemplateController extends Controller
     public function index(Request $request)
     {
         try {
+            // Shop settings: See to read (the chat sends forms from this list), Work to change. The routes sit with the signed-in ones now, customers included, so each method asks.
+            if (!$this->hasPermission($request, 'shopSettings.view')) return $this->unauthorizedResponse();
             $list = OrderFormTemplate::orderBy('createdAt', 'asc')->get();
             if ($list->isEmpty()) {
                 $t = OrderFormSpec::sanitizeTemplate(OrderFormSpec::starter());
@@ -58,6 +60,7 @@ class OrderFormTemplateController extends Controller
     public function store(Request $request)
     {
         try {
+            if (!$this->hasPermission($request, 'shopSettings.work')) return $this->unauthorizedResponse();
             if (OrderFormTemplate::count() >= OrderFormSpec::MAX_TEMPLATES) {
                 return response()->json(['message' => 'You already have ' . OrderFormSpec::MAX_TEMPLATES . ' forms. Delete one first.'], 422);
             }
@@ -79,6 +82,7 @@ class OrderFormTemplateController extends Controller
     public function update(Request $request, $id)
     {
         try {
+            if (!$this->hasPermission($request, 'shopSettings.work')) return $this->unauthorizedResponse();
             $t = OrderFormTemplate::find($id);
             if (!$t) return $this->notFoundResponse('Order form');
             $clean = OrderFormSpec::sanitizeTemplate($request->all());
@@ -97,6 +101,7 @@ class OrderFormTemplateController extends Controller
     public function destroy(Request $request, $id)
     {
         try {
+            if (!$this->hasPermission($request, 'shopSettings.work')) return $this->unauthorizedResponse();
             $t = OrderFormTemplate::find($id);
             if (!$t) return $this->notFoundResponse('Order form');
             if (OrderFormTemplate::count() <= 1) {

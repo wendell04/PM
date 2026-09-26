@@ -133,7 +133,7 @@ function PromotionsInner() {
           tabs={[
             { id: 'vouchers',    label: 'Vouchers' },
             { id: 'flash_sales', label: 'Flash Sales' },
-            { id: 'first_order', label: 'First order' },
+            { id: 'first_order', label: 'Standing offers' },
           ]}
           active={tab}
           onChange={setTab}
@@ -194,7 +194,7 @@ function FirstOrderTab({ token }) {
   const mayWork = useAccess().can('promotions.work');
   const [percent, setPercent]   = useState('');
   const [cap, setCap]           = useState('');
-  const [freeFrom, setFreeFrom] = useState(null);
+  const [freeFrom, setFreeFrom] = useState('');
   const [loading, setLoading]   = useState(true);
   const [saving, setSaving]     = useState(false);
   const [error, setError]       = useState(null);
@@ -203,7 +203,9 @@ function FirstOrderTab({ token }) {
   useEffect(() => {
     if (!token) { setLoading(false); return; }
     let alive = true;
-    fetchWithTimeout(`${API_URL}/api/admin/settings`, {
+    // /shop/offers, not /admin/settings: the offers are public anyway, and the settings screen is
+    // the owner's - staff with Promotions got a refusal here and saw two empty boxes.
+    fetchWithTimeout(`${API_URL}/api/shop/offers`, {
       headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
     }, 15000)
       .then(r => r.json())
@@ -212,7 +214,7 @@ function FirstOrderTab({ token }) {
         const v = d?.data ?? d ?? {};
         setPercent(v.firstOrderPercent ? String(v.firstOrderPercent) : '');
         setCap(v.firstOrderCap ? String(v.firstOrderCap) : '');
-        setFreeFrom(v.freeDeliveryFrom ?? null);
+        setFreeFrom(v.freeDeliveryFrom != null ? String(v.freeDeliveryFrom) : '');
       })
       .catch(err => { if (alive) setError(err.message); })
       .finally(() => { if (alive) setLoading(false); });
@@ -234,11 +236,12 @@ function FirstOrderTab({ token }) {
           // and gives nothing, which is the one state this pair must never be in.
           firstOrderPercent: String(percent).trim() === '' ? null : (parseInt(percent, 10) || null),
           firstOrderCap:     String(cap).trim()     === '' ? null : (parseFloat(cap)      || null),
+          freeDeliveryFrom:  String(freeFrom).trim() === '' ? null : (parseFloat(freeFrom) || null),
         }),
       }, 15000);
       const d = await res.json();
       if (!res.ok) throw new Error(d?.message || 'Could not save.');
-      setSaved(pctNum > 0 ? 'The welcome discount is on.' : 'The welcome discount is off.');
+      setSaved(`Saved. Welcome discount ${pctNum > 0 ? 'on' : 'off'}; free delivery ${Number(freeFrom) > 0 ? `from ${peso(Number(freeFrom))}` : 'off'}.`);
       setTimeout(() => setSaved(null), 3000);
     } catch (err) { setError(err.message); }
     finally { setSaving(false); }
@@ -289,6 +292,31 @@ function FirstOrderTab({ token }) {
           <div style={{ fontSize: 11.5, color: 'var(--gray-light)', marginTop: 6, lineHeight: 1.55 }}>
             Without a ceiling the discount grows with the order. A 10% welcome on a ₱40,000 job is
             ₱4,000 handed to somebody the shop has never served.
+          </div>
+        </div>
+
+        {/* Moved here from Settings > Shipping: it is an offer the shop pays for, like the one
+            above, not a delivery rate. */}
+        <div style={{ margin: '4px 0 14px', paddingTop: 14, borderTop: '1px solid var(--border)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+            <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--white)' }}>Free delivery</span>
+            <span style={{
+              fontSize: 10.5, fontWeight: 800, letterSpacing: '0.04em', padding: '2px 8px', borderRadius: 999,
+              color: Number(freeFrom) > 0 ? 'var(--st-green-fg)' : 'var(--gray)',
+              background: Number(freeFrom) > 0 ? 'var(--st-green-bg)' : 'transparent',
+              border: `1px solid ${Number(freeFrom) > 0 ? 'color-mix(in srgb, var(--st-green-fg) 35%, transparent)' : 'var(--border)'}`,
+            }}>{Number(freeFrom) > 0 ? 'ON' : 'OFF'}</span>
+          </div>
+          <label style={lbl}>When an order's goods reach (₱)</label>
+          <input
+            style={inp} type="text" inputMode="decimal" maxLength={7} value={freeFrom} disabled={!mayWork}
+            onChange={e => setFreeFrom(e.target.value.replace(/[^0-9.]/g, ''))}
+            placeholder="Blank means no free delivery"
+          />
+          <div style={{ fontSize: 11.5, color: 'var(--gray-light)', marginTop: 6, lineHeight: 1.55 }}>
+            For every customer. When the goods reach this figure, the shop pays the delivery: the
+            customer sees "Free delivery", and the rider fee you book is never billed to them. Counted
+            after discounts; the design and rush fees do not count, and quotations are never included.
           </div>
         </div>
 

@@ -5,6 +5,7 @@ import PhoneInput from '@/components/auth/PhoneInput';
 import dynamic from 'next/dynamic';
 import Image from 'next/image';
 import { useAuth } from '@/contexts/AuthContext';
+import { useAccess } from '@/contexts/AccessContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import { DEFAULT_CUSTOM_ORDER_TERMS, TERMS_MODES } from '@/lib/customOrderTerms';
@@ -166,18 +167,31 @@ export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState('profile');
   // Shipping, Chat, Integrations and Terms configure the shop, and their APIs are Owner / Super Admin
   // only. Staff keep the tabs about themselves: profile, password and 2FA, notifications, theme.
+  // Three tiers, the same ones the server checks (SettingsController):
+  //   system admin - everything, and Integrations alone (mail providers, Google Maps billing);
+  //   owner        - everything but Integrations; Terms & Policies are hers alone;
+  //   staff        - their own tabs, plus Shipping / Chat / Order forms when granted Shop settings.
   const ownsShop = ['superAdmin', 'admin', 'owner'].includes(currentUser?.role);
-  const SHOP_TABS = ['shipping', 'chat', 'orderforms', 'integrations', 'terms'];
+  const isSystemAdmin = ['superAdmin', 'admin'].includes(currentUser?.role);
+  const access = useAccess();
+  const seesShop = ownsShop || access.can('shopSettings.view');
+  const worksShop = ownsShop || access.can('shopSettings.work');
+  const GRANTABLE_TABS = ['shipping', 'chat', 'orderforms'];
+  const tabAllowed = (id) => GRANTABLE_TABS.includes(id) ? seesShop
+    : id === 'integrations' ? isSystemAdmin
+    : id === 'terms' ? ownsShop
+    : true;
+  const shopReadOnly = GRANTABLE_TABS.includes(activeTab) && !worksShop;
 
   // Other modules link straight to a tab (Messages -> ?tab=chat), so the owner never has to hunt for it.
   useEffect(() => {
     const wanted = new URLSearchParams(window.location.search).get('tab');
     if (['profile', 'security', 'shipping', 'chat', 'orderforms', 'integrations', 'terms', 'notifications', 'appearance'].includes(wanted)
-        && (ownsShop || !SHOP_TABS.includes(wanted))) {
+        && tabAllowed(wanted)) {
       setActiveTab(wanted);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ownsShop]);
+  }, [ownsShop, seesShop, isSystemAdmin]);
 
   // ── Loading ───────────────────────────────────────────────
   const [isLoading, setIsLoading] = useState(true);
@@ -1070,11 +1084,8 @@ export default function SettingsPage() {
         shippingTierKm:       isFlat ? 5  : (tierKm || 5),
         flatRateInsideMetro:  inside,
         flatRateOutsideMetro: outside,
-        // Blank is OFF, and has to be sent as null rather than 0 - a 0 here would make every
-        // order qualify for free delivery, which is the one value this field must never hold.
-        freeDeliveryFrom:     String(shippingForm.freeDeliveryFrom ?? '').trim() === ''
-          ? null
-          : (parseFloat(shippingForm.freeDeliveryFrom) || null),
+        // freeDeliveryFrom is saved from Promotions now. Sending it from here would overwrite the
+        // offer with whatever this screen loaded.
       });
       setMethodSuccess('Shipping method saved.');
       setTimeout(() => setMethodSuccess(''), 3000);
@@ -1205,7 +1216,7 @@ export default function SettingsPage() {
               { id: 'terms', label: 'Terms & Policies' },
               { id: 'notifications', label: 'Notifications' },
               { id: 'appearance', label: 'Appearance' },
-            ].filter(({ id }) => ownsShop || !SHOP_TABS.includes(id)).map(({ id, label }) => (
+            ].filter(({ id }) => tabAllowed(id)).map(({ id, label }) => (
               <button
                 key={id}
                 type="button"
@@ -1231,6 +1242,17 @@ export default function SettingsPage() {
           </nav>
 
           <div style={{ flex: 1, minWidth: 0 }}>
+          {shopReadOnly && (
+            <div style={{ marginBottom: 12, padding: '9px 12px', borderRadius: 8, background: 'var(--st-amber-bg)', color: 'var(--st-amber-fg)', fontSize: '0.8rem', fontWeight: 600 }}>
+              View only - changing these needs Shop settings set to Work in Staff and access.
+            </div>
+          )}
+          {/* A disabled fieldset locks every field and button inside it at once - the one reliable
+              way to make a long settings screen read-only without touching each control. The server
+              refuses the save regardless. */}
+          <fieldset disabled={shopReadOnly} className={shopReadOnly ? 'pmp-readonly' : undefined} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
+          {/* Locked controls kept their gold and still looked pressable. */}
+          <style>{`.pmp-readonly button, .pmp-readonly input, .pmp-readonly select, .pmp-readonly textarea { opacity: .55; cursor: not-allowed !important; }`}</style>
 
           {activeTab === 'profile' && (
           <div className="pmp-cols" style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: '1.5rem', alignItems: 'start' }}>
@@ -2261,38 +2283,12 @@ export default function SettingsPage() {
                   </div>
                 )}
 
-                {/* Free delivery sits outside the three modes on purpose: it applies to all of
-                    them. Under Flat or Distance it zeroes the fee at checkout; under Courier
-                    Booked there is no fee at checkout to zero, so the order carries the promise
-                    and the courier fee you enter later is never billed to the customer. */}
-                <div style={{ marginTop: '1.25rem', paddingTop: '1.25rem', borderTop: '1px solid var(--border)' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: '0.6rem' }}>
-                    <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--white)' }}>Free delivery</span>
-                    <span style={{
-                      fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.03em', padding: '2px 7px', borderRadius: 999,
-                      color: String(shippingForm.freeDeliveryFrom ?? '').trim() === '' ? 'var(--gray)' : '#4ade80',
-                      background: String(shippingForm.freeDeliveryFrom ?? '').trim() === '' ? 'rgba(255,255,255,0.05)' : 'rgba(34,197,94,0.12)',
-                      border: `1px solid ${String(shippingForm.freeDeliveryFrom ?? '').trim() === '' ? 'var(--border)' : 'rgba(34,197,94,0.3)'}`,
-                    }}>
-                      {String(shippingForm.freeDeliveryFrom ?? '').trim() === '' ? 'OFF' : 'ON'}
-                    </span>
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
-                    <div className="profile-form-field">
-                      <label>Free delivery when the goods reach (₱)</label>
-                      <input
-                        type="text" inputMode="decimal" maxLength={7}
-                        value={shippingForm.freeDeliveryFrom}
-                        onChange={e => { const v = e.target.value.replace(/[^\d.]/g, ''); setShippingForm(f => ({ ...f, freeDeliveryFrom: v })); }}
-                        placeholder="Leave blank for no free delivery"
-                      />
-                      <div style={{ fontSize: '0.72rem', color: 'var(--gray)', marginTop: '0.25rem', lineHeight: 1.5 }}>
-                        Counted on the goods AFTER any discount, not before - so a basket that only
-                        reaches the figure because of a voucher does not also ship free. The design
-                        fee and the rush fee never count towards it. Quotations are never included.
-                      </div>
-                    </div>
-                  </div>
+                {/* Free delivery is an offer, not a rate: it lives in Promotions beside the first-order
+                    discount, where the shop's other giveaways are. A pointer stays here because this is
+                    where people used to look for it. */}
+                <div style={{ marginTop: '1.25rem', paddingTop: '1rem', borderTop: '1px solid var(--border)', fontSize: '0.8rem', color: 'var(--gray)' }}>
+                  Looking for free delivery? It is an offer now, in{' '}
+                  <a href="/dashboard/business/promotions" style={{ color: 'var(--gold)', fontWeight: 700, textDecoration: 'none' }}>Promotions</a>, next to the first-order discount.
                 </div>
 
                 {/* Under Courier Booked there are no rate fields, so these landed flush against
@@ -2908,6 +2904,7 @@ export default function SettingsPage() {
   </div>
 )}
 
+          </fieldset>
         </div>
         </div>
       </div>

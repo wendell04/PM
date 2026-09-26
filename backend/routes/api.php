@@ -170,6 +170,20 @@ Route::middleware('auth:sanctum')->group(function () {
     // Signed in, because the answer includes whether THIS customer has ordered before.
     Route::get('/shop/offers',            [SettingsController::class, 'shopOffers']);
 
+    // ─── Settings that can be granted ────────────────────────────────────────
+    // Out of the owner-only group because staff can now be given "Shop settings" (and Promotions
+    // for the offers). Each method checks: Shop settings See to read, Work to change; the Google
+    // Maps switch is the system admin's alone.
+    Route::get('/admin/settings',                   [SettingsController::class, 'show']);
+    Route::put('/admin/settings/shipping',          [SettingsController::class, 'shippingUpdate']);
+    // Promotions > Standing offers: first-order discount and free delivery over X.
+    Route::put('/admin/settings/offers',            [SettingsController::class, 'offersUpdate']);
+    // Settings > Order forms. The questions the shop asks before it quotes; the chat picks one to send.
+    Route::get('/admin/order-forms',          [OrderFormTemplateController::class, 'index']);
+    Route::post('/admin/order-forms',         [OrderFormTemplateController::class, 'store'])->middleware('throttle:60,1');
+    Route::put('/admin/order-forms/{id}',     [OrderFormTemplateController::class, 'update'])->middleware('throttle:60,1');
+    Route::delete('/admin/order-forms/{id}',  [OrderFormTemplateController::class, 'destroy'])->middleware('throttle:30,1');
+
     // ─── Chat ────────────────────────────────────────────────────────────────
     Route::get('/chat/conversations',             [ChatController::class, 'index']);
     Route::get('/chat/conversations/{id}',        [ChatController::class, 'show']);
@@ -186,21 +200,11 @@ Route::middleware('auth:sanctum')->group(function () {
 
 // ─── Owner/Admin only - store config, staff management, role permissions ─────
 Route::middleware(['auth:sanctum', 'isAdmin:owner,admin'])->group(function () {
-    Route::get('/admin/settings',                   [SettingsController::class, 'show']);
     Route::put('/admin/settings',                   [SettingsController::class, 'update']);
-    Route::put('/admin/settings/shipping',          [SettingsController::class, 'shippingUpdate']);
+    // Integrations - the controller lets only the system admin through.
     Route::post('/admin/settings/mail-test',        [SettingsController::class, 'mailTest'])->middleware('throttle:6,1');
+    // Terms & Policies - the owner's alone; never grantable.
     Route::put('/admin/settings/terms',             [SettingsController::class, 'termsUpdate']);
-    // Promotions > First order. The welcome discount lives with the other offers, not with the
-    // shipping rates; the free-delivery threshold is written by the shipping endpoint above.
-    Route::put('/admin/settings/offers',            [SettingsController::class, 'offersUpdate']);
-
-    // Settings > Order forms. The questions the shop asks before it quotes; the chat picks one to
-    // send. Owner and admin only, like the rest of Settings.
-    Route::get('/admin/order-forms',          [OrderFormTemplateController::class, 'index']);
-    Route::post('/admin/order-forms',         [OrderFormTemplateController::class, 'store'])->middleware('throttle:60,1');
-    Route::put('/admin/order-forms/{id}',     [OrderFormTemplateController::class, 'update'])->middleware('throttle:60,1');
-    Route::delete('/admin/order-forms/{id}',  [OrderFormTemplateController::class, 'destroy'])->middleware('throttle:30,1');
 
     Route::get('/admin/role-permissions',            [RolePermissionController::class, 'index']);
     Route::post('/admin/role-permissions',           [RolePermissionController::class, 'store']);
@@ -440,8 +444,9 @@ Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
     Route::delete('/admin/reviews/{id}',                [ReviewController::class, 'destroy']);
 
     // ─── Site content (editable landing sections) ── RBAC: the Homepage row ─
+    // The controller decides by key: the chat auto-replies are Shop settings, the rest is Homepage.
     Route::put('/admin/content/{key}',                  [SiteContentController::class, 'update'])
-        ->middleware('permission:homepage');
+        ->middleware('permission:homepage,shopSettings.work');
 });
 
 // ─── Order Requests (Customer) ───────────────────────────────────────────────

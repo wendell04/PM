@@ -25,11 +25,20 @@ class ShopSettings
         if ($cached) return $user;
         $cached = true;
 
-        $user = User::where('role', config('rbac.owner_role', 'owner'))->first()
-            ?? User::whereIn('role', array_merge(
-                [config('rbac.owner_role', 'owner')],
-                config('rbac.super_admin_roles', ['superAdmin', 'admin'])
-            ))->first();
+        // The account that ALREADY HOLDS the settings, whichever it is. Picking "the first owner"
+        // meant the day a store owner account was created, every rate, delivery promise and term
+        // would be read from her empty record and fall back to defaults - the shop would change
+        // its promises to customers without anyone touching a setting. A settings holder has
+        // saved shipping at least once; an owner holding them wins over an admin holding them.
+        $owner  = config('rbac.owner_role', 'owner');
+        $admins = config('rbac.super_admin_roles', ['superAdmin', 'admin']);
+        $holds  = fn ($q) => $q->whereNotNull('shippingMode')->orWhereNotNull('productionLeadDays')->orWhereNotNull('customOrderTerms');
+
+        $user = User::where('role', $owner)->where($holds)->first()
+            ?? User::whereIn('role', $admins)->where($holds)->first()
+            // Nothing saved yet anywhere: the first owner, else the first admin (as before).
+            ?? User::where('role', $owner)->first()
+            ?? User::whereIn('role', $admins)->first();
 
         return $user;
     }

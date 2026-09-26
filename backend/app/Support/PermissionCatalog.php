@@ -134,7 +134,13 @@ class PermissionCatalog
                 'extras' => []],
 
             // ── Admin ──
-            'auditLogs' => ['section' => 'Admin', 'label' => 'Audit Logs', 'note' => 'Staff, roles, customers, messages and shop settings are the owner\'s alone and cannot be granted.',
+            // The day-to-day part of Settings. Terms & Policies stay the owner's (they are the
+            // contract), Integrations stay the system admin's (mail providers, Google Maps billing).
+            'shopSettings' => ['section' => 'Admin', 'label' => 'Shop settings', 'note' => 'Terms & Policies are the owner\'s alone; Integrations are the system admin\'s.',
+                'view'   => $v('shopSettings.view', 'Shipping, delivery times, chat replies and order forms, read only.'),
+                'work'   => $v('shopSettings.work', 'Change them. Customers see these at checkout and in chat.'),
+                'extras' => []],
+            'auditLogs' => ['section' => 'Admin', 'label' => 'Audit Logs', 'note' => 'Staff, roles, customers and messages are the owner\'s alone and cannot be granted.',
                 'view'   => $v('auditLogs.view', 'Who changed what, and when.'),
                 'work'   => ['keys' => [], 'hint' => ''],
                 'extras' => []],
