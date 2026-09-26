@@ -426,9 +426,7 @@ export default function AuditLogsPage() {
                       {l.metadata && Object.keys(l.metadata).length > 0 && (
                         <div style={{ marginTop: 3 }}>
                           <span style={{ color: 'var(--gray)' }}>Details:</span>
-                          <div style={{ marginTop: 3, padding: '7px 9px', background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: 7, fontFamily: 'monospace', fontSize: 11, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-                            {JSON.stringify(l.metadata, null, 2)}
-                          </div>
+                          <MetadataView meta={l.metadata} />
                         </div>
                       )}
                     </div>
@@ -470,9 +468,7 @@ export default function AuditLogsPage() {
                 {l.metadata && Object.keys(l.metadata).length > 0 && (
                   <div style={{ padding: '10px 0' }}>
                     <div style={{ fontSize: 12, color: 'var(--gray)', marginBottom: 5 }}>Details</div>
-                    <div style={{ padding: '8px 10px', background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: 8, fontFamily: 'monospace', fontSize: 11.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-                      {JSON.stringify(l.metadata, null, 2)}
-                    </div>
+                    <MetadataView meta={l.metadata} />
                   </div>
                 )}
               </div>
@@ -496,5 +492,42 @@ export default function AuditLogsPage() {
         <style>{`@keyframes pmPulse { 0%, 100% { opacity: 1 } 50% { opacity: .45 } }`}</style>
       </div>
     </ErrorBoundary>
+  );
+}
+
+/**
+ * An entry's details, read the way a person asks about them: what changed from what to what.
+ * Settings saves carry `changes` ([{ field, from, to }]); terms saves carry the clauses added,
+ * removed and reworded. Anything else still shows as data, so nothing recorded is ever hidden.
+ */
+function MetadataView({ meta }) {
+  const { changes, added, removed, reworded, ...rest } = meta || {};
+  const box = { marginTop: 3, padding: '7px 9px', background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: 7, fontSize: 12 };
+  const list = (label, items) => Array.isArray(items) && items.length > 0 && (
+    <div style={{ marginTop: 3 }}><span style={{ color: 'var(--gray)' }}>{label}:</span> {items.join(', ')}</div>
+  );
+  return (
+    <>
+      {(Array.isArray(changes) && changes.length > 0 || [added, removed, reworded].some(a => Array.isArray(a) && a.length)) && (
+        <div style={box}>
+          {Array.isArray(changes) && changes.map((c, i) => (
+            <div key={i} style={{ display: 'flex', flexWrap: 'wrap', gap: 6, padding: '2px 0' }}>
+              <span style={{ fontWeight: 600, color: 'var(--white)' }}>{c.field}:</span>
+              <span style={{ color: 'var(--st-red-fg)', textDecoration: 'line-through', wordBreak: 'break-word' }}>{c.from}</span>
+              <span style={{ color: 'var(--gray)' }}>{'->'}</span>
+              <span style={{ color: 'var(--st-green-fg)', wordBreak: 'break-word' }}>{c.to}</span>
+            </div>
+          ))}
+          {list('Added', added)}
+          {list('Removed', removed)}
+          {list('Reworded', reworded)}
+        </div>
+      )}
+      {Object.keys(rest).length > 0 && (
+        <div style={{ ...box, fontFamily: 'monospace', fontSize: 11, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+          {JSON.stringify(rest, null, 2)}
+        </div>
+      )}
+    </>
   );
 }

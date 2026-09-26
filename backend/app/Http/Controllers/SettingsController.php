@@ -118,6 +118,26 @@ class SettingsController extends Controller
      *   the owner (everything else, and Terms & Policies alone - they are the contract);
      *   staff granted "Shop settings" (shipping, delivery times, chat replies, order forms).
      */
+    /**
+     * Which clauses a terms save added, removed or reworded, by title - so the audit entry says
+     * "reworded: Design fee" rather than only that the terms changed. (A first save from the
+     * built-in list shows every clause as added; that is what happened.)
+     */
+    private static function clauseDelta(array $before, array $after): array
+    {
+        $key = fn ($t) => mb_strtolower(trim((string) ($t['title'] ?? '')));
+        $old = []; foreach ($before as $t) $old[$key($t)] = $t;
+        $new = []; foreach ($after as $t) $new[$key($t)] = $t;
+        $title = fn ($t) => (string) ($t['title'] ?? '');
+        return [
+            'added'    => array_values(array_map($title, array_diff_key($new, $old))),
+            'removed'  => array_values(array_map($title, array_diff_key($old, $new))),
+            'reworded' => array_values(array_map($title, array_filter($new, fn ($t, $k) => isset($old[$k])
+                && (trim((string) ($old[$k]['body'] ?? '')) !== trim((string) ($t['body'] ?? '')) || ($old[$k]['mode'] ?? null) !== ($t['mode'] ?? null)),
+                ARRAY_FILTER_USE_BOTH))),
+        ];
+    }
+
     private function isSystemAdmin(Request $request): bool
     {
         return \App\Support\Rbac::isSuperAdmin($request->user());
@@ -384,6 +404,9 @@ class SettingsController extends Controller
                 'freeDeliveryFrom'     => 'nullable|numeric|min:1|max:999999',
             ]);
 
+            // What it was, so the audit entry can say what it became.
+            $before = \App\Support\SettingsDiff::snapshot($owner, array_keys(\App\Support\SettingsDiff::LABELS));
+
             if ($request->has('storeAddress'))         $owner->storeAddress         = $request->storeAddress ?? '';
             if ($request->has('storeAddressParts'))    $owner->storeAddressParts    = $request->storeAddressParts ?? null;
             if ($request->has('storeLat'))             $owner->storeLat             = $request->storeLat !== null ? (float) $request->storeLat : null;
@@ -425,13 +448,13 @@ class SettingsController extends Controller
 
             // Rates, turnaround promises and the free-delivery figure all change what customers
             // are charged. Who moved them, and when, is a question that gets asked later.
-            $this->logActivity($request, 'settings.changed', 'settings', null,
-                'Changed the shipping and delivery settings',
-                ['fields' => array_values(array_intersect(array_keys($request->all()), [
-                    'shippingMode', 'shippingBaseRate', 'shippingPerKmRate', 'flatRateInsideMetro',
-                    'flatRateOutsideMetro', 'freeDeliveryFrom', 'rushFee', 'rushEnabled',
-                    'productionLeadDays', 'designRequestFee',
-                ]))]);
+            // Only when something actually changed, and saying what: "Rush fee 150 -> 200".
+            $changes = \App\Support\SettingsDiff::changes($before, $owner);
+            if ($changes) {
+                $this->logActivity($request, 'settings.changed', 'settings', null,
+                    'Changed ' . \App\Support\SettingsDiff::sentence($changes),
+                    ['changes' => $changes]);
+            }
 
             return $this->successResponse('Shipping settings saved.', [
                 'storeAddress'         => $owner->storeAddress          ?? '',
@@ -519,6 +542,7 @@ class SettingsController extends Controller
                 // Moved here from Shipping: it is an offer, not a rate. Blank switches it off.
                 'freeDeliveryFrom'  => 'nullable|numeric|min:1|max:999999',
             ]);
+            $before = \App\Support\SettingsDiff::snapshot($owner, ['firstOrderPercent', 'firstOrderCap', 'freeDeliveryFrom']);
             if ($request->has('freeDeliveryFrom')) {
                 $raw = $request->input('freeDeliveryFrom');
                 $owner->freeDeliveryFrom = ($raw === null || $raw === '' || (float) $raw <= 0) ? null : (float) $raw;
@@ -534,9 +558,11 @@ class SettingsController extends Controller
             }
             $owner->save();
 
-            $this->logActivity($request, 'settings.changed', 'settings', null,
-                'Changed the standing offers',
-                ['percent' => $owner->firstOrderPercent, 'cap' => $owner->firstOrderCap, 'freeDeliveryFrom' => $owner->freeDeliveryFrom]);
+            $changes = \App\Support\SettingsDiff::changes($before, $owner);
+            if ($changes) {
+                $this->logActivity($request, 'settings.changed', 'settings', null,
+                    'Changed ' . \App\Support\SettingsDiff::sentence($changes), ['changes' => $changes]);
+            }
 
             return $this->successResponse('Offers saved.', [
                 'firstOrderPercent' => \App\Support\ShopOffers::firstOrderPercent(),
@@ -602,6 +628,7 @@ class SettingsController extends Controller
             ], array_filter($validated['registrationTerms'],
                 fn ($t) => trim($t['title'] ?? '') !== '' && trim($t['body'] ?? '') !== '')));
 
+            $termsDelta = self::clauseDelta((array) ($owner->registrationTerms ?? []), $clean);
             $owner->registrationTerms          = $clean;
             $owner->registrationTermsVersion   = (int) ($owner->registrationTermsVersion ?? 1) + 1;
             $owner->registrationTermsUpdatedAt = now();
@@ -611,7 +638,7 @@ class SettingsController extends Controller
             // this says who changed the wording that new customers agree to, and when.
             $this->logActivity($request, 'settings.terms_changed', 'settings', null,
                 'Changed the account sign-up terms (now version ' . (int) $owner->registrationTermsVersion . ')',
-                ['clauses' => count($clean), 'version' => (int) $owner->registrationTermsVersion]);
+                ['clauses' => count($clean), 'version' => (int) $owner->registrationTermsVersion] + $termsDelta);
 
             return $this->successResponse('Registration terms saved.', [
                 'registrationTerms'        => $owner->registrationTerms,
@@ -668,6 +695,7 @@ class SettingsController extends Controller
                 'mode'  => in_array($t['mode'] ?? 'both', ['both', 'upload', 'request', 'quote'], true) ? ($t['mode'] ?? 'both') : 'both',
             ], array_filter($validated['customOrderTerms'], fn ($t) => trim($t['title'] ?? '') !== '' && trim($t['body'] ?? '') !== '')));
 
+            $termsDelta = self::clauseDelta((array) ($owner->customOrderTerms ?? []), $clean);
             $owner->customOrderTerms = $clean;
             $owner->termsVersion     = (int) ($owner->termsVersion ?? 1) + 1;
             $owner->termsUpdatedAt   = now();
@@ -675,7 +703,7 @@ class SettingsController extends Controller
 
             $this->logActivity($request, 'settings.terms_changed', 'settings', null,
                 'Changed the custom order terms (now version ' . (int) $owner->termsVersion . ')',
-                ['clauses' => count($clean), 'version' => (int) $owner->termsVersion]);
+                ['clauses' => count($clean), 'version' => (int) $owner->termsVersion] + $termsDelta);
 
             return $this->successResponse('Terms saved.', [
                 'customOrderTerms' => $owner->customOrderTerms,

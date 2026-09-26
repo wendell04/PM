@@ -1087,6 +1087,10 @@ class OrderController extends Controller
                 Log::warning('write-off history failed', ['order' => (string) $order->_id, 'error' => $e->getMessage()]);
             }
 
+            $this->logActivity($request, 'order.written_off', 'order', (string) $order->_id,
+                'Wrote off unclaimed ORD-' . strtoupper(substr((string) $order->_id, -8)) . ' - ' . ($writeOff['reason'] ?? ''),
+                ['writeOff' => $writeOff]);
+
             return $this->successResponse('Order written off and archived.', $writeOff);
         } catch (\Exception $e) {
             return $this->serverErrorResponse($e, 'Failed to write off the order.');
@@ -3471,6 +3475,11 @@ class OrderController extends Controller
                 Log::warning('markRefunded: notification failed', ['error' => $e->getMessage()]);
             }
 
+            $this->logActivity($request, 'order.refunded', 'order', (string) $order->_id,
+                'Marked P' . number_format($amount, 2) . ' refunded via ' . strtoupper($validated['method'])
+                    . ' on ORD-' . strtoupper(substr((string) $order->_id, -8)),
+                ['amount' => $amount, 'method' => $validated['method']]);
+
             return $this->successResponse('Refund recorded.', $order);
         } catch (\Illuminate\Validation\ValidationException $e) {
             return $this->validationErrorResponse($e);
@@ -3586,6 +3595,13 @@ class OrderController extends Controller
             } catch (\Throwable $mailErr) {
                 Log::warning('recordPayment: receipt email failed', ['error' => $mailErr->getMessage()]);
             }
+
+            // Money typed in by hand is the first thing an audit asks about: nothing outside the
+            // shop confirms it happened, so who entered it has to be on record.
+            $this->logActivity($request, 'payment.recorded', 'order', (string) $order->_id,
+                'Recorded a ' . strtoupper((string) $validated['method']) . ' payment of P' . number_format((float) $validated['amount'], 2)
+                    . ' on ORD-' . strtoupper(substr((string) $order->_id, -8)),
+                ['amount' => (float) $validated['amount'], 'method' => (string) $validated['method'], 'balanceAfter' => (float) max(0, $balance)]);
 
             return $this->successResponse('Payment recorded successfully.', $order);
 

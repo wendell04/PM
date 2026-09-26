@@ -42,8 +42,15 @@ class ActivityLogController extends Controller
             // Reading the audit log is itself something a log should record - "who had access,
             // including me looking at it" is exactly the question it exists to answer. Only the
             // first page, so paging through a long list does not write an entry per scroll.
+            // Once per half hour per person: every filter change reloads page 1, so the log filled with
+            // "Opened the audit log" eight times an afternoon and buried the entries worth reading.
             if ($page === 1 && !$request->filled('q')) {
-                $this->logActivity($request, 'audit.viewed', 'audit', null, 'Opened the audit log');
+                $me = (string) ($request->user()->_id ?? '');
+                $recent = \App\Models\ActivityLog::where('action', 'audit.viewed')
+                    ->where('performedBy', $me)
+                    ->where('createdAt', '>=', now()->subMinutes(30))
+                    ->exists();
+                if (!$recent) $this->logActivity($request, 'audit.viewed', 'audit', null, 'Opened the audit log');
             }
 
             return $this->successResponse('Activity logs fetched.', [

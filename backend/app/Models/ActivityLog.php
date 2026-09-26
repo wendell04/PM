@@ -83,12 +83,20 @@ class ActivityLog extends Model
 
         // Money
         'payment_received'    => ['Recorded a payment',  'money'],
+        'payment.recorded'    => ['Recorded a payment by hand', 'money'],
+        'payment.paid'        => ['Payment came in',     'money'],
         'order.refund_waived' => ['Waived a refund',     'money'],
+        'order.refunded'      => ['Marked a refund sent', 'money'],
+        'order.written_off'   => ['Wrote off an order',  'money'],
+
+        // Material moved by hand - the way stock disappears without a sale
+        'stock.adjusted'      => ['Adjusted stock',      'stock'],
 
         // The catalogue and the shop's own rules
         'product_publish_toggled' => ['Published or hid a product', 'catalog'],
         'review_submitted'        => ['A customer left a review',    'catalog'],
         'settings.changed'        => ['Changed a setting',          'settings'],
+        'settings.terms_changed'  => ['Changed the terms',          'settings'],
     ];
 
     /**

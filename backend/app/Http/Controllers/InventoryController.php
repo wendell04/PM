@@ -969,14 +969,17 @@ class InventoryController extends Controller
 
             $historyType = $quantity < 0 ? 'deduction' : 'addition';
 
-            // Resolve performedBy: prefer request value, fall back to auth user
-            $performedBy = $validated['performedBy'] ?? null;
-            if (!$performedBy) {
-                $u = $request->user();
-                if ($u) {
-                    $performedBy = $u->name ?? trim(($u->firstName ?? '') . ' ' . ($u->lastName ?? ''));
-                    if ($performedBy === '') $performedBy = $u->email ?? null;
-                }
+            // Who did it is the signed-in account, never a name the form sends: this preferred the
+            // request's `performedBy`, so a write-off could be recorded under anybody's name. A name
+            // typed on the form (who physically counted or received it) is kept, beside the actor.
+            $performedBy = null;
+            $u = $request->user();
+            if ($u) {
+                $performedBy = trim(($u->firstName ?? '') . ' ' . ($u->lastName ?? '')) ?: ($u->email ?? null);
+            }
+            $handledBy = trim((string) ($validated['performedBy'] ?? ''));
+            if ($handledBy !== '' && $handledBy !== $performedBy) {
+                $validated['remarks'] = trim(($validated['remarks'] ?? '') . ' (handled by ' . $handledBy . ')');
             }
 
             if ($quantity < 0 && !empty($batchDeductions)) {
@@ -1060,6 +1063,23 @@ class InventoryController extends Controller
             } catch (\Exception $auditEx) {
                 Log::warning('AuditLog write failed', ['error' => $auditEx->getMessage()]);
             }
+
+            // And in the audit trail proper. The record above is the old inventory log, which the
+            // Audit Logs page stopped reading when it moved to activity_logs - so a 150-sheet
+            // write-off was recorded where nobody looks. A hand adjustment to stock is exactly the
+            // entry an audit trail is for: it is how material disappears without a sale.
+            $words = [
+                'restock' => 'Stocked in', 'correction-add' => 'Corrected up', 'correction-deduct' => 'Corrected down',
+                'sale' => 'Sold', 'return' => 'Returned', 'sales-outside' => 'Sold outside the system', 'damaged' => 'Marked damaged',
+                'writeoff' => 'Wrote off', 'production' => 'Used in production', 'lost' => 'Marked lost', 'missing' => 'Marked missing',
+                'adjustment' => 'Adjusted',
+            ];
+            $unit = (float) ($validated['unitCost'] ?? $inventory->averageCost ?? 0);
+            $this->logActivity($request, 'stock.adjusted', 'inventory', (string) $inventory->_id,
+                ($words[$validated['reason']] ?? 'Adjusted') . ' ' . abs((float) $quantity) . ' ' . ($inventory->uom ?? '') . ' of ' . ($inventory->name ?? 'a material')
+                    . (!empty($validated['remarks']) ? ' - ' . mb_substr(strip_tags((string) $validated['remarks']), 0, 120) : ''),
+                ['changes' => [['field' => 'Stock', 'key' => 'stockQty', 'from' => (string) ($newStock - $quantity), 'to' => (string) $newStock]],
+                 'reason' => $validated['reason'], 'value' => round(abs((float) $quantity) * $unit, 2)]);
 
             $this->bustInventoryListCache();
 
