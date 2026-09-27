@@ -1056,6 +1056,15 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
   // An action inside the panel (approve, pay, job started) moves the status on its own. The picker
   // kept the old one, which is no longer an option, so it read "Select..." instead of the current stage.
   useEffect(() => { setSelStatus(lo.orderStatus); }, [lo.orderStatus]);
+  // A change made somewhere else - the customer approving from an email, paying, a staff member on
+  // another screen - reaches the open panel through the list refresh, but only when the server's copy
+  // is newer than this one. An action in here changes the server first, so a refresh can never carry
+  // an older copy over what was just done. Before this, the open order stayed as it was until Ctrl+R.
+  useEffect(() => {
+    const at = (x) => Date.parse(x?.updatedAt ?? x?.updated_at ?? '') || 0;
+    if (at(o) > at(lo)) { setLo(prev => ({ ...prev, ...o, id: prev.id })); loadJobOrders(); }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [o]);
 
   const loadJobOrders = useCallback(async () => {
     const oid = o._id ?? o.id;
@@ -3017,13 +3026,25 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                         </span>
                       ) : null;
                     })()}
-                    {item.designRequested && (
-                      <span style={{ fontSize:'10px', fontWeight:700, color:'var(--gold)', background:'var(--st-orange-bg)', padding:'1px 5px', borderRadius:'3px', border:'1px solid color-mix(in srgb, var(--st-orange-fg) 35%, transparent)', marginTop:'2px', display:'inline-block' }}>
-                        {/* From a quotation with no design fee: the artwork was agreed in chat and only
-                            needs turning into a proof - not a paid design job. */}
-                        {(lo.orderRequestId || lo.orderSource === 'inquiry') && !(Number(lo.designFee) > 0) ? 'Proof to send' : 'Design Service'}
-                      </span>
-                    )}
+                    {item.designRequested && (() => {
+                      // Where the design stands, once it has moved. The chip only named the kind of
+                      // line, so it read "Proof to send" beside a design already marked Approved.
+                      const dst = item.designStatus ?? ((lo.items ?? []).length <= 1 ? lo.designStatus : null);
+                      if (dst === 'approved') return (
+                        <span style={{ fontSize:'10px', fontWeight:700, color:'var(--st-green-fg)', background:'var(--st-green-bg)', padding:'1px 5px', borderRadius:'3px', border:'1px solid color-mix(in srgb, var(--st-green-fg) 35%, transparent)', marginTop:'2px', display:'inline-block' }}>
+                          Design approved
+                        </span>
+                      );
+                      return (
+                        <span style={{ fontSize:'10px', fontWeight:700, color:'var(--gold)', background:'var(--st-orange-bg)', padding:'1px 5px', borderRadius:'3px', border:'1px solid color-mix(in srgb, var(--st-orange-fg) 35%, transparent)', marginTop:'2px', display:'inline-block' }}>
+                          {dst === 'proof_sent' || dst === 'draft_ready' ? 'Proof sent - waiting on customer'
+                            : dst === 'revision_requested' ? 'Revision asked'
+                            /* From a quotation with no design fee: the artwork was agreed in chat and
+                               only needs turning into a proof - not a paid design job. */
+                            : (lo.orderRequestId || lo.orderSource === 'inquiry') && !(Number(lo.designFee) > 0) ? 'Proof to send' : 'Design Service'}
+                        </span>
+                      );
+                    })()}
                   </div>
                   <div style={{ textAlign:'right', flexShrink:0 }}>
                     <div style={{ fontSize:'11px', color:'var(--gray)' }}>₱{fmt(unit)} ×{qty}</div>
@@ -3499,7 +3520,23 @@ export default function OrdersPage() {
   // An open row means someone is working in it - uploading a proof, approving, editing a date. The
   // background refresh must not run underneath them. `skipPollRef` was already here but nothing ever
   // set it true, so the guard did nothing.
-  useEffect(() => { skipPollRef.current = expandedId !== null; }, [expandedId]);
+  // The refresh used to stop while a row was open, so an order the customer approved stayed
+  // "waiting" on screen until a reload. The open panel now takes only a newer server copy (see
+  // OrderDetail), which is what makes it safe to keep refreshing underneath it.
+
+  // Coming back to the tab, or a new bell notification, refreshes at once instead of waiting for the
+  // next 30-second tick.
+  useEffect(() => {
+    if (!token) return;
+    const onVisible = () => { if (document.visibilityState === 'visible') fetchOrders(true); };
+    const onActivity = () => fetchOrders(true);
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('pmp:admin-activity', onActivity);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('pmp:admin-activity', onActivity);
+    };
+  }, [token, fetchOrders]);
 
   // Deep link from a chat card or a notification. Opens that order's row once the list has it, then
   // clears the param so a later Back or refresh does not reopen what was just closed. Guarded so it

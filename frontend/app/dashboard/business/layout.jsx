@@ -363,10 +363,16 @@ export default function BusinessDashboardLayout({ children }) {
     if (!token) return;
     let failCount = 0;
     let interval;
+    let lastCount = null;
     const poll = async () => {
       try {
         const data = await fetchUnreadCount(token);
-        setUnreadCount(data.unread_count ?? 0);
+        const n = data.unread_count ?? 0;
+        setUnreadCount(n);
+        // Something new happened (a payment, an approval, a new order). The page on screen hears it
+        // and refreshes now rather than on its own timer.
+        if (lastCount != null && n > lastCount) window.dispatchEvent(new CustomEvent('pmp:admin-activity'));
+        lastCount = n;
         failCount = 0;
       } catch {
         failCount += 1;
@@ -390,6 +396,7 @@ export default function BusinessDashboardLayout({ children }) {
       echo.private("admin.notifications")
         .listen(".order.status.updated", () => {
           setUnreadCount((prev) => prev + 1);
+          window.dispatchEvent(new CustomEvent('pmp:admin-activity'));
         });
     } catch {
       // Echo/Reverb not reachable â€” silently ignore (HTTP polling still covers it)

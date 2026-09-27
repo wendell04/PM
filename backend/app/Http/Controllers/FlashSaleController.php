@@ -394,7 +394,13 @@ class FlashSaleController extends Controller
                 'discountValue'    => $sale->discountValue,
                 'originalPrice'    => $originalPrice,
                 'discountedPrice'  => $discountedPrice,
+                'startDate'        => $sale->startDate,
                 'endDate'          => $sale->endDate,
+                // Which variants the sale covers (empty = all). Without it the product page showed the
+                // sale price on every variant while checkout charged the others in full.
+                'variantIds'       => array_values(array_map('strval', (array) ($sale->variantIds ?? []))),
+                // Pieces left at the sale price; null when the sale has no cap.
+                'stockLeft'        => $sale->stockLimit === null ? null : max(0, (int) $sale->stockLimit - (int) ($sale->stockUsed ?? 0)),
             ];
         });
 

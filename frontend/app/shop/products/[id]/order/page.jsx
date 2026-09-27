@@ -127,6 +127,9 @@ function CustomOrderInner() {
   const { addToCart } = useCart();
 
   const [product, setProduct] = useState(null);
+  // The live flash sale on this product, if any. This page never looked, so a custom order went to
+  // checkout with no sale id and the server charged the full price the product page had struck out.
+  const [flashSale, setFlashSale] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
 
@@ -274,6 +277,11 @@ function CustomOrderInner() {
           router.push(`/shop/products/${id}`); return;
         }
         setProduct(p);
+        const pid = String(p.id ?? p._id ?? '');
+        fetchWithTimeout(`${API_URL}/api/storefront/flash-sales`, {}, 30000)
+          .then(r => (r.ok ? r.json() : null))
+          .then(fs => setFlashSale((fs?.data ?? []).find(x => String(x.productId) === pid) ?? null))
+          .catch(() => {});
 
         // Carry over what was already chosen on the product page; fall back to
         // the first option / MOQ when the page is opened directly.
@@ -436,7 +444,16 @@ function CustomOrderInner() {
   const chosenOptions = product ? selectedOptionList(product, selectedOptions) : [];
 
   // Per piece, matching the PDP: the extra cut is extra work on every unit.
-  const unitPrice = getUnitPrice(product, quantity, selectedVariants) + optionUnitAdd;
+  const bandPrice = getUnitPrice(product, quantity, selectedVariants);
+  // A sale covers every variant unless it names some. The cut comes off the band price and the
+  // options go on top, the order the server prices it in.
+  const saleComboId = product ? (resolveCombo(product, selectedVariants)?.id ?? null) : null;
+  const lineSale = flashSale && (!(flashSale.variantIds ?? []).length
+    || (saleComboId != null && flashSale.variantIds.map(String).includes(String(saleComboId)))) ? flashSale : null;
+  const saleCut = (price) => Math.max(0, lineSale.discountType === 'percentage'
+    ? price * (1 - lineSale.discountValue / 100) : price - lineSale.discountValue);
+  const regularUnit = bandPrice + optionUnitAdd;
+  const unitPrice = lineSale && bandPrice > 0 ? saleCut(bandPrice) + optionUnitAdd : regularUnit;
   // The same rule the cart and the server charge by (store fee, or a product override). Reading only
   // the product's own override showed P0.00 here while checkout then charged the shop's P100.
   const designFee = designMode === 'request' ? designFeeFor([{ designMode: 'request', designFee: product?.designFee }], storeSettings ?? {}) : 0;
@@ -634,6 +651,7 @@ function CustomOrderInner() {
         variantName:         variantLabel ?? null,
         qty:                 quantity,
         unitPrice:           unitPrice ?? 0,
+        ...(lineSale ? { flashSaleId: String(lineSale.id ?? lineSale._id) } : {}),
         isCustom:            true,
         designUrl:           designFileUrl,
         designName:          uploadedFiles[0]?.name ?? null,
@@ -741,7 +759,7 @@ function CustomOrderInner() {
         quantity,
         combo?.id ?? null,
         variantLabel ?? null,
-        null,
+        lineSale ? String(lineSale.id ?? lineSale._id) : null,
         {
           url:   designFileUrl || null,
           name:  uploadedFiles[0]?.name || null,
@@ -1297,7 +1315,13 @@ function CustomOrderInner() {
                     onClick={() => { const n = Math.min(qtyCeiling, quantity + 1); setQuantity(n); setQuantityInput(String(n)); }}
                     style={{ width: 36, height: 36, borderRadius: '8px', border: '1px solid var(--border)', background: 'rgba(255,255,255,0.05)', color: 'var(--white)', fontSize: '1.1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>+</button>
                   {unitPrice != null && (
-                    <span style={{ marginLeft: '0.5rem', color: 'var(--gray)', fontSize: '0.85rem' }}>{fmt(unitPrice)} / pc</span>
+                    <span style={{ marginLeft: '0.5rem', color: 'var(--gray)', fontSize: '0.85rem' }}>
+                      {lineSale && unitPrice !== regularUnit && (
+                        <span style={{ textDecoration: 'line-through', marginRight: '0.35rem' }}>{fmt(regularUnit)}</span>
+                      )}
+                      <span style={lineSale ? { color: 'var(--red, #dc2626)', fontWeight: 700 } : undefined}>{fmt(unitPrice)}</span> / pc
+                      {lineSale && <span style={{ marginLeft: '0.4rem', color: 'var(--red, #dc2626)', fontWeight: 700 }}>Flash sale</span>}
+                    </span>
                   )}
                 </div>
                 {quoteAbove != null && quantity >= quoteAbove && quoteAbove <= maxQty && (

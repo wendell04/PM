@@ -1750,6 +1750,29 @@
           z-index: 2;
         }
 
+        /* Sale (always shown) and MOQ (on hover) sit side by side at the image's bottom left. */
+        .shop-img-badges-bottom {
+          position: absolute;
+          bottom: 10px;
+          left: 10px;
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          z-index: 2;
+        }
+        .shop-img-badges-bottom .shop-moq-badge { position: static; }
+        .shop-sale-badge {
+          background: var(--red);
+          color: #fff;
+          font-size: 0.6rem;
+          font-weight: 700;
+          padding: 3px 8px;
+          border-radius: 6px;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+          white-space: nowrap;
+        }
+
         .shop-quick-add-btn.adding {
           background: var(--green);
           border-color: rgba(74, 222, 128, 0.5);
@@ -1916,6 +1939,11 @@
             top: 8px;
             right: 8px;
           }
+          .shop-img-badges-bottom { bottom: 8px; left: 8px; gap: 3px; }
+          /* Two cards to a row leave no room for a stock badge and Print to order on one line;
+             they ran into each other. The stock badge drops one line when both are there. */
+          .has-custom-badge .shop-stock-img-badge { top: 28px; }
+          .shop-sale-badge { font-size: 0.5rem; padding: 2px 6px; }
 
           /* Card → flex column so price aligns at the bottom across the row */
           .shop-product-card {

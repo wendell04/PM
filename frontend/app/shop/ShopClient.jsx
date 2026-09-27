@@ -21,39 +21,51 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 const toSlug = (name) => (name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
 
 // ─── Price Helper ─────────────────────────────────────────────────────────────
-function getDisplayPrice(product) {
-  const fmt = (n) => `₱${n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const fmtPeso = (n) => `₱${n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+// Lowest and highest unit price the product lists, or null when it is priced on request.
+function priceRange(product) {
   const mode = product.priceType || product.pricingMode || 'fixed';
   const tiers = product.priceTiers || product.tiers;
-  if (mode === 'inquiry') return 'Price on request';
-  if (mode === 'fixed') {
-    if (product.variantPrices && Object.keys(product.variantPrices).length > 0) {
-      const prices = Object.values(product.variantPrices).map(p => parseFloat(p)).filter(p => p > 0);
-      if (!prices.length) return 'Price on request';
-      const min = Math.min(...prices);
-      const max = Math.max(...prices);
-      return min === max ? fmt(min) : `${fmt(min)} - ${fmt(max)}`;
-    }
+  if (mode === 'inquiry') return null;
+  let prices = [];
+  if (mode === 'fixed' && product.variantPrices && Object.keys(product.variantPrices).length > 0) {
+    prices = Object.values(product.variantPrices).map(p => parseFloat(p)).filter(p => p > 0);
+  } else if (mode === 'tiered' && tiers?.length) {
+    prices = tiers.flatMap(t => Object.values(t.prices || {}).map(p => parseFloat(p)).filter(p => p > 0));
+  } else {
     const p = parseFloat(product.flatPrice || product.price);
-    if (p > 0) return fmt(p);
-    return 'Price on request';
+    if (p > 0) prices = [p];
   }
-  if (mode === 'tiered' && tiers?.length) {
-    const allPrices = tiers.flatMap(t =>
-      Object.values(t.prices || {}).map(p => parseFloat(p)).filter(p => p > 0)
-    );
-    if (!allPrices.length) return 'Price on request';
-    const min = Math.min(...allPrices);
-    const max = Math.max(...allPrices);
-    return min === max ? fmt(min) : `${fmt(min)} - ${fmt(max)}`;
-  }
-  const fallback = parseFloat(product.flatPrice || product.price);
-  if (fallback > 0) return fmt(fallback);
-  return 'Price on request';
+  return prices.length ? { min: Math.min(...prices), max: Math.max(...prices) } : null;
 }
 
+const rangeText = (r) => (r.min === r.max ? fmtPeso(r.min) : `${fmtPeso(r.min)} - ${fmtPeso(r.max)}`);
+
+function getDisplayPrice(product) {
+  const r = priceRange(product);
+  return r ? rangeText(r) : 'Price on request';
+}
+
+// When a flash sale ends, in shop time. Inside the last day it counts down instead.
+const saleEndText = (end) => new Date(end).toLocaleString('en-PH', {
+  timeZone: 'Asia/Manila', weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+});
+
+const saleOff = (price, sale) => Math.max(0, sale.discountType === 'percentage'
+  ? price * (1 - sale.discountValue / 100)
+  : price - sale.discountValue);
+
+// Whether a sale covers this variant. A sale naming no variants covers them all.
+const saleCovers = (sale, comboId) => !!sale && (!sale.variantIds?.length
+  || (comboId != null && sale.variantIds.map(String).includes(String(comboId))));
+
+const saleLabel = (sale) => (sale.discountType === 'percentage'
+  ? `${sale.discountValue}% OFF`
+  : `₱${sale.discountValue} OFF`);
+
 // ─── Quick View Modal ─────────────────────────────────────────────────────────
-function QuickViewModal({ product, flashSale, onClose, onToast }) {
+function QuickViewModal({ product, flashSale: anySale, onClose, onToast }) {
   const router = useRouter();
   const productSlug = product?.slug || String(product?.name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
   const productHref = productSlug ? `/shop/products/${productSlug}` : null;
@@ -136,6 +148,9 @@ function QuickViewModal({ product, flashSale, onClose, onToast }) {
 
   const combo = resolveCombo(selVars);
   const comboId = combo?.id ?? null;
+  // The sale as it applies to the variant chosen: one that names variants covers only those, the
+  // same rule the server prices the line by.
+  const flashSale = saleCovers(anySale, comboId) ? anySale : null;
 
 
   const unitPrice = (() => {
@@ -779,6 +794,11 @@ function ProductCard({ product, onAddToCart, onQuickView, flashSale }) {
     return () => clearInterval(id);
   }, [flashSale?.endDate]);
 
+  const saleOnSome = !!flashSale?.variantIds?.length;
+  const baseRange = priceRange(product);
+  const saleRange = flashSale && !saleOnSome && baseRange
+    ? { min: saleOff(baseRange.min, flashSale), max: saleOff(baseRange.max, flashSale) }
+    : null;
 
   return (
     <Link href={`/shop/products/${product.slug || toSlug(product.name)}`} className="shop-product-card-link">
@@ -788,7 +808,7 @@ function ProductCard({ product, onAddToCart, onQuickView, flashSale }) {
         onMouseLeave={() => setHovered(false)}
       >
         {/* Image area */}
-        <div className="shop-product-image-area">
+        <div className={`shop-product-image-area${product.isCustom ? ' has-custom-badge' : ''}`}>
           {hasImage ? (
             /* eslint-disable-next-line @next/next/no-img-element */
             <img
@@ -880,32 +900,14 @@ function ProductCard({ product, onAddToCart, onQuickView, flashSale }) {
             </div>
           )}
 
-          {/* Flash sale badge */}
-          {flashSale && (
-            <div style={{
-              position: 'absolute',
-              top: '10px',
-              right: '10px',
-              background: 'linear-gradient(135deg, var(--red) 0%, var(--red-dark) 100%)',
-              color: 'var(--white)',
-              fontSize: '0.65rem',
-              fontWeight: 700,
-              padding: '3px 8px',
-              borderRadius: '6px',
-              textTransform: 'uppercase',
-              letterSpacing: '0.5px',
-              zIndex: 2,
-            }}>
-              {flashSale.discountType === 'percentage'
-                ? `${flashSale.discountValue}% OFF`
-                : `₱${flashSale.discountValue} OFF`}
-            </div>
-          )}
-
-          {/* MOQ hover badge */}
-          {(product.minOrderQty ?? 1) > 1 && (
-            <div className="shop-moq-badge">
-              MOQ {product.minOrderQty} pcs
+          {/* Bottom-left row: the sale is always shown, the MOQ joins it on hover. They used to
+              share the top-right corner with Print to order and sat on top of it. */}
+          {(flashSale || (product.minOrderQty ?? 1) > 1) && (
+            <div className="shop-img-badges-bottom">
+              {flashSale && <div className="shop-sale-badge">{saleLabel(flashSale)}</div>}
+              {(product.minOrderQty ?? 1) > 1 && (
+                <div className="shop-moq-badge">MOQ {product.minOrderQty} pcs</div>
+              )}
             </div>
           )}
 
@@ -933,23 +935,16 @@ function ProductCard({ product, onAddToCart, onQuickView, flashSale }) {
 
 
           <div className="shop-product-footer">
-            {flashSale && flashSale.discountedPrice != null ? (
-              <span style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
-                <span style={{
-                  fontSize: '0.75rem',
-                  color: 'var(--gray)',
-                  textDecoration: 'line-through',
-                  lineHeight: 1,
-                }}>
-                  ₱{parseFloat(flashSale.originalPrice).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            {/* The sale is applied to the whole listed range. The old card struck through the
+                cheapest bulk price (₱70, the 501+ band) and showed ₱63, while one bag cost ₱90.
+                A sale on some variants only leaves the range as is; the line below says so. */}
+            {saleRange ? (
+              <span style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                <span style={{ fontSize: '0.75rem', color: 'var(--gray)', textDecoration: 'line-through', lineHeight: 1.1 }}>
+                  {rangeText(baseRange)}
                 </span>
-                <span style={{
-                  fontSize: '1.05rem',
-                  fontWeight: 700,
-                  color: 'var(--red)',
-                  lineHeight: 1,
-                }}>
-                  ₱{parseFloat(flashSale.discountedPrice).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                <span className="shop-product-price" style={{ color: 'var(--red)', lineHeight: 1.1 }}>
+                  {rangeText(saleRange)}
                 </span>
               </span>
             ) : (
@@ -965,27 +960,31 @@ function ProductCard({ product, onAddToCart, onQuickView, flashSale }) {
             )}
           </div>
 
-          {flashSale && timeLeft && (
-            <div style={{
+          {flashSale && (
+            <div className="shop-sale-ends" style={{
               display: 'flex',
               alignItems: 'center',
               gap: '0.375rem',
               marginTop: '0.5rem',
-              padding: '0.375rem 0.75rem',
+              padding: '0.375rem 0.6rem',
               background: 'rgba(239,68,68,0.08)',
               border: '1px solid rgba(239,68,68,0.2)',
               borderRadius: '6px',
               fontSize: '0.72rem',
+              lineHeight: 1.35,
               color: 'var(--red)',
               fontWeight: 600,
             }}>
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none"
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}
                 stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"
                 strokeLinejoin="round">
                 <circle cx="12" cy="12" r="10"/>
                 <polyline points="12 6 12 12 16 14"/>
               </svg>
-              Ends in {timeLeft}
+              <span style={{ minWidth: 0 }}>
+                {saleOnSome ? 'Sale on some variants. ' : ''}
+                {timeLeft === 'Ended' ? 'Sale ended' : timeLeft ? `Ends in ${timeLeft}` : `Sale ends ${saleEndText(flashSale.endDate)}`}
+              </span>
             </div>
           )}
         </div>
@@ -1959,7 +1958,7 @@ export default function ShopClient({
                       >
                         <span style={{ textDecoration: isOOS ? 'line-through' : 'none' }}>{comboLabel}</span>
                         {price != null && !isOOS && (() => {
-                          const saleP = quickFlashSale ? applyFlashDiscount(price, quickFlashSale) : price;
+                          const saleP = saleCovers(quickFlashSale, combo.id) ? applyFlashDiscount(price, quickFlashSale) : price;
                           return saleP !== price ? (
                             <span style={{ fontSize: '0.7rem' }}>
                               <span style={{ color: 'var(--gold)', fontWeight: 700 }}>₱{saleP.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</span>
@@ -2066,16 +2065,17 @@ export default function ShopClient({
                       ? (quickVariant.name || quickVariant.label || Object.values(quickVariant.combo || {}).join(' / ') || null)
                       : null;
                     let productForCart = quickAddProduct;
-                    if (quickFlashSale) {
+                    const lineSale = saleCovers(quickFlashSale, variantId) ? quickFlashSale : null;
+                    if (lineSale) {
                       const basePrice = variantId && quickAddProduct.variantPrices?.[variantId]
                         ? parseFloat(quickAddProduct.variantPrices[variantId])
                         : (quickAddProduct.flatPrice || quickAddProduct.price || 0);
-                      const discounted = applyFlashDiscount(basePrice, quickFlashSale);
+                      const discounted = applyFlashDiscount(basePrice, lineSale);
                       if (discounted !== basePrice) {
                         productForCart = { ...quickAddProduct, flatPrice: discounted, price: discounted };
                       }
                     }
-                    addToCart(productForCart, quickQty, variantId, variantLabel, quickFlashSale?._id ?? null);
+                    addToCart(productForCart, quickQty, variantId, variantLabel, lineSale?._id ?? null);
                     setToast({ message: `${quickAddProduct.subCategoryName || quickAddProduct.name} added to cart!`, type: 'success' });
                     setTimeout(() => setToast(null), 2000);
                     setQuickAddProduct(null);

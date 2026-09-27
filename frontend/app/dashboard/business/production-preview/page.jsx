@@ -546,8 +546,14 @@ function JobDetail({ jo, onClose, onPreview, onChanged }) {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               <div style={{ ...S.label }}>Report spoilage</div>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                <input type="text" inputMode="numeric" maxLength={4} value={qty}
-                  onChange={e => { setQty(e.target.value.replace(/[^0-9]/g, '')); setErr(''); }}
+                {/* Capped at the job's quantity as it is typed - the server refused 1000 of 10, but
+                    only after Record was pressed. */}
+                <input type="text" inputMode="numeric" maxLength={String(ordered || 1).length} value={qty}
+                  onChange={e => {
+                    const d = e.target.value.replace(/[^0-9]/g, '');
+                    setQty(d === '' ? '' : String(Math.min(Number(d), Math.max(1, Number(ordered) || 1))));
+                    setErr('');
+                  }}
                   style={{ ...S.input, width: 70, textAlign: 'center' }} />
                 <span style={{ fontSize: 12, color: 'var(--gray)' }}>of {ordered} ruined</span>
               </div>

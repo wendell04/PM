@@ -15,7 +15,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
-import { S, ICONS, SearchBar, SummaryCard } from '../inventory-v2/shared';
+import { S, ICONS, SearchBar, SummaryCard, CustomSelect } from '../inventory-v2/shared';
 import { updateMat } from '../inventory-v2/api';
 import { useIsPhone, KpiStrip, PhoneRow , pesoShort } from '@/components/dashboard/phone';
 import { useAccess } from '@/contexts/AccessContext';
@@ -194,6 +194,8 @@ export default function ToBuyPage() {
         (r.sku || '').toLowerCase().includes(q) ||
         (r.supplierName || '').toLowerCase().includes(q)));
   }, [rows, search, reason]);
+  // The "no recipe" tab is hidden while it is empty, so a link that opens on it goes back to materials.
+  useEffect(() => { if (!loading && productRows.length === 0 && tab === 'products') setTab('materials'); }, [loading, productRows.length, tab]);
   const countFor = (why) => rows.filter(r => (r.reasons ?? ['orders']).includes(why)).length;
 
   // One group per supplier - the unit of work is "message this supplier", not "buy this item".
@@ -324,33 +326,37 @@ export default function ToBuyPage() {
         </div>
       )}
 
-      {tab === 'materials' && rows.length > 0 && (
-        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '10px', alignItems: 'center' }}>
-          {[['all', `All (${rows.length})`], ['orders', `Short for orders (${countFor('orders')})`], ['minimum', `Below minimum (${countFor('minimum')})`], ['forecast', `Forecast says reorder (${countFor('forecast')})`]].map(([id, label]) => (
-            <button key={id} type="button" onClick={() => setReason(id)}
-              style={{ minHeight: 34, padding: '0 12px', borderRadius: 999, fontSize: 12.5, fontWeight: reason === id ? 700 : 500, cursor: 'pointer',
-                background: reason === id ? 'var(--gold)' : 'var(--dark2)', color: reason === id ? '#1a1a1a' : 'var(--white)', border: reason === id ? '1px solid var(--gold)' : '1px solid var(--border)' }}>
+      {/* One control row. There were two rows of pills (four reasons, then two tabs) above the
+          search - six buttons before the list. The reason is a dropdown beside the search, and the
+          "no recipe" tab only appears when something is in it. Each row already says how its Buy
+          figure was reached, so the formula line is gone. */}
+      {productRows.length > 0 && (
+        <div style={{ display: 'flex', gap: '6px', marginBottom: '10px', flexWrap: 'wrap' }}>
+          {[['materials', `Materials to buy (${totals.totalItems})`], ['products', `No recipe - buy the item (${productRows.length})`]].map(([id, label]) => (
+            <button key={id} type="button" onClick={() => selectTab(id)}
+              style={{ ...S.btnSm, background: tab === id ? 'var(--gold)' : 'transparent',
+                color: tab === id ? '#111' : 'var(--gray)', fontWeight: tab === id ? 700 : 600,
+                border: `1px solid ${tab === id ? 'var(--gold)' : 'var(--border)'}` }}>
               {label}
             </button>
           ))}
-          <span style={{ fontSize: 11.5, color: 'var(--gray)', marginLeft: 'auto' }}>Buy = needed by orders + minimum - on hand</span>
         </div>
       )}
 
-      <div style={{ display: 'flex', gap: '6px', marginBottom: '14px' }}>
-        {[['materials', `Materials to buy (${totals.totalItems})`], ['products', `No recipe - buy the item (${productRows.length})`]].map(([id, label]) => (
-          <button key={id} type="button" onClick={() => selectTab(id)}
-            style={{ ...S.btnSm, background: tab === id ? 'var(--gold)' : 'transparent',
-              color: tab === id ? '#111' : 'var(--gray)', fontWeight: tab === id ? 700 : 600,
-              border: `1px solid ${tab === id ? 'var(--gold)' : 'var(--border)'}` }}>
-            {label}
-          </button>
-        ))}
-      </div>
-
-      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px', flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px', flexWrap: 'wrap' }}>
         {tab === 'materials' && (
-          <SearchBar value={search} onChange={setSearch} placeholder="Search material or supplier…" style={{ maxWidth: '340px', flex: '1 1 240px' }} />
+          <SearchBar value={search} onChange={setSearch} placeholder="Search material or supplier…" style={{ maxWidth: '340px', flex: '1 1 220px' }} />
+        )}
+        {tab === 'materials' && rows.length > 0 && (
+          <div style={{ flex: '0 1 230px', minWidth: 180 }}>
+            <CustomSelect value={reason} onChange={setReason}
+              options={[
+                { value: 'all', label: `All reasons (${rows.length})` },
+                { value: 'orders', label: `Short for orders (${countFor('orders')})` },
+                { value: 'minimum', label: `Below minimum (${countFor('minimum')})` },
+                { value: 'forecast', label: `Forecast says reorder (${countFor('forecast')})` },
+              ]} />
+          </div>
         )}
         <button type="button" onClick={load} style={{ ...S.btnGhost, marginLeft: 'auto' }}>Refresh</button>
       </div>

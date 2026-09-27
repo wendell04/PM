@@ -341,9 +341,7 @@ export default function ProductDetailPage() {
     try {
       const comboId = resolveCombinationId(selectedVariants);
       const basePrice = unitPrice ?? product.flatPrice ?? product.price ?? 0;
-      const effectivePrice = saleForVariant
-        ? applyFlashDiscount(basePrice, saleForVariant)
-        : basePrice;
+      const effectivePrice = saleUnit ?? basePrice;
       await addToCart(
         { ...product, flatPrice: effectivePrice, thumbnail: variantImage ?? product.thumbnail },
         quantity,
@@ -629,6 +627,19 @@ export default function ProductDetailPage() {
     if (!ids.length) return flashSale;
     return activeComboId != null && ids.includes(String(activeComboId)) ? flashSale : null;
   })();
+  // The cut comes off the band price and options go on top - the order the server prices it in.
+  const saleUnit  = saleForVariant && baseUnitPrice != null ? applyFlashDiscount(baseUnitPrice, saleForVariant) + optionUnitAdd : null;
+  const saleTotal = saleUnit != null ? saleUnit * quantity + optionOrderAdd : null;
+  // Names of the variants a sale covers, for "on Small only" when the chosen one is not among them.
+  const saleVariantNames = (() => {
+    const ids = (flashSale?.variantIds ?? []).map(String);
+    if (!ids.length || !product) return [];
+    return (product.combinations ?? []).filter(c => ids.includes(String(c.id)))
+      .map(c => c.label || c.name || Object.values(c.combo || {}).join(' / ')).filter(Boolean);
+  })();
+  const saleEnds = flashSale?.endDate
+    ? new Date(flashSale.endDate).toLocaleString('en-PH', { timeZone: 'Asia/Manila', weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+    : null;
 
   const variantImage = (() => {
     if (!activeComboId || !product?.variantImageUrls) return null;
@@ -890,7 +901,14 @@ export default function ProductDetailPage() {
                               {isActive && <span style={{ fontSize: '0.58rem', background: 'rgba(212,168,67,0.18)', color: 'var(--gold)', padding: '1px 6px', borderRadius: '999px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{optionUnitAdd > 0 ? 'Your qty - base' : 'Your qty'}</span>}
                             </span>
                             <span style={{ fontSize: '0.875rem', fontWeight: 700, color: isActive ? 'var(--gold)' : 'var(--white)', textAlign: 'right' }}>
-                              {unitP ? `${formatPeso(unitP)} / pc` : '-'}
+                              {/* The sale takes the same cut off every band, so the table shows it
+                                  per band; the regular price stays beside it, struck through. */}
+                              {!unitP ? '-' : saleForVariant ? (
+                                <>
+                                  <span style={{ textDecoration: 'line-through', color: 'var(--gray)', fontWeight: 400, fontSize: '0.78rem', marginRight: '0.4rem' }}>{formatPeso(unitP)}</span>
+                                  {formatPeso(applyFlashDiscount(unitP, saleForVariant))} / pc
+                                </>
+                              ) : `${formatPeso(unitP)} / pc`}
                             </span>
                           </div>
                         );
@@ -1089,23 +1107,37 @@ export default function ProductDetailPage() {
                     Price upon inquiry
                   </span>
                 </div>
-              ) : flashSale != null && unitPrice != null ? (
-                <div style={{ display: 'flex',
-                  alignItems: 'center', gap: '0.75rem',
-                  flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: '1.75rem',
-                    fontWeight: 800, color: 'var(--gold)' }}>
-                    {formatPeso(applyFlashDiscount(unitPrice, flashSale))}
-                  </span>
-                  <span style={{ fontSize: '1rem',
-                    color: 'var(--gray)',
-                    textDecoration: 'line-through' }}>
-                    {formatPeso(unitPrice)}
-                  </span>
-                  <span style={{ fontSize: '0.8rem',
-                    color: '#4ade80', fontWeight: 700 }}>
-                    Flash Sale
-                  </span>
+              ) : saleUnit != null ? (
+                // The sale as it applies to the chosen variant, with the total and when it ends.
+                // It used to read the raw sale, so a sale on Small showed its price on Large too,
+                // and it said nothing about when the price goes back.
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.75rem', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '1.75rem', fontWeight: 800, color: 'var(--gold)' }}>
+                      {formatPeso(saleUnit)}
+                      {product.priceType === 'tiered' && (
+                        <span style={{ fontSize: '0.85rem', color: 'var(--gray)', fontWeight: 400 }}> / pc</span>
+                      )}
+                    </span>
+                    <span style={{ fontSize: '1rem', color: 'var(--gray)', textDecoration: 'line-through' }}>
+                      {formatPeso(unitPrice)}
+                    </span>
+                    <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#fff', background: 'var(--red, #dc2626)', padding: '2px 8px', borderRadius: '6px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                      Flash sale
+                    </span>
+                  </div>
+                  {quantity > 1 && (
+                    <div style={{ fontSize: '0.82rem', color: 'var(--gray)', marginTop: '0.25rem' }}>
+                      Total: <span style={{ color: 'var(--gold)', fontWeight: 700 }}>{formatPeso(saleTotal)}</span>
+                      <span style={{ textDecoration: 'line-through', marginLeft: '0.4rem' }}>{formatPeso(totalPrice)}</span>
+                    </div>
+                  )}
+                  {(saleEnds || flashSale?.stockLeft != null) && (
+                    <div style={{ fontSize: '0.8rem', color: 'var(--red, #dc2626)', fontWeight: 600, marginTop: '0.35rem' }}>
+                      {saleEnds ? `Sale price until ${saleEnds}` : ''}
+                      {flashSale?.stockLeft != null ? `${saleEnds ? ' - ' : ''}${flashSale.stockLeft} pcs left at this price` : ''}
+                    </div>
+                  )}
                 </div>
               ) : unitPrice != null ? (
                 <div>
@@ -1122,6 +1154,11 @@ export default function ProductDetailPage() {
                           does not multiply, so the shorthand quietly left it out of the figure the
                           customer reads as what they owe. */}
                       Total: <span style={{ color: 'var(--gold)', fontWeight: 700 }}>{formatPeso(totalPrice)}</span>
+                    </div>
+                  )}
+                  {flashSale && !saleForVariant && saleVariantNames.length > 0 && (
+                    <div style={{ fontSize: '0.8rem', color: 'var(--red, #dc2626)', fontWeight: 600, marginTop: '0.35rem' }}>
+                      Flash sale on {saleVariantNames.join(', ')}{saleEnds ? ` until ${saleEnds}` : ''}
                     </div>
                   )}
 
