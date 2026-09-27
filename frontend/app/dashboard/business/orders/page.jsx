@@ -2687,15 +2687,34 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                       <div style={{ fontSize:'11.5px', color:'var(--st-red-fg)' }}>{settlementErr}</div>
                     )}
 
+                    {/* The lines nothing is asked about still say what happens to them, so every
+                        stage reads the same way: not started, being made, finished. */}
+                    {(settlement?.items ?? []).some(r => ['release', 'none', 'restock'].includes(r.action)) && (
+                      <div style={{ marginTop:'4px', display:'flex', flexDirection:'column', gap:'4px' }}>
+                        {(settlement?.items ?? []).filter(r => ['release', 'none', 'restock'].includes(r.action)).map(r => (
+                          <div key={`st-${r.itemIndex}`} style={{ fontSize:'11.5px', lineHeight:1.5, color:'var(--gray)',
+                            padding:'7px 10px', borderRadius:'6px', border:'1px solid var(--border)' }}>
+                            <b style={{ color:'var(--white)' }}>{r.itemName}{r.variantName ? ` - ${r.variantName}` : ''} &times;{r.qty}</b>
+                            {r.action === 'restock'
+                              ? ' - ready-made: it goes back on the shelf.'
+                              : r.action === 'release'
+                              ? ' - not started yet: everything held for it goes back on the shelf automatically.'
+                              : ' - already made and passed QC: its material is used up, nothing goes back. The job order stays as the record of the work.'}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
                     {consumeRows.length > 0 && (
                       <div style={{ marginTop:'4px', padding:'10px 12px', borderRadius:'6px',
                         background:'rgba(212,168,67,0.05)', border:'1px solid rgba(212,168,67,0.25)' }}>
                         <div style={{ fontSize:'12px', fontWeight:700, color:'var(--white)', marginBottom:'3px' }}>
-                          Production had already started
+                          Production had started - what happens to the material?
                         </div>
                         <div style={{ fontSize:'11.5px', color:'var(--gray)', lineHeight:1.5, marginBottom:'9px' }}>
-                          How much of the material can still go back on the shelf? Only you can say -
-                          the mug carries a name, the transfer paper is spent, the box was never opened.
+                          For each one, say how many can go <b style={{ color:'var(--white)' }}>back on the shelf</b>.
+                          The rest is recorded as used and written off. Example: 10 mugs were held and 5 were
+                          already printed - put 5 back; the 10 boxes were never opened - press All.
                         </div>
 
                         {consumeRows.map(row => (
@@ -2703,7 +2722,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                             <div style={{ fontSize:'11px', fontWeight:700, color:'var(--gray)',
                               textTransform:'uppercase', letterSpacing:'.4px', marginBottom:'5px' }}>
                               {row.itemName}{row.variantName ? ` - ${row.variantName}` : ''} &times;{row.qty}
-                              {row.jobStage ? ` (${row.jobStage})` : ''}
+                              {row.jobStage ? ` - ${({ 'In Progress': 'being made', QC_Pending: 'waiting for QC', QC_Failed: 'failed QC, being redone' })[row.jobStage] || row.jobStage}` : ''}
                             </div>
                             {(row.materials ?? []).map(m => (
                               <div key={`${row.itemIndex}-${m.inventoryId}`}
@@ -2715,7 +2734,11 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                                 <div style={{ fontSize:'11px', color:'var(--gray)', whiteSpace:'nowrap' }}>
                                   held {m.qty}{m.uom ? ` ${m.uom}` : ''}
                                 </div>
+                                <label htmlFor={`kb-${row.itemIndex}-${m.inventoryId}`} style={{ fontSize:'11px', color:'var(--gray)', whiteSpace:'nowrap' }}>
+                                  back on shelf
+                                </label>
                                 <input
+                                  id={`kb-${row.itemIndex}-${m.inventoryId}`}
                                   value={keepBack[`${row.itemIndex}:${m.inventoryId}`] ?? 0}
                                   onChange={e => {
                                     const raw = e.target.value.replace(/[^0-9]/g, '');
@@ -2730,6 +2753,10 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                                   style={{ ...S.btnSmGhost, padding:'4px 9px', fontSize:'11px' }}>All</button>
                                 <button type="button" onClick={() => setKeepBack(p => ({ ...p, [`${row.itemIndex}:${m.inventoryId}`]: 0 }))}
                                   style={{ ...S.btnSmGhost, padding:'4px 9px', fontSize:'11px' }}>None</button>
+                                <span style={{ fontSize:'11px', whiteSpace:'nowrap', minWidth:'78px', textAlign:'right',
+                                  color: (m.qty - (Number(keepBack[`${row.itemIndex}:${m.inventoryId}`]) || 0)) > 0 ? 'var(--st-red-fg)' : 'var(--st-green-fg)' }}>
+                                  {m.qty - (Number(keepBack[`${row.itemIndex}:${m.inventoryId}`]) || 0)} used up
+                                </span>
                               </div>
                             ))}
                           </div>
