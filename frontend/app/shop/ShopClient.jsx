@@ -47,11 +47,6 @@ function getDisplayPrice(product) {
   return r ? rangeText(r) : 'Price on request';
 }
 
-// When a flash sale ends, in shop time. Inside the last day it counts down instead.
-const saleEndText = (end) => new Date(end).toLocaleString('en-PH', {
-  timeZone: 'Asia/Manila', weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
-});
-
 const saleOff = (price, sale) => Math.max(0, sale.discountType === 'percentage'
   ? price * (1 - sale.discountValue / 100)
   : price - sale.discountValue);
@@ -775,24 +770,6 @@ function ProductCard({ product, onAddToCart, onQuickView, flashSale }) {
     .filter(item => item.productId === (product._id || product.id))
     .reduce((sum, item) => sum + (item.qty || 0), 0);
 
-  // Flash sale countdown
-  const EXPIRY_THRESHOLD = 24 * 3600 * 1000; // show timer only within 24h
-  const [timeLeft, setTimeLeft] = useState('');
-  useEffect(() => {
-    if (!flashSale?.endDate) return;
-    const calc = () => {
-      const diff = new Date(flashSale.endDate) - Date.now();
-      if (diff <= 0) { setTimeLeft('Ended'); return; }
-      if (diff > EXPIRY_THRESHOLD) { setTimeLeft(''); return; }
-      const h = Math.floor(diff / 3600000);
-      const m = Math.floor((diff % 3600000) / 60000);
-      const s = Math.floor((diff % 60000) / 1000);
-      setTimeLeft(h > 0 ? `${h}h ${m}m ${s}s` : `${m}m ${s}s`);
-    };
-    calc();
-    const id = setInterval(calc, 1000);
-    return () => clearInterval(id);
-  }, [flashSale?.endDate]);
 
   const saleOnSome = !!flashSale?.variantIds?.length;
   const baseRange = priceRange(product);
@@ -960,33 +937,6 @@ function ProductCard({ product, onAddToCart, onQuickView, flashSale }) {
             )}
           </div>
 
-          {flashSale && (
-            <div className="shop-sale-ends" style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.375rem',
-              marginTop: '0.5rem',
-              padding: '0.375rem 0.6rem',
-              background: 'rgba(239,68,68,0.08)',
-              border: '1px solid rgba(239,68,68,0.2)',
-              borderRadius: '6px',
-              fontSize: '0.72rem',
-              lineHeight: 1.35,
-              color: 'var(--red)',
-              fontWeight: 600,
-            }}>
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}
-                stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"
-                strokeLinejoin="round">
-                <circle cx="12" cy="12" r="10"/>
-                <polyline points="12 6 12 12 16 14"/>
-              </svg>
-              <span style={{ minWidth: 0 }}>
-                {saleOnSome ? 'Sale on some variants. ' : ''}
-                {timeLeft === 'Ended' ? 'Sale ended' : timeLeft ? `Ends in ${timeLeft}` : `Sale ends ${saleEndText(flashSale.endDate)}`}
-              </span>
-            </div>
-          )}
         </div>
       </div>
     </Link>
