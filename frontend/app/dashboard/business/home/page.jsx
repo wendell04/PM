@@ -449,7 +449,10 @@ export default function StaffHome() {
         const j = await res.json().catch(() => ({}));
         setSsa({ unavailable: j?.detail || `The forecast service refused the request (${res.status}).` });
       } catch {
-        if (!cancelled) setSsa({ unavailable: 'The forecast service is not running on port 8001.' });
+        // Naming port 8001 was right only on a developer's machine. On the deployed
+        // dashboard the service is a remote host, so that sentence sent readers to
+        // check a port on their own laptop for a service that lives elsewhere.
+        if (!cancelled) setSsa({ unavailable: `The forecast service at ${SSA_API_URL} is not answering.` });
       }
     })();
     return () => { cancelled = true; };

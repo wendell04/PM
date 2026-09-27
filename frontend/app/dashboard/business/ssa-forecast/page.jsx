@@ -3,6 +3,7 @@
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { useAuth } from "@/contexts/AuthContext";
 import { fetchWithTimeout } from "@/lib/fetchWithTimeout";
+import { CustomSelect, ICONS, SummaryCard, TabBar } from "../inventory-v2/shared";
 import { useEffect, useRef, useState } from "react";
 import {
   Area,
@@ -55,14 +56,14 @@ const DEFAULT_COUNTS = { weekly: 4, monthly: 3, annually: 2 };
 const RFM_COLORS = {
   "Champions":           { bg: "var(--st-green-bg)",  color: "var(--st-green-fg)" },
   "Loyal Customers":     { bg: "var(--st-blue-bg)",  color: "var(--st-blue-fg)" },
-  "Potential Loyalists": { bg: "rgba(167,139,250,0.15)", color: "var(--st-purple-fg)" },
-  "New Customers":       { bg: "rgba(52,211,153,0.15)",  color: "#34d399" },
-  "Promising":           { bg: "rgba(251,191,36,0.15)",  color: "var(--st-amber-fg)" },
-  "At Risk":             { bg: "rgba(251,146,60,0.15)",  color: "var(--st-orange-fg)" },
+  "Potential Loyalists": { bg: "var(--st-purple-bg)", color: "var(--st-purple-fg)" },
+  "New Customers":       { bg: "var(--rfm-new-bg)",  color: "var(--rfm-new-fg)" },
+  "Promising":           { bg: "var(--st-amber-bg)",  color: "var(--st-amber-fg)" },
+  "At Risk":             { bg: "var(--st-orange-bg)",  color: "var(--st-orange-fg)" },
   "Can't Lose Them":     { bg: "var(--st-red-bg)", color: "var(--st-red-fg)" },
-  "Hibernating":         { bg: "rgba(156,163,175,0.15)", color: "#9ca3af" },
-  "Lost":                { bg: "rgba(107,114,128,0.15)", color: "#6b7280" },
-  "Need Attention":      { bg: "rgba(212,168,67,0.15)",  color: "#d4a843" },
+  "Hibernating":         { bg: "var(--st-gray-bg)", color: "var(--st-gray-fg)" },
+  "Lost":                { bg: "var(--rfm-lost-bg)", color: "var(--rfm-lost-fg)" },
+  "Need Attention":      { bg: "var(--gold-subtle)",  color: "var(--gold)" },
 };
 
 const SEGMENT_DESC = {
@@ -89,20 +90,20 @@ function AnalyticsSkeleton() {
     <div>
       <div className="ssa-metrics-grid">
         {[1,2,3,4].map(i => (
-          <div key={i} className="ssa-stat-card">
-            <div className="ssa-skeleton" style={{height:"0.8rem",width:"55%",marginBottom:"0.7rem"}} />
-            <div className="ssa-skeleton" style={{height:"1.4rem",width:"35%"}} />
+          <div key={i} style={{ background:"var(--dark)", border:"1px solid var(--border)", borderRadius:"8px", padding:"14px 18px" }}>
+            <div className="ssa-skeleton" style={{height:"12px",width:"55%",marginBottom:"12px"}} />
+            <div className="ssa-skeleton" style={{height:"24px",width:"35%"}} />
           </div>
         ))}
       </div>
       <div className="ssa-card">
-        <div className="ssa-skeleton" style={{height:"0.9rem",width:"28%",marginBottom:"1.25rem"}} />
+        <div className="ssa-skeleton" style={{height:"16px",width:"28%",marginBottom:"20px"}} />
         {[1,2,3,4,5,6].map(i => (
-          <div key={i} style={{display:"flex",gap:"1.5rem",marginBottom:"0.85rem",alignItems:"center"}}>
-            <div className="ssa-skeleton" style={{height:"0.75rem",flex:"2"}} />
-            <div className="ssa-skeleton" style={{height:"0.75rem",flex:"1"}} />
-            <div className="ssa-skeleton" style={{height:"0.75rem",flex:"1"}} />
-            <div className="ssa-skeleton" style={{height:"0.75rem",flex:"1"}} />
+          <div key={i} style={{display:"flex",gap:"24px",marginBottom:"12px",alignItems:"center"}}>
+            <div className="ssa-skeleton" style={{height:"12px",flex:"2"}} />
+            <div className="ssa-skeleton" style={{height:"12px",flex:"1"}} />
+            <div className="ssa-skeleton" style={{height:"12px",flex:"1"}} />
+            <div className="ssa-skeleton" style={{height:"12px",flex:"1"}} />
           </div>
         ))}
       </div>
@@ -125,6 +126,10 @@ const DATA_SOURCES = [
  * that the rest of the app is fine. That message was the whole error the user
  * saw on all four tabs at once.
  */
+function originLabel() {
+  return typeof window !== "undefined" ? window.location.origin : "this site";
+}
+
 function describeForecastError(err, ssaUrl) {
   if (err?.name === "AbortError") {
     return `The forecast service did not answer in time. Check that it is running at ${ssaUrl}.`;
@@ -132,6 +137,16 @@ function describeForecastError(err, ssaUrl) {
   // A network-level failure: service down, wrong host, or blocked by CORS.
   // Fetch reports all three identically, so the advice has to fit the host.
   if (err instanceof TypeError || /failed to fetch|networkerror|load failed/i.test(err?.message ?? "")) {
+    // WHICH service failed. This page loads sales from the dashboard API before
+    // it posts anything to SSA, and both calls sat in one try whose catch always
+    // named SSA. A blocked dashboard API therefore read as "could not reach the
+    // forecast service at <ssa host>" - sending the search after a host that was
+    // healthy, while the call that actually failed went unnamed. apiFetch tags
+    // its rejections so the message can tell the two apart.
+    const failed = err?.service;
+    if (failed?.kind === "api") {
+      return `Could not reach the dashboard API at ${failed.url}. This is the call that loads sales history - the forecast service is a separate host and may well be fine. Check the API is up and that its allowed origins include ${originLabel()}.`;
+    }
     let isLocal = false;
     try {
       isLocal = ["localhost", "127.0.0.1"].includes(new URL(ssaUrl).hostname);
@@ -141,10 +156,46 @@ function describeForecastError(err, ssaUrl) {
       // Telling someone to run uvicorn is useless when the service is hosted;
       // for a remote host the causes are that it is down or that this page's
       // origin is not on its allow-list.
-      : `Could not reach the forecast service at ${ssaUrl}. Either it is not responding, or this site's address is not on its allowed list - check the service is up and that SSA_ALLOWED_ORIGINS includes ${typeof window !== "undefined" ? window.location.origin : "this site"}.`;
+      : `Could not reach the forecast service at ${ssaUrl}. Either it is not responding, or this site's address is not on its allowed list - check the service is up and that SSA_ALLOWED_ORIGINS includes ${originLabel()}.`;
   }
   return err?.message || "An unexpected error occurred.";
 }
+
+/**
+ * fetchWithTimeout against the dashboard API, with the failure labelled.
+ *
+ * Only tags network-level rejections; everything else passes through unchanged.
+ */
+async function apiFetch(url, options, timeout) {
+  try {
+    return await fetchWithTimeout(url, options, timeout);
+  } catch (err) {
+    if (err && typeof err === "object" && !err.service) {
+      err.service = { kind: "api", url: API_URL };
+    }
+    throw err;
+  }
+}
+
+/**
+ * A response the page can trust to hold JSON rows.
+ *
+ * The sales and history reads went straight to res.json() with no status check,
+ * so an expired session (401) parsed fine, yielded no array, and surfaced as
+ * "Not enough data points" - which reads like a data problem rather than a
+ * sign-in one.
+ */
+function requireOk(res, what) {
+  if (res.ok) return res;
+  if (res.status === 401 || res.status === 419) {
+    throw new Error("Your session has expired. Sign in again, then run the forecast.");
+  }
+  if (res.status === 403) {
+    throw new Error(`You do not have permission to read ${what}.`);
+  }
+  throw new Error(`Could not load ${what} (HTTP ${res.status}).`);
+}
+
 
 /**
  * Turn sales of finished products into demand for one raw material.
@@ -385,6 +436,22 @@ function compareRates(ledgerRows, salesRows) {
 }
 
 const pageStyles = `
+  /* Two RFM segments need a hue the status palette does not carry: green and
+     gray already belong to Champions and Hibernating. Declared as tokens with
+     a light override so they flip with the theme like every other chip, rather
+     than staying dark-mode coloured on a light background. */
+  :root {
+    --ssa-tint:  rgba(255,255,255,0.03);
+    --ssa-hover: rgba(255,255,255,0.05);
+    --rfm-new-bg:  rgba(52,211,153,0.15);  --rfm-new-fg:  #34d399;
+    --rfm-lost-bg: rgba(107,114,128,0.15); --rfm-lost-fg: #6b7280;
+  }
+  html.light {
+    --ssa-tint:  rgba(0,0,0,0.025);
+    --ssa-hover: rgba(0,0,0,0.045);
+    --rfm-new-bg:  #e6f7f1;                --rfm-new-fg:  #0f766e;
+    --rfm-lost-bg: #f3f4f6;                --rfm-lost-fg: #4b5563;
+  }
   @keyframes spin {
     from { transform: rotate(0deg); }
     to   { transform: rotate(360deg); }
@@ -399,24 +466,24 @@ const pageStyles = `
     background-size: 200% 100%;
     animation: shimmer 1.4s infinite;
     border-radius: 6px;
-    height: 2rem;
+    height: 32px;
     width: 70%;
   }
   .ssa-card {
     background: var(--dark);
     border: 1px solid var(--border);
     border-radius: 8px;
-    padding: 1.5rem;
-    margin-bottom: 1.5rem;
+    padding: 20px;
+    margin-bottom: 24px;
   }
   .ssa-card-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 1.25rem;
+    margin-bottom: 20px;
   }
   .ssa-card-title {
-    font-size: 1rem;
+    font-size: 16px;
     font-weight: 700;
     color: var(--white);
     margin: 0;
@@ -428,53 +495,41 @@ const pageStyles = `
     flex-shrink: 0;
     align-self: center;
   }
-  .ssa-stat-card {
-    flex: 1;
-    min-width: 130px;
-    padding: 0.375rem 1.5rem 0.375rem 0;
-    margin-right: 1.5rem;
-    border-right: 1px solid var(--border);
-  }
-  .ssa-stat-card:last-child {
-    border-right: none;
-    margin-right: 0;
-    padding-right: 0;
-  }
   .ssa-stat-label {
-    font-size: 0.72rem;
+    font-size: 12px;
     color: var(--gray);
     text-transform: uppercase;
     letter-spacing: 0.5px;
     font-weight: 600;
-    margin-bottom: 0.25rem;
+    margin-bottom: 4px;
   }
   .ssa-stat-value {
-    font-size: 1.5rem;
+    font-size: 22px;
     font-weight: 700;
     color: var(--white);
   }
   .ssa-error {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
-    background: rgba(239,68,68,0.1);
+    gap: 8px;
+    background: var(--st-red-bg);
     border: 1px solid rgba(239,68,68,0.3);
     border-radius: 6px;
-    padding: 0.75rem 1rem;
-    color: #ef4444;
-    font-size: 0.875rem;
-    margin-top: 1rem;
+    padding: 12px 16px;
+    color: var(--st-red-fg);
+    font-size: 14px;
+    margin-top: 16px;
   }
   .ssa-info-banner {
     background: rgba(212,168,67,0.06);
     border: 1px solid rgba(212,168,67,0.2);
     border-radius: 6px;
-    padding: 1rem 1.25rem;
-    margin-bottom: 1.5rem;
+    padding: 16px 20px;
+    margin-bottom: 24px;
     display: flex;
     align-items: flex-start;
-    gap: 0.75rem;
-    font-size: 0.875rem;
+    gap: 12px;
+    font-size: 14px;
     color: var(--gray);
     line-height: 1.6;
   }
@@ -482,17 +537,17 @@ const pageStyles = `
     background: rgba(251,191,36,0.06);
     border: 1px solid rgba(251,191,36,0.25);
     border-radius: 6px;
-    padding: 0.65rem 1rem;
-    margin-bottom: 1rem;
+    padding: 10px 16px;
+    margin-bottom: 16px;
     display: flex;
     align-items: flex-start;
-    gap: 0.6rem;
-    font-size: 0.8rem;
+    gap: 10px;
+    font-size: 13px;
     color: var(--gray);
     line-height: 1.5;
   }
   .ssa-forecast-day-row:nth-child(even) {
-    background: rgba(255,255,255,0.015);
+    background: var(--ssa-tint);
   }
   /* Keyboard focus. The page had two focus styles for ~30 controls, so
      tabbing through it gave no sign of where you were. :focus-visible keeps
@@ -510,25 +565,25 @@ const pageStyles = `
   }
 
   .ssa-toggle-btn {
-    padding: 0.35rem 0.85rem;
+    padding: 5px 12px;
     border-radius: 6px;
     border: 1px solid var(--border);
     background: var(--dark);
     color: var(--gray);
-    font-size: 0.78rem;
+    font-size: 12px;
     font-weight: 600;
     cursor: pointer;
-    transition: all 0.2s;
+    transition: all 0.15s;
   }
   .ssa-toggle-btn:hover { color: var(--white); border-color: rgba(212,168,67,0.4); }
   .ssa-toggle-btn.active { background: rgba(212,168,67,0.12); border-color: var(--gold); color: var(--gold); }
   .ssa-select {
-    padding: 0.5rem 0.75rem;
+    padding: 8px 12px;
     background: var(--dark);
     border: 1px solid var(--border);
     border-radius: 6px;
     color: var(--white);
-    font-size: 0.875rem;
+    font-size: 14px;
     outline: none;
     min-width: 200px;
   }
@@ -546,11 +601,11 @@ const pageStyles = `
     border: 1px solid var(--border);
     border-radius: 6px;
     color: var(--gray);
-    font-size: 0.75rem;
+    font-size: 12px;
     font-weight: 400;
     text-transform: none;
     letter-spacing: 0;
-    padding: 0.6rem 0.8rem;
+    padding: 10px 12px;
     position: absolute;
     z-index: 10;
     bottom: 130%;
@@ -561,79 +616,59 @@ const pageStyles = `
   }
   .ssa-tooltip:hover .ssa-tooltip-text { visibility: visible; }
   .ssa-tab-nav {
-    display: flex;
-    gap: 0;
-    border-bottom: 1px solid var(--border);
-    margin-top: 1.25rem;
-    margin-bottom: 1.5rem;
-    overflow-x: auto;
-    scrollbar-width: none;
+    margin-top: 20px;
+    margin-bottom: 24px;
   }
-  .ssa-tab-nav::-webkit-scrollbar { display: none; }
-  .ssa-tab-btn {
-    padding: 0.65rem 1.25rem;
-    background: none;
-    border: none;
-    border-bottom: 2px solid transparent;
-    color: var(--gray);
-    font-size: 0.875rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.2s;
-    margin-bottom: -1px;
-    white-space: nowrap;
-    flex-shrink: 0;
-  }
-  .ssa-tab-btn:hover { color: var(--white); }
-  .ssa-tab-btn.active { color: var(--gold); border-bottom-color: var(--gold); }
   .ssa-rfm-badge {
     display: inline-block;
-    padding: 0.18rem 0.65rem;
+    padding: 2px 10px;
     border-radius: 999px;
-    font-size: 0.8rem;
+    font-size: 13px;
     font-weight: 600;
   }
   .ssa-table {
     width: 100%;
     border-collapse: collapse;
-    font-size: 0.83rem;
+    font-size: 13px;
   }
   .ssa-table th {
     text-align: left;
-    padding: 0.6rem 0.75rem;
+    padding: 10px 14px;
+    background: var(--dark2);
     border-bottom: 1px solid var(--border);
     color: var(--gray);
-    font-size: 0.72rem;
-    font-weight: 600;
+    font-size: 11px;
+    font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.4px;
+    letter-spacing: 0.5px;
     white-space: nowrap;
   }
   .ssa-table td {
-    padding: 0.6rem 0.75rem;
-    border-bottom: 1px solid rgba(255,255,255,0.04);
+    padding: 11px 14px;
+    font-size: 13px;
+    border-bottom: 1px solid var(--border);
     color: var(--white);
     vertical-align: middle;
   }
-  .ssa-table tbody tr:hover { background: rgba(255,255,255,0.02); }
+  .ssa-table tbody tr:hover { background: var(--ssa-hover); }
   .ssa-metrics-grid {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
-    gap: 1rem;
-    margin-bottom: 1.5rem;
+    gap: 16px;
+    margin-bottom: 24px;
   }
   @media (max-width: 900px)  { .ssa-metrics-grid { grid-template-columns: repeat(2, 1fr); } }
   @media (max-width: 480px)  { .ssa-metrics-grid { grid-template-columns: 1fr; } }
   .ssa-run-btn {
-    padding: 0.5rem 1.25rem;
+    padding: 8px 18px;
     border-radius: 6px;
     border: 1px solid var(--gold);
     background: rgba(212,168,67,0.1);
     color: var(--gold);
-    font-size: 0.85rem;
-    font-weight: 700;
+    font-size: 13px;
+    font-weight: 600;
     cursor: pointer;
-    transition: all 0.2s;
+    transition: all 0.15s;
     white-space: nowrap;
   }
   .ssa-run-btn:hover:not(:disabled) { background: rgba(212,168,67,0.2); }
@@ -641,24 +676,24 @@ const pageStyles = `
   .ssa-tbl-wrap { overflow: auto; scrollbar-width: none; }
   .ssa-tbl-wrap::-webkit-scrollbar { display: none; }
   .ssa-page-header {
-    padding: 1.5rem 0 1.25rem;
+    padding: 24px 0 20px;
     border-bottom: 1px solid var(--border);
     margin-bottom: 0;
     display: flex;
     align-items: flex-end;
     justify-content: space-between;
-    gap: 1rem;
+    gap: 16px;
     flex-wrap: wrap;
   }
   .ssa-page-title {
-    font-size: 1.35rem;
-    font-weight: 800;
+    font-size: 24px;
+    font-weight: 700;
     color: var(--white);
-    margin: 0 0 0.3rem;
+    margin: 0 0 4px;
     letter-spacing: -0.02em;
   }
   .ssa-page-desc {
-    font-size: 0.82rem;
+    font-size: 13px;
     color: var(--gray);
     margin: 0;
     line-height: 1.6;
@@ -667,13 +702,13 @@ const pageStyles = `
   .ssa-alerts-group {
     display: flex;
     flex-direction: column;
-    gap: 0.6rem;
-    margin-bottom: 1.5rem;
+    gap: 10px;
+    margin-bottom: 24px;
   }
   .ssa-section-divider {
     height: 1px;
     background: var(--border);
-    margin: 1.5rem 0;
+    margin: 24px 0;
     opacity: 0.45;
   }
 
@@ -681,35 +716,39 @@ const pageStyles = `
   .ssa-layout {
     display: grid;
     grid-template-columns: 256px minmax(0, 1fr);
-    gap: 1.5rem;
+    gap: 24px;
     align-items: start;
   }
   .ssa-sidebar {
     display: flex;
     flex-direction: column;
-    gap: 1.5rem;
+    gap: 24px;
   }
-  /* Hidden scrollbars (kept invisible in both panes) */
+  /* Slim but visible. These panes scroll vertically on desktop, and with the
+     track hidden nothing said more content sat below the fold. The dashboard
+     hides scrollbars only on phones and only on horizontal strips. */
   .ssa-sidebar, .ssa-main {
-    scrollbar-width: none;           /* Firefox */
-    -ms-overflow-style: none;        /* old Edge */
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
   }
   .ssa-sidebar::-webkit-scrollbar,
-  .ssa-main::-webkit-scrollbar { width: 0; height: 0; display: none; }
+  .ssa-main::-webkit-scrollbar { width: 8px; }
+  .ssa-sidebar::-webkit-scrollbar-thumb,
+  .ssa-main::-webkit-scrollbar-thumb { background: var(--border); border-radius: 999px; }
 
   /* ── Desktop: split into two independent scroll panes ──────────────────
      The whole forecast workspace fills the viewport (no page-level scroll);
      the left sidebar and the right results column each scroll on their own,
      so they no longer move together. */
-  @media (min-width: 921px) {
+  @media (min-width: 901px) {
     .page-content-wrapper {
-      height: calc(100vh - 56px - 4rem);   /* viewport − top-bar − page padding */
+      height: calc(100vh - 56px - 64px);   /* viewport − top-bar − page padding */
       display: flex;
       flex-direction: column;
       overflow: hidden;
     }
     .ssa-page-header, .ssa-tab-nav { flex-shrink: 0; }
-    .ssa-tab-nav { margin-bottom: 1rem; }
+    .ssa-tab-nav { margin-bottom: 16px; }
     .ssa-layout {
       flex: 1;
       min-height: 0;
@@ -728,32 +767,34 @@ const pageStyles = `
       min-height: 0;
       overflow-y: auto;
       overscroll-behavior: contain;
-      scrollbar-width: none;
+      scrollbar-width: thin;
+        scrollbar-color: var(--border) transparent;
       -ms-overflow-style: none;
     }
-    .ssa-tab-scroll::-webkit-scrollbar { width: 0; height: 0; display: none; }
+    .ssa-tab-scroll::-webkit-scrollbar { width: 8px; }
+      .ssa-tab-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 999px; }
   }
-  @media (max-width: 920px) { .ssa-layout { grid-template-columns: 1fr; } }
+  @media (max-width: 900px) { .ssa-layout { grid-template-columns: 1fr; } }
   .ssa-side-label {
-    font-size: 0.66rem;
-    font-weight: 700;
+    font-size: 12px;
+    font-weight: 600;
     color: var(--gray);
     text-transform: uppercase;
-    letter-spacing: 0.9px;
-    margin: 0 0 0.65rem;
+    letter-spacing: 0.5px;
+    margin: 0 0 10px;
   }
-  .ssa-source-list { display: flex; flex-direction: column; gap: 0.4rem; }
+  .ssa-source-list { display: flex; flex-direction: column; gap: 6px; }
   .ssa-source-vbtn {
     display: flex;
     align-items: center;
-    gap: 0.6rem;
+    gap: 10px;
     width: 100%;
-    padding: 0.6rem 0.8rem;
+    padding: 8px 12px;
     border: 1px solid var(--border);
     border-radius: 6px;
     background: var(--dark);
     color: var(--gray);
-    font-size: 0.85rem;
+    font-size: 13px;
     font-weight: 600;
     cursor: pointer;
     transition: all 0.15s;
@@ -775,10 +816,10 @@ const pageStyles = `
   }
   .ssa-seg-btn {
     flex: 1;
-    padding: 0.5rem 0;
+    padding: 8px 0;
     background: var(--dark);
     color: var(--gray);
-    font-size: 0.8rem;
+    font-size: 13px;
     font-weight: 600;
     cursor: pointer;
     border: none;
@@ -801,37 +842,37 @@ const pageStyles = `
   .ssa-lookahead input {
     flex: 1;
     min-width: 0;
-    padding: 0.6rem 0.8rem;
+    padding: 10px 12px;
     background: transparent;
     border: none;
     color: var(--white);
-    font-size: 1rem;
+    font-size: 16px;
     font-weight: 700;
     outline: none;
   }
   .ssa-lookahead .unit {
-    padding: 0 0.8rem;
-    font-size: 0.78rem;
+    padding: 0 12px;
+    font-size: 13px;
     color: var(--gray);
     border-left: 1px solid var(--border);
     align-self: stretch;
     display: flex;
     align-items: center;
   }
-  .ssa-side-hint { font-size: 0.7rem; color: var(--gray); margin: 0.4rem 0 0; }
+  .ssa-side-hint { font-size: 11px; color: var(--gray); margin: 6px 0 0; }
   .ssa-primary-btn {
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 0.5rem;
+    gap: 8px;
     width: 100%;
-    padding: 0.7rem 1rem;
+    padding: 8px 18px;
     background: var(--gold);
     border: 1px solid var(--gold);
     border-radius: 6px;
     color: #1a1a1a;
-    font-size: 0.88rem;
-    font-weight: 700;
+    font-size: 13px;
+    font-weight: 600;
     cursor: pointer;
     transition: all 0.15s;
     white-space: nowrap;
@@ -843,10 +884,10 @@ const pageStyles = `
     display: flex;
     justify-content: space-between;
     align-items: center;
-    gap: 0.75rem;
-    padding: 0.5rem 0;
+    gap: 12px;
+    padding: 8px 0;
     border-bottom: 1px solid var(--border);
-    font-size: 0.8rem;
+    font-size: 13px;
   }
   .ssa-model-row:last-child { border-bottom: none; }
   .ssa-model-row .k { color: var(--gray); }
@@ -856,14 +897,14 @@ const pageStyles = `
   .ssa-export-btn {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: 8px;
     width: 100%;
-    padding: 0.6rem 0.85rem;
+    padding: 8px 12px;
     background: var(--dark);
     border: 1px solid var(--border);
     border-radius: 6px;
     color: var(--gray);
-    font-size: 0.82rem;
+    font-size: 13px;
     font-weight: 600;
     cursor: pointer;
     transition: all 0.15s;
@@ -873,62 +914,61 @@ const pageStyles = `
   .ssa-metric-cards {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 1rem;
-    margin-bottom: 1.5rem;
+    gap: 16px;
+    margin-bottom: 24px;
   }
   @media (max-width: 1100px) { .ssa-metric-cards { grid-template-columns: repeat(2, 1fr); } }
-  @media (max-width: 520px)  { .ssa-metric-cards { grid-template-columns: 1fr; } }
+  @media (max-width: 480px)  { .ssa-metric-cards { grid-template-columns: 1fr; } }
   .ssa-metric-card {
     background: var(--dark2);
     border: 1px solid var(--border);
     border-radius: 6px;
-    padding: 1rem 1.1rem;
+    padding: 16px 16px;
     min-width: 0;
   }
   .ssa-today-pill {
     display: inline-flex;
     align-items: center;
-    gap: 0.35rem;
-    padding: 0.32rem 0.7rem;
+    gap: 6px;
+    padding: 6px 12px;
     border-radius: 999px;
-    background: rgba(74,222,128,0.12);
+    background: var(--st-green-bg);
     border: 1px solid rgba(74,222,128,0.35);
     color: var(--st-green-fg);
-    font-size: 0.7rem;
+    font-size: 11px;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.5px;
   }
-  html.light .ssa-today-pill { color: #16a34a; }
   .ssa-chart-legend {
     display: flex;
     align-items: center;
-    gap: 1.1rem;
+    gap: 16px;
     flex-wrap: wrap;
-    font-size: 0.75rem;
+    font-size: 12px;
     color: var(--gray);
-    margin-top: 0.3rem;
+    margin-top: 4px;
   }
-  .ssa-chart-legend .lg { display: inline-flex; align-items: center; gap: 0.4rem; }
+  .ssa-chart-legend .lg { display: inline-flex; align-items: center; gap: 6px; }
   .ssa-chart-legend .swatch { width: 16px; height: 2px; border-radius: 2px; display: inline-block; }
   .ssa-range-track {
     width: 92px;
     height: 5px;
     background: var(--border);
-    border-radius: 3px;
+    border-radius: 999px;
     overflow: hidden;
   }
-  .ssa-range-fill { height: 100%; background: var(--gold); border-radius: 3px; }
+  .ssa-range-fill { height: 100%; background: var(--gold); border-radius: 999px; }
   .ssa-icon-btn {
     display: inline-flex;
     align-items: center;
-    gap: 0.4rem;
-    padding: 0.4rem 0.75rem;
+    gap: 6px;
+    padding: 5px 12px;
     background: var(--dark);
     border: 1px solid var(--border);
     border-radius: 6px;
     color: var(--gray);
-    font-size: 0.78rem;
+    font-size: 12px;
     font-weight: 600;
     cursor: pointer;
     transition: all 0.15s;
@@ -938,14 +978,14 @@ const pageStyles = `
   .ssa-units-summary {
     display: flex;
     flex-wrap: wrap;
-    gap: 2.25rem;
-    padding: 0.85rem 1.1rem;
+    gap: 36px;
+    padding: 12px 16px;
     border-bottom: 1px solid var(--border);
-    margin-bottom: 1rem;
+    margin-bottom: 16px;
   }
-  .ssa-units-summary > div { display: flex; flex-direction: column; gap: 0.2rem; }
-  .ssa-units-summary .k { font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.6px; color: var(--gray); font-weight: 600; }
-  .ssa-units-summary .v { font-size: 1.05rem; font-weight: 700; color: var(--white); }
+  .ssa-units-summary > div { display: flex; flex-direction: column; gap: 4px; }
+  .ssa-units-summary .k { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--gray); font-weight: 600; }
+  .ssa-units-summary .v { font-size: 16px; font-weight: 700; color: var(--white); }
   .ssa-units-summary .v.gold { color: var(--gold); }
 `;
 
@@ -1163,7 +1203,7 @@ const DEMAND_CLASS = {
   variable:     { label: "Uneven sizes",     color: "var(--st-amber-fg)", note: "orders come regularly, but the amounts jump around" },
   intermittent: { label: "Sells now and then", color: "var(--st-amber-fg)", note: "quiet stretches, then an order of a fairly usual size" },
   lumpy:        { label: "Hard to predict",  color: "var(--st-red-fg)", note: "long quiet stretches, then an order of any size - keep a bigger buffer" },
-  new:          { label: "Too new to tell",  color: "#9ca3af", note: "not enough history yet to see a pattern" },
+  new:          { label: "Too new to tell",  color: "var(--st-gray-fg)", note: "not enough history yet to see a pattern" },
 };
 
 // How the number on screen was actually produced, in the reader's terms.
@@ -1459,7 +1499,7 @@ export default function SSAForecastPage() {
     let invPeriods = 0;
     try {
       if (dataSource === "sales_revenue" || dataSource === "sales_qty") {
-        const res = await fetchWithTimeout(
+        const res = await apiFetch(
           `${API_URL}/api/admin/sales?limit=10000&status=completed`,
           {
             headers: {
@@ -1468,6 +1508,7 @@ export default function SSAForecastPage() {
             },
           },
         );
+        requireOk(res, "sales history");
         const d = await res.json();
         const sales = Array.isArray(d.data ?? d) ? (d.data ?? d) : [];
         // The API caps at 10,000 rows sorted newest first, so an overflow costs
@@ -1492,15 +1533,17 @@ export default function SSAForecastPage() {
       } else {
         // Fetch stock history (staircase reference) and all sales (SSA demand input) in parallel
         const [histResponse, salesResponse] = await Promise.all([
-          fetchWithTimeout(
+          apiFetch(
             `${API_URL}/api/admin/inventory/${selectedInventoryId}/history`,
             { headers: { Authorization: `Bearer ${token}`, Accept: "application/json" } },
           ),
-          fetchWithTimeout(
+          apiFetch(
             `${API_URL}/api/admin/sales?limit=10000&status=completed`,
             { headers: { Authorization: `Bearer ${token}`, Accept: "application/json" } },
           ),
         ]);
+        requireOk(histResponse,  "stock history");
+        requireOk(salesResponse, "sales history");
         const histData  = await histResponse.json();
         const salesData = await salesResponse.json();
         setSalesTruncated(salesData.meta?.truncated === true);
@@ -1684,9 +1727,10 @@ export default function SSAForecastPage() {
     setAnalyticsLoading(true);
     setRfmError("");
     try {
-      const res = await fetchWithTimeout(`${API_URL}/api/admin/analytics/rfm-data`, {
+      const res = await apiFetch(`${API_URL}/api/admin/analytics/rfm-data`, {
         headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
       });
+      requireOk(res, "customer data");
       const d = await res.json();
       const sales = d.data ?? [];
       if (sales.length === 0) {
@@ -1716,9 +1760,10 @@ export default function SSAForecastPage() {
     setAnalyticsLoading(true);
     setServiceError("");
     try {
-      const res = await fetchWithTimeout(`${API_URL}/api/admin/analytics/service-data`, {
+      const res = await apiFetch(`${API_URL}/api/admin/analytics/service-data`, {
         headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
       });
+      requireOk(res, "service data");
       const d = await res.json();
       const sales = d.data ?? [];
       if (sales.length === 0) {
@@ -1757,9 +1802,10 @@ export default function SSAForecastPage() {
     setAnalyticsLoading(true);
     setServiceError("");
     try {
-      const serviceRes = await fetchWithTimeout(`${API_URL}/api/admin/analytics/service-data`, {
+      const serviceRes = await apiFetch(`${API_URL}/api/admin/analytics/service-data`, {
         headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
       });
+      requireOk(serviceRes, "service data");
       const serviceD = await serviceRes.json();
       const sales = serviceD.data ?? [];
       // Same mother-item roll-up as loadServiceSegments, so both entry points
@@ -2272,20 +2318,15 @@ export default function SSAForecastPage() {
 
         {/* ── Tab Navigation ──────────────────────────────────────────────── */}
         <div className="ssa-tab-nav">
-          {[
-            { key: "forecast",  label: "Demand Forecast" },
-            { key: "segments",  label: "Customer Segments" },
-            { key: "products",  label: "Products & Services" },
-          ].map(({ key, label }) => (
-            <button
-              key={key}
-              type="button"
-              className={`ssa-tab-btn ${activeTab === key ? "active" : ""}`}
-              onClick={() => setActiveTab(key)}
-            >
-              {label}
-            </button>
-          ))}
+          <TabBar
+            tabs={[
+              { id: "forecast", label: "Demand Forecast" },
+              { id: "segments", label: "Customer Segments" },
+              { id: "products", label: "Products & Services" },
+            ]}
+            active={activeTab}
+            onChange={setActiveTab}
+          />
         </div>
 
         {activeTab === "forecast" && (
@@ -2369,7 +2410,7 @@ export default function SSAForecastPage() {
                       visible text. Repeat the full name underneath, where it can
                       wrap, so the choice is readable without hovering. */}
                   {selectedMotherLabel && (
-                    <p style={{ margin: "0.3rem 0 0", fontSize: "0.72rem", lineHeight: 1.4, color: "var(--gray)" }}>
+                    <p style={{ margin: "4px 0 0", fontSize: "12px", lineHeight: 1.4, color: "var(--gray)" }}>
                       {selectedMotherLabel}
                     </p>
                   )}
@@ -2379,22 +2420,17 @@ export default function SSAForecastPage() {
                 {activeMother?.variants?.length > 0 && (
                   <div>
                     <p className="ssa-side-label">Variant</p>
-                    <select
-                      className="ssa-select"
-                      style={{ width: "100%", minWidth: 0 }}
+                    <CustomSelect
                       value={selectedVariant}
-                      onChange={(e) => {
-                        setSelectedVariant(e.target.value);
+                      placeholder={`All variants (${activeMother.variants.length})`}
+                      options={activeMother.variants.map((v) => ({ value: v, label: `${v}${variantShareLabel(v)}` }))}
+                      onChange={(v) => {
+                        setSelectedVariant(v);
                         setForecastCount("");
                         setResult(null);
                         setSubmittedConfig(null);
                       }}
-                    >
-                      <option value="">All variants ({activeMother.variants.length})</option>
-                      {activeMother.variants.map((v) => (
-                        <option key={v} value={v}>{v}{variantShareLabel(v)}</option>
-                      ))}
-                    </select>
+                    />
                   </div>
                 )}
 
@@ -2402,27 +2438,23 @@ export default function SSAForecastPage() {
                   <p className="ssa-side-label">
                     Material{visibleMaterials.length > 1 ? ` (${visibleMaterials.length})` : ""}
                   </p>
-                  <select
-                    className="ssa-select"
-                    style={{ width: "100%", minWidth: 0 }}
+                  <CustomSelect
                     value={selectedInventoryId}
-                    onChange={(e) => {
-                      setSelectedInventoryId(e.target.value);
-                      setForecastCount("");   // reset look-ahead when item changes
+                    searchable
+                    options={visibleMaterials.map((item) => {
+                      const isLow = (item.stockQty ?? 0) <= (item.minStockLevel ?? 0);
+                      return {
+                        value: item._id ?? item.id,
+                        label: `${item.name}${isLow ? ` (${item.stockQty ?? 0} left)` : ""}${item.isOnDemand ? " - bought per order" : ""}`,
+                      };
+                    })}
+                    onChange={(v) => {
+                      setSelectedInventoryId(v);
+                      setForecastCount("");
                       setResult(null);
                       setSubmittedConfig(null);
                     }}
-                  >
-                    {visibleMaterials.map((item) => {
-                      const isLow = (item.stockQty ?? 0) <= (item.minStockLevel ?? 0);
-                      return (
-                        <option key={item._id ?? item.id} value={item._id ?? item.id}>
-                          {item.name}{isLow ? ` (${item.stockQty ?? 0} left)` : ""}
-                          {item.isOnDemand ? " - bought per order" : ""}
-                        </option>
-                      );
-                    })}
-                  </select>
+                  />
                 </div>
               </>
             )}
@@ -2510,7 +2542,7 @@ export default function SSAForecastPage() {
                       <span className="k">Series</span>
                       <span className="v">
                         {submittedConfig?.sourceLabel}
-                        <span style={{ color: "var(--gray)", fontWeight: 400, marginLeft: "0.3rem" }}>
+                        <span style={{ color: "var(--gray)", fontWeight: 400, marginLeft: "4px" }}>
                           {isMoneySource(submittedConfig?.source) ? "(₱)" : "(units)"}
                         </span>
                       </span>
@@ -2535,7 +2567,7 @@ export default function SSAForecastPage() {
                       <span className="k">
                         <span className="ssa-tooltip">
                           Period detected
-                          <span style={{ marginLeft: "4px", opacity: 0.5, fontSize: "0.65rem" }}>ⓘ</span>
+                          <span style={{ marginLeft: "4px", opacity: 0.5, display: "inline-flex", verticalAlign: "middle" }}>{ICONS.info}</span>
                           <span className="ssa-tooltip-text" style={{ left: 0, transform: "none", width: 210 }}>
                             How often your sales pattern repeats, based on your past sales. The model finds it automatically - it has nothing to do with how far ahead you forecast.
                           </span>
@@ -2547,7 +2579,7 @@ export default function SSAForecastPage() {
                     </div>
                     <div className="ssa-model-row">
                       <span className="k">Algorithm</span>
-                      <span className="v" style={{ fontSize: "0.7rem", letterSpacing: "0.5px", padding: "0.1rem 0.4rem", border: "1px solid var(--border)", borderRadius: "3px" }}>SSA</span>
+                      <span className="v" style={{ fontSize: "11px", letterSpacing: "0.5px", padding: "2px 6px", border: "1px solid var(--border)", borderRadius: "6px" }}>SSA</span>
                     </div>
                     <div className="ssa-model-row">
                       <span className="k">Last run</span>
@@ -2568,7 +2600,7 @@ export default function SSAForecastPage() {
                 <div className="ssa-side-divider" />
                 <div>
                   <p className="ssa-side-label">Export</p>
-                  <button type="button" className="ssa-export-btn" style={{ marginBottom: "0.5rem" }} onClick={handleDownloadCSV}>
+                  <button type="button" className="ssa-export-btn" style={{ marginBottom: "8px" }} onClick={handleDownloadCSV}>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
                     Download CSV
                   </button>
@@ -2584,7 +2616,7 @@ export default function SSAForecastPage() {
           {/* ════════ Right results column ════════ */}
           <div className="ssa-main">
             {error && (
-              <div className="ssa-error" style={{ marginTop: 0, marginBottom: "1.5rem" }}>
+              <div className="ssa-error" style={{ marginTop: 0, marginBottom: "24px" }}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <circle cx="12" cy="12" r="10" />
                   <line x1="12" y1="8" x2="12" y2="12" />
@@ -2606,21 +2638,17 @@ export default function SSAForecastPage() {
           );
 
           return (
-            <div style={{ marginBottom: "1.5rem" }}>
-              <p className="ssa-side-label" style={{ marginBottom: "0.6rem" }}>
+            <div style={{ marginBottom: "24px" }}>
+              <p className="ssa-side-label" style={{ marginBottom: "10px" }}>
                 Inventory Status · across all {tracked.length} materials
               </p>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "1rem" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "16px" }}>
                 {[
                   { label: "Materials", value: tracked.length, color: "var(--white)" },
-                  { label: "Low Stock", value: lowItems.length, color: "#eab308", hint: "at/below reorder point" },
+                  { label: "Low Stock", value: lowItems.length, color: "var(--color-text-warning)", hint: "at/below reorder point" },
                   { label: "Out of Stock", value: outItems.length, color: "var(--st-red-fg)", hint: "zero on hand" },
                 ].map(({ label, value, color, hint }) => (
-                  <div key={label} className="ssa-metric-card">
-                    <div className="ssa-stat-label">{label}</div>
-                    <div className="ssa-stat-value" style={{ color, fontSize: "1.5rem" }}>{value}</div>
-                    {hint && <div style={{ fontSize: "0.72rem", color: "var(--gray)", marginTop: "0.2rem" }}>{hint}</div>}
-                  </div>
+                  <SummaryCard key={label} label={label} value={value} sub={hint} color={color} />
                 ))}
               </div>
             </div>
@@ -2702,10 +2730,10 @@ export default function SSAForecastPage() {
                   <div className="ssa-stat-label">Current Stock</div>
                   {firstLoad ? <div className="ssa-skeleton" /> : (
                     <>
-                      <div className="ssa-stat-value" style={{ color: invColor, fontSize: "1.5rem" }}>
+                      <div className="ssa-stat-value" style={{ color: invColor, fontSize: "22px" }}>
                         {currentStockQty != null ? `${currentStockQty.toLocaleString("en-US")} units` : "-"}
                       </div>
-                      <div style={{ fontSize: "0.72rem", color: "var(--gray)", marginTop: "0.2rem" }}>
+                      <div style={{ fontSize: "12px", color: "var(--gray)", marginTop: "4px" }}>
                         {currentStockQty === 0
                           ? "Out of stock"
                           : `${belowROP ? "At/below reorder point" : "Above reorder point"}${
@@ -2719,10 +2747,10 @@ export default function SSAForecastPage() {
                   <div className="ssa-stat-label">Reorder Point</div>
                   {firstLoad || !policy ? <div className="ssa-skeleton" /> : (
                     <>
-                      <div className="ssa-stat-value" style={{ color: "var(--gold)", fontSize: "1.5rem" }}>
+                      <div className="ssa-stat-value" style={{ color: "var(--gold)", fontSize: "22px" }}>
                         {policy.ROP.toLocaleString("en-US")} units
                       </div>
-                      <div style={{ fontSize: "0.72rem", color: "var(--gray)", marginTop: "0.2rem" }}>
+                      <div style={{ fontSize: "12px", color: "var(--gray)", marginTop: "4px" }}>
                         manual: {reorderPt != null && reorderPt > 0 ? `${reorderPt.toLocaleString("en-US")} units` : "not set"}
                       </div>
                     </>
@@ -2732,13 +2760,13 @@ export default function SSAForecastPage() {
                   <div className="ssa-stat-label">Reorder By</div>
                   {firstLoad || !policy ? <div className="ssa-skeleton" /> : (
                     <>
-                      <div className="ssa-stat-value" style={{ color: reorderByLabel === "Now" ? "var(--st-red-fg)" : "var(--white)", fontSize: reorderByLabel === "Now" ? "1.5rem" : "1.25rem" }}>
+                      <div className="ssa-stat-value" style={{ color: reorderByLabel === "Now" ? "var(--st-red-fg)" : "var(--white)", fontSize: reorderByLabel === "Now" ? "22px" : "16px" }}>
                         {reorderByLabel === "Now" && (
                           <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: "50%", background: "var(--st-red-fg)", marginRight: 7, verticalAlign: "middle" }} />
                         )}
                         {reorderByLabel}
                       </div>
-                      <div style={{ fontSize: "0.72rem", color: "var(--gray)", marginTop: "0.2rem" }}>
+                      <div style={{ fontSize: "12px", color: "var(--gray)", marginTop: "4px" }}>
                         {policy.leadSource === "measured"
                           ? `lead time ${policy.leadDays}d ± ${policy.sigmaLeadDays}d, measured from this vendor's deliveries`
                           : policy.leadSource === "typed"
@@ -2752,10 +2780,10 @@ export default function SSAForecastPage() {
                   <div className="ssa-stat-label">Suggested Order</div>
                   {firstLoad || !policy ? <div className="ssa-skeleton" /> : (
                     <>
-                      <div className="ssa-stat-value" style={{ color: "var(--gold)", fontSize: "1.5rem" }}>
+                      <div className="ssa-stat-value" style={{ color: "var(--gold)", fontSize: "22px" }}>
                         {policy.orderQty.toLocaleString("en-US")} units
                       </div>
-                      <div style={{ fontSize: "0.72rem", color: "var(--gray)", marginTop: "0.2rem" }}>
+                      <div style={{ fontSize: "12px", color: "var(--gray)", marginTop: "4px" }}>
                         {policy.orderQty > 0 ? "to cover lead + buffer" : "stock sufficient"}
                       </div>
                     </>
@@ -2764,8 +2792,8 @@ export default function SSAForecastPage() {
               </div>
               {!firstLoad && policy && (
                 <>
-                <p className="ssa-side-label" style={{ margin: "0.25rem 0 0.5rem" }}>Demand Profile</p>
-                <div className="ssa-units-summary" style={{ alignItems: "flex-start", gap: "1.75rem" }}>
+                <p className="ssa-side-label" style={{ margin: "4px 0 8px" }}>Demand Profile</p>
+                <div className="ssa-units-summary" style={{ alignItems: "flex-start", gap: "24px" }}>
                   <div style={{ flex: "0 1 200px" }}>
                     <span className="k">Demand Pattern</span>
                     <span
@@ -2774,7 +2802,7 @@ export default function SSAForecastPage() {
                     >
                       {clsInfo.label}
                     </span>
-                    <span style={{ fontSize: "0.72rem", color: "var(--gray)", lineHeight: 1.4, marginTop: "0.25rem" }}>
+                    <span style={{ fontSize: "12px", color: "var(--gray)", lineHeight: 1.4, marginTop: "4px" }}>
                       {clsInfo.note}
                     </span>
                   </div>
@@ -2782,16 +2810,16 @@ export default function SSAForecastPage() {
                     <span className="k">Sells about</span>
                     <span className="v">
                       {fmtDemand(policy.d)}
-                      <span style={{ fontWeight: 400, color: "var(--gray)", fontSize: "0.8rem" }}> /{unitSingular}</span>
+                      <span style={{ fontWeight: 400, color: "var(--gray)", fontSize: "13px" }}> /{unitSingular}</span>
                     </span>
-                    <span style={{ fontSize: "0.72rem", color: "var(--gray)", lineHeight: 1.4 }}>
+                    <span style={{ fontSize: "12px", color: "var(--gray)", lineHeight: 1.4 }}>
                       {estimatePhrase(result)}
                     </span>
                   </div>
                   <div>
                     <span className="k">Stock lasts</span>
                     <span className="v">{coveragePhrase(policy.coverage, unitSingular, policy.daysPerPeriod)}</span>
-                    <span style={{ fontSize: "0.72rem", color: "var(--gray)", lineHeight: 1.4 }}>
+                    <span style={{ fontSize: "12px", color: "var(--gray)", lineHeight: 1.4 }}>
                       {reservedQty > 0
                         ? `at this rate, from the ${availableQty} free to use (${reservedQty} reserved)`
                         : "at this rate, with no restock"}
@@ -2800,7 +2828,7 @@ export default function SSAForecastPage() {
                   {isInvCard && demandBasis && (
                     <div style={{ flex: "1 1 240px", minWidth: 200 }}>
                       <span className="k">Counted from</span>
-                      <span className="v" style={{ fontSize: "0.8rem", fontWeight: 500, lineHeight: 1.4 }}>
+                      <span className="v" style={{ fontSize: "13px", fontWeight: 500, lineHeight: 1.4 }}>
                         {demandBasis.source === "ledger"
                           ? "Stock taken off the shelf"
                           : demandBasis.consumers.length === 0
@@ -2808,14 +2836,14 @@ export default function SSAForecastPage() {
                             : `Sales of ${demandBasis.consumers.slice(0, 2).join(", ")}${demandBasis.consumers.length > 2 ? ` +${demandBasis.consumers.length - 2} more` : ""}`}
                       </span>
                       {demandBasis.source === "ledger" ? (
-                        <span style={{ fontSize: "0.72rem", color: "var(--gray)", lineHeight: 1.4 }}>
+                        <span style={{ fontSize: "12px", color: "var(--gray)", lineHeight: 1.4 }}>
                           recorded from {formatDateLabel(demandBasis.ledgerFrom, "daily")} onward
                           {demandBasis.crossCheck?.diverges
                             ? `; sales over the same weeks suggest ${fmtDemand(demandBasis.crossCheck.salesRate)}/week, so some was used without a sale`
                             : ""}
                         </span>
                       ) : (demandBasis.even > 0 || demandBasis.share > 0) ? (
-                        <span style={{ fontSize: "0.72rem", color: "var(--gray)", lineHeight: 1.4 }}>
+                        <span style={{ fontSize: "12px", color: "var(--gray)", lineHeight: 1.4 }}>
                           {demandBasis.even + demandBasis.share} older sale
                           {demandBasis.even + demandBasis.share === 1 ? "" : "s"} recorded no variant
                           {demandBasis.even > 0 ? "; shared out evenly" : "; split by recent mix"}
@@ -2834,7 +2862,7 @@ export default function SSAForecastPage() {
                   <div className="ssa-stat-label">
                     <span className="ssa-tooltip">
                       {acc.label}
-                      <span style={{ marginLeft: "4px", opacity: 0.5, fontSize: "0.65rem" }}>ⓘ</span>
+                      <span style={{ marginLeft: "4px", opacity: 0.5, display: "inline-flex", verticalAlign: "middle" }}>{ICONS.info}</span>
                       <span className="ssa-tooltip-text">{acc.tooltip}</span>
                     </span>
                   </div>
@@ -2842,20 +2870,20 @@ export default function SSAForecastPage() {
                     <div className="ssa-skeleton" />
                   ) : result && hasForecastCount ? (
                     <>
-                      <div className="ssa-stat-value" style={{ color: acc.color, fontSize: "1.5rem" }}>
+                      <div className="ssa-stat-value" style={{ color: acc.color, fontSize: "22px" }}>
                         {acc.display ?? "N/A"}
                         {result?.forecast_dampened && (
-                          <span style={{ fontSize: "0.65rem", color: "var(--st-amber-fg)", marginLeft: "6px", fontWeight: 400, verticalAlign: "middle" }}>
-                            dampened ⚡
+                          <span style={{ fontSize: "11px", color: "var(--st-amber-fg)", marginLeft: "6px", fontWeight: 400, verticalAlign: "middle" }}>
+                            dampened
                           </span>
                         )}
                       </div>
-                      <div style={{ fontSize: "0.72rem", color: "var(--gray)", marginTop: "0.2rem", lineHeight: 1.4 }}>
+                      <div style={{ fontSize: "12px", color: "var(--gray)", marginTop: "4px", lineHeight: 1.4 }}>
                         {acc.sublabel}
                       </div>
                     </>
                   ) : (
-                    <div className="ssa-stat-value" style={{ color: "var(--gray)", fontSize: "1.5rem" }}>&mdash;</div>
+                    <div className="ssa-stat-value" style={{ color: "var(--gray)", fontSize: "22px" }}>&mdash;</div>
                   )}
                 </div>
 
@@ -2866,17 +2894,17 @@ export default function SSAForecastPage() {
                     <div className="ssa-skeleton" />
                   ) : result && hasForecastCount ? (
                     <>
-                      <div className="ssa-stat-value" style={{ fontSize: "1.5rem" }}>
+                      <div className="ssa-stat-value" style={{ fontSize: "22px" }}>
                         {mae != null
                           ? fmtSourceValue(mae, submittedConfig?.source ?? dataSource, true)
                           : "N/A"}
                       </div>
-                      <div style={{ fontSize: "0.72rem", color: "var(--gray)", marginTop: "0.2rem" }}>
+                      <div style={{ fontSize: "12px", color: "var(--gray)", marginTop: "4px" }}>
                         Mean absolute error
                       </div>
                     </>
                   ) : (
-                    <div className="ssa-stat-value" style={{ color: "var(--gray)", fontSize: "1.5rem" }}>&mdash;</div>
+                    <div className="ssa-stat-value" style={{ color: "var(--gray)", fontSize: "22px" }}>&mdash;</div>
                   )}
                 </div>
 
@@ -2915,20 +2943,20 @@ export default function SSAForecastPage() {
                     <div className="ssa-skeleton" />
                   ) : hasForecastCount && submittedConfig ? (
                     <>
-                      <div className="ssa-stat-value" style={{ fontSize: "1.5rem" }}>
+                      <div className="ssa-stat-value" style={{ fontSize: "22px" }}>
                         {submittedConfig.count}{" "}
-                        <span style={{ fontSize: "0.95rem", fontWeight: 600, color: "var(--gray)" }}>
+                        <span style={{ fontSize: "16px", fontWeight: 600, color: "var(--gray)" }}>
                           {submittedConfig.period.unit}
                         </span>
                       </div>
                       {horizonRange && (
-                        <div style={{ fontSize: "0.72rem", color: "var(--gray)", marginTop: "0.2rem", lineHeight: 1.4 }}>
+                        <div style={{ fontSize: "12px", color: "var(--gray)", marginTop: "4px", lineHeight: 1.4 }}>
                           {horizonRange}
                         </div>
                       )}
                     </>
                   ) : (
-                    <div className="ssa-stat-value" style={{ color: "var(--gray)", fontSize: "1.5rem" }}>&mdash;</div>
+                    <div className="ssa-stat-value" style={{ color: "var(--gray)", fontSize: "22px" }}>&mdash;</div>
                   )}
                 </div>
               </div>
@@ -2939,7 +2967,7 @@ export default function SSAForecastPage() {
           <>
             {/* ── Inventory depletion status banners ─────────────────────── */}
             {isInvMode && stockoutDate && parseInt(forecastCount, 10) > 0 && (
-              <div style={{ display: "flex", alignItems: "flex-start", gap: "0.75rem", background: "rgba(248,113,113,0.08)", border: "1px solid rgba(248,113,113,0.25)", borderRadius: "10px", padding: "0.875rem 1.25rem", fontSize: "0.85rem", color: "var(--gray)", lineHeight: 1.6, marginBottom: "1.5rem" }}>
+              <div style={{ display: "flex", alignItems: "flex-start", gap: "12px", background: "rgba(248,113,113,0.08)", border: "1px solid rgba(248,113,113,0.25)", borderRadius: "8px", padding: "12px 20px", fontSize: "14px", color: "var(--gray)", lineHeight: 1.6, marginBottom: "24px" }}>
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--st-red-fg)" strokeWidth="2" style={{ flexShrink: 0, marginTop: 2 }}>
                   <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
                   <line x1="12" y1="9" x2="12" y2="13" />
@@ -3012,12 +3040,12 @@ export default function SSAForecastPage() {
                   style={{
                     display: "flex",
                     alignItems: "flex-start",
-                    gap: "0.75rem",
+                    gap: "12px",
                     background: "rgba(251,191,36,0.08)",
                     border: "1px solid rgba(251,191,36,0.3)",
-                    borderRadius: "10px",
-                    padding: "0.875rem 1.25rem",
-                    fontSize: "0.85rem",
+                    borderRadius: "8px",
+                    padding: "12px 20px",
+                    fontSize: "14px",
                     color: "var(--gray)",
                     lineHeight: 1.6,
                   }}
@@ -3137,7 +3165,7 @@ export default function SSAForecastPage() {
             )}
 
             <div className="ssa-card">
-              <div className="ssa-card-header" style={{ flexDirection: "column", alignItems: "stretch", gap: "0.85rem" }}>
+              <div className="ssa-card-header" style={{ flexDirection: "column", alignItems: "stretch", gap: "12px" }}>
                 <div>
                   <h2 className="ssa-card-title">
                     {isInvMode
@@ -3171,7 +3199,7 @@ export default function SSAForecastPage() {
                   )}
                 </div>
                 {!isInvMode && (
-                <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "center" }}>
+                <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
                   {(todayRefDate || todayPeriodStart) && (
                     <span className="ssa-today-pill">
                       <span style={{ width: 6, height: 6, borderRadius: "50%", background: "currentColor" }} />
@@ -3250,36 +3278,29 @@ export default function SSAForecastPage() {
 
               {/* ── Date picker toolbar ─────────────────────────────── */}
               {!isInvMode && parseInt(forecastCount, 10) > 0 && (
-                <div style={{ display: "flex", alignItems: "center", gap: "1rem", flexWrap: "wrap", padding: "0.6rem 0", borderTop: "1px solid var(--border)", marginBottom: "0.75rem" }}>
-                  <span style={{ fontSize: "0.7rem", color: "var(--gold)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px", flexShrink: 0 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "16px", flexWrap: "wrap", padding: "10px 0", borderTop: "1px solid var(--border)", marginBottom: "12px" }}>
+                  <span style={{ fontSize: "11px", color: "var(--gold)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px", flexShrink: 0 }}>
                     Look up period:
                   </span>
-                  <select
+                  <CustomSelect
                     value={pickerDate}
-                    onChange={(e) => setPickerDate(e.target.value)}
-                    style={{ padding: "0.3rem 0.6rem", background: "var(--dark)", border: "1px solid var(--border)", borderRadius: "7px", color: pickerDate ? "var(--white)" : "var(--gray)", fontSize: "0.82rem", outline: "none", cursor: "pointer", minWidth: 130 }}
-                  >
-                    <option value="">
-                      {submittedConfig.period.type === "weekly" ? "Select week…" : submittedConfig.period.type === "monthly" ? "Select month…" : "Select year…"}
-                    </option>
-                    {fcDatesForPicker.map((d) => (
-                      <option key={d} value={d}>
-                        {formatDateLabel(d, submittedConfig.period.type)}
-                      </option>
-                    ))}
-                  </select>
+                    placeholder={submittedConfig.period.type === "weekly" ? "Select week…" : submittedConfig.period.type === "monthly" ? "Select month…" : "Select year…"}
+                    style={{ minWidth: 130 }}
+                    options={fcDatesForPicker.map((d) => ({ value: d, label: formatDateLabel(d, submittedConfig.period.type) }))}
+                    onChange={setPickerDate}
+                  />
                   {pickerMatchDate && result?.forecast?.values?.[pickerMatchIdx] != null && (
-                    <div style={{ display: "flex", alignItems: "baseline", gap: "0.4rem" }}>
-                      <span style={{ fontSize: "0.78rem", color: "var(--gray)" }}>
+                    <div style={{ display: "flex", alignItems: "baseline", gap: "6px" }}>
+                      <span style={{ fontSize: "13px", color: "var(--gray)" }}>
                         {formatDateLabel(pickerMatchDate, submittedConfig.period.type)}:
                       </span>
-                      <span style={{ fontSize: "1.05rem", fontWeight: 800, color: "var(--gold)" }}>
+                      <span style={{ fontSize: "16px", fontWeight: 700, color: "var(--gold)" }}>
                         {fmtSourceValue(result.forecast.values[pickerMatchIdx], submittedConfig.source, true)}
                       </span>
                     </div>
                   )}
                   {pickerDate && pickerMatchDate === null && (
-                    <span style={{ fontSize: "0.75rem", color: "var(--gray)" }}>Not in forecast range</span>
+                    <span style={{ fontSize: "12px", color: "var(--gray)" }}>Not in forecast range</span>
                   )}
                 </div>
               )}
@@ -3287,18 +3308,18 @@ export default function SSAForecastPage() {
               {showBacktest && backtestData.length > 0 && (
                 <div
                   style={{
-                    fontSize: "0.75rem",
+                    fontSize: "12px",
                     color: "var(--gray)",
-                    marginBottom: "0.75rem",
+                    marginBottom: "12px",
                     lineHeight: 1.5,
-                    padding: "0.5rem 0.75rem",
+                    padding: "8px 12px",
                     background: "rgba(74,222,128,0.06)",
-                    border: "1px solid rgba(74,222,128,0.15)",
+                    border: "1px solid var(--st-green-bg)",
                     borderRadius: "6px",
                   }}
                 >
                   <span style={{ color: "var(--st-green-fg)", fontWeight: 600 }}>
-                    ● Backtest Actual
+                    <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: "50%", background: "currentColor", marginRight: 6 }} /> Backtest Actual
                   </span>
                   {" - real sales during the held-out test window. "}
                   The closer this is to the Forecast line, the more reliable
@@ -3311,6 +3332,9 @@ export default function SSAForecastPage() {
                 <ResponsiveContainer width="100%" height="100%">
                   {(() => {
                     const chartData = isInvMode ? getInventoryChartData() : getCombinedChartData();
+                    // Dash vocabulary - each pattern carries exactly one meaning:
+                    //   "3 3" grid  |  "6 3" projected  |  "4 4" threshold/marker  |  "2 2" backtest.
+                    // It was six arbitrary patterns, so dashing signalled nothing.
                     return (
                       <ComposedChart
                         data={chartData}
@@ -3342,14 +3366,14 @@ export default function SSAForecastPage() {
                           content={({ active, payload, label }) => {
                             if (!active || !payload?.length) return null;
                             return (
-                              <div style={{ background: "var(--dark2)", border: "1px solid var(--border)", borderRadius: 8, padding: "0.65rem 0.85rem", fontSize: "0.8rem", minWidth: 160 }}>
-                                <div style={{ color: "var(--gray)", marginBottom: "0.4rem", fontSize: "0.74rem" }}>
+                              <div style={{ background: "var(--dark2)", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 12px", fontSize: "13px", minWidth: 160 }}>
+                                <div style={{ color: "var(--gray)", marginBottom: "6px", fontSize: "12px" }}>
                                   {chartDateFormatter(label)}
                                 </div>
                                 {payload.map((p) => {
                                   if (p.value == null) return null;
                                   return (
-                                    <div key={p.dataKey} style={{ color: p.color ?? "var(--white)", marginBottom: "0.15rem" }}>
+                                    <div key={p.dataKey} style={{ color: p.color ?? "var(--white)", marginBottom: "2px" }}>
                                       {p.name}: {yAxisFormatter(p.value)}
                                     </div>
                                   );
@@ -3362,7 +3386,7 @@ export default function SSAForecastPage() {
                           <Legend
                             wrapperStyle={{
                               paddingTop: "16px",
-                              fontSize: "0.8rem",
+                              fontSize: "13px",
                             }}
                           />
                         )}
@@ -3447,7 +3471,7 @@ export default function SSAForecastPage() {
                                 name="Backtest Actual"
                                 stroke="var(--st-green-fg)"
                                 strokeWidth={2}
-                                strokeDasharray="4 2"
+                                strokeDasharray="2 2"
                                 dot={false}
                                 activeDot={{ r: 3 }}
                                 legendType="line"
@@ -3471,7 +3495,7 @@ export default function SSAForecastPage() {
                             x={todayRefDate || todayPeriodStart}
                             stroke="var(--st-green-fg)"
                             strokeWidth={1.5}
-                            strokeDasharray="4 3"
+                            strokeDasharray="4 4"
                             label={{ value: `Today · ${todayDisplay}`, position: "insideTopLeft", fill: "var(--st-green-fg)", fontSize: 10 }}
                           />
                         )}
@@ -3480,7 +3504,7 @@ export default function SSAForecastPage() {
                             x={todayIso}
                             stroke="var(--st-green-fg)"
                             strokeWidth={1.5}
-                            strokeDasharray="4 3"
+                            strokeDasharray="4 4"
                             label={{ value: `Today · ${todayDisplay}`, position: "insideTopLeft", fill: "var(--st-green-fg)", fontSize: 10 }}
                           />
                         )}
@@ -3489,7 +3513,7 @@ export default function SSAForecastPage() {
                             x={pickerMatchDate}
                             stroke="var(--gold)"
                             strokeWidth={1.5}
-                            strokeDasharray="5 3"
+                            strokeDasharray="4 4"
                             label={{ value: formatDateLabel(pickerMatchDate, submittedConfig?.period?.type), position: "insideTopRight", fill: "var(--gold)", fontSize: 10 }}
                           />
                         )}
@@ -3498,7 +3522,7 @@ export default function SSAForecastPage() {
                             x={stockoutDate}
                             stroke="rgba(248,113,113,0.65)"
                             strokeDasharray="4 4"
-                            label={{ value: "Stockout", position: "insideTopLeft", fill: "var(--st-red-fg)", fontSize: 10 }}
+                            label={{ value: "Stockout", position: "insideBottomRight", fill: "var(--st-red-fg)", fontSize: 10 }}
                           />
                         )}
                         {isInvMode && invPolicy && invPolicy.ROP > 0 && (
@@ -3519,9 +3543,9 @@ export default function SSAForecastPage() {
               {showDecomp && (
                 <>
                   <div className="ssa-section-divider" />
-                  <div className="ssa-card-header" style={{ margin: "1.25rem 0 1rem" }}>
-                    <h2 className="ssa-card-title" style={{ fontSize: "0.9rem" }}>SSA Decomposition</h2>
-                    <span style={{ fontSize: "0.75rem", color: "var(--gray)" }}>Trend \u00b7 Seasonality \u00b7 Noise</span>
+                  <div className="ssa-card-header" style={{ margin: "20px 0 16px" }}>
+                    <h2 className="ssa-card-title" style={{ fontSize: "14px" }}>SSA Decomposition</h2>
+                    <span style={{ fontSize: "12px", color: "var(--gray)" }}>Trend \u00b7 Seasonality \u00b7 Noise</span>
                   </div>
                   <div style={{ height: 280 }}>
                     <ResponsiveContainer width="100%" height="100%">
@@ -3544,19 +3568,19 @@ export default function SSAForecastPage() {
                           tickFormatter={yAxisFormatter}
                         />
                         <Tooltip
-                          contentStyle={{ backgroundColor: "var(--dark2)", border: "1px solid var(--border)", borderRadius: "8px", fontSize: "0.8rem" }}
+                          contentStyle={{ backgroundColor: "var(--dark2)", border: "1px solid var(--border)", borderRadius: "8px", fontSize: "13px" }}
                           itemStyle={{ color: "var(--white)" }}
                           labelStyle={{ color: "var(--gray)" }}
                           labelFormatter={(v) => formatDateLabel(v, null, false)}
                         />
-                        <Legend wrapperStyle={{ paddingTop: "16px", fontSize: "0.8rem" }} />
+                        <Legend wrapperStyle={{ paddingTop: "16px", fontSize: "13px" }} />
                         <Line type="monotone" dataKey="Trend" stroke="var(--gold)" strokeWidth={2} dot={false} activeDot={{ r: 3 }} />
                         <Line type="monotone" dataKey="Seasonality" stroke="var(--st-blue-fg)" strokeWidth={1.5} dot={false} activeDot={{ r: 3 }} />
                         <Line type="monotone" dataKey="Noise" stroke="rgba(255,255,255,0.25)" strokeWidth={1} dot={false} activeDot={{ r: 2 }} />
                       </LineChart>
                     </ResponsiveContainer>
                   </div>
-                  <p style={{ fontSize: "0.72rem", color: "var(--gray)", marginTop: "0.75rem", marginBottom: 0, lineHeight: 1.5 }}>
+                  <p style={{ fontSize: "12px", color: "var(--gray)", marginTop: "12px", marginBottom: 0, lineHeight: 1.5 }}>
                     Trend: long-run direction. Seasonality: periodic patterns. Noise: residual.
                   </p>
                 </>
@@ -3584,14 +3608,14 @@ export default function SSAForecastPage() {
               </div>
             )}
             {isInvMode && !(parseInt(forecastCount, 10) > 0) && (
-              <p style={{ fontSize: "0.78rem", color: "var(--gray)", marginTop: "0.75rem", marginBottom: "1.5rem", lineHeight: 1.5 }}>
+              <p style={{ fontSize: "13px", color: "var(--gray)", marginTop: "12px", marginBottom: "24px", lineHeight: 1.5 }}>
                 Showing recorded stock up to today. Enter a{" "}
                 <strong style={{ color: "var(--gold)" }}>look-ahead</strong> on the left and run the forecast to project future stock levels and see when{" "}
                 {selectedItemName || "this item"} may run out.
               </p>
             )}
             {parseInt(forecastCount, 10) > 0 && isInvMode && (
-              <p style={{ fontSize: "0.75rem", color: "var(--gray)", fontStyle: "italic", marginTop: "0.75rem", marginBottom: "1.5rem", lineHeight: 1.5 }}>
+              <p style={{ fontSize: "12px", color: "var(--gray)", fontStyle: "italic", marginTop: "12px", marginBottom: "24px", lineHeight: 1.5 }}>
                 {`This is a demand-based projection: the model estimates ${selectedItemName}'s demand and depletes the current ${currentStockQty?.toLocaleString() ?? "\u2014"} units assuming no restock. The actionable output is the reorder point${invPolicy ? ` (${invPolicy.ROP.toLocaleString()} units)` : ""} and reorder-by date above \u2014 treat the gold line as a central estimate, not an exact path. Gray staircase = recorded stock; yellow line = reorder point.`}
               </p>
             )}
@@ -3648,7 +3672,7 @@ export default function SSAForecastPage() {
                             tblRows.push(
                               <tr key={i} className="ssa-forecast-day-row">
                                 <td>{++displayIdx}</td>
-                                <td style={{ fontSize: "0.85rem", color: "var(--gray)" }}>
+                                <td style={{ fontSize: "14px", color: "var(--gray)" }}>
                                   {formatDateLabel(fcDates[i], submittedConfig.period.type)}
                                 </td>
                                 <td>
@@ -3656,14 +3680,14 @@ export default function SSAForecastPage() {
                                     {Math.round(remaining).toLocaleString()} units
                                   </span>
                                 </td>
-                                <td style={{ fontSize: "0.85rem", color: "var(--gray)" }}>
+                                <td style={{ fontSize: "14px", color: "var(--gray)" }}>
                                   ~{fmtDemand(demand)} units
                                 </td>
-                                <td style={{ fontSize: "0.85rem", color: "var(--gray)" }}>
+                                <td style={{ fontSize: "14px", color: "var(--gray)" }}>
                                   {fmtDemand(cumDemand)} units
                                 </td>
                                 <td>
-                                  <span style={{ fontSize: "0.75rem", fontWeight: 600, color: isOut ? "var(--st-red-fg)" : isLow ? "var(--st-amber-fg)" : "var(--st-green-fg)" }}>
+                                  <span style={{ fontSize: "12px", fontWeight: 600, color: isOut ? "var(--st-red-fg)" : isLow ? "var(--st-amber-fg)" : "var(--st-green-fg)" }}>
                                     {isOut ? "Out of Stock" : isLow ? (reorderPt > 0 ? "Reorder" : "Low Stock") : "In Stock"}
                                   </span>
                                 </td>
@@ -3680,7 +3704,7 @@ export default function SSAForecastPage() {
               <div className="ssa-card">
                 <div className="ssa-card-header">
                   <h2 className="ssa-card-title">Forecasted Values</h2>
-                  <div style={{ display: "flex", gap: "0.5rem" }}>
+                  <div style={{ display: "flex", gap: "8px" }}>
                     <button type="button" className="ssa-icon-btn" onClick={handleDownloadCSV}>
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                         <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
@@ -3753,7 +3777,7 @@ export default function SSAForecastPage() {
                           style={isPicked ? { background: "rgba(212,168,67,0.08)", outline: "1px solid rgba(212,168,67,0.3)" } : undefined}
                         >
                           <td>{idx + 1}</td>
-                          <td style={{ fontSize: "0.85rem", color: isPicked ? "var(--gold)" : "var(--gray)", fontWeight: isPicked ? 700 : 400 }}>
+                          <td style={{ fontSize: "14px", color: isPicked ? "var(--gold)" : "var(--gray)", fontWeight: isPicked ? 700 : 400 }}>
                             {formatDateLabel(date, submittedConfig.period.type)}
                           </td>
                           <td>
@@ -3762,14 +3786,14 @@ export default function SSAForecastPage() {
                             </span>
                           </td>
                           {submittedConfig.source === "sales_qty" && (
-                            <td style={{ fontSize: "0.85rem", color: "var(--gray)" }}>
+                            <td style={{ fontSize: "14px", color: "var(--gray)" }}>
                               {Math.round(_cum).toLocaleString("en-US")} units
                             </td>
                           )}
-                          <td style={{ fontSize: "0.85rem", color: "rgba(212,168,67,0.6)" }}>
+                          <td style={{ fontSize: "14px", color: "rgba(212,168,67,0.6)" }}>
                             {fmtSourceValue((result.forecast?.confidence_high || [])[idx], submittedConfig.source)}
                           </td>
-                          <td style={{ fontSize: "0.85rem", color: "rgba(212,168,67,0.6)" }}>
+                          <td style={{ fontSize: "14px", color: "rgba(212,168,67,0.6)" }}>
                             {fmtSourceValue((result.forecast?.confidence_low || [])[idx], submittedConfig.source)}
                           </td>
                           <td>
@@ -3805,11 +3829,11 @@ export default function SSAForecastPage() {
             {analyticsLoading ? <AnalyticsSkeleton /> : rfmResult ? (
               <>
                 {/* header */}
-                <div className="ssa-card" style={{marginBottom:"1.5rem"}}>
+                <div className="ssa-card" style={{marginBottom:"24px"}}>
                   <div className="ssa-card-header" style={{marginBottom:0}}>
                     <div>
                       <h2 className="ssa-card-title">Customer Groups</h2>
-                      <p style={{fontSize:"0.8rem",color:"var(--gray)",marginTop:"0.3rem",lineHeight:1.5}}>
+                      <p style={{fontSize:"13px",color:"var(--gray)",marginTop:"4px",lineHeight:1.5}}>
                         Customers are grouped by their buying habits - <strong style={{color:"var(--white)"}}>how recently</strong> they bought,{" "}
                         <strong style={{color:"var(--white)"}}>how often</strong> they buy, and <strong style={{color:"var(--white)"}}>how much</strong> they spend -
                         so you can see who your best customers are and who needs winning back.
@@ -3823,63 +3847,60 @@ export default function SSAForecastPage() {
                   {[
                     { label: "Total Customers", value: rfmResult.total_customers },
                     { label: "Groups Found",  value: rfmResult.summary?.length ?? 0 },
-                    { label: "Largest Group", value: [...(rfmResult.summary ?? [])].sort((a,b) => b.count - a.count)[0]?.segment ?? "-" },
+                    { label: "Largest Group", value: [...(rfmResult.summary ?? [])].sort((a,b) => b.count - a.count)[0]?.segment ?? "-" , valueSize: "14px" },
                     { label: "Avg Spend / Customer", value: (rfmResult.customers?.length ?? 0) > 0
                       ? "₱" + (rfmResult.customers.reduce((s,c) => s + (c.monetary ?? 0), 0) / rfmResult.customers.length).toLocaleString("en-US",{maximumFractionDigits:0})
                       : "-" },
-                  ].map(({ label, value }) => (
-                    <div key={label} className="ssa-stat-card">
-                      <div className="ssa-stat-label">{label}</div>
-                      <div className="ssa-stat-value" style={{fontSize:"1.2rem"}}>{value}</div>
-                    </div>
+                  ].map(({ label, value, valueSize }) => (
+                    <SummaryCard key={label} label={label} value={value} valueSize={valueSize} />
                   ))}
                 </div>
 
                 <div className="ssa-card">
-                  <div style={{marginBottom:"1rem"}}>
+                  <div style={{marginBottom:"16px"}}>
                     <h2 className="ssa-card-title">Group Overview</h2>
-                    <p style={{fontSize:"0.78rem",color:"var(--gray)",marginTop:"0.3rem"}}>
+                    <p style={{fontSize:"13px",color:"var(--gray)",marginTop:"4px"}}>
                       What each customer group means for your business - and what to do about it.
                     </p>
                   </div>
-                  <div style={{display:"flex",flexDirection:"column",gap:"0.6rem"}}>
+                  <div style={{display:"flex",flexDirection:"column",gap:"10px"}}>
                     {[...(rfmResult.summary ?? [])].sort((a,b) => b.total_monetary - a.total_monetary).map((seg) => (
                       <div key={seg.segment} style={{
-                        padding:"0.9rem 1rem",
-                        borderRadius:"10px",
+                        padding:"16px 16px",
+                        borderRadius:"8px",
                         border:"1px solid var(--border)",
-                        background: (RFM_COLORS[seg.segment]?.bg ?? "rgba(255,255,255,0.03)"),
+                        background: (RFM_COLORS[seg.segment]?.bg ?? "var(--ssa-tint)"),
                       }}>
-                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:"1rem",flexWrap:"wrap"}}>
+                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:"16px",flexWrap:"wrap"}}>
                           <div style={{flex:1,minWidth:"200px"}}>
-                            <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.4rem",flexWrap:"wrap"}}>
+                            <div style={{display:"flex",alignItems:"center",gap:"8px",marginBottom:"6px",flexWrap:"wrap"}}>
                               <span className="ssa-rfm-badge" style={{
-                                background: RFM_COLORS[seg.segment]?.bg ?? "rgba(255,255,255,0.08)",
+                                background: RFM_COLORS[seg.segment]?.bg ?? "var(--border)",
                                 color: RFM_COLORS[seg.segment]?.color ?? "var(--gray)",
                                 border: `1px solid ${(RFM_COLORS[seg.segment]?.color ?? "#ffffff")}33`,
                               }}>
                                 {seg.segment}
                               </span>
-                              <span style={{fontSize:"0.75rem",color:"var(--gray)"}}>
+                              <span style={{fontSize:"12px",color:"var(--gray)"}}>
                                 {seg.count} customer{seg.count !== 1 ? "s" : ""}
                               </span>
                             </div>
-                            <p style={{fontSize:"0.82rem",color:"var(--gray)",margin:0,lineHeight:1.55}}>
+                            <p style={{fontSize:"13px",color:"var(--gray)",margin:0,lineHeight:1.55}}>
                               {SEGMENT_DESC[seg.segment] ?? ""}
                             </p>
                           </div>
-                          <div style={{display:"flex",gap:"1.5rem",flexShrink:0,flexWrap:"wrap",alignItems:"flex-start"}}>
+                          <div style={{display:"flex",gap:"24px",flexShrink:0,flexWrap:"wrap",alignItems:"flex-start"}}>
                             <div style={{textAlign:"right"}}>
-                              <div style={{fontSize:"0.68rem",color:"var(--gray)",marginBottom:"0.15rem",textTransform:"uppercase",letterSpacing:"0.4px"}}>Last bought</div>
-                              <div style={{fontWeight:700,color:"var(--white)",fontSize:"0.92rem"}}>{seg.avg_recency?.toFixed(0)} days ago</div>
+                              <div style={{fontSize:"11px",color:"var(--gray)",marginBottom:"2px",textTransform:"uppercase",letterSpacing:"0.4px"}}>Last bought</div>
+                              <div style={{fontWeight:700,color:"var(--white)",fontSize:"14px"}}>{seg.avg_recency?.toFixed(0)} days ago</div>
                             </div>
                             <div style={{textAlign:"right"}}>
-                              <div style={{fontSize:"0.68rem",color:"var(--gray)",marginBottom:"0.15rem",textTransform:"uppercase",letterSpacing:"0.4px"}}>Avg orders</div>
-                              <div style={{fontWeight:700,color:"var(--white)",fontSize:"0.92rem"}}>{seg.avg_frequency?.toFixed(1)}</div>
+                              <div style={{fontSize:"11px",color:"var(--gray)",marginBottom:"2px",textTransform:"uppercase",letterSpacing:"0.4px"}}>Avg orders</div>
+                              <div style={{fontWeight:700,color:"var(--white)",fontSize:"14px"}}>{seg.avg_frequency?.toFixed(1)}</div>
                             </div>
                             <div style={{textAlign:"right"}}>
-                              <div style={{fontSize:"0.68rem",color:"var(--gray)",marginBottom:"0.15rem",textTransform:"uppercase",letterSpacing:"0.4px"}}>Total revenue</div>
-                              <div style={{fontWeight:700,color:"var(--gold)",fontSize:"0.92rem"}}>₱{seg.total_monetary?.toLocaleString("en-US",{maximumFractionDigits:0})}</div>
+                              <div style={{fontSize:"11px",color:"var(--gray)",marginBottom:"2px",textTransform:"uppercase",letterSpacing:"0.4px"}}>Total revenue</div>
+                              <div style={{fontWeight:700,color:"var(--gold)",fontSize:"14px"}}>₱{seg.total_monetary?.toLocaleString("en-US",{maximumFractionDigits:0})}</div>
                             </div>
                           </div>
                         </div>
@@ -3889,12 +3910,12 @@ export default function SSAForecastPage() {
                 </div>
 
                 <div className="ssa-card">
-                  <div style={{marginBottom:"1rem"}}>
+                  <div style={{marginBottom:"16px"}}>
                     <h2 className="ssa-card-title">
                       Customer Detail
-                      <span style={{fontSize:"0.78rem",fontWeight:400,color:"var(--gray)",marginLeft:"0.5rem"}}>(top 100 most valuable)</span>
+                      <span style={{fontSize:"13px",fontWeight:400,color:"var(--gray)",marginLeft:"8px"}}>(top 100 most valuable)</span>
                     </h2>
-                    <p style={{fontSize:"0.78rem",color:"var(--gray)",marginTop:"0.3rem"}}>
+                    <p style={{fontSize:"13px",color:"var(--gray)",marginTop:"4px"}}>
                       The value score (out of 15) combines how recently, how often, and how much each customer buys. Higher = more valuable.
                     </p>
                   </div>
@@ -3913,9 +3934,9 @@ export default function SSAForecastPage() {
                       <tbody>
                         {[...(rfmResult.customers ?? [])].sort((a,b) => b.rfm_score - a.rfm_score).slice(0,100).map((c, idx) => (
                           <tr key={idx}>
-                            <td style={{color:"var(--gray)",fontSize:"0.8rem"}}>{c.email}</td>
+                            <td style={{color:"var(--gray)",fontSize:"13px"}}>{c.email}</td>
                             <td>
-                              <span className="ssa-rfm-badge" style={{background: RFM_COLORS[c.segment]?.bg ?? "rgba(255,255,255,0.08)", color: RFM_COLORS[c.segment]?.color ?? "var(--gray)"}}>
+                              <span className="ssa-rfm-badge" style={{background: RFM_COLORS[c.segment]?.bg ?? "var(--border)", color: RFM_COLORS[c.segment]?.color ?? "var(--gray)"}}>
                                 {c.segment}
                               </span>
                             </td>
@@ -3935,11 +3956,11 @@ export default function SSAForecastPage() {
                 <div className="ssa-card-header">
                   <div>
                     <h2 className="ssa-card-title">Customer Groups</h2>
-                    <p style={{fontSize:"0.82rem",color:"var(--gray)",marginTop:"0.35rem"}}>Groups customers by how recently, how often, and how much they buy.</p>
+                    <p style={{fontSize:"13px",color:"var(--gray)",marginTop:"6px"}}>Groups customers by how recently, how often, and how much they buy.</p>
                   </div>
                   <button type="button" className="ssa-run-btn" onClick={loadRFM}>Load</button>
                 </div>
-                {rfmError && <div className="ssa-error" style={{marginTop:"1rem"}}>{rfmError}</div>}
+                {rfmError && <div className="ssa-error" style={{marginTop:"16px"}}>{rfmError}</div>}
               </div>
             )}
           </div>
@@ -3951,11 +3972,11 @@ export default function SSAForecastPage() {
             {analyticsLoading ? <AnalyticsSkeleton /> : serviceResult ? (
               <>
                 {/* ── header ── */}
-                <div className="ssa-card" style={{marginBottom:"1.5rem"}}>
-                  <div className="ssa-card-header" style={{marginBottom:"0.75rem"}}>
+                <div className="ssa-card" style={{marginBottom:"24px"}}>
+                  <div className="ssa-card-header" style={{marginBottom:"12px"}}>
                     <div>
                       <h2 className="ssa-card-title">Products &amp; Services</h2>
-                      <p style={{fontSize:"0.8rem",color:"var(--gray)",marginTop:"0.3rem",lineHeight:1.55}}>
+                      <p style={{fontSize:"13px",color:"var(--gray)",marginTop:"4px",lineHeight:1.55}}>
                         Ranks every product by how much revenue it brings in, and sorts them into three tiers -
                         <strong style={{color:"var(--white)"}}> Best sellers</strong> (top 70% of revenue),{" "}
                         <strong style={{color:"var(--white)"}}>Steady</strong> (next 20%), and{" "}
@@ -3965,16 +3986,16 @@ export default function SSAForecastPage() {
                     <button type="button" className="ssa-run-btn" onClick={loadProducts}>Refresh</button>
                   </div>
                   {/* ABC legend */}
-                  <div style={{display:"flex",gap:"0.75rem",flexWrap:"wrap"}}>
+                  <div style={{display:"flex",gap:"12px",flexWrap:"wrap"}}>
                     {Object.entries(ABC_DESC).map(([cls, info]) => (
-                      <div key={cls} style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.35rem 0.75rem",borderRadius:"8px",background:"var(--dark)",border:"1px solid var(--border)"}}>
+                      <div key={cls} style={{display:"flex",alignItems:"center",gap:"8px",padding:"6px 12px",borderRadius:"8px",background:"var(--dark)",border:"1px solid var(--border)"}}>
                         <span className="ssa-rfm-badge" style={{
-                          background: cls === "A" ? "rgba(74,222,128,0.12)" : cls === "B" ? "rgba(251,191,36,0.12)" : "rgba(248,113,113,0.12)",
+                          background: cls === "A" ? "var(--st-green-bg)" : cls === "B" ? "var(--st-amber-bg)" : "var(--st-red-bg)",
                           color:      cls === "A" ? "var(--st-green-fg)"               : cls === "B" ? "var(--st-amber-fg)"               : "var(--st-red-fg)",
                         }}>{cls}</span>
-                        <span style={{fontSize:"0.78rem"}}>
+                        <span style={{fontSize:"13px"}}>
                           <span style={{color:"var(--white)",fontWeight:600}}>{info.label}</span>
-                          <span style={{color:"var(--gray)",display:"block",fontSize:"0.72rem"}}>{info.tip}</span>
+                          <span style={{color:"var(--gray)",display:"block",fontSize:"12px"}}>{info.tip}</span>
                         </span>
                       </div>
                     ))}
@@ -3987,22 +4008,18 @@ export default function SSAForecastPage() {
                     { label: "Total Products",    value: serviceResult?.total_services ?? "-",   sub: "distinct products / services" },
                     { label: "Total Revenue",      value: serviceResult ? "₱" + (serviceResult.total_revenue ?? 0).toLocaleString("en-US",{maximumFractionDigits:0}) : "-", sub: "from all recorded sales" },
                     { label: "Best Sellers",       value: (serviceResult?.services ?? []).filter(s => s.abc_class === "A").length || "-", sub: "top 70% of revenue" },
-                    { label: "Top Earner",         value: serviceResult?.top_services?.[0]?.service ?? "-",                        sub: "highest revenue product" },
-                  ].map(({ label, value, sub }) => (
-                    <div key={label} className="ssa-stat-card">
-                      <div className="ssa-stat-label">{label}</div>
-                      <div className="ssa-stat-value" style={{fontSize:"1.1rem"}}>{value}</div>
-                      <div style={{fontSize:"0.72rem",color:"var(--gray)",marginTop:"0.2rem"}}>{sub}</div>
-                    </div>
+                    { label: "Top Earner",         value: serviceResult?.top_services?.[0]?.service ?? "-",                        sub: "highest revenue product" , valueSize: "14px" },
+                  ].map(({ label, value, sub, valueSize }) => (
+                    <SummaryCard key={label} label={label} value={value} sub={sub} valueSize={valueSize} />
                   ))}
                 </div>
 
                 {/* ── unified product table ── */}
                 {serviceResult && (
                   <div className="ssa-card">
-                    <div style={{marginBottom:"1rem"}}>
+                    <div style={{marginBottom:"16px"}}>
                       <h2 className="ssa-card-title">Product Performance</h2>
-                      <p style={{fontSize:"0.78rem",color:"var(--gray)",marginTop:"0.3rem"}}>
+                      <p style={{fontSize:"13px",color:"var(--gray)",marginTop:"4px"}}>
                         Sorted by revenue. &ldquo;Times sold&rdquo; is how many recorded sales included this product.
                       </p>
                     </div>
@@ -4025,7 +4042,7 @@ export default function SSAForecastPage() {
                                 <td style={{fontWeight:600}}>{svc.service}</td>
                                 <td>
                                   <span className="ssa-rfm-badge" style={{
-                                    background: svc.abc_class === "A" ? "rgba(74,222,128,0.12)" : svc.abc_class === "B" ? "rgba(251,191,36,0.12)" : "rgba(248,113,113,0.12)",
+                                    background: svc.abc_class === "A" ? "var(--st-green-bg)" : svc.abc_class === "B" ? "var(--st-amber-bg)" : "var(--st-red-bg)",
                                     color:      svc.abc_class === "A" ? "var(--st-green-fg)"               : svc.abc_class === "B" ? "var(--st-amber-fg)"               : "var(--st-red-fg)",
                                   }}>
                                     {svc.abc_class} - {ABC_DESC[svc.abc_class]?.label.split("-")[0].trim()}
@@ -4033,10 +4050,10 @@ export default function SSAForecastPage() {
                                 </td>
                                 <td style={{color:"var(--gold)",fontWeight:600,textAlign:"right"}}>₱{svc.total_revenue?.toLocaleString("en-US",{maximumFractionDigits:0})}</td>
                                 <td style={{textAlign:"right"}}>
-                                  <div style={{display:"flex",alignItems:"center",gap:"0.5rem",justifyContent:"flex-end"}}>
+                                  <div style={{display:"flex",alignItems:"center",gap:"8px",justifyContent:"flex-end"}}>
                                     <span style={{color:"var(--gray)"}}>{((svc.revenue_share ?? 0) * 100).toFixed(1)}%</span>
-                                    <div style={{width:"50px",height:"5px",borderRadius:"3px",background:"var(--border)",overflow:"hidden",flexShrink:0}}>
-                                      <div style={{height:"100%",width:`${((svc.revenue_share ?? 0) * 100).toFixed(1)}%`,borderRadius:"3px",background: svc.abc_class === "A" ? "var(--st-green-fg)" : svc.abc_class === "B" ? "var(--st-amber-fg)" : "var(--st-red-fg)"}} />
+                                    <div style={{width:"50px",height:"5px",borderRadius:"999px",background:"var(--border)",overflow:"hidden",flexShrink:0}}>
+                                      <div style={{height:"100%",width:`${((svc.revenue_share ?? 0) * 100).toFixed(1)}%`,borderRadius:"999px",background: svc.abc_class === "A" ? "var(--st-green-fg)" : svc.abc_class === "B" ? "var(--st-amber-fg)" : "var(--st-red-fg)"}} />
                                     </div>
                                   </div>
                                 </td>
@@ -4057,14 +4074,14 @@ export default function SSAForecastPage() {
                 <div className="ssa-card-header">
                   <div>
                     <h2 className="ssa-card-title">Products &amp; Services</h2>
-                    <p style={{fontSize:"0.82rem",color:"var(--gray)",marginTop:"0.35rem"}}>
+                    <p style={{fontSize:"13px",color:"var(--gray)",marginTop:"6px"}}>
                       Ranks products by revenue and shows how often each one sells.
                     </p>
                   </div>
                   <button type="button" className="ssa-run-btn" onClick={loadProducts}>Load</button>
                 </div>
                 {serviceError && (
-                  <div className="ssa-error" style={{marginTop:"1rem"}}>{serviceError}</div>
+                  <div className="ssa-error" style={{marginTop:"16px"}}>{serviceError}</div>
                 )}
               </div>
             )}

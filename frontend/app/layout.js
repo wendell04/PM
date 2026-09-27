@@ -1,3 +1,8 @@
+// Order matters. Both files define --border on :root with equal specificity:
+// globals.css as a shadcn HSL triplet (0 0% 89.8%), custom-styles.css as an
+// rgba() colour. The dashboard uses it directly - `1px solid var(--border)` -
+// so custom-styles.css has to land second. Swap these and every border across
+// the 23 dashboard modules resolves to invalid CSS and disappears.
 import './globals.css'
 import '../components/custom-styles.css'
 import { AuthProvider } from '../contexts/AuthContext';
