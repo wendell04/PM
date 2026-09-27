@@ -35,6 +35,9 @@ export default function QuoteCheckoutPage() {
   const { token, currentUser: user } = useAuth();
 
   const [quote, setQuote] = useState(null);
+  // Refused at the pay button because a material is short: the quote waits on the shop, and the
+  // button stops inviting taps that can only fail again.
+  const [stockShort, setStockShort] = useState(false);
   const [addresses, setAddresses] = useState([]);
   const [selectedAddressId, setSelectedAddressId] = useState('');
   // The method is chosen here now, not on PayMongo's page. COD is not offered: a quote is a priced
@@ -293,6 +296,7 @@ export default function QuoteCheckoutPage() {
         setPaying(false);
       }
     } catch (e) {
+      if (/waiting on materials|stock changed/i.test(String(e.message || ''))) setStockShort(true);
       setError(e.message || 'Could not start the payment.');
       setPaying(false);
     }
@@ -765,8 +769,10 @@ export default function QuoteCheckoutPage() {
             // and leaving the customer to guess.
             const needsTerms = isBespoke && !agreed;
             // Greyed but still pressable, like the terms: pressing says exactly what is missing.
-            const blocked = paying || !selectedAddress || isExpired || needsTerms || placeBlocked;
+            const waiting = stockShort || !!quote?.waitingOnStock;
+            const blocked = paying || !selectedAddress || isExpired || needsTerms || placeBlocked || waiting;
             const label = isExpired ? 'Quote expired'
+              : waiting ? 'Waiting on the shop'
               : paying ? 'Opening payment…'
               : !selectedAddress ? 'Choose a delivery address'
               : placeCheck === 'differs' ? 'Fee is for another address'
@@ -774,9 +780,23 @@ export default function QuoteCheckoutPage() {
               : needsTerms ? 'Read the terms to continue'
               : `Pay ${formatPeso(amountDue)}`;
             return (
+              <>
+              {/* The reason sits where the customer is looking - by the button. At the top of the page
+                  it was out of sight, and the button kept being pressed to no effect. */}
+              {waiting && (
+                <div style={{ marginTop: 12, background: '#fffbeb', border: '1px solid #fde68a', color: '#92400e', padding: '10px 12px', borderRadius: 10, fontSize: '.82rem', lineHeight: 1.5 }}>
+                  Part of this quote is waiting on materials, so it can't be paid yet - nothing has been charged.
+                  The shop has been told and will message you in chat as soon as you can pay.
+                </div>
+              )}
+              {error && !waiting && (
+                <div style={{ marginTop: 12, background: '#fef2f2', border: '1px solid #fecaca', color: '#b91c1c', padding: '10px 12px', borderRadius: 10, fontSize: '.82rem', lineHeight: 1.5 }}>
+                  {error}
+                </div>
+              )}
               <button
                 onClick={handlePay}
-                disabled={paying || !selectedAddress || isExpired}
+                disabled={paying || !selectedAddress || isExpired || waiting}
                 style={{
                   // The same gold as Add to cart and Place custom order. This was the one paying
                   // button in the shop wearing a different colour, on the screen where the money
@@ -789,6 +809,7 @@ export default function QuoteCheckoutPage() {
               >
                 {label}
               </button>
+              </>
             );
           })()}
           <Link href="/shop/orders-history" style={{ display: 'block', textAlign: 'center', marginTop: 10, fontSize: '.78rem', color: 'var(--gray)', textDecoration: 'none' }}>

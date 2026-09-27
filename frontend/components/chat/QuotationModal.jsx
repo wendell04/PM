@@ -549,13 +549,34 @@ const QuotationModal = ({ onClose, onSubmit, isSending, token, customerId, custo
   // A service line with no material at all: allowed (the customer may bring the shirt), but it
   // books pure profit and moves no stock, so it is a question, not a silent default.
   const [confirmBare, setConfirmBare] = useState(false);
+  // A quote made knowing a material is short: can the customer pay now (the shop buys the rest), or
+  // must payment wait for the restock? Asked here, while the owner is looking at the shortfall -
+  // otherwise the customer found out at the pay button and was refused.
+  const [shortAsk, setShortAsk] = useState(false);
+  const [preorderChoice, setPreorderChoice] = useState(null);   // true / false once answered
+  // The last look before it reaches the customer: one tap sends a price they can pay at once, so a
+  // stray click or a wrong figure is caught here rather than in the chat.
+  const [reviewOpen, setReviewOpen] = useState(false);
   const bareLines = priced.filter(l => l.productId && !l.hasVariants && !(l.materials || []).length);
+  // Materials on this quote that the shelf cannot cover, summed across lines. Cost-only material is
+  // bought per job and never blocks payment, so it is left out - the same rule the server pays by.
+  const shortfalls = (() => {
+    const need = {};
+    priced.forEach(l => lineMaterials(l).forEach(m => {
+      if (!m.inventoryId || m.isOnDemand) return;
+      const n = Number(m.qty) || 0;
+      if (!need[m.inventoryId]) need[m.inventoryId] = { name: m.name, uom: m.uom, qty: 0, available: Math.max(0, (m.stockQty || 0) - (m.reservedQty || 0)), lead: Number(m.leadTimeDays || 0) };
+      need[m.inventoryId].qty += n;
+    }));
+    return Object.values(need).filter(r => r.qty > r.available).map(r => ({ ...r, short: Math.round((r.qty - r.available) * 10000) / 10000 }));
+  })();
   const missingNow = !linesValid ? 'Every line needs a product, a quantity and a price above 0.'
     : !noDupes ? 'The same product is on two lines - put the quantities on one line.'
     : !deliverOk ? 'There is a delivery fee, so choose where it delivers to, under Deliver to.'
     : '';
 
-  const handleSubmit = () => {
+  const handleSubmit = (preorderOverride, reviewed = false) => {
+    const preorder = typeof preorderOverride === 'boolean' ? preorderOverride : preorderChoice;
     if (isSending || uploading) return;
     if (!canSubmit) {
       setMissing(missingNow);
@@ -565,7 +586,13 @@ const QuotationModal = ({ onClose, onSubmit, isSending, token, customerId, custo
     setMissing('');
     if (bareLines.length && !confirmBare) { setConfirmBare(true); return; }
     setConfirmBare(false);
+    if (shortfalls.length && preorder === null) { setShortAsk(true); return; }
+    setShortAsk(false);
+    if (reviewed !== true) { setReviewOpen(true); return; }
+    setReviewOpen(false);
     onSubmit({
+      // Only meaningful when something is short; otherwise there is nothing to wait for.
+      ...(shortfalls.length ? { allowPreorder: !!preorder } : {}),
       // Each variant row becomes its own item - it has its own price, its own BOM and
       // its own stock movement, so the order should carry them apart.
       items: priced.flatMap(l => l.hasVariants
@@ -652,6 +679,56 @@ const QuotationModal = ({ onClose, onSubmit, isSending, token, customerId, custo
         </>
       }
     >
+      <Modal open={reviewOpen} onClose={() => setReviewOpen(false)} title={`Send this quotation${customerName ? ` to ${customerName}` : ''}?`} width={440}
+        footer={<>
+          <button type="button" style={S.btnGhost} onClick={() => setReviewOpen(false)} disabled={isSending}>Back to edit</button>
+          <button type="button" style={S.btnPrimary} onClick={() => handleSubmit(preorderChoice, true)} disabled={isSending}>{isSending ? 'Sending…' : 'Send quotation'}</button>
+        </>}>
+        {(() => {
+          const peso = (n) => `₱${fmt(n)}`;
+          const row = (label, value, strong) => (
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 13, padding: '3px 0', fontWeight: strong ? 700 : 400, color: strong ? 'var(--white)' : 'var(--gray-light)' }}>
+              <span style={{ minWidth: 0 }}>{label}</span><span style={{ whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>{value}</span>
+            </div>
+          );
+          const dp = downPayment > 0 ? downPayment : Math.round(total * 50) / 100;
+          return (
+            <div>
+              {priced.filter(l => l.productId).map(l => row(`${nameOf(l.productId) || 'Item'}${l.qty ? ` × ${l.qty}` : ''}`, peso(l.lineTotal)))}
+              {designFee > 0 && row('Design fee', peso(designFee))}
+              {deliveryFee > 0 && row('Delivery fee', peso(deliveryFee))}
+              <div style={{ borderTop: '1px solid var(--border)', margin: '6px 0' }} />
+              {row('Total', peso(total), true)}
+              {row(downPayment > 0 ? 'Downpayment' : 'Downpayment (50%)', peso(dp))}
+              {shortfalls.length > 0 && row('Short materials', preorderChoice ? 'they can pay now (pre-order)' : 'payment held until restocked')}
+              {row('Valid for', `${Math.min(90, Math.max(1, parseInt(form.expiresInDays) || 7))} days`)}
+              <div style={{ fontSize: 12, color: 'var(--gray)', marginTop: 8, lineHeight: 1.5 }}>
+                The customer can pay this as soon as it arrives. To change a figure after sending, you send a new quote.
+              </div>
+            </div>
+          );
+        })()}
+      </Modal>
+      <Modal open={shortAsk} onClose={() => setShortAsk(false)} title="Some materials are short" width={440}
+        footer={<>
+          <button type="button" style={S.btnGhost} onClick={() => { setPreorderChoice(false); setShortAsk(false); handleSubmit(false); }}>Hold payment until restocked</button>
+          <button type="button" style={S.btnPrimary} onClick={() => { setPreorderChoice(true); setShortAsk(false); handleSubmit(true); }}>Let them pay now</button>
+        </>}>
+        <div style={{ fontSize: 13, color: 'var(--gray-light)', lineHeight: 1.6 }}>
+          {shortfalls.map(r => (
+            <div key={r.name} style={{ color: 'var(--white)' }}>
+              {r.name}: needs {r.qty} {r.uom || ''}, {r.available} available - <b>buy {r.short}</b>{r.lead ? ` (about ${r.lead} day${r.lead === 1 ? '' : 's'} to arrive)` : ''}
+            </div>
+          ))}
+          <div style={{ marginTop: 10 }}>
+            <b style={{ color: 'var(--white)' }}>Let them pay now</b> - the order goes through and the missing material goes on To Buy.
+            Tell the customer the extra days in chat.
+          </div>
+          <div style={{ marginTop: 6 }}>
+            <b style={{ color: 'var(--white)' }}>Hold payment</b> - the customer sees the quote but cannot pay until you mark it restocked (from To Buy).
+          </div>
+        </div>
+      </Modal>
       <ConfirmModal
         open={confirmBare}
         onClose={() => setConfirmBare(false)}

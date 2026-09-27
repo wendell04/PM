@@ -2609,10 +2609,10 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                     onChange={setCourier}
                     options={[{ value:'', label:'Select courier' }, ...COURIERS.map(c => ({ value:c, label:c }))]}
                   />
-                  <input value={trackingNo} onChange={e => setTrackingNo(e.target.value)} maxLength={200}
+                  <input value={trackingNo} onChange={e => setTrackingNo(e.target.value.replace(/[^A-Za-z0-9 \-]/g, ''))} maxLength={40}
                     placeholder="Tracking number (J&T, LBC, parcel)"
                     style={{ padding:'8px 10px', borderRadius:'7px', border:'1px solid var(--border)', background:'var(--dark)', color:'var(--white)', fontSize:'12px' }} />
-                  <input value={trackingUrl} onChange={e => setTrackingUrl(e.target.value)} maxLength={500}
+                  <input value={trackingUrl} onChange={e => setTrackingUrl(e.target.value.replace(/\s/g, ''))} maxLength={300}
                     placeholder="Tracking link (Lalamove / Grab share link)"
                     style={{ padding:'8px 10px', borderRadius:'7px', border:'1px solid var(--border)', background:'var(--dark)', color:'var(--white)', fontSize:'12px' }} />
                   <span style={{ fontSize:'10.5px', color:'var(--gray)', lineHeight:1.5 }}>

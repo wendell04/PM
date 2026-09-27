@@ -10,6 +10,8 @@ import { submitWalkInOrder, fetchProductAvailability } from '@/lib/posApi';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import useLockBodyScroll from '@/lib/useLockBodyScroll';
+import { createPortal } from 'react-dom';
+import OrderReceipt from '@/components/shop/OrderReceipt';
 import { S, CustomSelect, SearchBar, EmptyState } from '../inventory-v2/shared';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
@@ -46,7 +48,8 @@ function resolvePrice(product, qty = 1, variantId = null) {
         ? parseInt(tier.maxQty) : Infinity;
       if (qty >= min && qty <= max) { matched = tier; break; }
     }
-    if (!matched) matched = sorted[sorted.length - 1];
+    // Below the first band is priced at the first, above the last at the last - same as the server.
+    if (!matched) matched = qty < (parseInt(sorted[0]?.minQty) || 1) ? sorted[0] : sorted[sorted.length - 1];
 
     if (matched) {
       if (matched.prices && typeof matched.prices === 'object') {
@@ -107,10 +110,13 @@ function getVariantOptions(product, qty = 1) {
     if (t.prices) Object.keys(t.prices).forEach(k => ids.add(k));
   });
   if (ids.size === 0) return [];
+  // `__base__` is where a product with no variants keeps its price, not a variant. It still opens
+  // the quantity window (bulk prices live there) but is never offered as a choice - the cashier was
+  // shown a variant called "__base__". Beside real variants it is the plain version.
 
   return Array.from(ids).map(id => ({
     id,
-    label: labelFor(id),
+    label: id === '__base__' ? 'Standard' : labelFor(id),
     price: resolvePrice(product, qty, id),
   })).sort((a, b) => (a.price ?? 0) - (b.price ?? 0));
 }
@@ -217,6 +223,10 @@ export default function PosPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState(null);
   const [receipt, setReceipt] = useState(null);
+  // The saved order behind the receipt screen, for the printed copy - the same document a customer
+  // gets online, so the counter and the website cannot print different figures.
+  const [printOrder, setPrintOrder] = useState(null);
+  const [printErr, setPrintErr] = useState('');
 
   // Every overlay in this app locks the page behind it; the POS modals were the exception.
 
@@ -287,7 +297,12 @@ export default function PosPage() {
     const pid = String(product.id || product._id);
     const entry = availability[pid];
     if (!entry || !entry.hasBom) return null;
-    const v = entry.map[variantId ?? Object.keys(entry.map)[0]];
+    // A product with no variants is "__base__" in its prices and "__standalone__" in its recipe.
+    // Looking the one name up under the other found nothing, so a sticker with a recipe read as
+    // "made to order, no stock limit". A single recipe answers for the product whatever it is called.
+    const keys = Object.keys(entry.map);
+    let v = entry.map[variantId ?? keys[0]];
+    if (v === undefined && keys.length === 1 && (!variantId || variantId === '__base__')) v = entry.map[keys[0]];
     return v === undefined ? null : v;
   }
 
@@ -302,6 +317,7 @@ export default function PosPage() {
   // materials it ran out of last week. svcVariant carries the option already chosen; svcLocked
   // means the price came from the catalogue and is not the staff member's to retype.
   const [svcVariant, setSvcVariant] = useState(null);     // { id, label } or null
+  const [svcNoMatAsk, setSvcNoMatAsk] = useState(false);
   const [svcLocked, setSvcLocked]   = useState(false);
   const [matSearch, setMatSearch] = useState('');
   const [inventoryList, setInventoryList] = useState([]);
@@ -341,6 +357,8 @@ export default function PosPage() {
       uom: inv.uom ?? '',
       qty: 1,
       stockQty: Number(inv.stockQty ?? 0),
+      // What one unit of it cost - the same figure the quotation form prices against.
+      unitCost: Number(inv.lastUnitCost || inv.averageCost || inv.baseCost || 0),
       // Cost only (Master Data): used and costed, but never blocks a sale - so "not enough" is
       // not a warning for it, it is a thing to buy.
       costOnly: !!inv.isOnDemand,
@@ -362,13 +380,17 @@ export default function PosPage() {
 
   function closeJobSheet() {
     setServiceModal(null); setSvcVariant(null); setSvcLocked(false);
-    setSvcPrice(''); setSvcQty(1); setSvcMaterials([]); setMatSearch(''); setPickingMat(false);
+    setSvcPrice(''); setSvcQty(1); setSvcMaterials([]); setMatSearch(''); setPickingMat(false); setSvcNoMatAsk(false);
   }
 
-  function confirmService() {
+  function confirmService(force = false) {
     if (!serviceModal) return;
     const price = parseFloat(String(svcPrice).replace(/,/g, ''));
     if (isNaN(price) || price <= 0) { setSubmitError('Enter the agreed price for this line.'); return; }
+    // Same question the quotation form asks: no materials means nothing comes off the shelf and the
+    // whole price reads as profit - right only when the customer supplied everything.
+    if (!force && svcMaterials.length === 0) { setSvcNoMatAsk(true); return; }
+    setSvcNoMatAsk(false);
     const qty = Number(svcQty) || 1;
     addToCart(serviceModal, svcVariant?.id ?? null, svcVariant?.label ?? null, qty, price, svcMaterials);
     closeJobSheet();
@@ -438,16 +460,20 @@ export default function PosPage() {
       setSubmitError(`Only ${canBuild} of ${selectedVariant.label} can be made with the materials on hand${already ? ` (${already} already in the cart)` : ''}.`);
       return;
     }
-    addToCart(variantModal, selectedVariant.id, selectedVariant.label, qty, price);
+    addToCart(variantModal, selectedVariant.id, selectedVariant.id === '__base__' ? null : selectedVariant.label, qty, price);
     setVariantModal(null);
     setSelectedVariant(null);
     setVariantQty(1);
   }
 
   function addToCart(product, variantId, variantName, qty, unitPrice, materials = null) {
-    const key = `${product.id || product._id}__${variantId ?? ''}`;
+    // A line from the job sheet is its own job: its own agreed price and its own materials. Merging
+    // it by product gave a second T-Shirt Printing job the first one's shirts and the first one the
+    // second one's price.
+    const agreed = materials !== null;
+    const key = `${product.id || product._id}__${variantId ?? ''}${agreed ? `__job${Date.now()}` : ''}`;
     setCart(prev => {
-      const existing = prev.find(c => c.key === key);
+      const existing = agreed ? null : prev.find(c => c.key === key);
       if (existing) {
         const newQty = existing.qty + qty;
         const price = resolvePrice(product, newQty, variantId) ?? unitPrice;
@@ -455,7 +481,7 @@ export default function PosPage() {
           c.key === key ? { ...c, qty: newQty, unitPrice: price } : c
         );
       }
-      return [...prev, { key, product, variantId, variantName, qty, unitPrice, materials }];
+      return [...prev, { key, product, variantId, variantName, qty, unitPrice, materials, agreed }];
     });
   }
 
@@ -463,7 +489,8 @@ export default function PosPage() {
     setCart(prev => prev.map(c => {
       if (c.key !== key) return c;
       const newQty = Math.min(MAX_LINE_QTY, Math.max(1, c.qty + delta));
-      const price = resolvePrice(c.product, newQty, c.variantId);
+      // An agreed price is what was agreed, whatever the quantity - not the catalogue's tier.
+      const price = c.agreed ? null : resolvePrice(c.product, newQty, c.variantId);
       return { ...c, qty: newQty, unitPrice: price ?? c.unitPrice };
     }));
   }
@@ -479,7 +506,7 @@ export default function PosPage() {
     const clamped = Math.min(MAX_LINE_QTY, Math.max(1, n));
     setCart(prev => prev.map(c => {
       if (c.key !== key) return c;
-      const price = resolvePrice(c.product, clamped, c.variantId);
+      const price = c.agreed ? null : resolvePrice(c.product, clamped, c.variantId);
       return { ...c, qty: clamped, qtyDraft: undefined, unitPrice: price ?? c.unitPrice };
     }));
   }
@@ -694,9 +721,34 @@ export default function PosPage() {
             </div>
           </div>
 
-          <button type="button" onClick={() => setReceipt(null)} style={{ ...btnGold, width: '100%' }}>
+          <button type="button" style={{ ...btnGhost, width: '100%', marginBottom: '0.6rem' }}
+            onClick={async () => {
+              setPrintErr('');
+              try {
+                const res = await fetchWithTimeout(`${process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000'}/api/admin/orders/${receipt.orderId}`,
+                  { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } }, 15000);
+                const d = await res.json().catch(() => ({}));
+                const order = d?.data?.order ?? d?.data ?? d?.order ?? null;
+                if (!res.ok || !order) throw new Error(d.message || 'Could not load the receipt.');
+                setPrintOrder(order);
+                setTimeout(() => window.print(), 300);
+              } catch (e) { setPrintErr(e.message || 'Could not load the receipt.'); }
+            }}>
+            Print receipt
+          </button>
+          {printErr && <div style={{ fontSize: '0.75rem', color: 'var(--st-red-fg)', marginBottom: '0.5rem' }}>{printErr}</div>}
+          <button type="button" onClick={() => { setReceipt(null); setPrintOrder(null); }} style={{ ...btnGold, width: '100%' }}>
             New Sale
           </button>
+          {printOrder && typeof document !== 'undefined' && createPortal(<OrderReceipt order={printOrder} />, document.body)}
+          <style>{`
+            #pmp-print-receipt { display: none; }
+            @media print {
+              body > *:not(#pmp-print-receipt) { display: none !important; }
+              #pmp-print-receipt { display: block !important; width: 100%; padding: 6px 10px; background: #fff !important; color: #111 !important; }
+              @page { margin: 12mm; }
+            }
+          `}</style>
         </div>
       </div>
     );
@@ -738,7 +790,9 @@ export default function PosPage() {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '0.75rem' }}>
               {products.map(product => {
                 const price = resolvePrice(product, 1, null);
-                const hasVariants = getVariantOptions(product).length > 0;
+                const opts = getVariantOptions(product);
+                // A lone "__base__" is a price, not a choice - the card said "Select variant" on a sticker with none.
+                const hasVariants = opts.length > 0 && !(opts.length === 1 && opts[0].id === '__base__');
                 const thumb = product.thumbnail || product.images?.[0];
                 return (
                   <div
@@ -783,6 +837,15 @@ export default function PosPage() {
                           Select variant
                         </div>
                       )}
+                      {/* The card quotes a small order; the bulk rate is the other number a buyer asks for. */}
+                      {!isService(product) && price !== null && (() => {
+                        const tiers = [...(product.priceTiers ?? product.tiers ?? [])].sort((a, b) => (parseInt(a.minQty) || 0) - (parseInt(b.minQty) || 0));
+                        if (tiers.length < 2) return null;
+                        const bulkQty = parseInt(tiers[tiers.length - 1].minQty) || 0;
+                        const bulk = resolvePrice(product, bulkQty, null);
+                        if (bulk == null || bulk >= price) return null;
+                        return <div style={{ fontSize: '0.65rem', color: 'var(--gray)', marginTop: '1px' }}>{formatPrice(bulk)} each at {bulkQty}+ pcs</div>;
+                      })()}
                     </div>
                   </div>
                 );
@@ -1245,7 +1308,7 @@ export default function PosPage() {
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: '0.78rem', color: 'var(--white)' }}>{m.name}</div>
                         <div style={{ fontSize: '0.68rem', color: short ? 'var(--st-red-fg)' : 'var(--gray)' }}>
-                          {total} {m.uom} for {pieces} piece{pieces === 1 ? '' : 's'} · {Number(m.stockQty)} on hand{short ? ' - not enough' : toBuy ? ' - cost only, buy for this job' : ''}
+                          {total} {m.uom} for {pieces} piece{pieces === 1 ? '' : 's'} · {Number(m.stockQty)} on hand{Number(m.unitCost) ? ` · ${formatPrice(m.unitCost)}/${m.uom || 'pc'}` : ''}{short ? ' - not enough' : toBuy ? ' - cost only, buy for this job' : ''}
                         </div>
                       </div>
                       <input
@@ -1274,6 +1337,41 @@ export default function PosPage() {
             )}
             </div>
 
+            {/* What one piece costs in materials, so the agreed price is set knowing the floor -
+                the counter had the materials in front of it but no figure to price against. */}
+            {svcMaterials.length > 0 && (() => {
+              const perPiece = svcMaterials.reduce((t, m) => t + (Number(m.unitCost) || 0) * (Number(m.qty) || 0), 0);
+              const noCost = svcMaterials.filter(m => !Number(m.unitCost)).map(m => m.name);
+              const price = parseFloat(String(svcPrice).replace(/,/g, '')) || 0;
+              const pieces = Number(svcQty) || 1;
+              const below = price > 0 && perPiece > 0 && price < perPiece;
+              return (
+                <div style={{ marginTop: '0.75rem', padding: '9px 11px', background: 'var(--dark2)', border: `1px solid ${below ? 'var(--st-red-fg)' : 'var(--border)'}`, borderRadius: 8, fontSize: '0.78rem', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: 'var(--gray)' }}>Material cost per piece</span>
+                    <span style={{ color: 'var(--white)', fontWeight: 700 }}>{formatPrice(perPiece)}</span>
+                  </div>
+                  {pieces > 1 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: 'var(--gray)' }}>For {pieces} pieces</span>
+                      <span style={{ color: 'var(--white)' }}>{formatPrice(perPiece * pieces)}</span>
+                    </div>
+                  )}
+                  {price > 0 && perPiece > 0 && (
+                    <div style={{ color: below ? 'var(--st-red-fg)' : 'var(--st-green-fg)', fontWeight: 700 }}>
+                      {below
+                        ? `Below cost - you lose ${formatPrice((perPiece - price) * pieces)} on this line.`
+                        : `Margin ${Math.round(((price - perPiece) / price) * 100)}% - ${formatPrice((price - perPiece) * pieces)} over materials.`}
+                    </div>
+                  )}
+                  {noCost.length > 0 && (
+                    <div style={{ color: 'var(--st-amber-fg)' }}>No cost on file for {noCost.join(', ')} - set it in Master Data or Receive Stock, or this reads low.</div>
+                  )}
+                  <div style={{ color: 'var(--gray)', fontSize: '0.7rem' }}>Materials only - ink, labour and machine time are on top.</div>
+                </div>
+              );
+            })()}
+
             {svcPrice && (
               <div style={{ marginTop: '1rem', padding: '9px 11px', background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: 8, display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem' }}>
                 <span style={{ color: 'var(--gray)', fontWeight: 700 }}>Line total</span>
@@ -1283,10 +1381,23 @@ export default function PosPage() {
               </div>
             )}
 
+            {svcNoMatAsk ? (
+              <div style={{ marginTop: '1.25rem', padding: '10px 12px', borderRadius: 8, border: '1px solid var(--st-orange-fg)', background: 'var(--dark2)' }}>
+                <div style={{ fontSize: '0.8rem', color: 'var(--white)', fontWeight: 700, marginBottom: 4 }}>Add without materials?</div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--gray)', lineHeight: 1.5, marginBottom: 10 }}>
+                  Nothing comes off the shelf and the whole price reads as profit. Only right if the customer brought everything.
+                </div>
+                <div style={{ display: 'flex', gap: '0.75rem' }}>
+                  <button type="button" onClick={() => { setSvcNoMatAsk(false); setPickingMat(true); }} style={{ ...btnGhost, flex: 1 }}>Add materials</button>
+                  <button type="button" onClick={() => confirmService(true)} style={{ ...btnGold, flex: 1 }}>Add anyway</button>
+                </div>
+              </div>
+            ) : (
             <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.25rem' }}>
               <button type="button" onClick={closeJobSheet} style={{ ...btnGhost, flex: 1 }}>Cancel</button>
-              <button type="button" onClick={confirmService} style={{ ...btnGold, flex: 2 }}>Add to order</button>
+              <button type="button" onClick={() => confirmService()} style={{ ...btnGold, flex: 2 }}>Add to order</button>
             </div>
+            )}
           </div>
         </div>
       )}
@@ -1296,6 +1407,7 @@ export default function PosPage() {
           <div style={{ ...cardStyle, padding: '2rem', width: '100%', maxWidth: '400px' }}>
             <h3 style={{ margin: '0 0 1.25rem', fontSize: '1rem', fontWeight: 700, color: 'var(--white)' }}>{variantModal.name}</h3>
 
+            {!(getVariantOptions(variantModal, variantQty).length === 1 && selectedVariant?.id === '__base__') && (
             <div style={{ marginBottom: '1rem' }}>
               <label style={{ ...S.label, display: 'block', marginBottom: '0.375rem' }}>Variant</label>
               <CustomSelect
@@ -1311,6 +1423,7 @@ export default function PosPage() {
                 style={{ width: '100%' }}
               />
             </div>
+            )}
 
             <div style={{ marginBottom: '1.25rem' }}>
               <label style={{ ...S.label, display: 'block', marginBottom: '0.375rem' }}>Quantity</label>
@@ -1343,6 +1456,19 @@ export default function PosPage() {
                 <div style={{ fontSize: '0.7rem', color: 'var(--gray)', marginTop: 6 }}>
                   Bulk pricing applies automatically as the quantity crosses each tier.
                 </div>
+                {(() => {
+                  // The shop's own minimum. A walk-in may still buy fewer - the counter decides - but
+                  // it is charged at the first band's price, and the cashier should know it is below.
+                  const tiers = [...(variantModal.priceTiers ?? variantModal.tiers ?? [])].sort((a, b) => (parseInt(a.minQty) || 0) - (parseInt(b.minQty) || 0));
+                  const first = parseInt(tiers[0]?.minQty) || 0;
+                  const q = Number(variantQty) || 1;
+                  if (!first || q >= first) return null;
+                  return (
+                    <div style={{ fontSize: '0.72rem', color: 'var(--st-amber-fg)', marginTop: 6, fontWeight: 600 }}>
+                      Below the shop's minimum of {first} pcs - charged at the {first}{tiers[0]?.maxQty ? `-${tiers[0].maxQty}` : '+'} pcs price.
+                    </div>
+                  );
+                })()}
               </div>
             )}
 

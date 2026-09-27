@@ -709,6 +709,10 @@ class OrderRequestController extends Controller
             'designUrls.*.name' => 'nullable|string|max:200',
             'designNotes'       => 'nullable|string|max:1000',
             'expiresInDays'     => 'nullable|integer|min:1|max:90',
+            // The shop quoted knowing a material is short and will buy the rest: the customer may pay
+            // now. Decided here, when the owner can see the shortfall, instead of after the customer
+            // has already been refused at the pay button.
+            'allowPreorder'     => 'sometimes|boolean',
             // Which filled-in order forms this quotation answers. IDS ONLY - the content is read
             // from the ask on this side, so nothing the browser sends can change what the
             // customer is later shown they agreed to.
@@ -892,6 +896,7 @@ class OrderRequestController extends Controller
             'designApproved'=> $designUrl ? true : false,
             'status'        => 'confirmed',
             'paymentStatus' => 'unpaid',
+            'allowPreorder' => (bool) ($validated['allowPreorder'] ?? false),
             // Quote validity - after this the customer can no longer pay the quoted price (default 7 days).
             'expiresAt'     => now()->addDays((int) ($validated['expiresInDays'] ?? 7)),
             'statusHistory' => [['status' => 'confirmed', 'at' => now()->toISOString()]],
@@ -936,6 +941,19 @@ class OrderRequestController extends Controller
             }
         } catch (\Throwable $e) {
             Log::warning('Could not mark asks answered: ' . $e->getMessage());
+        }
+
+        // Quoted short and payment held until the restock: it goes on To Buy NOW, beside "allow
+        // pre-order" and "mark restocked". It used to appear there only after the customer had tried
+        // to pay and been refused - and the pay button no longer lets them try.
+        try {
+            $short = \App\Support\QuoteStock::shortages($orderRequest);
+            if ($short && !\App\Support\QuoteStock::mayPayPastShelf($orderRequest, $short)) {
+                $orderRequest->stockBlock = ['at' => now()->toISOString(), 'shortages' => $short, 'heldAtQuote' => true];
+                $orderRequest->save();
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Could not mark a short quote on To Buy: ' . $e->getMessage());
         }
 
         $this->notifyQuoteInChat($orderRequest, [

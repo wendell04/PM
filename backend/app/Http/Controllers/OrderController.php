@@ -1443,6 +1443,15 @@ class OrderController extends Controller
                 // customer is notified below when it changes.
                 'estimatedDeliveryMin' => 'sometimes|nullable|date',
                 'estimatedDeliveryMax' => 'sometimes|nullable|date',
+                // Who carries it. Stored as typed and shown to the customer, so held to what a real
+                // courier issues: waybills run 10-20 characters (J&T, LBC), international up to ~34.
+                'courierName'    => 'sometimes|nullable|string|max:100',
+                'trackingNumber' => ['sometimes', 'nullable', 'string', 'min:4', 'max:40', 'regex:/^[A-Za-z0-9][A-Za-z0-9 \-]*$/'],
+                'trackingUrl'    => 'sometimes|nullable|string|max:300|starts_with:https://',
+            ], [
+                'trackingNumber.regex' => 'A tracking number is letters, digits and dashes only.',
+                'trackingNumber.max'   => 'That is longer than any courier tracking number (40 characters).',
+                'trackingUrl.starts_with' => 'Paste the full tracking link, starting with https://',
             ]);
 
             $prevDeliveryMax = $order->estimatedDeliveryMax ?? null;
@@ -2479,8 +2488,8 @@ class OrderController extends Controller
             if ($newStatus === OrderStatus::FOR_DELIVERY) {
                 $validated2 = $request->validate([
                     'courierName'    => 'required|string|max:100',
-                    'trackingNumber' => 'nullable|string|max:200',
-                    'trackingUrl'    => 'nullable|string|max:500',
+                    'trackingNumber' => ['nullable', 'string', 'min:4', 'max:40', 'regex:/^[A-Za-z0-9][A-Za-z0-9 \-]*$/'],
+                    'trackingUrl'    => 'nullable|string|max:300|starts_with:https://',
                 ]);
                 $order->courierName    = $validated2['courierName'];
                 $order->trackingNumber = $validated2['trackingNumber'] ?? null;

@@ -173,7 +173,7 @@ export async function fetchCustomerOrderForms(token, customerId) {
 
 // Every field is named here, so a field left off this list never leaves the browser - the whole
 // set of attached designs was dropped that way (only the first reached the server).
-export async function createAdminQuotation(token, { recipientId, items, designFee, deliveryFee, downPayment, expiresInDays, note, designUrl, designUrls, designNotes, orderFormAskIds, deliverTo }) {
+export async function createAdminQuotation(token, { recipientId, items, designFee, deliveryFee, downPayment, expiresInDays, note, designUrl, designUrls, designNotes, orderFormAskIds, deliverTo, allowPreorder }) {
   const res = await fetchWithTimeout(`${API_URL}/api/admin/quotations`, {
     method: 'POST',
     headers: {
@@ -188,6 +188,8 @@ export async function createAdminQuotation(token, { recipientId, items, designFe
       deliveryFee: deliveryFee || 0,
       ...(downPayment ? { downPayment } : {}),
       ...(expiresInDays ? { expiresInDays } : {}),
+      // The shop quoted knowing a material is short and lets the customer pay anyway.
+      ...(typeof allowPreorder === 'boolean' ? { allowPreorder } : {}),
       note: note || '',
       ...(designUrl ? { designUrl } : {}),
       ...(designUrls?.length ? { designUrls } : {}),

@@ -257,9 +257,9 @@ export default function ToBuyPage() {
           <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
             <div style={{ fontSize: '14px', fontWeight: 700 }}>Waiting on stock ({waitingQuotes.length})</div>
             <div style={{ fontSize: '11px', color: 'var(--gray)', marginTop: '2px' }}>
-              These customers tried to pay a quote, but stock ran short after it was sent. Not counted in the
-              totals above - nothing is paid yet. Allow pre-order for the quote, confirm the stock is back,
-              or send a new quote.
+              Quotes the customer cannot pay yet because a material is short - held when you sent them, or
+              short since. Not counted in the totals above: nothing is paid yet. Allow pre-order to let them
+              pay now, mark it restocked once the stock is in, or send a new quote.
             </div>
           </div>
           {waitingQuotes.map(q => {

@@ -1546,8 +1546,10 @@ class PaymentController extends Controller
                     return response()->json([
                         'success' => false,
                         'code'    => 'quote_stock_short',
-                        'message' => "Stock changed since your quote, so it can't be paid right now. "
-                            . "We've let the shop know - they'll message you here with a new date or quote.",
+                        // Not "stock changed": a quote can be made knowing a material is short. What the
+                        // customer needs is what happens next, and that nothing was charged.
+                        'message' => "Part of your quote is waiting on materials, so it can't be paid yet - nothing was charged. "
+                            . "We've told the shop; they'll message you in chat as soon as you can pay.",
                     ], 422);
                 }
                 if (!empty($orderRequest->stockBlock)) {
@@ -3247,7 +3249,14 @@ class PaymentController extends Controller
             // Charged from the order detail modal (not the product page). It does not settle
             // the goods, so paymentStatus stays 'unpaid'; the confirm path just flips
             // designFeePaid. The goods downpayment/balance is paid later, after proof approval.
+            // A quotation's design fee is inside the quoted price and was paid with it. Charging it
+            // again as a "design fee" collected it twice - the page offered exactly that button.
+            $fromQuote = !empty($order->orderRequestId) || ($order->orderSource ?? null) === 'inquiry';
+            if ($fromQuote && filter_var($validated['designFeeOnly'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+                return response()->json(['success' => false, 'message' => 'The design fee is already part of your quoted price - there is nothing separate to pay.'], 422);
+            }
             $payDesignFee = filter_var($validated['designFeeOnly'] ?? false, FILTER_VALIDATE_BOOLEAN)
+                && !$fromQuote
                 && (float) ($order->designFee ?? 0) > 0
                 && !($order->designFeePaid ?? false);
 

@@ -56,7 +56,16 @@ class ShopOrderRequestController extends Controller
             return response()->json(['message' => 'Order request not found.'], 404);
         }
 
-        return response()->json(['data' => $order->toCustomerArray()]);
+        $data = $order->toCustomerArray();
+        // Whether it can be paid right now, known when the checkout OPENS - not discovered at the pay
+        // button after the customer has filled everything in. Only for a quote still to be paid.
+        try {
+            if (empty($order->convertedOrderId) && ($order->paymentStatus ?? 'unpaid') === 'unpaid') {
+                $short = \App\Support\QuoteStock::shortages($order);
+                $data['waitingOnStock'] = !\App\Support\QuoteStock::mayPayPastShelf($order, $short);
+            }
+        } catch (\Throwable $e) { /* the pay button still checks */ }
+        return response()->json(['data' => $data]);
     }
 
     /**

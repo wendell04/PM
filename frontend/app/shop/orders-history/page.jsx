@@ -119,6 +119,8 @@ function ItemProgressNote({ jobs }) {
 // the Pay Design Fee block never appeared on a mixed order and the deposit could be paid first -
 // bypassing the whole design-fee-first rule. Ask the items instead; they cannot lie about it.
 function owesDesignFee(order) {
+  // A quotation's design fee is part of the quoted price, paid with the downpayment or in full.
+  if (order?.orderRequestId || order?.orderSource === 'inquiry') return false;
   const hasRequest = (order?.items ?? []).some(i => i?.designRequested || i?.designMode === 'request');
   return hasRequest && Number(order?.designFee) > 0 && !order?.designFeePaid;
 }
@@ -210,6 +212,27 @@ const STATUS_ACCENT = {
 };
 
 // ─── OrderTracker ───────────────────────────────────────
+/**
+ * Who cancelled, why, and what happens to the money - the three things a customer asks after a
+ * cancellation. Shared by both trackers: the custom one had its own banner and said only
+ * "This order was cancelled." on every custom order.
+ */
+function CancelDetails({ cancelledBy, cancelledReason, refundOwed, refunds }) {
+  const sent = (refunds || []).filter(r => r.status === 'paid' || r.status === 'sent').reduce((t, r) => t + Number(r.amount || 0), 0);
+  const owed = Number(refundOwed || 0);
+  const peso = (n) => `₱${Number(n).toLocaleString('en-PH', { minimumFractionDigits: 2 })}`;
+  return (
+    <>
+      <div style={{ fontSize: '0.78rem', color: 'var(--gray)', marginTop: '2px' }}>
+        {cancelledBy === 'admin' ? 'We cancelled this order.' : 'This order was cancelled.'}
+        {cancelledReason ? ` Reason: ${cancelledReason}.` : ''}
+      </div>
+      {owed > 0 && <div style={{ fontSize: '0.78rem', color: 'var(--white)', marginTop: '4px', fontWeight: 600 }}>Refund of {peso(owed)} is being arranged - it goes back to the payment method you used.</div>}
+      {owed <= 0 && sent > 0 && <div style={{ fontSize: '0.78rem', color: 'var(--white)', marginTop: '4px', fontWeight: 600 }}>{peso(sent)} was refunded to you.</div>}
+    </>
+  );
+}
+
 function OrderTracker({ status, paymentMethod, paymentStatus, statusHistory = [], items = [], productionJobs = [], cancelledBy = null, cancelledReason = null, refundOwed = 0, refunds = [] }) {
   const historyMap = {};
   (statusHistory || []).forEach(e => { if (e?.status && e?.at) historyMap[e.status] = e.at; });
@@ -238,18 +261,9 @@ function OrderTracker({ status, paymentMethod, paymentStatus, statusHistory = []
         </div>
         <div>
           <div style={{ fontSize: '0.875rem', fontWeight: 700, color: isCancelled ? '#ef4444' : '#f97316' }}>Order {status}</div>
-          <div style={{ fontSize: '0.78rem', color: 'var(--gray)', marginTop: '2px' }}>
-            {isCancelled ? (cancelledBy === 'admin' ? 'We cancelled this order.' : 'This order was cancelled.') : 'This order was returned.'}
-            {isCancelled && cancelledReason ? ` Reason: ${cancelledReason}.` : ''}
-          </div>
-          {/* What happens to their money is the first thing a customer asks after a cancellation. */}
-          {isCancelled && (() => {
-            const sent = (refunds || []).filter(r => r.status === 'paid' || r.status === 'sent').reduce((t, r) => t + Number(r.amount || 0), 0);
-            const owed = Number(refundOwed || 0);
-            if (owed > 0) return <div style={{ fontSize: '0.78rem', color: 'var(--white)', marginTop: '4px', fontWeight: 600 }}>Refund of ₱{owed.toLocaleString('en-PH', { minimumFractionDigits: 2 })} is being arranged - it goes back to the payment method you used.</div>;
-            if (sent > 0) return <div style={{ fontSize: '0.78rem', color: 'var(--white)', marginTop: '4px', fontWeight: 600 }}>₱{sent.toLocaleString('en-PH', { minimumFractionDigits: 2 })} was refunded to you.</div>;
-            return null;
-          })()}
+          {isCancelled
+            ? <CancelDetails cancelledBy={cancelledBy} cancelledReason={cancelledReason} refundOwed={refundOwed} refunds={refunds} />
+            : <div style={{ fontSize: '0.78rem', color: 'var(--gray)', marginTop: '2px' }}>This order was returned.</div>}
         </div>
       </div>
     );
@@ -328,7 +342,7 @@ function OrderTracker({ status, paymentMethod, paymentStatus, statusHistory = []
 }
 
 // ─── CustomOrderTracker ─────────────────────────────────
-function CustomOrderTracker({ orderStatus, designType, designStatus, paymentStatus, items = [], productionJobs = [], quoted = false }) {
+function CustomOrderTracker({ orderStatus, designType, designStatus, paymentStatus, items = [], productionJobs = [], quoted = false, cancel = {} }) {
   // A mixed cart can hold an uploaded design AND a requested one in the same order, but the order
   // carries a single designType - so calling the whole order "Upload Design" was a lie about half of
   // it. Detect the mix from the lines and fall back to the request track, whose stages are a superset.
@@ -408,7 +422,9 @@ function CustomOrderTracker({ orderStatus, designType, designStatus, paymentStat
         </div>
         <div>
           <div style={{ fontSize: '0.875rem', fontWeight: 700, color: '#ef4444' }}>Order {orderStatus}</div>
-          <div style={{ fontSize: '0.78rem', color: 'var(--gray)', marginTop: '2px' }}>This order was {orderStatus.toLowerCase()}.</div>
+          {normalizeStatus(orderStatus) === 'cancelled'
+            ? <CancelDetails {...cancel} />
+            : <div style={{ fontSize: '0.78rem', color: 'var(--gray)', marginTop: '2px' }}>This order was {orderStatus.toLowerCase()}.</div>}
         </div>
       </div>
     );
@@ -1498,7 +1514,8 @@ export default function OrdersHistoryPage() {
                     {/* Tracker */}
                     <div style={{ paddingBottom: '4px' }}>
                       {selectedOrder.isCustomOrder ? (
-                        <CustomOrderTracker orderStatus={selectedOrder.orderStatus} designType={selectedOrder.designType} designStatus={selectedOrder.designStatus} paymentStatus={selectedOrder.paymentStatus} items={selectedOrder.items} productionJobs={selectedOrder.productionJobs} quoted={quotedArtwork(selectedOrder)} />
+                        <CustomOrderTracker orderStatus={selectedOrder.orderStatus} designType={selectedOrder.designType} designStatus={selectedOrder.designStatus} paymentStatus={selectedOrder.paymentStatus} items={selectedOrder.items} productionJobs={selectedOrder.productionJobs} quoted={quotedArtwork(selectedOrder)}
+                          cancel={{ cancelledBy: selectedOrder.cancelledBy, cancelledReason: selectedOrder.cancelledReason, refundOwed: selectedOrder.refundOwed, refunds: selectedOrder.refunds }} />
                       ) : (
                         <OrderTracker status={selectedOrder.orderStatus} paymentMethod={selectedOrder.paymentMethod} paymentStatus={selectedOrder.paymentStatus} statusHistory={selectedOrder.statusHistory} items={selectedOrder.items} productionJobs={selectedOrder.productionJobs}
                           cancelledBy={selectedOrder.cancelledBy} cancelledReason={selectedOrder.cancelledReason} refundOwed={selectedOrder.refundOwed} refunds={selectedOrder.refunds} />
@@ -2179,24 +2196,25 @@ export default function OrdersHistoryPage() {
                           </div>
                         ) : null;
                       })()}
-                      {selectedOrder.requiresDownpayment && selectedOrder.downPayment > 0 && (
-                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                          {/* downPayment holds the full amount once an order is paid off, and
-                              labelling that "Down Payment" misread a full payment as a deposit. */}
-                          <span style={{ fontSize: '12px', color: 'var(--gray)' }}>{selectedOrder.paymentStatus === 'paid' ? 'Paid' : 'Down Payment'}</span>
-                          <span style={{ fontSize: '12px', color: 'var(--white)' }}>{formatPeso(selectedOrder.downPayment)}</span>
-                        </div>
-                      )}
-                      {selectedOrder.balance > 0 && (
-                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                          <span style={{ fontSize: '12px', color: 'var(--gray)' }}>Balance Due</span>
-                          <span style={{ fontSize: '12px', color: '#ef4444', fontWeight: 700 }}>{formatPeso(selectedOrder.balance)}</span>
-                        </div>
-                      )}
                       <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '8px', borderTop: '1px solid var(--border)', marginTop: '3px' }}>
                         <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--white)' }}>Total</span>
                         <span style={{ fontSize: '13px', fontWeight: 700, color: '#d4a843' }}>{formatPeso(selectedOrder.totalAmount)}</span>
                       </div>
+                      {/* What was paid and what is left, UNDER the total they are measured against. Listed
+                          among the charges, "Down Payment" read as one more thing being added. */}
+                      {selectedOrder.requiresDownpayment && selectedOrder.downPayment > 0 && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          {/* downPayment holds the full amount once an order is paid off. */}
+                          <span style={{ fontSize: '12px', color: 'var(--gray)' }}>{selectedOrder.paymentStatus === 'paid' ? 'Paid' : 'Paid (downpayment)'}</span>
+                          <span style={{ fontSize: '12px', color: '#22c55e' }}>-{formatPeso(selectedOrder.downPayment)}</span>
+                        </div>
+                      )}
+                      {selectedOrder.balance > 0 && !['cancelled', 'returned'].includes(normalizeStatus(selectedOrder.orderStatus)) && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span style={{ fontSize: '12px', color: 'var(--white)', fontWeight: 700 }}>Balance due</span>
+                          <span style={{ fontSize: '12px', color: '#ef4444', fontWeight: 700 }}>{formatPeso(selectedOrder.balance)}</span>
+                        </div>
+                      )}
                       {/* The courier's charge, kept OUT of the figures above so they add up to the Total.
                           Customers used to marketplaces read a shipping line above a total as included in it.
                           A zero here is not free delivery - the fee is simply not known yet. */}

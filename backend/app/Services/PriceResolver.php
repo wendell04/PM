@@ -50,8 +50,12 @@ class PriceResolver
                         break;
                     }
                 }
+                // Outside every band: below the first one is priced at the FIRST (a single piece is the
+                // dearest there is), above the last at the last. Falling back to the last band for
+                // both sold 1 pc at the 501-1000 price - P35 for a sticker listed at P50.
                 if ($matchedTier === null && !empty($tiers)) {
-                    $matchedTier = end($tiers);
+                    $firstMin = (int) ($tiers[0]['minQty'] ?? 1);
+                    $matchedTier = $qty < $firstMin ? $tiers[0] : end($tiers);
                 }
 
                 if ($matchedTier !== null) {

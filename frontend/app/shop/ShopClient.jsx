@@ -111,7 +111,8 @@ function QuickViewModal({ product, flashSale, onClose, onToast }) {
   const getTierForQty = (q) => {
     const tiers = getTiers(); if (!tiers.length) return null;
     const sorted = [...tiers].sort((a, b) => (parseInt(a.minQty) || 0) - (parseInt(b.minQty) || 0));
-    let match = sorted[sorted.length - 1];
+    // Below the first band prices at the first, above the last at the last (PriceResolver does the same).
+    let match = q < (parseInt(sorted[0].minQty) || 0) ? sorted[0] : sorted[sorted.length - 1];
     for (const t of sorted) {
       const min = parseInt(t.minQty) || 0;
       const max = t.maxQty != null && t.maxQty !== '' ? parseInt(t.maxQty) : Infinity;
@@ -1919,7 +1920,7 @@ export default function ShopClient({
                         const tiers = quickAddProduct.priceTiers ?? [];
                         if (!tiers.length) return null;
                         const sorted = [...tiers].sort((a, b) => (parseInt(a.minQty) || 0) - (parseInt(b.minQty) || 0));
-                        let match = sorted[sorted.length - 1];
+                        let match = quickQty < (parseInt(sorted[0].minQty) || 0) ? sorted[0] : sorted[sorted.length - 1];
                         for (const t of sorted) {
                           const min = parseInt(t.minQty) || 0;
                           const max = t.maxQty !== null && t.maxQty !== '' ? parseInt(t.maxQty) : Infinity;

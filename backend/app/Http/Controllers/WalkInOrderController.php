@@ -454,9 +454,15 @@ class WalkInOrderController extends Controller
                     $ci = Inventory::find($invId);
                     $take = (int) round((float) $qty);
                     if (!$ci || $take <= 0) continue;
-                    // On-demand material is bought for the job, not held - it never had a shelf
-                    // figure to reduce.
-                    if ($ci->isOnDemand) continue;
+                    // Cost-only material (transfer paper, boxes) is never HELD, but it is on the shelf and
+                    // it is used: QC deducts it on a production job, and a counter sale never reaches QC.
+                    // Skipping it left every sheet a walk-in used on the books. It may run short - it is
+                    // bought per job - so take what is there rather than refuse the whole sale, whose
+                    // other materials would then go undeducted too.
+                    if ($ci->isOnDemand) {
+                        $take = min($take, max(0, (int) ($ci->stockQty ?? 0)));
+                        if ($take <= 0) continue;
+                    }
                     $this->deductInventoryFIFO(
                         inventory: $ci,
                         qty: $take,
@@ -499,12 +505,26 @@ class WalkInOrderController extends Controller
             return $carry + ($b['remainingQty'] ?? $b['goodQty'] ?? 0);
         }, 0);
 
-        if ($available < $qty) {
+        // Stock entered without Receive Stock (an opening count, a seed) is on the shelf with no batch
+        // behind it. Counting only batches refused the sale as "insufficient", and the exception
+        // skipped every material after this one too. It is taken first - it is the oldest - at the
+        // item's own cost, the same rule Stock Out follows.
+        $unbatched = max(0, (int) ($inventory->stockQty ?? 0) - (int) $available);
+        if ($available + $unbatched < $qty) {
             throw new \Exception('Insufficient stock.');
         }
 
         $remaining = $qty;
         $batchDeductions = [];
+        if ($unbatched > 0) {
+            $fromLoose = min($unbatched, $remaining);
+            $remaining -= $fromLoose;
+            $batchDeductions[] = [
+                'batchId'  => null,
+                'qty'      => $fromLoose,
+                'unitCost' => (float) ($inventory->averageCost ?? $inventory->unitCost ?? 0),
+            ];
+        }
         foreach ($batches as &$batch) {
             if ($remaining <= 0) break;
             $batchQty = $batch['remainingQty'] ?? $batch['goodQty'] ?? 0;
