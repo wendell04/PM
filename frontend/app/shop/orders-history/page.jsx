@@ -68,7 +68,15 @@ const REQUEST_STEPS = [
 
 // A mixed cart holds an uploaded design AND a requested one in the same order. The order's single
 // designType field cannot describe that, so label it from the lines instead.
+// An order made from a quotation with no design fee on it. Its artwork was agreed in chat; the shop
+// only turns that into a proof to approve. "Design Request" / "Our designer is working on it" read
+// as a paid design job the customer never ordered.
+function quotedArtwork(order) {
+  return !!(order?.orderRequestId || order?.orderSource === 'inquiry') && !(Number(order?.designFee) > 0);
+}
+
 function customTypeLabel(order) {
+  if (quotedArtwork(order)) return 'Artwork to confirm';
   const lines = (order?.items || []).filter(it => it?.isCustom || it?.designRequested || it?.designUrl || it?.designFiles?.length);
   const hasRequest = lines.some(it => it?.designRequested || it?.designMode === 'request');
   const hasUpload  = lines.some(it => (it?.designUrl || it?.designFiles?.length) && !it?.designRequested);
@@ -309,7 +317,7 @@ function OrderTracker({ status, paymentMethod, paymentStatus, statusHistory = []
 }
 
 // ─── CustomOrderTracker ─────────────────────────────────
-function CustomOrderTracker({ orderStatus, designType, designStatus, paymentStatus, items = [], productionJobs = [] }) {
+function CustomOrderTracker({ orderStatus, designType, designStatus, paymentStatus, items = [], productionJobs = [], quoted = false }) {
   // A mixed cart can hold an uploaded design AND a requested one in the same order, but the order
   // carries a single designType - so calling the whole order "Upload Design" was a lie about half of
   // it. Detect the mix from the lines and fall back to the request track, whose stages are a superset.
@@ -399,7 +407,7 @@ function CustomOrderTracker({ orderStatus, designType, designStatus, paymentStat
     <div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
         <div style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.8px' }}>
-          {isMixed ? 'Custom Order' : effectiveType === 'upload' ? 'Upload Design' : 'Design Request'} Progress
+          {quoted ? 'Order' : isMixed ? 'Custom Order' : effectiveType === 'upload' ? 'Upload Design' : 'Design Request'} Progress
         </div>
         <span style={{ padding: '3px 10px', borderRadius: '999px', fontSize: '0.68rem', fontWeight: 700, background: isDelivered ? 'rgba(34,197,94,0.1)' : 'rgba(212,168,67,0.1)', color: isDelivered ? '#22c55e' : '#d4a843', border: `1px solid ${isDelivered ? 'rgba(34,197,94,0.3)' : 'rgba(212,168,67,0.3)'}` }}>
           {statusLabel}
@@ -1477,7 +1485,7 @@ export default function OrdersHistoryPage() {
                     {/* Tracker */}
                     <div style={{ paddingBottom: '4px' }}>
                       {selectedOrder.isCustomOrder ? (
-                        <CustomOrderTracker orderStatus={selectedOrder.orderStatus} designType={selectedOrder.designType} designStatus={selectedOrder.designStatus} paymentStatus={selectedOrder.paymentStatus} items={selectedOrder.items} productionJobs={selectedOrder.productionJobs} />
+                        <CustomOrderTracker orderStatus={selectedOrder.orderStatus} designType={selectedOrder.designType} designStatus={selectedOrder.designStatus} paymentStatus={selectedOrder.paymentStatus} items={selectedOrder.items} productionJobs={selectedOrder.productionJobs} quoted={quotedArtwork(selectedOrder)} />
                       ) : (
                         <OrderTracker status={selectedOrder.orderStatus} paymentMethod={selectedOrder.paymentMethod} paymentStatus={selectedOrder.paymentStatus} statusHistory={selectedOrder.statusHistory} items={selectedOrder.items} productionJobs={selectedOrder.productionJobs} />
                       )}
@@ -1604,7 +1612,7 @@ export default function OrdersHistoryPage() {
 
                       const STATUS = {
                         pending_review:     { label: 'Under review',       color: '#d4a843', bg: 'rgba(234,179,8,0.1)' },
-                        pending_design:     { label: 'Designing',          color: '#d4a843', bg: 'rgba(234,179,8,0.1)' },
+                        pending_design:     { label: quotedArtwork(selectedOrder) ? 'Preparing proof' : 'Designing', color: '#d4a843', bg: 'rgba(234,179,8,0.1)' },
                         draft_ready:        { label: 'Proof ready',        color: '#d4a843', bg: 'rgba(212,168,67,0.12)' },
                         proof_sent:         { label: 'Proof ready',        color: '#d4a843', bg: 'rgba(212,168,67,0.12)' },
                         revision_requested: { label: 'Revision requested', color: '#d4a843', bg: 'rgba(234,179,8,0.1)' },
@@ -1688,7 +1696,11 @@ export default function OrdersHistoryPage() {
                                     );
                                   })()
                                 ) : type === 'request' && st === 'pending_design' ? (
-                                  <div style={{ fontSize: '0.76rem', color: 'var(--gray)' }}>Our designer is working on your proof. We'll notify you when it's ready.</div>
+                                  <div style={{ fontSize: '0.76rem', color: 'var(--gray)' }}>
+                                    {quotedArtwork(selectedOrder)
+                                      ? "We're preparing your proof from what we agreed. We'll notify you when it's ready to approve."
+                                      : "Our designer is working on your proof. We'll notify you when it's ready."}
+                                  </div>
                                 ) : type === 'upload' && st === 'pending_review' ? (
                                   <div style={{ fontSize: '0.76rem', color: 'var(--gray)' }}>Your file is being reviewed before production.</div>
                                 ) : st === 'rejected' ? (
@@ -1820,7 +1832,7 @@ export default function OrdersHistoryPage() {
                           {requestItems.length > 0 && (
                             <div style={{ border: '1px solid var(--border)', borderRadius: '10px', padding: '12px', display: 'flex', flexDirection: 'column', gap: '10px', background: 'var(--dark)' }}>
                               <div style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--white)' }}>
-                                Design request
+                                {quotedArtwork(selectedOrder) ? 'Your artwork' : 'Design request'}
                                 <span style={{ marginLeft: '8px', fontSize: '0.66rem', fontWeight: 600, color: 'var(--gray)' }}>
                                   {requestItems.length > 1
                                     ? requestItems.map(({ it }) => it.productName).filter(Boolean).join(', ')
@@ -1842,7 +1854,7 @@ export default function OrdersHistoryPage() {
                                   body: 'Hi! I have a question about my design.',
                                 } } }))}
                                 style={{ alignSelf: 'flex-start', padding: '6px 12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--gray)', fontSize: '0.72rem', fontWeight: 600, cursor: 'pointer' }}>
-                                Message the designer
+                                {quotedArtwork(selectedOrder) ? 'Message us' : 'Message the designer'}
                               </button>
                               {requestItems.map(entry => renderDesignItem(entry, true))}
                             </div>

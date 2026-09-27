@@ -725,7 +725,10 @@ export default function OrderQuickViewModal({
                             {item.designRequested && (
                               <div style={{ marginTop: '4px', display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '2px 7px', background: 'rgba(212,168,67,0.1)', border: '1px solid rgba(212,168,67,0.3)', borderRadius: '4px', fontSize: '0.68rem', fontWeight: 700, color: 'var(--gold)' }}>
                                 <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-                                Design Service Requested{item.designFee ? ` (+₱${Number(item.designFee).toLocaleString()})` : ''}
+                                {/* A quotation's artwork was agreed in chat: a proof follows, no design job. */}
+                                {(order?.orderRequestId || order?.orderSource === 'inquiry') && !(Number(order?.designFee) > 0) && !item.designFee
+                                  ? 'Proof to follow'
+                                  : `Design Service Requested${item.designFee ? ` (+₱${Number(item.designFee).toLocaleString()})` : ''}`}
                               </div>
                             )}
                           </div>

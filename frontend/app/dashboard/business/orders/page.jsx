@@ -3036,7 +3036,11 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                       ) : null;
                     })()}
                     {item.designRequested && (
-                      <span style={{ fontSize:'10px', fontWeight:700, color:'var(--gold)', background:'var(--st-orange-bg)', padding:'1px 5px', borderRadius:'3px', border:'1px solid color-mix(in srgb, var(--st-orange-fg) 35%, transparent)', marginTop:'2px', display:'inline-block' }}>Design Service</span>
+                      <span style={{ fontSize:'10px', fontWeight:700, color:'var(--gold)', background:'var(--st-orange-bg)', padding:'1px 5px', borderRadius:'3px', border:'1px solid color-mix(in srgb, var(--st-orange-fg) 35%, transparent)', marginTop:'2px', display:'inline-block' }}>
+                        {/* From a quotation with no design fee: the artwork was agreed in chat and only
+                            needs turning into a proof - not a paid design job. */}
+                        {(lo.orderRequestId || lo.orderSource === 'inquiry') && !(Number(lo.designFee) > 0) ? 'Proof to send' : 'Design Service'}
+                      </span>
                     )}
                   </div>
                   <div style={{ textAlign:'right', flexShrink:0 }}>

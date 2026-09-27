@@ -81,6 +81,8 @@ const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=
   const { cartItems, cartCount, removeFromCart } = useCart();
   const [mounted, setMounted] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  // Same check the shop asks before signing out - the landing page signed out on the first tap.
+  const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
   const [lpCartOpen, setLpCartOpen] = useState(false);
   const [lpNotifOpen, setLpNotifOpen] = useState(false);
   // Work gallery viewer. On a phone the grid squares are small and there is no hover, so a photo of
@@ -1537,7 +1539,7 @@ const handleForgotResetPassword = async () => {
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                             My Orders
                           </a>
-                          <button onClick={() => { logout(); setUserMenuOpen(false); }} className="lp-nav-menu-item lp-nav-logout">
+                          <button onClick={() => { setUserMenuOpen(false); setLogoutConfirmOpen(true); }} className="lp-nav-menu-item lp-nav-logout">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
                             Log Out
                           </button>
@@ -3368,6 +3370,29 @@ const handleForgotResetPassword = async () => {
                     : 'Resend Code'}
               </button>
             </p>
+          </div>
+        </div>
+      )}
+
+      {logoutConfirmOpen && (
+        <div onClick={() => setLogoutConfirmOpen(false)} role="dialog" aria-modal="true" aria-labelledby="lp-logout-title"
+          style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+          <div onClick={(e) => e.stopPropagation()}
+            style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '12px', padding: '1.5rem', width: '100%', maxWidth: '340px', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <h2 id="lp-logout-title" style={{ fontSize: '1.125rem', fontWeight: 600, color: 'var(--white)', margin: 0 }}>Log Out</h2>
+              <p style={{ fontSize: '0.875rem', color: 'var(--gray-light)', margin: 0 }}>Are you sure you want to log out of your account?</p>
+            </div>
+            <div style={{ display: 'flex', gap: '0.75rem' }}>
+              <button type="button" onClick={() => setLogoutConfirmOpen(false)}
+                style={{ flex: 1, padding: '0.7rem 1rem', borderRadius: '8px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--white)', fontSize: '0.875rem', fontWeight: 500, cursor: 'pointer' }}>
+                Cancel
+              </button>
+              <button type="button" onClick={async () => { setLogoutConfirmOpen(false); try { await logout(); } catch { /* signing out locally is enough */ } }}
+                style={{ flex: 1, padding: '0.7rem 1rem', borderRadius: '8px', border: 'none', background: 'var(--red)', color: '#ffffff', fontSize: '0.875rem', fontWeight: 600, cursor: 'pointer' }}>
+                Log Out
+              </button>
+            </div>
           </div>
         </div>
       )}
