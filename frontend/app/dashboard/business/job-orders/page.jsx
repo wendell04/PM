@@ -31,6 +31,7 @@ import { isCodMethod } from '@/lib/paymentMethod';
 import { needsJobOrder } from '@/lib/jobOrderEligibility';
 import { addWorkingDays, subtractWorkingDays } from '@/lib/workingDays';
 import { scrollToFirstError } from '@/lib/scrollToError';
+import SettleMaterialsModal, { SettleChip } from '@/components/dashboard/SettleMaterials';
 
 // Backward-scheduling buffers: the JO must FINISH before the delivery promise, leaving room to QC,
 // pack, and ship. Target = (customer need-by || delivery promise) - shipping transit - QC/pack.
@@ -456,7 +457,10 @@ export default function JobOrdersPage() {
   const mayCreate = can('jobOrders.create');
   const mayEdit   = can('jobOrders.edit');
   const mayDelete = can('jobOrders.delete');
-  const hasActions = mayEdit || mayDelete;
+  // A job cancelled mid-production is settled by whoever runs the bench, or a job order manager.
+  const maySettle = mayEdit || can('production.work');
+  const hasActions = mayEdit || mayDelete || maySettle;
+  const [settling, setSettling] = useState(null);
 
   const [jobOrders, setJobOrders] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -577,7 +581,8 @@ export default function JobOrdersPage() {
   // started production must be Cancelled (soft) to keep its inventory + QC history.
   const [deleting, setDeleting] = useState(null); // the JO pending a delete confirm
   const [deleteErr, setDeleteErr] = useState('');
-  const canDelete = (jo) => ['Queued', 'Cancelled'].includes(jo.joStatus);
+  // Not a job cancelled mid-production: it holds material until settled, then it is the record of the waste.
+  const canDelete = (jo) => ['Queued', 'Cancelled'].includes(jo.joStatus) && !jo.materialsToSettle && !jo.materialsSettledAt;
   const confirmDelete = async () => {
     if (!deleting) return;
     setIsSubmitting(true); setDeleteErr('');
@@ -599,6 +604,7 @@ export default function JobOrdersPage() {
     inProgress: jobOrders.filter(j => j.joStatus === 'In Progress').length,
     forQc:      jobOrders.filter(j => j.joStatus === 'QC_Pending').length,
     completed:  jobOrders.filter(j => ['Completed', 'QC_Passed'].includes(j.joStatus)).length,
+    toSettle:   jobOrders.filter(j => j.joStatus === 'Cancelled' && j.materialsToSettle).length,
   };
 
   const filtered = jobOrders.filter(jo => {
@@ -608,7 +614,9 @@ export default function JobOrdersPage() {
       // QC Passed is finished work: the Completed tile above counts it, and the job is locked once
       // it gets there. Leaving it out of this list put 24 passed jobs under "Still to do" beside a
       // Queued tile that said 1.
-      if (['Completed', 'QC_Passed', 'Cancelled'].includes(jo.joStatus)) return false;
+      // A cancelled job that still owes its material count is not finished either.
+      if (['Completed', 'QC_Passed'].includes(jo.joStatus)) return false;
+      if (jo.joStatus === 'Cancelled' && !jo.materialsToSettle) return false;
     } else if (statusFilter && jo.joStatus !== statusFilter) return false;
     const q = search.toLowerCase();
     return !q || prodName(jo).toLowerCase().includes(q) || (jo.joId || '').toLowerCase().includes(q) || (jo.orderId || '').toLowerCase().includes(q);
@@ -639,6 +647,7 @@ export default function JobOrdersPage() {
           <SummaryCard label="In Progress" value={counts.inProgress} color="var(--gold)" />
           <SummaryCard label="For QC" value={counts.forQc} color="var(--st-purple-fg)" />
           <SummaryCard label="Completed" value={counts.completed} color="var(--st-green-fg)" />
+          {counts.toSettle > 0 && <SummaryCard label="To Settle" value={counts.toSettle} color="var(--st-orange-fg)" />}
         </div>
 
         )}
@@ -688,11 +697,13 @@ export default function JobOrdersPage() {
                     {slice.map((jo, i) => {
                       const risk = joRisk(jo);
                       return (
-                        <PhoneRow key={jo.id ?? jo._id} first={i === 0} onClick={mayEdit ? () => openEdit(jo) : undefined}
+                        <PhoneRow key={jo.id ?? jo._id} first={i === 0}
+                          onClick={jo.joStatus === 'Cancelled' && (jo.materialsToSettle || jo.materialsSettledAt) ? () => setSettling(jo) : mayEdit ? () => openEdit(jo) : undefined}
                           title={<>{jo.joId || (jo.id ?? jo._id)?.slice(-8).toUpperCase()} <RushBadge isRush={jo.isRush} /></>}
                           chip={<StatusBadge status={jo.joStatus} />}
                           meta={prodName(jo)}
                           sub={[
+                            jo.joStatus === 'Cancelled' && jo.materialsToSettle ? 'Settle materials' : null,
                             jo.product?.quantity != null ? `${jo.product.quantity} pcs` : null,
                             jo.orderId ? orderNo(jo.orderId) : null,
                             jo.targetCompletion ? `due ${fmtDate(jo.targetCompletion)}` : null,
@@ -747,9 +758,13 @@ export default function JobOrdersPage() {
                           return <div style={{ marginTop: 3 }}><span style={{ ...S.badge, ...RISK_STYLE[risk.color], fontSize: 9, fontWeight: 700 }}>{risk.label}</span></div>;
                         })()}
                       </td>
-                      <td data-label="Status" style={S.td}><StatusBadge status={jo.joStatus} /><WaitingBadge jo={jo} block /></td>
+                      <td data-label="Status" style={S.td}><StatusBadge status={jo.joStatus} /><WaitingBadge jo={jo} block />{(jo.materialsToSettle || jo.materialsSettledAt) && <div><SettleChip jo={jo} block /></div>}</td>
                       {hasActions && <td data-rt="actions" style={{ ...S.td, textAlign: 'right' }}>
-                        {mayEdit && <button onClick={() => openEdit(jo)} style={S.btnSmGhost}>{ICONS.edit} Edit</button>}
+                        {jo.joStatus === 'Cancelled' && jo.materialsToSettle && maySettle
+                          ? <button onClick={() => setSettling(jo)} style={S.btnSm}>Settle materials</button>
+                          : jo.joStatus === 'Cancelled' && jo.materialsSettledAt
+                            ? <button onClick={() => setSettling(jo)} style={S.btnSmGhost}>See count</button>
+                            : mayEdit && <button onClick={() => openEdit(jo)} style={S.btnSmGhost}>{ICONS.edit} Edit</button>}
                         {mayDelete && canDelete(jo) && <button onClick={() => { setDeleteErr(''); setDeleting(jo); }} style={{ ...S.btnSmGhost, marginLeft: 6, color: 'var(--st-red-fg)' }} title="Delete (test/junk only)">Delete</button>}
                       </td>}
                     </tr>
@@ -809,6 +824,9 @@ export default function JobOrdersPage() {
           </div>
         </div>
       )}
+
+      <SettleMaterialsModal jo={settling} open={!!settling} mayWork={maySettle}
+        onClose={() => setSettling(null)} onSettled={loadJobOrders} />
 
       <ConfirmModal
         open={!!joShortage}

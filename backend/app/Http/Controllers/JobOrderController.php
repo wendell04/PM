@@ -721,6 +721,11 @@ class JobOrderController extends Controller
             if (!in_array($jobOrder->joStatus, ['Queued', 'Cancelled'], true)) {
                 return $this->errorResponse('Only a Queued or Cancelled job order can be deleted. This one has started production - cancel it instead to keep its history.', 422);
             }
+            // Its material is still held for it. Deleting it now would leave that hold on the shelf
+            // for good, with nothing left to settle it from.
+            if (!empty($jobOrder->materialsToSettle) || !empty($jobOrder->materialsSettledAt)) {
+                return $this->errorResponse('This job order was cancelled mid-production and is the record of what was used. Settle its materials instead; it cannot be deleted.', 422);
+            }
 
             $orderId = (string) $jobOrder->orderId;
             $deletedJoId = $jobOrder->joId;
@@ -1381,8 +1386,11 @@ class JobOrderController extends Controller
                         'unitCost'     => $take > 0 ? round($lineCost / $take, 4) : 0,
                         'totalCost'    => round($lineCost, 2),
                         'reason'       => 'production_spoilage',
+                        // Stock Out History lists type 'deduction' and reads 'remarks'; without them
+                        // reported spoilage left the shelf and never showed where the owner looks.
+                        'type'         => 'deduction',
                         'reference'    => $jo->joId,
-                        'note'         => ucfirst($validated['kind']) . ' spoilage: ' . $reason,
+                        'remarks'      => ucfirst($validated['kind']) . ' spoilage - JO ' . $jo->joId . ': ' . $reason,
                         'createdAt'    => now(),
                     ]);
                 } catch (\Throwable $e) {
@@ -1522,4 +1530,137 @@ class JobOrderController extends Controller
         }
     }
 
+
+    /**
+     * What a cancelled job still holds: the line's materials for the pieces NOT yet passed at QC.
+     * A passed piece already took its material off the shelf and out of the hold (QC consumes per
+     * accepted unit), so counting the whole line again would release someone else's reservation.
+     */
+    private function unsettledMaterials(JobOrder $jo, \App\Models\Order $order): array
+    {
+        $idx     = (int) ($jo->itemIndex ?? 0);
+        $ordered = (int) ((($order->items ?? [])[$idx] ?? [])['qty'] ?? 0);
+        $left    = max(0, $ordered - (int) ($jo->acceptedQty ?? 0));
+        $rows = [];
+        foreach (app(OrderController::class)->lineMaterials($order, $idx) as $m) {
+            $q = $ordered > 0 ? (int) round($m['qty'] * $left / $ordered) : $m['qty'];
+            if ($q > 0) $rows[] = ['qty' => $q] + $m;
+        }
+        return $rows;
+    }
+
+    /**
+     * GET /api/admin/job-orders/{id}/settle-materials
+     * The material a cancelled-mid-production job held or needed, for the settle form.
+     */
+    public function settlePreview(Request $request, $id)
+    {
+        try {
+            if (!$this->hasAnyPermission($request, ['production.work', 'jobOrders.edit'])) {
+                return $this->unauthorizedResponse();
+            }
+            $jo = JobOrder::find($id);
+            if (!$jo) return $this->notFoundResponse('Job order');
+            $order = \App\Models\Order::find($jo->orderId);
+            if (!$order) return $this->notFoundResponse('Order');
+            $item = (array) (($order->items ?? [])[(int) ($jo->itemIndex ?? 0)] ?? []);
+            return $this->successResponse('Settlement preview.', [
+                'joId'        => $jo->joId,
+                'toSettle'    => (bool) ($jo->materialsToSettle ?? false),
+                'stage'       => $jo->cancelledFromStage ?? null,
+                'itemName'    => $item['productName'] ?? ($jo->productName ?? 'Item'),
+                'variantName' => $item['variantName'] ?? null,
+                'qty'         => (int) ($item['qty'] ?? 0),
+                'accepted'    => (int) ($jo->acceptedQty ?? 0),
+                'materials'   => $this->unsettledMaterials($jo, $order),
+                'settlement'  => $jo->materialsSettlement ?? null,
+            ]);
+        } catch (\Exception $e) {
+            return $this->serverErrorResponse($e, 'Failed to load the materials.');
+        }
+    }
+
+    /**
+     * POST /api/admin/job-orders/{id}/settle-materials  { usable: { inventoryId: qty } }
+     *
+     * The job was cancelled while being made or at QC. Whoever was at the bench says how much of
+     * each material is still usable: that goes back on the shelf, the rest is used up and written
+     * off as spoilage. Held material leaves its reservation either way. Cost-only material (never
+     * held, only deducted at QC) loses only what was used. Done once; audited.
+     */
+    public function settleMaterials(Request $request, $id)
+    {
+        try {
+            if (!$this->hasAnyPermission($request, ['production.work', 'jobOrders.edit'])) {
+                return $this->unauthorizedResponse();
+            }
+            $validated = $request->validate([
+                'usable'   => 'present|array',
+                'usable.*' => 'integer|min:0|max:1000000',
+            ]);
+            $jo = JobOrder::find($id);
+            if (!$jo) return $this->notFoundResponse('Job order');
+            if (empty($jo->materialsToSettle)) {
+                return $this->errorResponse('This job order has nothing to settle.', 422);
+            }
+            $order = \App\Models\Order::find($jo->orderId);
+            if (!$order) return $this->notFoundResponse('Order');
+
+            $user = $request->user();
+            $by   = trim(($user->firstName ?? '') . ' ' . ($user->lastName ?? '')) ?: ($user->email ?? 'staff');
+            $rows = [];
+            $backTotal = 0; $usedTotal = 0; $usedValue = 0.0;
+
+            foreach ($this->unsettledMaterials($jo, $order) as $m) {
+                $inv = Inventory::find($m['inventoryId']);
+                if (!$inv) continue;
+                $held   = (int) $m['qty'];
+                $usable = max(0, min($held, (int) ($validated['usable'][$m['inventoryId']] ?? 0)));
+                $used   = $held - $usable;
+                if (!$m['costOnly']) $inv->reservedQty = max(0, (int) ($inv->reservedQty ?? 0) - $held);
+                // Out of the oldest batches first, as QC does, so the batch ledger keeps matching the
+                // shelf; the cost written off is what those batches actually cost.
+                $usedCost = $used > 0 ? $this->drawFromBatches($inv, $used) : 0.0;
+                if ($used > 0) $inv->stockQty = max(0, (int) ($inv->stockQty ?? 0) - $used);
+                $inv->save();
+                if ($used > 0) {
+                    StockHistory::create([
+                        'inventoryId'  => (string) $inv->_id,
+                        'quantity'     => -$used,
+                        'remainingQty' => (int) ($inv->stockQty ?? 0),
+                        'unitCost'     => round($usedCost / $used, 4),
+                        'totalCost'    => round($usedCost, 2),
+                        'reason'       => 'production_spoilage',
+                        'type'         => 'deduction',
+                        'performedBy'  => $by,
+                        'orderId'      => (string) $order->_id,
+                        'customerName' => $order->userSnapshot['name'] ?? null,
+                        'productName'  => (($order->items ?? [])[(int) ($jo->itemIndex ?? 0)] ?? [])['productName'] ?? null,
+                        'reference'    => $jo->joId,
+                        'remarks'      => 'Cancelled mid-production (' . ($jo->cancelledFromStage ?? 'in production') . ') - used on ' . $jo->joId,
+                        'createdAt'    => now(),
+                    ]);
+                }
+                $rows[] = ['inventoryId' => $m['inventoryId'], 'name' => $m['name'], 'held' => $held, 'usable' => $usable, 'used' => $used];
+                $backTotal += $usable; $usedTotal += $used; $usedValue += $usedCost;
+            }
+
+            $jo->materialsToSettle   = false;
+            $jo->materialsSettledAt  = now();
+            $jo->materialsSettledBy  = $by;
+            $jo->materialsSettlement = $rows;
+            $jo->updatedAt           = now();
+            $jo->save();
+
+            $this->logActivity($request, 'job_order.materials_settled', 'job_order', (string) $jo->_id,
+                "Settled materials on cancelled {$jo->joId}: {$backTotal} back on the shelf, {$usedTotal} used up (P" . number_format($usedValue, 2) . ')',
+                ['rows' => $rows]);
+
+            return $this->successResponse('Materials settled.', ['rows' => $rows, 'back' => $backTotal, 'used' => $usedTotal, 'usedValue' => round($usedValue, 2)]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return $this->validationErrorResponse($e);
+        } catch (\Exception $e) {
+            return $this->serverErrorResponse($e, 'Failed to settle the materials.');
+        }
+    }
 }

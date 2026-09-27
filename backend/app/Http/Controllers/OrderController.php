@@ -2751,6 +2751,10 @@ class OrderController extends Controller
 
             $stages = $this->jobStagesFor($order);
             $rows   = [];
+            $joIds  = [];
+            foreach (\App\Models\JobOrder::where('orderId', (string) $order->_id)->get(['itemIndex', 'joId']) as $jo) {
+                if ($jo->itemIndex !== null) $joIds[(int) $jo->itemIndex] = $jo->joId;
+            }
 
             foreach (($order->items ?? []) as $itemIdx => $item) {
                 $product = Product::find($item['productId'] ?? null);
@@ -2764,25 +2768,8 @@ class OrderController extends Controller
                     : ($this->stageAlreadySettled($stage) ? 'none'
                         : ($this->stageConsumedMaterial($stage) ? 'consume' : 'release'));
 
-                $variantId = $item['variantId'] ?? null;
-                $bom       = $product->resolveBom($variantId);
-                $materials = [];
-
-                foreach (($bom->components ?? []) as $component) {
-                    $inv = Inventory::find($component['inventoryId'] ?? null);
-                    if (!$inv || $inv->isOnDemand) continue;
-                    $qty = (int) round(($component['qty'] ?? 0) * ($item['qty'] ?? 0));
-                    if ($qty <= 0) continue;
-
-                    $materials[] = [
-                        'inventoryId' => (string) $inv->_id,
-                        'name'        => $inv->name,
-                        'uom'         => $inv->uom,
-                        'qty'         => $qty,
-                        'onHand'      => (int) ($inv->stockQty ?? 0),
-                        'unitCost'    => round($this->unitCostOf($inv), 2),
-                    ];
-                }
+                // The same list the job order settles by: a quote line's picked materials, else the BOM.
+                $materials = $this->lineMaterials($order, (int) $itemIdx);
 
                 $rows[] = [
                     'itemIndex'   => (int) $itemIdx,
@@ -2791,6 +2778,7 @@ class OrderController extends Controller
                     'qty'         => (int) ($item['qty'] ?? 0),
                     'produced'    => $produced,
                     'jobStage'    => $stage,
+                    'joId'        => $joIds[(int) $itemIdx] ?? null,
                     'action'      => $action,
                     'materials'   => $materials,
                 ];
@@ -2804,6 +2792,36 @@ class OrderController extends Controller
         } catch (\Throwable $e) {
             return $this->serverErrorResponse($e, 'Failed to compute the cancellation settlement.');
         }
+    }
+
+    /**
+     * What one order line uses: [inventoryId, name, uom, qty, costOnly, unitCost]. A quote order
+     * carries the materials the owner picked on the quote (already the line's total); any other
+     * order uses the product's BOM times the quantity.
+     */
+    public function lineMaterials(Order $order, int $idx): array
+    {
+        $item = (array) (($order->items ?? [])[$idx] ?? []);
+        $rows = [];
+        // A quote order held only what was picked on the quote. Falling back to the BOM there would
+        // settle holds the order never placed and eat into another order's reservation.
+        $isQuote = isset($order->quoteDeductions) || !empty($order->quoteReservations);
+        $list = [];
+        if ($isQuote || !empty($item['materials'])) {
+            foreach ((array) ($item['materials'] ?? []) as $m) $list[] = [(string) ($m['inventoryId'] ?? ''), (float) ($m['qty'] ?? 0)];
+        } else {
+            $product = Product::find($item['productId'] ?? null);
+            $bom = $product?->resolveBom($item['variantId'] ?? null);
+            foreach (($bom->components ?? []) as $c) $list[] = [(string) ($c['inventoryId'] ?? ''), (float) ($c['qty'] ?? 0) * (int) ($item['qty'] ?? 0)];
+        }
+        foreach ($list as [$id, $qty]) {
+            $inv = $id !== '' ? Inventory::find($id) : null;
+            $q = (int) round($qty);
+            if (!$inv || $q <= 0) continue;
+            $rows[] = ['inventoryId' => (string) $inv->_id, 'name' => $inv->name, 'uom' => $inv->uom,
+                'qty' => $q, 'costOnly' => (bool) $inv->isOnDemand, 'unitCost' => round($this->unitCostOf($inv), 2)];
+        }
+        return $rows;
     }
 
     /** Material was pulled from the shelf and worked on, so it cannot go back. */
@@ -2828,6 +2846,18 @@ class OrderController extends Controller
     {
         // Every cancel path comes through here, so this is where the promotions go back too.
         PromotionRelease::forCancelledOrder($order);
+
+        // Lines whose job had started (being made, or at QC) are NOT settled here. Whoever cancels
+        // the order rarely knows what is on the bench; the job order does. Their material stays
+        // held, and the job order is marked "settle materials" - production records there what is
+        // still usable and what was used (JobOrderController::settleMaterials).
+        $deferred = [];
+        foreach (($order->items ?? []) as $idx => $it) {
+            $prod = Product::find($it['productId'] ?? null);
+            if ($prod && $this->lineIsProduced($prod, (array) $it) && $this->stageConsumedMaterial($jobStages[$idx] ?? null)) {
+                $deferred[(int) $idx] = true;
+            }
+        }
 
         try {
             foreach ($order->items as $item) {
@@ -2918,10 +2948,29 @@ class OrderController extends Controller
                     }
                 }
                 Backorder::releaseForCancel($order);
+                // Not everything recorded as held is still held. Pieces already passed at QC took
+                // their material out of the hold there, and a started job keeps the rest held until
+                // production settles it. Only what is left after both is released here.
+                $accepted = [];
+                foreach (\App\Models\JobOrder::where('orderId', (string) $order->_id)->get(['itemIndex', 'acceptedQty']) as $jo) {
+                    if ($jo->itemIndex !== null) $accepted[(int) $jo->itemIndex] = (int) ($jo->acceptedQty ?? 0);
+                }
+                $keepHeld = [];
+                foreach (($order->items ?? []) as $idx => $line) {
+                    $ordered = (int) ($line['qty'] ?? 0);
+                    $done    = min($ordered, $accepted[(int) $idx] ?? 0);
+                    $share   = $ordered > 0 ? $done / $ordered : 0;           // already taken at QC
+                    if (isset($deferred[(int) $idx])) $share = 1;             // the rest stays for the job
+                    if ($share <= 0) continue;
+                    foreach ((array) ($line['materials'] ?? []) as $m) {
+                        $id = (string) ($m['inventoryId'] ?? '');
+                        if ($id !== '') $keepHeld[$id] = ($keepHeld[$id] ?? 0) + (int) round((float) ($m['qty'] ?? 0) * $share);
+                    }
+                }
                 foreach ($order->quoteReservations ?? [] as $held) {
                     try {
                         $inv = Inventory::find($held['inventoryId'] ?? null);
-                        $qty = (int) ($held['qty'] ?? 0);
+                        $qty = (int) ($held['qty'] ?? 0) - (int) ($keepHeld[(string) ($held['inventoryId'] ?? '')] ?? 0);
                         if (!$inv || $inv->isOnDemand || $qty <= 0) continue;
                         $inv->reservedQty = max(0, (int) ($inv->reservedQty ?? 0) - $qty);
                         $inv->save();
@@ -2956,6 +3005,7 @@ class OrderController extends Controller
 
             // Restore BOM raw materials deducted at order creation
             foreach ($order->items as $itemIdx => $item) {
+                if (isset($deferred[(int) $itemIdx])) continue;   // settled on its job order
                 $bomProduct = Product::find($item['productId'] ?? null);
                 if (!$bomProduct) continue;
                 $variantId = $item['variantId'] ?? null;
@@ -2981,9 +3031,44 @@ class OrderController extends Controller
                 try {
                     foreach ($bom->components as $component) {
                         $rawInv = Inventory::find($component['inventoryId'] ?? null);
-                        if (!$rawInv || $rawInv->isOnDemand) continue;
+                        if (!$rawInv) continue;
                         $qty = (int) round(($component['qty'] ?? 0) * ($item['qty'] ?? 0));
                         if ($qty <= 0) continue;
+
+                        // Cost-only material (transfer paper, boxes, ink) is never reserved and only
+                        // comes off the shelf at QC. Cancelled before QC but after work began, some of
+                        // it WAS used - 5 sheets of transfer paper for 5 printed mugs - and skipping it
+                        // left those sheets on the books. What the bench says is still usable stays;
+                        // the rest is deducted now and recorded as spoilage.
+                        if ($rawInv->isOnDemand) {
+                            $stage = $jobStages[$itemIdx] ?? null;
+                            if (!$producedItem || !$this->stageConsumedMaterial($stage)) continue;
+                            $lineMap = $keepBack[(string) $itemIdx] ?? $keepBack[$itemIdx] ?? null;
+                            $claimed = is_array($lineMap) ? (int) ($lineMap[(string) $rawInv->_id] ?? 0) : 0;
+                            $used    = $qty - max(0, min($qty, $claimed));
+                            if ($used <= 0) continue;
+                            $rawInv->stockQty = max(0, (int) ($rawInv->stockQty ?? 0) - $used);
+                            $rawInv->save();
+                            StockHistory::create([
+                                'inventoryId'  => (string) $rawInv->_id,
+                                'quantity'     => $used,
+                                'remainingQty' => (int) ($rawInv->stockQty ?? 0),
+                                'unitCost'     => $this->unitCostOf($rawInv),
+                                'totalCost'    => round($this->unitCostOf($rawInv) * $used, 2),
+                                'reason'       => 'production_spoilage',
+                                'type'         => 'adjustment',
+                                'performedBy'  => 'system',
+                                'orderId'      => (string) $order->_id,
+                                'productId'    => (string) ($bomProduct->_id ?? ''),
+                                'productName'  => $bomProduct->name ?? '',
+                                'customerName' => $order->userSnapshot['name'] ?? '',
+                                'remarks'      => 'Cancelled mid-production (' . ($stage ?: 'in production')
+                                    . ') - cost-only material already used: ' . (string) $order->_id,
+                                'createdAt'    => now(),
+                            ]);
+                            continue;
+                        }
+
                         if ($producedItem) {
                             $stage = $jobStages[$itemIdx] ?? null;
 
@@ -3132,6 +3217,12 @@ class OrderController extends Controller
                 ->get();
 
             foreach ($jobOrders as $jobOrder) {
+                // Work had begun: its material is settled on the job order by production.
+                if ($this->stageConsumedMaterial($jobOrder->joStatus)
+                    && $this->lineMaterials($order, (int) ($jobOrder->itemIndex ?? 0)) !== []) {
+                    $jobOrder->materialsToSettle = true;
+                    $jobOrder->cancelledFromStage = $jobOrder->joStatus;
+                }
                 $jobOrder->joStatus  = 'Cancelled';
                 $jobOrder->updatedAt = now();
                 $jobOrder->save();

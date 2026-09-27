@@ -33,6 +33,9 @@ class StockHistory extends Model
         'productId',
         'productName',
         'customerName',
+        // The job order a production write-off belongs to. Written by QC scrap, spoilage and the
+        // cancelled-job settle for a long time before it was listed here, so it was dropped.
+        'reference',
         'createdAt',
     ];
 

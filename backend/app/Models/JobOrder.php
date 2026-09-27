@@ -9,7 +9,7 @@ class JobOrder extends Model
     // Every create, change and delete by a signed-in person lands in the audit trail.
     use \App\Models\Concerns\Auditable;
     protected string $auditEntity = 'job_order';
-    protected array $auditIgnore = ['materialsPulled', 'materialsConsumed', 'bomSnapshot', 'qcHistory', 'bomVerified', 'materialShortAt'];
+    protected array $auditIgnore = ['materialsPulled', 'materialsConsumed', 'bomSnapshot', 'qcHistory', 'bomVerified', 'materialShortAt', 'materialsSettlement', 'materialsSettledAt', 'materialsSettledBy', 'cancelledFromStage'];
 
     protected $connection = 'mongodb';
     protected $collection = 'job_orders';

@@ -5,6 +5,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useAccess } from '@/contexts/AccessContext';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import { fetchJobOrders, updateJobOrder, reportSpoilage } from '@/lib/jobOrderApi';
+import SettleMaterialsModal, { SettleChip } from '@/components/dashboard/SettleMaterials';
 import { orderNo } from '@/lib/orderNumber';
 import ImageLightbox from '@/components/shop/ImageLightbox';
 import { joRisk, RISK_STYLE } from '@/lib/deliveryRisk';
@@ -95,13 +96,17 @@ export default function ProductionPage() {
     finally { advancing.current = false; setBusyId(null); }
   };
 
-  const active = jobs.filter(j => !['Completed', 'Cancelled', 'QC_Passed'].includes(j.joStatus));
+  // A job cancelled mid-production stays on the bench list until its material is counted.
+  const toSettle = (j) => j.joStatus === 'Cancelled' && !!j.materialsToSettle;
+  const active = jobs.filter(j => toSettle(j) || !['Completed', 'Cancelled', 'QC_Passed'].includes(j.joStatus));
+  const [settling, setSettling] = useState(null);
   const counts = {
     queued:     jobs.filter(j => j.joStatus === 'Queued').length,
     inProgress: jobs.filter(j => j.joStatus === 'In Progress').length,
     forQc:      jobs.filter(j => j.joStatus === 'QC_Pending').length,
     rework:     jobs.filter(j => j.joStatus === 'QC_Failed').length,
-    late:       active.filter(j => joRisk(j)?.level === 'overdue').length,
+    late:       active.filter(j => !toSettle(j) && joRisk(j)?.level === 'overdue').length,
+    settle:     jobs.filter(toSettle).length,
   };
 
   const filtered = active.filter(j => {
@@ -138,6 +143,7 @@ export default function ProductionPage() {
           <SummaryCard label="For QC" value={counts.forQc} color="var(--st-purple-fg)" />
           <SummaryCard label="Rework" value={counts.rework} color="var(--st-red-fg)" />
           <SummaryCard label="Past Due" value={counts.late} color={counts.late > 0 ? 'var(--st-red-fg)' : undefined} />
+          {counts.settle > 0 && <SummaryCard label="To Settle" value={counts.settle} color="var(--st-orange-fg)" />}
         </div>
 
         <div style={{ ...S.card, ...S.rowBetween, marginBottom: '10px', padding: '12px 16px' }}>
@@ -170,6 +176,20 @@ export default function ProductionPage() {
                   const act = j.joStatus === 'Queued' ? { to: 'In Progress', label: 'Start' }
                     : j.joStatus === 'In Progress' ? { to: 'QC_Pending', label: 'Send to QC' }
                     : j.joStatus === 'QC_Failed' ? { to: 'In Progress', label: 'Redo' } : null;
+                  if (toSettle(j)) return (
+                    <div key={id} style={{ borderTop: i === 0 ? 'none' : '1px solid var(--border)' }}>
+                      <PhoneRow first onClick={() => setSettling(j)}
+                        title={<>{j.joId || '-'}</>}
+                        chip={<JobOrderStatusBadge status={j.joStatus} />}
+                        meta={prodName(j)}
+                        sub={['Order cancelled - count what is left', j.orderId ? orderNo(j.orderId) : null].filter(Boolean).join(' \u00b7 ')} />
+                      {mayWork && (
+                        <div style={{ padding: '0 12px 10px 14px' }}>
+                          <button onClick={() => setSettling(j)} style={{ ...S.btnPrimary, width: '100%', minHeight: 44, justifyContent: 'center' }}>Settle materials</button>
+                        </div>
+                      )}
+                    </div>
+                  );
                   return (
                     <div key={id} style={{ borderTop: i === 0 ? 'none' : '1px solid var(--border)' }}>
                       <PhoneRow first onClick={() => setDetail(j)}
@@ -218,7 +238,7 @@ export default function ProductionPage() {
                 const id = idOf(j); const busy = busyId === id;
                 const risk = joRisk(j);
                 return (
-                  <tr key={id} style={{ ...S.tr, cursor: 'pointer' }} onClick={() => setDetail(j)}
+                  <tr key={id} style={{ ...S.tr, cursor: 'pointer' }} onClick={() => toSettle(j) ? setSettling(j) : setDetail(j)}
                     title="Open this job order">
                     <td style={{ ...S.td, fontFamily: 'monospace', fontWeight: 600 }}>
                       {j.joId || '-'}
@@ -254,7 +274,7 @@ export default function ProductionPage() {
                         const ordered = Number(j.product?.quantity ?? 0);
                         const done    = Number(j.acceptedQty ?? 0);
                         const left    = Math.max(0, ordered - done);
-                        if (!ordered) return '-';
+                        if (!ordered || toSettle(j)) return '-';
                         return (
                           <>
                             <span style={{ fontWeight: 700, color: done > 0 ? 'var(--gold)' : 'var(--white)' }}>{left}</span>
@@ -272,8 +292,9 @@ export default function ProductionPage() {
                       {fmtJODate(j.targetCompletion)}
                       {risk && <div style={{ marginTop: 3 }}><span style={{ ...S.badge, ...RISK_STYLE[risk.color], fontSize: 9, fontWeight: 700 }}>{risk.label}</span></div>}
                     </td>
-                    <td style={S.td}><JobOrderStatusBadge status={j.joStatus} /><WaitingBadge jo={j} block /></td>
+                    <td style={S.td}><JobOrderStatusBadge status={j.joStatus} /><WaitingBadge jo={j} block />{toSettle(j) && <div><SettleChip jo={j} block /></div>}</td>
                     {mayWork && (<td style={{ ...S.td, textAlign: 'right' }} onClick={e => e.stopPropagation()}>
+                      {toSettle(j) && <button onClick={() => setSettling(j)} style={S.btnSm}>Settle materials</button>}
                       {j.joStatus === 'Queued' && <button disabled={busy} onClick={e => { e.stopPropagation(); setConfirmAct({ jo: j, to: 'In Progress' }); }} style={S.btnSm}>{busy ? 'Saving…' : 'Start'}</button>}
                       {j.joStatus === 'In Progress' && <button disabled={busy} onClick={e => { e.stopPropagation(); setConfirmAct({ jo: j, to: 'QC_Pending' }); }} style={S.btnSm}>{busy ? 'Saving…' : 'Send to QC'}</button>}
                       {j.joStatus === 'QC_Pending' && <span style={{ fontSize: '12px', color: 'var(--gray)' }}>Awaiting QC</span>}
@@ -288,6 +309,9 @@ export default function ProductionPage() {
         <PaginationBar total={total} page={page} perPage={perPage} onPage={setPage} onPerPage={setPerPage} />
         </>)}
       </div>
+
+      <SettleMaterialsModal jo={settling} open={!!settling} mayWork={mayWork}
+        onClose={() => setSettling(null)} onSettled={load} />
 
       {detail && (
         <JobDetail

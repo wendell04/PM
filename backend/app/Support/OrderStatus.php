@@ -64,7 +64,9 @@ class OrderStatus
             // the QC gate and by the Job Order requirement, not by this table.
             self::PROCESSING         => [self::IN_PRODUCTION, self::FOR_DELIVERY, self::CANCELLED],
             self::IN_PRODUCTION      => [self::FOR_QC, self::CANCELLED],
-            self::FOR_QC             => [self::READY_FOR_DELIVERY, self::FOR_DELIVERY, self::IN_PRODUCTION],
+            // Cancellable at QC like either side of it: the jobs' material is settled on the job
+            // orders by production (JobOrderController::settleMaterials).
+            self::FOR_QC             => [self::READY_FOR_DELIVERY, self::FOR_DELIVERY, self::IN_PRODUCTION, self::CANCELLED],
             self::READY_FOR_DELIVERY => [self::FOR_DELIVERY, self::CANCELLED],
             self::FOR_DELIVERY       => [self::DELIVERED, self::RETURNED],
             // A delivered order can still come back - damaged, wrong item, or refused on the

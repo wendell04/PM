@@ -411,6 +411,9 @@ Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
 
     // ─── QC Endpoint ───────────────────────────────────────────────────────────────────────────
     Route::post('/admin/job-orders/{id}/spoilage',                    [JobOrderController::class, 'reportSpoilage']);
+    // A job cancelled mid-production: what of its material is still usable, and what was used.
+    Route::get('/admin/job-orders/{id}/settle-materials',             [JobOrderController::class, 'settlePreview']);
+    Route::post('/admin/job-orders/{id}/settle-materials',            [JobOrderController::class, 'settleMaterials'])->middleware('throttle:20,1');
     Route::post('/admin/job-orders/{id}/production-files',            [JobOrderController::class, 'uploadProductionFiles']);
     Route::delete('/admin/job-orders/{id}/production-files/{index}', [JobOrderController::class, 'deleteProductionFile']);
     Route::post('/admin/job-orders/{id}/qc',          [JobOrderController::class, 'submitQC']);

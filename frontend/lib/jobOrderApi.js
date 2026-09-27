@@ -192,3 +192,29 @@ export async function reportSpoilage(token, id, { quantity, kind, reason, materi
   if (!res.ok) throw new Error(d.message || d.error || 'Failed to record spoilage');
   return d.data ?? d;
 }
+
+/**
+ * A job cancelled while being made or at QC: the material it held or needed, for production to
+ * say what is still usable. `settle` sends { inventoryId: usableQty }; the rest is written off.
+ */
+export async function fetchSettlePreview(token, id) {
+  const res = await fetchWithTimeout(`${API_URL}/api/admin/job-orders/${id}/settle-materials`, {
+    headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+  }, 20000);
+  if (res.status === 401) throw new Error('Unauthorized');
+  const d = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(d.message || 'Failed to load the materials');
+  return d.data ?? d;
+}
+
+export async function settleMaterials(token, id, usable) {
+  const res = await fetchWithTimeout(`${API_URL}/api/admin/job-orders/${id}/settle-materials`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, Accept: 'application/json' },
+    body: JSON.stringify({ usable }),
+  }, 20000, 0);
+  if (res.status === 401) throw new Error('Unauthorized');
+  const d = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(d.message || 'Failed to settle the materials');
+  return d.data ?? d;
+}

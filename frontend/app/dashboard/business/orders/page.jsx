@@ -815,9 +815,11 @@ function getAvailableStatuses(o) {
       awaiting_production: ['Cancelled'],
       processing:          ['Cancelled'],
       Processing:          ['Cancelled'],
-      in_production:       ['for_qc'],
-      'In Production':     ['for_qc'],
-      for_qc:              ['ready_for_delivery'],
+      // Cancellable until it ships. Material already on the bench is settled on the job order by
+      // production, so cancelling mid-production no longer has to guess what was used.
+      in_production:       ['for_qc', 'Cancelled'],
+      'In Production':     ['for_qc', 'Cancelled'],
+      for_qc:              ['ready_for_delivery', 'Cancelled'],
       ready_for_delivery:  ['For Delivery'],
       for_delivery:        ['Delivered', 'Returned'],
       'For Delivery':      ['Delivered', 'Returned'],
@@ -840,7 +842,7 @@ function getAvailableStatuses(o) {
       Pending:        ['Processing', 'Cancelled'],
       Processing:     ['In Production', 'For Delivery', 'Cancelled'],
       'In Production': ['for_qc', 'Cancelled'],
-      for_qc:         ['ready_for_delivery'],
+      for_qc:         ['ready_for_delivery', 'Cancelled'],
       ready_for_delivery: ['For Delivery'],
       'For Delivery': ['Delivered', 'Returned'],
       Delivered:      ['Returned'],
@@ -1080,7 +1082,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
     for_delivery:       { title: 'Send this out?',           label: 'Send it out',        body: 'The customer is notified that their order is on the way.' },
     delivered:          { title: 'Mark as delivered?',       label: 'Mark delivered',     body: 'This closes the sale. It counts as revenue in Reports, the customer is asked to leave a review, and the only way back is to mark the order Returned.', danger: true },
     returned:           { title: 'Mark as returned?',        label: 'Mark returned',      body: 'The sale is reversed. If you ticked that the goods came back sellable, ready-made items go back into stock. Personalised items never do.', danger: true },
-    cancelled:          { title: 'Cancel this order?',       label: 'Yes, cancel it',     body: 'Reserved material is released back to stock and the customer is notified. Any deposit is handled under the cancellation terms they accepted. This cannot be undone.', danger: true },
+    cancelled:          { title: 'Cancel this order?',       label: 'Yes, cancel it',     body: 'The customer is notified. Any deposit is handled under the cancellation terms they accepted. This cannot be undone.', danger: true },
     awaiting_payment:   { title: 'Ask for payment?',         label: 'Request payment',    body: 'The customer is asked to pay before this goes any further.' },
   };
   const statusCopy = (v) => {
@@ -1287,7 +1289,6 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
   // so the modal shows the plan the code follows instead of a guess that can contradict it.
   const [settlement,     setSettlement]     = useState(null);
   const [settlementErr,  setSettlementErr]  = useState('');
-  const [keepBack,       setKeepBack]       = useState({});
 
   useEffect(() => {
     if (String(selStatus).toLowerCase() !== 'cancelled') return;
@@ -1305,16 +1306,6 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
         if (dropped) return;
         const plan = d?.data ?? d;
         setSettlement(plan);
-        // Written off by default - the safe direction. The shop assumes the material is spent and
-        // the person at the bench says otherwise, rather than inventing stock nobody has.
-        const seed = {};
-        (plan?.items ?? []).forEach(row => {
-          if (row.action !== 'consume') return;
-          // Keyed by LINE and material. The same material can sit on two lines of one order, and
-          // one shared key meant a figure typed for one line was silently applied to the other.
-          (row.materials ?? []).forEach(m => { seed[`${row.itemIndex}:${m.inventoryId}`] = 0; });
-        });
-        setKeepBack(seed);
       } catch (err) {
         if (!dropped) setSettlementErr(err.message || 'Could not work out what cancelling would do.');
       }
@@ -1322,20 +1313,9 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
     return () => { dropped = true; };
   }, [selStatus, lo.id, token]);
 
-  // Only lines whose material was already pulled onto the bench are a question. A released
-  // reservation comes back whole, and a settled job has nothing left to give.
+  // Lines whose job had started. Their material is not settled here: the job order is marked
+  // "settle materials" and production counts what is left at the bench (Job Orders / Production).
   const consumeRows = (settlement?.items ?? []).filter(r => r.action === 'consume');
-  const settlementSummary = (() => {
-    let back = 0, off = 0, offValue = 0;
-    consumeRows.forEach(r => (r.materials ?? []).forEach(m => {
-      const survived = Math.min(Math.max(0, Number(keepBack[`${r.itemIndex}:${m.inventoryId}`] ?? 0)), m.qty);
-      const spoiled  = m.qty - survived;
-      back += survived;
-      off  += spoiled;
-      offValue += spoiled * (m.unitCost || 0);
-    }));
-    return { back, off, offValue };
-  })();
 
   const handleWaiveRefund = async (reason) => {
     if (!reason || !reason.trim()) return;
@@ -1405,17 +1385,6 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
       if (String(selStatus).toLowerCase() === 'cancelled') {
         payload.cancelReason = cancelReason === 'Other' ? cancelOther.trim() : cancelReason;
         if (refundAmt !== '') payload.refundAmount = Number(refundAmt);
-        // Sent only when something actually survived. Absent, the backend writes off the whole held
-        // amount exactly as it did before this modal existed.
-        // Sent as { lineIndex: { materialId: qty } } so each line settles its own material.
-        const survived = Object.entries(keepBack)
-          .filter(([, n]) => Number(n) > 0)
-          .reduce((acc, [key, n]) => {
-            const [idx, id] = key.split(':');
-            (acc[idx] ??= {})[id] = Number(n);
-            return acc;
-          }, {});
-        if (Object.keys(survived).length) payload.stockSettlement = survived;
       }
       const res = await fetchWithTimeout(`${API_URL}/api/admin/orders/${lo.id}`, {
         method:'PUT', headers:{ 'Content-Type':'application/json', Authorization:`Bearer ${token}` },
@@ -2706,72 +2675,17 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                     )}
 
                     {consumeRows.length > 0 && (
-                      <div style={{ marginTop:'4px', padding:'10px 12px', borderRadius:'6px',
-                        background:'rgba(212,168,67,0.05)', border:'1px solid rgba(212,168,67,0.25)' }}>
-                        <div style={{ fontSize:'12px', fontWeight:700, color:'var(--white)', marginBottom:'3px' }}>
-                          Production had started - what happens to the material?
-                        </div>
-                        <div style={{ fontSize:'11.5px', color:'var(--gray)', lineHeight:1.5, marginBottom:'9px' }}>
-                          For each one, say how many can go <b style={{ color:'var(--white)' }}>back on the shelf</b>.
-                          The rest is recorded as used and written off. Example: 10 mugs were held and 5 were
-                          already printed - put 5 back; the 10 boxes were never opened - press All.
-                        </div>
-
-                        {consumeRows.map(row => (
-                          <div key={row.itemIndex} style={{ marginBottom:'10px' }}>
-                            <div style={{ fontSize:'11px', fontWeight:700, color:'var(--gray)',
-                              textTransform:'uppercase', letterSpacing:'.4px', marginBottom:'5px' }}>
-                              {row.itemName}{row.variantName ? ` - ${row.variantName}` : ''} &times;{row.qty}
-                              {row.jobStage ? ` - ${({ 'In Progress': 'being made', QC_Pending: 'waiting for QC', QC_Failed: 'failed QC, being redone' })[row.jobStage] || row.jobStage}` : ''}
-                            </div>
-                            {(row.materials ?? []).map(m => (
-                              <div key={`${row.itemIndex}-${m.inventoryId}`}
-                                style={{ display:'flex', alignItems:'center', gap:'8px', padding:'4px 0' }}>
-                                <div style={{ flex:1, minWidth:0, fontSize:'12px', color:'var(--white)',
-                                  overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
-                                  {m.name}
-                                </div>
-                                <div style={{ fontSize:'11px', color:'var(--gray)', whiteSpace:'nowrap' }}>
-                                  held {m.qty}{m.uom ? ` ${m.uom}` : ''}
-                                </div>
-                                <label htmlFor={`kb-${row.itemIndex}-${m.inventoryId}`} style={{ fontSize:'11px', color:'var(--gray)', whiteSpace:'nowrap' }}>
-                                  back on shelf
-                                </label>
-                                <input
-                                  id={`kb-${row.itemIndex}-${m.inventoryId}`}
-                                  value={keepBack[`${row.itemIndex}:${m.inventoryId}`] ?? 0}
-                                  onChange={e => {
-                                    const raw = e.target.value.replace(/[^0-9]/g, '');
-                                    // Capped at what this line actually held, so a mistyped figure
-                                    // cannot invent stock the shop never had.
-                                    const n = raw === '' ? '' : Math.min(Number(raw), m.qty);
-                                    setKeepBack(p => ({ ...p, [`${row.itemIndex}:${m.inventoryId}`]: n }));
-                                  }}
-                                  inputMode="numeric" maxLength={6}
-                                  style={{ ...S.input, width:'72px', textAlign:'center', padding:'5px 6px' }} />
-                                <button type="button" onClick={() => setKeepBack(p => ({ ...p, [`${row.itemIndex}:${m.inventoryId}`]: m.qty }))}
-                                  style={{ ...S.btnSmGhost, padding:'4px 9px', fontSize:'11px' }}>All</button>
-                                <button type="button" onClick={() => setKeepBack(p => ({ ...p, [`${row.itemIndex}:${m.inventoryId}`]: 0 }))}
-                                  style={{ ...S.btnSmGhost, padding:'4px 9px', fontSize:'11px' }}>None</button>
-                                <span style={{ fontSize:'11px', whiteSpace:'nowrap', minWidth:'78px', textAlign:'right',
-                                  color: (m.qty - (Number(keepBack[`${row.itemIndex}:${m.inventoryId}`]) || 0)) > 0 ? 'var(--st-red-fg)' : 'var(--st-green-fg)' }}>
-                                  {m.qty - (Number(keepBack[`${row.itemIndex}:${m.inventoryId}`]) || 0)} used up
-                                </span>
-                              </div>
-                            ))}
+                      <div style={{ marginTop:'4px', display:'flex', flexDirection:'column', gap:'4px' }}>
+                        {consumeRows.map(r => (
+                          <div key={`st-${r.itemIndex}`} style={{ fontSize:'11.5px', lineHeight:1.5, color:'var(--gray)',
+                            padding:'7px 10px', borderRadius:'6px', border:'1px solid rgba(212,168,67,0.35)', background:'rgba(212,168,67,0.05)' }}>
+                            <b style={{ color:'var(--white)' }}>{r.itemName}{r.variantName ? ` - ${r.variantName}` : ''} &times;{r.qty}</b>
+                            {` - ${({ 'In Progress': 'being made', QC_Pending: 'waiting for QC', QC_Failed: 'failed QC, being redone' })[r.jobStage] || 'production had started'}. `}
+                            Its material stays held. Production counts what is still usable on the job order
+                            {r.joId ? <> (<b style={{ color:'var(--white)' }}>{r.joId}</b>)</> : null} under
+                            {' '}<b style={{ color:'var(--white)' }}>Settle materials</b>; the rest is recorded as used up there.
                           </div>
                         ))}
-
-                        <div style={{ display:'flex', justifyContent:'space-between', gap:'10px', paddingTop:'8px',
-                          borderTop:'1px solid var(--border)', fontSize:'12px' }}>
-                          <span style={{ color:'var(--gray)' }}>
-                            Back to stock <b style={{ color:'var(--white)' }}>{settlementSummary.back}</b>
-                          </span>
-                          <span style={{ color:'var(--gray)' }}>
-                            Written off <b style={{ color:'var(--st-red-fg)' }}>{settlementSummary.off}</b>
-                            {settlementSummary.offValue > 0 && ` (\u20B1${fmt(settlementSummary.offValue)})`}
-                          </span>
-                        </div>
                       </div>
                     )}
 
@@ -3398,11 +3312,22 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                 && remainingDue(lo) > 0
                   ? ` This is a Cash on Delivery order, so it will also be marked PAID and ₱${fmt(remainingDue(lo))} recorded as collected by the rider.`
                   : '')
+            /* What happens to the material, per stage, from the same plan the panel shows. */
+            + (normalizeStatus(selStatus) === 'cancelled' && settlement?.items?.length
+                ? (() => {
+                    const acts = new Set(settlement.items.map(r => r.action));
+                    return [
+                      acts.has('release') ? ' Material held for items not started yet goes back on the shelf.' : '',
+                      acts.has('restock') ? ' Ready-made items go back on the shelf.' : '',
+                      acts.has('consume') ? ' Items already in production keep their material held until production counts it under Settle materials on the job order.' : '',
+                      acts.has('none')    ? ' Items that already passed QC keep their material used up.' : '',
+                    ].join('');
+                  })()
+                : '')
             /* Cancelling an order somebody has already paid into is a money decision, and the
                generic line about "the cancellation terms they accepted" does not read as one. */
             + (normalizeStatus(selStatus) === 'cancelled' && paidSoFar(lo) > 0
                 ? ` This customer has already paid ₱${fmt(paidSoFar(lo))}, so cancelling decides what happens to it - set a refund below, or leave it blank to return everything.`
-                  + (hasAnyJobOrder ? ' The goods are already made, so the material does not come back either.' : '')
                   + ' If you only want it off your working list while you wait for the balance, Archive it instead - the order, the balance and the record all stay, and it comes back the moment they pay.'
                 : '')
             /* Sending it out closes the customer's online payment for the delivery fee. Who

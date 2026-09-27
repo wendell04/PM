@@ -75,6 +75,7 @@ class ActivityLog extends Model
         'order_cancelled_by_customer'         => ['Customer cancelled',        'orders'],
         'order_request_cancelled_by_customer' => ['Customer cancelled a quote', 'orders'],
         'job_order_deleted'                   => ['Deleted a job order',       'orders'],
+        'job_order.materials_settled'         => ['Settled a cancelled job order', 'stock'],
         'design_approved'                     => ['Approved a design',         'orders'],
         'design_rejected'                     => ['Rejected a design',         'orders'],
         'design_draft_uploaded'               => ['Sent a proof',              'orders'],
