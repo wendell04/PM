@@ -40,6 +40,10 @@ export const DEFAULT_CUSTOM_ORDER_TERMS = [
   { title: 'Design revisions', mode: 'request', body: 'Your design fee includes {freeRevisions} revision rounds. Each further round costs {extraRevisionFee} and is added to your order balance. We can take at most {maxRevisions} rounds online; beyond that, message us and we will work it out with you directly.' },
   // What the system already does (orders:expire-unpaid-proofs), said where the customer agrees to
   // it. A cancellation the contract never mentioned is one the customer can fairly dispute.
+  // What orders:expire-unpaid-proofs does with a proof nobody answers. It only ever acts on an order
+  // whose accepted terms carry this clause - the title is what it looks for - so orders placed
+  // before it existed are never closed by a rule their customer did not agree to.
+  { title: 'If you do not answer a proof', mode: 'request', body: 'We wait {proofReplyDays} days for your answer to each proof, and remind you the day before. If by then you have neither approved it nor asked for changes, the order is closed: nothing is made, anything held for it is released, and the design fee stays with the designer for the work already done. Ask for more time in chat and we will hold it.' },
   { title: 'Paying after you approve', mode: 'request', body: 'Once you approve the proof, the goods fall due. Pay the downpayment or the full amount in My Orders within {depositDueDays} days - we remind you the day before. If it is still unpaid after that, the order is cancelled automatically, the materials held for it are released, and the design fee stays with the designer for the work already done.' },
   // Proof links are emailed and answered without signing in; this makes that answer binding.
   { title: 'Approving by email', mode: 'request', body: 'Every proof we send also arrives by email with a link. Approving it, or asking for changes, through that link counts exactly the same as doing it in My Orders. The link works for two weeks; after that, open the order in My Orders to see the latest proof.' },
@@ -98,6 +102,7 @@ export function renderTermsBody(body, settings) {
     extraRevisionFee: peso(settings?.extraRevisionFee   ?? 50),
     designRequestFee: peso(settings?.designRequestFee   ?? 100),
     depositDueDays:   String(settings?.depositDueDays   ?? 7),
+    proofReplyDays:   String(settings?.proofReplyDays   ?? 14),
     unpaidReadyHoldDays: String(settings?.unpaidReadyHoldDays ?? 14),
     refundDays:       String(settings?.refundDays       ?? 7),
     productionLeadDays: String(settings?.productionLeadDays ?? 3),

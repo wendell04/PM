@@ -67,6 +67,7 @@ const GROUP_TONE = {
   people:   { fg: 'var(--st-amber-fg)',  bg: 'var(--st-amber-bg)' },
   orders:   { fg: 'var(--st-blue-fg)',   bg: 'var(--st-blue-bg)' },
   money:    { fg: 'var(--st-orange-fg)', bg: 'var(--st-orange-bg)' },
+  stock:    { fg: 'var(--st-red-fg)',    bg: 'var(--st-red-bg)' },
   catalog:  { fg: 'var(--st-blue-fg)',   bg: 'var(--st-blue-bg)' },
   settings: { fg: 'var(--st-purple-fg)', bg: 'var(--st-purple-bg)' },
 };
@@ -231,9 +232,10 @@ export default function AuditLogsPage() {
         <div style={{ ...S.card, padding: '12px 16px', marginBottom: 16, fontSize: 12.5, color: 'var(--gray-light)', lineHeight: 1.6 }}>
           <b style={{ color: 'var(--white)' }}>The audit trail</b> is who did what in this system, from
           where, and when: every sign-in and every one that was refused, passwords and 2FA, staff added
-          or removed, permissions widened, settings moved, orders and money touched. Opening this page
-          is recorded too. For where the <i>material</i> went - stock in, stock out, corrections -
-          that is Inventory, not here.
+          or removed, permissions widened, settings moved (from what, to what), orders and money
+          touched, and stock changed by hand - write-offs, damage, corrections. Opening this page is
+          recorded too. Stock that moves on its own with orders (reserved, used in production) is in
+          Inventory's history.
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>
@@ -426,9 +428,7 @@ export default function AuditLogsPage() {
                       {l.metadata && Object.keys(l.metadata).length > 0 && (
                         <div style={{ marginTop: 3 }}>
                           <span style={{ color: 'var(--gray)' }}>Details:</span>
-                          <div style={{ marginTop: 3, padding: '7px 9px', background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: 7, fontFamily: 'monospace', fontSize: 11, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-                            {JSON.stringify(l.metadata, null, 2)}
-                          </div>
+                          <MetadataView meta={l.metadata} />
                         </div>
                       )}
                     </div>
@@ -470,9 +470,7 @@ export default function AuditLogsPage() {
                 {l.metadata && Object.keys(l.metadata).length > 0 && (
                   <div style={{ padding: '10px 0' }}>
                     <div style={{ fontSize: 12, color: 'var(--gray)', marginBottom: 5 }}>Details</div>
-                    <div style={{ padding: '8px 10px', background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: 8, fontFamily: 'monospace', fontSize: 11.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-                      {JSON.stringify(l.metadata, null, 2)}
-                    </div>
+                    <MetadataView meta={l.metadata} />
                   </div>
                 )}
               </div>
@@ -496,5 +494,47 @@ export default function AuditLogsPage() {
         <style>{`@keyframes pmPulse { 0%, 100% { opacity: 1 } 50% { opacity: .45 } }`}</style>
       </div>
     </ErrorBoundary>
+  );
+}
+
+/**
+ * An entry's details, read the way a person asks about them: what changed from what to what.
+ * Settings saves carry `changes` ([{ field, from, to }]); terms saves carry the clauses added,
+ * removed and reworded. Anything else still shows as data, so nothing recorded is ever hidden.
+ */
+function MetadataView({ meta }) {
+  // name: an automatic create/delete entry carries the record's name, already in the sentence above.
+  const { changes, added, removed, reworded, name: _name, ...rest } = meta || {};
+  const box = { marginTop: 3, padding: '7px 9px', background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: 7, fontSize: 12 };
+  const list = (label, items) => Array.isArray(items) && items.length > 0 && (
+    <div style={{ marginTop: 3 }}><span style={{ color: 'var(--gray)' }}>{label}:</span> {items.join(', ')}</div>
+  );
+  return (
+    <>
+      {(Array.isArray(changes) && changes.length > 0 || [added, removed, reworded].some(a => Array.isArray(a) && a.length)) && (
+        <div style={box}>
+          {Array.isArray(changes) && changes.map((c, i) => (
+            <div key={i} style={{ display: 'flex', flexWrap: 'wrap', gap: 6, padding: '2px 0' }}>
+              <span style={{ fontWeight: 600, color: 'var(--white)' }}>{c.field}:</span>
+              {c.said ? (
+                <span style={{ color: 'var(--white)', wordBreak: 'break-word' }}>{c.said}</span>
+              ) : (<>
+                <span style={{ color: 'var(--st-red-fg)', textDecoration: 'line-through', wordBreak: 'break-word' }}>{c.from}</span>
+                <span style={{ color: 'var(--gray)' }}>{'->'}</span>
+                <span style={{ color: 'var(--st-green-fg)', wordBreak: 'break-word' }}>{c.to}</span>
+              </>)}
+            </div>
+          ))}
+          {list('Added', added)}
+          {list('Removed', removed)}
+          {list('Reworded', reworded)}
+        </div>
+      )}
+      {Object.keys(rest).length > 0 && (
+        <div style={{ ...box, fontFamily: 'monospace', fontSize: 11, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+          {JSON.stringify(rest, null, 2)}
+        </div>
+      )}
+    </>
   );
 }

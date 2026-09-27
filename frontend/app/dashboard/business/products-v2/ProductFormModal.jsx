@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import { S, ICONS, Field, IntegerInput, DecimalInput, Modal, ConfirmModal, Note, formatCurrency, uid } from '../inventory-v2/shared';
 import { PRODUCT_CATEGORIES } from './mock-data';
+import { scrollToFirstError } from '@/lib/scrollToError';
 
 const EMPTY_VARIANT = () => ({ id: uid('v'), name: '', bomId: '', price: '', downpaymentPct: '50' });
 
@@ -85,7 +86,7 @@ export default function ProductFormModal({ open, onClose, onSave, product, boms 
 
   const save = () => {
     const e = validate(form);
-    if (Object.keys(e).length) { setErrors(e); return; }
+    if (Object.keys(e).length) { setErrors(e); scrollToFirstError(); return; }
     const base = {
       name:              form.name.trim(),
       category:          form.category,
@@ -205,7 +206,7 @@ export default function ProductFormModal({ open, onClose, onSave, product, boms 
               <span style={{ fontSize:'13px', fontWeight:600, color:'var(--gray-light)' }}>Variants</span>
               <button onClick={addVariant} style={S.btnSm}>{ICONS.plus} Add Variant</button>
             </div>
-            {errors.variants && <span style={S.errText}>{errors.variants}</span>}
+            {errors.variants && <span data-field-error style={S.errText}>{errors.variants}</span>}
             {form.variants.map((v, i) => (
               <div key={v.id} style={{ border:'1px solid var(--border)', borderRadius:'8px', padding:'12px', background:'var(--dark2)' }}>
                 <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'10px' }}>

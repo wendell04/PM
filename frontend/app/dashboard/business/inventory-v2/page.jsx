@@ -150,6 +150,7 @@ export default function InventoryV2() {
       {tab === 'bom'        && (
         <ProductCreationTab
           boms={boms} setBoms={setBoms}
+          products={products}
           materials={materials}
           batches={batches}
           token={token} onRefresh={refresh} toast={toast}

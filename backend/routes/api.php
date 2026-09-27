@@ -315,6 +315,7 @@ Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
     // settlement will follow so the confirm modal cannot show something different.
     Route::get('/admin/orders/{id}/cancel-settlement', [OrderController::class, 'cancelSettlement']);
     Route::get('/admin/orders',         [OrderController::class, 'adminIndex']);
+    Route::get('/admin/home/money',     [\App\Http\Controllers\HomeMoneyController::class, 'show']);
     Route::get('/admin/orders/{id}',    [OrderController::class, 'show']);
 
     // ─── Job Orders ───────────────────────────────────────────────────────────
@@ -401,6 +402,9 @@ Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
     Route::get('/admin/bom',                          [BillOfMaterialController::class, 'index']);
     Route::post('/admin/bom',                         [BillOfMaterialController::class, 'store']);
     Route::get('/admin/bom/by-product/{name}',        [BillOfMaterialController::class, 'byProduct']);
+    Route::get('/admin/bom/archived',                 [BillOfMaterialController::class, 'archived']);
+    Route::post('/admin/bom/{id}/restore',            [BillOfMaterialController::class, 'restore']);
+    Route::get('/admin/bom/{id}/usage',               [BillOfMaterialController::class, 'usage']);
     Route::get('/admin/bom/{id}',                     [BillOfMaterialController::class, 'show']);
     Route::put('/admin/bom/{id}',                     [BillOfMaterialController::class, 'update']);
     Route::delete('/admin/bom/{id}',                  [BillOfMaterialController::class, 'destroy']);
@@ -420,6 +424,7 @@ Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
 
     // ─── Record Payment ────────────────────────────────────────────────────────────────────────
     Route::post('/admin/orders/{id}/record-payment',  [OrderController::class, 'recordPayment']);
+    Route::post('/admin/orders/{id}/payments/{index}/void', [OrderController::class, 'voidPayment'])->middleware('throttle:20,1');
     // Money going the other way. Same permission as taking a payment, because settling a debt to
     // a customer is the same kind of act as recording one from them.
     Route::post('/admin/orders/{id}/mark-refunded', [OrderController::class, 'markRefunded']);

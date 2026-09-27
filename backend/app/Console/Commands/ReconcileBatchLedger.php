@@ -29,22 +29,28 @@ use Illuminate\Console\Command;
 class ReconcileBatchLedger extends Command
 {
     protected $signature   = 'inventory:reconcile-batches
-                              {--dry-run : Show what would change without writing}';
+                              {--dry-run : Show what would change without writing}
+                              {--opening-balance : Give SHORT materials an "Opening balance" batch for the gap - only when the owner confirms the counted stock is real}';
     protected $description = 'Align batch remainingQty with stockQty after job orders bypassed the batch ledger';
 
     public function handle(): int
     {
         $dry = (bool) $this->option('dry-run');
+        $opening = (bool) $this->option('opening-balance');
 
         $items   = Inventory::all();
         $fixed   = 0;
         $short   = 0;
         $ok      = 0;
         $totalPc = 0;
+        $opened  = 0;
 
         foreach ($items as $inv) {
             $batches = $inv->batches ?? [];
-            if (!is_array($batches) || !count($batches)) { $ok++; continue; }
+            if (!is_array($batches)) $batches = [];
+            // No batches at all is the extreme SHORT case, not "correct": stock seeded before batches
+            // existed has a count and nothing behind it. Only a material with nothing on hand is fine.
+            if (!count($batches) && (int) ($inv->stockQty ?? 0) <= 0) { $ok++; continue; }
 
             $ledger = 0;
             foreach ($batches as $b) {
@@ -57,7 +63,36 @@ class ReconcileBatchLedger extends Command
 
             if ($gap < 0) {
                 $short++;
-                $this->warn(sprintf('  SHORT  %-42s ledger %d < stockQty %d (left alone)', $inv->name ?? '?', $ledger, $stock));
+                if (!$opening) {
+                    $this->warn(sprintf('  SHORT  %-42s ledger %d < stockQty %d (left alone)', $inv->name ?? '?', $ledger, $stock));
+                    continue;
+                }
+                // Opening balance: the accepted way to bring stock that predates the records into
+                // them. Costed at what the material is known to cost, dated when it was created, and
+                // labelled so nobody mistakes it for a delivery.
+                $gapUp = $stock - $ledger;
+                $cost  = (float) ($inv->averageCost ?: ($inv->lastUnitCost ?: ($inv->baseCost ?: 0)));
+                $this->line(sprintf('  open   %-42s + %d as opening balance at %.2f', $inv->name ?? '?', $gapUp, $cost));
+                if (!$dry) {
+                    $batches[] = [
+                        'batchId'       => (string) \Illuminate\Support\Str::uuid(),
+                        'invoiceNumber' => 'OPENING-BALANCE',
+                        'supplierId'    => $inv->supplierId ?? null,
+                        'vendorName'    => $inv->supplierName ?? null,
+                        'goodQty'       => $gapUp,
+                        'remainingQty'  => $gapUp,
+                        'qtyDamaged'    => 0,
+                        'unitCost'      => $cost,
+                        'dateReceived'  => optional($inv->createdAt)->toISOString() ?? now()->toISOString(),
+                        'notes'         => 'Opening balance - stock on hand before deliveries were recorded',
+                        'createdAt'     => now()->toISOString(),
+                    ];
+                    $inv->batches   = $batches;
+                    $inv->updatedAt = now();
+                    $inv->save();
+                }
+                $short--;      // counted as SHORT above; it is an opening balance, not left alone
+                $opened++;
                 continue;
             }
 
@@ -87,8 +122,8 @@ class ReconcileBatchLedger extends Command
 
         $this->newLine();
         $this->info(($dry ? '[dry run] ' : '') . sprintf(
-            '%d already correct, %d reconciled (%d units removed from the ledger), %d short and left alone.',
-            $ok, $fixed, $totalPc, $short
+            '%d already correct, %d reconciled (%d units removed from the ledger), %d given an opening balance, %d short and left alone.',
+            $ok, $fixed, $totalPc, $opened, $short
         ));
 
         if ($short > 0) {

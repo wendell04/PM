@@ -3,6 +3,7 @@ import { useState, useMemo } from 'react';
 import { S, ICONS, Field, Modal, ConfirmModal, PaginationBar, SearchBar, StatusBadge, Note, EmptyState, SummaryCard, usePagination, formatCurrency, formatDate, CustomSelect } from './shared';
 import { useAccess } from '@/contexts/AccessContext';
 import { resolveReturn } from './api';
+import { scrollToFirstError } from '@/lib/scrollToError';
 
 const STATUS_OPTIONS = ['All','Pending','Replaced','Written Off'];
 const TYPE_OPTIONS   = ['All','Damaged','Defective','Shortage','Wrong Item','Expired'];
@@ -18,7 +19,7 @@ function ResolveModal({ open, onClose, badOrder, material, onResolve }) {
   const submit = () => {
     const e = {};
     if (!notes.trim()) e.notes = 'Please provide resolution notes.';
-    if (Object.keys(e).length) { setErrors(e); return; }
+    if (Object.keys(e).length) { setErrors(e); scrollToFirstError(); return; }
     onResolve({ resolution, notes: notes.trim() });
     reset();
   };

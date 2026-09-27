@@ -84,6 +84,31 @@ return Application::configure(basePath: dirname(__DIR__))
         // Handle all other exceptions on API routes
         $exceptions->render(function (\Throwable $e, $request) {
             if ($request->is('api/*')) {
+                // Errors that already carry their answer keep it. This catch-all used to turn every one
+                // of them into a 500: a form missing a field said "An unexpected error occurred" instead
+                // of which field, "too many tries, wait a minute" (429) looked like the server breaking,
+                // and a record that did not exist (404) looked the same as a crash.
+                if ($e instanceof \Illuminate\Validation\ValidationException) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => $e->getMessage(),
+                        'errors'  => $e->errors(),
+                    ], $e->status);
+                }
+                if ($e instanceof \Illuminate\Database\Eloquent\ModelNotFoundException) {
+                    return response()->json(['success' => false, 'message' => 'Not found.'], 404);
+                }
+                if ($e instanceof \Illuminate\Auth\Access\AuthorizationException) {
+                    return response()->json(['success' => false, 'message' => $e->getMessage() ?: 'Not allowed.'], 403);
+                }
+                if ($e instanceof \Symfony\Component\HttpKernel\Exception\HttpExceptionInterface) {
+                    $code = $e->getStatusCode();
+                    return response()->json([
+                        'success' => false,
+                        'message' => $e->getMessage() ?: (\Symfony\Component\HttpFoundation\Response::$statusTexts[$code] ?? 'Error'),
+                    ], $code, $e->getHeaders());
+                }
+
                 if (app()->environment('local', 'development')) {
                     return response()->json([
                         'message' => $e->getMessage(),

@@ -755,6 +755,16 @@ function StockBreakdown({ product, boms, materials }) {
                           // A material that covers the whole build needs one character, not four
                           // facts. The bar, the fraction and the shortfall are spent only on the
                           // row that is actually holding things up.
+                          // Nothing can be made at all: "0 of 0" is not covered, it is empty. The
+                          // row at zero is the reason; the others are waiting on it, not "Enough".
+                          if (prod <= 0) {
+                            const out = counted && can <= 0;
+                            return (
+                              <div style={{ fontSize:'11px', fontWeight:700, color: out ? 'var(--st-red-fg)' : 'var(--gray)' }}>
+                                {out ? 'Out - restock to sell' : counted ? `Has enough for ${can}` : 'cost only'}
+                              </div>
+                            );
+                          }
                           const covers = Math.min(can, prod);
                           const short  = Math.max(0, prod - covers);
                           const pct    = prod > 0 ? Math.min(100, Math.round((covers / prod) * 100)) : 100;

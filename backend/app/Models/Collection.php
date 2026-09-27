@@ -6,6 +6,10 @@ use MongoDB\Laravel\Eloquent\Model;
 
 class Collection extends Model
 {
+    // Every create, change and delete by a signed-in person lands in the audit trail.
+    use \App\Models\Concerns\Auditable;
+    protected string $auditEntity = 'collection';
+
     protected $connection = 'mongodb';
     protected $collection = 'collections';
 

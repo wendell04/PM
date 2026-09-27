@@ -26,7 +26,7 @@ export default function GoodsStockTab({ materials, batches, badOrders }) {
       const unitCost   = firstBatch?.unitCost ?? mat.baseCost;
       const stockValue = mBatches.reduce((s, b) => s + b.remainingQty * b.unitCost, 0);
 
-      const status = goodsStock === 0 ? 'out_of_stock' : goodsStock <= mat.minStock ? 'low_stock' : 'in_stock';
+      const status = goodsStock === 0 ? 'out_of_stock' : goodsStock < mat.minStock ? 'low_stock' : 'in_stock';
 
       return { mat, totalRcvd, physical, pendingBO, goodsStock, unitCost, stockValue, status, batches: mBatches };
     });

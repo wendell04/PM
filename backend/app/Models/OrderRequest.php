@@ -6,6 +6,12 @@ use MongoDB\Laravel\Eloquent\Model;
 
 class OrderRequest extends Model
 {
+    // Every create, change and delete by a signed-in person lands in the audit trail.
+    use \App\Models\Concerns\Auditable;
+    protected string $auditEntity = 'quotation';
+    protected array $auditOnly = ['status', 'finalPrice', 'expiresAt', 'downPayment', 'adminComment', 'shippingFee', 'designFee'];
+    protected bool $auditStaffOnly = true;
+
     protected $connection = 'mongodb';
     protected $collection = 'order_requests';
 

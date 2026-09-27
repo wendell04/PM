@@ -42,8 +42,15 @@ class ActivityLogController extends Controller
             // Reading the audit log is itself something a log should record - "who had access,
             // including me looking at it" is exactly the question it exists to answer. Only the
             // first page, so paging through a long list does not write an entry per scroll.
+            // Once per half hour per person: every filter change reloads page 1, so the log filled with
+            // "Opened the audit log" eight times an afternoon and buried the entries worth reading.
             if ($page === 1 && !$request->filled('q')) {
-                $this->logActivity($request, 'audit.viewed', 'audit', null, 'Opened the audit log');
+                $me = (string) ($request->user()->_id ?? '');
+                $recent = \App\Models\ActivityLog::where('action', 'audit.viewed')
+                    ->where('performedBy', $me)
+                    ->where('createdAt', '>=', now()->subMinutes(30))
+                    ->exists();
+                if (!$recent) $this->logActivity($request, 'audit.viewed', 'audit', null, 'Opened the audit log');
             }
 
             return $this->successResponse('Activity logs fetched.', [
@@ -56,7 +63,10 @@ class ActivityLogController extends Controller
                     'entityId'    => $l->entityId,
                     'description' => $l->description,
                     'actorId'     => $l->performedBy,
-                    'actorName'   => $l->performedByName ?: ($l->performedByEmail ?: 'Someone not signed in'),
+                    // Older hand-written entries kept the NAME in performedBy (not an id); show it.
+                    'actorName'   => $l->performedByName
+                        ?: ((is_string($l->performedBy) && $l->performedBy !== '' && !preg_match('/^[a-f0-9]{24}$/i', $l->performedBy)) ? $l->performedBy : null)
+                        ?: ($l->performedByEmail ?: 'Someone not signed in'),
                     'actorEmail'  => $l->performedByEmail,
                     'actorRole'   => $l->performedByRole,
                     'ip'          => $l->ip,
@@ -121,6 +131,12 @@ class ActivityLogController extends Controller
                 ActivityLog::KINDS,
                 fn ($k) => $k[1] === $request->group
             ));
+            // Plus the records audited automatically - material.created, product.updated... - whose
+            // group comes from ActivityLog::ENTITIES, not from a line each in KINDS.
+            foreach (ActivityLog::ENTITIES as $entity => [, $g]) {
+                if ($g !== $request->group) continue;
+                foreach (['created', 'updated', 'deleted'] as $ev) $wanted[] = "{$entity}.{$ev}";
+            }
             $query->whereIn('action', $wanted ?: ['__none__']);
         }
 

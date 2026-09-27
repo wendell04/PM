@@ -6,6 +6,11 @@ use MongoDB\Laravel\Eloquent\Model;
 
 class Voucher extends Model
 {
+    // Every create, change and delete by a signed-in person lands in the audit trail.
+    use \App\Models\Concerns\Auditable;
+    protected string $auditEntity = 'voucher';
+    protected array $auditIgnore = ['usedCount', 'usedBy'];
+
     protected $connection = 'mongodb';
     protected $collection = 'vouchers';
 

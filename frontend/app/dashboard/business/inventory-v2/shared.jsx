@@ -126,7 +126,7 @@ export function Field({ label, error, required, hint, children, style }) {
         </label>
       )}
       {children}
-      {error && <span style={S.errText}>{error}</span>}
+      {error && <span data-field-error style={S.errText}>{error}</span>}
       {!error && hint && <span style={{ fontSize:'11px', color:'var(--gray)', lineHeight:1.4 }}>{hint}</span>}
     </div>
   );
@@ -247,7 +247,7 @@ export function CustomSelect({ value, onChange, options = [], placeholder = 'Sel
 
   return (
     <div ref={wrapRef} style={{ position: 'relative', ...(style ?? {}) }}>
-      <button ref={btnRef} type="button" disabled={!!disabled}
+      <button ref={btnRef} type="button" disabled={!!disabled} aria-invalid={error ? "true" : undefined}
         onClick={() => !disabled && setOpen(p => !p)}
         style={{
           width: '100%', textAlign: 'left',

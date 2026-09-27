@@ -3,7 +3,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { fetchWithTimeout } from '../../lib/fetchWithTimeout';
 import { uploadDesignFile, fetchCustomerOrderForms } from '../../lib/orderRequestApi';
-import { S, ICONS, Modal, Field, CustomSelect, IntegerInput, DecimalInput } from '@/app/dashboard/business/inventory-v2/shared';
+import { S, ICONS, Modal, Field, CustomSelect, IntegerInput, DecimalInput, ConfirmModal } from '@/app/dashboard/business/inventory-v2/shared';
+import { scrollToSection } from '@/lib/scrollToError';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
@@ -472,18 +473,22 @@ const QuotationModal = ({ onClose, onSubmit, isSending, token, customerId, custo
                   onChange={v => setMaterialPrice(l, m.inventoryId, v)}
                   style={{ padding: '2px 4px', fontSize: '11px', textAlign: 'right' }} />
                 <span style={{ fontSize: '11px', fontWeight: 700, color: billable ? 'var(--white)' : 'var(--gray)', textAlign: 'right' }}>
-                  {billable ? `₱${fmt(rowTotal)}` : 'cost only'}
+                  {billable ? `₱${fmt(rowTotal)}` : 'not billed'}
                 </span>
                 <button type="button" onClick={() => removeMaterial(l, m.inventoryId)}
                   style={{ background: 'none', border: 'none', color: '#e05252', cursor: 'pointer', fontSize: '14px', lineHeight: 1, padding: 0 }}>×</button>
               </div>
-              {(short || m.isOnDemand || noCost) && (
-                <div style={{ fontSize: '10px', paddingBottom: '3px', color: short || noCost ? '#e0a852' : 'var(--gray)' }}>
-                  {short && `Buy ${round4(need - available)} more`}
-                  {m.isOnDemand && `${short ? ' - ' : ''}Buy per order${m.leadTimeDays ? ` - ${m.leadTimeDays}d lead` : ''}`}
-                  {noCost && `${short || m.isOnDemand ? ' - ' : ''}no cost set`}
-                </div>
-              )}
+              {/* What it costs the shop, so the price is set against something. Margin once priced. */}
+              <div style={{ fontSize: '10px', paddingBottom: '3px', color: short || noCost ? '#e0a852' : 'var(--gray)' }}>
+                {[
+                  noCost ? 'no cost set' : `cost ₱${fmt(Number(m.unitCost))}/${m.uom || 'pc'}`,
+                  !noCost && price > 0 ? (price < Number(m.unitCost)
+                    ? `below cost - you lose ₱${fmt((Number(m.unitCost) - price) * need)}`
+                    : `margin ${Math.round(((price - Number(m.unitCost)) / price) * 100)}%`) : null,
+                  short ? `buy ${round4(need - available)} more` : null,
+                  m.isOnDemand ? `cost only${m.leadTimeDays ? `, ${m.leadTimeDays}d lead` : ''}` : null,
+                ].filter(Boolean).join(' - ')}
+              </div>
             </div>
           );
         })}
@@ -538,9 +543,28 @@ const QuotationModal = ({ onClose, onSubmit, isSending, token, customerId, custo
   // A fee is priced for a place; with none chosen, the checkout has nothing to hold it to.
   const deliverOk = deliveryFee <= 0 || !customerId || !!deliverToPayload;
   const canSubmit = linesValid && noDupes && deliverOk && !isSending && !uploading;
+  // Send stays pressable. A greyed-out button that never says why is the "it won't proceed and I
+  // cannot see the problem" trap; pressing it now names what is missing and goes there.
+  const [missing, setMissing] = useState('');
+  // A service line with no material at all: allowed (the customer may bring the shirt), but it
+  // books pure profit and moves no stock, so it is a question, not a silent default.
+  const [confirmBare, setConfirmBare] = useState(false);
+  const bareLines = priced.filter(l => l.productId && !l.hasVariants && !(l.materials || []).length);
+  const missingNow = !linesValid ? 'Every line needs a product, a quantity and a price above 0.'
+    : !noDupes ? 'The same product is on two lines - put the quantities on one line.'
+    : !deliverOk ? 'There is a delivery fee, so choose where it delivers to, under Deliver to.'
+    : '';
 
   const handleSubmit = () => {
-    if (!canSubmit) return;
+    if (isSending || uploading) return;
+    if (!canSubmit) {
+      setMissing(missingNow);
+      scrollToSection(!deliverOk && linesValid && noDupes ? 'pmp-quote-deliver' : 'pmp-quote-lines');
+      return;
+    }
+    setMissing('');
+    if (bareLines.length && !confirmBare) { setConfirmBare(true); return; }
+    setConfirmBare(false);
     onSubmit({
       // Each variant row becomes its own item - it has its own price, its own BOM and
       // its own stock movement, so the order should carry them apart.
@@ -620,14 +644,23 @@ const QuotationModal = ({ onClose, onSubmit, isSending, token, customerId, custo
           <button
             type="button"
             onClick={handleSubmit}
-            disabled={!canSubmit}
-            style={{ ...S.btnPrimary, cursor: canSubmit ? 'pointer' : 'not-allowed', opacity: canSubmit ? 1 : 0.5 }}
+            disabled={isSending || uploading}
+            style={{ ...S.btnPrimary, cursor: (isSending || uploading) ? 'wait' : 'pointer', opacity: canSubmit ? 1 : 0.7 }}
           >
             {isSending ? 'Sending…' : 'Send Quotation'}
           </button>
         </>
       }
     >
+      <ConfirmModal
+        open={confirmBare}
+        onClose={() => setConfirmBare(false)}
+        onConfirm={handleSubmit}
+        title="Send without materials?"
+        confirmStyle="primary"
+        confirmLabel="Send anyway"
+        message={`${bareLines.map(l => nameOf(l.productId)).join(', ')} ${bareLines.length === 1 ? 'has' : 'have'} no materials.\n\nNo stock will be held or used, and the whole price will read as profit. That is only right if the customer supplies everything - otherwise go back and add what the job uses (e.g. the blank shirt).`}
+      />
       <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
         {/* What this quotation answers. Nothing is shown when the customer has filled nothing in,
             one waiting form is simply attached, and the choice appears only when there are two -
@@ -685,7 +718,13 @@ const QuotationModal = ({ onClose, onSubmit, isSending, token, customerId, custo
           </div>
         )}
 
-        <div>
+        {missing && missingNow && (
+          <div role="alert" data-field-error style={{ padding: '9px 12px', borderRadius: 8, fontSize: 12.5, lineHeight: 1.5,
+            background: 'var(--st-red-bg)', color: 'var(--st-red-fg)', border: '1px solid color-mix(in srgb, var(--st-red-fg) 35%, transparent)' }}>
+            {missingNow}
+          </div>
+        )}
+        <div id="pmp-quote-lines" style={{ scrollMarginTop: 12 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
             <span style={{ ...S.label, textTransform: 'none', letterSpacing: 0, fontSize: '12px', color: 'var(--gray-light)' }}>
               Products / Services
@@ -784,6 +823,12 @@ const QuotationModal = ({ onClose, onSubmit, isSending, token, customerId, custo
                                   : r.canBuild >= r.qty ? '#4ade80'
                                   : r.canBuild > 0 ? '#e0a852' : '#e05252' }}>
                                 {r.canBuild == null ? 'made to order' : `${r.canBuild} can build`}
+                                {unitCost > 0 && (
+                                  <span style={{ color: 'var(--gray)', fontWeight: 500 }}>
+                                    {` - floor ₱${fmt(unitCost)}/pc`}
+                                    {r.unitPrice > 0 && r.unitPrice >= unitCost ? `, margin ${Math.round(((r.unitPrice - unitCost) / r.unitPrice) * 100)}%` : ''}
+                                  </span>
+                                )}
                               </span>
                             </span>
                             <IntegerInput value={r.qtyRaw} max={MAX_QTY}
@@ -815,7 +860,7 @@ const QuotationModal = ({ onClose, onSubmit, isSending, token, customerId, custo
                                 {c.name} - {need} {c.uom} - {short
                                   ? `${available} available, buy ${round4(need - available)} more`
                                   : `${available} available`}
-                                {c.isOnDemand && `${c.leadTimeDays ? ` - ${c.leadTimeDays}d lead` : ' - buy per order'}`}
+                                {c.isOnDemand && ` - cost only${c.leadTimeDays ? `, ${c.leadTimeDays}d lead` : ''}`}
                                 {!Number(c.unitCost) && ' - no cost set'}
                               </div>
                             );
@@ -892,7 +937,7 @@ const QuotationModal = ({ onClose, onSubmit, isSending, token, customerId, custo
                                 borderBottom: '1px solid var(--border)', padding: '6px 8px', cursor: 'pointer' }}>
                               <div style={{ fontSize: '12px', color: 'var(--white)' }}>{inv.name}</div>
                               <div style={{ fontSize: '10px', color: 'var(--gray)' }}>
-                                {[inv.category, inv.uom, inv.isOnDemand ? 'buy per order' : `${inv.stockQty ?? 0} in stock`].filter(Boolean).join(' · ')}
+                                {[inv.category, inv.uom, `${inv.stockQty ?? 0} in stock`, inv.isOnDemand ? 'cost only' : null, !inv.isOnDemand && Number(inv.stockQty ?? 0) <= 0 ? 'goes on To Buy when paid' : null].filter(Boolean).join(' · ')}
                               </div>
                             </button>
                           ))}
@@ -956,7 +1001,7 @@ const QuotationModal = ({ onClose, onSubmit, isSending, token, customerId, custo
                                     borderBottom: '1px solid var(--border)', padding: '6px 8px', cursor: 'pointer' }}>
                                   <div style={{ fontSize: '12px', color: 'var(--white)' }}>{inv.name}</div>
                                   <div style={{ fontSize: '10px', color: 'var(--gray)' }}>
-                                    {[inv.category, inv.uom, inv.isOnDemand ? 'buy per order' : `${inv.stockQty ?? 0} in stock`].filter(Boolean).join(' · ')}
+                                    {[inv.category, inv.uom, `${inv.stockQty ?? 0} in stock`, inv.isOnDemand ? 'cost only' : null, !inv.isOnDemand && Number(inv.stockQty ?? 0) <= 0 ? 'goes on To Buy when paid' : null].filter(Boolean).join(' · ')}
                                   </div>
                                 </button>
                               );
@@ -988,7 +1033,7 @@ const QuotationModal = ({ onClose, onSubmit, isSending, token, customerId, custo
             checkout holds the customer to it - a fee worked out for one city cannot be paid
             with an address in another. */}
         {customerId && (
-          <div style={{ padding: '10px 12px', borderRadius: '8px', background: 'var(--dark2)', border: '1px solid var(--border)' }}>
+          <div id="pmp-quote-deliver" style={{ scrollMarginTop: 12, padding: '10px 12px', borderRadius: '8px', background: 'var(--dark2)', border: `1px solid ${missing && !deliverOk && linesValid && noDupes ? 'var(--st-red-fg)' : 'var(--border)'}` }}>
             <div style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--gray)', marginBottom: '6px' }}>
               Deliver to{customerName ? ` - ${customerName}` : ''}
             </div>

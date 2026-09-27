@@ -255,6 +255,15 @@ class WalkInOrderController extends Controller
 
             $orderRef = strtoupper(substr((string) $order->_id, -8));
 
+            // Money taken at the counter with no online payment behind it: the audit is the only
+            // record of which staff member rang it up and what came off the price.
+            $this->logActivity($request, 'pos.sale', 'order', (string) $order->_id,
+                "Rang up walk-in sale #{$orderRef} for {$customerName}: PHP " . number_format($netAmount, 2)
+                    . ", paid " . number_format($paid, 2) . " by {$validated['paymentMethod']}"
+                    . ($discount > 0 ? ", discount " . number_format($discount, 2) : ''),
+                ['total' => $netAmount, 'paid' => $paid, 'balance' => $balance, 'discount' => $discount,
+                 'method' => $validated['paymentMethod'], 'saleType' => $saleType]);
+
             return response()->json([
                 'data'    => [
                     'orderId'    => (string) $order->_id,

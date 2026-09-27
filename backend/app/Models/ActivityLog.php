@@ -83,12 +83,22 @@ class ActivityLog extends Model
 
         // Money
         'payment_received'    => ['Recorded a payment',  'money'],
+        'pos.sale'            => ['Rang up a walk-in sale', 'money'],
+        'payment.recorded'    => ['Recorded a payment by hand', 'money'],
+        'payment.paid'        => ['Payment came in',     'money'],
+        'payment.voided'      => ['Voided a payment',    'money'],
         'order.refund_waived' => ['Waived a refund',     'money'],
+        'order.refunded'      => ['Marked a refund sent', 'money'],
+        'order.written_off'   => ['Wrote off an order',  'money'],
+
+        // Material moved by hand - the way stock disappears without a sale
+        'stock.adjusted'      => ['Adjusted stock',      'stock'],
 
         // The catalogue and the shop's own rules
         'product_publish_toggled' => ['Published or hid a product', 'catalog'],
         'review_submitted'        => ['A customer left a review',    'catalog'],
         'settings.changed'        => ['Changed a setting',          'settings'],
+        'settings.terms_changed'  => ['Changed the terms',          'settings'],
     ];
 
     /**
@@ -124,6 +134,32 @@ class ActivityLog extends Model
 
     protected static function booted(): void
     {
+        // Thirteen places write an entry by hand, from before logActivity() existed. Most set only an
+        // email - and some put the person's NAME where their account id belongs - so the list showed
+        // "personalizemeprints.admin@gmail.com" beside "Personalize Me Prints ADMIN" for one person,
+        // with no role or address. Whatever a writer left out is filled here from the signed-in
+        // account, so every entry carries the same who / role / where.
+        static::creating(function (ActivityLog $log) {
+            try {
+                $request = request();
+                $user = $request?->user();
+                if (!$user) return;
+                $id = (string) ($user->_id ?? $user->id ?? '');
+                $by = (string) ($log->performedBy ?? '');
+                if ($by === '' || !preg_match('/^[a-f0-9]{24}$/i', $by)) {
+                    if ($by !== '' && empty($log->performedByName)) $log->performedByName = $by;
+                    $log->performedBy = $id;
+                }
+                if ($by === $id || $log->performedBy === $id) {
+                    if (empty($log->performedByName))  $log->performedByName  = trim(($user->firstName ?? '') . ' ' . ($user->lastName ?? '')) ?: null;
+                    if (empty($log->performedByEmail)) $log->performedByEmail = $user->email ?? null;
+                    if (empty($log->performedByRole))  $log->performedByRole  = $user->role ?? null;
+                }
+                if (empty($log->ip))     $log->ip     = $request->ip();
+                if (empty($log->device)) $log->device = substr((string) $request->userAgent(), 0, 255);
+            } catch (\Throwable $e) { /* never block the write it describes */ }
+        });
+
         static::updating(function () {
             throw new \RuntimeException(
                 'An audit log entry cannot be changed. If this is a new kind of event, write a new entry.'
@@ -152,14 +188,37 @@ class ActivityLog extends Model
 
     public const REFUSED = ['auth.login_failed', 'auth.login_locked', 'auth.2fa_failed'];
 
+    /**
+     * Records audited automatically (Concerns\Auditable) write "<entity>.created|updated|deleted".
+     * Their words and group come from here rather than one KINDS line per entity and event.
+     */
+    public const ENTITIES = [
+        'material' => ['a material', 'stock'],   'bom' => ['a BOM', 'stock'],
+        'supplier' => ['a supplier', 'stock'],   'unit' => ['a unit', 'stock'],
+        'product' => ['a product', 'catalog'],   'collection' => ['a collection', 'catalog'],
+        'banner' => ['a banner', 'catalog'],     'voucher' => ['a voucher', 'money'],
+        'flash_sale' => ['a flash sale', 'money'], 'review' => ['a review', 'catalog'],
+        'job_order' => ['a job order', 'orders'], 'quotation' => ['a quotation', 'orders'],
+        'order_form' => ['an order form', 'settings'], 'page_content' => ['page content', 'catalog'],
+        'bad_order' => ['a bad order', 'stock'],
+    ];
+
+    private static function entityKind(?string $action): ?array
+    {
+        if (!is_string($action) || !preg_match('/^([a-z_]+)\.(created|updated|deleted)$/', $action, $m)) return null;
+        if (!isset(self::ENTITIES[$m[1]])) return null;
+        [$noun, $group] = self::ENTITIES[$m[1]];
+        return [['created' => 'Created ', 'updated' => 'Changed ', 'deleted' => 'Deleted '][$m[2]] . $noun, $group];
+    }
+
     public static function label(?string $action): string
     {
-        return self::KINDS[$action][0] ?? ucfirst(str_replace('_', ' ', (string) $action));
+        return self::KINDS[$action][0] ?? self::entityKind($action)[0] ?? ucfirst(str_replace('_', ' ', (string) $action));
     }
 
     public static function group(?string $action): string
     {
-        return self::KINDS[$action][1] ?? 'other';
+        return self::KINDS[$action][1] ?? self::entityKind($action)[1] ?? 'other';
     }
 
     protected $casts = [

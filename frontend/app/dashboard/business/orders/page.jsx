@@ -202,6 +202,24 @@ function PaymentModal({ order, onClose, onSuccess }) {
   const [note,        setNote]        = useState('');
   const [error,       setError]       = useState('');
   const [submitting,  setSubmitting]  = useState(false);
+  // A second look before money is written. One click on Confirm Payment marked an order paid that
+  // never was, and emailed the customer a receipt for it.
+  const [reviewing,   setReviewing]   = useState(false);
+  const [refErr,      setRefErr]      = useState('');
+  // Money that arrives by transfer has a reference the shop can check against its own account;
+  // without it a typed-in GCash payment cannot be told apart from one that never came.
+  const needsRef = method === 'gcash' || method === 'bank_transfer';
+
+  const review = () => {
+    const amt = parseFloat(amount);
+    if (!amount || isNaN(amt) || amt <= 0) { setError('Enter a valid amount.'); return; }
+    if (owed > 0 && amt > owed + 0.01) {
+      setError(`That is more than the P${owed.toLocaleString('en-PH', { minimumFractionDigits: 2 })} still owed.`);
+      return;
+    }
+    if (needsRef && note.trim().length < 4) { setRefErr('Enter the reference number from the GCash or bank receipt.'); return; }
+    setReviewing(true);
+  };
 
   const handleSubmit = async () => {
     const amt = parseFloat(amount);
@@ -274,7 +292,7 @@ function PaymentModal({ order, onClose, onSuccess }) {
         <div>
           <div style={S.label}>Amount *</div>
           <input type="number" min="0.01" step="0.01" max={owed > 0 ? owed : undefined} value={amount}
-            onChange={e => { setAmount(e.target.value); setError(''); }}
+            onChange={e => { setAmount(e.target.value); setError(''); setReviewing(false); }}
             onKeyDown={e => ['e','E','+','-'].includes(e.key) && e.preventDefault()}
             placeholder="0.00"
             style={{ ...S.input, marginTop:'4px', ...(error ? { border:'1px solid #e05252' } : {}) }} />
@@ -299,32 +317,45 @@ function PaymentModal({ order, onClose, onSuccess }) {
           <div style={{ marginTop:'4px' }}>
             <CustomSelect
               value={method}
-              onChange={v => setMethod(v)}
+              onChange={v => { setMethod(v); setRefErr(''); setReviewing(false); }}
+              // No PayMongo here: those payments arrive by themselves, and the server refuses the word.
               options={[
                 { value:'cash',          label:'Cash'          },
                 { value:'gcash',         label:'GCash'         },
                 { value:'bank_transfer', label:'Bank Transfer' },
-                { value:'paymongo',      label:'PayMongo'      },
                 { value:'cod',           label:'COD'           },
               ]}
             />
           </div>
         </div>
         <div>
-          <div style={S.label}>Note <span style={{ fontWeight:400, textTransform:'none', color:'var(--gray)' }}>(optional)</span></div>
-          <input type="text" value={note} onChange={e => setNote(e.target.value)}
-            placeholder="e.g. Downpayment, ref #12345"
-            style={{ ...S.input, marginTop:'4px' }}  maxLength={255}/>
+          <div style={S.label}>{needsRef ? 'Reference no. *' : <>Note <span style={{ fontWeight:400, textTransform:'none', color:'var(--gray)' }}>(optional)</span></>}</div>
+          <input type="text" value={note} onChange={e => { setNote(e.target.value); setRefErr(''); }}
+            placeholder={needsRef ? 'From the GCash or bank receipt, e.g. 1003 456 7890' : 'e.g. Downpayment'}
+            aria-invalid={refErr ? 'true' : undefined}
+            style={{ ...S.input, marginTop:'4px', ...(refErr ? { border:'1px solid #e05252' } : {}) }}  maxLength={255}/>
+          {refErr && <div data-field-error style={S.errText}>{refErr}</div>}
         </div>
       </div>
 
       <ModalFooter>
         <button onClick={onClose} disabled={submitting} style={S.btnGhost}>Cancel</button>
-        <button onClick={handleSubmit} disabled={submitting}
+        <button onClick={review} disabled={submitting}
           style={{ ...S.btnPrimary, opacity: submitting ? 0.6 : 1 }}>
-          {submitting ? 'Recording…' : 'Confirm Payment'}
+          {submitting ? 'Recording…' : 'Record payment'}
         </button>
       </ModalFooter>
+      {/* Its own dialog, on top - money is not written on the first click. */}
+      <ConfirmModal
+        open={reviewing}
+        onClose={() => !submitting && setReviewing(false)}
+        onConfirm={async () => { await handleSubmit(); setReviewing(false); }}
+        loading={submitting}
+        title="Record this payment?"
+        confirmStyle="primary"
+        confirmLabel="Yes, record it"
+        message={`₱${fmt(parseFloat(amount))} ${({ cash:'cash', gcash:'GCash', bank_transfer:'bank transfer', cod:'COD' })[method] || method} from ${order.customerName}${needsRef && note.trim() ? ` (ref ${note.trim()})` : ''}.\n\nOnly if the money is actually in hand or in the account. This marks the order ${parseFloat(amount) >= owed - 0.01 ? 'fully paid' : 'partly paid'} and emails the customer a receipt.`}
+      />
     </Modal>
   );
 }
@@ -1164,6 +1195,29 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
   };
 
   const [restoring, setRestoring] = useState(false);
+  // Void a payment typed in by mistake. The server keeps the line and adds a matching minus line,
+  // so the history still shows what happened and why.
+  const [voidLine, setVoidLine] = useState(null);   // { index, amount, method, reason, busy, err }
+  const submitVoid = async () => {
+    const reason = (voidLine?.reason || '').trim();
+    if (reason.length < 4) { setVoidLine(v => ({ ...v, err: 'Say why, in a few words (at least 4 characters).' })); return; }
+    setVoidLine(v => ({ ...v, busy: true, err: '' }));
+    try {
+      const res = await fetchWithTimeout(`${API_URL}/api/admin/orders/${lo.id}/payments/${voidLine.index}/void`, {
+        method: 'POST',
+        headers: { 'Content-Type':'application/json', Accept:'application/json', Authorization:`Bearer ${token}` },
+        body: JSON.stringify({ reason }),
+      }, 15000);
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.message || d.error || 'Could not void the payment.');
+      const o2 = d.data ?? {};
+      const updated = { ...lo, paymentHistory: o2.paymentHistory ?? lo.paymentHistory, downPayment: o2.downPayment,
+        balance: o2.balance, paymentStatus: o2.paymentStatus };
+      setLo(updated);
+      if (onStatusUpdated) onStatusUpdated(lo.id, updated);
+      setVoidLine(null);
+    } catch (err) { setVoidLine(v => v && ({ ...v, busy: false, err: err.message })); }
+  };
   const midProduction = jobOrders.some(j => j.joStatus === 'In Progress');
   const canDelete  = !lo.isArchived && !midProduction;
   const canExpire  = String(lo.orderStatus).toLowerCase() === 'pending' && lo.paymentStatus !== 'paid' && isExpired(lo);
@@ -3195,16 +3249,55 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
             <>
               <div style={S.divider} />
               <SectionLabel>Payment History</SectionLabel>
-              {lo.paymentHistory.map((p, i) => (
-                <div key={i} style={{ display:'flex', justifyContent:'space-between', fontSize:'11px', padding:'2px 0' }}>
-                  <span style={{ color:'var(--gray)' }}>{p.method}{p.note ? ` - ${p.note}` : ''}</span>
-                  <span style={{ color:'var(--st-green-fg)', fontWeight:600 }}>+₱{fmt(p.amount)}</span>
-                </div>
-              ))}
+              {lo.paymentHistory.map((p, i) => {
+                const isVoid   = p.type === 'void' || Number(p.amount) < 0;
+                const voidable = mayPay && !isVoid && !p.voided && !!p.recordedBy && Number(p.amount) > 0;
+                return (
+                  <div key={i} style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', gap:8, fontSize:'11px', padding:'2px 0' }}>
+                    <span style={{ color:'var(--gray)', minWidth:0, overflowWrap:'anywhere', textDecoration: p.voided ? 'line-through' : 'none' }}>
+                      {p.method}{p.note ? ` - ${p.note}` : ''}{p.recordedBy ? ` (by ${p.recordedBy})` : ''}
+                      {p.voided && <span style={{ textDecoration:'none', color:'var(--st-red-fg)' }}> voided</span>}
+                    </span>
+                    <span style={{ display:'flex', alignItems:'baseline', gap:8, flexShrink:0 }}>
+                      {voidable && (
+                        <button onClick={() => setVoidLine({ index: i, amount: p.amount, method: p.method, reason: '', busy: false, err: '' })}
+                          style={{ background:'none', border:'none', padding:0, cursor:'pointer', color:'var(--st-red-fg)', fontSize:'11px', textDecoration:'underline' }}>
+                          Void
+                        </button>
+                      )}
+                      <span style={{ color: isVoid ? 'var(--st-red-fg)' : 'var(--st-green-fg)', fontWeight:600, textDecoration: p.voided ? 'line-through' : 'none' }}>
+                        {isVoid ? '-' : '+'}₱{fmt(Math.abs(Number(p.amount) || 0))}
+                      </span>
+                    </span>
+                  </div>
+                );
+              })}
             </>
           )}
         </div>
       </div>
+
+      {voidLine && (
+        <Modal onClose={() => !voidLine.busy && setVoidLine(null)} maxWidth={440}>
+          <ModalHeader title="Void this payment" onClose={() => !voidLine.busy && setVoidLine(null)} />
+          <div style={{ display:'flex', flexDirection:'column', gap:10, fontSize:13, color:'var(--gray-light)', lineHeight:1.55 }}>
+            <p style={{ margin:0 }}>
+              For a payment recorded by mistake - money that never came in. The line stays in the history, crossed out,
+              and a matching minus line is added, so the order goes back to what is really owed. This is recorded in the audit trail.
+            </p>
+            <p style={{ margin:0 }}>If the customer did pay and you are giving it back, that is a refund, not a void.</p>
+            <label htmlFor="void-reason" style={{ fontWeight:600, color:'var(--white)' }}>Why</label>
+            <input id="void-reason" autoFocus maxLength={300} value={voidLine.reason} placeholder="e.g. Recorded on the wrong order - customer never paid"
+              onChange={e => setVoidLine(v => ({ ...v, reason: e.target.value, err: '' }))} style={S.input}
+              aria-invalid={voidLine.err ? 'true' : undefined} />
+            {voidLine.err && <span data-field-error style={S.errText}>{voidLine.err}</span>}
+          </div>
+          <ModalFooter>
+            <button onClick={() => setVoidLine(null)} style={S.btnGhost} disabled={voidLine.busy}>Cancel</button>
+            <button onClick={submitVoid} style={{ ...S.btnDanger, opacity: voidLine.busy ? 0.6 : 1 }} disabled={voidLine.busy}>{voidLine.busy ? 'Voiding...' : `Void ₱${fmt(voidLine.amount)}`}</button>
+          </ModalFooter>
+        </Modal>
+      )}
 
       {/* Action row */}
       <div style={{ display:'flex', gap:'8px', flexWrap:'wrap', marginTop:'12px', alignItems:'center' }}>
@@ -3848,15 +3941,21 @@ export default function OrdersPage() {
                             : `₱${fmt(o.totalAmount ?? o.totalPrice)}`}
                         </td>
                         <td data-label="Status" style={{ ...S.td, textAlign:'center' }}>
+                          {/* One wrapping row with a gap on every side: pills that spilled onto a
+                              second line used to sit touching the ones above them. */}
+                          <div style={{ display:'flex', flexWrap:'wrap', justifyContent:'center', alignItems:'center', gap:'5px' }}>
                           <StatusBadge status={o.orderStatus} />
-                          {isArch && <span style={{ ...S.badge, fontSize:'10px', background:'var(--st-gray-bg)', color:'var(--st-gray-fg)', border:'1px solid var(--border)', marginLeft:'4px' }}>Archived</span>}
-                          {isExpired(o) && <span style={{ ...S.badge, fontSize:'10px', background:'var(--st-orange-bg)', color:'var(--st-orange-fg)', border:'1px solid rgba(251,146,60,0.35)', marginLeft:'4px' }}>Expired</span>}
+                          {isArch && <span style={{ ...S.badge, fontSize:'10px', background:'var(--st-gray-bg)', color:'var(--st-gray-fg)', border:'1px solid var(--border)' }}>Archived</span>}
+                          {isExpired(o) && <span style={{ ...S.badge, fontSize:'10px', background:'var(--st-orange-bg)', color:'var(--st-orange-fg)', border:'1px solid rgba(251,146,60,0.35)' }}>Expired</span>}
                           {(() => {
-                            // The delivery promise used to lapse silently. Surface it on the row.
+                            // The delivery promise used to lapse silently. Surface it on the row -
+                            // but not on an archived order: nobody is working it, so "overdue" is noise.
+                            if (isArch) return null;
                             const risk = deliveryRisk(o);
                             if (!risk) return null;
-                            return <span title={risk.reason} style={{ ...S.badge, ...RISK_STYLE[risk.color], fontSize:'10px', fontWeight:700, marginLeft:'4px' }}>{risk.label}</span>;
+                            return <span title={risk.reason} style={{ ...S.badge, ...RISK_STYLE[risk.color], fontSize:'10px', fontWeight:700 }}>{risk.label}</span>;
                           })()}
+                          </div>
                         </td>
                         <td data-label="Payment" style={{ ...S.td, textAlign:'center' }}>
                           <PayBadge status={o.paymentStatus} method={o.paymentMethod} />
