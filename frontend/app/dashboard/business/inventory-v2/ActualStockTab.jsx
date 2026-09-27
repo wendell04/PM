@@ -324,7 +324,8 @@ export default function ActualStockTab({ materials, batches, setBatches, badOrde
             <PhoneList>
               {slice.map((d, i) => (
                 <div key={d.mat.id} style={{ borderTop: i === 0 ? 'none' : '1px solid var(--border)' }}>
-                  <PhoneRow first title={d.mat.sku} chip={<StatusBadge status={d.status} />}
+                  <PhoneRow first title={d.mat.sku} chip={d.status === 'out_of_stock' && d.goodsQty > 0
+                    ? <span style={{ ...S.badge, color: 'var(--st-orange-fg)' }}>All held</span> : <StatusBadge status={d.status} />}
                     meta={d.mat.name}
                     sub={[`on hand ${d.actualQty}`, d.reservedQty > 0 ? `held ${d.reservedQty}` : null, d.pendingBOQty > 0 ? `bad ${d.pendingBOQty}` : null, `sellable ${d.availableQty} ${d.mat.unit}`, `value ${formatCurrency(d.stockValue)}`].filter(Boolean).join(' \u00b7 ')} />
                   {mayWork && (<div style={{ padding:'0 12px 10px 14px' }}>
@@ -375,7 +376,9 @@ export default function ActualStockTab({ materials, batches, setBatches, badOrde
                   </td>
                   <td style={{ ...S.td, textAlign:'right', color: d.reservedQty > 0 ? 'var(--st-orange-fg)' : 'var(--gray)' }}
                     title={d.reservedQty > 0 ? 'Held by open orders. Released when the order is cancelled or the material is consumed at QC.' : undefined}>
-                    {d.reservedQty > 0 ? `\u2212${d.reservedQty}` : '0'} {d.mat.unit}
+                    {/* A hold, not a deduction - the minus sign read as stock already gone. */}
+                    {d.reservedQty > 0 ? d.reservedQty : '0'} {d.mat.unit}
+                    {d.reservedQty > d.goodsQty && <div style={{ fontSize: 10.5, color: 'var(--st-red-fg)', fontWeight: 700 }}>{d.reservedQty - d.goodsQty} short</div>}
                   </td>
                   <td style={{ ...S.td, textAlign:'right', fontWeight:700, color: d.availableQty === 0 ? 'var(--st-red-fg)' : d.availableQty < d.mat.minStock ? 'var(--st-orange-fg)' : 'var(--st-green-fg)' }}
                     title="What the storefront can still sell.">
@@ -383,7 +386,12 @@ export default function ActualStockTab({ materials, batches, setBatches, badOrde
                   </td>
                   {seeMoney && <td style={{ ...S.td, textAlign:'right' }}>{formatCurrency(d.unitCost)}</td>}
                   {seeMoney && <td style={{ ...S.td, textAlign:'center', fontWeight:600 }}>{formatCurrency(d.stockValue)}</td>}
-                  <td style={S.td}><StatusBadge status={d.status} /></td>
+                  <td style={S.td}>
+                    {/* On the shelf but every piece promised to orders: not "out of stock". */}
+                    {d.status === 'out_of_stock' && d.goodsQty > 0
+                      ? <span title="All on hand is held for open orders - none free to sell or use." style={{ ...S.badge, color: 'var(--st-orange-fg)', border: '1px solid color-mix(in srgb, var(--st-orange-fg) 35%, transparent)' }}>All held</span>
+                      : <StatusBadge status={d.status} />}
+                  </td>
                   {mayWork && (<td style={{ ...S.td, textAlign:'right' }}>
                     <button onClick={() => setReduceTarget(d.mat)} style={S.btnSmDanger} title="Record Stock Out">{ICONS.warn} Stock Out</button>
                   </td>)}

@@ -183,3 +183,18 @@ export function WaitingBadge({ jo, block = false }) {
     </span>
   );
 }
+
+/**
+ * The line under the badge on Job Orders: what is short and what releases the job. A queued job
+ * waiting on materials is kept off the Production floor - nobody should start what cannot be finished.
+ */
+export function WaitingNote({ jo }) {
+  const rows = jo?.materialShort;
+  if (!Array.isArray(rows) || rows.length === 0 || jo?.joStatus !== 'Queued') return null;
+  const text = rows.map(r => `${r.name} short ${r.short}${r.uom ? ' ' + r.uom : ''}`).join(', ');
+  return (
+    <div style={{ fontSize: 11, color: '#b45309', marginTop: 4, lineHeight: 1.45, maxWidth: 260, whiteSpace: 'normal' }}>
+      {text}. Restock it (To Buy) and this job moves to Production.
+    </div>
+  );
+}

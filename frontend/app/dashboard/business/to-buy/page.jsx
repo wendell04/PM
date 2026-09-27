@@ -68,7 +68,10 @@ function CoverBadge({ row }) {
   if (row?.daysOfCover == null) return null;
   const tone = COVER_TONE[row.urgency] ?? COVER_TONE.ok;
   const d = row.daysOfCover;
-  const text = tone.label ?? (d === 0 ? 'runs out today' : d === 1 ? '1 day left' : `${d} days left`);
+  // Stock on the shelf that is all promised to orders is not "out of stock" - it is there, it is
+  // just not free. Saying out-of-stock beside "20 on hand" read as a contradiction.
+  const allHeld = row.urgency === 'out' && Number(row.onHand) > 0;
+  const text = allHeld ? 'all held for orders' : (tone.label ?? (d === 0 ? 'runs out today' : d === 1 ? '1 day left' : `${d} days left`));
   const lead = row.leadTimeDays > 0 ? `${row.leadTimeDays}-day` : 'assumed 7-day';
   return (
     <span title={`${row.usagePerDay} ${row.uom ?? ''}/day over the last ${row.coverBasisDays} days. Supplier wait: ${lead}.${row.runsOutOn ? ` Runs out about ${row.runsOutOn}.` : ''}`}
@@ -136,6 +139,10 @@ export default function ToBuyPage() {
     const toMin = Math.max(0, Number(r.shortfall) - forOrders);
     if (forOrders > 0 && toMin > 0) return `${num(forOrders)} for orders + ${num(toMin)} to reach minimum`;
     if (forOrders > 0) return `${num(forOrders)} short for orders`;
+    // Stock that orders will use is not stock you can count toward the minimum.
+    const held = Math.min(Number(r.needed) || 0, Number(r.onHand) || 0);
+    const free = Math.max(0, Number(r.onHand) - held);
+    if (held > 0) return `${num(held)} held for orders leaves ${num(free)} - ${num(toMin)} to get back to your minimum of ${num(r.minimum)}`;
     return `${num(toMin)} to reach minimum ${num(r.minimum)}`;
   };
   const MinEditor = ({ r, compact }) => (
@@ -446,7 +453,7 @@ export default function ToBuyPage() {
                 <CoverBadge row={r} />
               </span>}
               meta={<span style={{ display:'flex', flexDirection:'column', gap:3 }}>
-                <LevelBar have={r.onHand} min={r.minimum} uom={r.uom} width={90} />
+                <LevelBar have={Math.max(0, Number(r.onHand) - Number(r.needed || 0))} min={r.minimum} uom={r.uom} width={90} />
                 <span>{`Buy ${num(r.shortfall)} = ${breakdown(r)}`}</span>
               </span>}
               sub={[`have ${num(r.onHand)}${r.minimum > 0 ? ` · min ${num(r.minimum)}` : ''} ${r.uom} · ${peso(r.estimatedCost)}`, r.for?.length > 0 ? `for ${r.for.map(f => `${f.pieces} × ${f.product}`).join(', ')}` : null,
@@ -512,10 +519,10 @@ export default function ToBuyPage() {
               </div>
 
               <div style={{ fontSize: 12.5, color: 'var(--gray)' }}>
-                <LevelBar have={r.onHand} min={r.minimum} uom={r.uom} width={90} />
+                <LevelBar have={Math.max(0, Number(r.onHand) - Number(r.needed || 0))} min={r.minimum} uom={r.uom} width={90} />
                 <div style={{ marginTop: 5 }}>
                   <span style={{ color: 'var(--white)', fontWeight: 600 }}>{num(r.onHand)}</span> on hand
-                  {Number(r.needed) > 0 && <> - <span style={{ color: 'var(--white)', fontWeight: 600 }}>{num(r.needed)}</span> needed</>}
+                  {Number(r.needed) > 0 && <> - <span style={{ color: 'var(--white)', fontWeight: 600 }}>{num(r.needed)}</span> for orders - <span style={{ color: 'var(--white)', fontWeight: 600 }}>{num(Math.max(0, Number(r.onHand) - Number(r.needed)))}</span> free</>}
                 </div>
                 <div style={{ marginTop: 2, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                   <span>Keep at least {r.minimum > 0 ? <span style={{ color: 'var(--white)', fontWeight: 600 }}>{num(r.minimum)}</span> : 'none set'}</span>

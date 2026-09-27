@@ -24,7 +24,7 @@ import { joRisk, RISK_STYLE } from '@/lib/deliveryRisk';
 // stays available as its own choice.
 const UNFINISHED = 'unfinished';
 
-import { JO_BADGE, JO_STATUSES, JO_EDITABLE_STATUSES, JobOrderStatusBadge as StatusBadge, RushBadge, DesignPreview, designUrl, joDocId, fmtJODate, TableSkeleton, WaitingBadge } from '@/components/dashboard/JobOrderBits';
+import { JO_BADGE, JO_STATUSES, JO_EDITABLE_STATUSES, JobOrderStatusBadge as StatusBadge, RushBadge, DesignPreview, designUrl, joDocId, fmtJODate, TableSkeleton, WaitingBadge, WaitingNote } from '@/components/dashboard/JobOrderBits';
 import { S, ICONS, SearchBar, SummaryCard, PaginationBar, EmptyState, usePagination, CustomSelect, ConfirmModal } from '../inventory-v2/shared';
 import { useIsPhone, KpiStrip, PhoneFilterBar, PhoneList, PhoneRow } from '@/components/dashboard/phone';
 import { isCodMethod } from '@/lib/paymentMethod';
@@ -758,7 +758,7 @@ export default function JobOrdersPage() {
                           return <div style={{ marginTop: 3 }}><span style={{ ...S.badge, ...RISK_STYLE[risk.color], fontSize: 9, fontWeight: 700 }}>{risk.label}</span></div>;
                         })()}
                       </td>
-                      <td data-label="Status" style={S.td}><StatusBadge status={jo.joStatus} /><WaitingBadge jo={jo} block />{(jo.materialsToSettle || jo.materialsSettledAt) && <div><SettleChip jo={jo} block /></div>}</td>
+                      <td data-label="Status" style={S.td}><StatusBadge status={jo.joStatus} /><WaitingBadge jo={jo} block /><WaitingNote jo={jo} />{(jo.materialsToSettle || jo.materialsSettledAt) && <div><SettleChip jo={jo} block /></div>}</td>
                       {hasActions && <td data-rt="actions" style={{ ...S.td, textAlign: 'right' }}>
                         {jo.joStatus === 'Cancelled' && jo.materialsToSettle && maySettle
                           ? <button onClick={() => setSettling(jo)} style={S.btnSm}>Settle materials</button>

@@ -39,5 +39,12 @@ export function needsJobOrder(order) {
   // never sees a bench.
   if (!(order.items || []).some(it => it.isCustom || it.isMadeToOrder)) return false;
 
+  // And at least one of those has its artwork settled - the same per-item rule the Create form
+  // uses to let an item be ticked. A quotation keeps "awaiting design approval" on the ITEM, so
+  // the order-level check above let paid, unapproved quotes into the list with nothing selectable.
+  const needsDesign = (it) => !!it?.isCustom && !!(it?.designRequested || it?.designFiles?.length || it?.designUrl);
+  const ready = (it) => !needsDesign(it) || (it?.designStatus ? it.designStatus === 'approved' : order.designStatus === 'approved');
+  if (!(order.items || []).some(it => (it.isCustom || it.isMadeToOrder) && ready(it))) return false;
+
   return true;
 }

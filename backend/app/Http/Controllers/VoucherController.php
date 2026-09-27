@@ -81,8 +81,8 @@ class VoucherController extends Controller
             'benefitDescription' => 'nullable|string|max:500',
             'discountType'       => 'nullable|in:percentage,fixed,tiered',
             'discountValue'      => ['nullable', 'numeric', 'min:0', 'max:100000', function ($a, $v, $fail) use ($request) { if ($request->input('discountType') === 'percentage' && (float) $v > 90) $fail('A percentage voucher can take at most 90% off.'); }],
-            'minOrderAmount'     => 'nullable|numeric|min:0',
-            'maxUses'            => 'nullable|integer|min:1',
+            'minOrderAmount'     => 'nullable|numeric|min:0|max:1000000',
+            'maxUses'            => 'nullable|integer|min:1|max:100000',
             'isActive'           => 'boolean',
             'expiresAt'          => 'nullable|date',
         ]);
@@ -149,8 +149,8 @@ class VoucherController extends Controller
             'benefitDescription' => 'nullable|string|max:500',
             'discountType'       => 'nullable|in:percentage,fixed,tiered',
             'discountValue'      => ['nullable', 'numeric', 'min:0', 'max:100000', function ($a, $v, $fail) use ($request) { if ($request->input('discountType') === 'percentage' && (float) $v > 90) $fail('A percentage voucher can take at most 90% off.'); }],
-            'minOrderAmount'     => 'nullable|numeric|min:0',
-            'maxUses'            => 'nullable|integer|min:1',
+            'minOrderAmount'     => 'nullable|numeric|min:0|max:1000000',
+            'maxUses'            => 'nullable|integer|min:1|max:100000',
             'isActive'           => 'boolean',
             'expiresAt'          => 'nullable|date',
         ]);

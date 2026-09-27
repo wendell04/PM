@@ -81,7 +81,7 @@ class FlashSaleController extends Controller
             'variantIds'    => 'nullable|array|max:50',
             'variantIds.*'  => 'string|max:64',
             'isActive'      => 'boolean',
-            'stockLimit'    => 'nullable|integer|min:1',
+            'stockLimit'    => 'nullable|integer|min:1|max:100000',
         ])->validate();
 
         // Extra validation: product exists
@@ -200,7 +200,7 @@ class FlashSaleController extends Controller
             'variantIds'    => 'nullable|array|max:50',
             'variantIds.*'  => 'string|max:64',
             'isActive'      => 'boolean',
-            'stockLimit'    => 'nullable|integer|min:1',
+            'stockLimit'    => 'nullable|integer|min:1|max:100000',
         ])->validate();
 
         // Extra validation: product exists

@@ -3273,16 +3273,19 @@
   background: rgba(255,255,255,0.05) !important;
   color: var(--white) !important;
 }
+/* Scoped to the shop. As bare `main` / `aside` / `nav button` these stayed loaded after moving
+   from /shop to the dashboard (the stylesheet is not unloaded on a client navigation) and turned
+   the admin sidebar - also an <aside> - into a full-width block that pushed the page off-screen. */
 @media (max-width: 768px) {
-  main {
+  .shop-wrapper main {
     flex-direction: column !important;
     padding: 1rem !important;
   }
-  aside {
+  .shop-wrapper aside {
     width: 100% !important;
     position: static !important;
   }
-  nav button {
+  .shop-wrapper nav button {
     font-size: 0.85rem !important;
     padding: 0.5rem 0.75rem !important;
   }
@@ -5750,7 +5753,7 @@ html.light .shop-search-suggest-name { color: #111; }
    on. `clip` cuts the overflow without making a scroll box. */
 @media (max-width: 768px) {
   body { overflow-x: clip; }
-  p, span, a, li, td, th { overflow-wrap: anywhere; }
+  .shop-wrapper :is(p, span, a, li, td, th) { overflow-wrap: anywhere; }
 }
 
 /* The receipt on a phone. It is drawn for paper - three rows of 40px-gapped columns - and on a

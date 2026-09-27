@@ -39,6 +39,9 @@ function calcProducible(bom, matMap) {
 // target (it is what "can build" counts); each material is then held against that target:
 // 109 mugs need 109 boxes, and 10 boxes cover 9% of them. Anything under 100% is what the
 // owner has to restock before that build is fully fulfillable - the "seek bar" he asked for.
+// Traffic-light by how much of the build the materials cover: most of it is amber, half or less red.
+const coverTone = (c) => c >= 0.9 ? 'var(--st-amber-fg, #ca8a04)' : c >= 0.5 ? 'var(--st-orange-fg)' : 'var(--st-red-fg)';
+
 function coverageOf(bom, producible, matMap) {
   const rows = [];
   for (const item of bom?.items ?? []) {
@@ -274,9 +277,11 @@ export default function ProductStockTab({ boms, materials, products }) {
                       {row.coverage < 1 && (
                         <div title={`Restock to fulfil: ${row.shortNames.join(', ')}`} style={{ marginTop: 4 }}>
                           <div style={{ height: 4, borderRadius: 2, background: 'var(--dark2)', overflow: 'hidden', maxWidth: 140, margin: '0 auto' }}>
-                            <div style={{ width: `${Math.max(3, row.coverage * 100)}%`, height: '100%', background: row.coverage < 0.25 ? 'var(--st-red-fg)' : 'var(--st-orange-fg)' }} />
+                            <div style={{ width: `${Math.max(3, row.coverage * 100)}%`, height: '100%', background: coverTone(row.coverage) }} />
                           </div>
-                          <div style={{ fontSize: 10.5, color:'var(--st-orange-fg)', marginTop: 2 }}>{Math.round(row.coverage * 100)}% fulfillable - {row.shortNames.join(', ')}</div>
+                          {/* Graded like a fuel gauge: 95% is nearly there, not an alarm. What is short is
+                              packaging or a consumable - it is costed and bought, it does not stop a sale. */}
+                          <div style={{ fontSize: 10.5, color: coverTone(row.coverage), marginTop: 2 }}>{Math.round(row.coverage * 100)}% covered - buy more {row.shortNames.join(', ')}</div>
                         </div>
                       )}
                     </td>

@@ -61,6 +61,15 @@ const BENEFIT_CATEGORIES = [
 
 const ALL_BENEFIT_TYPE_KEYS = BENEFIT_CATEGORIES.flatMap(c => c.types.map(t => t.key));
 
+// Number fields are typed as text and kept to digits (and one decimal point where money allows) under
+// a ceiling. <input type="number"> took any length - a stock limit of 33333333333333... was accepted.
+const capNum = (raw, max, decimals = 0) => {
+  let v = String(raw).replace(decimals ? /[^\d.]/g : /\D/g, '');
+  if (decimals) { const i = v.indexOf('.'); if (i >= 0) v = v.slice(0, i + 1) + v.slice(i + 1).replace(/\./g, '').slice(0, decimals); }
+  if (v === '' || v === '.') return v === '.' ? '0.' : '';
+  return Number(v) > max ? String(max) : v;
+};
+
 const EMPTY_VOUCHER = {
   code: '', benefitCategory: 'monetary', benefitType: 'percentage',
   benefitDescription: '', discountType: 'percentage', discountValue: '',
@@ -133,7 +142,7 @@ function PromotionsInner() {
           tabs={[
             { id: 'vouchers',    label: 'Vouchers' },
             { id: 'flash_sales', label: 'Flash Sales' },
-            { id: 'first_order', label: 'Standing offers' },
+            { id: 'first_order', label: 'Automatic offers' },
           ]}
           active={tab}
           onChange={setTab}
@@ -706,7 +715,10 @@ function VoucherModal({ form, setForm, formError, saving, editTarget, onSave, on
             <p style={{ margin: '4px 0 0', fontSize: '0.72rem', color: 'var(--gray)' }}>Owner manually shares this code with customers to claim the benefit.</p>
           </div>
 
-          {/* Benefit Category */}
+          {/* Benefit Category - only offered when there is more than one kind of benefit. With just
+              "Discount" it was a single button to press, and its Benefit Type repeated the Discount
+              Type below (and could disagree with it). */}
+          {BENEFIT_CATEGORIES.length > 1 && (<>
           <div>
             <label style={lbl}>Benefit Category <span style={{ color: 'var(--red)' }}>*</span></label>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem' }}>
@@ -731,6 +743,7 @@ function VoucherModal({ form, setForm, formError, saving, editTarget, onSave, on
               onChange={v => setForm(f => ({ ...f, benefitType: v }))}
               options={(catMeta?.types ?? []).map(t => ({ value: t.key, label: t.label }))} />
           </div>
+          </>)}
 
           {/* Monetary fields */}
           {isMonetary && (
@@ -739,21 +752,22 @@ function VoucherModal({ form, setForm, formError, saving, editTarget, onSave, on
                 <div>
                   <label style={lbl}>Discount Type <span style={{ color: 'var(--red)' }}>*</span></label>
                   <CustomSelect value={form.discountType || 'percentage'}
-                    onChange={v => setForm(f => ({ ...f, discountType: v }))}
+                    onChange={v => setForm(f => ({ ...f, discountType: v, benefitType: v === 'fixed' ? 'fixed' : 'percentage', discountValue: '' }))}
                     options={[
                       { value: 'percentage', label: 'Percentage (%)' },
                       { value: 'fixed',      label: 'Fixed Amount (P)' },
-                      { value: 'tiered',     label: 'Tiered (manual)' },
+                      // Only kept on a voucher that already uses it.
+                      ...(form.discountType === 'tiered' ? [{ value: 'tiered', label: 'Tiered (manual)' }] : []),
                     ]} />
                 </div>
                 <div>
                   <label style={lbl}>{form.discountType === 'percentage' ? 'Discount %' : 'Amount (₱)'} <span style={{ color: 'var(--red)' }}>*</span></label>
-                  <input type="number" min="0.01" step="0.01" max={form.discountType === 'percentage' ? 90 : 100000} value={form.discountValue} onChange={e => { const raw = e.target.value; const cap = form.discountType === 'percentage' ? 90 : 100000; setForm(f => ({ ...f, discountValue: raw === '' ? '' : String(Math.min(cap, Number(raw))) })); }} onKeyDown={e => ['e','E','+','-'].includes(e.key) && e.preventDefault()} placeholder={form.discountType === 'percentage' ? 'e.g. 20 (max 90)' : 'e.g. 100'} style={inp} />
+                  <input inputMode="decimal" maxLength={9} value={form.discountValue} onChange={e => { const pct = (form.discountType || 'percentage') === 'percentage'; setForm(f => ({ ...f, discountValue: capNum(e.target.value, pct ? 90 : 100000, 2) })); }} placeholder={(form.discountType || 'percentage') === 'percentage' ? 'e.g. 20 (max 90)' : 'e.g. 100 (max 100,000)'} style={inp} />
                 </div>
               </div>
               <div>
                 <label style={lbl}>Minimum Order Amount (₱) <span style={{ color: 'var(--gray)', textTransform: 'none' }}>- optional</span></label>
-                <input type="number" min="0" step="0.01" value={form.minOrderAmount} onChange={e => setForm(f => ({ ...f, minOrderAmount: e.target.value }))} placeholder="e.g. 500" style={inp} />
+                <input inputMode="decimal" maxLength={10} value={form.minOrderAmount} onChange={e => setForm(f => ({ ...f, minOrderAmount: capNum(e.target.value, 1000000, 2) }))} placeholder="e.g. 500 (max 1,000,000)" style={inp} />
               </div>
             </>
           )}
@@ -776,7 +790,7 @@ function VoucherModal({ form, setForm, formError, saving, editTarget, onSave, on
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
             <div>
               <label style={lbl}>Max Uses <span style={{ color: 'var(--gray)', textTransform: 'none' }}>- optional</span></label>
-              <input type="number" min="1" step="1" value={form.maxUses} onChange={e => setForm(f => ({ ...f, maxUses: e.target.value }))} placeholder="∞ unlimited" style={inp} />
+              <input inputMode="numeric" maxLength={6} value={form.maxUses} onChange={e => setForm(f => ({ ...f, maxUses: capNum(e.target.value, 100000) }))} placeholder="∞ unlimited (max 100,000)" style={inp} />
             </div>
             <div>
               <label style={lbl}>Expiry Date <span style={{ color: 'var(--gray)', textTransform: 'none' }}>- optional</span></label>
@@ -935,16 +949,16 @@ function FlashSalesTab({ token }) {
   return (
     <>
       {/* Stats + action */}
-      <div style={{ display: 'flex', gap: '0.625rem', flexWrap: 'wrap', marginBottom: '0.875rem', alignItems: 'center' }}>
-        {[{ label: 'Total', value: sales.length, color: 'var(--white)' }, { label: 'Live Now', value: liveCount, color: 'var(--green)' }, { label: 'Upcoming', value: upcomingCount, color: 'var(--blue)' }, { label: 'Ended', value: endedCount, color: 'var(--gray)' }].map(c => (
-          <div key={c.label} style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '7px', padding: '0.4rem 0.875rem', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-            <span style={{ fontSize: '1rem', fontWeight: 700, color: c.color }}>{c.value}</span>
-            <span style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>{c.label}</span>
-          </div>
-        ))}
-        {mayWork && (<button onClick={openCreate} style={{ marginLeft: 'auto', padding: '0.45rem 1rem', background: 'var(--gold)', color: 'var(--black)', border: 'none', borderRadius: '7px', fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer' }}>
-          + New Flash Sale
-        </button>)}
+      {/* Same cards and button as the Vouchers tab beside it. */}
+      <div style={{ ...S.row, marginBottom: '14px' }}>
+        <SummaryCard label="Total flash sales" value={sales.length} accent />
+        <SummaryCard label="Live now" value={liveCount} color="var(--green)" sub="Discount showing in the shop" />
+        <SummaryCard label="Upcoming" value={upcomingCount} color="var(--blue)" sub="Start date not reached" />
+        <SummaryCard label="Ended" value={endedCount} sub="Past their end date" />
+      </div>
+      <div style={{ ...S.rowBetween, marginBottom: '10px' }}>
+        <span style={{ fontSize: 13, fontWeight: 700 }}>Flash sales</span>
+        {mayWork && (<button onClick={openCreate} style={S.btnPrimary}>+ New Flash Sale</button>)}
       </div>
 
       {error && (
@@ -1042,18 +1056,11 @@ function FlashSalesTab({ token }) {
 
                     {mayWork && (<td data-rt="actions" style={{ padding: '11px 14px' }}>
                       <div style={{ display: 'flex', gap: '0.4rem' }}>
-                        <button onClick={() => handleToggle(sale)} disabled={toggling === sale.id} title={sale.isActive ? 'Deactivate' : 'Activate'}
-                          style={{ background: sale.isActive ? 'rgba(74,222,128,0.12)' : 'rgba(107,114,128,0.12)', border: `1px solid ${sale.isActive ? 'rgba(74,222,128,0.3)' : 'rgba(107,114,128,0.3)'}`, borderRadius: '6px', padding: '0.35rem', cursor: 'pointer', color: sale.isActive ? 'var(--green)' : 'var(--gray)', display: 'flex', alignItems: 'center' }}>
-                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                        <button onClick={() => openEdit(sale)} style={{ padding: '4px 10px', background: 'var(--border)', border: 'none', borderRadius: '6px', color: 'var(--white)', fontSize: '0.75rem', cursor: 'pointer' }}>Edit</button>
+                        <button onClick={() => handleToggle(sale)} disabled={toggling === sale.id} style={{ padding: '4px 10px', background: sale.isActive ? 'rgba(239,68,68,0.12)' : 'rgba(34,197,94,0.12)', border: 'none', borderRadius: '6px', color: sale.isActive ? 'var(--red)' : 'var(--green)', fontSize: '0.75rem', cursor: toggling === sale.id ? 'not-allowed' : 'pointer', opacity: toggling === sale.id ? 0.5 : 1 }}>
+                          {sale.isActive ? 'Disable' : 'Enable'}
                         </button>
-                        <button onClick={() => openEdit(sale)} title="Edit"
-                          style={{ background: 'rgba(212,168,67,0.1)', border: '1px solid rgba(212,168,67,0.3)', borderRadius: '6px', padding: '0.35rem', cursor: 'pointer', color: 'var(--gold)', display: 'flex', alignItems: 'center' }}>
-                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                        </button>
-                        <button onClick={() => handleDelete(sale)} disabled={deleting === sale.id} title="Delete"
-                          style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '6px', padding: '0.35rem', cursor: 'pointer', color: 'var(--red)', display: 'flex', alignItems: 'center' }}>
-                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
-                        </button>
+                        <button onClick={() => handleDelete(sale)} disabled={deleting === sale.id} style={{ padding: '4px 10px', background: 'rgba(239,68,68,0.12)', border: 'none', borderRadius: '6px', color: 'var(--red)', fontSize: '0.75rem', cursor: 'pointer' }}>Del</button>
                       </div>
                     </td>)}
                   </tr>
@@ -1195,17 +1202,17 @@ function FlashSaleModal({ form, setForm, formError, saving, editTarget, products
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
             <div>
               <label style={lbl}>Start Date <span style={{ color: 'var(--red)' }}>*</span></label>
-              <input type="datetime-local" value={form.startDate} onChange={e => setForm(f => ({ ...f, startDate: e.target.value }))} style={{ ...inp, colorScheme: 'dark' }} />
+              <input type="datetime-local" value={form.startDate} onChange={e => setForm(f => ({ ...f, startDate: e.target.value }))} style={inp} />
             </div>
             <div>
               <label style={lbl}>End Date <span style={{ color: 'var(--red)' }}>*</span></label>
-              <input type="datetime-local" value={form.endDate} onChange={e => setForm(f => ({ ...f, endDate: e.target.value }))} style={{ ...inp, colorScheme: 'dark' }} />
+              <input type="datetime-local" value={form.endDate} onChange={e => setForm(f => ({ ...f, endDate: e.target.value }))} style={inp} />
             </div>
           </div>
 
           <div>
             <label style={lbl}>Stock Limit <span style={{ color: 'var(--gray)', textTransform: 'none' }}>- optional</span></label>
-            <input type="number" min="1" step="1" value={form.stockLimit} onChange={e => setForm(f => ({ ...f, stockLimit: e.target.value }))} onKeyDown={e => ['e','E','+','-'].includes(e.key) && e.preventDefault()} placeholder="e.g. 50 - leave blank for unlimited" style={inp} />
+            <input inputMode="numeric" maxLength={6} value={form.stockLimit} onChange={e => setForm(f => ({ ...f, stockLimit: capNum(e.target.value, 100000) }))} placeholder="e.g. 50 - leave blank for unlimited (max 100,000)" style={inp} />
           </div>
 
           <label style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', cursor: 'pointer' }}>

@@ -124,6 +124,8 @@ export default function AuditLogsPage() {
 
   const [group, setGroup] = useState('all');
   const [range, setRange] = useState('7');       // days, or 'all'
+  // Staff first: the audit trail is what the shop's own people did. Customers are one click away.
+  const [who, setWho] = useState('staff');
   const [query, setQuery] = useState('');
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(25);
@@ -153,9 +155,11 @@ export default function AuditLogsPage() {
       if (group && group !== 'all') p.set('group', group);
       if (startDate) p.set('startDate', startDate);
       if (query.trim()) p.set('q', query.trim());
+      if (who !== 'all') p.set('who', who);
 
       const sp = new URLSearchParams();
       if (startDate) sp.set('startDate', startDate);
+      if (who !== 'all') sp.set('who', who);
 
       const [logsRes, sumRes] = await Promise.all([
         fetchWithTimeout(`${API_URL}/api/admin/activity-logs?${p}`, {
@@ -180,7 +184,7 @@ export default function AuditLogsPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [token, group, startDate, query, page, perPage]);
+  }, [token, group, startDate, query, page, perPage, who]);
 
   // The file has to be fetched rather than linked: the endpoint wants the bearer token, and an
   // <a href> carries no headers. Same filters as the screen, so the file IS what is on it.
@@ -192,6 +196,7 @@ export default function AuditLogsPage() {
       const p = new URLSearchParams();
       if (group && group !== 'all') p.set('group', group);
       if (startDate) p.set('startDate', startDate);
+      if (who !== 'all') p.set('who', who);
       const res = await fetchWithTimeout(`${API_URL}/api/admin/activity-logs/export?${p}`, {
         headers: { Authorization: `Bearer ${token}` },
       }, 60000);
@@ -216,7 +221,7 @@ export default function AuditLogsPage() {
   }, [token, exporting, group, startDate]);
 
   useEffect(() => { load(); }, [load]);
-  useEffect(() => { setPage(1); }, [group, range, query]);
+  useEffect(() => { setPage(1); }, [group, range, query, who]);
 
   // The server already cut the page. Slicing again here is what made the pager page through a
   // 200-row window while everything older than that was unreachable.
@@ -288,6 +293,16 @@ export default function AuditLogsPage() {
           <div style={{ flex: '1 1 240px', minWidth: 200 }}>
             <SearchBar value={query} onChange={setQuery} placeholder="Search a person, an action, an address…" style={{ width: '100%' }} />
           </div>
+          <CustomSelect
+            value={who}
+            onChange={v => { setWho(v); }}
+            options={[
+              { value: 'staff',     label: 'Staff and system' },
+              { value: 'customers', label: 'Customers' },
+              { value: 'all',       label: 'Everyone' },
+            ]}
+            style={{ flex: '0 0 170px' }}
+          />
           <CustomSelect
             value={group}
             onChange={setGroup}

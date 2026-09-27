@@ -98,10 +98,14 @@ export default function ProductionPage() {
 
   // A job cancelled mid-production stays on the bench list until its material is counted.
   const toSettle = (j) => j.joStatus === 'Cancelled' && !!j.materialsToSettle;
-  const active = jobs.filter(j => toSettle(j) || !['Completed', 'Cancelled', 'QC_Passed'].includes(j.joStatus));
+  // Not yet startable: queued and short of material. It stays on Job Orders (with what is short)
+  // and comes onto the floor by itself once the stock is in - the shortage is worked out on load.
+  const waitingMat = (j) => j.joStatus === 'Queued' && Array.isArray(j.materialShort) && j.materialShort.length > 0;
+  const heldBack = jobs.filter(waitingMat);
+  const active = jobs.filter(j => toSettle(j) || (!['Completed', 'Cancelled', 'QC_Passed'].includes(j.joStatus) && !waitingMat(j)));
   const [settling, setSettling] = useState(null);
   const counts = {
-    queued:     jobs.filter(j => j.joStatus === 'Queued').length,
+    queued:     jobs.filter(j => j.joStatus === 'Queued' && !waitingMat(j)).length,
     inProgress: jobs.filter(j => j.joStatus === 'In Progress').length,
     forQc:      jobs.filter(j => j.joStatus === 'QC_Pending').length,
     rework:     jobs.filter(j => j.joStatus === 'QC_Failed').length,
@@ -157,6 +161,12 @@ export default function ProductionPage() {
         </>)}
 
         {error && <div style={{ ...S.note, background: 'var(--st-red-bg)', borderColor: 'rgba(239,68,68,0.35)', color: 'var(--st-red-fg)', marginBottom: '10px' }}>{error}</div>}
+        {heldBack.length > 0 && (
+          <div style={{ ...S.note, marginBottom: '10px' }}>
+            {heldBack.length} job{heldBack.length === 1 ? ' is' : 's are'} waiting on materials and {heldBack.length === 1 ? "isn't" : "aren't"} shown here
+            ({heldBack.map(j => j.joId).join(', ')}). {heldBack.length === 1 ? 'It appears' : 'They appear'} once the stock is in - see Job Orders and To Buy.
+          </div>
+        )}
 
         {isPhone ? (
           <>

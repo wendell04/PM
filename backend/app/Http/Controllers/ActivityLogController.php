@@ -99,6 +99,11 @@ class ActivityLogController extends Controller
         if ($request->filled('entityType')) $query->where('entityType', $request->entityType);
         if ($request->filled('entityId'))   $query->where('entityId', $request->entityId);
         if ($request->filled('actor'))      $query->where('performedBy', $request->actor);
+        // Whose actions. The trail is for the shop's own people first: a customer signing in is not
+        // something staff did. Refused sign-ins with no known account carry no role and stay under
+        // Staff, because an attempt on the shop is exactly what that view is for.
+        if ($request->input('who') === 'staff')     $query->where('performedByRole', '!=', 'customer');
+        if ($request->input('who') === 'customers') $query->where('performedByRole', 'customer');
         // Parsed, not passed through. createdAt is stored as a date and the request carries text,
         // and MongoDB never matches a date against a string - so every window from Today to Last
         // 90 days came back empty while the tiles above it, which did parse, counted seven
@@ -180,6 +185,7 @@ class ActivityLogController extends Controller
         // half way still leaves the attempt on the record.
         $this->logActivity($request, 'audit.exported', 'audit', null, 'Exported the audit log', [
             'group'     => $request->input('group'),
+            'who'       => $request->input('who'),
             'startDate' => $request->input('startDate'),
             'endDate'   => $request->input('endDate'),
         ]);
@@ -244,6 +250,8 @@ class ActivityLogController extends Controller
 
             $q = ActivityLog::where('createdAt', '<=', $until);
             if ($since) $q->where('createdAt', '>=', $since);
+            if ($request->input('who') === 'staff')     $q->where('performedByRole', '!=', 'customer');
+            if ($request->input('who') === 'customers') $q->where('performedByRole', 'customer');
             $rows = $q->get(['action', 'performedBy', 'ip', 'createdAt']);
 
             $signIns  = $rows->whereIn('action', ActivityLog::SIGN_IN);
