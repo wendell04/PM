@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev -p 3000",
     "build": "next build",
     "build:cloudflare": "npx @opennextjs/cloudflare build && node build-worker.mjs",
     "start": "next start",

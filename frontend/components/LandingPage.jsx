@@ -29,6 +29,7 @@ import { cloudinaryThumb } from '@/lib/cloudinaryImage';
 import { priceFrom } from '@/lib/priceFrom';
 import { priceLabel, variantCount } from '@/lib/productCardInfo';
 import OtpInput from '@/components/auth/OtpInput';
+import { describeAuthError } from '@/lib/describeAuthError';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
@@ -751,7 +752,7 @@ const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=
       setVerifyingExisting(false);
       setVerificationModal(true);
     } catch (err) {
-      setErrors({email: 'Network error. Make sure the backend server is running.'});
+      setErrors({email: describeAuthError(err, API_URL)});
     } finally {
       setIsRegistering(false);
       // Turnstile tokens are single-use - reset so a re-submit (e.g. after a validation error)
@@ -824,7 +825,7 @@ const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=
       closeModal();
       router.push(redirectPath || '/shop');
     } catch (err) {
-      setLoginErrors({password: 'Network error. Make sure the backend server is running.'});
+      setLoginErrors({password: describeAuthError(err, API_URL)});
     } finally {
       setIsLoggingIn(false);
     }
@@ -896,7 +897,7 @@ const handleForgotSubmit = async () => {
     setForgotSent(true);
     setForgotStep(1); // Stay on step 1, just show success message
   } catch (err) {
-    setForgotError('Network error. Make sure the backend server is running.');
+    setForgotError(describeAuthError(err, API_URL));
   } finally {
     setIsSendingReset(false);
   }
@@ -941,7 +942,7 @@ const handleSendResetCode = async () => {
     }
     setForgotStep(3); // Move to code verification step
   } catch (err) {
-    setForgotError('Network error. Make sure the backend server is running.');
+    setForgotError(describeAuthError(err, API_URL));
   } finally {
     setIsSendingReset(false);
   }
@@ -962,7 +963,7 @@ const handleForgotVerifyCode = async () => {
     if (!response.ok) { setForgotError(data.message || 'Invalid or expired code.'); return; }
     setForgotStep(4); // Move to password reset step
   } catch (err) {
-    setForgotError('Network error. Make sure the backend server is running.');
+    setForgotError(describeAuthError(err, API_URL));
   } finally {
     setIsSendingReset(false);
   }
@@ -1027,7 +1028,7 @@ const handleForgotResetPassword = async () => {
     setForgotConfirmPassword('');
     setForgotStep(5);
   } catch (err) {
-    setForgotError('Network error. Make sure the backend server is running.');
+    setForgotError(describeAuthError(err, API_URL));
   } finally {
     setIsSendingReset(false);
   }

@@ -11,6 +11,7 @@ import { DEFAULT_REGISTRATION_TERMS } from '@/lib/registrationTerms';
 // which has no auth styles, so its modal looked off. This file is entirely class-scoped (no global
 // element selectors), so it cannot bleed into shop layouts.
 import '@/components/custom-styles.css';
+import { describeAuthError } from '@/lib/describeAuthError';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
@@ -214,7 +215,7 @@ export default function RegisterForm({ onSuccess, onSwitchToLogin, theme = 'ligh
 
       onSuccess?.(data.data.user, data.data.token, false, data.data.requires_2fa);
     } catch (err) {
-      setErrors({ email: 'Network error. Make sure the backend server is running.' });
+      setErrors({ email: describeAuthError(err, API_URL) });
       setTAndCOpen(false);
     } finally {
       setLoading(false);
