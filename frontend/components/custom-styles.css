@@ -39,6 +39,7 @@
     /* Theme-aware status chips (dark defaults - translucent tint + bright text) */
     --st-green-bg: rgba(74,222,128,0.15);  --st-green-fg: #4ade80;
     --st-amber-bg: rgba(251,191,36,0.16);  --st-amber-fg: #fbbf24;
+    --st-yellow-bg:rgba(250,204,21,0.16);  --st-yellow-fg:#facc15; --st-yellow-bar:#eab308;
     --st-red-bg:   rgba(248,113,113,0.15); --st-red-fg:   #f87171;
     --st-orange-bg:rgba(251,146,60,0.16);  --st-orange-fg:#fb923c;
     --st-blue-bg:  rgba(96,165,250,0.15);  --st-blue-fg:  #60a5fa;
@@ -75,6 +76,7 @@
     /* Status chips - light tint + dark text */
     --st-green-bg: #e9f5ea;  --st-green-fg: #2e7d32;
     --st-amber-bg: #fff8e1;  --st-amber-fg: #b45309;
+    --st-yellow-bg:#fefce8;  --st-yellow-fg:#a16207; --st-yellow-bar:#eab308;
     --st-red-bg:   #fde8e8;  --st-red-fg:   #c62828;
     --st-orange-bg:#fff3e0;  --st-orange-fg:#e65100;
     --st-blue-bg:  #eef4ff;  --st-blue-fg:  #1e40af;

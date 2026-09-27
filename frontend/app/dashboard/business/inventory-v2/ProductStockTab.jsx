@@ -40,7 +40,10 @@ function calcProducible(bom, matMap) {
 // 109 mugs need 109 boxes, and 10 boxes cover 9% of them. Anything under 100% is what the
 // owner has to restock before that build is fully fulfillable - the "seek bar" he asked for.
 // Traffic-light by how much of the build the materials cover: most of it is amber, half or less red.
-const coverTone = (c) => c >= 0.9 ? 'var(--st-amber-fg, #ca8a04)' : c >= 0.5 ? 'var(--st-orange-fg)' : 'var(--st-red-fg)';
+// One scale for every coverage bar: green enough, yellow 90% and up (nearly there), orange from half,
+// red below. The "amber" chip colour is a dark orange in light mode, so 95% read as red.
+const coverTone = (c) => c >= 1 ? 'var(--st-green-fg)' : c >= 0.9 ? 'var(--st-yellow-fg)' : c >= 0.5 ? 'var(--st-orange-fg)' : 'var(--st-red-fg)';
+const coverBar  = (c) => c >= 1 ? 'var(--st-green-fg)' : c >= 0.9 ? 'var(--st-yellow-bar)' : c >= 0.5 ? 'var(--st-orange-fg)' : 'var(--st-red-fg)';
 
 function coverageOf(bom, producible, matMap) {
   const rows = [];
@@ -277,7 +280,7 @@ export default function ProductStockTab({ boms, materials, products }) {
                       {row.coverage < 1 && (
                         <div title={`Restock to fulfil: ${row.shortNames.join(', ')}`} style={{ marginTop: 4 }}>
                           <div style={{ height: 4, borderRadius: 2, background: 'var(--dark2)', overflow: 'hidden', maxWidth: 140, margin: '0 auto' }}>
-                            <div style={{ width: `${Math.max(3, row.coverage * 100)}%`, height: '100%', background: coverTone(row.coverage) }} />
+                            <div style={{ width: `${Math.max(3, row.coverage * 100)}%`, height: '100%', background: coverBar(row.coverage) }} />
                           </div>
                           {/* Graded like a fuel gauge: 95% is nearly there, not an alarm. What is short is
                               packaging or a consumable - it is costed and bought, it does not stop a sale. */}
@@ -440,12 +443,12 @@ function DetailPanel({ variants, matMap }) {
                         {/* With nothing buildable there is no build to cover: 0 of 0 read as "Enough". */}
                         {cov && prod > 0 && (() => {
                           const ok = cov.ratio >= 1;
-                          const tone = ok ? 'var(--st-green-fg)' : cov.ratio < 0.25 ? 'var(--st-red-fg)' : 'var(--st-orange-fg)';
+                          const tone = coverTone(cov.ratio);
                           return (
                             <div style={{ marginTop: 4, minWidth: 120 }}
                               title={`${cov.have} of ${cov.need} ${cov.uom ?? ''} needed to make all ${prod}.${ok ? '' : ' What to buy now is on To Buy.'}`}>
                               <div style={{ height: 5, borderRadius: 3, background: 'var(--dark2)', overflow: 'hidden' }}>
-                                <div style={{ width: `${Math.max(3, cov.ratio * 100)}%`, height: '100%', background: tone }} />
+                                <div style={{ width: `${Math.max(3, cov.ratio * 100)}%`, height: '100%', background: coverBar(cov.ratio) }} />
                               </div>
                               <div style={{ fontSize: 10.5, marginTop: 2, fontWeight: 700, color: tone }}>
                                 {ok ? 'Enough' : `Short by ${cov.restock} ${cov.uom ?? ''}`}
