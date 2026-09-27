@@ -42,6 +42,10 @@ class ChatController extends Controller
             foreach ($conversations as $c) {
                 $otherId = collect($c->participants)->filter(fn($id) => (string)$id !== (string)$user->_id && (string)$id !== (string)$shopId)->first();
                 $other = User::find($otherId);
+                // The shared inbox is the shop's CUSTOMER conversations. A thread between the shop
+                // account and a member of staff is a private one - only the people in it see it.
+                $readerIn = in_array((string) $user->_id, array_map('strval', (array) $c->participants), true);
+                if ($isAdmin && !$readerIn && $other && ($other->role ?? 'customer') !== 'customer') continue;
                 
                 if ($otherId) $existingParticipantIds[] = (string)$otherId;
                 
@@ -242,6 +246,16 @@ class ChatController extends Controller
             $participants = array_map('strval', $conversation->participants ?? []);
             if (!in_array($userId, $participants, true) && !\App\Support\ChatAccess::shopSide($user)) {
                 return $this->unauthorizedResponse();
+            }
+            // Shop-side access covers customer and guest threads, not a private chat between the
+            // shop account and another member of staff.
+            if (!in_array($userId, $participants, true)) {
+                $shopId = (string) (\App\Support\ChatAccess::shopAccount()?->_id ?? '');
+                foreach ($participants as $pid) {
+                    if ($pid === $shopId) continue;
+                    $p = User::find($pid);
+                    if ($p && ($p->role ?? 'customer') !== 'customer') return $this->unauthorizedResponse();
+                }
             }
 
             $messages = Message::where('conversation_id', $id)
