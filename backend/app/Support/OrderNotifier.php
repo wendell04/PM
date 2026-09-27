@@ -340,6 +340,15 @@ final class OrderNotifier
                 'cancelled'          => 'Order #' . $ref . ' has been cancelled.',
             ];
             $headline = $lines[$key] ?? ('Order #' . $ref . ' has been updated.');
+            // A cancellation says why and what happens to the money, in the same one notice. The shop's
+            // cancel path wrote a second bell of its own with those two facts, so the customer got two.
+            if ($key === 'cancelled') {
+                $why = trim((string) ($order->cancelledReason ?? ''));
+                if (($order->cancelledBy ?? null) === 'admin') $headline = 'Order #' . $ref . ' was cancelled by the shop.';
+                if ($why !== '') $headline .= ' Reason: ' . mb_substr($why, 0, 200) . '.';
+                $owed = (float) ($order->refundOwed ?? 0);
+                if ($owed > 0) $headline .= ' A refund of P' . number_format($owed, 2) . ' is being arranged.';
+            }
             if ($key === 'for_delivery' && $courier !== '') {
                 $headline .= ' It is with ' . $courier . '.';
             }

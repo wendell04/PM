@@ -126,7 +126,15 @@ const ChatWindow = ({ activeConversation, messages, user, isLoading, isAdmin, on
 
   const renderMessage = (msg, idx) => {
     const myId = String(user?.id || user?._id || '');
-    const isMe = msg.sender_id === myId;
+    // On the shop side the thread is the SHOP's: owner, staff and the shop account all write into it.
+    // "Mine" is everything not written by the customer, or a colleague's reply sat on the customer's
+    // side of the screen as if the customer had said it.
+    const customerId = String(activeConversation?.other_user?.id ?? '');
+    const isMe = isAdmin && customerId && !activeConversation?.other_user?.is_guest
+      ? msg.sender_id !== customerId
+      : msg.sender_id === myId;
+    // Who on the team wrote it - for the team only. The customer is talking to the shop.
+    const teamName = isAdmin && isMe && msg.sender_id !== myId && msg.sender_name ? msg.sender_name : null;
     // clientKey first: a bubble that began life as a placeholder keeps it through confirmation, so
     // React updates the node in place instead of unmounting it and mounting the server's copy.
     const msgKey = msg.clientKey || msg._id || msg.id || `msg-${idx}`;
@@ -421,6 +429,7 @@ const ChatWindow = ({ activeConversation, messages, user, isLoading, isAdmin, on
     return (
       <div key={msgKey} className={`bubble ${isMe ? 'me' : 'them'}`}
         style={{ transition: 'opacity .22s ease', opacity: msg.pending ? 0.6 : msg.failed ? 0.7 : 1 }}>
+        {teamName && <div style={{ fontSize: '0.66rem', fontWeight: 700, opacity: 0.7, marginBottom: '3px' }}>{teamName}</div>}
         {/* A document has nothing to look at, so it gets a card that names it and opens it -
             the one thing a reader can usefully do with a PDF in a conversation. */}
         {msg.type === 'file' && msg.file_url ? (

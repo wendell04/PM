@@ -149,6 +149,11 @@ function normalizeOrder(apiOrder) {
   const productType = isCustom ? 'Customized' : 'Ready Made';
 
   return {
+    // Everything the server sent, then the cleaned-up fields on top. Listing fields one by one
+    // dropped every field nobody remembered to add: free delivery, who collects the courier fee,
+    // refunds owed, write-offs, the cancel reason and the accepted terms were all read by the
+    // Orders screen and never reached it.
+    ...apiOrder,
     id: apiOrder._id || apiOrder.id,
     isArchived: !!(apiOrder.isArchived),
     archivedAt: apiOrder.archivedAt ?? null,

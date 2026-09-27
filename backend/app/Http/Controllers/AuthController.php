@@ -821,7 +821,7 @@ class AuthController extends Controller
 
             // Hiding the form is not closing it: the endpoint is public and anyone who knows the
             // URL can still post. The switch has to be enforced where the request lands.
-            $formOwner = \App\Models\User::whereIn('role', ['admin', 'owner'])->first();
+            $formOwner = \App\Support\ChatAccess::shopAccount();
             if ($formOwner && ($formOwner->contactFormEnabled ?? true) === false) {
                 return response()->json([
                     'success' => false,
@@ -857,7 +857,7 @@ class AuthController extends Controller
             // let one person write into another's thread, and it bought nothing a signed-in
             // customer does not already get by being signed in.
             $sender = $authUser;
-            $admin  = User::whereIn('role', ['admin', 'owner'])->first();
+            $admin  = \App\Support\ChatAccess::shopAccount();
 
             if ($admin) {
                 // Store participants as strings to match ChatController's string-based queries

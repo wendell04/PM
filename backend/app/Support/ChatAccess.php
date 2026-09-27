@@ -27,4 +27,29 @@ class ChatAccess
         if (!$user || ($user->role ?? 'customer') === 'customer') return false;
         return Rbac::isSuperAdmin($user) || Rbac::isOwner($user) || Rbac::allows($user, 'messages.work');
     }
+
+    private static ?string $shopId = null;
+
+    /**
+     * The one account every customer conversation is held with - "the shop".
+     *
+     * Each caller used to take whichever admin or owner the database returned first, and the owner
+     * and system admin each wrote as themselves, so one customer could end up with a thread per
+     * person on the shop side. The oldest admin/owner account is the one the existing threads were
+     * opened with, so choosing it by age keeps them where they are.
+     */
+    public static function shopAccount(): ?User
+    {
+        if (self::$shopId !== null) return User::find(self::$shopId);
+        $shop = User::whereIn('role', ['admin', 'owner'])->orderBy('created_at', 'asc')->first();
+        self::$shopId = $shop ? (string) $shop->_id : null;
+        return $shop;
+    }
+
+    /** The name a customer sees for the shop: the store name from Settings, never a person's. */
+    public static function shopDisplayName(): string
+    {
+        $name = trim((string) (ShopSettings::owner()?->storeName ?? ''));
+        return $name !== '' ? $name : 'Personalize Me Prints';
+    }
 }

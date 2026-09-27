@@ -26,16 +26,21 @@ class ChatController extends Controller
             // Sees the shop's whole inbox: owner, system admin, and staff with the Messages row.
             $isAdmin = \App\Support\ChatAccess::shopSide($user);
 
-            // Get existing conversations where the user is a participant
-            $conversations = Conversation::where('participants', (string)$user->_id)
+            // Customers see their own threads. The shop side sees THE SHOP's threads - one per customer,
+            // shared by everyone on the inbox - plus any it is personally in. Listing only the reader's
+            // own threads hid every customer conversation from staff, who then replied blind.
+            $shop   = $isAdmin ? \App\Support\ChatAccess::shopAccount() : null;
+            $shopId = $shop ? (string) $shop->_id : null;
+            $conversations = Conversation::whereIn('participants', array_values(array_filter([(string) $user->_id, $shopId])))
                 ->orderBy('last_message_at', 'desc')
-                ->get();
+                ->get()
+                ->unique(fn ($c) => (string) $c->_id);
 
             $existingParticipantIds = [];
             $standardized = [];
 
             foreach ($conversations as $c) {
-                $otherId = collect($c->participants)->filter(fn($id) => (string)$id !== (string)$user->_id)->first();
+                $otherId = collect($c->participants)->filter(fn($id) => (string)$id !== (string)$user->_id && (string)$id !== (string)$shopId)->first();
                 $other = User::find($otherId);
                 
                 if ($otherId) $existingParticipantIds[] = (string)$otherId;
@@ -46,12 +51,15 @@ class ChatController extends Controller
                     'last_message'    => $c->last_message ?? 'No messages yet',
                     'last_message_at' => $c->last_message_at ? $c->last_message_at->toIso8601String() : null,
                     'unread_count'    => Message::where('conversation_id', (string)$c->_id)
-                                            ->where('sender_id', '!=', (string)$user->_id)
+                                            ->whereNotIn('sender_id', array_values(array_filter([(string)$user->_id, $shopId])))
                                             ->where('is_read', false)
                                             ->count(),
                     'other_user'      => $other ? [
                         'id'          => (string)$other->_id,
-                        'name'        => $other->firstName . ' ' . $other->lastName,
+                        // A customer is talking to the shop, whoever on the team holds the account.
+                        'name'        => !$isAdmin && ($other->role ?? 'customer') !== 'customer'
+                            ? \App\Support\ChatAccess::shopDisplayName()
+                            : $other->firstName . ' ' . $other->lastName,
                         // Two customers can share a name; staff tell them apart by email.
                         'email'       => $isAdmin ? ($other->email ?? null) : null,
                         'avatar'      => $other->avatar,
@@ -63,7 +71,7 @@ class ChatController extends Controller
 
             // Always inject Support for customers if not already in conversations
             if (!$isAdmin) {
-                $admin = User::whereIn('role', ['admin', 'owner'])->first();
+                $admin = \App\Support\ChatAccess::shopAccount();
                 if ($admin && !in_array((string)$admin->_id, $existingParticipantIds)) {
                     // Put Support at the very top
                     array_unshift($standardized, [
@@ -74,7 +82,7 @@ class ChatController extends Controller
                         'unread_count'    => 0,
                         'other_user'      => [
                             'id'          => (string)$admin->_id,
-                            'name'        => 'PersonalizeMe Support',
+                            'name'        => \App\Support\ChatAccess::shopDisplayName(),
                             'avatar'      => null,
                             'role'        => 'admin',
                             'last_seen_at' => $admin->last_seen_at ? $admin->last_seen_at->toIso8601String() : null,
@@ -268,6 +276,11 @@ class ChatController extends Controller
                 'client_key'      => 'nullable|string|max:64',
             ]);
 
+            // A text message with nothing in it was saved and shown as an empty bubble on both sides.
+            if ($request->type === 'text' && trim((string) $request->body) === '' && !$request->file_url) {
+                return $this->errorResponse('Type a message first.', 422);
+            }
+
             $conversationId = $request->conversation_id;
 
             // If no conversation_id, find or create one with the recipient
@@ -275,7 +288,7 @@ class ChatController extends Controller
                 $recipientId = $request->recipient_id;
 
                 if ($recipientId === 'admin_auto' || $recipientId === 'support_auto') {
-                    $admin = User::whereIn('role', ['admin', 'owner'])->first();
+                    $admin = \App\Support\ChatAccess::shopAccount();
                     if (!$admin) {
                         return response()->json(['status' => 'error', 'message' => 'No admin available'], 404);
                     }
@@ -298,9 +311,10 @@ class ChatController extends Controller
                 // under their own name - one thread per customer, as in any shared inbox. Starting a
                 // thread as themselves gave the customer a second chat beside the shop's, and their
                 // side of the app only ever opens one of them.
+                // Owner and system admin included: each writing as themselves opened a second thread.
                 $sideId = (string) $user->_id;
-                if ($isStaff && !\App\Support\Rbac::isSuperAdmin($user) && !\App\Support\Rbac::isOwner($user)) {
-                    $shop = User::whereIn('role', ['admin', 'owner'])->first();
+                if ($isStaff) {
+                    $shop = \App\Support\ChatAccess::shopAccount();
                     if ($shop) $sideId = (string) $shop->_id;
                 }
 

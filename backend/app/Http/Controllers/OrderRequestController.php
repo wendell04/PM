@@ -1002,7 +1002,7 @@ class OrderRequestController extends Controller
     private function quoteConversation(OrderRequest $req): array
     {
         $customerId = (string) $req->customerId;
-        $admin      = User::whereIn('role', ['admin', 'owner'])->first();
+        $admin      = \App\Support\ChatAccess::shopAccount();
         if (!$admin || $customerId === '') {
             return [null, null];
         }

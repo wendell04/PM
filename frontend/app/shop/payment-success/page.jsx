@@ -609,7 +609,7 @@ export default function PaymentSuccessPage() {
                     orderNo: orderNo(order),
                     products: (order.items ?? []).map(i => i.productName ?? i.product_name).filter(Boolean).join(', '),
                     brief: order.designNotes || '',
-                    body: 'Hi! I just placed this design order.',
+                    body: (order?.designType === 'request' || (order?.items ?? []).some(i => i?.designRequested || i?.designMode === 'request')) ? 'Hi! I just placed this design order.' : 'Hi! I just placed this order.',
                   } } }))}
                   style={{
                     flex: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
@@ -619,7 +619,10 @@ export default function PaymentSuccessPage() {
                   }}
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
-                  Message designer
+                  {/* A designer only exists when the customer asked us to draw it. An upload or a
+                      quotation is a conversation with the shop. */}
+                  {(order?.designType === 'request' || (order?.items ?? []).some(i => i?.designRequested || i?.designMode === 'request'))
+                    ? 'Message designer' : 'Message us'}
                 </button>
               )}
             </div>

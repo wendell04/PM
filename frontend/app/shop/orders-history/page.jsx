@@ -210,7 +210,7 @@ const STATUS_ACCENT = {
 };
 
 // ─── OrderTracker ───────────────────────────────────────
-function OrderTracker({ status, paymentMethod, paymentStatus, statusHistory = [], items = [], productionJobs = [] }) {
+function OrderTracker({ status, paymentMethod, paymentStatus, statusHistory = [], items = [], productionJobs = [], cancelledBy = null, cancelledReason = null, refundOwed = 0, refunds = [] }) {
   const historyMap = {};
   (statusHistory || []).forEach(e => { if (e?.status && e?.at) historyMap[e.status] = e.at; });
 
@@ -238,7 +238,18 @@ function OrderTracker({ status, paymentMethod, paymentStatus, statusHistory = []
         </div>
         <div>
           <div style={{ fontSize: '0.875rem', fontWeight: 700, color: isCancelled ? '#ef4444' : '#f97316' }}>Order {status}</div>
-          <div style={{ fontSize: '0.78rem', color: 'var(--gray)', marginTop: '2px' }}>{isCancelled ? 'This order was cancelled.' : 'This order was returned.'}</div>
+          <div style={{ fontSize: '0.78rem', color: 'var(--gray)', marginTop: '2px' }}>
+            {isCancelled ? (cancelledBy === 'admin' ? 'We cancelled this order.' : 'This order was cancelled.') : 'This order was returned.'}
+            {isCancelled && cancelledReason ? ` Reason: ${cancelledReason}.` : ''}
+          </div>
+          {/* What happens to their money is the first thing a customer asks after a cancellation. */}
+          {isCancelled && (() => {
+            const sent = (refunds || []).filter(r => r.status === 'paid' || r.status === 'sent').reduce((t, r) => t + Number(r.amount || 0), 0);
+            const owed = Number(refundOwed || 0);
+            if (owed > 0) return <div style={{ fontSize: '0.78rem', color: 'var(--white)', marginTop: '4px', fontWeight: 600 }}>Refund of ₱{owed.toLocaleString('en-PH', { minimumFractionDigits: 2 })} is being arranged - it goes back to the payment method you used.</div>;
+            if (sent > 0) return <div style={{ fontSize: '0.78rem', color: 'var(--white)', marginTop: '4px', fontWeight: 600 }}>₱{sent.toLocaleString('en-PH', { minimumFractionDigits: 2 })} was refunded to you.</div>;
+            return null;
+          })()}
         </div>
       </div>
     );
@@ -619,6 +630,8 @@ export default function OrdersHistoryPage() {
   // Keyed by item index, not a single flag: with one boolean, approving the mug put "Approving..." on
   // the totebag's button too, which reads as both being submitted.
   const [approvingIdx, setApprovingIdx] = useState(null);
+  // Approving is binding - "we print exactly what you approve" - so it takes a second, deliberate tap.
+  const [confirmApproveIdx, setConfirmApproveIdx] = useState(null);
   const [approveDesignError, setApproveDesignError]     = useState(null);
   const [revisionForIdx, setRevisionForIdx]             = useState(null);
   const [revisionNotes, setRevisionNotes]               = useState('');
@@ -1487,7 +1500,8 @@ export default function OrdersHistoryPage() {
                       {selectedOrder.isCustomOrder ? (
                         <CustomOrderTracker orderStatus={selectedOrder.orderStatus} designType={selectedOrder.designType} designStatus={selectedOrder.designStatus} paymentStatus={selectedOrder.paymentStatus} items={selectedOrder.items} productionJobs={selectedOrder.productionJobs} quoted={quotedArtwork(selectedOrder)} />
                       ) : (
-                        <OrderTracker status={selectedOrder.orderStatus} paymentMethod={selectedOrder.paymentMethod} paymentStatus={selectedOrder.paymentStatus} statusHistory={selectedOrder.statusHistory} items={selectedOrder.items} productionJobs={selectedOrder.productionJobs} />
+                        <OrderTracker status={selectedOrder.orderStatus} paymentMethod={selectedOrder.paymentMethod} paymentStatus={selectedOrder.paymentStatus} statusHistory={selectedOrder.statusHistory} items={selectedOrder.items} productionJobs={selectedOrder.productionJobs}
+                          cancelledBy={selectedOrder.cancelledBy} cancelledReason={selectedOrder.cancelledReason} refundOwed={selectedOrder.refundOwed} refunds={selectedOrder.refunds} />
                       )}
                     </div>
 
@@ -1686,6 +1700,7 @@ export default function OrdersHistoryPage() {
                                       .filter(Boolean);
                                     const label = waiting.length
                                       ? `Approved - waiting on ${waiting.join(', ')} before payment is due.`
+                                      : /cancel/i.test(String(selectedOrder.orderStatus)) ? 'Approved.'
                                       : selectedOrder.paymentStatus === 'unpaid'
                                         ? 'Approved - complete payment to begin production.'
                                         : 'Approved - in production.';
@@ -1737,8 +1752,25 @@ export default function OrdersHistoryPage() {
                                             <div style={{ display: 'flex', gap: '6px' }}>
                                               {(() => {
                                                 const busy = approvingIdx === idx;
+                                                if (confirmApproveIdx === idx && !busy) return (
+                                                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '6px', padding: '10px', borderRadius: '8px', border: '1px solid #d4a843', background: 'rgba(212,168,67,0.08)' }}>
+                                                    <div style={{ fontSize: '0.76rem', color: 'var(--white)', lineHeight: 1.5 }}>
+                                                      Checked every name, spelling, number, date and colour? We print exactly this proof, and a mistake in an approved design is not reprinted for free.
+                                                    </div>
+                                                    <div style={{ display: 'flex', gap: '6px' }}>
+                                                      <button onClick={() => { setConfirmApproveIdx(null); handleApproveAdminDesign(idx); }} disabled={anyBusy}
+                                                        style={{ flex: 1, padding: '8px', borderRadius: '8px', border: 'none', background: '#d4a843', color: '#000', fontSize: '0.76rem', fontWeight: 700, cursor: 'pointer' }}>
+                                                        Yes, approve it
+                                                      </button>
+                                                      <button onClick={() => setConfirmApproveIdx(null)}
+                                                        style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--gray)', fontSize: '0.76rem', cursor: 'pointer' }}>
+                                                        Check again
+                                                      </button>
+                                                    </div>
+                                                  </div>
+                                                );
                                                 return (
-                                                  <button onClick={() => handleApproveAdminDesign(idx)} disabled={anyBusy}
+                                                  <button onClick={() => setConfirmApproveIdx(idx)} disabled={anyBusy}
                                                     style={{ flex: 1, padding: '8px', borderRadius: '8px', border: 'none', background: anyBusy ? 'var(--border)' : '#d4a843', color: '#000', fontSize: '0.76rem', fontWeight: 700, cursor: anyBusy ? 'not-allowed' : 'pointer' }}>
                                                     {busy ? 'Approving...' : 'Approve'}
                                                   </button>
@@ -1921,7 +1953,8 @@ export default function OrdersHistoryPage() {
 
                     {/* Production - one row per job order. An order with two printable items has two
                         JOs, and rendering only the scalar joId showed the customer JOB-001 alone. */}
-                    {(selectedOrder.productionJobs?.length || selectedOrder.joId) && (
+                    {/* Nothing is being made on a cancelled order; the card only restated its old stage. */}
+                    {(selectedOrder.productionJobs?.length || selectedOrder.joId) && !/cancel/i.test(String(selectedOrder.orderStatus)) && (
                       <div>
                         <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '10px' }}>Production</div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>

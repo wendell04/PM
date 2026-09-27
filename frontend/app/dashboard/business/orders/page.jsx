@@ -1053,6 +1053,9 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
   // Actions inside the panel merge their own fresh copy, so nothing is lost by ignoring the refresh.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { setLo(o); setSelStatus(o.orderStatus); }, [o.id]);
+  // An action inside the panel (approve, pay, job started) moves the status on its own. The picker
+  // kept the old one, which is no longer an option, so it read "Select..." instead of the current stage.
+  useEffect(() => { setSelStatus(lo.orderStatus); }, [lo.orderStatus]);
 
   const loadJobOrders = useCallback(async () => {
     const oid = o._id ?? o.id;
@@ -1279,6 +1282,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
   const [cancelReason,   setCancelReason]   = useState('');
   const [cancelOther,    setCancelOther]    = useState('');
   const [refundAmt,      setRefundAmt]      = useState('');
+  const [refundTouched,  setRefundTouched]  = useState(false);
   const [payingRefund,   setPayingRefund]   = useState(false);
   // "Keep it" asks why in the shop's own modal - the reason goes to the audit log.
   const [waiveAsk,       setWaiveAsk]       = useState(null);   // null = closed, string = the reason being typed
@@ -1316,6 +1320,26 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
   // Lines whose job had started. Their material is not settled here: the job order is marked
   // "settle materials" and production counts what is left at the bench (Job Orders / Production).
   const consumeRows = (settlement?.items ?? []).filter(r => r.action === 'consume');
+
+  // What the terms the customer accepted say comes back, so the refund starts from the contract
+  // instead of from "everything": a blank field refunded a whole downpayment the terms let the shop
+  // keep. The shop's own reasons (it cannot make it, it ran out, the payment went wrong, a duplicate)
+  // are not the customer's doing and refund in full - "If the mistake is ours" in the same terms.
+  const termsRefund = (() => {
+    const paid = paidSoFar(lo);
+    const designKept = lo.designFeePaid ? Number(lo.designFeePaidAmount ?? lo.designFee ?? 0) : 0;
+    const pct = lo.requiresDownpayment ? Number(lo.downpaymentPercent ?? 0) : 0;
+    const deposit = pct > 0 ? Math.round(Number(lo.totalAmount ?? lo.totalPrice ?? 0) * pct) / 100 : 0;
+    const shopSide = ['Cannot fulfil', 'Out of stock', 'Payment problem', 'Duplicate order'].includes(cancelReason);
+    const keep = shopSide ? 0 : Math.min(paid, deposit + designKept);
+    return { paid, keep, refund: Math.max(0, Math.round((paid - keep) * 100) / 100), deposit, designKept, shopSide };
+  })();
+  // Filled from the terms as the reason is picked, until the person types their own figure.
+  useEffect(() => {
+    if (String(selStatus).toLowerCase() !== 'cancelled' || refundTouched || !cancelReason) return;
+    setRefundAmt(String(termsRefund.refund));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cancelReason, selStatus, termsRefund.refund]);
 
   const handleWaiveRefund = async (reason) => {
     if (!reason || !reason.trim()) return;
@@ -1845,7 +1869,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                   )}
                   {/* Once it is settled, everything below this is an answer to a question nobody is
                       asking any more. The record of what was charged and how stays; the controls go. */}
-                  {!lo.courierFeePaid && (
+                  {!lo.courierFeePaid && !lo.freeDelivery && (
                   <div style={{ fontSize:'10.5px', color:'var(--gray)', marginBottom:'8px' }}>
                     Enter the fee once you know it. Pick who collects it - that decides what the customer
                     is told and whether they can leave it for the rider.
@@ -2698,17 +2722,21 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                         {(() => {
                           const kept = lo.designFeePaid ? Number(lo.designFeePaidAmount ?? lo.designFee ?? 0) : 0;
                           const dflt = Math.max(0, paidSoFar(lo) - kept);
+                          const t = termsRefund;
                           return (
                             <>
                               <div style={{ fontSize:'11.5px', color:'var(--gray)', lineHeight:1.5, marginBottom:'7px' }}>
-                                {kept > 0
-                                  ? `The design fee of \u20B1${fmt(kept)} is kept - the terms make it non-refundable once the designer has started. Blank returns the rest (\u20B1${fmt(dflt)}).`
-                                  : 'Leave blank to return all of it - which is right when nothing has been made.'}
-                                {' '}Enter less only if production had already started: personalised goods cannot be
-                                resold, and the deposit is what covers that.
+                                {!cancelReason
+                                  ? 'Pick a reason first - the refund is filled in from the terms the customer accepted.'
+                                  : t.shopSide
+                                    ? `"${cancelReason}" is on the shop's side, so everything they paid goes back (₱${fmt(t.refund)}).`
+                                    : t.keep > 0
+                                      ? `Per the terms they accepted, the shop keeps ${[t.deposit > 0 ? `the ₱${fmt(Math.min(t.deposit, t.paid))} downpayment` : '', t.designKept > 0 ? `the ₱${fmt(t.designKept)} design fee` : ''].filter(Boolean).join(' and ')} and refunds ₱${fmt(t.refund)}.`
+                                      : `This order had no downpayment, so the terms return everything they paid (₱${fmt(t.refund)}).`}
+                                {' '}Change the figure only if you and the customer agreed something else.
                               </div>
                               <input value={refundAmt}
-                                onChange={e => setRefundAmt(e.target.value.replace(/[^0-9.]/g, ''))}
+                                onChange={e => { setRefundTouched(true); setRefundAmt(e.target.value.replace(/[^0-9.]/g, '')); }}
                                 inputMode="decimal" maxLength={9}
                                 placeholder={`Refund amount - blank means \u20B1${fmt(dflt)}`}
                                 style={S.input} />
@@ -2723,11 +2751,20 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
               {/* One button, one modal. The old version swapped this button in place for a "Set to X"
                   confirm, so a double-click landed on the confirm and fired it - the exact accident
                   the step was there to prevent. */}
-              {mayStatus && (<button onClick={() => selStatus !== lo.orderStatus && setConfirmSt(true)}
-                disabled={selStatus === lo.orderStatus}
-                style={{ ...S.btnSmGhost, justifyContent:'center', opacity: selStatus===lo.orderStatus?.5:1, cursor: selStatus===lo.orderStatus?'not-allowed':'pointer' }}>
-                Update Status
-              </button>)}
+              {(() => {
+                // A cancellation needs its reason: the customer is told it, the refund is worked out
+                // from it, and the audit keeps it. Without one the refund fell back to "everything".
+                const needsReason = String(selStatus).toLowerCase() === 'cancelled'
+                  && (!cancelReason || (cancelReason === 'Other' && !cancelOther.trim()));
+                const off = selStatus === lo.orderStatus || needsReason;
+                return mayStatus && (<>
+                  <button onClick={() => !off && setConfirmSt(true)} disabled={off}
+                    style={{ ...S.btnSmGhost, justifyContent:'center', opacity: off?.5:1, cursor: off?'not-allowed':'pointer' }}>
+                    Update Status
+                  </button>
+                  {needsReason && <div style={{ fontSize:'11px', color:'var(--gray)' }}>Pick why you are cancelling first{cancelReason === 'Other' ? ' - and say what happened' : ''}.</div>}
+                </>);
+              })()}
               {updateErr && <div style={{ fontSize:'11px', color:'var(--st-red-fg)' }}>{updateErr}</div>}
 
               {/* The shortcut used to live only in the branch for orders with no legal transition
@@ -2822,7 +2859,8 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                       </div>
                       {clock?.needsProduction && clock.restartedBecause && (
                         <div style={{ fontSize:'11.5px', color:'#1a7f3c' }}>
-                          Counting from {clock.restartedBecause}
+                          {/* The reason is stored in the customer's words ("your approval"); this is the shop's screen. */}
+                          Counting from {String(clock.restartedBecause).replace(/your approval/, "the customer's approval").replace(/your file/, "the customer's file")}
                           {clock.startedAt ? ` (${new Date(clock.startedAt).toLocaleDateString('en-PH',{month:'short',day:'numeric'})})` : ''}.
                         </div>
                       )}
@@ -3327,8 +3365,19 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
             /* Cancelling an order somebody has already paid into is a money decision, and the
                generic line about "the cancellation terms they accepted" does not read as one. */
             + (normalizeStatus(selStatus) === 'cancelled' && paidSoFar(lo) > 0
-                ? ` This customer has already paid ₱${fmt(paidSoFar(lo))}, so cancelling decides what happens to it - set a refund below, or leave it blank to return everything.`
-                  + ' If you only want it off your working list while you wait for the balance, Archive it instead - the order, the balance and the record all stay, and it comes back the moment they pay.'
+                ? (refundAmt === ''
+                    ? (() => {
+                        // Blank means the server's default: everything except a design fee already paid.
+                        const kept = lo.designFeePaid ? Number(lo.designFeePaidAmount ?? lo.designFee ?? 0) : 0;
+                        return kept > 0
+                          ? ` This customer has paid ₱${fmt(paidSoFar(lo))}. With the refund left blank, ₱${fmt(Math.max(0, paidSoFar(lo) - kept))} is owed back to them and the ₱${fmt(kept)} design fee is kept.`
+                          : ` This customer has paid ₱${fmt(paidSoFar(lo))}. With the refund left blank, all of it is owed back to them.`;
+                      })()
+                    : ` This customer has paid ₱${fmt(paidSoFar(lo))}. ₱${fmt(Math.min(Number(refundAmt) || 0, paidSoFar(lo)))} is owed back to them and ₱${fmt(Math.max(0, paidSoFar(lo) - (Number(refundAmt) || 0)))} is kept.`)
+                  /* Archiving is the answer to "waiting for the balance" - only offered when there is one. */
+                  + (remainingDue(lo) > 0
+                    ? ' If you only want it off your working list while you wait for the balance, Archive it instead - the order, the balance and the record all stay, and it comes back the moment they pay.'
+                    : '')
                 : '')
             /* Sending it out closes the customer's online payment for the delivery fee. Who
                collects it from here is a money question, and it is answered before, not after. */

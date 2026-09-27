@@ -13,6 +13,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { billingName } from '@/lib/billingName';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import { uploadDesignFile } from '@/lib/orderRequestApi';
+import { designFeeFor } from '@/lib/designFee';
 import { useCart } from '@/context/CartContext';
 import useLockBodyScroll from '@/lib/useLockBodyScroll';
 import { compressImage } from '@/lib/compressImage';
@@ -435,7 +436,9 @@ function CustomOrderInner() {
 
   // Per piece, matching the PDP: the extra cut is extra work on every unit.
   const unitPrice = getUnitPrice(product, quantity, selectedVariants) + optionUnitAdd;
-  const designFee = designMode === 'request' ? (product?.designFee ?? 0) : 0;
+  // The same rule the cart and the server charge by (store fee, or a product override). Reading only
+  // the product's own override showed P0.00 here while checkout then charged the shop's P100.
+  const designFee = designMode === 'request' ? designFeeFor([{ designMode: 'request', designFee: product?.designFee }], storeSettings ?? {}) : 0;
   // The per-order charge sits outside the multiplication - it is paid once however many are made,
   // so folding it into unitPrice would bill it per piece and folding it out of the total would
   // lose it entirely.
@@ -1330,9 +1333,9 @@ function CustomOrderInner() {
                   <p style={{ fontSize: '0.75rem', color: 'var(--gray)', margin: 0, lineHeight: 1.5 }}>
                     You have photos, ideas or text and want us to make the artwork. We send you a
                     mockup to approve before anything is printed.
-                    {product.designFee > 0 && !isInquiry && (
+                    {designFeeFor([{ designMode: 'request', designFee: product.designFee }], storeSettings ?? {}) > 0 && !isInquiry && (
                       <span style={{ display: 'block', color: 'var(--gold)', fontWeight: 700, marginTop: 4 }}>
-                        +{fmt(product.designFee)} - includes 3 revisions
+                        +{fmt(designFeeFor([{ designMode: 'request', designFee: product.designFee }], storeSettings ?? {}))} - includes 3 revisions
                       </span>
                     )}
                   </p>

@@ -362,6 +362,16 @@ class OrderController extends Controller
 
             $paymentMethod = $validated['paymentMethod'] ?? 'cod';
 
+            // ── COD guard - a design fee is paid before the designer starts ──
+            // It buys the designer's time, not goods, and is non-refundable for that reason. "Cash on
+            // delivery" for it meant drawing artwork for an order that might never be delivered, and the
+            // checkout pre-selected exactly that.
+            if (PaymentMethod::isCod($paymentMethod)
+                && (($validated['designType'] ?? null) === 'request'
+                    || collect($validated['items'])->contains(fn ($i) => !empty($i['designRequested'])))) {
+                return $this->errorResponse('The design fee is paid online before our designer starts. Please choose GCash, Maya or card.', 422);
+            }
+
             // ── COD guard - reject if any product disallows COD ──────────
             if (PaymentMethod::isCod($paymentMethod)) {
                 foreach ($validated['items'] as $item) {
@@ -977,8 +987,12 @@ class OrderController extends Controller
             $customerId = (string) $order->userId;
             if ($customerId === '') return;
 
+            // The customer's thread WITH THE SHOP - not whichever two-person thread came back first,
+            // which could be a stale one with a single staff member the customer never opens.
+            $shopId = (string) (\App\Support\ChatAccess::shopAccount()?->_id ?? '');
             $conversation = \App\Models\Conversation::where('participants', $customerId)->get()
-                ->first(fn ($c) => count(array_map('strval', $c->participants ?? [])) === 2);
+                ->first(fn ($c) => count(array_map('strval', $c->participants ?? [])) === 2
+                    && ($shopId === '' || in_array($shopId, array_map('strval', $c->participants ?? []), true)));
             if (!$conversation) return;
 
             $admin = auth()->user();
@@ -3226,6 +3240,12 @@ class OrderController extends Controller
                 $jobOrder->joStatus  = 'Cancelled';
                 $jobOrder->updatedAt = now();
                 $jobOrder->save();
+                // The order carries a copy of its jobs for the customer's Production card. Left as
+                // it was, a cancelled order went on telling the customer the job was at QC.
+                $order->productionJobs = array_map(
+                    fn ($pj) => ($pj['joId'] ?? null) === $jobOrder->joId ? ['joStatus' => 'Cancelled'] + $pj : $pj,
+                    (array) ($order->productionJobs ?? [])
+                );
 
                 Log::info('cancelLinkedJobOrder: JobOrder cancelled', [
                     'orderId'    => (string) $order->_id,
@@ -3355,23 +3375,8 @@ class OrderController extends Controller
         $this->refundCourierFeeOnCancel($order, $previousStatus, $by);
         $order->save();
 
-        if (!$request->boolean('notifyCustomer', true)) return;
-        try {
-            Notification::create([
-                'user_id'    => (string) $order->userId,
-                'type'       => 'order_cancelled',
-                'title'      => 'Order Cancelled',
-                'message'    => 'Order #' . strtoupper(substr((string) $order->_id, -8))
-                    . ' was cancelled by the shop.'
-                    . ($reason !== '' ? ' Reason: ' . mb_substr($reason, 0, 200) : '')
-                    . ($refund > 0 ? ' A refund of P' . number_format($refund, 2) . ' is being arranged.' : ''),
-                'is_read'    => false,
-                'data'       => ['orderId' => (string) $order->_id],
-                'created_at' => now(),
-            ]);
-        } catch (\Exception $e) {
-            Log::warning('recordShopCancellation: notification failed', ['error' => $e->getMessage()]);
-        }
+        // The customer is told once, by OrderNotifier::statusChanged, which now carries the reason
+        // and the refund. A bell written here as well made two notices for one cancellation.
     }
 
     /**
@@ -5055,7 +5060,7 @@ class OrderController extends Controller
             $customerId = (string) ($order->userId ?? '');
             if ($customerId === '') return;
 
-            $shop = User::whereIn('role', ['admin', 'owner'])->first();
+            $shop = \App\Support\ChatAccess::shopAccount();
             if (!$shop) return;
             $shopId = (string) $shop->_id;
 

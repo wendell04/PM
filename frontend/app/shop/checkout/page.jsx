@@ -563,7 +563,8 @@ export default function CheckoutPage() {
   // A method is offered only if the owner hasn't disabled it (and COD also obeys cart/DP rules).
   const methodAvailable = (id) => {
     if (payEnabled[id] === false) return false;
-    if (id === 'cod') return cartAllowsCOD && !downpaymentRequired;
+    // A design fee is paid before the designer starts - never on delivery of goods not yet ordered.
+    if (id === 'cod') return cartAllowsCOD && !downpaymentRequired && !designFeeOnly && !items.some(i => isReqLine(i));
     return true;
   };
   const availableMethods = ['cod', 'gcash', 'paymaya', 'card'].filter(methodAvailable);
