@@ -446,7 +446,11 @@ async def forecast(req: ForecastRequest):
                     break
             return best_start, best_nz
 
-        accuracy        = {"mape": None, "mae": None, "backtest_n": bt_periods}
+        # Same shape as the scored dict below, so a caller never has to tell a
+        # missing key from a real None. Everything here means "not measured".
+        accuracy        = {"mape": None, "mae": None, "backtest_n": bt_periods,
+                           "mape_scored": 0, "mape_total": 0, "mase": None,
+                           "training_gap": 0, "mape_reliable": False}
         backtest_series = {"dates": [], "actuals": [], "predictions": []}
 
         if n - bt_periods >= 10:
@@ -495,6 +499,25 @@ async def forecast(req: ForecastRequest):
                 mape_val = compute_mape(act, pred)
                 mae_val  = float(np.mean(np.abs(act - pred)))
 
+                # How much evidence is behind that MAPE. It is averaged only over
+                # periods with a non-zero actual, so a window of 8 with 3 quiet
+                # weeks reports a figure built on 5 - and the page said 128.87%
+                # as though all 8 agreed. The caller gets both counts now.
+                mape_scored = int(np.sum(np.asarray(act) > 0))
+                mape_total  = int(len(act))
+
+                # MASE: error against the naive "same as last period" forecast,
+                # measured over the SAME window. Unlike MAPE it is defined when
+                # an actual is zero, so the quiet periods count instead of being
+                # dropped - which is the honest way to score a series that has
+                # them. Below 1.0 beats the naive baseline.
+                mase_val = None
+                _tv = np.asarray(original_values[:bt_start], dtype=float)
+                if _tv.size >= 2:
+                    _naive = float(np.mean(np.abs(np.diff(_tv))))
+                    if _naive > 0:
+                        mase_val = round(mae_val / _naive, 4)
+
                 # MAE-ratio fallback: used when all backtest actuals are zero
                 # (MAPE returns None in that case — this gives a rough alternative)
                 mae_ratio     = None
@@ -504,6 +527,22 @@ async def forecast(req: ForecastRequest):
                 )
                 if mape_val is None and nz_train_mean and nz_train_mean > 0:
                     mae_ratio = round((mae_val / nz_train_mean) * 100, 2)
+
+                # Longest unbroken run of zero periods in the training window. A
+                # shop that traded nothing for fifteen straight weeks and a system
+                # nobody entered anything into look identical here, and the second
+                # is not demand - it drags the level down and the recovery then
+                # reads as a steep trend worth extrapolating.
+                # What counts as a blackout depends on the bucket: fifteen dead
+                # weeks are only three dead months, so a flat threshold misses it
+                # at the coarser granularities.
+                _gap_limit = {"weekly": 6, "monthly": 3, "annually": 1}.get(forecast_type, 6)
+                _gap_run = 0
+                _run = 0
+                for _v in np.asarray(original_values[:bt_start], dtype=float):
+                    _run = _run + 1 if _v == 0 else 0
+                    if _run > _gap_run:
+                        _gap_run = _run
 
                 # Precision / Recall / F1 for direction accuracy (within 20% threshold)
                 _bt_threshold = 0.20
@@ -529,8 +568,23 @@ async def forecast(req: ForecastRequest):
                     "recall":            round(_bt_rec, 4),
                     "f1":                round(_bt_f1, 4),
                     "hit_rate":          round(float(np.mean(_bt_within)) * 100, 2),
+                    "mape_scored":       mape_scored,
+                    "mape_total":          mape_total,
+                    "mase":              mase_val,
+                    "training_gap":      _gap_run if _gap_run >= _gap_limit else 0,
+                    # A figure averaged over two or three periods is not an
+                    # accuracy; it is two or three numbers. The old flag checked
+                    # only the period type and a 300% ceiling, so annual revenue
+                    # returned 213% from TWO scored points and still came back
+                    # green. It now has to have something behind it, and a long
+                    # blank stretch in the training window disqualifies it too -
+                    # a run of zeros that means "nobody was using the system"
+                    # trains the model on demand that never existed.
                     "mape_reliable":     (forecast_type != "annually" or int(n_agg) >= 2)
-                                         and not (is_high_volatility and mape_val is not None and mape_val > 300),
+                                         and not (is_high_volatility and mape_val is not None and mape_val > 300)
+                                         and mape_val is not None
+                                         and mape_scored >= 4
+                                         and _gap_run < _gap_limit,
                 }
                 backtest_series = {
                     "dates":       pd.DatetimeIndex(bt_display_dates).strftime("%Y-%m-%d").tolist(),

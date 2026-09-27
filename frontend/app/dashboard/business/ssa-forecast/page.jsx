@@ -1243,6 +1243,13 @@ function resolveAccuracy(accuracy, isHighVolatility = false) {
   const btN = accuracy.backtest_n;
   const btNz = accuracy.backtest_nz_count ?? null;
   const mapeReliable = accuracy.mape_reliable !== false;
+  // What the figure is actually built on. MAPE averages only the periods that
+  // had sales, so a window of 8 with 3 quiet weeks reports a number 5 periods
+  // wide - worth saying out loud rather than printing one decimal and a colour.
+  const scored = accuracy.mape_scored ?? null;
+  const total = accuracy.mape_total ?? null;
+  const mase = accuracy.mase ?? null;
+  const gap = accuracy.training_gap ?? 0;
 
   if (mape != null) {
     // For high-volatility spike-demand data, high MAPE is expected - the model
@@ -1264,17 +1271,23 @@ function resolveAccuracy(accuracy, isHighVolatility = false) {
       value: mape,
       display: `${mape.toFixed(1)}%`,
       label: unreliable ? "MAPE (LOW CONFIDENCE)" : "FORECAST ACCURACY (MAPE)",
-      sublabel: btN
-        ? `tested on ${btN} ${btNz != null ? `periods (${btNz} with sales)` : "periods"}${unreliable ? (isHighVolatility ? " - sparse/spike data" : " - limited backtest data") : ""}`
-        : "insufficient data",
+      sublabel: (scored != null && total)
+        ? `averaged over ${scored} of ${total} periods${mase != null ? ` - MASE ${mase.toFixed(2)}` : ""}`
+        : btN
+          ? `tested on ${btN} ${btNz != null ? `periods (${btNz} with sales)` : "periods"}`
+          : "insufficient data",
       color,
-      tooltip: unreliable
-        ? isHighVolatility
-          ? "MAPE exceeds 300% because sales are sparse and spike-driven - the model cannot reliably predict the exact timing of individual orders. Use the forecast as a directional trend guide, not a precise estimate."
-          : "Annual MAPE is based on fewer than 2 full calendar-year backtest periods, making it a single-observation estimate and statistically unreliable. Use it as a rough guide only."
-        : isHighVolatility
-          ? "MAPE measures forecast accuracy on weeks with actual sales. For irregular spike-demand businesses, high MAPE is expected - the model tracks your revenue trend, not individual order timing. The forecast baseline is more useful than this number alone."
-          : "MAPE (Mean Absolute % Error): measures forecast accuracy only on periods with real sales, ignoring zero-sale periods. Lower is better. Under 30% = good, 30-60% = fair, above 60% = poor.",
+      tooltip: gap >= 6
+        ? `The training history contains ${gap} periods in a row with nothing recorded. A period with no demand and a period nobody entered anything into look the same to the model, so it learns from a drop that may never have happened. Treat this figure as provisional until the history is continuous.`
+        : (scored != null && total && scored < 4)
+          ? `Averaged over only ${scored} ${scored === 1 ? "period" : "periods"} - the rest of the window had no sales, and MAPE cannot score those. Too few points to call it an accuracy.`
+          : unreliable
+            ? isHighVolatility
+              ? "MAPE exceeds 300% because sales are sparse and spike-driven - the model cannot reliably predict the exact timing of individual orders. Use the forecast as a directional trend guide, not a precise estimate."
+              : "Annual MAPE is based on fewer than 2 full calendar-year backtest periods, making it a single-observation estimate and statistically unreliable. Use it as a rough guide only."
+            : isHighVolatility
+              ? "MAPE measures forecast accuracy on weeks with actual sales. For irregular spike-demand businesses, high MAPE is expected - the model tracks your revenue trend, not individual order timing. The forecast baseline is more useful than this number alone."
+              : "MAPE (Mean Absolute % Error) scores only the periods that had real sales; quiet periods are left out, which is why the count beside it matters. MASE scores every period against a naive guess - under 1.00 beats it. Lower is better for both.",
     };
   }
 
