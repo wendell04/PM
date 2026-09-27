@@ -692,13 +692,6 @@ const pageStyles = `
     margin: 0 0 4px;
     letter-spacing: -0.02em;
   }
-  .ssa-page-desc {
-    font-size: 13px;
-    color: var(--gray);
-    margin: 0;
-    line-height: 1.6;
-    max-width: 600px;
-  }
   .ssa-alerts-group {
     display: flex;
     flex-direction: column;
@@ -2309,10 +2302,6 @@ export default function SSAForecastPage() {
         <div className="ssa-page-header">
           <div>
             <h1 className="ssa-page-title">Business Analytics</h1>
-            <p className="ssa-page-desc">
-              Forecast future sales, segment customers by value, and analyze product performance using{" "}
-              <span style={{ color: "var(--gold)", fontWeight: 700 }}>Singular Spectrum Analysis.</span>
-            </p>
           </div>
         </div>
 

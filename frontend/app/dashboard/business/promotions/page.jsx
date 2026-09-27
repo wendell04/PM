@@ -140,33 +140,6 @@ function PromotionsInner() {
         />
       </div>
 
-      {/* What each tool does to the money, said once where the tools are. */}
-      <div style={{ ...S.card, padding: '12px 16px', marginBottom: 16, fontSize: 12.5, color: 'var(--gray-light)', lineHeight: 1.6 }}>
-        {tab === 'first_order' ? (
-          <>
-            <b style={{ color: 'var(--white)' }}>The first-order discount</b> is the shop&apos;s welcome to
-            somebody who has never ordered here. Nobody types a code - it comes off the <b>goods only</b> at
-            checkout, on their first order and no other. It stacks with a voucher, but the two together can
-            only ever reach the goods, never past them into the design fee, the rush fee or delivery. It is
-            taken out of revenue in Sales like any other discount, and it never applies to a quotation.
-          </>
-        ) : tab === 'vouchers' ? (
-          <>
-            <b style={{ color: 'var(--white)' }}>Vouchers</b> are codes a customer types at checkout. A money voucher
-            (percent or fixed peso) comes off the <b>goods only</b> - never the design fee, the rush fee or delivery -
-            and each customer can use a code once. A benefit voucher (free item, free layout) takes nothing off: the
-            order shows <i>Give: ...</i> so you know what to hand over. Every discount is taken out of revenue in Sales,
-            and the Discounts Given card there adds them up.
-          </>
-        ) : (
-          <>
-            <b style={{ color: 'var(--white)' }}>Flash sales</b> cut one product&apos;s price for a set time, for everyone,
-            no code needed. Set a stock limit so it cannot run past what you can make. If the sale price is below what
-            the product costs to make, you are asked first - every one sold would lose money.
-          </>
-        )}
-      </div>
-
       {tab === 'vouchers'    && <VouchersTab    token={token} />}
       {tab === 'flash_sales' && <FlashSalesTab  token={token} />}
       {tab === 'first_order' && <FirstOrderTab  token={token} />}

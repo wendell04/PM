@@ -227,16 +227,6 @@ export default function AuditLogsPage() {
     <ErrorBoundary>
       <div style={{ ...S.page, padding: '24px' }}>
 
-        {/* What this screen is, said once. It is easy to mistake for the inventory log next to
-            it in the sidebar - which is exactly the mistake this page itself used to make. */}
-        <div style={{ ...S.card, padding: '12px 16px', marginBottom: 16, fontSize: 12.5, color: 'var(--gray-light)', lineHeight: 1.6 }}>
-          <b style={{ color: 'var(--white)' }}>The audit trail</b> is who did what in this system, from
-          where, and when: every sign-in and every one that was refused, passwords and 2FA, staff added
-          or removed, permissions widened, settings moved (from what, to what), orders and money
-          touched, and stock changed by hand - write-offs, damage, corrections. Opening this page is
-          recorded too. Stock that moves on its own with orders (reserved, used in production) is in
-          Inventory's history.
-        </div>
 
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>
           <div>
